@@ -1,9 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.compactorlease.CreateResult
-import com.rustyrazorblade.easydblab.compactorlease.ObjectVersion
-import com.rustyrazorblade.easydblab.compactorlease.ReplaceResult
-import com.rustyrazorblade.easydblab.compactorlease.VersionedObject
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import java.io.File
 import java.nio.file.Path
@@ -20,10 +16,6 @@ import java.nio.file.Path
  * All operations use ClusterS3Path for type-safe path handling and proper cluster
  * namespacing. Note: ClusterS3Path will be renamed to ClusterStoragePath in a
  * future refactoring to be truly cloud-agnostic.
- *
- * The conditional writes ([readVersioned], [createIfAbsent], [replaceIfVersionMatches]) are the
- * one exception to the retry rule below: they are never retried, and their types come from the
- * `:compactor-lease` module, whose `ConditionalObjects` port they are built on.
  *
  * Implementations should:
  * - Use retry logic for transient failures (network issues, throttling)
@@ -172,36 +164,6 @@ interface ObjectStore {
      * @return true if at least one file exists under the prefix, false otherwise
      */
     fun directoryExists(remotePath: ClusterS3Path): Boolean
-
-    /**
-     * Reads an object with its version token, for a later [replaceIfVersionMatches].
-     *
-     * @return the content and version, or `null` when no object exists at [remotePath].
-     */
-    fun readVersioned(remotePath: ClusterS3Path): VersionedObject?
-
-    /**
-     * Writes [content] only when no object exists at [remotePath]. Never retried: a retry of a
-     * write that landed would report [CreateResult.AlreadyExists] for a write that won.
-     *
-     * @throws Exception for any failure other than a lost race (provider-specific).
-     */
-    fun createIfAbsent(
-        remotePath: ClusterS3Path,
-        content: String,
-    ): CreateResult
-
-    /**
-     * Writes [content] only when the object at [remotePath] has version [expected]. A missing object
-     * is a [ReplaceResult.VersionMismatch]. Never retried, for the reason [createIfAbsent] gives.
-     *
-     * @throws Exception for any failure other than a lost race (provider-specific).
-     */
-    fun replaceIfVersionMatches(
-        remotePath: ClusterS3Path,
-        content: String,
-        expected: ObjectVersion,
-    ): ReplaceResult
 
     /**
      * Represents a file in cloud storage with metadata.

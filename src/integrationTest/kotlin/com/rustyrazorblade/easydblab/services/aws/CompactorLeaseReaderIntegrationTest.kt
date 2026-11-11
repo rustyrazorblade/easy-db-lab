@@ -8,10 +8,10 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
 import java.util.UUID
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /**
  * `observability compactor status` reads the real lease document from S3 (LocalStack) in the
@@ -28,8 +28,15 @@ class CompactorLeaseReaderIntegrationTest {
         CompactorLeaseReader(
             regionOf = { SharedLocalStack.region() },
             leaseIn = CompactorLeaseReader.fromS3 { SharedLocalStack.s3Client() },
-            clock = Clock.fixed(renewedAt.plusSeconds(5), ZoneOffset.UTC),
+            clock = FixedClock(renewedAt + 5.seconds),
         )
+
+    /** A clock that always reads [now]. */
+    private class FixedClock(
+        private val now: Instant,
+    ) : Clock {
+        override fun now(): Instant = now
+    }
 
     @BeforeAll
     fun prepare() {
@@ -58,6 +65,6 @@ class CompactorLeaseReaderIntegrationTest {
         lease as CompactorLease.Held
         assertThat(lease.record.holder).isEqualTo("lab-a/pod-1")
         assertThat(lease.record.sequence).isEqualTo(7)
-        assertThat(lease.age.seconds).isEqualTo(5)
+        assertThat(lease.age).isEqualTo(5.seconds)
     }
 }

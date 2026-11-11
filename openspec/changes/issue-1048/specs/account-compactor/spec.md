@@ -2,13 +2,13 @@
 
 ### Requirement: The object store offers conditional writes
 
-The `ObjectStore` interface SHALL offer three conditional operations, each with a version token:
+The `ConditionalObjects` port in the `compactor-lease` module SHALL be the only conditional-write port.  The lease agent and `CompactorLeaseReader` SHALL use it directly; the `ObjectStore` interface SHALL NOT offer conditional operations.  The port SHALL offer three operations, each with a version token:
 
-- `readVersioned` SHALL return the object's content and its version, or nothing when the object does not exist.
+- `read` SHALL return the object's content and its version, or nothing when the object does not exist.
 - `createIfAbsent` SHALL write the object only when no object exists at that key.  It SHALL return `Created` with the new version, or `AlreadyExists`.
 - `replaceIfVersionMatches` SHALL write the object only when its current version equals the expected version.  It SHALL return `Replaced` with the new version, or `VersionMismatch`.  A missing object SHALL count as `VersionMismatch`.
 
-The S3 adapter SHALL implement them with conditional PUT: `If-None-Match: *` for create and `If-Match: <ETag>` for replace, and the version token SHALL be the ETag.  S3 status 412 (precondition failed) and 409 (conditional request conflict) SHALL map to `AlreadyExists` or `VersionMismatch`.  Any other failure SHALL throw.  The conditional operations SHALL NOT be retried, because a retry of a write that landed returns 412 and only makes the caller think it lost.  An in-memory adapter SHALL implement the full `ObjectStore` interface, conditional operations included, and one contract test suite SHALL run against both adapters.
+The S3 adapter, `S3ConditionalObjects`, SHALL implement them with conditional PUT: `If-None-Match: *` for create and `If-Match: <ETag>` for replace, and the version token SHALL be the ETag.  S3 status 412 (precondition failed) and 409 (conditional request conflict) SHALL map to `AlreadyExists` or `VersionMismatch`, and a 404 with error code `NoSuchKey` on a replace SHALL map to `VersionMismatch`.  Any other failure, a 404 for a missing bucket included, SHALL throw.  The conditional operations SHALL NOT be retried, because a retry of a write that landed returns 412 and only makes the caller think it lost.  An in-memory adapter, `InMemoryConditionalObjects`, SHALL implement the port, and one contract test suite SHALL run against both adapters.
 
 #### Scenario: Two writers create the same key
 - **WHEN** two writers call `createIfAbsent` for the same key
@@ -22,7 +22,7 @@ The S3 adapter SHALL implement them with conditional PUT: `If-None-Match: *` for
 
 #### Scenario: A matching version replaces an object
 - **WHEN** `replaceIfVersionMatches` runs with the object's current version
-- **THEN** it returns `Replaced` with a new version, and `readVersioned` returns the new content with that version
+- **THEN** it returns `Replaced` with a new version, and `read` returns the new content with that version
 
 ### Requirement: Every cluster runs a standby compactor on its control node
 
@@ -107,7 +107,7 @@ The gate SHALL stop the binary on its own when the agent dies, because the valid
 
 ### Requirement: Compactor status reads the lease
 
-The CLI SHALL provide `observability compactor status`.  It SHALL work outside a cluster workspace.  It SHALL print the lease's holder, sequence, renewal time and age, read with the account bucket's region, or that no lease exists.  It SHALL change nothing.  The CLI SHALL NOT provide `observability compactor start` or `observability compactor stop`.
+The CLI SHALL provide `observability compactor status`.  It SHALL work outside a cluster workspace.  It SHALL print the lease's holder, sequence, renewal time and age, read with the account bucket's region, or that no lease exists.  When the lease object exists but does not hold a valid lease, it SHALL say that the lease object cannot be read, show its content, and say that deleting `leases/compactor.json` lets a pod create a fresh lease.  It SHALL change nothing.  The CLI SHALL NOT provide `observability compactor start` or `observability compactor stop`.
 
 #### Scenario: Status shows the holder
 - **WHEN** a user runs `observability compactor status` and a lease exists
@@ -117,6 +117,11 @@ The CLI SHALL provide `observability compactor status`.  It SHALL work outside a
 #### Scenario: Status with no lease
 - **WHEN** a user runs `observability compactor status` and no lease exists
 - **THEN** the output says that no compactor holds the lease
+
+#### Scenario: Status with a lease it cannot read
+- **WHEN** a user runs `observability compactor status` and `leases/compactor.json` does not hold a valid lease
+- **THEN** the output says that the lease object cannot be read, shows its content, and says that deleting `leases/compactor.json` lets a pod create a fresh lease
+- **AND** nothing is changed
 
 ## MODIFIED Requirements
 

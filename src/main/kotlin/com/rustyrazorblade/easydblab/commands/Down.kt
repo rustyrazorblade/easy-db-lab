@@ -392,27 +392,14 @@ class Down : PicoBaseCommand() {
     ): TeardownOutcome {
         eventBus.emit(Event.Teardown.PreparingVpc(targetVpcId))
 
-        // Preview to discover resources
-        val previewResult = teardownService.teardownVpc(targetVpcId, dryRun = true)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoResourcesFound)
-            return if (dryRun) TeardownOutcome.DryRun() else TeardownOutcome.Finished(previewResult)
-        }
-
-        val summary = previewResult.resourcesDeleted.first().summary()
-        if (saveTail && force) reportForceSkipsTail()
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.DryRun()
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardownService.teardownVpc(targetVpcId, dryRun = true),
+                noneFound = Event.Teardown.NoResourcesFound,
+                summarize = { it.first().summary() },
+                beforeDryRunCheck = { if (saveTail && force) reportForceSkipsTail() },
+            )
+        if (stop != null) return stop
 
         if (saveTail && !force && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
 
@@ -426,27 +413,13 @@ class Down : PicoBaseCommand() {
     private fun teardownAllTagged(): TeardownOutcome {
         eventBus.emit(Event.Teardown.FindingTaggedVpcs)
 
-        // Preview first
-        val previewResult = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoTaggedVpcsFound)
-            return if (dryRun) TeardownOutcome.DryRun() else TeardownOutcome.Finished(previewResult)
-        }
-
-        // Build summary from discovered resources
-        val summary = buildResourcesSummary(previewResult.resourcesDeleted)
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.DryRun()
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker),
+                noneFound = Event.Teardown.NoTaggedVpcsFound,
+                summarize = ::buildResourcesSummary,
+            )
+        if (stop != null) return stop
 
         beforeRemovingInfrastructure()
         val result = teardownService.teardownAllTagged(dryRun = false, includePackerVpc = teardownPacker)
@@ -465,29 +438,48 @@ class Down : PicoBaseCommand() {
     private fun teardownPackerInfrastructure(): TeardownOutcome {
         eventBus.emit(Event.Teardown.FindingPackerVpc)
 
-        // Preview first
-        val previewResult = teardownService.teardownPackerInfrastructure(dryRun = true)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoPackerVpcFound)
-            return if (dryRun) TeardownOutcome.DryRun() else TeardownOutcome.Finished(previewResult)
-        }
-
-        val summary = previewResult.resourcesDeleted.first().summary()
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.DryRun()
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardownService.teardownPackerInfrastructure(dryRun = true),
+                noneFound = Event.Teardown.NoPackerVpcFound,
+                summarize = { it.first().summary() },
+            )
+        if (stop != null) return stop
 
         beforeRemovingInfrastructure()
         return TeardownOutcome.Finished(teardownService.teardownPackerInfrastructure(dryRun = false))
+    }
+
+    /**
+     * The steps every teardown mode takes on its [preview] before it removes anything: report
+     * [noneFound] when the preview found nothing, run [beforeDryRunCheck], show the summary and
+     * stop on `--dry-run`, and ask for confirmation unless auto-approved.
+     *
+     * @return the outcome to stop with, or null when the teardown goes ahead
+     */
+    private fun previewAndConfirm(
+        preview: TeardownResult,
+        noneFound: Event.Teardown,
+        summarize: (List<DiscoveredResources>) -> String,
+        beforeDryRunCheck: () -> Unit = {},
+    ): TeardownOutcome? {
+        if (preview.resourcesDeleted.isEmpty()) {
+            eventBus.emit(noneFound)
+            return if (dryRun) TeardownOutcome.DryRun() else TeardownOutcome.Finished(preview)
+        }
+        val summary = summarize(preview.resourcesDeleted)
+        beforeDryRunCheck()
+        return when {
+            dryRun -> {
+                eventBus.emit(Event.Teardown.DryRunPreview(summary))
+                TeardownOutcome.DryRun()
+            }
+            !autoApprove && !confirmTeardown(summary) -> {
+                eventBus.emit(Event.Teardown.CancelledByUser)
+                TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
+            }
+            else -> null
+        }
     }
 
     /**

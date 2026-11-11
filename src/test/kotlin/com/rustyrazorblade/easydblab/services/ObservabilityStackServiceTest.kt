@@ -372,7 +372,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 .spec.template.spec.volumes
                 .single { it.name == "agent-jar" }
                 .hostPath.path,
-        ).isEqualTo(agentJar.remote().hostPath)
+        ).isEqualTo(agentJar.remote.hostPath)
         assertThat(
             compactorDeployment()
                 .spec.template.spec.containers

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import io.github.resilience4j.retry.Retry
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -101,6 +102,47 @@ class RetryUtilPollUntilTest {
 
         assertThat(result).isEqualTo("pending")
         assertThat(looks.get()).isEqualTo(1)
+    }
+
+    /** A poll whose looks classify their own failures, as the SSH readiness wait does, must never retry a throw. */
+    @Test
+    fun `with exceptions not retried, a look that throws fails the poll at once`() {
+        val config =
+            RetryUtil.createPollUntilRetryConfig<String>(
+                maxAttempts = 5,
+                interval = Duration.ZERO,
+                done = { it == "ready" },
+                retryExceptions = false,
+            )
+
+        assertThatThrownBy {
+            Retry
+                .decorateCheckedSupplier(Retry.of("test-poll", config)) {
+                    looks.incrementAndGet()
+                    throw IOException("No such file or directory")
+                }.get()
+        }.isInstanceOf(IOException::class.java)
+        assertThat(looks.get()).isEqualTo(1)
+    }
+
+    @Test
+    fun `with exceptions not retried, a result that is not done is still retried`() {
+        val config =
+            RetryUtil.createPollUntilRetryConfig<String>(
+                maxAttempts = 5,
+                interval = Duration.ZERO,
+                done = { it == "ready" },
+                retryExceptions = false,
+            )
+
+        val result =
+            Retry
+                .decorateCheckedSupplier(Retry.of("test-poll", config)) {
+                    listOf("pending", "ready")[looks.getAndIncrement()]
+                }.get()
+
+        assertThat(result).isEqualTo("ready")
+        assertThat(looks.get()).isEqualTo(2)
     }
 
     @Test

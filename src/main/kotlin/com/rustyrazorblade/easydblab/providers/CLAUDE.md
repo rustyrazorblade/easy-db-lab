@@ -72,9 +72,8 @@ Always use factory methods instead of creating manual retry configurations.
 | `createVpcTeardownRetryConfig<T>()` | 5 | Exponential 5s→40s | VPC teardown DependencyViolation |
 | `createVpcAutoCidrRetryConfig()` | 3 | None | VPC creation on an auto-selected CIDR (`SdkException` only); `up` picks a new random unused block per attempt |
 | `createLocalPortBindRetryConfig()` | 3 | Fixed 100ms | Local listener lost its port between selection and bind (`BindException` only); the SOCKS proxy selects a new port per attempt |
-| `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline) |
+| `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?, retryExceptions = true)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline). With `retryExceptions = false` no exception is retried: the SSH readiness wait returns the hosts still pending and throws only a hard SSH failure. An `InterruptedException` is never retried in either mode |
 | `createEc2ThrottleRetryConfig<T>(backoffBase)` | `Constants.Scale.THROTTLE_MAX_ATTEMPTS` (8) | Exponential from `backoffBase`, capped at 30s | EC2 calls at scale: retries `RequestLimitExceeded`, `InvalidInstanceID.NotFound` and 5xx. RunInstances keeps one client token across its retries, so a retry cannot launch a second set |
-| `pendingHostsRetryConfig<T>(interval, deadline)` (top level, `PendingHostsRetry.kt`) | until `deadline` | Fixed `interval` | A readiness poll over many hosts: each attempt returns the hosts still pending; repeats while any remain and the deadline has not passed. Exceptions are never retried (the SSH readiness wait) |
 
 ### Checked Exceptions Need The Checked Decorators
 
@@ -107,6 +106,8 @@ val result = withAwsRetry("describe-cluster") { emrClient.describeCluster(reques
 val result = withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
 withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
 withS3BucketPolicyRetry("put-bucket-policy") { s3Client.putBucketPolicy(request) }
+// EC2 calls at scale (RunInstances, CreateTags, the RunInstances dry run), on createEc2ThrottleRetryConfig
+withEc2ThrottleRetry("run-instances-db0", throttleBackoff) { ec2Client.runInstances(request) }
 
 // Poll until a condition holds (top-level pollUntil in PollUntil.kt, over createPollUntilRetryConfig);
 // returns the last result if it never does

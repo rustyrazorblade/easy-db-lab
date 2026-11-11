@@ -80,6 +80,18 @@ class SshReadinessWaitTest {
     }
 
     @Test
+    fun `hosts that never answer are named up to 20, and the rest are counted`() {
+        val many = mapOf(ServerType.Cassandra to (0 until 25).map { host("db$it") })
+        many.getValue(ServerType.Cassandra).forEach { failuresBeforeReady[it.alias] = Int.MAX_VALUE }
+
+        assertThatThrownBy { waiter(timeout = Duration.ofMillis(200)).await(many, databaseHostFilter = "") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("on 25 host(s): db0, db1,")
+            .hasMessageContaining("db18, db19, and 5 more. Last error: ")
+            .hasMessageNotContaining("db20")
+    }
+
+    @Test
     fun `a failure that waiting cannot fix fails at once`() {
         val broken: RemoteOperationsService =
             mock {

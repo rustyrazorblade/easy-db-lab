@@ -1,13 +1,14 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
 import java.security.MessageDigest
+import java.util.HexFormat
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * [ConditionalObjects] in memory, for tests of the lease and of anything built on the root
- * module's in-memory object store. Each write gets a version from one counter, so no two writes
- * share a version, as no two S3 writes of different content share an ETag.
+ * [ConditionalObjects] in memory, for tests of the lease. Each write gets a version from one
+ * counter, so no two writes share a version, as no two S3 writes of different content share an
+ * ETag.
  *
  * Each operation is atomic on its key ([ConcurrentHashMap.compute]), so racing writers behave as
  * they do against S3.
@@ -28,7 +29,7 @@ class InMemoryConditionalObjects(
     private fun nextVersion(content: String): ObjectVersion =
         when {
             versionsFromContent ->
-                ObjectVersion(MessageDigest.getInstance("MD5").digest(content.toByteArray()).joinToString("") { "%02x".format(it) })
+                ObjectVersion(HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(content.toByteArray())))
             else -> ObjectVersion("v${versions.incrementAndGet()}")
         }
 
@@ -76,7 +77,7 @@ class InMemoryConditionalObjects(
 
     /**
      * Writes [content] at [key] whatever is there, as a plain PUT does, and returns the new version.
-     * The lease code never calls it; an in-memory object store's plain writes do.
+     * The lease code never calls it; a test does, to put a body there by hand.
      */
     fun put(
         key: String,
@@ -87,7 +88,4 @@ class InMemoryConditionalObjects(
     fun remove(key: String) {
         objects.remove(key)
     }
-
-    /** Every key that holds an object. */
-    fun keys(): Set<String> = objects.keys.toSet()
 }

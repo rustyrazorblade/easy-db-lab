@@ -58,4 +58,16 @@ class NodeRegistrationWaitIntegrationTest {
             .hasMessageContaining("db999")
             .hasMessageNotContaining(nodeName)
     }
+
+    @Test
+    fun `names the first 20 nodes that never registered and counts the rest`() {
+        val missing = (900 until 925).map { "db$it" }
+
+        val result = ops.waitForNodesRegistered(controlHost, missing, Duration.ofSeconds(1))
+
+        assertThat(result.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageEndingWith("db918, db919, and 5 more")
+            .hasMessageNotContaining("db920")
+    }
 }

@@ -9,12 +9,11 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import com.rustyrazorblade.easydblab.providers.aws.withEc2InstanceRetry
+import com.rustyrazorblade.easydblab.providers.aws.withEc2ThrottleRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
@@ -74,9 +73,6 @@ class EC2InstanceService(
          */
         const val INSTANCE_TYPES_PAGE_SIZE = 100
 
-        /** How many instance IDs a timeout names before it stops listing them. */
-        private const val MAX_NAMED_IDS = 20
-
         /** States an instance never leaves for running: EC2 is ending it, or has ended it. */
         private val ENDED_STATES =
             setOf(
@@ -126,7 +122,7 @@ class EC2InstanceService(
 
         eventBus.emit(Event.Ec2.InstancesCreated(instances.size, config.serverType.serverType))
 
-        return instances.sortedBy { it.alias.removePrefix(config.serverType.serverType).toIntOrNull() ?: 0 }
+        return instances.sortedBy { config.serverType.ordinalOf(it.alias) ?: 0 }
     }
 
     /**
@@ -139,7 +135,7 @@ class EC2InstanceService(
         batch: LaunchBatch,
     ): List<CreatedInstance> {
         val request = RunInstancesRequests.build(config, batch, UUID.randomUUID().toString())
-        val response = withThrottleRetry("run-instances-${batch.aliases.first()}") { ec2Client.runInstances(request) }
+        val response = withEc2ThrottleRetry("run-instances-${batch.aliases.first()}", throttleBackoff) { ec2Client.runInstances(request) }
 
         return response
             .instances()
@@ -170,16 +166,8 @@ class EC2InstanceService(
                     .resources(instance.instanceId)
                     .tags(RunInstancesRequests.tag("Name", instance.alias))
                     .build()
-            withThrottleRetry("name-${instance.alias}") { ec2Client.createTags(request) }
+            withEc2ThrottleRetry("name-${instance.alias}", throttleBackoff) { ec2Client.createTags(request) }
         }
-    }
-
-    private fun <T> withThrottleRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retry = Retry.of(operationName, RetryUtil.createEc2ThrottleRetryConfig<T>(throttleBackoff))
-        return Retry.decorateSupplier(retry, operation).get()
     }
 
     /**
@@ -240,12 +228,21 @@ class EC2InstanceService(
 
         check(ended.isEmpty()) {
             "${ended.size} instances will never run; EC2 ended them: " +
-                ended.values.take(MAX_NAMED_IDS).joinToString(", ") { "${it.instanceId} (${it.name ?: "unnamed"}): ${it.state}" } +
+                ended.values.joinToString(
+                    ", ",
+                    limit = Constants.Scale.MAX_NAMED_IN_ERROR,
+                    truncated = "and ${ended.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
+                ) { "${it.instanceId} (${it.name ?: "unnamed"}): ${it.state}" } +
                 ". A re-run of up replaces them."
         }
         check(pending.isEmpty()) {
             "Timeout waiting for instances to reach running state after ${timeoutMs}ms; " +
-                "${pending.size} not running with a public IP: ${pending.take(MAX_NAMED_IDS).joinToString(", ")}"
+                "${pending.size} not running with a public IP: " +
+                pending.joinToString(
+                    ", ",
+                    limit = Constants.Scale.MAX_NAMED_IN_ERROR,
+                    truncated = "and ${pending.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
+                )
         }
 
         log.info { "All instances running with public IPs" }
@@ -390,58 +387,37 @@ class EC2InstanceService(
     }
 
     /**
-     * Queries the capabilities of an EC2 instance type in one `DescribeInstanceTypes` call.
+     * Queries the capabilities of an EC2 instance type: whether it has local instance store, and
+     * its supported CPU architectures.
      *
-     * The instance type is passed as an `instance-type` filter carrying the raw string, never
-     * routed through the SDK's fixed `InstanceType` enum. Instance-type support therefore does not
-     * depend on the installed SDK version — any valid EC2 instance type is accepted, including a
-     * type newer than the SDK (closes #783; previously such types failed with a `[null]` error).
-     *
-     * The call reports both whether the type has local instance store and its supported CPU
-     * architectures, so both facts are obtained from the same query.
-     *
-     * `DescribeInstanceTypes` applies the instance-type filter **per page**, so a matching type can
-     * sit behind an empty page that still carries a `nextToken`. This follows `nextToken` across
-     * pages and only reports "not found" once every page is exhausted with no match — reading only
-     * the first page would misreport a common type (e.g. `i4i.xlarge`) as unknown.
+     * The type is passed as a raw `instance-type` filter, never through the SDK's `InstanceType`
+     * enum, so a type newer than the SDK works (#783). EC2 applies the filter per page, so the
+     * match can sit behind an empty page; every page is read until it is found.
      *
      * @param instanceType EC2 instance type (e.g., "i3.xlarge", "c5.2xlarge")
      * @return the instance type's capabilities
-     * @throws IllegalStateException if the type is unknown in the region (no match across all pages)
+     * @throws IllegalStateException if the type is unknown in the region
      */
     fun describeInstanceType(instanceType: String): InstanceTypeCapabilities {
-        var nextToken: String? = null
-        do {
-            val request =
-                DescribeInstanceTypesRequest
-                    .builder()
-                    .filters(
-                        Filter
-                            .builder()
-                            .name("instance-type")
-                            .values(instanceType)
-                            .build(),
-                    ).maxResults(INSTANCE_TYPES_PAGE_SIZE)
-                    .nextToken(nextToken)
-                    .build()
-
-            val response =
-                withAwsRetry("describe-instance-type-$instanceType") {
-                    ec2Client.describeInstanceTypes(request)
-                }
-
-            val typeInfo = response.instanceTypes().firstOrNull()
-            if (typeInfo != null) {
-                return InstanceTypeCapabilities(
-                    hasInstanceStore = typeInfo.instanceStorageSupported() == true,
-                    supportedArchitectures =
-                        typeInfo.processorInfo()?.supportedArchitecturesAsStrings().orEmpty(),
-                )
-            }
-            nextToken = response.nextToken()
-        } while (!nextToken.isNullOrEmpty())
-
-        error("Instance type '$instanceType' not found in region $region")
+        val request =
+            DescribeInstanceTypesRequest
+                .builder()
+                .filters(
+                    Filter
+                        .builder()
+                        .name("instance-type")
+                        .values(instanceType)
+                        .build(),
+                ).maxResults(INSTANCE_TYPES_PAGE_SIZE)
+                .build()
+        val typeInfo =
+            withAwsRetry("describe-instance-type-$instanceType") {
+                ec2Client.describeInstanceTypesPaginator(request).instanceTypes().firstOrNull()
+            } ?: error("Instance type '$instanceType' not found in region $region")
+        return InstanceTypeCapabilities(
+            hasInstanceStore = typeInfo.instanceStorageSupported() == true,
+            supportedArchitectures = typeInfo.processorInfo()?.supportedArchitecturesAsStrings().orEmpty(),
+        )
     }
 
     /**

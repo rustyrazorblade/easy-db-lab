@@ -47,7 +47,7 @@ class CompactorAgentInstallerTest {
 
     private val jar by lazy { CompactorAgentJarFile(Files.writeString(dir.resolve("compactor-lease.jar"), "agent")) }
     private val installer by lazy { CompactorAgentInstaller(remoteOps, eventBus) }
-    private val remotePath by lazy { jar.remote().hostPath }
+    private val remotePath by lazy { jar.remote.hostPath }
 
     private fun commands(): List<String> {
         val captor = argumentCaptor<String>()
@@ -86,7 +86,7 @@ class CompactorAgentInstallerTest {
 
         val result = installer.install(host, jar)
 
-        assertThat(result).isEqualTo(jar.remote())
+        assertThat(result).isEqualTo(jar.remote)
         val staged = argumentCaptor<String>()
         verify(remoteOps).upload(eq(host), eq(jar.path), staged.capture())
         assertThat(commands()).anySatisfy { command ->

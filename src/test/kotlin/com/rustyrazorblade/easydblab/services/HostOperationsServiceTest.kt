@@ -122,6 +122,31 @@ class HostOperationsServiceTest {
     }
 
     @Test
+    fun `a host list of mixed server types runs every host, and every failure is reported together`() {
+        val mixed = listOf(host("control0"), host("db0"), host("app0"))
+        val visited = ConcurrentLinkedQueue<String>()
+
+        assertThatThrownBy {
+            service.withHosts(mixed, parallel = true) { clusterHost ->
+                visited.add(clusterHost.alias)
+                if (clusterHost.alias != "db0") error("broken on ${clusterHost.alias}")
+            }
+        }.satisfies({ thrown ->
+            val reported = listOf(thrown.message) + thrown.suppressed.map { it.message }
+            assertThat(reported).containsExactlyInAnyOrder("broken on control0", "broken on app0")
+        })
+        assertThat(visited).containsExactlyInAnyOrder("control0", "db0", "app0")
+    }
+
+    @Test
+    fun `collectFromHosts over a host list keeps the list's order`() {
+        val results =
+            service.collectFromHosts(listOf(host("control0"), host("db0"), host("app0")), parallel = true) { it.alias }
+
+        assertThat(results.map { it.result.getOrThrow() }).containsExactly("control0", "db0", "app0")
+    }
+
+    @Test
     fun `serial withHosts propagates a failure`() {
         assertThatThrownBy {
             service.withHosts(hosts, ServerType.Cassandra) { clusterHost ->

@@ -43,20 +43,23 @@ value class CidrBlock(
      * The prefix length (e.g., 16 for /16, 20 for /20).
      */
     val prefixLength: Int
-        get() = value.substringAfter("/").toInt()
+        get() = cidr.prefixLength
 
     /**
      * The network address without the prefix (e.g., "10.0.0.0" from "10.0.0.0/16").
      */
     val networkAddress: String
-        get() = value.substringBefore("/")
+        get() = cidr.address
+
+    /** The parsed form, which owns the address arithmetic. */
+    private val cidr: Ipv4Cidr
+        get() = Ipv4Cidr.parse(value).getOrThrow()
 
     /**
      * Returns the subnet CIDR for the availability zone at [index].
      *
      * The VPC is split into [Constants.Vpc.MAX_AVAILABILITY_ZONES] equal subnets whose prefix is
-     * the VPC prefix plus three.  The subnet's network address is the VPC network address plus
-     * `index * 2^(32 - subnetPrefix)`, computed on the 32-bit address.
+     * the VPC prefix plus three; [Ipv4Cidr.subnet] computes the block.
      *
      * @param index Zero-based availability-zone index, 0 to 7 (for a /16: 0 → x.y.0.0/19,
      *   1 → x.y.32.0/19, ..., 7 → x.y.224.0/19)
@@ -70,22 +73,18 @@ value class CidrBlock(
                 "because the VPC is split into ${Constants.Vpc.MAX_AVAILABILITY_ZONES} subnets; " +
                 "subnet index $index is out of range"
         }
-        val subnetPrefix = prefixLength + SUBNET_PREFIX_DELTA
-        val subnetSize = 1L shl (ADDRESS_BITS - subnetPrefix)
-        return "${formatAddress(networkAddressBits() + index * subnetSize)}/$subnetPrefix"
+        return cidr.subnet(prefixLength + SUBNET_PREFIX_DELTA, index).value
     }
 
     /** How many addresses each of the VPC's subnets ([subnetCidr]) spans, AWS's reserved five included. */
     fun subnetAddressCount(): Long = 1L shl (ADDRESS_BITS - prefixLength - SUBNET_PREFIX_DELTA)
-
-    private fun networkAddressBits(): Long = addressBits(networkAddress)
 
     /**
      * Whether this block shares any address with K3s's pod range ([Constants.K3s.CLUSTER_CIDR])
      * or service range ([Constants.K3s.SERVICE_CIDR]). A VPC on either would put node IPs and
      * pod or ClusterIP addresses in the same space.
      */
-    fun overlapsK3sRanges(): Boolean = K3S_RANGES.any { overlaps(value, it) }
+    fun overlapsK3sRanges(): Boolean = K3S_RANGES.any { cidr.overlaps(it) }
 
     override fun toString(): String = value
 
@@ -106,10 +105,6 @@ value class CidrBlock(
         private const val MAX_PREFIX_LENGTH = MIN_SUBNET_PREFIX_LENGTH - SUBNET_PREFIX_DELTA
 
         private const val ADDRESS_BITS = 32
-        private const val BITS_PER_OCTET = 8
-        private const val OCTET_COUNT = 4
-        private const val OCTET_MASK = 0xFFL
-        private const val ADDRESS_MASK = 0xFFFFFFFFL
 
         /** Maximum second octet value when scanning for available 10.X.0.0/16 blocks */
         private const val MAX_SECOND_OCTET = 254
@@ -149,28 +144,7 @@ value class CidrBlock(
         }
 
         /** K3s's pod and service ranges, which no VPC block may overlap. */
-        private val K3S_RANGES = listOf(Constants.K3s.CLUSTER_CIDR, Constants.K3s.SERVICE_CIDR)
-
-        private fun addressBits(address: String): Long =
-            address
-                .split('.')
-                .fold(0L) { acc, octet -> (acc shl BITS_PER_OCTET) or octet.toLong() }
-
-        /** Two CIDRs overlap exactly when one contains the other's network address. */
-        private fun overlaps(
-            a: String,
-            b: String,
-        ): Boolean {
-            val (aAddress, aPrefix) = a.split('/').let { addressBits(it[0]) to it[1].toInt() }
-            val (bAddress, bPrefix) = b.split('/').let { addressBits(it[0]) to it[1].toInt() }
-            val prefix = minOf(aPrefix, bPrefix)
-            val mask = if (prefix == 0) 0L else (ADDRESS_MASK shl (ADDRESS_BITS - prefix)) and ADDRESS_MASK
-            return (aAddress and mask) == (bAddress and mask)
-        }
-
-        private fun formatAddress(address: Long): String =
-            (OCTET_COUNT - 1 downTo 0).joinToString(".") { index ->
-                ((address shr (index * BITS_PER_OCTET)) and OCTET_MASK).toString()
-            }
+        private val K3S_RANGES =
+            listOf(Constants.K3s.CLUSTER_CIDR, Constants.K3s.SERVICE_CIDR).map { Ipv4Cidr.parse(it).getOrThrow() }
     }
 }

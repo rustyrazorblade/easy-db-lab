@@ -15,8 +15,8 @@ import software.amazon.awssdk.services.s3.model.S3Exception
  * `If-Match: <ETag>` to replace. The version is the object's ETag.
  *
  * S3 answers a lost race with 412 (precondition failed) or 409 (a conflicting conditional request
- * in flight), and a replace of a missing key with 404. Those are the lost results; every other
- * failure throws. The SDK's own retries are turned off for both PUTs, because a retry of a write
+ * in flight), and a replace of a missing key with 404 `NoSuchKey`. Those are the lost results;
+ * every other failure throws, a 404 for a missing bucket included. The SDK's own retries are turned off for both PUTs, because a retry of a write
  * that landed gets 412 and would report a lost race for a write that won.
  *
  * @property s3 a client for the bucket's region.
@@ -31,6 +31,7 @@ class S3ConditionalObjects(
         const val CONFLICT = 409
         const val NOT_FOUND = 404
         const val ANY_OBJECT = "*"
+        const val NO_SUCH_KEY = "NoSuchKey"
 
         /** Turns the SDK's retries off for the request it is added to. */
         val NO_RETRIES =
@@ -40,6 +41,9 @@ class S3ConditionalObjects(
 
         /** Whether [e] is S3 refusing a conditional write because the condition did not hold. */
         fun isLostRace(e: S3Exception): Boolean = e.statusCode() == PRECONDITION_FAILED || e.statusCode() == CONFLICT
+
+        /** Whether [e] says the key is missing from a bucket that exists, not that the bucket is missing. */
+        fun isMissingKey(e: S3Exception): Boolean = e.statusCode() == NOT_FOUND && e.awsErrorDetails()?.errorCode() == NO_SUCH_KEY
     }
 
     override fun read(key: String): VersionedObject? =
@@ -77,7 +81,7 @@ class S3ConditionalObjects(
         try {
             ReplaceResult.Replaced(put(key, content) { it.ifMatch(expected.token) })
         } catch (e: S3Exception) {
-            if (!isLostRace(e) && e.statusCode() != NOT_FOUND) throw e
+            if (!isLostRace(e) && !isMissingKey(e)) throw e
             ReplaceResult.VersionMismatch
         }
 

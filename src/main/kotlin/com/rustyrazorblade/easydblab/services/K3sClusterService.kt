@@ -376,7 +376,7 @@ class DefaultK3sClusterService(
         when (serverType) {
             ServerType.Cassandra, ServerType.Stress -> {
                 // Parse ordinal from alias: "db0" → 0, "app3" → 3, etc.
-                val ordinal = host.alias.removePrefix(serverType.serverType).toIntOrNull() ?: 0
+                val ordinal = serverType.ordinalOf(host.alias) ?: 0
                 mapOf(
                     Constants.NODE_TYPE_LABEL to serverType.serverType,
                     Constants.NODE_ORDINAL_LABEL to ordinal.toString(),

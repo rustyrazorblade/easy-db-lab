@@ -50,6 +50,7 @@ class DockerPod(
     }
 
     private val docker = DockerClientFactory.instance().client()
+    private val volumesByName = spec.volumes.associateBy { it.name }
     private val volumes = mutableMapOf<String, String>()
     private val started = mutableMapOf<String, String>()
     private lateinit var sandbox: String
@@ -131,7 +132,7 @@ class DockerPod(
 
     private fun binds(container: Container): List<Bind> =
         container.volumeMounts.mapNotNull { mount ->
-            val volume = spec.volumes.single { it.name == mount.name }
+            val volume = volumesByName.getValue(mount.name)
             when {
                 volume.configMap != null -> null
                 volume.hostPath?.type == "File" -> Bind(hostFiles.getValue(volume.name).toString(), Volume(mount.mountPath))
@@ -158,15 +159,9 @@ class DockerPod(
                 ).exec()
                 .id
         started[container.name] = id
-        if (container.volumeMounts.any { mount -> spec.volumes.single { it.name == mount.name }.configMap != null }) {
-            copyConfig(
-                id,
-                container.volumeMounts
-                    .first { mount ->
-                        spec.volumes.single { it.name == mount.name }.configMap != null
-                    }.mountPath,
-            )
-        }
+        container.volumeMounts
+            .firstOrNull { mount -> volumesByName.getValue(mount.name).configMap != null }
+            ?.let { copyConfig(id, it.mountPath) }
         docker.startContainerCmd(id).exec()
         return id
     }

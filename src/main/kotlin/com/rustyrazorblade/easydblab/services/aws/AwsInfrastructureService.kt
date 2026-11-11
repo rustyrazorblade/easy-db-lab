@@ -141,7 +141,7 @@ class AwsInfrastructureService(
 
     /**
      * Ensures the single-subnet infrastructure [config] names exists, reusing its VPC when one
-     * with that name exists. The packer VPC and the account compactor's VPC are both kept this way.
+     * with that name exists. The packer VPC is kept this way.
      *
      * @return VpcInfrastructure containing the IDs of all created/found resources
      */

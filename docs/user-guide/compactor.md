@@ -38,7 +38,7 @@ If `leases/compactor.json` does not hold a valid lease, for example after a hand
 Lease agent <cluster>/<pod> cannot parse the lease body, so it will not take it over; delete leases/compactor.json by hand to recover
 ```
 
-To recover, delete `leases/compactor.json` from the account bucket.  Within 15 seconds a running pod creates a new lease and starts its compactors.  No compactor runs while the file is invalid, so the new holder cannot overlap with an old one.
+`observability compactor status` says the same: it reports that the lease object cannot be read and shows its content.  To recover, delete `leases/compactor.json` from the account bucket.  Within 15 seconds a running pod creates a new lease and starts its compactors.  No compactor runs while the file is invalid, so the new holder cannot overlap with an old one.
 
 ## No data is deleted by age
 
@@ -52,7 +52,7 @@ The compactor removes a source object only after it wrote a merged copy that hol
 
 ## Upgrades
 
-A new easy-db-lab version brings a new lease agent jar and new compactor configuration.  `up` and `grafana update-config` roll the pod when either changes.  The new pod takes the lease again as any pod does.
+A new easy-db-lab version brings a new lease agent jar and new compactor configuration.  `up` and `grafana update-config` roll the pod when either changes.  The new pod takes the lease again as any pod does.  The pod that holds the lease compacts every cluster's data in the account with its own build's compactors and configuration, so when clusters run different easy-db-lab versions, they all share the holder's compactor version.
 
 ## Commands
 

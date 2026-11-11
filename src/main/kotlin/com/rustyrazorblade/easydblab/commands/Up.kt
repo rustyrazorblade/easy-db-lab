@@ -13,8 +13,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeGroup
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.nodeGroups
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.network.CidrBlock
@@ -377,27 +379,22 @@ class Up(
     private fun capacityPlan(
         initConfig: InitConfig,
         existingInstances: Map<ServerType, List<DiscoveredInstance>>,
-    ): CapacityPlan {
-        fun group(
-            serverType: ServerType,
-            instanceType: String,
-            configured: Int,
-        ): LaunchGroup =
-            LaunchGroup(serverType, instanceType, missingOrdinals(serverType, configured, existingInstances[serverType].orEmpty()))
-        return CapacityPlan(
+    ): CapacityPlan =
+        CapacityPlan(
             groups =
-                listOf(
-                    group(ServerType.Cassandra, initConfig.instanceType, initConfig.cassandraInstances),
-                    group(ServerType.Stress, initConfig.stressInstanceType, initConfig.stressInstances),
-                    group(ServerType.Control, initConfig.controlInstanceType, initConfig.controlInstances),
-                ),
+                initConfig.nodeGroups().map { group ->
+                    LaunchGroup(
+                        group.serverType,
+                        group.instanceType,
+                        missingOrdinals(group.serverType, group.count, existingInstances[group.serverType].orEmpty()),
+                    )
+                },
             region = initConfig.region,
             zones = availabilityZones(initConfig),
             cni = initConfig.cni,
             existingVpcId = workingState.vpcId,
             vpcCidr = CidrBlock(initConfig.cidr ?: Constants.Vpc.DEFAULT_CIDR),
         )
-    }
 
     private fun availabilityZones(initConfig: InitConfig): List<String> = initConfig.azs.ifEmpty { listOf("a", "b", "c") }
 
@@ -476,32 +473,11 @@ class Up(
     }
 
     /**
-     * A node group that will launch at least one instance, paired with the instance type and CPU
-     * architecture that drive its AMI selection.
-     */
-    private data class NodeGroupArch(
-        val serverType: ServerType,
-        val instanceType: String,
-        val arch: Arch,
-    )
-
-    /**
      * The node groups that will actually launch instances, i.e. those with a configured count above
      * zero. A group with zero nodes (commonly the application group) contributes no architecture, so
      * `up` never resolves or requires an AMI for an image it will not use.
      */
-    private fun launchingNodeGroups(initConfig: InitConfig): List<NodeGroupArch> =
-        buildList {
-            if (initConfig.cassandraInstances > 0) {
-                add(NodeGroupArch(ServerType.Cassandra, initConfig.instanceType, Arch.valueOf(initConfig.dbArch)))
-            }
-            if (initConfig.stressInstances > 0) {
-                add(NodeGroupArch(ServerType.Stress, initConfig.stressInstanceType, Arch.valueOf(initConfig.appArch)))
-            }
-            if (initConfig.controlInstances > 0) {
-                add(NodeGroupArch(ServerType.Control, initConfig.controlInstanceType, Arch.valueOf(initConfig.controlArch)))
-            }
-        }
+    private fun launchingNodeGroups(initConfig: InitConfig): List<NodeGroup> = initConfig.nodeGroups().filter { it.count > 0 }
 
     /**
      * Resolves one AMI per distinct CPU architecture across the cluster's launching node groups.
@@ -513,7 +489,7 @@ class Up(
      */
     private fun resolveAmisByArch(
         initConfig: InitConfig,
-        launchingGroups: List<NodeGroupArch>,
+        launchingGroups: List<NodeGroup>,
     ): Map<Arch, String> =
         launchingGroups
             .map { it.arch }
@@ -530,7 +506,7 @@ class Up(
      * AMI selected for it.
      */
     private fun logResolvedGroupAmis(
-        launchingGroups: List<NodeGroupArch>,
+        launchingGroups: List<NodeGroup>,
         amiByArch: Map<Arch, String>,
     ) {
         log.info {
@@ -569,7 +545,7 @@ class Up(
                 onHostsCreated = { serverType, hosts ->
                     synchronized(stateLock) {
                         val allHosts = workingState.hosts.toMutableMap()
-                        allHosts[serverType] = mergeByAlias(allHosts[serverType], hosts)
+                        allHosts[serverType] = mergeByAlias(serverType, allHosts[serverType], hosts)
                         workingState.updateHosts(allHosts)
                         clusterStateManager.save(workingState)
                     }
@@ -924,10 +900,7 @@ class Up(
     private fun labelControlAndAwaitNodes(controlHost: ClusterHost) {
         k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrThrow()
 
-        val expected =
-            listOf(ServerType.Control, ServerType.Cassandra, ServerType.Stress)
-                .flatMap { workingState.hosts[it].orEmpty() }
-                .map { it.alias }
+        val expected = allNodes().map { it.alias }
         val timeout =
             Duration.ofSeconds(
                 Constants.Scale.NODE_REGISTRATION_BASE_SECONDS +
@@ -955,16 +928,14 @@ class Up(
 
         // Configure containerd on ALL nodes to trust the registry, in parallel on the bounded pool.
         // Every node runs; every failure is reported together, and the first aborts `up`.
-        val allNodes =
-            mapOf(
-                ServerType.Control to
-                    listOf(ServerType.Control, ServerType.Cassandra, ServerType.Stress)
-                        .flatMap { workingState.hosts[it].orEmpty() },
-            )
-        hostOperationsService.withHosts(allNodes, ServerType.Control, parallel = true) { clusterHost ->
+        hostOperationsService.withHosts(allNodes(), parallel = true) { clusterHost ->
             registryService.configureTlsOnNode(clusterHost.toHost(), registryHost, s3Bucket)
         }
 
         eventBus.emit(Event.Registry.TlsConfigured)
     }
+
+    /** Every node in the working state, control first, then db, then app. */
+    private fun allNodes(): List<ClusterHost> =
+        listOf(ServerType.Control, ServerType.Cassandra, ServerType.Stress).flatMap { workingState.hosts[it].orEmpty() }
 }

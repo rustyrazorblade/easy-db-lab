@@ -540,6 +540,30 @@ class EC2InstanceServiceScaleTest {
             .hasMessageNotContaining("i-1,")
     }
 
+    @Test
+    fun `the running wait names the first 20 instances that never appeared and counts the rest`() {
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenReturn(reservation())
+        val ids = (0 until 25).map { "i-$it" }
+
+        assertThatThrownBy { service.waitForInstancesRunning(ids, timeoutMs = 100) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageEndingWith("i-18, i-19, and 5 more")
+            .hasMessageNotContaining("i-20")
+    }
+
+    @Test
+    fun `the ended-instance failure names the first 20 and counts the rest`() {
+        val ids = (0 until 25).map { "i-$it" }
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenReturn(
+            reservation(*ids.map { endedInstance(it, "Name" to "db${it.removePrefix("i-")}") }.toTypedArray()),
+        )
+
+        assertThatThrownBy { service.waitForInstancesRunning(ids, timeoutMs = 2_000) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("i-19 (db19): terminated, and 5 more. A re-run of up replaces them.")
+            .hasMessageNotContaining("i-20")
+    }
+
     /**
      * An instance EC2 ends while it is waited on never runs. The wait says so at once, naming the
      * instance and its state, instead of polling to its deadline and reporting a generic timeout.

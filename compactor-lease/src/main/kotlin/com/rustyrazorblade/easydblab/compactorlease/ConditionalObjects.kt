@@ -22,7 +22,9 @@ interface ConditionalObjects {
 
     /**
      * Writes [content] at [key] only when the object there has version [expected]. A missing object
-     * is a [ReplaceResult.VersionMismatch].
+     * is a [ReplaceResult.VersionMismatch]. Every write must change the content: on S3 the version is
+     * the content's ETag, so a write of identical content keeps the version, and a reader waiting
+     * for the version to move would take the write for no write at all.
      */
     fun replaceIfVersionMatches(
         key: String,

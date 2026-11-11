@@ -5,8 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.isSshNotReady
-import com.rustyrazorblade.easydblab.providers.aws.pendingHostsRetryConfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.resilience4j.retry.Retry
 import java.time.Duration
@@ -60,7 +60,7 @@ class SshReadinessWait(
         var pending: List<ClusterHost> = targets
         var lastError: String? = null
         val retry =
-            Retry.of("ssh-readiness", pendingHostsRetryConfig<ClusterHost>(retryInterval, deadline)).also {
+            Retry.of("ssh-readiness", readinessRetryConfig(deadline)).also {
                 it.eventPublisher.onRetry { event ->
                     eventBus.emit(Event.Provision.SshRetrying(event.numberOfRetryAttempts, lastError))
                 }
@@ -78,8 +78,11 @@ class SshReadinessWait(
         check(stillPending.isEmpty()) {
             val names = stillPending.map { it.alias }
             "SSH did not come up within ${timeout.toSeconds()}s on ${names.size} host(s): " +
-                names.take(MAX_NAMED_HOSTS).joinToString(", ") +
-                (if (names.size > MAX_NAMED_HOSTS) " and ${names.size - MAX_NAMED_HOSTS} more" else "") +
+                names.joinToString(
+                    ", ",
+                    limit = Constants.Scale.MAX_NAMED_IN_ERROR,
+                    truncated = "and ${names.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
+                ) +
                 lastError?.let { ". Last error: ${it.lineSequence().first()}" }.orEmpty()
         }
     }
@@ -90,7 +93,7 @@ class SshReadinessWait(
      */
     private fun probe(hosts: List<ClusterHost>): Map<ClusterHost, Throwable> {
         val results =
-            hostOperationsService.collectFromHosts(mapOf(ServerType.Control to hosts), ServerType.Control, parallel = true) {
+            hostOperationsService.collectFromHosts(hosts, parallel = true) {
                 // Only that the host answers matters; echoing its output printed a bare "1" per host.
                 remoteOps.executeRemotely(it.toHost(), "echo 1", output = false).text
             }
@@ -99,8 +102,18 @@ class SshReadinessWait(
         return failures.toMap()
     }
 
-    private companion object {
-        /** How many hosts that never answered the failure names before it summarizes the rest. */
-        const val MAX_NAMED_HOSTS = 20
-    }
+    /**
+     * Repeats a sweep [retryInterval] apart while hosts are pending and [deadline] has not passed.
+     * A wall-clock deadline, not an attempt count, bounds the wait, so it does not change with how
+     * long one sweep over 1,000 hosts takes. A thrown sweep is never retried: [probe] already
+     * returned every host that is only not up yet, so what it throws is a hard SSH failure.
+     */
+    private fun readinessRetryConfig(deadline: Instant) =
+        RetryUtil.createPollUntilRetryConfig<List<ClusterHost>>(
+            maxAttempts = Int.MAX_VALUE,
+            interval = retryInterval,
+            done = { it.isEmpty() },
+            deadline = deadline,
+            retryExceptions = false,
+        )
 }

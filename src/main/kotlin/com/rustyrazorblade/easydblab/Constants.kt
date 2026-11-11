@@ -127,6 +127,12 @@ object Constants {
          */
         const val HOST_CONCURRENCY = 50
 
+        /**
+         * How many hosts, nodes or instances a scale failure names before it counts the rest
+         * ("a, b, and 5 more"), so a 1,000-node failure stays readable.
+         */
+        const val MAX_NAMED_IN_ERROR = 20
+
         /** The most instance IDs `DescribeInstanceStatus` accepts in one request. */
         const val DESCRIBE_INSTANCE_STATUS_BATCH = 100
 
@@ -413,12 +419,6 @@ object Constants {
 
         /** Root of the test documents: `reports/<tenant>/<name>-<id>/`, one folder per test. */
         const val REPORTS_ROOT = "reports"
-
-        /**
-         * Root of the store leases, outside every backend's root: under `mimir/`, Mimir would read a
-         * lease as a tenant. The account compactor's lease is `leases/compactor.json`.
-         */
-        const val LEASES_ROOT = "leases"
 
         /** The tenant of a cluster that was initialized without `--tenant`. */
         const val DEFAULT_TENANT = "default"

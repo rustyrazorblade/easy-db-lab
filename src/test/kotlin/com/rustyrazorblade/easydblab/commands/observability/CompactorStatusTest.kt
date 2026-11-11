@@ -15,9 +15,8 @@ import org.mockito.kotlin.verifyNoInteractions
 import picocli.CommandLine
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * `observability compactor status` works outside a cluster workspace: it takes the account bucket
@@ -39,7 +38,7 @@ class CompactorStatusTest : BaseKoinTest() {
                     CompactorLeaseReader(
                         regionOf = { "eu-west-1" },
                         leaseIn = { region, bucket -> lease.also { readsAsked += region to bucket } },
-                        clock = Clock.fixed(now, ZoneOffset.UTC),
+                        clock = FixedClock(now),
                     )
                 }
                 single {
@@ -57,6 +56,13 @@ class CompactorStatusTest : BaseKoinTest() {
                 }
             },
         )
+
+    /** A clock that always reads [now]. */
+    private class FixedClock(
+        private val now: Instant,
+    ) : Clock {
+        override fun now(): Instant = now
+    }
 
     private fun stdout(block: () -> Unit): String {
         val original = System.out
@@ -101,6 +107,33 @@ class CompactorStatusTest : BaseKoinTest() {
         val output = stdout { CompactorStatus().execute() }
 
         assertThat(output).contains("No compactor holds the lease").contains("eu-west-1")
+    }
+
+    /**
+     * A lease body no agent can parse stops compaction everywhere, and only an operator can clear
+     * it, so status shows the body and the way out instead of failing.
+     */
+    @Test
+    fun `status on a lease it cannot parse shows the body and how to clear it`() {
+        lease = """{"holder":"""
+
+        val output = stdout { CompactorStatus().execute() }
+
+        assertThat(output)
+            .contains("cannot be read")
+            .contains("""{"holder":""")
+            .contains("leases/compactor.json")
+            .contains("eu-west-1")
+    }
+
+    /** Well-formed JSON that breaks a lease invariant is just as unusable to the agents. */
+    @Test
+    fun `status on a lease with a negative sequence reports it cannot be read`() {
+        lease = """{"holder":"h","sequence":-1,"ttlSeconds":120,"renewedAt":"2026-11-07T18:00:00Z"}"""
+
+        val output = stdout { CompactorStatus().execute() }
+
+        assertThat(output).contains("cannot be read").contains("leases/compactor.json")
     }
 
     @Test

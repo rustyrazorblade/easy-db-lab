@@ -7,29 +7,26 @@ import io.fabric8.kubernetes.api.model.ObjectMetaBuilder
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.PodStatusBuilder
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatCode
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for K8sPodUtils.checkForPodFailure which detects terminal pod failures
- * like CrashLoopBackOff, Error, ImagePullBackOff, and ErrImagePull.
+ * [K8sPodUtils.failureOf] names a pod's terminal failure (CrashLoopBackOff, Error,
+ * ImagePullBackOff, ErrImagePull), so a readiness wait can stop at once instead of timing out.
  */
-class K8sServicePodFailureTest {
+class K8sPodFailureOfTest {
     @Test
-    fun `checkForPodFailure should throw for each terminal failure reason`() {
+    fun `failureOf names each terminal failure reason`() {
         for (reason in K8sPodUtils.TERMINAL_FAILURE_REASONS) {
             val pod = buildPodWithWaitingContainer("test-pod", "main", reason)
 
-            assertThatThrownBy { K8sPodUtils.checkForPodFailure(pod) }
-                .isInstanceOf(IllegalStateException::class.java)
-                .hasMessageContaining("test-pod")
-                .hasMessageContaining(reason)
+            assertThat(K8sPodUtils.failureOf(pod))
+                .contains("test-pod")
+                .contains(reason)
         }
     }
 
     @Test
-    fun `checkForPodFailure should not throw for Running pod`() {
+    fun `failureOf is null for a Running pod`() {
         val pod =
             PodBuilder()
                 .withMetadata(ObjectMetaBuilder().withName("healthy-pod").build())
@@ -47,26 +44,23 @@ class K8sServicePodFailureTest {
                         ).build(),
                 ).build()
 
-        assertThatCode { K8sPodUtils.checkForPodFailure(pod) }
-            .doesNotThrowAnyException()
+        assertThat(K8sPodUtils.failureOf(pod)).isNull()
     }
 
     @Test
-    fun `checkForPodFailure should not throw for null pod`() {
-        assertThatCode { K8sPodUtils.checkForPodFailure(null) }
-            .doesNotThrowAnyException()
+    fun `failureOf is null for no pod`() {
+        assertThat(K8sPodUtils.failureOf(null)).isNull()
     }
 
     @Test
-    fun `checkForPodFailure should not throw for ContainerCreating`() {
+    fun `failureOf is null for ContainerCreating`() {
         val pod = buildPodWithWaitingContainer("creating-pod", "main", "ContainerCreating")
 
-        assertThatCode { K8sPodUtils.checkForPodFailure(pod) }
-            .doesNotThrowAnyException()
+        assertThat(K8sPodUtils.failureOf(pod)).isNull()
     }
 
     @Test
-    fun `checkForPodFailure should detect failure in init containers`() {
+    fun `failureOf names a failed init container`() {
         val pod =
             PodBuilder()
                 .withMetadata(ObjectMetaBuilder().withName("init-fail-pod").build())
@@ -87,15 +81,14 @@ class K8sServicePodFailureTest {
                         ).build(),
                 ).build()
 
-        assertThatThrownBy { K8sPodUtils.checkForPodFailure(pod) }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("init-fail-pod")
-            .hasMessageContaining("init container")
-            .hasMessageContaining("CrashLoopBackOff")
+        assertThat(K8sPodUtils.failureOf(pod))
+            .contains("init-fail-pod")
+            .contains("init container")
+            .contains("CrashLoopBackOff")
     }
 
     @Test
-    fun `checkForPodFailure should include waiting message when present`() {
+    fun `failureOf includes the waiting message when present`() {
         val pod =
             buildPodWithWaitingContainer(
                 "crash-pod",
@@ -104,9 +97,8 @@ class K8sServicePodFailureTest {
                 "back-off 5m0s restarting failed container",
             )
 
-        assertThatThrownBy { K8sPodUtils.checkForPodFailure(pod) }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("back-off 5m0s restarting failed container")
+        assertThat(K8sPodUtils.failureOf(pod))
+            .contains("back-off 5m0s restarting failed container")
     }
 
     @Test

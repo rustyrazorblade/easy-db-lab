@@ -10,14 +10,12 @@ import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.readiness.Readiness
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.Instant
 
 private val log = KotlinLogging.logger {}
-
-/** How many missing nodes a registration failure names before it summarizes the rest. */
-private const val MAX_NAMED = 20
 
 /**
  * Implementation of namespace-related K8s operations: observability status,
@@ -123,8 +121,12 @@ class DefaultK8sNamespaceOperations(
                     }
                 check(missing.isEmpty()) {
                     "${missing.size} of ${nodeNames.size} node(s) did not register with K3s within " +
-                        "${timeout.toSeconds()}s: ${missing.take(MAX_NAMED).joinToString(", ")}" +
-                        if (missing.size > MAX_NAMED) " and ${missing.size - MAX_NAMED} more" else ""
+                        "${timeout.toSeconds()}s: " +
+                        missing.joinToString(
+                            ", ",
+                            limit = Constants.Scale.MAX_NAMED_IN_ERROR,
+                            truncated = "and ${missing.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
+                        )
                 }
             }
             eventBus.emit(Event.K8s.NodesRegistered(nodeNames.size))
@@ -394,7 +396,7 @@ class DefaultK8sNamespaceOperations(
                 if (failure != null) {
                     PodsPoll.Failed(failure)
                 } else {
-                    val pending = pods.filter { K8sPodUtils.awaitsReadiness(it) && !isReady(it) }
+                    val pending = pods.filter { K8sPodUtils.awaitsReadiness(it) && !Readiness.isPodReady(it) }
                     val states = pending.associate { (it.metadata?.name ?: "unknown") to describePodState(it) }
                     states.filter { (name, state) -> lastStates[name] != state }.forEach { (name, state) ->
                         log.info { "Pod $name: $state" }
@@ -432,8 +434,6 @@ class DefaultK8sNamespaceOperations(
             val states: Map<String, String>,
         ) : PodsPoll
     }
-
-    private fun isReady(pod: Pod): Boolean = pod.status?.conditions?.any { it.type == "Ready" && it.status == "True" } == true
 
     private fun describePodState(pod: Pod): String {
         val phase = pod.status?.phase ?: "Unknown"

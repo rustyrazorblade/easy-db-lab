@@ -8,13 +8,15 @@ The module has no dependency on the root module.  It ships as a shadow jar, `age
 
 Keep the dependency direction one way: the root module may use this module, and this module never uses the root module.  The root module uses it in two places:
 
-- `S3ObjectStore` and the in-memory `ObjectStore` delegate their conditional writes to `ConditionalObjects`, so the S3 conditional logic exists once.
-- `CompactorLeaseReader` parses the lease with `LeaseRecord` for `observability compactor status`.
+- `CompactorLeaseReader` reads the lease with `S3ConditionalObjects` and parses it with `LeaseRecord` for `observability compactor status`.
+- Its integration tests run `ConditionalObjectsContract` against `S3ConditionalObjects` on LocalStack.
+
+`ConditionalObjects` is the only conditional-write port.  The root module's `ObjectStore` has no conditional methods.
 
 ## Classes
 
 - `ConditionalObjects` — the conditional-write port: `read`, `createIfAbsent` and `replaceIfVersionMatches`.  It is the only primitive the lease uses.  No operation is retried, because a retry of a write that landed reports a lost race.
-- `S3ConditionalObjects` — the port on S3, with `If-None-Match: *` and `If-Match: <ETag>`.  S3 412 and 409, and 404 on a replace, are a lost race; everything else throws.  The SDK's retries are off for both PUTs.
+- `S3ConditionalObjects` — the port on S3, with `If-None-Match: *` and `If-Match: <ETag>`.  S3 412 and 409, and 404 `NoSuchKey` on a replace, are a lost race; everything else throws, a 404 `NoSuchBucket` included.  The SDK's retries are off for both PUTs.
 - `LeaseRecord` — the body of `leases/compactor.json`: holder, sequence, TTL and renewal time.  No lease decision reads the renewal time.
 - `LeaseTiming` — the timing values.  It cannot be built when the worst-case stop is not less than the TTL.  The values come from `Constants.Compactor.Lease` in the root module, through environment variables.
 - `LeaseClock` — one node's monotonic and wall clocks.  Every lease decision uses the monotonic clock only.
@@ -29,5 +31,5 @@ The gate script that reads `valid-until` is not in this module.  It is `compacto
 ## Tests
 
 - The unit tests run with `./gradlew :compactor-lease:test`.  `LeaseLoopTest` drives the state machine on a fake clock against `InMemoryConditionalObjects`.
-- The test fixtures hold `InMemoryConditionalObjects` and `ConditionalObjectsContract`.  The contract runs against the in-memory adapter here, against the root module's `InMemoryObjectStore` in `src/test/`, and against `S3ObjectStore` on LocalStack in `src/integrationTest/`.  Every adapter must pass the same contract.
+- The test fixtures hold `InMemoryConditionalObjects` and `ConditionalObjectsContract`.  The contract runs against the in-memory adapter here and against `S3ConditionalObjects` on LocalStack in the root module's `src/integrationTest/` (`S3ConditionalObjectsIntegrationTest`).  Every adapter must pass the same contract.
 - `CompactorPodIntegrationTest` in the root module's `src/integrationTest/` runs the real jar and the real gate in containers.

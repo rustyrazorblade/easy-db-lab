@@ -8,7 +8,6 @@ buildscript {
 }
 
 plugins {
-    java
     idea
     application
     alias(libs.plugins.kotlin.jvm)
@@ -191,9 +190,6 @@ dependencies {
     // Logging
     implementation(libs.bundles.logging)
 
-    // Kotlin
-    implementation(libs.kotlin.stdlib)
-
     // CLI and UI
     implementation(libs.picocli)
     implementation(libs.picocli.shell.jline3)
@@ -326,6 +322,33 @@ tasks.named<ProcessResources>("processResources") {
 kotlin.target.compilations.named("integrationTest") {
     associateWith(kotlin.target.compilations.getByName("main"))
     associateWith(kotlin.target.compilations.getByName("test"))
+}
+
+// Every Kotlin subproject builds with any JDK >= 21 but emits Java 21 bytecode, enforces the
+// JDK-21 API surface with `release`, and treats warnings as errors, as the root module does above.
+// detekt 1.23.8 cannot run under a JDK newer than 22 (see the gate at the end of this file), so a
+// subproject's detekt tasks are disabled there too; CI runs `check` on JDK 21.
+subprojects {
+    plugins.withId("org.jetbrains.kotlin.jvm") {
+        extensions.configure<JavaPluginExtension> {
+            sourceCompatibility = JavaVersion.VERSION_21
+            targetCompatibility = JavaVersion.VERSION_21
+        }
+        tasks.withType<JavaCompile>().configureEach {
+            options.release.set(21)
+        }
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
+            compilerOptions {
+                jvmTarget.set(JvmTarget.JVM_21)
+                allWarningsAsErrors.set(true)
+            }
+        }
+        if (JavaVersion.current() > JavaVersion.VERSION_22) {
+            tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+                enabled = false
+            }
+        }
+    }
 }
 
 // Apply consistent test logging to every test task in every subproject.

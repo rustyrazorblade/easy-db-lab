@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse
 import software.amazon.awssdk.services.ec2.model.Tag
+import software.amazon.awssdk.services.ec2.paginators.DescribeInstanceTypesIterable
 import software.amazon.awssdk.services.ec2.paginators.DescribeInstancesIterable
 
 internal class EC2InstanceServiceTest {
@@ -44,9 +45,12 @@ internal class EC2InstanceServiceTest {
         )
 
     init {
-        // The paginator is the SDK's own loop over describeInstances; the stubs below answer that.
+        // The paginators are the SDK's own loops over describeInstances and describeInstanceTypes; the stubs below answer them.
         whenever(mockEc2Client.describeInstancesPaginator(any<DescribeInstancesRequest>())).thenAnswer {
             DescribeInstancesIterable(mockEc2Client, it.getArgument(0))
+        }
+        whenever(mockEc2Client.describeInstanceTypesPaginator(any<DescribeInstanceTypesRequest>())).thenAnswer {
+            DescribeInstanceTypesIterable(mockEc2Client, it.getArgument(0))
         }
     }
 

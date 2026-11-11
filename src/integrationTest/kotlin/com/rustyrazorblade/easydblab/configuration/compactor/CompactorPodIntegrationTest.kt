@@ -123,7 +123,7 @@ class CompactorPodIntegrationTest {
                 "the lease agent jar path is not set"
             },
         )
-    private val remoteJar by lazy { CompactorAgentJarFile(agentJar).remote() }
+    private val remoteJar by lazy { CompactorAgentJarFile(agentJar).remote }
 
     @BeforeAll
     fun prepare() {

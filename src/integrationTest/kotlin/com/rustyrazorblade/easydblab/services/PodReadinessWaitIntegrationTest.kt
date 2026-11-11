@@ -37,6 +37,7 @@ class PodReadinessWaitIntegrationTest {
         private const val WAIT_TIMEOUT_SECONDS = 20
         private const val LONG_WAIT_TIMEOUT_SECONDS = 600
         private const val FAIL_FAST_LIMIT_SECONDS = 30L
+        private const val PENDING_WAIT_TIMEOUT_SECONDS = 3
     }
 
     private val controlHost =
@@ -167,6 +168,41 @@ class PodReadinessWaitIntegrationTest {
             .hasMessageContaining("unpullable")
             .hasMessageFindingMatch("ErrImagePull|ImagePullBackOff")
         assertThat(waited).isLessThan(Duration.ofSeconds(FAIL_FAST_LIMIT_SECONDS))
+        client.namespaces().withName(namespace).delete()
+    }
+
+    /**
+     * A pod no node can take stays Pending without a terminal reason, so only the deadline ends the
+     * wait; the failure then names the pod and its phase, which is what the operator debugs from.
+     */
+    @Test
+    fun `a pod that stays Pending times out naming the pod and its state`() {
+        val namespace = "readiness-wait-pending"
+        SharedK3s.createNamespace(namespace)
+        val unschedulable =
+            PodBuilder()
+                .withNewMetadata()
+                .withName("unschedulable")
+                .withNamespace(namespace)
+                .endMetadata()
+                .withNewSpec()
+                .withNodeSelector<String, String>(mapOf("easydblab/no-such-node" to "true"))
+                .addNewContainer()
+                .withName("unschedulable")
+                .withImage(IMAGE)
+                .withImagePullPolicy("Never")
+                .withCommand("sleep", "3600")
+                .endContainer()
+                .endSpec()
+                .build()
+        client.resource(unschedulable).create()
+
+        val result = ops.waitForPodsReady(controlHost, PENDING_WAIT_TIMEOUT_SECONDS, namespace)
+
+        assertThat(result.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Timed out")
+            .hasMessageContaining("unschedulable (phase=Pending")
         client.namespaces().withName(namespace).delete()
     }
 

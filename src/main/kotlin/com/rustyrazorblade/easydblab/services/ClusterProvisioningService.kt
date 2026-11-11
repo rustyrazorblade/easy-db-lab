@@ -196,11 +196,12 @@ interface ClusterProvisioningService {
 /**
  * [existing] with [updates] applied by alias: a host already present is replaced by its update,
  * and a new one is added. A host is reported once at launch and again with its final IPs, so
- * merging by alias keeps one entry per instance. The result is in ordinal order (the number
- * after the alias's letters), so a host that fills a gap a partial launch left (`db1` between
+ * merging by alias keeps one entry per instance. The result is in ordinal order
+ * ([ServerType.ordinalOf]), so a host that fills a gap a partial launch left (`db1` between
  * `db0` and `db2`) takes its place instead of going last.
  */
 internal fun mergeByAlias(
+    serverType: ServerType,
     existing: List<ClusterHost>?,
     updates: List<ClusterHost>,
 ): List<ClusterHost> {
@@ -208,7 +209,7 @@ internal fun mergeByAlias(
     val replaced = existing.orEmpty().map { byAlias[it.alias] ?: it }
     val known = replaced.map { it.alias }.toSet()
     return (replaced + updates.filter { it.alias !in known })
-        .sortedBy { host -> host.alias.dropWhile { it.isLetter() }.toIntOrNull() ?: Int.MAX_VALUE }
+        .sortedBy { serverType.ordinalOf(it.alias) ?: Int.MAX_VALUE }
 }
 
 /**
@@ -249,17 +250,10 @@ class DefaultClusterProvisioningService(
                 .map { spec ->
                     thread(start = true, name = "create-${spec.serverType.name}") {
                         try {
-                            val infraContext =
-                                InfrastructureContext(
-                                    keyName = config.userConfig.keyName,
-                                    securityGroupId = config.securityGroupId,
-                                    subnetIds = config.subnetIds,
-                                    tags = config.tags,
-                                    clusterName = config.clusterName,
-                                )
+                            val infraContext = config.toInfrastructureContext()
                             createInstancesForType(spec, infraContext) { hosts ->
                                 synchronized(stateLock) {
-                                    allHosts[spec.serverType] = mergeByAlias(allHosts[spec.serverType], hosts)
+                                    allHosts[spec.serverType] = mergeByAlias(spec.serverType, allHosts[spec.serverType], hosts)
                                     onHostsCreated(spec.serverType, hosts)
                                 }
                             }
@@ -345,7 +339,7 @@ class DefaultClusterProvisioningService(
                         val infraContext = instanceConfig.toInfrastructureContext()
                         createInstancesForType(spec, infraContext) { hosts ->
                             synchronized(ctx.stateLock) {
-                                allHosts[spec.serverType] = mergeByAlias(allHosts[spec.serverType], hosts)
+                                allHosts[spec.serverType] = mergeByAlias(spec.serverType, allHosts[spec.serverType], hosts)
                                 ctx.callbacks.onHostsCreated(spec.serverType, hosts)
                             }
                         }

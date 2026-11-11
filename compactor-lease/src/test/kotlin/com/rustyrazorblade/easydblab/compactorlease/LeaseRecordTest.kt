@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.compactorlease
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
-import java.time.Instant
+import kotlin.time.Instant
 
 /** The lease's body: the format `status` reads and every agent writes. */
 class LeaseRecordTest {
@@ -26,6 +26,17 @@ class LeaseRecordTest {
     @Test
     fun `a lease round trips through its JSON`() {
         assertThat(LeaseRecord.fromJson(record.toJson())).isEqualTo(record)
+    }
+
+    /** A record an agent already wrote, with a sub-second renewal time as a real clock gives, reads back byte for byte. */
+    @Test
+    fun `a lease in the written format with a fractional renewal time reads back to the same bytes`() {
+        val written = """{"holder":"h","sequence":3,"ttlSeconds":120,"renewedAt":"2026-11-07T18:00:01.123456Z"}"""
+
+        val read = LeaseRecord.fromJson(written)
+
+        assertThat(read.renewedAt.toString()).isEqualTo("2026-11-07T18:00:01.123456Z")
+        assertThat(read.toJson()).isEqualTo(written)
     }
 
     @Test

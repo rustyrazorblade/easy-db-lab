@@ -24,7 +24,7 @@ The Grafana images are distroless.  Mimir runs `/bin/mimir` as root; Loki runs `
 
 A small Gradle subproject with no dependency on the root module holds the conditional-write port (`ConditionalObjects`: `read`, `createIfAbsent`, `replaceIfVersionMatches`), `S3ConditionalObjects`, `InMemoryConditionalObjects` (in test fixtures), `LeaseLoop`, `LeaseRecord`, `GateFile` and `LeaseAgentMain`.  It is shadowed into `agents/compactor-lease.jar`, the same way the OTel agent ships.  The Jib image also gets it under `/agents`.  `ObservabilityStackService.deploy()` uploads it to `/mnt/db1/compactor/agent/<sha256>.jar`, skipping the upload when the file exists, so `grafana update-config` gets it too.  A stock multi-arch JRE image runs it.
 
-The root module's `S3ObjectStore` and the new in-memory `ObjectStore` delegate their conditional methods to this module, so the S3 conditional logic exists once.  The root's contract tests use the subproject's test fixtures.  The CLI's `status` command reads the lease with `LeaseRecord`.
+`ConditionalObjects` is the only conditional-write port; `ObjectStore` has no conditional methods.  The lease agent uses the port directly, and so does the CLI's `status` command, through `CompactorLeaseReader`, which reads the lease with `S3ConditionalObjects` and parses it with `LeaseRecord`.  The root module's integration tests run the subproject's contract against `S3ConditionalObjects` on LocalStack.
 
 ### D2. A deadline file and a busybox gate enforce "stop work"
 

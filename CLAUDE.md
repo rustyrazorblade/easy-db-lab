@@ -27,7 +27,7 @@
 The Gradle project has three modules:
 - **Root module** (`:`) — the main CLI application
 - **`core`** — shared library used by the CLI
-- **`compactor-lease`** — the account compactor's lease agent. It has no dependency on the root module. It holds the conditional-write port (`ConditionalObjects`, with the S3 adapter and an in-memory test fixture), the lease loop and the gate file. It is shadowed into `agents/compactor-lease.jar`, which `up` uploads to the control node; the `lease` container of the `account-compactor` pod runs it. The root module's `ObjectStore` delegates its conditional writes to this module. See [`compactor-lease/CLAUDE.md`](compactor-lease/CLAUDE.md).
+- **`compactor-lease`** — the account compactor's lease agent. It has no dependency on the root module. It holds the conditional-write port (`ConditionalObjects`, with the S3 adapter and an in-memory test fixture), the lease loop and the gate file. It is shadowed into `agents/compactor-lease.jar`, which `up` uploads to the control node; the `lease` container of the `account-compactor` pod runs it. `ConditionalObjects` is the only conditional-write port (`ObjectStore` has none); the lease agent and the root module's `CompactorLeaseReader` use it directly. See [`compactor-lease/CLAUDE.md`](compactor-lease/CLAUDE.md).
 
 The example Spark jobs (bulk writers + connector read/write) live in a separate
 repository, **`../spark-examples`**. They were decoupled because they depend on

@@ -43,7 +43,6 @@ fi
 NAME="$1"
 
 child=""
-stopping=0
 # The last file content that did not parse, so it is logged once, not on every poll.
 unparsed=""
 
@@ -95,10 +94,8 @@ child_running() {
 # Sleeps $1 seconds in the background and waits for it, so a SIGTERM to the gate interrupts it.
 pause() {
   "${BB}" sleep "$1" &
-  sleeper=$!
-  wait "${sleeper}" 2>/dev/null
-  kill "${sleeper}" 2>/dev/null
-  sleeper=""
+  wait "$!" 2>/dev/null
+  kill "$!" 2>/dev/null
 }
 
 # Stops the child: SIGTERM, up to the grace for it to exit, then SIGKILL. The lease's margin
@@ -121,16 +118,14 @@ stop_child() {
 }
 
 on_term() {
-  stopping=1
   log "SIGTERM: stopping the compactor"
   stop_child
   exit 0
 }
 trap on_term TERM INT
 
-sleeper=""
 waiting=0
-while [ "${stopping}" = 0 ]; do
+while true; do
   if ! lease_valid; then
     if [ "${waiting}" = 0 ]; then
       log "waiting for the lease: ${VALID_UNTIL} is missing or not later than now"

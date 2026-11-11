@@ -1,9 +1,12 @@
 package com.rustyrazorblade.easydblab.configuration.compactor
 
 import com.rustyrazorblade.easydblab.Constants
+import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.DigestInputStream
 import java.security.MessageDigest
+import java.util.HexFormat
 
 /**
  * The lease agent jar the distribution ships, on the machine that runs the CLI.
@@ -16,22 +19,17 @@ import java.security.MessageDigest
 class CompactorAgentJarFile(
     val path: Path,
 ) {
-    /** The jar's SHA-256 path on the control node; computed once, the jar does not change while the CLI runs. */
-    private val remote: CompactorAgentJar by lazy {
+    /**
+     * Where the jar goes on the control node, named by its SHA-256. Computed once: the jar does not
+     * change while the CLI runs.
+     */
+    val remote: CompactorAgentJar by lazy {
         val digest = MessageDigest.getInstance("SHA-256")
-        Files.newInputStream(path).use { input ->
-            val buffer = ByteArray(BUFFER_SIZE)
-            generateSequence { input.read(buffer).takeIf { it >= 0 } }.forEach { digest.update(buffer, 0, it) }
-        }
-        CompactorAgentJar(digest.digest().joinToString("") { "%02x".format(it) })
+        DigestInputStream(Files.newInputStream(path), digest).use { it.transferTo(OutputStream.nullOutputStream()) }
+        CompactorAgentJar(HexFormat.of().formatHex(digest.digest()))
     }
 
-    /** Where the jar goes on the control node. */
-    fun remote(): CompactorAgentJar = remote
-
     companion object {
-        private const val BUFFER_SIZE = 64 * 1024
-
         /** The system property the container image sets: its agents are not under the app home. */
         const val AGENTS_DIR_PROPERTY = "easydblab.agentsdir"
 

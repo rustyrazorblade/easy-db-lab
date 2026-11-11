@@ -153,7 +153,7 @@ class LaunchCapacityPreflight(
             CniMode.Flannel -> 1
             CniMode.Cilium -> {
                 val perEni = type.ipv4AddressesPerInterface.coerceAtLeast(1)
-                ceilDiv(addressesPerNode(cni), perEni).coerceAtMost(type.maxNetworkInterfaces).coerceAtLeast(1)
+                Math.ceilDiv(addressesPerNode(cni), perEni).coerceAtMost(type.maxNetworkInterfaces).coerceAtLeast(1)
             }
         }
 
@@ -203,9 +203,4 @@ class LaunchCapacityPreflight(
             CniMode.Flannel -> 1
             CniMode.Cilium -> 1 + Constants.Capacity.POD_ADDRESSES_PER_NODE
         }
-
-    private fun ceilDiv(
-        a: Int,
-        b: Int,
-    ): Int = (a + b - 1) / b
 }

@@ -53,8 +53,8 @@ class CompactorAgentJarFileTest {
         val second = CompactorAgentJarFile(jar(dir.resolve("b"), "two"))
 
         // sha256("one")
-        assertThat(first.remote().sha256).isEqualTo("7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed")
-        assertThat(first.remote().hostPath).isEqualTo("/mnt/db1/compactor/agent/${first.remote().sha256}.jar")
-        assertThat(second.remote()).isNotEqualTo(first.remote())
+        assertThat(first.remote.sha256).isEqualTo("7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed")
+        assertThat(first.remote.hostPath).isEqualTo("/mnt/db1/compactor/agent/${first.remote.sha256}.jar")
+        assertThat(second.remote).isNotEqualTo(first.remote)
     }
 }

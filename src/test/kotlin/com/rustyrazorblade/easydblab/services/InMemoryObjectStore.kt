@@ -1,10 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.compactorlease.CreateResult
-import com.rustyrazorblade.easydblab.compactorlease.InMemoryConditionalObjects
-import com.rustyrazorblade.easydblab.compactorlease.ObjectVersion
-import com.rustyrazorblade.easydblab.compactorlease.ReplaceResult
-import com.rustyrazorblade.easydblab.compactorlease.VersionedObject
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import java.io.File
 import java.nio.file.Files
@@ -15,17 +10,16 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * The whole [ObjectStore] in memory, for tests that need a store with real semantics and no S3.
  *
- * Each bucket is one [InMemoryConditionalObjects], the same fixture the lease tests use, so a plain
- * write here changes the version a conditional replace expects, exactly as a plain PUT changes an
- * S3 ETag. Listings follow S3's rules: a directory is listed under `<key>/`, and a non-recursive
- * listing rolls nested objects up into their first-level directory.
+ * Each bucket is a map from object key to content. Listings follow S3's rules: a directory is listed
+ * under `<key>/`, and a non-recursive listing rolls nested objects up into their first-level
+ * directory.
  */
 class InMemoryObjectStore : ObjectStore {
-    private val buckets = ConcurrentHashMap<String, InMemoryConditionalObjects>()
+    private val buckets = ConcurrentHashMap<String, ConcurrentHashMap<String, String>>()
     private val modified = ConcurrentHashMap<String, Instant>()
 
-    private fun bucket(path: ClusterS3Path): InMemoryConditionalObjects =
-        buckets.computeIfAbsent(path.bucket) { InMemoryConditionalObjects() }
+    private fun bucket(path: ClusterS3Path): ConcurrentHashMap<String, String> =
+        buckets.computeIfAbsent(path.bucket) { ConcurrentHashMap() }
 
     private fun touch(path: ClusterS3Path) {
         modified[path.toUri()] = Instant.now()
@@ -35,15 +29,15 @@ class InMemoryObjectStore : ObjectStore {
         path: ClusterS3Path,
         content: String,
     ) {
-        bucket(path).put(path.getKey(), content)
+        bucket(path)[path.getKey()] = content
         touch(path)
     }
 
     private fun info(path: ClusterS3Path): ObjectStore.FileInfo? =
-        bucket(path).read(path.getKey())?.let {
+        bucket(path)[path.getKey()]?.let {
             ObjectStore.FileInfo(
                 path,
-                it.content
+                it
                     .toByteArray()
                     .size
                     .toLong(),
@@ -80,7 +74,7 @@ class InMemoryObjectStore : ObjectStore {
         val prefix = if (key.isEmpty()) "" else "$key/"
         val keys =
             bucket(remotePath)
-                .keys()
+                .keys
                 .filter { it.startsWith(prefix) && it > startAfter }
                 .sorted()
         if (recursive) return keys.mapNotNull { info(ClusterS3Path.fromKey(remotePath.bucket, it)) }
@@ -101,7 +95,7 @@ class InMemoryObjectStore : ObjectStore {
         modified.remove(remotePath.toUri())
     }
 
-    override fun fileExists(remotePath: ClusterS3Path): Boolean = bucket(remotePath).read(remotePath.getKey()) != null
+    override fun fileExists(remotePath: ClusterS3Path): Boolean = bucket(remotePath).containsKey(remotePath.getKey())
 
     override fun getFileInfo(remotePath: ClusterS3Path): ObjectStore.FileInfo? = info(remotePath)
 
@@ -147,24 +141,7 @@ class InMemoryObjectStore : ObjectStore {
     ) = put(remotePath, content)
 
     override fun readContent(remotePath: ClusterS3Path): String =
-        checkNotNull(bucket(remotePath).read(remotePath.getKey())) { "No object at ${remotePath.toUri()}" }.content
+        checkNotNull(bucket(remotePath)[remotePath.getKey()]) { "No object at ${remotePath.toUri()}" }
 
     override fun directoryExists(remotePath: ClusterS3Path): Boolean = listFiles(remotePath, recursive = true).isNotEmpty()
-
-    override fun readVersioned(remotePath: ClusterS3Path): VersionedObject? = bucket(remotePath).read(remotePath.getKey())
-
-    override fun createIfAbsent(
-        remotePath: ClusterS3Path,
-        content: String,
-    ): CreateResult =
-        bucket(remotePath).createIfAbsent(remotePath.getKey(), content).also { if (it is CreateResult.Created) touch(remotePath) }
-
-    override fun replaceIfVersionMatches(
-        remotePath: ClusterS3Path,
-        content: String,
-        expected: ObjectVersion,
-    ): ReplaceResult =
-        bucket(remotePath).replaceIfVersionMatches(remotePath.getKey(), content, expected).also {
-            if (it is ReplaceResult.Replaced) touch(remotePath)
-        }
 }

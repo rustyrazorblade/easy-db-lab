@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
@@ -22,13 +23,17 @@ class S3ConditionalObjectsTest {
     private val store = S3ConditionalObjects(s3, "bucket")
     private val version = ObjectVersion("\"etag\"")
 
-    private fun s3Fails(status: Int) {
+    private fun s3Fails(
+        status: Int,
+        errorCode: String? = null,
+    ) {
         val failure =
             S3Exception
                 .builder()
                 .statusCode(status)
                 .message("status $status")
-                .build()
+                .apply { errorCode?.let { awsErrorDetails(AwsErrorDetails.builder().errorCode(it).build()) } }
+                .build() as S3Exception
         whenever(s3.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(failure)
     }
 
@@ -62,7 +67,7 @@ class S3ConditionalObjectsTest {
 
     @Test
     fun `a replace of a missing key is a version mismatch`() {
-        s3Fails(404)
+        s3Fails(404, "NoSuchKey")
 
         assertThat(store.replaceIfVersionMatches("k", "c", version)).isEqualTo(ReplaceResult.VersionMismatch)
     }
@@ -81,9 +86,17 @@ class S3ConditionalObjectsTest {
         assertThatThrownBy { store.replaceIfVersionMatches("k", "c", version) }.isInstanceOf(S3Exception::class.java)
     }
 
+    /** A wrong or deleted bucket is not a lost race: the holder must not log "lease lost" for it. */
+    @Test
+    fun `a replace into a missing bucket throws`() {
+        s3Fails(404, "NoSuchBucket")
+
+        assertThatThrownBy { store.replaceIfVersionMatches("k", "c", version) }.isInstanceOf(S3Exception::class.java)
+    }
+
     @Test
     fun `a create into a missing bucket throws`() {
-        s3Fails(404)
+        s3Fails(404, "NoSuchBucket")
 
         assertThatThrownBy { store.createIfAbsent("k", "c") }.isInstanceOf(S3Exception::class.java)
     }

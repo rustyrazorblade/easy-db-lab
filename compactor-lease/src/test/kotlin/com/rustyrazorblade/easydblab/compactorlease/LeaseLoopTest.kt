@@ -9,9 +9,9 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
-import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /**
  * The lease state machine, driven one step at a time against the in-memory store with a fake
@@ -48,14 +48,18 @@ class LeaseLoopTest {
             return elapsed
         }
 
-        override fun wall(): Instant = start.plusMillis(elapsed.inWholeMilliseconds)
+        override fun wall(): Instant = start + elapsed
     }
 
-    /** Records every gate write and scratch wipe, in order. With [failNextGrant] set, the next grant throws. */
+    /**
+     * Records every gate write and scratch wipe, in order. With [failNextGrant] set, the next grant
+     * throws; with [failRevoke] set, every revoke throws and leaves the grant in place.
+     */
     private class RecordingGate : Gate {
         val events = mutableListOf<String>()
         var validUntil: Instant? = null
         var failNextGrant = false
+        var failRevoke = false
 
         override fun grant(validUntil: Instant) {
             if (failNextGrant) {
@@ -67,6 +71,7 @@ class LeaseLoopTest {
         }
 
         override fun revoke() {
+            if (failRevoke) error("gate file not removable")
             validUntil = null
             events += "revoke"
         }
@@ -136,7 +141,7 @@ class LeaseLoopTest {
 
         assertThat(node.holds()).isTrue()
         assertThat(lease()).isEqualTo(LeaseRecord("lab-a/pod-1", 0, 120, start))
-        assertThat(node.gate.events).containsExactly("ready", "wipe", "grant ${start.plusSeconds(60)}")
+        assertThat(node.gate.events).containsExactly("ready", "wipe", "grant ${start + 60.seconds}")
     }
 
     @Test
@@ -148,8 +153,8 @@ class LeaseLoopTest {
         node.step()
 
         assertThat(lease()?.sequence).isEqualTo(2)
-        assertThat(lease()?.renewedAt).isEqualTo(start.plusSeconds(30))
-        assertThat(node.gate.validUntil).isEqualTo(start.plusSeconds(30 + 60))
+        assertThat(lease()?.renewedAt).isEqualTo(start + 30.seconds)
+        assertThat(node.gate.validUntil).isEqualTo(start + (30 + 60).seconds)
         assertThat(node.gate.events.count { it == "wipe" }).isEqualTo(1)
     }
 
@@ -183,7 +188,7 @@ class LeaseLoopTest {
         assertThat(standby.holds()).describedAs("after the TTL").isTrue()
         assertThat(lease()?.holder).isEqualTo("lab-b/pod-1")
         assertThat(lease()?.sequence).isEqualTo(8)
-        assertThat(standby.gate.events).containsExactly("ready", "wipe", "grant ${standby.clock.wall().plusSeconds(60)}")
+        assertThat(standby.gate.events).containsExactly("ready", "wipe", "grant ${standby.clock.wall() + 60.seconds}")
     }
 
     @Test
@@ -213,6 +218,28 @@ class LeaseLoopTest {
         assertThat(node.holds()).isFalse()
         assertThat(node.gate.events.last()).isEqualTo("revoke")
         assertThat(lease()?.holder).isEqualTo("other/pod")
+    }
+
+    /**
+     * The fencing claim: a revoke that fails is only logged, so the lost lease still moves the node
+     * to standby, and the gate's own expiry stops the compactors.
+     */
+    @Test
+    fun `a holder whose renewal finds another version stands by and logs it when the revoke fails`() {
+        val node = Node("lab-a/pod-1")
+        node.step()
+        otherHolderWrites(5)
+        node.gate.failRevoke = true
+        val log = errorLog()
+
+        node.step()
+
+        assertThat(node.holds()).isFalse()
+        assertThat(node.gate.validUntil).describedAs("the grant the failed revoke left, to expire on its own").isEqualTo(start + 60.seconds)
+        assertThat(log.list.filter { it.level == Level.ERROR }.map { it.formattedMessage })
+            .containsExactly("Lease agent lab-a/pod-1 could not revoke its gate")
+        node.step()
+        assertThat(node.holds()).describedAs("the next round runs and the node still stands by").isFalse()
     }
 
     @Test
@@ -259,7 +286,7 @@ class LeaseLoopTest {
 
         flaky.failing = false
         node.step()
-        assertThat(node.gate.validUntil).isEqualTo(node.clock.wall().plusSeconds(60))
+        assertThat(node.gate.validUntil).isEqualTo(node.clock.wall() + 60.seconds)
         assertThat(node.gate.events.count { it == "wipe" }).isEqualTo(1)
     }
 
@@ -398,7 +425,7 @@ class LeaseLoopTest {
             wait = loop.step()
         }
         assertThat(loop.isHolder()).isTrue()
-        assertThat(gate.events.takeLast(2)).containsExactly("wipe", "grant ${clock.wall().plusSeconds(60)}")
+        assertThat(gate.events.takeLast(2)).containsExactly("wipe", "grant ${clock.wall() + 60.seconds}")
         assertThat(clock.elapsed)
             .describedAs("it backs off a TTL, then waits a TTL on the version it wrote")
             .isGreaterThanOrEqualTo(timing.ttl * 2)
@@ -432,7 +459,7 @@ class LeaseLoopTest {
         assertThat(gate.events.last()).isEqualTo("revoke")
         assertThat(node.holds()).isTrue()
         node.step()
-        assertThat(gate.events.last()).isEqualTo("grant ${node.clock.wall().plusSeconds(60)}")
+        assertThat(gate.events.last()).isEqualTo("grant ${node.clock.wall() + 60.seconds}")
         assertThat(node.holds()).isTrue()
     }
 
@@ -497,13 +524,13 @@ class LeaseLoopTest {
 
         assertThat(node.holds()).isTrue()
         assertThat(lease()?.sequence).isEqualTo(1)
-        assertThat(node.gate.validUntil).describedAs("granted from the write that landed").isEqualTo(start.plusSeconds(15 + 60))
+        assertThat(node.gate.validUntil).describedAs("granted from the write that landed").isEqualTo(start + (15 + 60).seconds)
 
         node.step()
 
         assertThat(node.holds()).isTrue()
         assertThat(lease()?.sequence).isEqualTo(2)
-        assertThat(node.gate.validUntil).isEqualTo(start.plusSeconds(30 + 60))
+        assertThat(node.gate.validUntil).isEqualTo(start + (30 + 60).seconds)
         assertThat(node.gate.events).doesNotContain("revoke")
     }
 
@@ -520,7 +547,7 @@ class LeaseLoopTest {
         assertThat(node.holds()).isTrue()
         assertThat(lease()?.holder).isEqualTo("lab-a/pod-1")
         assertThat(lease()?.sequence).isEqualTo(2)
-        assertThat(node.gate.validUntil).isEqualTo(start.plusSeconds(30 + 60))
+        assertThat(node.gate.validUntil).isEqualTo(start + (30 + 60).seconds)
         assertThat(node.gate.events).doesNotContain("revoke")
     }
 
@@ -529,7 +556,7 @@ class LeaseLoopTest {
         val node = Node("lab-a/pod-1")
         node.step()
         val current = checkNotNull(store.read(LeaseRecord.KEY))
-        val impostor = LeaseRecord("other/pod", 1, 120, start.plusSeconds(15))
+        val impostor = LeaseRecord("other/pod", 1, 120, start + 15.seconds)
         store.replaceIfVersionMatches(LeaseRecord.KEY, impostor.toJson(), current.version)
 
         node.step()
@@ -558,7 +585,7 @@ class LeaseLoopTest {
         node.step()
 
         assertThat(node.holds()).isTrue()
-        assertThat(node.gate.validUntil).isEqualTo(node.clock.wall().plusSeconds(60))
+        assertThat(node.gate.validUntil).isEqualTo(node.clock.wall() + 60.seconds)
         assertThat(node.gate.events.count { it == "wipe" }).isEqualTo(1)
     }
 

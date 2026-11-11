@@ -74,6 +74,8 @@ enum class ServerType(val serverType: String) {
 }
 ```
 
+`ServerType.ordinalOf(alias): Int?` is the one parser of an alias's ordinal (`db12` is 12; another type's alias or a non-number suffix is null; each caller picks its own fallback). `InitConfig.nodeGroups()` (`NodeGroup.kt`) is the one mapping from the init fields to each group's instance type, count and architecture, read by the capacity plan, the AMI resolution and the instance specs.
+
 ### ClusterStateManager (`ClusterStateManager.kt`)
 
 Handles persistence to `state.json`:

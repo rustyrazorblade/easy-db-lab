@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
-import java.time.Instant
+import kotlin.time.Instant
 
 /**
  * What the lease agent tells the compactor containers. The gates run each compactor only while the

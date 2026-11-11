@@ -1,13 +1,8 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
-import java.time.Instant
+import kotlin.time.Instant
 
 /**
  * The body of the account compactor's lease, `leases/compactor.json`.
@@ -20,7 +15,7 @@ import java.time.Instant
  * @property holder the holding pod: the cluster label, then `/`, then the pod name.
  * @property sequence how many times the lease was written before this write.
  * @property ttlSeconds the TTL the holder ran with.
- * @property renewedAt the holder's wall-clock time when it wrote this record.
+ * @property renewedAt the holder's wall-clock time when it wrote this record, as ISO-8601 text.
  * @throws IllegalArgumentException when [holder] is blank or [sequence] or [ttlSeconds] is negative.
  */
 @Serializable
@@ -28,7 +23,6 @@ data class LeaseRecord(
     val holder: String,
     val sequence: Long,
     val ttlSeconds: Long,
-    @Serializable(with = InstantSerializer::class)
     val renewedAt: Instant,
 ) {
     init {
@@ -53,7 +47,11 @@ data class LeaseRecord(
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
 
-        /** The object key of the account compactor's lease within the account bucket. */
+        /**
+         * The object key of the account compactor's lease within the account bucket. The store's
+         * leases sit under `leases/`, outside every backend's root: under `mimir/`, Mimir would read
+         * a lease as a tenant.
+         */
         const val KEY = "leases/compactor.json"
 
         /**
@@ -63,16 +61,4 @@ data class LeaseRecord(
          */
         fun fromJson(body: String): LeaseRecord = json.decodeFromString(serializer(), body)
     }
-}
-
-/** An [Instant] as its ISO-8601 text, as the lease format writes it. */
-internal object InstantSerializer : KSerializer<Instant> {
-    override val descriptor = PrimitiveSerialDescriptor("Instant", PrimitiveKind.STRING)
-
-    override fun serialize(
-        encoder: Encoder,
-        value: Instant,
-    ) = encoder.encodeString(value.toString())
-
-    override fun deserialize(decoder: Decoder): Instant = Instant.parse(decoder.decodeString())
 }

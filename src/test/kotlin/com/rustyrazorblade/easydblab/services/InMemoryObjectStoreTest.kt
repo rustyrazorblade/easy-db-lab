@@ -1,40 +1,18 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.compactorlease.ConditionalObjects
-import com.rustyrazorblade.easydblab.compactorlease.ConditionalObjectsContract
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 
 /**
- * The in-memory [ObjectStore]: the conditional-write contract every adapter shares, and the plain
- * operations whose S3 semantics (a directory listing that stops at `/`, a sibling prefix that is not
- * listed) a test relying on it would otherwise get wrong.
+ * The in-memory [ObjectStore]: the operations whose S3 semantics (a directory listing that stops at
+ * `/`, a sibling prefix that is not listed) a test relying on it would otherwise get wrong.
  */
 class InMemoryObjectStoreTest {
     private val store = InMemoryObjectStore()
     private val root = ClusterS3Path.root("bucket")
-
-    /** The shared conditional-write contract, against this adapter. */
-    @Nested
-    inner class Conditional : ConditionalObjectsContract() {
-        override fun store(): ConditionalObjects = ObjectStoreConditionalObjects(this@InMemoryObjectStoreTest.store, "bucket")
-    }
-
-    @Test
-    fun `a plain write replaces the version a conditional replace expects`() {
-        val path = root.resolve("leases/compactor.json")
-        store.uploadContent("first", path)
-        val first = store.readVersioned(path)
-
-        store.uploadContent("second", path)
-
-        assertThat(store.readVersioned(path)?.version).isNotEqualTo(first?.version)
-        assertThat(store.readContent(path)).isEqualTo("second")
-    }
 
     @Test
     fun `listing a directory skips a sibling whose name starts with it`() {
@@ -64,7 +42,6 @@ class InMemoryObjectStoreTest {
         store.deleteFile(path, showProgress = false)
 
         assertThat(store.fileExists(path)).isFalse()
-        assertThat(store.readVersioned(path)).isNull()
     }
 
     @Test

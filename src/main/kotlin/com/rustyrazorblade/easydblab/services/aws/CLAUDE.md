@@ -104,7 +104,7 @@ Services that call S3 indirectly (via `ObjectStore`) also need integration tests
 
 ## Account compactor
 
-The compactor runs in a pod on every cluster (see `configuration/CLAUDE.md`), not in an AWS service. This package holds only `CompactorLeaseReader`: it reads `leases/compactor.json` with a client for the account bucket's region (`BucketRegion`) and returns `CompactorLease.None` or `Held(record, age)`. It never writes the lease. `S3ObjectStore`'s conditional writes (`createIfAbsent`, `replaceIfVersionMatches`) delegate to the `:compactor-lease` module's `S3ConditionalObjects`, which never retries a conditional write.
+The compactor runs in a pod on every cluster (see `configuration/CLAUDE.md`), not in an AWS service. This package holds only `CompactorLeaseReader`: it reads `leases/compactor.json` with a client for the account bucket's region (`BucketRegion`) and returns `CompactorLease.None`, `Held(record, age)`, or `Unreadable(content)` when the body is not a valid lease. It never writes the lease. It reads through the `:compactor-lease` module's `S3ConditionalObjects`, the only conditional-write port; `S3ObjectStore` has no conditional writes.
 
 ## S3 data handling
 

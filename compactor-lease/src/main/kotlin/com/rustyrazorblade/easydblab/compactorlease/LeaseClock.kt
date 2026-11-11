@@ -1,8 +1,9 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
-import java.time.Instant
+import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.nanoseconds
+import kotlin.time.Instant
 
 /**
  * One node's clocks. Every lease decision uses [monotonic] only, so a wall clock that jumps never
@@ -17,9 +18,9 @@ interface LeaseClock {
     fun wall(): Instant
 }
 
-/** The JVM's clocks: [System.nanoTime] and [Instant.now]. */
+/** The JVM's clocks: [System.nanoTime] and [Clock.System]. */
 object SystemLeaseClock : LeaseClock {
     override fun monotonic(): Duration = System.nanoTime().nanoseconds
 
-    override fun wall(): Instant = Instant.now()
+    override fun wall(): Instant = Clock.System.now()
 }

@@ -3,8 +3,8 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.compactorlease.LeaseRecord
 import com.rustyrazorblade.easydblab.compactorlease.S3ConditionalObjects
 import software.amazon.awssdk.services.s3.S3Client
-import java.time.Clock
-import java.time.Duration
+import kotlin.time.Clock
+import kotlin.time.Duration
 
 /** What the account bucket's compactor lease says, as `observability compactor status` prints it. */
 sealed interface CompactorLease {
@@ -21,6 +21,17 @@ sealed interface CompactorLease {
         override val region: String,
         val record: LeaseRecord,
         val age: Duration,
+    ) : CompactorLease
+
+    /**
+     * A lease object whose body is not a lease. No agent can renew or take it over, so no pod
+     * compacts until someone deletes it.
+     *
+     * @property content the body as stored.
+     */
+    data class Unreadable(
+        override val region: String,
+        val content: String,
     ) : CompactorLease
 }
 
@@ -39,18 +50,24 @@ sealed interface CompactorLease {
 class CompactorLeaseReader(
     private val regionOf: (bucket: String) -> String,
     private val leaseIn: (region: String, bucket: String) -> String?,
-    private val clock: Clock = Clock.systemUTC(),
+    private val clock: Clock = Clock.System,
 ) {
-    /** The lease in [bucket], or [CompactorLease.None] when there is none. */
+    /**
+     * The lease in [bucket]: [CompactorLease.None] when there is none, [CompactorLease.Unreadable]
+     * when its body is not a lease.
+     */
     fun read(bucket: String): CompactorLease {
         val region = regionOf(bucket)
-        return when (val lease = leaseIn(region, bucket)) {
-            null -> CompactorLease.None(region)
-            else -> {
-                val record = LeaseRecord.fromJson(lease)
-                CompactorLease.Held(region, record, Duration.between(record.renewedAt, clock.instant()))
+        val lease = leaseIn(region, bucket) ?: return CompactorLease.None(region)
+        // A body that is not JSON, not a lease, or a lease that breaks its own invariants all throw
+        // IllegalArgumentException (SerializationException is one).
+        val record =
+            try {
+                LeaseRecord.fromJson(lease)
+            } catch (_: IllegalArgumentException) {
+                return CompactorLease.Unreadable(region, lease)
             }
-        }
+        return CompactorLease.Held(region, record, clock.now() - record.renewedAt)
     }
 
     companion object {

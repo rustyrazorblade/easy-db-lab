@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeGroup
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.nodeGroups
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.EBSConfig
 
@@ -28,7 +30,7 @@ data class InstanceSpec(
     val instanceType: String,
     val ebsConfig: EBSConfig?,
     val amiId: String,
-    val missingIndexes: List<Int> = (existingCount until configuredCount).toList(),
+    val missingIndexes: List<Int>,
 ) {
     /** Number of instances to launch to reach the configured count: one per missing ordinal. */
     val neededCount: Int get() = missingIndexes.size
@@ -45,7 +47,7 @@ fun missingOrdinals(
     configured: Int,
     existing: List<DiscoveredInstance>,
 ): List<Int> {
-    val held = existing.mapNotNull { it.alias.removePrefix(serverType.serverType).toIntOrNull() }.toSet()
+    val held = existing.mapNotNull { serverType.ordinalOf(it.alias) }.toSet()
     return (0 until configured).filterNot { it in held }
 }
 
@@ -99,49 +101,32 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
                 "You must specify --ebs.type (e.g., --ebs.type gp3) to attach an EBS volume for data storage."
         }
 
-        fun existing(serverType: ServerType) = existingInstances[serverType].orEmpty()
-
-        // A group with no configured instances never launches, so it needs no image; only groups
-        // that will launch require an AMI resolved for their architecture.
-        fun amiFor(
-            arch: String,
-            configuredCount: Int,
-        ): String {
-            if (configuredCount <= 0) return ""
-            val resolved = Arch.valueOf(arch)
-            return amiByArch[resolved]
-                ?: error("No AMI resolved for architecture $resolved")
+        return initConfig.nodeGroups().map { group ->
+            val existing = existingInstances[group.serverType].orEmpty()
+            InstanceSpec(
+                serverType = group.serverType,
+                configuredCount = group.count,
+                existingCount = existing.size,
+                instanceType = group.instanceType,
+                // Only the database nodes carry the EBS data volume.
+                ebsConfig = ebsConfig.takeIf { group.serverType == ServerType.Cassandra },
+                amiId = amiFor(group, amiByArch),
+                missingIndexes = missingOrdinals(group.serverType, group.count, existing),
+            )
         }
+    }
 
-        return listOf(
-            InstanceSpec(
-                serverType = ServerType.Cassandra,
-                configuredCount = initConfig.cassandraInstances,
-                existingCount = existing(ServerType.Cassandra).size,
-                instanceType = initConfig.instanceType,
-                ebsConfig = ebsConfig,
-                amiId = amiFor(initConfig.dbArch, initConfig.cassandraInstances),
-                missingIndexes = missingOrdinals(ServerType.Cassandra, initConfig.cassandraInstances, existing(ServerType.Cassandra)),
-            ),
-            InstanceSpec(
-                serverType = ServerType.Stress,
-                configuredCount = initConfig.stressInstances,
-                existingCount = existing(ServerType.Stress).size,
-                instanceType = initConfig.stressInstanceType,
-                ebsConfig = null,
-                amiId = amiFor(initConfig.appArch, initConfig.stressInstances),
-                missingIndexes = missingOrdinals(ServerType.Stress, initConfig.stressInstances, existing(ServerType.Stress)),
-            ),
-            InstanceSpec(
-                serverType = ServerType.Control,
-                configuredCount = initConfig.controlInstances,
-                existingCount = existing(ServerType.Control).size,
-                instanceType = initConfig.controlInstanceType,
-                ebsConfig = null,
-                amiId = amiFor(initConfig.controlArch, initConfig.controlInstances),
-                missingIndexes = missingOrdinals(ServerType.Control, initConfig.controlInstances, existing(ServerType.Control)),
-            ),
-        )
+    /**
+     * The AMI for [group]'s architecture. A group with no configured instances never launches, so
+     * it needs no image; only groups that will launch require an AMI resolved for their
+     * architecture.
+     */
+    private fun amiFor(
+        group: NodeGroup,
+        amiByArch: Map<Arch, String>,
+    ): String {
+        if (group.count <= 0) return ""
+        return amiByArch[group.arch] ?: error("No AMI resolved for architecture ${group.arch}")
     }
 
     override fun createEbsConfig(initConfig: InitConfig): EBSConfig? =

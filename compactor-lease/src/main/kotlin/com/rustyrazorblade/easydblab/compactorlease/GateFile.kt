@@ -4,7 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
-import java.time.Instant
+import kotlin.time.Instant
 
 /**
  * The [Gate] as files in a directory the lease container shares with the compactor containers.
@@ -33,9 +33,15 @@ class GateFile(
     override fun grant(validUntil: Instant) {
         // A temporary file is created owner-only; the Loki and Tempo gates run as another user.
         val temporary = Files.createTempFile(dir, ".$VALID_UNTIL", ".tmp")
-        Files.writeString(temporary, "${validUntil.epochSecond}\n")
-        Files.setPosixFilePermissions(temporary, WORLD_READABLE)
-        Files.move(temporary, dir.resolve(VALID_UNTIL), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        // The loop retries a failed grant on every renewal, so a failure must not leave its file.
+        try {
+            Files.writeString(temporary, "${validUntil.epochSeconds}\n")
+            Files.setPosixFilePermissions(temporary, WORLD_READABLE)
+            Files.move(temporary, dir.resolve(VALID_UNTIL), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Exception) {
+            Files.deleteIfExists(temporary)
+            throw e
+        }
     }
 
     override fun revoke() {

@@ -2,9 +2,8 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
-import io.github.resilience4j.retry.Retry
+import com.rustyrazorblade.easydblab.providers.aws.withEc2ThrottleRetry
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypeOfferingsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest
@@ -127,9 +126,8 @@ class Ec2AccountCapacity(
             requireNotNull(RunInstancesRequests.launchPlan(config).firstOrNull()) { "No instances to dry-run for ${config.clusterName}." }
         val request = RunInstancesRequests.build(config, batch, UUID.randomUUID().toString(), dryRun = true)
         // A throttle or a 5xx is retried; only the final answer is mapped to Permitted or Refused.
-        val retry = Retry.of("dry-run-${config.serverType.serverType}", RetryUtil.createEc2ThrottleRetryConfig<Any>(throttleBackoff))
         return try {
-            Retry.decorateSupplier(retry) { ec2Client.runInstances(request) }.get()
+            withEc2ThrottleRetry("dry-run-${config.serverType.serverType}", throttleBackoff) { ec2Client.runInstances(request) }
             // A dry run always answers with an error; a success would mean an instance was launched.
             error("RunInstances with DryRun returned without DryRunOperation; check the instances of ${config.clusterName}.")
         } catch (e: Ec2Exception) {

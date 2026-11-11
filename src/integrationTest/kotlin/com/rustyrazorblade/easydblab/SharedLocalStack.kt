@@ -14,6 +14,7 @@ import org.testcontainers.localstack.LocalStackContainer
 import org.testcontainers.utility.DockerImageName
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.iam.IamClient
@@ -104,44 +105,24 @@ object SharedLocalStack {
     fun s3Client(): S3Client =
         S3Client
             .builder()
-            .endpointOverride(container.endpoint)
-            .region(Region.of(container.region))
-            .credentialsProvider(credentialsProvider())
+            .local()
             .forcePathStyle(true)
             .build()
 
-    /**
-     * STS client pointed at the shared container.
-     */
-    fun stsClient(): StsClient =
-        StsClient
-            .builder()
-            .endpointOverride(container.endpoint)
-            .region(Region.of(container.region))
-            .credentialsProvider(credentialsProvider())
-            .build()
+    /** STS client pointed at the shared container. */
+    fun stsClient(): StsClient = StsClient.builder().local().build()
 
-    /**
-     * EC2 client pointed at the shared container.
-     */
-    fun ec2Client(): Ec2Client =
-        Ec2Client
-            .builder()
-            .endpointOverride(container.endpoint)
-            .region(Region.of(container.region))
-            .credentialsProvider(credentialsProvider())
-            .build()
+    /** EC2 client pointed at the shared container. */
+    fun ec2Client(): Ec2Client = Ec2Client.builder().local().build()
 
-    /**
-     * IAM client pointed at the shared container.
-     */
-    fun iamClient(): IamClient =
-        IamClient
-            .builder()
-            .endpointOverride(container.endpoint)
+    /** IAM client pointed at the shared container. */
+    fun iamClient(): IamClient = IamClient.builder().local().build()
+
+    /** Points any AWS client builder at the shared container: its endpoint, region and credentials. */
+    private fun <B : AwsClientBuilder<B, C>, C> B.local(): B =
+        endpointOverride(container.endpoint)
             .region(Region.of(container.region))
             .credentialsProvider(credentialsProvider())
-            .build()
 
     /**
      * Creates the given bucket, tolerating the case where a co-tenant test class

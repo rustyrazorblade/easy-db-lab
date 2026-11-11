@@ -34,7 +34,7 @@ class CompactorAgentInstaller(
         controlNode: Host,
         jar: CompactorAgentJarFile,
     ): CompactorAgentJar {
-        val remote = jar.remote()
+        val remote = jar.remote
         val directories = Scratch.entries.map { it.hostPath } + CompactorAgentJar.AGENT_DIR
         val ownership = Scratch.entries.joinToString(" && ") { "sudo chown -R ${it.owner}:${it.owner} ${it.hostPath}" }
         remoteOps.executeRemotely(controlNode, "sudo mkdir -p ${directories.joinToString(" ")} && $ownership")

@@ -219,7 +219,7 @@ class LeaseLoop(
         sentAt: Duration,
     ) {
         val granted =
-            attempt { gate.grant(record.renewedAt.plusMillis(timing.renewDeadline.inWholeMilliseconds)) }
+            attempt { gate.grant(record.renewedAt + timing.renewDeadline) }
                 .onFailure { e ->
                     log.error(e) { "Lease renewed by $holder, but its gate could not be written; stopping compactors until it can" }
                     closeGate()
@@ -346,7 +346,7 @@ class LeaseLoop(
             wipeScratch()
             // The first window counts from the record's write time, before the wipe, so a slow wipe
             // shortens only this window; the first renewal comes one renew interval after the write.
-            gate.grant(record.renewedAt.plusMillis(timing.renewDeadline.inWholeMilliseconds))
+            gate.grant(record.renewedAt + timing.renewDeadline)
         }.onSuccess {
             state = State.Holding(version, record, sentAt, granted = true)
         }.onFailure { e ->

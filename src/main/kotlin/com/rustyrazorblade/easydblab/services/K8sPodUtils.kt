@@ -59,15 +59,6 @@ object K8sPodUtils {
             ?: containerFailure(pod?.status?.initContainerStatuses, podName, "init container")
     }
 
-    /**
-     * Checks if a pod has any containers in a terminal failure state.
-     * Throws IllegalStateException if a failure is detected, causing
-     * waitUntilCondition to exit immediately.
-     */
-    fun checkForPodFailure(pod: Pod?) {
-        failureOf(pod)?.let { error(it) }
-    }
-
     private fun containerFailure(
         statuses: List<ContainerStatus>?,
         podName: String,

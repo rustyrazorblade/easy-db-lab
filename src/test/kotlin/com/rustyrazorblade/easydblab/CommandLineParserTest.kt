@@ -127,6 +127,19 @@ class CommandLineParserTest : BaseKoinTest() {
         assertThat(events.filterIsInstance<Event.Kit.NameCollision>()).isEmpty()
     }
 
+    @Test
+    fun `the built-in command names are exactly the top-level commands of a workspace with no kits`() {
+        val commandLine = CommandLineParser().commandLine
+
+        // Names and aliases both: a kit named like an alias is just as unreachable. Fails when a
+        // command is added to the tree by code (addSubcommand) rather than the @Command annotation.
+        val registered =
+            commandLine.subcommands.values
+                .flatMap { listOf(it.commandName) + it.commandSpec.aliases().toList() }
+                .toSet()
+        assertThat(BuiltInCommands.names).containsAll(registered)
+    }
+
     private fun recordEvents(): List<Event> {
         val events = mutableListOf<Event>()
         getKoin().get<EventBus>().addListener(

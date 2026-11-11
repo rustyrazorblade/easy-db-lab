@@ -6,12 +6,14 @@
 #   - --nodes is more than the number of db nodes
 #   - the AMI-based Cassandra is running on a db node (both would report under job="cassandra")
 #   - --nodes is not a whole number >= 1, or --heap is not a whole number of G or M
+#   - --dc is not a plain name (letters, digits, _ and -, starting with a letter or digit): the
+#     name is substituted into the StatefulSet as a YAML scalar and used as the snitch DC
 #   - --memory is not a whole number of Gi or Mi, or --heap is not smaller than --memory
 #   - a db node cannot be checked over ssh (fail fast: an unchecked node may be running the AMI Cassandra)
 #   - the image's manifest is definitely not in its registry (404). A 401/403 (private image) warns
 #     and continues; any other answer fails with curl's own message.
 #
-# Reads CASSANDRA_VERSION, CASSANDRA_IMAGE, CASSANDRA_NODES, CASSANDRA_HEAP, CASSANDRA_MEMORY, DB_NODE_COUNT.
+# Reads CASSANDRA_VERSION, CASSANDRA_IMAGE, CASSANDRA_NODES, CASSANDRA_HEAP, CASSANDRA_MEMORY, CASSANDRA_DC, DB_NODE_COUNT.
 set -euo pipefail
 
 fail() {
@@ -40,6 +42,14 @@ if [ -n "${heap}" ]; then
     '' | *[!0-9]* | 0*) fail "ERROR: --heap '${heap}' is not valid; use a whole number followed by G or M, such as 4G or 512M." ;;
   esac
 fi
+
+# --dc is rendered into the StatefulSet as a bare YAML scalar, so only a plain name is accepted.
+dc="${CASSANDRA_DC:-dc1}"
+case "${dc}" in
+  '' | -* | *[!A-Za-z0-9_-]*)
+    fail "ERROR: --dc '${dc}' is not valid; use letters, digits, _ and -, starting with a letter or digit, such as dc1."
+    ;;
+esac
 
 # --memory is the container's memory request and limit: a whole number of Gi or Mi. The default
 # heap is half of it, and an explicit --heap must be smaller, leaving room for off-heap memory.

@@ -40,6 +40,15 @@ Before it creates anything, `start` checks that the image's manifest exists in i
 unknown version or tag fails at once and names the image. The image must support the platform of
 your db nodes; images built for amd64 only do not run on arm64 nodes.
 
+A private image (the registry answers 401 or 403 to the anonymous check) prints a warning and
+continues, because the pods may pull with credentials the check does not have. Docker Hub and
+ghcr.io are checked anonymously; other registries usually answer 401 and are not checked.
+
+A custom image must be built like the Docker Official `cassandra` image: its entrypoint is
+`docker-entrypoint.sh`, `cassandra.yaml` is at `/etc/cassandra/cassandra.yaml` and writable by the
+container user, and data lives in `/var/lib/cassandra`. A different layout fails when the pod
+starts, not in the registry check.
+
 ## CQL access
 
 Every pod advertises its node's IP and listens on port 30942, and a NodePort Service maps 30942 to
@@ -50,13 +59,20 @@ cqlsh <db-node-ip> 30942
 ```
 
 A driver connected through one node learns the other nodes' addresses from `system.peers_v2`, and
-each of them is reachable the same way.
+each of them is reachable the same way. Port 30942 is inside Kubernetes' default NodePort range
+(30000-32767). The Service keeps traffic on the node (`externalTrafficPolicy: Local`), so a db
+node that is not running a ready pod refuses connections instead of forwarding them.
 
 ## Persistence
 
 `stop` deletes the StatefulSet, the Services and the ConfigMap, and keeps the data volumes. A
-later `start` reattaches them, so the data is still there. `kit uninstall cassandra-pods` deletes
-the volumes.
+later `start` reattaches them, so the data is still there. `kit uninstall cassandra-pods` is destructive:
+it deletes the volumes and the data on them.
+
+The args are fixed at `kit install`; `stop` then `start` reuses them. Cassandra refuses to boot
+on existing data under a different datacenter name, and does not support downgrading a major
+version, so to change `--dc` or move to an older `--version`, run `kit uninstall` first and accept
+that the data goes with it.
 
 ## Metrics and logs
 

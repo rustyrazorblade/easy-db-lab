@@ -19,7 +19,7 @@ cqlsh <db-node-ip> 30942
 ```bash
 easy-db-lab cassandra-pods start
 easy-db-lab cassandra-pods stop        # keeps the data volumes
-easy-db-lab kit uninstall cassandra-pods   # deletes the data volumes
+easy-db-lab kit uninstall cassandra-pods   # DESTRUCTIVE: deletes the data volumes
 ```
 
 Metrics arrive as `job="cassandra"`, so the Cassandra dashboards show these pods.

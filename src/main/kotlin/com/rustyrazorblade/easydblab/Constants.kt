@@ -537,7 +537,7 @@ object Constants {
 
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
 
-        /** The `cassandra-pods` kit: the CQL NodePort, the agent-carrying image and the UN wait bound. */
+        /** The `cassandra-pods` kit: the CQL NodePort and the agent-carrying image. The UN wait bound lives in `lib/wait-un.sh`. */
         object CassandraPods {
             /** NodePort and native transport port; no other kit uses it. */
             const val CQL_NODE_PORT = 30942

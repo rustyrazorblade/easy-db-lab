@@ -186,6 +186,20 @@ for bad in 4.5G 4 G 4GB -2G 0G; do
   [ ! -f "${WORK}/curl.calls" ] || fail "'${bad}': registry was queried"
 done
 
+begin "valid --dc names pass"
+for ok in dc1 us_east-2 DC_A; do
+  run_check CASSANDRA_DC=${ok}
+  [ "${rc}" -eq 0 ] || fail "'${ok}': exit ${rc}: ${out}"
+done
+
+begin "a --dc that is not a plain name fails before any registry lookup"
+for bad in 'a b' 'dc:1' 'dc"1' "dc'1" '{x}' 'dc#1' 'dc,1' '-dc'; do
+  run_check CASSANDRA_DC="${bad}"
+  [ "${rc}" -eq 1 ] || fail "'${bad}': exit ${rc}"
+  case "${out}" in *"--dc"*"${bad}"*) ;; *) fail "'${bad}': unclear message: ${out}" ;; esac
+  [ ! -f "${WORK}/curl.calls" ] || fail "'${bad}': registry was queried"
+done
+
 begin "an unreachable db node fails start and says which node and why"
 run_check STUB_SSH_ERROR="ssh: connect to host db0 port 22: Connection timed out"
 [ "${rc}" -eq 1 ] || fail "exit ${rc}"

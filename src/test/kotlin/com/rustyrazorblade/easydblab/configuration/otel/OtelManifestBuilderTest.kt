@@ -466,6 +466,27 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
+     * The `yace` job used to be a static block in the YAML template. On AWS it must render exactly
+     * that block: 5s interval and timeout, `localhost:5001`, and the `instance` and `cluster`
+     * relabels. `metrics_path` is `/metrics`, Prometheus's default, which the old block left
+     * implicit. Its position among the jobs changed (it used to sit between `ebpf-exporter` and
+     * `otel-collector`); scrape job order has no effect in Prometheus.
+     */
+    @Test
+    fun `the AWS yace job matches the static block it replaced`() {
+        val job = builder.buildInfraScrapeJobs(NodeCapabilities.AWS, CniMode.Flannel).single { it.jobName == "yace" }
+
+        assertThat(job.scrapeInterval).isEqualTo("5s")
+        assertThat(job.scrapeTimeout).isEqualTo("5s")
+        assertThat(job.staticConfigs?.single()?.targets).containsExactly("localhost:5001")
+        assertThat(job.metricsPath).isEqualTo("/metrics")
+        assertThat(job.relabelConfigs.map { it.targetLabel to it.replacement }).containsExactly(
+            "instance" to "\${env:HOSTNAME}:5001",
+            "cluster" to "\${env:CLUSTER_NAME}",
+        )
+    }
+
+    /**
      * kube-state-metrics is one pod on the control node, in the pod network. A static Service
      * target would have every collector in the DaemonSet scrape the same series under its own
      * `instance`; pod discovery filtered to the collector's own node gives exactly one scraper.

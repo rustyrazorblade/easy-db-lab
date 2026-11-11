@@ -198,6 +198,32 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(kit.config.runtime?.selector).isEqualTo("easydblab/kit=cassandra-pods")
     }
 
+    /** Runs the rendered readiness command with a `nodetool` that prints [statusbinary]; true when it passes. */
+    private fun readinessPasses(statusbinary: String): Boolean {
+        val command =
+            cassandra()
+                .readinessProbe.exec.command
+                .last()
+        val bin = File(tempDir, "bin-" + statusbinary.hashCode()).apply { mkdirs() }
+        File(bin, "nodetool").apply {
+            writeText("#!/bin/sh\necho '$statusbinary'\n")
+            setExecutable(true)
+        }
+        val process =
+            ProcessBuilder("sh", "-c", command)
+                .apply { environment()["PATH"] = "${bin.absolutePath}:${System.getenv("PATH")}" }
+                .redirectErrorStream(true)
+                .start()
+        return process.waitFor() == 0
+    }
+
+    @Test
+    fun `the readiness probe passes only while the native transport is running, never on not running`() {
+        assertThat(readinessPasses("running")).isTrue()
+        // "not running" contains "running": a substring match would mark a pod with CQL down Ready.
+        assertThat(readinessPasses("not running")).isFalse()
+    }
+
     @Test
     fun `the JMX rules are packaged from their single source`() {
         val source =

@@ -127,7 +127,7 @@ spec:
               command:
                 - sh
                 - -c
-                - nodetool statusbinary | grep -q running
+                - nodetool statusbinary | grep -qx running
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 10

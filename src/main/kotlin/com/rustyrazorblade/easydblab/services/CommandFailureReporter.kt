@@ -23,6 +23,10 @@ private val log = KotlinLogging.logger {}
  * Shared by the command lifecycle, the top-level dispatch and Picocli's exception handler, so a
  * failure reads the same wherever it surfaces. The handlers take no profile, which lets this build
  * before one exists.
+ *
+ * Precedence is outermost cause first, then handler registration order, so a broad handler that claims a
+ * wrapper exception shadows a more specific handler for an inner cause. That matters once a third provider
+ * exists; keep each handler narrow.
  */
 class CommandFailureReporter(
     private val eventBus: EventBus,

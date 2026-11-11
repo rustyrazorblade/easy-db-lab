@@ -27,7 +27,7 @@ object CollectorResources {
      * cluster with no recorded CNI predates Cilium and runs Flannel.
      *
      * [capabilities] decides which environment-bound scrape jobs exist (`yace` needs CloudWatch);
-     * both callers take the default, so the deploy and the kit sync render the same config.
+     * both callers derive it with `NodeCapabilities.from` and pass it in, so the deploy and the kit sync render the same config.
      */
     fun build(
         otelManifestBuilder: OtelManifestBuilder,
@@ -35,15 +35,15 @@ object CollectorResources {
         clusterState: ClusterState,
         region: String,
         scrapeConfigs: List<WorkloadScrapeConfig>,
-        capabilities: NodeCapabilities = NodeCapabilities.from(clusterState),
+        capabilities: NodeCapabilities,
     ): List<HasMetadata> {
         val initConfig = clusterState.initConfig
         return ConfigHashAnnotator.annotate(
             otelManifestBuilder.buildAllResources(
+                capabilities,
                 scrapeConfigs,
                 initConfig?.telemetryRedirect,
                 initConfig?.cni ?: CniMode.Flannel,
-                capabilities,
             ),
             mapOf(ClusterConfigData.NAME to ClusterConfigData.of(controlHost, clusterState, region)),
         )

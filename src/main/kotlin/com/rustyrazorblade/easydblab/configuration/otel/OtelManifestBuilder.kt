@@ -122,16 +122,16 @@ class OtelManifestBuilder(
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet, Service
      */
     fun buildAllResources(
+        capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
         cni: CniMode = CniMode.Flannel,
-        capabilities: NodeCapabilities = NodeCapabilities.AWS,
     ): List<HasMetadata> =
         listOf(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
-            buildConfigMap(scrapeConfigs, telemetryRedirect, cni, capabilities),
+            buildConfigMap(capabilities, scrapeConfigs, telemetryRedirect, cni),
             buildDaemonSet(),
             buildService(),
         )
@@ -198,10 +198,10 @@ class OtelManifestBuilder(
      * @param capabilities What the environment provides; the `yace` job needs CloudWatch.
      */
     fun buildConfigMap(
+        capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
         cni: CniMode = CniMode.Flannel,
-        capabilities: NodeCapabilities = NodeCapabilities.AWS,
     ) = ConfigMapBuilder()
         .withNewMetadata()
         .withName(CONFIGMAP_NAME)
@@ -218,7 +218,7 @@ class OtelManifestBuilder(
                     mapOf(
                         "KIT_SCRAPE_JOBS" to renderScrapeJobs(buildDynamicScrapeJobs(scrapeConfigs)),
                         "INFRA_SCRAPE_JOBS" to
-                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(cni, capabilities)),
+                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(capabilities, cni)),
                         "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_METRICS_ENDPOINT),
                         "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_LOGS_ENDPOINT),
                         "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
@@ -237,8 +237,8 @@ class OtelManifestBuilder(
      * kube-state-metrics on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
      */
     fun buildInfraScrapeJobs(
+        capabilities: NodeCapabilities,
         cni: CniMode,
-        capabilities: NodeCapabilities = NodeCapabilities.AWS,
     ): List<PrometheusScrapeJob> =
         listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni) + buildCloudWatchScrapeJobs(capabilities)
 

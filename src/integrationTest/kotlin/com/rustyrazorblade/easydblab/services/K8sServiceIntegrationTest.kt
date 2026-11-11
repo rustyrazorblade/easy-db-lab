@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -195,7 +196,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(10)
     fun `should apply OTel Collector resources`() {
-        val resources = OtelManifestBuilder(templateService).buildAllResources()
+        val resources = OtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS)
         applyAndVerify(resources)
 
         assertServiceAccountExists("otel-collector")
@@ -209,7 +210,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(14)
     fun `should apply OTel Journald resources`() {
-        val resources = JournaldOtelManifestBuilder(templateService).buildAllResources()
+        val resources = JournaldOtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS)
         applyAndVerify(resources)
 
         assertConfigMapExists("fluent-bit-journald-config", "fluent-bit-journald.yaml")
@@ -826,8 +827,8 @@ class K8sServiceIntegrationTest {
     }
 
     private fun collectAllResources(): List<HasMetadata> =
-        JournaldOtelManifestBuilder(templateService).buildAllResources() +
-            OtelManifestBuilder(templateService).buildAllResources() +
+        JournaldOtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS) +
+            OtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS) +
             EbpfExporterManifestBuilder().buildAllResources() +
             MimirManifestBuilder(templateService).buildAllResources() +
             LokiManifestBuilder(templateService).buildAllResources() +

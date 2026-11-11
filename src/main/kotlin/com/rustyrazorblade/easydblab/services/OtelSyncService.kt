@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -46,7 +47,15 @@ class DefaultOtelSyncService(
             // The cluster's export destinations and CNI come from its recorded init config, so a
             // regenerated ConfigMap keeps a redirect cluster's external endpoints and a Cilium
             // cluster's Cilium scrape jobs.
-            val resources = CollectorResources.build(otelManifestBuilder, controlHost, clusterState, user.region, scrapeConfigs)
+            val resources =
+                CollectorResources.build(
+                    otelManifestBuilder,
+                    controlHost,
+                    clusterState,
+                    user.region,
+                    scrapeConfigs,
+                    NodeCapabilities.from(clusterState),
+                )
             configChangeReport.report(controlHost, resources, Constants.K8s.NAMESPACE)
             for (resource in resources) {
                 k8sService.applyResource(controlHost = controlHost, resource = resource).getOrThrow()

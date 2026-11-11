@@ -39,17 +39,4 @@ class CollectorResourcesTest : BaseKoinTest() {
         assertThat(config(NodeCapabilities.AWS)).contains("job_name: \"yace\"").contains("localhost:5001")
         assertThat(config(NodeCapabilities.LOCAL_DOCKER)).doesNotContain("yace").doesNotContain("5001")
     }
-
-    @Test
-    fun `without an explicit set the capabilities come from the cluster state`() {
-        val resources = CollectorResources.build(OtelManifestBuilder(getKoin().get()), host, state, "us-west-2", emptyList())
-
-        assertThat(
-            resources
-                .filterIsInstance<ConfigMap>()
-                .single()
-                .data.values
-                .single(),
-        ).contains("job_name: \"yace\"")
-    }
 }

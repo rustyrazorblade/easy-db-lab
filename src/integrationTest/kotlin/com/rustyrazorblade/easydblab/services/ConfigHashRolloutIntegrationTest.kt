@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -367,7 +368,7 @@ class ConfigHashRolloutIntegrationTest {
             assertThat(collectorGeneration()).isEqualTo(syncedGeneration)
         } finally {
             client.resource(kitMetrics).delete()
-            client.resourceList(otel.buildAllResources()).delete()
+            client.resourceList(otel.buildAllResources(NodeCapabilities.AWS)).delete()
         }
     }
 }

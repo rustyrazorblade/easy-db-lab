@@ -124,6 +124,7 @@ class DefaultObservabilityStackService(
         runCatching {
             val clusterState = clusterStateManager.load()
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
+            val capabilities = capabilitiesOf(clusterState)
 
             val clusterConfig = createClusterConfigMap(controlNode, clusterState)
 
@@ -137,12 +138,12 @@ class DefaultObservabilityStackService(
             val collector =
                 Stage(
                     "OTel Collector",
-                    CollectorResources.build(otelManifestBuilder, controlNode, clusterState, user.region, scrapeConfigs),
+                    CollectorResources.build(otelManifestBuilder, controlNode, clusterState, user.region, scrapeConfigs, capabilities),
                 )
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
-            val stages = runnableStages(buildStages(telemetryRedirect), capabilitiesOf(clusterState))
+            val stages = runnableStages(buildStages(telemetryRedirect), capabilities)
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
             // not, so prepare them only in local mode.

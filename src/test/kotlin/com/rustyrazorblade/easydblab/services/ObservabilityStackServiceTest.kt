@@ -225,6 +225,25 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the YACE stage and the yace scrape job follow the same capability set`() {
+        // One non-AWS set drives both sources: the stage list and the collector config.
+        capabilities = NodeCapabilities(setOf(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.S3))
+
+        service.deploy(controlNode).getOrThrow()
+
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        val collectorConfig =
+            captor.allValues
+                .filterIsInstance<ConfigMap>()
+                .single { it.metadata.name == "otel-collector-config" }
+                .data.values
+                .single()
+        assertThat(appliedKindNames()).doesNotContain("Deployment/yace")
+        assertThat(collectorConfig).doesNotContain("job_name: \"yace\"")
+    }
+
+    @Test
     fun `an environment with only CloudWatch skips only the journal and S3 stages`() {
         capabilities = NodeCapabilities(setOf(NodeCapability.CLOUDWATCH))
         val emitted = collectEvents()

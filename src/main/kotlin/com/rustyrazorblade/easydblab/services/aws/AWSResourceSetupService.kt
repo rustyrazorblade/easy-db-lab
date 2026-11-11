@@ -9,7 +9,6 @@ import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
-import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 
 /**
@@ -29,7 +28,7 @@ class AWSResourceSetupService(
     private val aws: AWS,
     private val eventBus: EventBus,
     private val instanceRolePolicies: InstanceRolePolicies,
-    private val errorHandler: ProviderErrorHandler = AwsErrorHandler(),
+    private val errorHandler: ProviderErrorHandler,
 ) {
     companion object {
         // Error messages
@@ -141,6 +140,7 @@ class AWSResourceSetupService(
         } catch (e: Exception) {
             emitCredentialError(e)
             // The detailed message above is the report; the executor must not print a second block.
+            // This exception's own message goes to the debug log only, never to the user.
             throw CommandFailedException("AWS credential validation failed: ${e.message}", e)
         }
     }

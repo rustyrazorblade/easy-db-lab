@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.Collections
@@ -37,7 +38,7 @@ class CommandFailureReporter(
             return
         }
         log.error(error) { "Command execution failed" }
-        val description = chain.firstNotNullOfOrNull { cause -> handlers.firstNotNullOfOrNull { it.describe(cause) } }
+        val description = chain.firstNotNullOfOrNull { cause -> handlers.firstNotNullOfOrNull { describeSafely(it, cause) } }
         if (description != null) {
             eventBus.emit(
                 Event.Command.ProviderError(
@@ -55,6 +56,18 @@ class CommandFailureReporter(
             )
         }
     }
+
+    /** A handler that itself fails must not hide the failure being reported, so it counts as not claiming. */
+    private fun describeSafely(
+        handler: ProviderErrorHandler,
+        cause: Throwable,
+    ): ErrorDescription? =
+        try {
+            handler.describe(cause)
+        } catch (e: Exception) {
+            log.warn(e) { "Provider error handler ${handler::class.simpleName} failed on ${cause::class.simpleName}" }
+            null
+        }
 
     private fun causeChain(error: Throwable): List<Throwable> {
         val seen: MutableSet<Throwable> = Collections.newSetFromMap(IdentityHashMap())

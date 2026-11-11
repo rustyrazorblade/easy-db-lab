@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -223,7 +224,7 @@ object TestModules {
             // assert on the secret this actually builds, so a mock here would verify nothing.
             single { mock<EcrClient>() }
             single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
-            factory { AwsKeyPairService(get(), get()) }
+            factory { AwsKeyPairService(get(), get(), AwsErrorHandler()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

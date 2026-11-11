@@ -96,6 +96,17 @@ class CommandFailureReporterTest {
     }
 
     @Test
+    fun `a handler that throws is skipped and the failure is still reported once`() {
+        val broken = ProviderErrorHandler { throw IllegalStateException("handler bug") }
+
+        reporter(broken, handler("AWS")).report(CredentialsProblem("token expired"))
+
+        assertThat(emitted).containsExactly(
+            Event.Command.ProviderError("AWS", ProviderErrorKind.CREDENTIALS, "token expired", "fix AWS"),
+        )
+    }
+
+    @Test
     fun `an unclaimed failure keeps the execution error with its cause chain`() {
         reporter(handler("AWS")).report(IllegalStateException("outer", IllegalArgumentException("inner")))
 

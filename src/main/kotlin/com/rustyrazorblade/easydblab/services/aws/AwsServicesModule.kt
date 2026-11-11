@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
@@ -81,6 +82,7 @@ val awsServicesModule =
                 get<AWS>(),
                 get<EventBus>(),
                 get<InstanceRolePolicies>(),
+                get<AwsErrorHandler>(),
             )
         }
 
@@ -136,7 +138,7 @@ val awsServicesModule =
         single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
 
         // Creates the EC2 key pair profile setup needs; takes the caller-built Ec2Client
-        factory { AwsKeyPairService(get(), get()) }
+        factory { AwsKeyPairService(get(), get(), get<AwsErrorHandler>()) }
 
         single { CompactorIam(get()) }
         single { CompactorNetwork(get(), get(), get(), get()) }

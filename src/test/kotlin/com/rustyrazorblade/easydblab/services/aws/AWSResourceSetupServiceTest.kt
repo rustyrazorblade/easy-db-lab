@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -100,6 +101,7 @@ internal class AWSResourceSetupServiceTest :
                 aws,
                 eventBus,
                 InstanceRolePolicies(aws),
+                AwsErrorHandler(),
             )
     }
 

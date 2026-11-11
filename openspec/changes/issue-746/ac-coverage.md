@@ -25,4 +25,4 @@
 | Risk | Unknown EMR state shows "null" or throws an NPE | `spark-emr: Unknown EMR state` | ✅ |
 | Risk | Expired SSO in setup shows the permission guidance | `setup: Setup with expired SSO credentials` | ✅ |
 | Risk | `Up.kt:225` retry stops if adapters translate exceptions | — | ⚠️ Excluded: no translation in this slice; recorded in `providers/CLAUDE.md` (task 6.2) |
-| Risk | Packer reuses stale SSO credentials in REPL/Server | — | ⚠️ Excluded as a scenario: covered by the `factory` binding (design D6); there is no cheap behavioural test without a real SSO expiry |
+| Risk | Packer reuses stale SSO credentials in REPL/Server | — | ✅ `AwsModulesResolutionTest` asserts two `get<AWSCredentialsManager>()` calls return different instances, so a change to `single` fails |

@@ -5,6 +5,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.awscore.exception.AwsServiceException
@@ -63,6 +64,37 @@ class AwsErrorHandlerTest {
         assertThat(description.provider).isEqualTo("AWS")
         assertThat(description.detail).contains(code)
         assertThat(description.remedy).contains("aws sso login").contains("easy-db-lab profile setup")
+    }
+
+    @Test
+    fun `the credentials remedy never prints a placeholder the user must fill in`() {
+        val remedy = handler.describe(awsError(StsException.builder(), "ExpiredToken", 400))!!.remedy
+
+        assertThat(remedy).doesNotContain("<").doesNotContain(">")
+    }
+
+    @Test
+    fun `an exhausted credentials provider chain is credentials`() {
+        val emptyProfile =
+            ProfileFile
+                .builder()
+                .content("[default]\n")
+                .type(ProfileFile.Type.CREDENTIALS)
+                .build()
+        val chain =
+            AwsCredentialsProviderChain
+                .builder()
+                .credentialsProviders(
+                    ProfileCredentialsProvider
+                        .builder()
+                        .profileFile(emptyProfile)
+                        .profileName("default")
+                        .build(),
+                ).build()
+        val error = runCatching { chain.resolveCredentials() }.exceptionOrNull()
+
+        assertThat(error!!.message).contains("Unable to load credentials")
+        assertThat(handler.describe(error)!!.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
     }
 
     @ParameterizedTest

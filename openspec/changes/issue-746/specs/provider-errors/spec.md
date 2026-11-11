@@ -8,7 +8,7 @@ When a command fails, the system SHALL ask every registered provider error handl
 
 - **GIVEN** a command whose AWS call fails with an `StsException` with error code `ExpiredToken`
 - **WHEN** the command fails
-- **THEN** the user sees a credentials message with the login remedy, not a raw cause chain
+- **THEN** the user sees a credentials message with a remedy that says to run `aws sso login` or `easy-db-lab profile setup` (it names no profile, because the handler has no profile), not a raw cause chain
 - **AND** the exit code is non-zero
 
 #### Scenario: Bad credentials that arrive as a 403

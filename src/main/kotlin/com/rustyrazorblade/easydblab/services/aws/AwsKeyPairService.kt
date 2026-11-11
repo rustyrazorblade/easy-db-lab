@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
-import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.CreateKeyPairRequest
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
@@ -31,7 +30,7 @@ import java.util.UUID
 class AwsKeyPairService(
     private val eventBus: EventBus,
     private val clientFactory: AWSClientFactory,
-    private val errorHandler: ProviderErrorHandler = AwsErrorHandler(),
+    private val errorHandler: ProviderErrorHandler,
 ) {
     private companion object {
         const val OWNER_ONLY = "rw-------"

@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -43,7 +44,7 @@ class AwsKeyPairServiceTest {
             )
         }
     private val ec2: Ec2Client = mock()
-    private val service = AwsKeyPairService(eventBus, mock())
+    private val service = AwsKeyPairService(eventBus, mock(), AwsErrorHandler())
 
     @Test
     fun `the private key is saved owner-only and the tagged key name returned`(

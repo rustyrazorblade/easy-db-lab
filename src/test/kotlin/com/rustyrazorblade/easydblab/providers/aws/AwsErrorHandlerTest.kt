@@ -144,8 +144,7 @@ class AwsErrorHandlerTest {
         assertThat(handler.describe(awsError(Ec2Exception.builder(), "InvalidParameterValue", 400))).isNull()
     }
 
-    @Test
-    fun `missing credentials from a real profile provider are credentials`() {
+    private fun realProfileProviderFailure(): Throwable {
         val emptyProfile =
             ProfileFile
                 .builder()
@@ -158,10 +157,15 @@ class AwsErrorHandlerTest {
                 .profileFile(emptyProfile)
                 .profileName("default")
                 .build()
-        val error = runCatching { provider.resolveCredentials() }.exceptionOrNull()
+        return runCatching { provider.resolveCredentials() }.exceptionOrNull()!!
+    }
+
+    @Test
+    fun `missing credentials from a real profile provider are credentials`() {
+        val error = realProfileProviderFailure()
 
         assertThat(error).isInstanceOf(SdkClientException::class.java)
-        assertThat(handler.describe(error!!)!!.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
+        assertThat(handler.describe(error)!!.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
     }
 
     @Test
@@ -187,17 +191,33 @@ class AwsErrorHandlerTest {
             SdkClientException
                 .builder()
                 .message("Failed to read the bucket")
-                .cause(
-                    SdkClientException
-                        .builder()
-                        .message("Unable to load credentials from any of the providers in the chain")
-                        .build(),
-                ).build()
+                .cause(realProfileProviderFailure())
+                .build()
 
         assertThat(handler.describe(mentioned)).isNull()
         // Only the exception's own message counts; the reporter offers the inner cause separately.
         assertThat(handler.describe(wrapper)).isNull()
         assertThat(handler.describe(wrapper.cause!!)!!.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = [
+            "Unable to load credentials from any of the providers in the chain",
+            "Profile file contained no credentials for profile 'default'",
+            "The SSO session associated with this profile has expired",
+        ],
+    )
+    fun `a wrapped S3 or network SdkClientException that opens with a credentials phrase is not claimed`(message: String) {
+        // Built outside any SDK credentials provider, so only its message resembles a credentials failure.
+        val error =
+            SdkClientException
+                .builder()
+                .message(message)
+                .cause(UncheckedIOException(IOException("Connection reset while reading s3://bucket/key")))
+                .build()
+
+        assertThat(handler.describe(error)).isNull()
     }
 
     @Test

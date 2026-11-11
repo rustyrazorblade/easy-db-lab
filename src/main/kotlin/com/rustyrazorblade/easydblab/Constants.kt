@@ -258,15 +258,21 @@ object Constants {
             const val CLOCK_SKEW = "RequestTimeTooSkewed"
 
             /**
-             * Prefixes of the `SdkClientException` messages that mean no usable credentials. The SDK starts each
-             * of its own messages with one, so a message that merely quotes one mid-sentence is not matched.
+             * Prefixes of the `SdkClientException` messages a credentials provider raises when it finds no usable
+             * credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGE]. An expired SSO session
+             * has its own type, `ExpiredTokenException`, so it needs no message here.
              */
             val CREDENTIALS_MESSAGES =
                 listOf(
                     "Unable to load credentials",
                     "Profile file contained no credentials for profile",
-                    "The SSO session associated with this profile has expired",
                 )
+
+            /** The SDK package whose providers raise a missing-credentials `SdkClientException`. */
+            const val CREDENTIALS_PROVIDER_PACKAGE = "software.amazon.awssdk.auth.credentials."
+
+            /** The SDK package of the exception builders, skipped to find the code that raised an exception. */
+            const val SDK_EXCEPTION_PACKAGE = "software.amazon.awssdk.core.exception."
         }
 
         // IAM Role Names

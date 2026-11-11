@@ -119,7 +119,7 @@ The error code is checked first: STS, IAM and S3 return 403 for bad credentials.
 | 1 | `AwsServiceException` with code in {`ExpiredToken`, `ExpiredTokenException`, `RequestExpired`, `AuthFailure`, `InvalidClientTokenId`, `UnrecognizedClientException`, `InvalidAccessKeyId`, `SignatureDoesNotMatch`, `InvalidSignatureException`, `InvalidToken`, `TokenRefreshRequired`, `MissingAuthenticationToken`, `IncompleteSignature`} | CREDENTIALS |
 | 2 | `AwsServiceException` with code in {`AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`} | PERMISSION_DENIED |
 | 3 | `AwsServiceException` with `statusCode() == 403`, except `RequestTimeTooSkewed` | PERMISSION_DENIED |
-| 4 | `SdkClientException` whose message contains "Unable to load credentials", "contained no credentials for profile" or "The SSO session associated with this profile has expired" | CREDENTIALS |
+| 4 | `sso.auth.ExpiredTokenException`, or an `SdkClientException` raised by an SDK credentials provider (the first stack frame past the SDK exception builder is in `software.amazon.awssdk.auth.credentials`) whose message starts with "Unable to load credentials" or "Profile file contained no credentials for profile". A wrapped S3 or network error that quotes those words is not raised there and is not matched | CREDENTIALS |
 | else | anything else, including network `SdkClientException`s | null |
 
 **Remedies:**

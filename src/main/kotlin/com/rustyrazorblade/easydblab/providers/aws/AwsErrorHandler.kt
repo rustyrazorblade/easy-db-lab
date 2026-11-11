@@ -56,20 +56,34 @@ class AwsErrorHandler : ProviderErrorHandler {
 
     private fun describeClient(error: SdkClientException): ErrorDescription? {
         val message = error.message.orEmpty()
-        // The SDK has a type for an expired SSO session. A missing credentials chain is a plain
-        // SdkClientException that only its message tells apart: the DefaultCredentialsProvider chain says
-        // "Unable to load credentials from any of the providers in the chain", and a profile without keys
-        // says "Profile file contained no credentials for profile 'x'"; an older SSO provider says
-        // "The SSO session associated with this profile has expired".
-        val isCredentialsProblem =
-            error is ExpiredTokenException ||
-                Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES
-                    .any { message.startsWith(it) }
+        val isCredentialsProblem = error is ExpiredTokenException || isProviderCredentialsFailure(error, message)
         return if (isCredentialsProblem) {
             describeAs(ProviderErrorKind.CREDENTIALS, message, CREDENTIALS_REMEDY)
         } else {
             null
         }
+    }
+
+    /**
+     * A missing credentials chain is a plain `SdkClientException`: the SDK gives it no subtype and no code,
+     * so its message alone cannot tell it from an S3 or network error that quotes the same words. What the SDK
+     * does fix is where it is raised: a credentials provider (`ProfileCredentialsProvider`,
+     * `AwsCredentialsProviderChain`) builds it itself. So it is claimed only when the code that built it, the
+     * first frame past the SDK's exception builder, is in the SDK's credentials package, and its message starts
+     * with one of the SDK's own credentials messages.
+     */
+    private fun isProviderCredentialsFailure(
+        error: SdkClientException,
+        message: String,
+    ): Boolean {
+        val raisedBy =
+            error.stackTrace
+                .firstOrNull { !it.className.startsWith(Constants.AWS.ErrorCodes.SDK_EXCEPTION_PACKAGE) }
+                ?.className
+                .orEmpty()
+        return raisedBy.startsWith(Constants.AWS.ErrorCodes.CREDENTIALS_PROVIDER_PACKAGE) &&
+            Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES
+                .any { message.startsWith(it) }
     }
 
     private fun describeAs(

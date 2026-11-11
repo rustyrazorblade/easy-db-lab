@@ -129,6 +129,14 @@ spec:
               value: "http://$(HOST_IP):4318"
             - name: OTEL_METRIC_EXPORT_INTERVAL
               value: "5000"
+          # Drain flushes memtables and stops accepting writes before SIGTERM, so stop then start
+          # replays little commit log. The timeout keeps it inside terminationGracePeriodSeconds
+          # (120), and `|| true` is acceptable only because the SIGTERM shutdown hook drains again
+          # right after: a failed or timed-out drain loses nothing.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "timeout 100 nodetool drain || true"]
           ports:
             - name: cql
               containerPort: 30942

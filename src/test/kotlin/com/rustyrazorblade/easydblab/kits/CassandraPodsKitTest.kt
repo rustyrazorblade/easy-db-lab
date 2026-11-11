@@ -258,4 +258,45 @@ class CassandraPodsKitTest : BaseKoinTest() {
 
         assertThat(kit.resource("cassandra-jmx-rules.yaml").toByteArray()).isEqualTo(source)
     }
+
+    @Test
+    fun `every NodePort-range number in the kit's packaged files is the CQL port constant`() {
+        val dir =
+            File(
+                CassandraPodsKitTest::class.java.classLoader
+                    .getResource("com/rustyrazorblade/easydblab/kits/cassandra-pods")!!
+                    .toURI(),
+            )
+        val port =
+            Constants.Kit.CassandraPods.CQL_NODE_PORT
+                .toString()
+        val found =
+            dir
+                .walkTopDown()
+                .filter { it.isFile }
+                .flatMap { file -> Regex("""\b309\d\d\b""").findAll(file.readText()).map { file.name to it.value } }
+                .toList()
+
+        assertThat(found).isNotEmpty
+        assertThat(found.filter { it.second != port }).describedAs("files naming a 309xx port other than $port").isEmpty()
+        assertThat(found.map { it.first }).contains("kit.yaml", "statefulset.yaml.template", "nodeport-service.yaml.template")
+    }
+
+    @Test
+    fun `the cassandra container drains on preStop, bounded inside the termination grace period`() {
+        val spec = statefulSet().spec.template.spec
+        val command =
+            cassandra()
+                .lifecycle.preStop.exec.command
+                .joinToString(" ")
+        val bound =
+            Regex("""timeout (\d+) nodetool drain""")
+                .find(command)
+                ?.groupValues
+                ?.get(1)
+                ?.toInt()
+
+        assertThat(bound).describedAs("preStop: $command").isNotNull()
+        assertThat(bound!!).isLessThan(spec.terminationGracePeriodSeconds.toInt())
+    }
 }

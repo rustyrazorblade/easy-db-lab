@@ -118,6 +118,9 @@ sealed class AWSPolicy {
             const val OPENSEARCH_POLICY = "EasyDBLabOpenSearch"
             const val COMPACTOR_POLICY = "EasyDBLabCompactor"
 
+            /** Every lab user policy name, in the order [loadAll] returns them. */
+            val ALL_NAMES = listOf(EC2_POLICY, IAM_POLICY, EMR_POLICY, OPENSEARCH_POLICY, COMPACTOR_POLICY)
+
             /**
              * Loads all three required user IAM policies from JSON resource files.
              * Performs account ID substitution in policy templates.

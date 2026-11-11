@@ -119,13 +119,6 @@ class AwsErrorHandler : ProviderErrorHandler {
                 "(add --profile and your profile name if it is not the default), " +
                 "and check with: aws sts get-caller-identity"
 
-        val ALL_POLICIES =
-            listOf(
-                AWSPolicy.UserIAM.EC2_POLICY,
-                AWSPolicy.UserIAM.IAM_POLICY,
-                AWSPolicy.UserIAM.EMR_POLICY,
-                AWSPolicy.UserIAM.OPENSEARCH_POLICY,
-                AWSPolicy.UserIAM.COMPACTOR_POLICY,
-            )
+        val ALL_POLICIES = AWSPolicy.UserIAM.ALL_NAMES
     }
 }

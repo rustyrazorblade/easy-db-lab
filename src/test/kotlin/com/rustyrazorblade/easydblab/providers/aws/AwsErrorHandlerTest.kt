@@ -230,6 +230,23 @@ class AwsErrorHandlerTest {
     }
 
     @Test
+    fun `the policy named for ECR and SSM failures really holds the ECR and SSM actions`() {
+        val policies =
+            com.rustyrazorblade.easydblab.providers.aws.AWSPolicy.UserIAM
+                .loadAll("123456789012")
+                .associate { it.name to it.body }
+        val ecrHolders = policies.filterValues { "\"ecr:GetAuthorizationToken\"" in it }.keys
+        val ssmHolders = policies.filterValues { "\"ssm:StartSession\"" in it }.keys
+
+        assertThat(ecrHolders).hasSize(1)
+        assertThat(ssmHolders).isEqualTo(ecrHolders)
+        for (builder in listOf(EcrException.builder(), SsmException.builder())) {
+            val remedy = handler.describe(awsError(builder, "AccessDenied", 403))!!.remedy
+            assertThat(remedy).contains("show-iam-policies ${ecrHolders.single()}")
+        }
+    }
+
+    @Test
     fun `the permission remedy does not assert the cause, since a 403 can be a bucket policy, an SCP or a KMS denial`() {
         val remedy = handler.describe(awsError(S3Exception.builder(), "AccessDenied", 403))!!.remedy
 

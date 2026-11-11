@@ -240,6 +240,7 @@ Commands should delegate to these services:
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |
 | `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, the instance role's inline policies (`S3Access` + `SessionManagerInstance`, via `AWSResourceSetupService` and `InstanceRolePolicies`) and the bucket policy |
+| `LaunchCapacityPreflight` (`services/aws/`) | The checks `up` runs right after discovery and before its first RunInstances, for the instances still to launch only: zone count, zone offerings, the On-Demand standard vCPU quota, the network interface quota and free subnet addresses (`verifyCapacity`), and once the subnets and security group exist a RunInstances dry run per server type (`verifyLaunchPermitted`). Facts come from `AccountCapacity` (`Ec2AccountCapacity`: EC2 and Service Quotas) |
 | `ProvisioningPreflight` | The checks `up` runs before provisioning: a control node, a well-formed telemetry redirect, a connected local Tailscale client on a Tailscale cluster, and the AWS CLI plus Session Manager plugin (`LocalSsmTooling`) when the profile's SSH transport is `ssm` |
 | `CompactorLeaseReader` | The account compactor's lease (`services.aws`), for `observability compactor status`: holder, sequence, renewal time and age, read in the bucket's region |
 | `TeardownBackupService` | The pre-teardown save `down` runs once, never retried (`TeardownFlushService`: Phase A mirror and collector stop, Phase B flushes, Tempo drain, profiles report and annotations backup in parallel; each flush only flushes and waits, no verify checks); records logs and metrics in `ClusterState.tailFlush` the moment each succeeds, through one writer, and a save of every signal as complete (`saveCompletedAt`), which a re-run of `down` skips whole; `unsavedSignals(state)` is what `down --force` lists before the prompt |
@@ -267,6 +268,11 @@ to report, not by convenience:
 
 Results are keyed by position, never by alias — two hosts sharing an alias would otherwise
 misattribute each other's failure.
+
+With `parallel = true` both run on at most `Constants.Scale.HOST_CONCURRENCY` (50) hosts at once,
+through `services/BoundedParallel`; at 1,000 nodes one thread per host would open 1,000 SSH
+sessions from the operator's machine. K3s agent setup and the Cilium node image check use the
+same pool. Per-node work that `up` runs (db setup, AxonOps, registry TLS) is parallel.
 
 ## Invoking AMI-Baked Scripts At Runtime
 

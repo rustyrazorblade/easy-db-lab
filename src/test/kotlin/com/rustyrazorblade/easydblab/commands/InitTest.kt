@@ -174,6 +174,17 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `execute fails with a CIDR inside the K3s pod range, naming the range`() {
+            val command = Init()
+            command.clean = true
+            command.cidr = "10.230.0.0/16"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining(Constants.K3s.CLUSTER_CIDR)
+        }
+
+        @Test
         fun `execute fails with more than eight availability zones`() {
             val command = Init()
             command.clean = true

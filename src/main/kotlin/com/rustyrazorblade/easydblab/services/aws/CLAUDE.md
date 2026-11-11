@@ -14,7 +14,11 @@ services/aws/
 ├── EC2SecurityGroupService.kt # Security groups: find/create, authorize, exact revoke, revoke-all, describe, delete (implements SecurityGroupOperations)
 ├── Ec2TagSpecification.kt     # The tag specification both EC2 services put on what they create
 ├── SshIngressService.kt       # SSH ingress for ingress allow / revoke: IngressResult, AllowOutcome, RevokeOutcome
-├── EC2InstanceService.kt      # Instance lifecycle management
+├── EC2InstanceService.kt      # Instance lifecycle: per-subnet batched RunInstances (chunks of 100, client token, throttle retry), Name tags, waits in batches of 100, paginated discovery
+├── RunInstancesRequests.kt    # The RunInstances request, shared by the launch and its dry run
+├── AccountCapacity.kt         # The account facts the pre-launch checks read (port), LaunchDryRun, InstanceFamily
+├── Ec2AccountCapacity.kt      # AccountCapacity from EC2 and Service Quotas
+├── LaunchCapacityPreflight.kt # The pre-launch capacity checks and the launch dry run, for the new instances only
 ├── AMIService.kt              # AMI lifecycle: CRUD, pruning, validation (implements AMIValidator)
 ├── AMIValidationService.kt    # AMI validation types and exceptions
 ├── AMIResolver.kt             # AMI resolution interface and implementations

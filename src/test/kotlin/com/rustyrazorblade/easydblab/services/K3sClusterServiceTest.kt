@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -15,6 +16,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Tests for K3sClusterService.
@@ -140,13 +142,13 @@ class K3sClusterServiceTest {
                 any(),
                 eq("https://10.0.1.1:6443"),
                 eq("test-token-12345"),
-                eq(mapOf("type" to "db", "node-ordinal" to "0")),
+                eq(mapOf(Constants.NODE_TYPE_LABEL to "db", Constants.NODE_ORDINAL_LABEL to "0")),
             )
         }
 
         @Test
         fun `should configure and start agents on Stress nodes`() {
-            val stressHost = createClusterHost("stress0", "10.0.0.2")
+            val stressHost = createClusterHost("app0", "10.0.0.2")
             val config =
                 createConfig(
                     workerHosts =
@@ -160,12 +162,12 @@ class K3sClusterServiceTest {
             val result = service.setupCluster(config)
 
             assertThat(result.agentResults).hasSize(1)
-            assertThat(result.agentResults["stress0"]?.success).isTrue()
+            assertThat(result.agentResults["app0"]?.success).isTrue()
             verify(k3sAgentService).configure(
                 any(),
                 eq("https://10.0.1.1:6443"),
                 eq("test-token-12345"),
-                eq(mapOf("type" to "app")),
+                eq(mapOf(Constants.NODE_TYPE_LABEL to "app", Constants.NODE_ORDINAL_LABEL to "0")),
             )
         }
 
@@ -197,6 +199,34 @@ class K3sClusterServiceTest {
             assertThat(result.agentResults["db0"]?.success).isTrue()
             assertThat(result.agentResults["db1"]?.success).isTrue()
             assertThat(result.agentResults["stress0"]?.success).isTrue()
+        }
+
+        /** At 1,000 nodes one thread per agent is 1,000 SSH sessions at once; the pool caps it. */
+        @Test
+        fun `never configures more agents at once than the concurrency cap`() {
+            val capped =
+                DefaultK3sClusterService(
+                    k3sService = k3sService,
+                    k3sAgentService = k3sAgentService,
+                    parallel = BoundedParallel(maxConcurrency = 2),
+                )
+            val hosts = (0 until 8).map { createClusterHost("db$it", "10.0.0.$it") }
+            setupSuccessfulServerStart()
+            val running = AtomicInteger()
+            val peak = AtomicInteger()
+            whenever(k3sAgentService.configure(any(), any(), any(), any())).thenAnswer {
+                peak.accumulateAndGet(running.incrementAndGet(), ::maxOf)
+                Thread.sleep(SLOW_AGENT_MS)
+                running.decrementAndGet()
+                Result.success(Unit)
+            }
+            whenever(k3sAgentService.start(any())).thenReturn(Result.success(Unit))
+
+            val result = capped.setupCluster(createConfig(workerHosts = mapOf(ServerType.Cassandra to hosts)))
+
+            assertThat(result.agentResults).hasSize(8)
+            assertThat(result.isSuccessful).isTrue()
+            assertThat(peak.get()).isEqualTo(2)
         }
 
         @Test
@@ -372,7 +402,7 @@ class K3sClusterServiceTest {
             val host = createClusterHost("db0", "10.0.0.1")
             val labels = service.getNodeLabels(ServerType.Cassandra, host)
 
-            assertThat(labels).isEqualTo(mapOf("type" to "db", "node-ordinal" to "0"))
+            assertThat(labels).isEqualTo(mapOf(Constants.NODE_TYPE_LABEL to "db", Constants.NODE_ORDINAL_LABEL to "0"))
         }
 
         @Test
@@ -382,11 +412,11 @@ class K3sClusterServiceTest {
             val host99 = createClusterHost("db99", "10.0.0.3")
 
             assertThat(service.getNodeLabels(ServerType.Cassandra, host1))
-                .isEqualTo(mapOf("type" to "db", "node-ordinal" to "1"))
+                .isEqualTo(mapOf(Constants.NODE_TYPE_LABEL to "db", Constants.NODE_ORDINAL_LABEL to "1"))
             assertThat(service.getNodeLabels(ServerType.Cassandra, host5))
-                .isEqualTo(mapOf("type" to "db", "node-ordinal" to "5"))
+                .isEqualTo(mapOf(Constants.NODE_TYPE_LABEL to "db", Constants.NODE_ORDINAL_LABEL to "5"))
             assertThat(service.getNodeLabels(ServerType.Cassandra, host99))
-                .isEqualTo(mapOf("type" to "db", "node-ordinal" to "99"))
+                .isEqualTo(mapOf(Constants.NODE_TYPE_LABEL to "db", Constants.NODE_ORDINAL_LABEL to "99"))
         }
 
         @Test
@@ -394,15 +424,15 @@ class K3sClusterServiceTest {
             val host = createClusterHost("invalid", "10.0.0.1")
             val labels = service.getNodeLabels(ServerType.Cassandra, host)
 
-            assertThat(labels).isEqualTo(mapOf("type" to "db", "node-ordinal" to "0"))
+            assertThat(labels).isEqualTo(mapOf(Constants.NODE_TYPE_LABEL to "db", Constants.NODE_ORDINAL_LABEL to "0"))
         }
 
         @Test
-        fun `should return stress labels for Stress type`() {
-            val host = createClusterHost("stress0", "10.0.0.2")
+        fun `should return app labels with the ordinal from the alias for Stress type`() {
+            val host = createClusterHost("app3", "10.0.0.2")
             val labels = service.getNodeLabels(ServerType.Stress, host)
 
-            assertThat(labels).isEqualTo(mapOf("type" to "app"))
+            assertThat(labels).isEqualTo(mapOf(Constants.NODE_TYPE_LABEL to "app", Constants.NODE_ORDINAL_LABEL to "3"))
         }
 
         @Test
@@ -458,4 +488,8 @@ class K3sClusterServiceTest {
             versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test-abc12345",
         )
+
+    private companion object {
+        const val SLOW_AGENT_MS = 30L
+    }
 }

@@ -387,7 +387,12 @@ class Init : PicoBaseCommand() {
         require(ebsSize > 0) { "EBS size must be positive" }
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
-        cidr?.let { CidrBlock(it) }
+        cidr?.let { CidrBlock(it) }?.let { block ->
+            require(!block.overlapsK3sRanges()) {
+                "CIDR $block overlaps K3s's pod range ${Constants.K3s.CLUSTER_CIDR} or service range " +
+                    "${Constants.K3s.SERVICE_CIDR}; node and pod addresses would collide. Pick another block."
+            }
+        }
         require(azs.size <= Constants.Vpc.MAX_AVAILABILITY_ZONES) {
             "A cluster can use at most ${Constants.Vpc.MAX_AVAILABILITY_ZONES} availability zones, " +
                 "because the VPC is split into ${Constants.Vpc.MAX_AVAILABILITY_ZONES} subnets; got ${azs.size}: " +

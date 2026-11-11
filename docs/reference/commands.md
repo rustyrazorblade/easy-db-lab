@@ -163,7 +163,13 @@ easy-db-lab up [options]
 
 Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Deploys the [account compactor](../user-guide/compactor.md) pod with the observability stack.
 
-`up` fails fast. If any provisioning step fails — EC2 setup, K3s, node labeling, the
+Before it launches any instance, `up` checks that the account can hold the new instances: the
+availability zone count, each instance type's zone offerings, the On-Demand standard vCPU quota,
+the network interface quota, the free subnet addresses, and a `RunInstances` dry run of each
+node type. Only the instances still to launch are counted. See
+[Large Clusters](../user-guide/large-clusters.md).
+
+`up` fails fast. If any provisioning step fails — EC2 setup, K3s, node registration, the
 `local-storage`/`local-storage-wfc` StorageClasses, the observability stack, Tailscale, and so
 on — the command exits non-zero and stops rather than continuing with a partially-provisioned
 cluster. EC2 instances that were already launched are left running; there is no automatic
@@ -186,6 +192,7 @@ easy-db-lab down [vpc-id] [options]
 | `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
+| `--dry-run` | Preview the resources that would be deleted and change nothing: the cluster state, the SOCKS tunnel and the Tailscale device are left as they are, and the command exits 0 |
 
 **Save before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The save stops Loki, Mimir and the OTel collector, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops nothing. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. The save has two phases.
 

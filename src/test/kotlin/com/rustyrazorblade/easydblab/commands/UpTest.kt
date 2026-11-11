@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
@@ -15,13 +16,16 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
+import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.SsmTool
 import com.rustyrazorblade.easydblab.services.SsmToolFault
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
@@ -48,6 +52,9 @@ import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 import java.io.IOException
 import java.time.Instant
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Tests for [Up], the command that provisions and configures the complete cluster.
@@ -69,10 +76,29 @@ class UpTest : UpTestFixture() {
 
         verify(mockClusterProvisioningService).provisionAll(any(), any(), any(), any())
         verify(mockK8sService).labelNode(eq(testControlHost), eq("control0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("db0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
         verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
         verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
+    }
+
+    /**
+     * At 1,000 nodes one-at-a-time registry TLS is 1,000 SSH round trips. The latch opens only once
+     * every node is inside its TLS step together, so a serial loop times out on it.
+     */
+    @Test
+    fun `up configures registry TLS on every node in parallel`() {
+        val registry = getKoin().get<RegistryService>()
+        val allInside = CountDownLatch(happyHosts().values.flatten().size)
+        val configured = Collections.synchronizedList(mutableListOf<String>())
+        whenever(registry.configureTlsOnNode(any(), any(), any())).thenAnswer { invocation ->
+            allInside.countDown()
+            check(allInside.await(OVERLAP_WAIT_SECONDS, TimeUnit.SECONDS)) { "registry TLS ran one node at a time" }
+            configured.add(invocation.getArgument<Host>(0).alias)
+            Unit
+        }
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(configured).containsExactlyInAnyOrder("control0", "db0", "app0")
     }
 
     /** Every `up` re-applies the bucket policy's delete deny, even on a bucket it configured before. */
@@ -163,8 +189,43 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(outputHandler.errors).isEmpty()
-        verify(mockK8sService, never()).labelNode(any(), eq("db0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
+        verify(mockK8sService).waitForNodesRegistered(eq(testControlHost), eq(listOf("control0", "app0")), any())
+    }
+
+    /**
+     * The instances `up` keeps and the ones it launches must come from one look at EC2: two looks
+     * can disagree (an instance leaves pending between them), and then the count to launch and
+     * the hosts kept in state do not match. Here the second look would see db0 gone.
+     */
+    @Test
+    fun `up discovers the existing instances once and launches only what is missing`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 3))
+        val db0 =
+            DiscoveredInstance(
+                instanceId = "i-db0",
+                publicIp = "54.1.1.2",
+                privateIp = "10.0.0.2",
+                alias = "db0",
+                availabilityZone = "us-west-2a",
+                serverType = ServerType.Cassandra,
+                state = "running",
+            )
+        whenever(mockEc2InstanceService.findInstancesByClusterId(any()))
+            .thenReturn(mapOf(ServerType.Cassandra to listOf(db0)))
+            .thenReturn(emptyMap())
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        verify(mockEc2InstanceService, times(1)).findInstancesByClusterId(any())
+        val config = argumentCaptor<InstanceProvisioningConfig>()
+        val existing = argumentCaptor<Map<ServerType, List<ClusterHost>>>()
+        verify(mockClusterProvisioningService).provisionAll(config.capture(), any(), existing.capture(), any())
+        assertThat(
+            config.firstValue.specs
+                .single { it.serverType == ServerType.Cassandra }
+                .neededCount,
+        ).isEqualTo(2)
+        assertThat(existing.firstValue[ServerType.Cassandra]?.map { it.alias }).containsExactly("db0")
     }
 
     @Test
@@ -311,32 +372,33 @@ class UpTest : UpTestFixture() {
             .hasMessageContaining("k8s api unreachable")
 
         verify(mockK8sService, times(1)).labelNode(any(), any(), any())
-        assertThat(outputHandler.messages).doesNotContain("Node labeling complete")
+    }
+
+    /**
+     * db and app nodes are labeled by their K3s agents when they register, so `up` waits for every
+     * node to register (one bounded wait, not a label call per node) before anything schedules on
+     * them. Every node in state is expected, the control node included.
+     */
+    @Test
+    fun `up waits for every node to register with K3s before the storage classes`() {
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        val order = inOrder(mockK8sService)
+        order.verify(mockK8sService).waitForNodesRegistered(eq(testControlHost), eq(listOf("control0", "db0", "app0")), any())
+        order.verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
+        verify(mockK8sService, never()).labelNode(any(), eq("db0"), any())
     }
 
     @Test
-    fun `up aborts when labeling a db node fails and never emits NodeLabelingComplete`() {
-        whenever(mockK8sService.labelNode(eq(testControlHost), eq("db0"), any()))
-            .thenReturn(Result.failure(RuntimeException("db label failed")))
+    fun `up aborts when a node never registers with K3s`() {
+        whenever(mockK8sService.waitForNodesRegistered(any(), any(), any()))
+            .thenReturn(Result.failure(IllegalStateException("1 node(s) did not register: db0")))
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
-            .hasMessageContaining("db label failed")
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("db0")
 
-        assertThat(outputHandler.messages.count { it == "Node labeling complete" }).isZero()
-    }
-
-    @Test
-    fun `up aborts when labeling an app node fails after db labeling already succeeded`() {
-        whenever(mockK8sService.labelNode(eq(testControlHost), eq("app0"), any()))
-            .thenReturn(Result.failure(RuntimeException("app label failed")))
-
-        assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
-            .hasMessageContaining("app label failed")
-
-        // db's completion event fired before the app loop started and failed; app's never did.
-        assertThat(outputHandler.messages.count { it == "Node labeling complete" }).isEqualTo(1)
+        verify(mockK8sService, never()).ensureLocalStorageClass(any())
     }
 
     /** A role made by an older version must carry the Session Manager policy before any node launches under it. */
@@ -831,4 +893,8 @@ class UpTest : UpTestFixture() {
     }
 
     private fun ssmUser(): User = getKoin().get<User>().copy(sshTransport = SshTransport.Ssm)
+
+    private companion object {
+        const val OVERLAP_WAIT_SECONDS = 5L
+    }
 }

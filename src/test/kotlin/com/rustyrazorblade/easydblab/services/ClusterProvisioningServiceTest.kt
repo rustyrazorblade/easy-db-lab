@@ -93,6 +93,67 @@ class ClusterProvisioningServiceTest {
             assertThat(createdHosts).hasSize(3)
         }
 
+        /**
+         * A 1,000-node `up` that fails in the running wait, the status check or the IP refresh must
+         * still leave every launched instance in state, or the next `up` cannot see them and `down`
+         * cannot name them. Each host reaches the callback as soon as RunInstances returns it.
+         */
+        @Test
+        fun `launched hosts reach the callback before the waits, so a failed wait leaves them in state`() {
+            val spec =
+                InstanceSpec(
+                    serverType = ServerType.Cassandra,
+                    configuredCount = 2,
+                    existingCount = 0,
+                    instanceType = "m5.large",
+                    ebsConfig = null,
+                    amiId = "ami-12345",
+                )
+            setupMockInstanceCreation()
+            whenever(ec2InstanceService.waitForInstanceStatusOk(any(), any())).thenThrow(IllegalStateException("status check timed out"))
+
+            val reported = mutableListOf<ClusterHost>()
+            val result =
+                service.provisionInstances(
+                    createInstanceConfig(specs = listOf(spec)),
+                    emptyMap(),
+                ) { _, hosts -> reported += hosts }
+
+            assertThat(result.errors["Cassandra instances"]?.message).isEqualTo("status check timed out")
+            assertThat(reported.map { it.instanceId to it.privateIp })
+                .containsExactly("i-cassandra0" to "10.0.0.0", "i-cassandra1" to "10.0.0.1")
+            assertThat(result.hosts[ServerType.Cassandra]?.map { it.instanceId }).containsExactly("i-cassandra0", "i-cassandra1")
+        }
+
+        /** After the waits each host is reported again with the public IP AWS assigned it. */
+        @Test
+        fun `the final IPs are reported for the same hosts once the instances are running`() {
+            val spec =
+                InstanceSpec(
+                    serverType = ServerType.Cassandra,
+                    configuredCount = 1,
+                    existingCount = 0,
+                    instanceType = "m5.large",
+                    ebsConfig = null,
+                    amiId = "ami-12345",
+                )
+            setupMockInstanceCreation()
+            whenever(ec2InstanceService.updateInstanceIps(any<List<CreatedInstance>>())).thenAnswer { invocation ->
+                invocation.getArgument<List<CreatedInstance>>(0).map { it.copy(publicIp = "54.9.9.9") }
+            }
+
+            val reported = mutableListOf<List<ClusterHost>>()
+            val result =
+                service.provisionInstances(
+                    createInstanceConfig(specs = listOf(spec)),
+                    emptyMap(),
+                ) { _, hosts -> reported += hosts }
+
+            assertThat(reported.map { batch -> batch.map { it.alias to it.publicIp } })
+                .containsExactly(listOf("c0" to ""), listOf("c0" to "54.9.9.9"))
+            assertThat(result.hosts[ServerType.Cassandra]?.map { it.publicIp }).containsExactly("54.9.9.9")
+        }
+
         @Test
         fun `should skip specs with zero or negative neededCount`() {
             val spec =
@@ -118,7 +179,7 @@ class ClusterProvisioningServiceTest {
 
             val result = service.provisionInstances(config, existingHosts) { _, _ -> }
 
-            verify(ec2InstanceService, never()).createInstances(any())
+            verify(ec2InstanceService, never()).createInstances(any(), any())
             assertThat(result.hosts[ServerType.Cassandra]).hasSize(3)
         }
 
@@ -168,7 +229,7 @@ class ClusterProvisioningServiceTest {
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
-            whenever(ec2InstanceService.createInstances(any()))
+            whenever(ec2InstanceService.createInstances(any(), any()))
                 .thenThrow(RuntimeException("Instance creation failed"))
 
             val result = service.provisionInstances(config, emptyMap()) { _, _ -> }
@@ -239,7 +300,7 @@ class ClusterProvisioningServiceTest {
             service.provisionInstances(config, emptyMap()) { _, _ -> }
 
             val captor = argumentCaptor<InstanceCreationConfig>()
-            verify(ec2InstanceService, times(2)).createInstances(captor.capture())
+            verify(ec2InstanceService, times(2)).createInstances(captor.capture(), any())
             val amiIdByType = captor.allValues.associate { it.serverType to it.amiId }
             assertThat(amiIdByType[ServerType.Cassandra]).isEqualTo("ami-aaaa")
             assertThat(amiIdByType[ServerType.Stress]).isEqualTo("ami-bbbb")
@@ -475,9 +536,13 @@ class ClusterProvisioningServiceTest {
     // Helper methods
 
     private fun setupMockInstanceCreation() {
-        whenever(ec2InstanceService.createInstances(any())).thenAnswer { invocation ->
+        whenever(ec2InstanceService.createInstances(any(), any())).thenAnswer { invocation ->
             val config = invocation.getArgument<InstanceCreationConfig>(0)
-            createInstances(config.serverType, config.count)
+            val onLaunched = invocation.getArgument<(List<CreatedInstance>) -> Unit>(1)
+            // As RunInstances returns them: no public IP yet.
+            createInstances(config.serverType, config.count).also { launched ->
+                onLaunched(launched.map { it.copy(publicIp = "") })
+            }
         }
         whenever(ec2InstanceService.waitForInstancesRunning(any(), any())).thenReturn(emptyList())
         whenever(ec2InstanceService.waitForInstanceStatusOk(any(), any())).then { }

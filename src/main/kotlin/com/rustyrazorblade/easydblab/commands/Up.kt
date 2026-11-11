@@ -48,10 +48,15 @@ import com.rustyrazorblade.easydblab.services.SshReadinessWait
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.CapacityPlan
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
+import com.rustyrazorblade.easydblab.services.aws.LaunchGroup
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.launches
+import com.rustyrazorblade.easydblab.services.mergeByAlias
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import org.koin.core.component.inject
@@ -119,6 +124,7 @@ class Up(
     private val commandExecutor: CommandExecutor by inject()
     private val externalIpService: ExternalIpService by inject()
     private val provisioningPreflight: ProvisioningPreflight by inject()
+    private val launchCapacityPreflight: LaunchCapacityPreflight by inject()
     private val testDocumentService: TestDocumentService by inject()
     private val tcpReachabilityProbe: TcpReachabilityProbe by inject()
 
@@ -312,6 +318,10 @@ class Up(
     private fun provisionInfrastructure(initConfig: InitConfig) {
         eventBus.emit(Event.Provision.InfrastructureStarting)
 
+        // One look at EC2: the hosts kept, the capacity checked and the count launched must agree.
+        val existingInstances = discoverExistingInstances()
+        launchCapacityPreflight.verifyCapacity(capacityPlan(initConfig, existingInstances))
+
         val (vpcId, resolvedCidr) = resolveVpc(initConfig)
         val vpcInfra = setupVpcNetworking(initConfig, vpcId, resolvedCidr)
         val subnetIds = vpcInfra.subnetIds
@@ -324,9 +334,11 @@ class Up(
                 "ClusterId" to workingState.clusterId,
             ) + initConfig.tags
 
-        val existingHosts = discoverExistingHosts()
-        val instanceConfig = buildInstanceConfig(initConfig, securityGroupId, subnetIds, baseTags)
+        val existingHosts = existingInstances.mapValues { (_, instances) -> instances.map { it.toClusterHost() } }
+        val instanceConfig = buildInstanceConfig(initConfig, securityGroupId, subnetIds, baseTags, existingInstances)
         val servicesConfig = buildServicesConfig(initConfig, subnetIds, securityGroupId, baseTags)
+        // The subnets and the security group exist now: ask AWS whether it would run each launch.
+        launchCapacityPreflight.verifyLaunchPermitted(instanceConfig.launches())
 
         if (initConfig.opensearchEnabled) {
             openSearchService.ensureServiceLinkedRole()
@@ -354,6 +366,40 @@ class Up(
         )
     }
 
+    /**
+     * What the capacity checks need: each server type's instances still to launch, numbered on
+     * from the ones [existingInstances] found, and where they land. Without a VPC yet the
+     * subnets are sized from the CIDR `up` will use; an auto-selected block is always a /16.
+     */
+    private fun capacityPlan(
+        initConfig: InitConfig,
+        existingInstances: Map<ServerType, List<DiscoveredInstance>>,
+    ): CapacityPlan {
+        fun group(
+            serverType: ServerType,
+            instanceType: String,
+            configured: Int,
+        ): LaunchGroup {
+            val existing = existingInstances[serverType].orEmpty().size
+            return LaunchGroup(serverType, instanceType, (configured - existing).coerceAtLeast(0), existing)
+        }
+        return CapacityPlan(
+            groups =
+                listOf(
+                    group(ServerType.Cassandra, initConfig.instanceType, initConfig.cassandraInstances),
+                    group(ServerType.Stress, initConfig.stressInstanceType, initConfig.stressInstances),
+                    group(ServerType.Control, initConfig.controlInstanceType, initConfig.controlInstances),
+                ),
+            region = initConfig.region,
+            zones = availabilityZones(initConfig),
+            cni = initConfig.cni,
+            existingVpcId = workingState.vpcId,
+            vpcCidr = CidrBlock(initConfig.cidr ?: Constants.Vpc.DEFAULT_CIDR),
+        )
+    }
+
+    private fun availabilityZones(initConfig: InitConfig): List<String> = initConfig.azs.ifEmpty { listOf("a", "b", "c") }
+
     private fun setupVpcNetworking(
         initConfig: InitConfig,
         vpcId: String,
@@ -364,28 +410,23 @@ class Up(
             clusterName = initConfig.name,
             clusterId = workingState.clusterId,
             region = initConfig.region,
-            availabilityZones = initConfig.azs.ifEmpty { listOf("a", "b", "c") },
+            availabilityZones = availabilityZones(initConfig),
             isOpen = initConfig.open,
             tags = initConfig.tags,
             vpcCidr = resolvedCidr,
         ),
     ) { externalIpService.getExternalIpAddress() }
 
-    private fun discoverExistingHosts(): Map<ServerType, List<ClusterHost>> {
-        val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)
-        logExistingInstances(existingInstances)
-        return existingInstances.mapValues { (_, instances) ->
-            instances.map { it.toClusterHost() }
-        }
-    }
+    private fun discoverExistingInstances(): Map<ServerType, List<DiscoveredInstance>> =
+        ec2InstanceService.findInstancesByClusterId(workingState.clusterId).also(::logExistingInstances)
 
     private fun buildInstanceConfig(
         initConfig: InitConfig,
         securityGroupId: String,
         subnetIds: List<String>,
         baseTags: Map<String, String>,
+        existingInstances: Map<ServerType, List<DiscoveredInstance>>,
     ): InstanceProvisioningConfig {
-        val existingInstances = ec2InstanceService.findInstancesByClusterId(workingState.clusterId)
         // One DescribeInstanceTypes query reports both instance-store presence and supported
         // architectures; take instance-store from it rather than a second per-type API call.
         val dbCapabilities = ec2InstanceService.describeInstanceType(initConfig.instanceType)
@@ -498,10 +539,12 @@ class Up(
         existingHosts = existingHosts,
         callbacks =
             ProvisioningCallbacks(
+                // Called once per RunInstances batch as it launches and again with the final IPs, so
+                // state holds every launched instance even when a later step of `up` fails.
                 onHostsCreated = { serverType, hosts ->
                     synchronized(stateLock) {
                         val allHosts = workingState.hosts.toMutableMap()
-                        allHosts[serverType] = (allHosts[serverType] ?: emptyList()) + hosts
+                        allHosts[serverType] = mergeByAlias(allHosts[serverType], hosts)
                         workingState.updateHosts(allHosts)
                         clusterStateManager.save(workingState)
                     }
@@ -797,8 +840,8 @@ class Up(
             error("K3s cluster setup failed: " + result.errors.keys.joinToString(", "))
         }
 
-        // Label db and app nodes with ordinals for StatefulSet pod-to-node pinning
-        labelNodesWithOrdinals(controlHosts.first())
+        // db and app nodes label themselves through their agent config; wait for all to register.
+        labelControlAndAwaitNodes(controlHosts.first())
 
         // Ensure StorageClasses exist for Local PVs
         k8sService.ensureLocalStorageClass(controlHosts.first()).getOrThrow()
@@ -845,42 +888,27 @@ class Up(
     }
 
     /**
-     * Labels db and app nodes with ordinal values for StatefulSet pod-to-node pinning,
-     * and labels the control node with type=control for the OTel k8s_attributes processor.
+     * Labels the control node with type=control for the OTel k8s_attributes processor, then waits
+     * until every node in state is registered with K3s.
      *
-     * This enables workloads (ClickHouse, Presto, etc.) to guarantee that pod X runs on node X
-     * by using Local PersistentVolumes with node affinity.
+     * db and app nodes carry their `type` and ordinal labels from the moment they register: each
+     * K3s agent passes them as `node-label` in its config ([K3sClusterService.getNodeLabels]). So
+     * there is no per-node label call, and the wait is what guarantees that every node, and with it
+     * every label StatefulSet pod-to-node pinning needs, exists before anything is scheduled.
      */
-    private fun labelNodesWithOrdinals(controlHost: ClusterHost) {
-        // Label control node with type=control (db and app nodes get this via K3s agent config)
+    private fun labelControlAndAwaitNodes(controlHost: ClusterHost) {
         k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrThrow()
 
-        val dbHosts = workingState.hosts[ServerType.Cassandra] ?: emptyList()
-        val appHosts = workingState.hosts[ServerType.Stress] ?: emptyList()
-
-        // Zero db nodes is a legal configuration (e.g. Trino + OpenSearch) — this is a skip
-        // because there is nothing to do, not a failure, so it must never warn.
-        if (dbHosts.isEmpty()) {
-            log.debug { "No db nodes found, skipping db node labeling" }
-        } else {
-            eventBus.emit(Event.Provision.NodeLabeling(dbHosts.size))
-            dbHosts.forEachIndexed { index, host ->
-                k8sService
-                    .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
-                    .getOrThrow()
-            }
-            eventBus.emit(Event.Provision.NodeLabelingComplete)
-        }
-
-        if (appHosts.isNotEmpty()) {
-            eventBus.emit(Event.Provision.NodeLabeling(count = appHosts.size, nodeType = "app"))
-            appHosts.forEachIndexed { index, host ->
-                k8sService
-                    .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
-                    .getOrThrow()
-            }
-            eventBus.emit(Event.Provision.NodeLabelingComplete)
-        }
+        val expected =
+            listOf(ServerType.Control, ServerType.Cassandra, ServerType.Stress)
+                .flatMap { workingState.hosts[it].orEmpty() }
+                .map { it.alias }
+        val timeout =
+            Duration.ofSeconds(
+                Constants.Scale.NODE_REGISTRATION_BASE_SECONDS +
+                    Constants.Scale.NODE_REGISTRATION_PER_NODE_SECONDS * expected.size,
+            )
+        k8sService.waitForNodesRegistered(controlHost, expected, timeout).getOrThrow()
     }
 
     /**
@@ -900,13 +928,15 @@ class Up(
         // Generate cert on control node and upload to S3
         registryService.generateAndUploadCert(controlHost, s3Bucket)
 
-        // Configure containerd on ALL nodes to trust the registry
-        val allHosts =
-            (workingState.hosts[ServerType.Control] ?: emptyList()) +
-                (workingState.hosts[ServerType.Cassandra] ?: emptyList()) +
-                (workingState.hosts[ServerType.Stress] ?: emptyList())
-
-        allHosts.forEach { clusterHost ->
+        // Configure containerd on ALL nodes to trust the registry, in parallel on the bounded pool.
+        // Every node runs; every failure is reported together, and the first aborts `up`.
+        val allNodes =
+            mapOf(
+                ServerType.Control to
+                    listOf(ServerType.Control, ServerType.Cassandra, ServerType.Stress)
+                        .flatMap { workingState.hosts[it].orEmpty() },
+            )
+        hostOperationsService.withHosts(allNodes, ServerType.Control, parallel = true) { clusterHost ->
             registryService.configureTlsOnNode(clusterHost.toHost(), registryHost, s3Bucket)
         }
 

@@ -16,6 +16,9 @@ import java.time.Instant
 
 private val log = KotlinLogging.logger {}
 
+/** How many missing nodes a registration failure names before it summarizes the rest. */
+private const val MAX_NAMED = 20
+
 /**
  * Implementation of namespace-related K8s operations: observability status,
  * pod readiness, namespace deletion, resource deletion by label, and rollout restarts.
@@ -88,6 +91,43 @@ class DefaultK8sNamespaceOperations(
             }
 
             eventBus.emit(Event.K8s.PodsReady(namespace))
+        }
+
+    override fun waitForNodesRegistered(
+        controlHost: ClusterHost,
+        nodeNames: List<String>,
+        timeout: Duration,
+    ): Result<Unit> =
+        runCatching {
+            if (nodeNames.isEmpty()) return@runCatching
+            eventBus.emit(Event.K8s.NodesRegistering(nodeNames.size))
+            clientProvider.createClient(controlHost).use { client ->
+                // One list per poll for the whole cluster, not one GET per node; a deadline, not
+                // an attempt count, bounds the wait.
+                val missing =
+                    pollUntil(
+                        operationName = "node-registration",
+                        maxAttempts = Int.MAX_VALUE,
+                        interval = podPollInterval,
+                        deadline = Instant.now().plus(timeout),
+                        done = { it.isEmpty() },
+                    ) {
+                        val registered =
+                            client
+                                .nodes()
+                                .list()
+                                .items
+                                .mapNotNull { it.metadata?.name }
+                                .toSet()
+                        nodeNames.filterNot { it in registered }
+                    }
+                check(missing.isEmpty()) {
+                    "${missing.size} of ${nodeNames.size} node(s) did not register with K3s within " +
+                        "${timeout.toSeconds()}s: ${missing.take(MAX_NAMED).joinToString(", ")}" +
+                        if (missing.size > MAX_NAMED) " and ${missing.size - MAX_NAMED} more" else ""
+                }
+            }
+            eventBus.emit(Event.K8s.NodesRegistered(nodeNames.size))
         }
 
     override fun getNamespaceStatus(
@@ -307,77 +347,69 @@ class DefaultK8sNamespaceOperations(
         return (listOf(header) + lines).joinToString("\n")
     }
 
+    /**
+     * Waits until every pod in [namespace] that awaits readiness is Ready, with one pod list per
+     * poll and one deadline for the whole namespace, so the wait does not grow with the number of
+     * pods (a DaemonSet has one per node). A pod that reaches a failure state fails the wait at
+     * once; a pod that finished (a kit's Job pod) is not awaited.
+     */
     private fun waitForPodsInNamespace(
         client: KubernetesClient,
         namespace: String,
         timeoutSeconds: Int,
     ) {
-        val pods =
+        val initial =
             client
                 .pods()
                 .inNamespace(namespace)
                 .list()
-
-        if (pods.items.isEmpty()) {
+                .items
+        if (initial.isEmpty()) {
             log.warn { "No pods found in $namespace namespace" }
             return
         }
-
-        val (awaited, terminal) = pods.items.partition(K8sPodUtils::awaitsReadiness)
-        terminal.forEach { pod ->
+        initial.filterNot(K8sPodUtils::awaitsReadiness).forEach { pod ->
             log.info { "Skipping pod ${pod.metadata?.name}: finished in phase ${pod.status?.phase}" }
         }
-        val podNames = awaited.mapNotNull { it.metadata?.name }
-        log.info { "Waiting for ${podNames.size} pods: ${podNames.joinToString(", ")}" }
+        val awaited = initial.filter(K8sPodUtils::awaitsReadiness).mapNotNull { it.metadata?.name }.toSet()
+        log.info { "Waiting for ${awaited.size} pods: ${awaited.joinToString(", ")}" }
 
-        for (podName in podNames) {
-            val deadline = System.currentTimeMillis() + timeoutSeconds * Constants.Time.MILLIS_PER_SECOND
-            var lastLoggedState = ""
-
-            while (System.currentTimeMillis() < deadline) {
-                val pod =
+        var lastStates = emptyMap<String, String>()
+        val notReady =
+            pollUntil(
+                operationName = "pods-ready-$namespace",
+                maxAttempts = Int.MAX_VALUE,
+                interval = podPollInterval,
+                deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
+                done = { it.isEmpty() },
+            ) {
+                val pods =
                     client
                         .pods()
                         .inNamespace(namespace)
-                        .withName(podName)
-                        .get() ?: break
-
-                K8sPodUtils.checkForPodFailure(pod)
-
-                if (!K8sPodUtils.awaitsReadiness(pod)) {
-                    log.info { "Pod $podName finished in phase ${pod.status?.phase}" }
-                    break
+                        .list()
+                        .items
+                        .filter { it.metadata?.name in awaited }
+                pods.forEach(K8sPodUtils::checkForPodFailure)
+                val pending = pods.filter { K8sPodUtils.awaitsReadiness(it) && !isReady(it) }
+                val states = pending.associate { (it.metadata?.name ?: "unknown") to describePodState(it) }
+                states.filter { (name, state) -> lastStates[name] != state }.forEach { (name, state) ->
+                    log.info { "Pod $name: $state" }
                 }
-
-                val isReady =
-                    pod.status?.conditions?.any {
-                        it.type == "Ready" && it.status == "True"
-                    } == true
-
-                if (isReady) {
-                    log.info { "Pod $podName is ready" }
-                    break
-                }
-
-                val currentState = describePodState(pod)
-                if (currentState != lastLoggedState) {
-                    log.info { "Pod $podName: $currentState" }
-                    lastLoggedState = currentState
-                }
-
-                val remaining = (deadline - System.currentTimeMillis()) / Constants.Time.MILLIS_PER_SECOND
-                if (remaining <= 0) {
-                    logPvcStatus(client, namespace)
-                    error(
-                        "Timed out waiting for [$timeoutSeconds] seconds for pod $podName. " +
-                            "Last state: $currentState",
-                    )
-                }
-
-                Thread.sleep(podPollInterval.toMillis())
+                lastStates = states
+                states
             }
+
+        if (notReady.isNotEmpty()) {
+            logPvcStatus(client, namespace)
+            error(
+                "Timed out waiting for [$timeoutSeconds] seconds for ${notReady.size} pod(s): " +
+                    notReady.entries.joinToString("; ") { (name, state) -> "$name ($state)" },
+            )
         }
     }
+
+    private fun isReady(pod: Pod): Boolean = pod.status?.conditions?.any { it.type == "Ready" && it.status == "True" } == true
 
     private fun describePodState(pod: Pod): String {
         val phase = pod.status?.phase ?: "Unknown"

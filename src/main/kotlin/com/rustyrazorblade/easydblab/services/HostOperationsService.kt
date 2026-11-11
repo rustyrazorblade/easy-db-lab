@@ -1,10 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import org.koin.core.component.KoinComponent
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Outcome of running a per-host action against a single host.
@@ -29,9 +29,13 @@ data class HostResult<T>(
  *     remoteOperationsService.executeRemotely(host.toHost(), "nodetool status")
  * }
  * ```
+ *
+ * A parallel run uses at most [maxConcurrency] threads, so a 1,000-node cluster never opens one
+ * SSH session per node at once.
  */
 class HostOperationsService(
     private val clusterStateManager: ClusterStateManager,
+    private val maxConcurrency: Int = Constants.Scale.HOST_CONCURRENCY,
 ) : KoinComponent {
     /**
      * Executes an action on filtered hosts of a specific server type.
@@ -116,23 +120,11 @@ class HostOperationsService(
             return filteredHosts.map { HostResult(it, runCatching { action(it) }) }
         }
 
-        // Keyed by position, not alias: two hosts sharing an alias would silently overwrite
-        // each other's outcome and misattribute a failure.
-        val results = ConcurrentHashMap<Int, Result<T>>()
-        filteredHosts
-            .mapIndexed { index, host ->
-                kotlin.concurrent.thread(start = true, isDaemon = false) {
-                    results[index] = runCatching { action(host) }
-                }
-            }.forEach { it.join() }
-
-        return filteredHosts.mapIndexed { index, host ->
-            HostResult(
-                host,
-                results[index]
-                    ?: Result.failure(IllegalStateException("No result recorded for host ${host.alias}")),
-            )
-        }
+        // Results come back by position, not alias: two hosts sharing an alias would otherwise
+        // overwrite each other's outcome and misattribute a failure.
+        return BoundedParallel(maxConcurrency)
+            .map(filteredHosts, action)
+            .zip(filteredHosts) { result, host -> HostResult(host, result) }
     }
 
     /**

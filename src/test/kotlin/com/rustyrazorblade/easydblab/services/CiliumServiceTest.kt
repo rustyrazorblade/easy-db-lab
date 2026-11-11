@@ -334,6 +334,22 @@ class CiliumServiceTest : BaseKoinTest() {
         assertThat(flannel.single()).doesNotContain("--disable=")
     }
 
+    /**
+     * The pod and service ranges reach K3s on both CNI branches; without them K3s uses
+     * 10.42.0.0/16 with a /24 per node, which runs out at 256 nodes.
+     */
+    @Test
+    fun `start-k3s-server script passes the cluster and service CIDR to both CNI branches`() {
+        val scriptPath = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
+        val script =
+            javaClass.getResourceAsStream(scriptPath)?.bufferedReader()?.readText()
+                ?: error("start-k3s-server.sh not found on classpath at $scriptPath")
+
+        assertThat(script).contains("--cluster-cidr=*", "--service-cidr=*")
+        val execArgLines = script.lines().filter { it.trim().startsWith("K3S_EXEC_ARGS=") }
+        assertThat(execArgLines).hasSize(2).allMatch { it.contains("\$CIDR_ARGS") }
+    }
+
     @Test
     fun `installTailscaleMasquerade uploads the script to the control node and runs it with sudo`() {
         makeService().installTailscaleMasquerade(controlHost).getOrThrow()

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentInstaller
@@ -429,6 +430,37 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Flannel))
         service.deploy(controlNode).getOrThrow()
         assertThat(appliedOtelConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
+    }
+
+    /**
+     * The collector and node agents are DaemonSets that roll one pod per node, so a fixed deadline
+     * that fits 4 nodes times out at 1,000. Both waits get the base plus a per-node allowance.
+     */
+    @Test
+    fun `the rollout and readiness deadlines grow with the number of nodes`() {
+        val nodes =
+            (0 until 500).map {
+                ClusterHost(publicIp = "", privateIp = "10.0.$it.1", alias = "db$it", availabilityZone = "us-west-2a")
+            }
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
+                hosts = mapOf(ServerType.Control to listOf(controlNode), ServerType.Cassandra to nodes),
+            ),
+        )
+
+        service.deploy(controlNode).getOrThrow()
+
+        val expected =
+            Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS + Constants.Scale.ROLLOUT_PER_NODE_SECONDS.toInt() * 501
+        val rolloutTimeout = argumentCaptor<Int>()
+        val readyTimeout = argumentCaptor<Int>()
+        verify(mockK8sService).waitForRollouts(any(), any(), any(), rolloutTimeout.capture())
+        verify(mockK8sService).waitForPodsReady(any(), readyTimeout.capture())
+        assertThat(rolloutTimeout.firstValue).isEqualTo(expected)
+        assertThat(readyTimeout.firstValue).isEqualTo(expected)
     }
 
     @Test

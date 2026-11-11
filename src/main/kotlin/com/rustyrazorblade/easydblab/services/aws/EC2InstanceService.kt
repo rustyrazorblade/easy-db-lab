@@ -1,35 +1,33 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
-import com.rustyrazorblade.easydblab.providers.aws.EBSConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import com.rustyrazorblade.easydblab.providers.aws.withEc2InstanceRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.resilience4j.retry.Retry
+import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.services.ec2.Ec2Client
-import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping
+import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
+import software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
-import software.amazon.awssdk.services.ec2.model.EbsBlockDevice
 import software.amazon.awssdk.services.ec2.model.Filter
-import software.amazon.awssdk.services.ec2.model.HttpTokensState
-import software.amazon.awssdk.services.ec2.model.IamInstanceProfileSpecification
-import software.amazon.awssdk.services.ec2.model.InstanceMetadataOptionsRequest
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
-import software.amazon.awssdk.services.ec2.model.ResourceType
-import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
-import software.amazon.awssdk.services.ec2.model.Tag
-import software.amazon.awssdk.services.ec2.model.TagSpecification
-import software.amazon.awssdk.services.ec2.model.VolumeType
 import software.amazon.awssdk.services.ec2.waiters.Ec2Waiter
 import java.time.Duration
+import java.time.Instant
+import java.util.UUID
 
 /**
  * Capabilities of an EC2 instance type derived from a single `DescribeInstanceTypes` query.
@@ -57,6 +55,7 @@ class EC2InstanceService(
     private val eventBus: EventBus,
     private val region: String,
     private val pollInterval: Duration = Duration.ofMillis(POLL_INTERVAL_MS),
+    private val throttleBackoff: Duration = Duration.ofMillis(Constants.Scale.THROTTLE_BACKOFF_BASE_MS),
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -75,176 +74,138 @@ class EC2InstanceService(
          * so a larger page reduces the number of round-trips needed to reach the matching type.
          */
         const val INSTANCE_TYPES_PAGE_SIZE = 100
+
+        /** How many instance IDs a timeout names before it stops listing them. */
+        private const val MAX_NAMED_IDS = 20
     }
 
     /**
      * Creates EC2 instances for a cluster based on the provided configuration.
      *
-     * Instances are distributed across subnets in a round-robin fashion to ensure
-     * even distribution across availability zones.
+     * Instance index `startIndex + i` is named `<serverType><index>` and goes to subnet
+     * `index % subnets`, so the round-robin across availability zones continues where an earlier
+     * `up` left off. The instances of one subnet are launched together, in RunInstances calls of
+     * at most [Constants.Scale.RUN_INSTANCES_CHUNK], instead of one call per node; within a call
+     * the instance with launch index `k` takes the call's `k`-th alias. A call's instances carry
+     * the shared tags at launch, and each gets its own `Name` tag right after, in CreateTags
+     * batches.
+     *
+     * [onLaunched] is called for each call's instances as soon as that call returns them, before
+     * any later call is made, so an `up` that fails part-way has recorded every instance it
+     * launched.
      *
      * @param config Instance creation configuration
-     * @return List of created instances with their details
+     * @param onLaunched receives every batch of instances the moment they are launched
+     * @return List of created instances with their details, in index order
      */
-    fun createInstances(config: InstanceCreationConfig): List<CreatedInstance> {
+    fun createInstances(
+        config: InstanceCreationConfig,
+        onLaunched: (List<CreatedInstance>) -> Unit = {},
+    ): List<CreatedInstance> {
         log.info {
             "Creating ${config.count} ${config.serverType} instances of type ${config.instanceType}"
         }
         eventBus.emit(Event.Ec2.InstancesCreating(config.count, config.serverType.serverType))
 
-        val instances = mutableListOf<CreatedInstance>()
-
-        for (i in 0 until config.count) {
-            val instanceIndex = config.startIndex + i
-            // Round-robin subnet distribution across AZs (using instanceIndex for proper continuation)
-            val subnetId = config.subnetIds[instanceIndex % config.subnetIds.size]
-            val alias = "${config.serverType.serverType}$instanceIndex"
-
-            val instance = createSingleInstance(config, subnetId, alias)
-            instances.add(instance)
-
-            log.info { "Created instance ${instance.instanceId} ($alias) in subnet $subnetId" }
-        }
+        val instances =
+            launchPlan(config).flatMap { batch ->
+                launchBatch(config, batch).also { launched ->
+                    nameInstances(launched)
+                    onLaunched(launched)
+                }
+            }
 
         eventBus.emit(Event.Ec2.InstancesCreated(instances.size, config.serverType.serverType))
 
-        return instances
+        return instances.sortedBy { it.alias.removePrefix(config.serverType.serverType).toIntOrNull() ?: 0 }
     }
 
-    /**
-     * Creates a single EC2 instance.
-     */
-    private fun createSingleInstance(
-        config: InstanceCreationConfig,
-        subnetId: SubnetId,
-        alias: String,
-    ): CreatedInstance {
-        val tagSpecs = buildTagSpecifications(config, alias)
-        val blockDeviceMappings = buildBlockDeviceMappings(config.ebsConfig)
-
-        val requestBuilder =
-            RunInstancesRequest
-                .builder()
-                .imageId(config.amiId)
-                .instanceType(config.instanceType)
-                .minCount(1)
-                .maxCount(1)
-                .keyName(config.keyName)
-                .securityGroupIds(config.securityGroupId)
-                .subnetId(subnetId)
-                .iamInstanceProfile(
-                    IamInstanceProfileSpecification
-                        .builder()
-                        .name(config.iamInstanceProfile)
-                        .build(),
-                ).tagSpecifications(tagSpecs)
-
-        if (blockDeviceMappings.isNotEmpty()) {
-            requestBuilder.blockDeviceMappings(blockDeviceMappings)
-        }
-
-        // All node types need hop limit of 2 so containers (K3s pods) can access IMDS.
-        // In particular the non-hostNetwork cilium-operator pod may schedule on a db/app
-        // node and must reach IMDS to obtain credentials for ENI allocation.
-        requestBuilder.metadataOptions(
-            InstanceMetadataOptionsRequest
-                .builder()
-                .httpTokens(HttpTokensState.REQUIRED)
-                .httpPutResponseHopLimit(2)
-                .httpEndpoint("enabled")
-                .build(),
-        )
-
-        val request = requestBuilder.build()
-
-        val response = withAwsRetry("run-instance-$alias") { ec2Client.runInstances(request) }
-        val instance = response.instances().first()
-
-        return CreatedInstance(
-            instanceId = instance.instanceId(),
-            publicIp = instance.publicIpAddress() ?: "",
-            privateIp = instance.privateIpAddress() ?: "",
-            alias = alias,
-            availabilityZone = instance.placement().availabilityZone(),
-            serverType = config.serverType,
-        )
-    }
+    /** One RunInstances call: the subnet and the aliases, in launch-index order, it launches. */
+    private data class LaunchBatch(
+        val subnetId: SubnetId,
+        val aliases: List<String>,
+    )
 
     /**
-     * Builds the tag specifications for the instance and the volumes launched with it. The volumes
-     * carry the instance's tags, so YACE finds a cluster's EBS volumes by `ClusterId` as it finds
-     * its instances.
+     * Splits the new instances by subnet (index `i` to subnet `i % subnets`), in subnet order of
+     * first use, and each subnet's share into chunks of at most [Constants.Scale.RUN_INSTANCES_CHUNK].
      */
-    private fun buildTagSpecifications(
-        config: InstanceCreationConfig,
-        alias: String,
-    ): List<TagSpecification> {
-        val allTags =
-            config.tags +
-                mapOf(
-                    "Name" to alias,
-                    "Cluster" to config.clusterName,
-                    "ServerType" to config.serverType.serverType,
-                )
-
-        val tags =
-            allTags.map { (key, value) ->
-                Tag
-                    .builder()
-                    .key(key)
-                    .value(value)
-                    .build()
+    private fun launchPlan(config: InstanceCreationConfig): List<LaunchBatch> =
+        (config.startIndex until config.startIndex + config.count)
+            .groupBy { index -> config.subnetIds[index % config.subnetIds.size] }
+            .flatMap { (subnetId, indexes) ->
+                indexes
+                    .chunked(Constants.Scale.RUN_INSTANCES_CHUNK)
+                    .map { chunk -> LaunchBatch(subnetId, chunk.map { "${config.serverType.serverType}$it" }) }
             }
 
-        return listOf(ResourceType.INSTANCE, ResourceType.VOLUME).map { type ->
-            TagSpecification
-                .builder()
-                .resourceType(type)
-                .tags(tags)
-                .build()
-        }
+    /**
+     * Launches one [batch] with a single RunInstances call that asks for exactly its size. A call
+     * that EC2 throttles is retried with the same client token, so the retry cannot launch a
+     * second set.
+     */
+    private fun launchBatch(
+        config: InstanceCreationConfig,
+        batch: LaunchBatch,
+    ): List<CreatedInstance> {
+        val request =
+            RunInstancesRequests.build(config, batch.subnetId, batch.aliases.size, UUID.randomUUID().toString())
+        val response = withThrottleRetry("run-instances-${batch.aliases.first()}") { ec2Client.runInstances(request) }
+
+        return response
+            .instances()
+            .sortedBy { it.amiLaunchIndex() ?: 0 }
+            .zip(batch.aliases) { instance, alias ->
+                log.info { "Created instance ${instance.instanceId()} ($alias) in subnet ${batch.subnetId}" }
+                CreatedInstance(
+                    instanceId = instance.instanceId(),
+                    publicIp = instance.publicIpAddress() ?: "",
+                    privateIp = instance.privateIpAddress() ?: "",
+                    alias = alias,
+                    availabilityZone = instance.placement().availabilityZone(),
+                    serverType = config.serverType,
+                )
+            }
     }
 
     /**
-     * Builds block device mappings for EBS volumes.
+     * Gives each instance its own `Name` tag (its alias). A batched RunInstances carries one set
+     * of tags for all its instances, so the name is set after launch, one CreateTags call per
+     * instance, on the throttle retry. An instance EC2 does not see yet is retried the same way.
      */
-    private fun buildBlockDeviceMappings(ebsConfig: EBSConfig?): List<BlockDeviceMapping> {
-        if (ebsConfig == null) {
-            return emptyList()
+    private fun nameInstances(instances: List<CreatedInstance>) {
+        instances.forEach { instance ->
+            val request =
+                CreateTagsRequest
+                    .builder()
+                    .resources(instance.instanceId)
+                    .tags(RunInstancesRequests.tag("Name", instance.alias))
+                    .build()
+            withThrottleRetry("name-${instance.alias}") { ec2Client.createTags(request) }
         }
+    }
 
-        val ebsBuilder =
-            EbsBlockDevice
-                .builder()
-                .volumeSize(ebsConfig.volumeSize)
-                .volumeType(VolumeType.fromValue(ebsConfig.volumeType))
-                .deleteOnTermination(true)
-
-        // Add IOPS for gp3, io1, io2
-        if (ebsConfig.iops != null && ebsConfig.volumeType in listOf("gp3", "io1", "io2")) {
-            ebsBuilder.iops(ebsConfig.iops)
-        }
-
-        // Add throughput for gp3
-        if (ebsConfig.throughput != null && ebsConfig.volumeType == "gp3") {
-            ebsBuilder.throughput(ebsConfig.throughput)
-        }
-
-        return listOf(
-            BlockDeviceMapping
-                .builder()
-                .deviceName(ebsConfig.deviceName)
-                .ebs(ebsBuilder.build())
-                .build(),
-        )
+    private fun <T> withThrottleRetry(
+        operationName: String,
+        operation: () -> T,
+    ): T {
+        val retry = Retry.of(operationName, RetryUtil.createEc2ThrottleRetryConfig<T>(throttleBackoff))
+        return Retry.decorateSupplier(retry, operation).get()
     }
 
     /**
      * Waits for instances to reach the running state and have public IPs assigned.
      *
+     * Every requested instance must answer: one missing from a response is still waited for,
+     * never taken as done. Right after RunInstances EC2 may not know an ID yet
+     * (`InvalidInstanceID.NotFound`); that is waited out within [timeoutMs], not counted against a
+     * short retry budget. Each poll asks only about the instances not yet running, in requests of
+     * at most [Constants.Scale.DESCRIBE_INSTANCES_BATCH] IDs.
+     *
      * @param instanceIds List of instance IDs to wait for
      * @param timeoutMs Maximum time to wait in milliseconds
-     * @return Updated list of instances with their public IPs
+     * @return the details of every instance, in the order of [instanceIds]
+     * @throws IllegalStateException naming the instances that were not running in time
      */
     fun waitForInstancesRunning(
         instanceIds: List<InstanceId>,
@@ -257,34 +218,47 @@ class EC2InstanceService(
         log.info { "Waiting for ${instanceIds.size} instances to reach running state..." }
         eventBus.emit(Event.Ec2.InstancesStartWaiting)
 
-        val startTime = System.currentTimeMillis()
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val details = describeInstances(instanceIds)
-
-            val allRunningWithPublicIp =
-                details.all { instance ->
-                    instance.state == InstanceStateName.RUNNING.toString() &&
-                        !instance.publicIp.isNullOrEmpty()
+        val ready = mutableMapOf<InstanceId, InstanceDetails>()
+        val pending =
+            pollUntil(
+                operationName = "instances-running",
+                maxAttempts = Int.MAX_VALUE,
+                interval = pollInterval,
+                deadline = Instant.now().plusMillis(timeoutMs),
+                done = { it.isEmpty() },
+            ) {
+                val waiting = instanceIds.filterNot { it in ready }
+                waiting.chunked(Constants.Scale.DESCRIBE_INSTANCES_BATCH).forEach { batch ->
+                    describeTolerantly(batch)
+                        .filter { it.state == InstanceStateName.RUNNING.toString() && !it.publicIp.isNullOrEmpty() }
+                        .forEach { ready[it.instanceId] = it }
                 }
-
-            if (allRunningWithPublicIp) {
-                log.info { "All instances running with public IPs" }
-                eventBus.emit(Event.Ec2.InstancesRunning)
-                return details
+                instanceIds.filterNot { it in ready }
             }
 
-            val running = details.count { it.state == InstanceStateName.RUNNING.toString() }
-            val withPublicIp = details.count { !it.publicIp.isNullOrEmpty() }
-            log.debug {
-                "Waiting: $running/${details.size} running, $withPublicIp/${details.size} with public IP"
-            }
-
-            Thread.sleep(pollInterval.toMillis())
+        check(pending.isEmpty()) {
+            "Timeout waiting for instances to reach running state after ${timeoutMs}ms; " +
+                "${pending.size} not running with a public IP: ${pending.take(MAX_NAMED_IDS).joinToString(", ")}"
         }
 
-        error("Timeout waiting for instances to reach running state after ${timeoutMs}ms")
+        log.info { "All instances running with public IPs" }
+        eventBus.emit(Event.Ec2.InstancesRunning)
+        return instanceIds.map { ready.getValue(it) }
     }
+
+    /**
+     * Describes [ids], treating IDs EC2 does not know yet as not running rather than as an error:
+     * when the request fails with `InvalidInstanceID.NotFound`, nothing in it is reported this
+     * poll, and the next poll asks again.
+     */
+    private fun describeTolerantly(ids: List<InstanceId>): List<InstanceDetails> =
+        try {
+            describeBatch(ids)
+        } catch (e: AwsServiceException) {
+            if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_INSTANCE_NOT_FOUND) throw e
+            log.debug { "Some of ${ids.size} instances are not visible yet; will ask again" }
+            emptyList()
+        }
 
     /**
      * Waits for instance status checks to pass (both system and instance reachability).
@@ -317,14 +291,16 @@ class EC2InstanceService(
                     config.waitTimeout(Duration.ofMinutes(timeoutMinutes.toLong()))
                 }.build()
 
-        val request =
-            software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusRequest
-                .builder()
-                .instanceIds(instanceIds)
-                .build()
-
+        // DescribeInstanceStatus names at most 100 instance IDs per request.
         waiter.use { w ->
-            w.waitUntilInstanceStatusOk(request)
+            instanceIds.chunked(Constants.Scale.DESCRIBE_INSTANCE_STATUS_BATCH).forEach { batch ->
+                w.waitUntilInstanceStatusOk(
+                    DescribeInstanceStatusRequest
+                        .builder()
+                        .instanceIds(batch)
+                        .build(),
+                )
+            }
         }
 
         log.info { "Instance status checks passed for all ${instanceIds.size} instances" }
@@ -332,28 +308,25 @@ class EC2InstanceService(
     }
 
     /**
-     * Describes instances by their IDs.
+     * Describes instances by their IDs, in requests of at most
+     * [Constants.Scale.DESCRIBE_INSTANCES_BATCH] IDs.
      *
      * @param instanceIds List of instance IDs to describe
      * @return List of instance details
      */
-    fun describeInstances(instanceIds: List<InstanceId>): List<InstanceDetails> {
-        if (instanceIds.isEmpty()) {
-            return emptyList()
+    fun describeInstances(instanceIds: List<InstanceId>): List<InstanceDetails> =
+        instanceIds.chunked(Constants.Scale.DESCRIBE_INSTANCES_BATCH).flatMap { batch ->
+            withEc2InstanceRetry("describe-instances") { describeBatch(batch) }
         }
 
+    private fun describeBatch(instanceIds: List<InstanceId>): List<InstanceDetails> {
         val request =
             DescribeInstancesRequest
                 .builder()
                 .instanceIds(instanceIds)
                 .build()
 
-        val reservations =
-            withEc2InstanceRetry("describe-instances") {
-                ec2Client.describeInstances(request).reservations()
-            }
-
-        return reservations.flatMap { reservation ->
+        return ec2Client.describeInstances(request).reservations().flatMap { reservation ->
             reservation.instances().map { instance ->
                 InstanceDetails(
                     instanceId = instance.instanceId(),
@@ -450,13 +423,15 @@ class EC2InstanceService(
     }
 
     /**
-     * Finds all running instances belonging to a cluster by ClusterId tag.
+     * Finds all running and pending instances belonging to a cluster by ClusterId tag.
      *
-     * Used to discover existing infrastructure before creating new instances,
-     * enabling idempotent `up` operations and future cluster expansion.
+     * Used to discover existing infrastructure before creating new instances, enabling idempotent
+     * `up` operations and cluster expansion. A pending instance counts: it is one an interrupted
+     * `up` launched, and launching another in its place would duplicate its alias. Every page of
+     * the result is read; at 1,000 nodes the first page holds only part of the cluster.
      *
      * @param clusterId The ClusterId tag value (UUID)
-     * @return Map of ServerType to list of discovered instances (running only)
+     * @return Map of ServerType to list of discovered instances (running or pending)
      */
     fun findInstancesByClusterId(clusterId: String): Map<ServerType, List<DiscoveredInstance>> {
         log.info { "Discovering instances for cluster: $clusterId" }
@@ -473,13 +448,13 @@ class EC2InstanceService(
                     Filter
                         .builder()
                         .name("instance-state-name")
-                        .values(InstanceStateName.RUNNING.toString())
+                        .values(InstanceStateName.RUNNING.toString(), InstanceStateName.PENDING.toString())
                         .build(),
                 ).build()
 
         val reservations =
             withAwsRetry("describe-instances-by-cluster") {
-                ec2Client.describeInstances(request).reservations()
+                ec2Client.describeInstancesPaginator(request).reservations().toList()
             }
 
         val discoveredInstances =
@@ -518,7 +493,7 @@ class EC2InstanceService(
 
         val result = discoveredInstances.groupBy { it.serverType }
 
-        log.info { "Discovered ${discoveredInstances.size} running instances for cluster $clusterId" }
+        log.info { "Discovered ${discoveredInstances.size} running or pending instances for cluster $clusterId" }
         result.forEach { (serverType, instances) ->
             log.debug { "  $serverType: ${instances.size} instances" }
         }

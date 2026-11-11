@@ -8,6 +8,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Verifies host fan-out semantics, in particular that a failure inside a parallel per-host action
@@ -29,6 +30,29 @@ class HostOperationsServiceTest {
         mapOf(
             ServerType.Cassandra to listOf(host("db0"), host("db1"), host("db2")),
         )
+
+    /**
+     * At 1,000 nodes one thread per host is 1,000 concurrent SSH sessions from this machine; the
+     * pool keeps the fan-out at the cap and still runs every host.
+     */
+    @Test
+    fun `parallel withHosts never runs more hosts at once than the concurrency cap`() {
+        val capped = HostOperationsService(mock<ClusterStateManager>(), maxConcurrency = 3)
+        val many = mapOf(ServerType.Cassandra to (0 until 12).map { host("db$it") })
+        val running = AtomicInteger()
+        val peak = AtomicInteger()
+        val visited = ConcurrentLinkedQueue<String>()
+
+        capped.withHosts(many, ServerType.Cassandra, parallel = true) { clusterHost ->
+            peak.accumulateAndGet(running.incrementAndGet(), ::maxOf)
+            Thread.sleep(SLOW_ACTION_MS)
+            visited.add(clusterHost.alias)
+            running.decrementAndGet()
+        }
+
+        assertThat(visited).hasSize(12)
+        assertThat(peak.get()).isBetween(2, 3)
+    }
 
     @Test
     fun `parallel withHosts surfaces a per-host failure to the caller`() {
@@ -107,5 +131,9 @@ class HostOperationsServiceTest {
             }
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("serial boom")
+    }
+
+    private companion object {
+        const val SLOW_ACTION_MS = 30L
     }
 }

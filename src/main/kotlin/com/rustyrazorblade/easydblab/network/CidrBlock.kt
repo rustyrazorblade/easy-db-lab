@@ -75,10 +75,17 @@ value class CidrBlock(
         return "${formatAddress(networkAddressBits() + index * subnetSize)}/$subnetPrefix"
     }
 
-    private fun networkAddressBits(): Long =
-        networkAddress
-            .split('.')
-            .fold(0L) { acc, octet -> (acc shl BITS_PER_OCTET) or octet.toLong() }
+    /** How many addresses each of the VPC's subnets ([subnetCidr]) spans, AWS's reserved five included. */
+    fun subnetAddressCount(): Long = 1L shl (ADDRESS_BITS - prefixLength - SUBNET_PREFIX_DELTA)
+
+    private fun networkAddressBits(): Long = addressBits(networkAddress)
+
+    /**
+     * Whether this block shares any address with K3s's pod range ([Constants.K3s.CLUSTER_CIDR])
+     * or service range ([Constants.K3s.SERVICE_CIDR]). A VPC on either would put node IPs and
+     * pod or ClusterIP addresses in the same space.
+     */
+    fun overlapsK3sRanges(): Boolean = K3S_RANGES.any { overlaps(value, it) }
 
     override fun toString(): String = value
 
@@ -102,6 +109,7 @@ value class CidrBlock(
         private const val BITS_PER_OCTET = 8
         private const val OCTET_COUNT = 4
         private const val OCTET_MASK = 0xFFL
+        private const val ADDRESS_MASK = 0xFFFFFFFFL
 
         /** Maximum second octet value when scanning for available 10.X.0.0/16 blocks */
         private const val MAX_SECOND_OCTET = 254
@@ -111,7 +119,8 @@ value class CidrBlock(
          *
          * Picks uniformly among the second octets 0–254 that do not appear in any of the provided
          * CIDR strings, so two workspaces running `up` at the same moment are unlikely to choose
-         * the same block. Only `10.x.x.x` CIDRs in [existingCidrs] are considered.
+         * the same block. Only `10.x.x.x` CIDRs in [existingCidrs] are considered. A block inside
+         * K3s's pod or service range ([overlapsK3sRanges]) is never picked.
          *
          * @param existingCidrs CIDR blocks of all VPCs already present in the region, plus any
          *   block the caller wants excluded (e.g. one whose VPC creation just failed)
@@ -127,12 +136,36 @@ value class CidrBlock(
                     .filter { it.startsWith("10.") }
                     .mapNotNull { it.split(".").getOrNull(1)?.toIntOrNull() }
                     .toSet()
-            val freeOctets = (0..MAX_SECOND_OCTET).filterNot { it in usedOctets }
+            val freeOctets =
+                (0..MAX_SECOND_OCTET)
+                    .filterNot { it in usedOctets }
+                    .filterNot { CidrBlock("10.$it.0.0/16").overlapsK3sRanges() }
             check(freeOctets.isNotEmpty()) {
-                "No available CIDR blocks in 10.x.0.0/16 range — all second octets 0–254 are in use"
+                "No available CIDR blocks in 10.x.0.0/16 range — every second octet 0–254 is in use " +
+                    "or inside K3s's pod range ${Constants.K3s.CLUSTER_CIDR} or service range ${Constants.K3s.SERVICE_CIDR}"
             }
             val secondOctet = freeOctets.random(random)
             return CidrBlock("10.$secondOctet.0.0/16")
+        }
+
+        /** K3s's pod and service ranges, which no VPC block may overlap. */
+        private val K3S_RANGES = listOf(Constants.K3s.CLUSTER_CIDR, Constants.K3s.SERVICE_CIDR)
+
+        private fun addressBits(address: String): Long =
+            address
+                .split('.')
+                .fold(0L) { acc, octet -> (acc shl BITS_PER_OCTET) or octet.toLong() }
+
+        /** Two CIDRs overlap exactly when one contains the other's network address. */
+        private fun overlaps(
+            a: String,
+            b: String,
+        ): Boolean {
+            val (aAddress, aPrefix) = a.split('/').let { addressBits(it[0]) to it[1].toInt() }
+            val (bAddress, bPrefix) = b.split('/').let { addressBits(it[0]) to it[1].toInt() }
+            val prefix = minOf(aPrefix, bPrefix)
+            val mask = if (prefix == 0) 0L else (ADDRESS_MASK shl (ADDRESS_BITS - prefix)) and ADDRESS_MASK
+            return (aAddress and mask) == (bAddress and mask)
         }
 
         private fun formatAddress(address: Long): String =

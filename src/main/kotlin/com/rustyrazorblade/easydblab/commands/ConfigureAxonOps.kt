@@ -43,7 +43,7 @@ class ConfigureAxonOps : PicoBaseCommand() {
             exitProcess(1)
         }
 
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
+        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
             val it = host.toHost()
             eventBus.emit(Event.Setup.AxonOpsConfiguring(it.alias))
 

@@ -114,6 +114,80 @@ object Constants {
         const val VPC_TEARDOWN_BACKOFF_BASE_MS = 5000L
     }
 
+    /**
+     * Limits for clusters of 1,000+ nodes: how much per-node work runs at once, how EC2 calls are
+     * batched so no request exceeds what the API accepts, and how long the waits that grow with
+     * node count may take.
+     */
+    object Scale {
+        /**
+         * The most hosts a parallel per-host operation (SSH setup, K3s agents, registry TLS, the
+         * Cilium image check, SSH readiness) works on at once. One thread per host at 1,000 nodes
+         * is 1,000 SSH sessions from the operator's machine.
+         */
+        const val HOST_CONCURRENCY = 50
+
+        /** The most instance IDs `DescribeInstanceStatus` accepts in one request. */
+        const val DESCRIBE_INSTANCE_STATUS_BATCH = 100
+
+        /** The most instance IDs one `DescribeInstances` request names. */
+        const val DESCRIBE_INSTANCES_BATCH = 100
+
+        /** The most instances one `RunInstances` call asks for; larger groups are split into chunks. */
+        const val RUN_INSTANCES_CHUNK = 100
+
+        /** Attempts for an EC2 call that AWS throttles (`RequestLimitExceeded`). */
+        const val THROTTLE_MAX_ATTEMPTS = 8
+
+        /** The first backoff after a throttled EC2 call; it doubles each attempt. */
+        const val THROTTLE_BACKOFF_BASE_MS = 1000L
+
+        /** The longest single backoff after a throttled EC2 call. */
+        const val THROTTLE_BACKOFF_MAX_MS = 30_000L
+
+        /** How long `up` waits for SSH on every node, however many there are. */
+        const val SSH_READY_TIMEOUT_SECONDS = 600L
+
+        /** How long `up` waits for every K3s agent to register its node with the server, at least. */
+        const val NODE_REGISTRATION_BASE_SECONDS = 300L
+
+        /** Extra registration wait per expected node, on top of [NODE_REGISTRATION_BASE_SECONDS]. */
+        const val NODE_REGISTRATION_PER_NODE_SECONDS = 1L
+
+        /** Extra observability rollout wait per cluster node; DaemonSets roll one pod per node. */
+        const val ROLLOUT_PER_NODE_SECONDS = 2L
+    }
+
+    /**
+     * The quotas and estimates `up` checks before it launches anything
+     * (`services/aws/LaunchCapacityPreflight`).
+     */
+    object Capacity {
+        /** Service Quotas service code for EC2. */
+        const val EC2_SERVICE_CODE = "ec2"
+
+        /** Service Quotas service code for VPC. */
+        const val VPC_SERVICE_CODE = "vpc"
+
+        /** "Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances", in vCPUs. */
+        const val STANDARD_VCPU_QUOTA_CODE = "L-1216C47A"
+
+        /** "Network interfaces per Region". */
+        const val NETWORK_INTERFACE_QUOTA_CODE = "L-DF5E4CA3"
+
+        /** Addresses AWS reserves in every subnet: the first four and the last. */
+        const val AWS_RESERVED_SUBNET_ADDRESSES = 5
+
+        /**
+         * The pod addresses one node is expected to take under Cilium's ENI IPAM, which gives pods
+         * VPC addresses from the node's subnet. Cilium keeps 8 spare addresses allocated per node
+         * (its `pre-allocate` default), and each node runs about 8 DaemonSet and system pods
+         * (Cilium, the collectors, Beyla, Alloy, ebpf_exporter, Fluent Bit, kube-proxy); a kit's
+         * pods come on top. Flannel pods take no VPC address.
+         */
+        const val POD_ADDRESSES_PER_NODE = 16
+    }
+
     // Exit codes
     object ExitCodes {
         const val ERROR = 1
@@ -379,6 +453,22 @@ object Constants {
         const val LOCAL_KUBECONFIG = "kubeconfig"
         const val NODE_TOKEN_PATH = "/var/lib/rancher/k3s/server/node-token"
         const val DEFAULT_SERVER_URL = "https://127.0.0.1:6443"
+
+        /**
+         * The pod range K3s hands node CIDRs out of (`--cluster-cidr`). K3s's default,
+         * 10.42.0.0/16 with a /24 per node, runs out at 256 nodes: under Flannel a node with no
+         * pod CIDR never gets pod networking, and under Cilium ENI IPAM (which ignores node CIDRs)
+         * the node IPAM controller reports `CIDRNotAvailable` for every node past it. A /12 holds
+         * 4,096 /24s. It and [SERVICE_CIDR] are kept out of every VPC block `up` picks or
+         * `init --cidr` accepts, so they never overlap a cluster's 10.X.0.0/16 VPC.
+         */
+        const val CLUSTER_CIDR = "10.224.0.0/12"
+
+        /** The ClusterIP range (`--service-cidr`); cluster DNS takes its tenth address. */
+        const val SERVICE_CIDR = "10.240.0.0/16"
+
+        /** The node CIDR size the controller manager carves out of [CLUSTER_CIDR], one per node. */
+        const val NODE_CIDR_MASK_SIZE = 24
     }
 
     // K8s observability configuration

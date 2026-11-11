@@ -63,3 +63,24 @@ Detection of the operator's public IP SHALL ask `https://checkip.amazonaws.com/`
 
 - **WHEN** both services fail or answer with something that is not an IPv4 address
 - **THEN** detection fails, and `ingress allow` with no `--cidr` reports `Ingress.PublicIpDetectionFailed`
+
+## ADDED Requirements
+
+### Requirement: The K3s pod and service ranges hold 1,000+ nodes and never overlap the VPC
+
+K3s MUST start with the pod range `Constants.K3s.CLUSTER_CIDR` (`10.224.0.0/12`), the service range `Constants.K3s.SERVICE_CIDR` (`10.240.0.0/16`) and a node CIDR mask of `/24`, on both CNIs, so the controller-manager can give each of 4,096 nodes its own `/24`.  K3s's default `10.42.0.0/16` holds only 256.  A VPC block that overlaps either range MUST be refused by `init --cidr` and MUST never be chosen by the VPC CIDR auto-selection.
+
+#### Scenario: K3s starts with the large pod range
+
+- **WHEN** `up` starts the K3s server, with Cilium or Flannel
+- **THEN** the server runs with `--cluster-cidr=10.224.0.0/12`, `--service-cidr=10.240.0.0/16` and `node-cidr-mask-size=24`
+
+#### Scenario: A VPC CIDR inside a K3s range is refused
+
+- **WHEN** the user runs `init --cidr 10.230.0.0/16`
+- **THEN** `init` fails naming the K3s pod and service ranges, and saves nothing
+
+#### Scenario: Auto-selection skips the K3s ranges
+
+- **WHEN** `up` picks a VPC block on its own
+- **THEN** the block does not overlap `10.224.0.0/12` or `10.240.0.0/16`

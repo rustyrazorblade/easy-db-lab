@@ -38,7 +38,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
 - `Event.K3s.*` — K3s cluster management
 - `Event.Cilium.*` — Cilium CNI operations
-- `Event.K8s.*` — Kubernetes operations
+- `Event.K8s.*` — Kubernetes operations, including `NodesRegistering` / `NodesRegistered` (the count of nodes `up` waits on to register with K3s)
 - `Event.Infra.*` — AWS infrastructure (VPC, subnet, security group)
 - `Event.Ec2.*` — EC2 instance operations
 - `Event.Emr.*` — EMR/Spark operations
@@ -51,7 +51,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.AwsSetup.*` — AWS resource setup (IAM roles, etc.)
 - `Event.Stress.*` — Stress testing operations. `JobStarted` (from `cassandra stress start`, once the pod runs) carries `host`, the alias of the node the stress pod runs on. `JobCompleted(jobName, host, outcome, durationSeconds)` comes only from `metrics stream`: once for each job it saw running that has finished; `outcome` is `StressJobOutcome`, `succeeded` or `failed` on the wire
 - `Event.Service.*` — SystemD service management
-- `Event.Provision.*` — Cluster provisioning orchestration
+- `Event.Provision.*` — Cluster provisioning orchestration, including the pre-launch capacity checks: `LaunchCapacityVerified`, and the errors `VcpuQuotaInsufficient`, `NetworkInterfaceQuotaInsufficient`, `SubnetAddressesInsufficient` (each with needed, available and shortBy), `InstanceTypeNotOffered`, `TooManyAvailabilityZones` and `LaunchDryRunRefused` (AWS's code and message); `VcpuQuotaNotChecked` names a type whose family has its own quota
 - `Event.Command.*` — Command execution and general command output
 - `Event.Status.*` — Cluster status display sections
 - `Event.Teardown.*` — Cluster teardown lifecycle

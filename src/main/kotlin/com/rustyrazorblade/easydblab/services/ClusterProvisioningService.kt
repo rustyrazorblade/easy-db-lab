@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -41,6 +42,40 @@ data class InfrastructureContext(
     val tags: Map<String, String>,
     val clusterName: String,
 )
+
+/**
+ * The launch of [InstanceSpec]'s missing instances: [InstanceSpec.neededCount] of them, numbered
+ * on from the ones that exist. `up`'s pre-launch dry run asks AWS about exactly this request.
+ */
+fun InstanceSpec.creationConfig(infraContext: InfrastructureContext): InstanceCreationConfig =
+    InstanceCreationConfig(
+        serverType = serverType,
+        count = neededCount,
+        instanceType = instanceType,
+        amiId = amiId,
+        keyName = infraContext.keyName,
+        securityGroupId = infraContext.securityGroupId,
+        subnetIds = infraContext.subnetIds,
+        iamInstanceProfile = Constants.AWS.Roles.EC2_INSTANCE_ROLE,
+        ebsConfig = ebsConfig,
+        tags = infraContext.tags,
+        clusterName = infraContext.clusterName,
+        startIndex = existingCount,
+    )
+
+/** The launches of every server type that has instances missing, as provisioning will make them. */
+fun InstanceProvisioningConfig.launches(): List<InstanceCreationConfig> =
+    specs.filter { it.neededCount > 0 }.map { it.creationConfig(toInfrastructureContext()) }
+
+/** The network, key and tags every launch of [InstanceProvisioningConfig] shares. */
+fun InstanceProvisioningConfig.toInfrastructureContext() =
+    InfrastructureContext(
+        keyName = userConfig.keyName,
+        securityGroupId = securityGroupId,
+        subnetIds = subnetIds,
+        tags = tags,
+        clusterName = clusterName,
+    )
 
 /**
  * Result of cluster provisioning operation.
@@ -160,6 +195,21 @@ interface ClusterProvisioningService {
 }
 
 /**
+ * [existing] with [updates] applied by alias: a host already present is replaced by its update in
+ * place, and a new one is appended. A host is reported once at launch and again with its final
+ * IPs, so merging by alias keeps one entry per instance.
+ */
+internal fun mergeByAlias(
+    existing: List<ClusterHost>?,
+    updates: List<ClusterHost>,
+): List<ClusterHost> {
+    val byAlias = updates.associateBy { it.alias }
+    val replaced = existing.orEmpty().map { byAlias[it.alias] ?: it }
+    val known = replaced.map { it.alias }.toSet()
+    return replaced + updates.filter { it.alias !in known }
+}
+
+/**
  * Default implementation of ClusterProvisioningService.
  */
 class DefaultClusterProvisioningService(
@@ -205,10 +255,11 @@ class DefaultClusterProvisioningService(
                                     tags = config.tags,
                                     clusterName = config.clusterName,
                                 )
-                            val hosts = createInstancesForType(spec, infraContext)
-                            synchronized(stateLock) {
-                                allHosts[spec.serverType] = (allHosts[spec.serverType] ?: emptyList()) + hosts
-                                onHostsCreated(spec.serverType, hosts)
+                            createInstancesForType(spec, infraContext) { hosts ->
+                                synchronized(stateLock) {
+                                    allHosts[spec.serverType] = mergeByAlias(allHosts[spec.serverType], hosts)
+                                    onHostsCreated(spec.serverType, hosts)
+                                }
                             }
                         } catch (e: Exception) {
                             log.error(e) { "Failed to create ${spec.serverType.name} instances" }
@@ -290,10 +341,11 @@ class DefaultClusterProvisioningService(
                 thread(start = true, name = "create-${spec.serverType.name}") {
                     try {
                         val infraContext = instanceConfig.toInfrastructureContext()
-                        val hosts = createInstancesForType(spec, infraContext)
-                        synchronized(ctx.stateLock) {
-                            allHosts[spec.serverType] = (allHosts[spec.serverType] ?: emptyList()) + hosts
-                            ctx.callbacks.onHostsCreated(spec.serverType, hosts)
+                        createInstancesForType(spec, infraContext) { hosts ->
+                            synchronized(ctx.stateLock) {
+                                allHosts[spec.serverType] = mergeByAlias(allHosts[spec.serverType], hosts)
+                                ctx.callbacks.onHostsCreated(spec.serverType, hosts)
+                            }
                         }
                     } catch (e: Exception) {
                         log.error(e) { "Failed to create ${spec.serverType.name} instances" }
@@ -367,57 +419,39 @@ class DefaultClusterProvisioningService(
         }
     }
 
-    private fun InstanceProvisioningConfig.toInfrastructureContext() =
-        InfrastructureContext(
-            keyName = userConfig.keyName,
-            securityGroupId = securityGroupId,
-            subnetIds = subnetIds,
-            tags = tags,
-            clusterName = clusterName,
-        )
-
+    /**
+     * Launches [spec]'s missing instances and waits until they are running with their status
+     * checks passed.
+     *
+     * [report] receives each RunInstances batch's hosts the moment the batch is launched, before
+     * any wait, so a failure later in the launch, in the running wait, in the status check or in
+     * the IP refresh still leaves every launched instance recorded. It receives the same hosts
+     * again, by alias, once their public IPs are known.
+     */
     private fun createInstancesForType(
         spec: InstanceSpec,
         infraContext: InfrastructureContext,
-    ): List<ClusterHost> {
-        val config =
-            InstanceCreationConfig(
-                serverType = spec.serverType,
-                count = spec.neededCount,
-                instanceType = spec.instanceType,
-                amiId = spec.amiId,
-                keyName = infraContext.keyName,
-                securityGroupId = infraContext.securityGroupId,
-                subnetIds = infraContext.subnetIds,
-                iamInstanceProfile = Constants.AWS.Roles.EC2_INSTANCE_ROLE,
-                ebsConfig = spec.ebsConfig,
-                tags = infraContext.tags,
-                clusterName = infraContext.clusterName,
-                startIndex = spec.existingCount,
-            )
+        report: (List<ClusterHost>) -> Unit,
+    ) {
+        val config = spec.creationConfig(infraContext)
 
-        val createdInstances = ec2InstanceService.createInstances(config)
+        val createdInstances = ec2InstanceService.createInstances(config) { launched -> report(launched.map(::toClusterHost)) }
 
-        // Wait for instances to be running
         val instanceIds = createdInstances.map { it.instanceId }
         ec2InstanceService.waitForInstancesRunning(instanceIds)
-
-        // Wait for instance status checks to pass
         ec2InstanceService.waitForInstanceStatusOk(instanceIds)
 
-        // Update with final IPs
-        val updatedInstances = ec2InstanceService.updateInstanceIps(createdInstances)
-
-        return updatedInstances.map { instance ->
-            ClusterHost(
-                publicIp = instance.publicIp,
-                privateIp = instance.privateIp,
-                alias = instance.alias,
-                availabilityZone = instance.availabilityZone,
-                instanceId = instance.instanceId,
-            )
-        }
+        report(ec2InstanceService.updateInstanceIps(createdInstances).map(::toClusterHost))
     }
+
+    private fun toClusterHost(instance: CreatedInstance): ClusterHost =
+        ClusterHost(
+            publicIp = instance.publicIp,
+            privateIp = instance.privateIp,
+            alias = instance.alias,
+            availabilityZone = instance.availabilityZone,
+            instanceId = instance.instanceId,
+        )
 
     private fun createOpenSearchDomain(
         initConfig: InitConfig,

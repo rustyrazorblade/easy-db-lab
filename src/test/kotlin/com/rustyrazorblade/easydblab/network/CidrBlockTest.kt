@@ -160,4 +160,45 @@ class CidrBlockTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("No available CIDR blocks")
     }
+
+    /**
+     * K3s's pod and service ranges must never be a VPC's block: a VPC on the service range makes
+     * ClusterIPs and node IPs collide, and one on the pod range does the same for Flannel pods.
+     */
+    @Test
+    fun `selectAvailable never picks a block inside the K3s pod or service range`() {
+        val selected = (0 until 2000).map { seed -> CidrBlock.selectAvailable(emptyList(), Random(seed)) }
+
+        assertThat(selected).noneMatch { it.overlapsK3sRanges() }
+        assertThat(selected.map { it.value }.toSet()).hasSizeGreaterThan(200)
+    }
+
+    @Test
+    fun `selectAvailable fails when every block outside the K3s ranges is taken`() {
+        val existing = (0..254).map { "10.$it.0.0/16" }.filterNot { CidrBlock(it).overlapsK3sRanges() }
+
+        assertThatThrownBy { CidrBlock.selectAvailable(existing, Random(42)) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("No available CIDR blocks")
+    }
+
+    @Test
+    fun `overlapsK3sRanges is true for a block inside, around or containing a K3s range and false otherwise`() {
+        assertThat(CidrBlock("10.240.0.0/16").overlapsK3sRanges()).isTrue()
+        assertThat(CidrBlock("10.230.255.0/24").overlapsK3sRanges()).isTrue()
+        assertThat(CidrBlock("10.241.0.0/16").overlapsK3sRanges()).isFalse()
+        assertThat(CidrBlock(Constants.K3s.SERVICE_CIDR).overlapsK3sRanges()).isTrue()
+        assertThat(CidrBlock("10.0.0.0/8").overlapsK3sRanges()).isTrue()
+        assertThat(CidrBlock("10.42.0.0/16").overlapsK3sRanges()).isFalse()
+        assertThat(CidrBlock("10.223.0.0/16").overlapsK3sRanges()).isFalse()
+        assertThat(CidrBlock("10.224.0.0/16").overlapsK3sRanges()).isTrue()
+        assertThat(CidrBlock("172.16.0.0/16").overlapsK3sRanges()).isFalse()
+    }
+
+    /** At 1,000+ nodes a /24 per node must fit, with room for growth: 4,096 /24s. */
+    @Test
+    fun `the K3s pod range holds a node CIDR for at least 4096 nodes`() {
+        val prefix = Ipv4Cidr.parse(Constants.K3s.CLUSTER_CIDR).getOrThrow().prefixLength
+        assertThat(1 shl (Constants.K3s.NODE_CIDR_MASK_SIZE - prefix)).isGreaterThanOrEqualTo(4096)
+    }
 }

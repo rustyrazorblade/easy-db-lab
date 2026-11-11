@@ -16,11 +16,14 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Tests for [SetupInstance]'s profiling seeding.
@@ -97,12 +100,35 @@ class SetupInstanceTest : BaseKoinTest() {
         val configs = argumentCaptor<ProfilingConfig>()
         verify(profilingService, times(2)).writeDesiredState(targets.capture(), configs.capture())
 
-        assertThat(targets.allValues.map { it.alias }).containsExactly("db0", "db1")
+        assertThat(targets.allValues.map { it.alias }).containsExactlyInAnyOrder("db0", "db1")
         val config = configs.firstValue
         assertThat(config.enabled).isTrue()
         assertThat(config.asprofArgs).isEqualTo(Constants.Profiling.DEFAULT_ASPROF_ARGS)
         assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
         assertThat(config.tenant).isEqualTo("acme")
+    }
+
+    /**
+     * At 1,000 db nodes one-at-a-time setup takes hours. The latch opens only once both db nodes
+     * are inside setup together, so a serial setup times out on it.
+     */
+    @Test
+    fun `sets up db nodes in parallel`() {
+        val bothInside = CountDownLatch(2)
+        var overlapped = true
+        whenever(profilingService.writeDesiredState(any(), any())).thenAnswer {
+            bothInside.countDown()
+            if (!bothInside.await(OVERLAP_WAIT_SECONDS, TimeUnit.SECONDS)) overlapped = false
+            Unit
+        }
+
+        SetupInstance().execute()
+
+        assertThat(overlapped).isTrue()
+    }
+
+    private companion object {
+        const val OVERLAP_WAIT_SECONDS = 5L
     }
 }

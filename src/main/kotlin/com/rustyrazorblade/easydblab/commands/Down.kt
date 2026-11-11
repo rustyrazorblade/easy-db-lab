@@ -113,8 +113,9 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * How a teardown ended: it ran (successfully or not, or it had nothing to do), or the
-     * pre-teardown flush failed and aborted it with no infrastructure removed.
+     * How a teardown ended: it ran (successfully or not, or it had nothing to do), the
+     * pre-teardown flush failed and aborted it with no infrastructure removed, or it was a dry run
+     * that only previewed what would be removed.
      */
     private sealed interface TeardownOutcome {
         data class Finished(
@@ -122,6 +123,12 @@ class Down : PicoBaseCommand() {
         ) : TeardownOutcome
 
         data object FlushAborted : TeardownOutcome
+
+        /**
+         * `--dry-run`: the preview was reported and nothing changed, locally or remotely. The
+         * tunnel, the tailnet device and the cluster state are left exactly as they were.
+         */
+        data object DryRun : TeardownOutcome
     }
 
     override fun execute() {
@@ -135,6 +142,7 @@ class Down : PicoBaseCommand() {
                     exitCode = Constants.ExitCodes.ERROR
                     return
                 }
+                TeardownOutcome.DryRun -> return
                 is TeardownOutcome.Finished -> outcome.result
             }
 
@@ -308,8 +316,8 @@ class Down : PicoBaseCommand() {
         when (mode) {
             is TeardownMode.CurrentCluster -> teardownCurrentCluster()
             is TeardownMode.SpecificVpc -> teardownSpecificVpc(mode.vpcId, saveTail = false)
-            is TeardownMode.AllTagged -> TeardownOutcome.Finished(teardownAllTagged())
-            is TeardownMode.PackerInfrastructure -> TeardownOutcome.Finished(teardownPackerInfrastructure())
+            is TeardownMode.AllTagged -> teardownAllTagged()
+            is TeardownMode.PackerInfrastructure -> teardownPackerInfrastructure()
         }
 
     /**
@@ -367,7 +375,7 @@ class Down : PicoBaseCommand() {
 
         if (previewResult.resourcesDeleted.isEmpty()) {
             eventBus.emit(Event.Teardown.NoResourcesFound)
-            return TeardownOutcome.Finished(previewResult)
+            return if (dryRun) TeardownOutcome.DryRun else TeardownOutcome.Finished(previewResult)
         }
 
         val summary = previewResult.resourcesDeleted.first().summary()
@@ -375,7 +383,7 @@ class Down : PicoBaseCommand() {
 
         if (dryRun) {
             eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.Finished(previewResult)
+            return TeardownOutcome.DryRun
         }
 
         // Confirm if not auto-approved
@@ -393,7 +401,7 @@ class Down : PicoBaseCommand() {
     /**
      * Tears down all VPCs tagged with easy_cass_lab.
      */
-    private fun teardownAllTagged(): TeardownResult {
+    private fun teardownAllTagged(): TeardownOutcome {
         eventBus.emit(Event.Teardown.FindingTaggedVpcs)
 
         // Preview first
@@ -401,7 +409,7 @@ class Down : PicoBaseCommand() {
 
         if (previewResult.resourcesDeleted.isEmpty()) {
             eventBus.emit(Event.Teardown.NoTaggedVpcsFound)
-            return previewResult
+            return if (dryRun) TeardownOutcome.DryRun else TeardownOutcome.Finished(previewResult)
         }
 
         // Build summary from discovered resources
@@ -409,13 +417,13 @@ class Down : PicoBaseCommand() {
 
         if (dryRun) {
             eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return previewResult
+            return TeardownOutcome.DryRun
         }
 
         // Confirm if not auto-approved
         if (!autoApprove && !confirmTeardown(summary)) {
             eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownResult.Companion.failure("Teardown cancelled by user")
+            return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
         }
 
         beforeRemovingInfrastructure()
@@ -426,13 +434,13 @@ class Down : PicoBaseCommand() {
             teardownAllDataBuckets()
         }
 
-        return result
+        return TeardownOutcome.Finished(result)
     }
 
     /**
      * Tears down the packer infrastructure VPC.
      */
-    private fun teardownPackerInfrastructure(): TeardownResult {
+    private fun teardownPackerInfrastructure(): TeardownOutcome {
         eventBus.emit(Event.Teardown.FindingPackerVpc)
 
         // Preview first
@@ -440,24 +448,24 @@ class Down : PicoBaseCommand() {
 
         if (previewResult.resourcesDeleted.isEmpty()) {
             eventBus.emit(Event.Teardown.NoPackerVpcFound)
-            return previewResult
+            return if (dryRun) TeardownOutcome.DryRun else TeardownOutcome.Finished(previewResult)
         }
 
         val summary = previewResult.resourcesDeleted.first().summary()
 
         if (dryRun) {
             eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return previewResult
+            return TeardownOutcome.DryRun
         }
 
         // Confirm if not auto-approved
         if (!autoApprove && !confirmTeardown(summary)) {
             eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownResult.Companion.failure("Teardown cancelled by user")
+            return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
         }
 
         beforeRemovingInfrastructure()
-        return teardownService.teardownPackerInfrastructure(dryRun = false)
+        return TeardownOutcome.Finished(teardownService.teardownPackerInfrastructure(dryRun = false))
     }
 
     /**

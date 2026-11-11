@@ -46,12 +46,15 @@ import com.rustyrazorblade.easydblab.services.SsmToolFault
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
+import com.rustyrazorblade.easydblab.services.aws.AccountCapacity
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.FakeAccountCapacity
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
+import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -67,6 +70,7 @@ import java.io.File
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
+import java.util.Collections
 
 /**
  * Shared fixture for the [Up] tests: the fully-wired "happy path" collaborators, the
@@ -101,6 +105,9 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected lateinit var mockCommandExecutor: CommandExecutor
     protected lateinit var mockObservabilityStackService: ObservabilityStackService
     protected lateinit var mockDocumentService: TestDocumentService
+
+    /** The account the pre-launch capacity checks see; roomy by default, a test narrows it. */
+    protected lateinit var accountCapacity: FakeAccountCapacity
     protected lateinit var outputHandler: BufferedOutputHandler
 
     /** exit code returned by the fake CommandExecutor for a nested command, keyed by simple class name */
@@ -132,14 +139,14 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected var sshFailureAlias: String? = null
     protected var sshFailureException: Exception? = null
     protected var sshFailuresRemaining = Int.MAX_VALUE
-    protected val sshCheckedAliases = mutableListOf<String>()
+    protected val sshCheckedAliases: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
     /** every remote command run with its output echoed to the console, in order */
-    protected val echoedCommands = mutableListOf<String>()
+    protected val echoedCommands: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
     /** Cilium node-fix paths the fake SSH reports missing, by host alias, and every alias asked */
     protected val missingCiliumFixes = mutableMapOf<String, List<String>>()
-    protected val ciliumFixCheckedAliases = mutableListOf<String>()
+    protected val ciliumFixCheckedAliases: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
     protected val testControlHost =
         ClusterHost(
@@ -191,6 +198,8 @@ abstract class UpTestFixture : BaseKoinTest() {
             single { CiliumNodeImageCheck(get()) }
             single { AWSResourceSetupService(get(), get(), get()) }
             single { ProvisioningPreflight(get(), get(), get(), get()) }
+            single<AccountCapacity> { FakeAccountCapacity().also { accountCapacity = it } }
+            single { LaunchCapacityPreflight(get(), get()) }
             single { AccountBucketSetup(get(), get(), get(), get(), get()) }
         }
 
@@ -350,6 +359,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         mockK8sService = getKoin().get()
         mockCommandExecutor = getKoin().get()
         mockObservabilityStackService = getKoin().get()
+        accountCapacity = getKoin().get<AccountCapacity>() as FakeAccountCapacity
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
         resetFakes()
 
@@ -385,6 +395,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         stubCiliumSuccess()
 
         whenever(mockK8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForNodesRegistered(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.success(Unit))
 

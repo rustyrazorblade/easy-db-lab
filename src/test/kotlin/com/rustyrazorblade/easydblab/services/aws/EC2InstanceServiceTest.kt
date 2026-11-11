@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse
 import software.amazon.awssdk.services.ec2.model.Tag
+import software.amazon.awssdk.services.ec2.paginators.DescribeInstancesIterable
 
 internal class EC2InstanceServiceTest {
     private val mockEc2Client: Ec2Client = mock()
@@ -41,6 +42,13 @@ internal class EC2InstanceServiceTest {
                 .EventBus(),
             region = "us-west-2",
         )
+
+    init {
+        // The paginator is the SDK's own loop over describeInstances; the stubs below answer that.
+        whenever(mockEc2Client.describeInstancesPaginator(any<DescribeInstancesRequest>())).thenAnswer {
+            DescribeInstancesIterable(mockEc2Client, it.getArgument(0))
+        }
+    }
 
     @Test
     fun `findInstancesByClusterId should return empty map when no instances found`() {

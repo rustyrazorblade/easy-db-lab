@@ -65,6 +65,14 @@ Rules for both phases:
 - **WHEN** the user declines the teardown prompt, or runs `down --dry-run`
 - **THEN** no save step runs, the collector, Loki and Mimir keep running, and nothing is torn down
 
+#### Scenario: A dry run changes nothing
+
+- **GIVEN** a cluster in any teardown mode: the current cluster, a specific VPC, `--all`, or `--packer`, including one where no resources are found
+- **WHEN** the user runs `down --dry-run`
+- **THEN** the resources that would be deleted are previewed and the command exits zero
+- **AND** the cluster state is not changed: it is not marked down, and its VPC and Tailscale device are kept
+- **AND** the SOCKS tunnel is not stopped and no Tailscale device is removed
+
 #### Scenario: The tail of every signal reaches S3 before teardown
 
 - **GIVEN** a running cluster whose Mimir, Loki and Tempo hold data not yet in S3
@@ -181,6 +189,105 @@ Rules for both phases:
 - **WHEN** `down` runs
 - **THEN** it flushes every backend, waits for each flush, and refuses to tear down if a flush did not finish
 - **AND** it does not count other clusters, does not stop or start any compactor, and does not touch any lease
+
+### Requirement: A cluster with zero database nodes is a valid configuration
+
+The system MUST support provisioning a cluster with no database nodes. Workloads such as Trino with OpenSearch require a control node and application nodes but no database nodes.
+
+Work that exists solely to serve database nodes MUST be skipped without warning when there are none. A supported configuration MUST NOT produce warning output.
+
+#### Scenario: Zero database nodes provisions successfully
+- **GIVEN** a cluster configuration with a control node, application nodes, and zero database nodes
+- **WHEN** the user runs `up`
+- **THEN** provisioning SHALL complete successfully and exit zero
+
+#### Scenario: Database node registration waits only for the nodes that exist
+- **GIVEN** a cluster with zero database nodes
+- **WHEN** provisioning waits for the K3s nodes to register
+- **THEN** it SHALL wait for the control and application nodes only
+- **AND** no warning SHALL be emitted to the user
+
+## ADDED Requirements
+
+### Requirement: up checks the account can hold the new instances before it launches any
+
+Before its first RunInstances, `up` MUST check that the account can hold the instances it is about to launch, and MUST fail without launching any instance when it cannot.  Every check counts only the instances to be launched: the configured count of each server type minus the instances of that type that already run or are pending.  When nothing is to be launched, `up` MUST make no capacity call and the checks pass.
+
+The checks are:
+
+1. The configured availability zones number at most `Constants.Vpc.MAX_AVAILABILITY_ZONES`.
+2. Each instance type is offered in every zone its new instances land in (instance `i` lands in zone `i % zones`).
+3. The On-Demand standard vCPU quota (`L-1216C47A`) minus the vCPUs of the running and pending On-Demand standard-family instances covers the new instances' vCPUs.  An instance type outside the standard families (A, C, D, H, I, M, R, T, Z) is not counted against it; `up` reports that its family's quota is not checked.
+4. The network interface quota (`L-DF5E4CA3`) minus the network interfaces in the region covers the new nodes' interfaces: one per node under Flannel; under Cilium, the interfaces its node address and `Constants.Capacity.POD_ADDRESSES_PER_NODE` pod addresses fill, at most the type's maximum.
+5. Each zone's subnet has free addresses for the node address of each new node landing in it, and under Cilium its pod addresses.  Without a VPC yet, the subnet size comes from the VPC CIDR.
+6. Once the subnets and the security group exist, a RunInstances dry run of each server type's launch, with the real AMI, instance type, subnet, security group, instance profile and key, answers `DryRunOperation`.
+
+Every shortfall MUST be reported with a typed event naming what is short and by how much, and all of them MUST be reported before `up` stops.
+
+#### Scenario: A cluster the account can hold passes
+
+- **GIVEN** an account with room for the new instances
+- **WHEN** the user runs `up`
+- **THEN** every check passes and the instances are launched
+
+#### Scenario: Too few vCPUs fails before any launch
+
+- **GIVEN** an On-Demand standard vCPU quota that leaves fewer vCPUs free than the new instances need
+- **WHEN** the user runs `up`
+- **THEN** `up` fails before any RunInstances, naming the vCPUs needed, the vCPUs available and the shortfall
+
+#### Scenario: A re-run with a larger count checks only the added instances
+
+- **GIVEN** a cluster of 1,000 db nodes that already run, and a configured count of 1,002
+- **WHEN** the user runs `up` again
+- **THEN** the checks count 2 new db nodes, and only those are dry-run and launched
+
+#### Scenario: Nothing to launch makes no capacity call
+
+- **GIVEN** a cluster whose every configured instance already runs
+- **WHEN** the user runs `up` again
+- **THEN** no quota, offering, network interface, subnet or dry-run call is made
+
+#### Scenario: A subnet short of addresses names its zone
+
+- **GIVEN** a zone whose subnet has fewer free addresses than its new nodes and their pods need
+- **WHEN** the user runs `up`
+- **THEN** `up` fails before any launch, naming the zone, the addresses needed, the addresses free and the shortfall
+
+#### Scenario: A launch AWS would refuse fails with AWS's message
+
+- **GIVEN** a launch AWS refuses, for example for a missing permission or an unknown AMI
+- **WHEN** `up` dry-runs it after the subnets and the security group exist
+- **THEN** `up` fails before any real RunInstances, with AWS's error code and message
+
+### Requirement: up works with 1,000 database nodes
+
+`up` MUST provision and set up a cluster of 1,000 database nodes, and a re-run of `up` with a larger count MUST launch only the missing nodes.
+
+- Discovery MUST read every page of DescribeInstances, count running and pending instances, and run once per `up`.
+- RunInstances MUST launch one call per subnet with `minCount = maxCount = n`, in chunks of at most `Constants.Scale.RUN_INSTANCES_CHUNK`, with a client token, and retry a throttled call (`RequestLimitExceeded`) with the same token.  Instance `i` (the global index, continuing after the existing instances) is named `<serverType><i>` and lands in subnet `i % subnets`; each instance gets its `Name` tag after launch.
+- Each launched instance MUST be recorded in the cluster state as soon as RunInstances returns it.
+- The running wait MUST wait for every instance ID, tolerate `InvalidInstanceID.NotFound` while EC2 catches up, and ask only about the instances not yet running.  DescribeInstanceStatus and DescribeInstances requests MUST name at most 100 IDs.
+- Per-host work (instance setup, AxonOps, registry TLS, K3s agents, the SSH readiness wait, the Cilium node image check) MUST run in parallel on at most `Constants.Scale.HOST_CONCURRENCY` hosts at once.  The SSH readiness wait MUST re-probe only the hosts not yet ready, within one time budget.
+- After the K3s agents start, `up` MUST wait until every node is registered.  The node type and ordinal labels MUST be set in each agent's K3s configuration, not by a later per-node label call.
+- The observability readiness wait MUST list pods once per poll under one deadline, and the rollout deadline MUST grow with the node count.
+
+#### Scenario: Launched instances survive a failure later in up
+
+- **GIVEN** an `up` whose second RunInstances call, running wait, or status check fails
+- **WHEN** `up` stops
+- **THEN** every instance already launched is in the cluster state, and a re-run does not launch it again
+
+#### Scenario: A re-run continues the numbering
+
+- **GIVEN** a cluster whose db0 to db999 run
+- **WHEN** `up` runs with a count of 1,002
+- **THEN** it launches db1000 and db1001, in subnets `1000 % subnets` and `1001 % subnets`
+
+#### Scenario: Every node registers before the storage classes are made
+
+- **WHEN** `up` starts K3s on every node
+- **THEN** it waits until every node is registered with the server, and fails naming the missing nodes when one does not register in time
 
 ## REMOVED Requirements
 

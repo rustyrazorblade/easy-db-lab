@@ -18,7 +18,18 @@
         "ec2:DescribeSnapshots",
         "ec2:DescribeImageAttribute",
         "ec2:DescribeRegions",
-        "ec2:DescribeVolumes"
+        "ec2:DescribeVolumes",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeInstanceTypeOfferings",
+        "ec2:DescribeNetworkInterfaces"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ServiceQuotasRead",
+      "Effect": "Allow",
+      "Action": [
+        "servicequotas:GetServiceQuota"
       ],
       "Resource": "*"
     },

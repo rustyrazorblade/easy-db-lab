@@ -139,6 +139,28 @@ class AWSpolicyTest {
         assertThat(policies).allSatisfy { assertThat(it.body).doesNotContain("ACCOUNT_ID") }
     }
 
+    /**
+     * `up` reads these before it launches anything (`LaunchCapacityPreflight`); none of them acts
+     * on a tagged resource, so the tagged `ec2:*` grant does not cover them.
+     */
+    @Test
+    fun `the EC2 policy grants every read the pre-launch capacity checks make, on any resource`() {
+        val ec2 = AWSPolicy.UserIAM.loadAll("123456789012").single { it.name == "EasyDBLabEC2" }
+        val untagged =
+            statements(ec2.body)
+                .filter { it.effect() == "Allow" && "Condition" !in it && it.values("Resource") == listOf("*") }
+                .flatMap { it.values("Action") }
+
+        assertThat(untagged).contains(
+            "ec2:DescribeInstanceTypes",
+            "ec2:DescribeInstanceTypeOfferings",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DescribeInstances",
+            "ec2:DescribeSubnets",
+            "servicequotas:GetServiceQuota",
+        )
+    }
+
     private fun statements(json: String): List<JsonObject> =
         Json
             .parseToJsonElement(json)

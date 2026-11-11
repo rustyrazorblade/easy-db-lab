@@ -63,6 +63,23 @@
 - [x] 8a.4 `DefaultExternalIpService` asks `checkip.amazonaws.com`, trims the answer, and falls back to `api.ipify.org` on a failure or a non-IPv4 answer; the fallback decisions are unit-tested with an injected fetch
 - [x] 8a.5 Update `docs/user-guide/network-connectivity.md` and `docs/reference/commands.md`
 
+## 8b. 1,000 nodes, pre-launch capacity checks, and `down --dry-run`
+
+- [x] 8b.1 `waitForInstanceStatusOk` asks DescribeInstanceStatus in batches of 100; `describeInstances` asks in batches of 100
+- [x] 8b.2 `ClusterProvisioningService` records each RunInstances call's instances as soon as it returns, and again with the final IPs (`mergeByAlias`)
+- [x] 8b.3 `findInstancesByClusterId` reads every DescribeInstances page and counts pending instances; `up` discovers once and passes the result to the instance specs
+- [x] 8b.4 `waitForInstancesRunning` waits for every ID under a deadline, tolerates `InvalidInstanceID.NotFound`, and asks only about the instances not yet running
+- [x] 8b.5 K3s agents carry the node type and ordinal labels in their config (`easydblab.com/node-ordinal`, app nodes included); `up` waits for every node to register (`K8sService.waitForNodesRegistered`) instead of labeling per node
+- [x] 8b.6 K3s runs with `--cluster-cidr=10.224.0.0/12`, `--service-cidr=10.240.0.0/16` and `node-cidr-mask-size=24`; `init --cidr` refuses and VPC auto-selection skips a block overlapping them
+- [x] 8b.7 `BoundedParallel` caps per-host work at `Constants.Scale.HOST_CONCURRENCY` (50) in `HostOperationsService` and K3s `setupAgents`; db instance setup, AxonOps and registry TLS run in parallel
+- [x] 8b.8 `SshReadinessWait` probes in parallel, re-probes only the hosts not ready, within one time budget; `CiliumNodeImageCheck` checks in parallel
+- [x] 8b.9 RunInstances launches one call per subnet with `minCount = maxCount = n`, chunked at 100, with a client token and a `RequestLimitExceeded` retry; aliases stay `<serverType><global index>`; `Name` tags go on after launch with CreateTags
+- [x] 8b.10 The observability pod readiness wait lists once per poll under one deadline; the rollout deadline grows with the node count
+- [x] 8b.11 `services/aws/LaunchCapacityPreflight` checks, for the new instances only, the zone count, the zone offerings, the On-Demand standard vCPU quota, the network interface quota and the free subnet addresses, then a RunInstances dry run per server type once the subnets and security group exist; `Ec2AccountCapacity` reads them from EC2 and Service Quotas
+- [x] 8b.12 Add `awssdk-servicequotas`; grant `ec2:DescribeInstanceTypes`, `ec2:DescribeInstanceTypeOfferings`, `ec2:DescribeNetworkInterfaces` and `servicequotas:GetServiceQuota` in `iam-policy-ec2.json`
+- [x] 8b.13 `down --dry-run` changes nothing in any mode, the no-resources path included: no state update, no tunnel stop, no Tailscale removal, exit 0 (`TeardownOutcome.DryRun`)
+- [x] 8b.14 Document the capacity checks and large clusters in `docs/user-guide/large-clusters.md`, `docs/SUMMARY.md` and `docs/reference/commands.md`; update the package CLAUDE.md files
+
 ## 9. Verification
 
 - [x] 9.1 Run `./gradlew check` (JDK 21) with detekt and ktlint clean, with no new `@Suppress`, threshold change or baseline entry

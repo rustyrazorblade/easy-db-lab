@@ -24,7 +24,7 @@ The compactors keep their working files under `/mnt/db1/compactor/` on the contr
 
 ## How the lease works
 
-The holder renews the lease every 15 seconds with a conditional write: the write succeeds only when the lease is unchanged since the holder last wrote it.  A standby takes the lease only after it has seen the same lease, unchanged, for 2 minutes.
+The holder renews the lease every 15 seconds with a conditional write: the write succeeds only when the lease is unchanged since the holder last wrote it.  A standby takes the lease only after it has seen the same lease, unchanged, for 2 minutes.  When a renewal times out or is refused, the holder reads the lease once: if the lease holds the write it just sent, the write landed and the holder keeps the lease.
 
 If a holder cannot renew for 60 seconds, its gates stop the compactors: they send SIGTERM, wait 20 seconds, then send SIGKILL.  A holder therefore stops compacting at most 81 seconds after its last renewal, well before a standby may take over at 2 minutes.  Each pod measures these times on its own clock, so clock differences between clusters do not matter.  The 20-second wait is measured on the time since the node booted, so a wall-clock correction cannot stretch it.
 

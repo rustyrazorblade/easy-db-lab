@@ -61,8 +61,8 @@ fun main() {
                     gate = gate,
                     wipeScratch = ScratchWipe(config.scratchDirs)::run,
                 )
-            while (true) {
-                Thread.sleep(loop.step().inWholeMilliseconds)
-            }
+            // An interrupt closes the gate and ends the loop; the client is closed and main returns.
+            loop.runUntilInterrupted { Thread.sleep(it.inWholeMilliseconds) }
         }
+    log.info { "Lease agent ${config.holder} stopped" }
 }

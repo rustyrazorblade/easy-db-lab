@@ -97,8 +97,11 @@ The holder identity is the cluster label plus the pod name (Downward API).  A re
 ### Conditional writes and failures
 
 - S3 412 and 409 map to `AlreadyExists` or `VersionMismatch`.  A 404 on replace maps to `VersionMismatch`.  Anything else throws.
-- Conditional writes are not retried.  A retry of a write that landed gets 412, which only makes the holder think it lost; the safe result is one TTL with no compaction.
-- A renewal that returns `VersionMismatch`, or finds the lease missing, makes the holder revoke the gate file at once and become a standby.
+- Conditional writes are not retried.  A retry of a write that landed gets 412, which only makes the holder think it lost.  A write that landed but answered otherwise is caught by the read-back below instead.
+- A renewal that does not succeed (it throws, or returns `VersionMismatch`) is followed by one read of the lease, in the same round.  If the lease holds exactly the record the holder just tried to write (same holder, sequence and renewal time), the write landed and only its answer was lost: a timeout after S3 committed it, or a 409 for a conditional write in flight.  The holder adopts the version it read and keeps the lease.  The adopted write renews the gate only if the gate is open and the renew deadline has not passed; otherwise the gate stays closed until the next renewal that succeeds.  The read-back is not retried.
+- Otherwise, a renewal that returns `VersionMismatch`, or finds the lease missing, makes the holder revoke the gate file at once and become a standby.  A renewal that throws keeps the old version and is tried again at the next renew interval; the gate closes once the renew deadline passes.
+- The read-back runs in the same round, not at the start of the next one.  `storeCallTimeout` is a per-call bound (the SDK's API call timeout), and nothing in the margin depends on how many calls a holder makes in a round: the gate's window is counted from the send time of the write that landed, so a slower round only renews later, never extends a window.  A holder's round with a read-back takes at most two `storeCallTimeout`s, 39 seconds with the default timing, under the 60-second renew deadline.
+- An `InterruptedException` is never a failed round.  It closes the gate and propagates with the interrupt flag set; the agent's loop then returns and the process exits.  Only `Exception` is caught as a failed round; a JVM `Error` propagates.
 
 ### Scratch space
 

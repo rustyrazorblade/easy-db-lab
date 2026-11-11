@@ -11,6 +11,8 @@ import java.time.Instant
  *
  * - [VALID_UNTIL] holds the grant as epoch seconds and a newline. It is written to a temporary file
  *   and renamed over the old one, so a gate never reads a half-written time; a revoke removes it.
+ *   The time is wall-clock, compared with the same node's wall clock, so a clock step on the node
+ *   moves the window; [LeaseTiming] says how much step the margin tolerates.
  * - [READY] exists once the agent has read the lease; the lease container's readiness probe checks it.
  *
  * @property dir the shared directory, an emptyDir in the pod.

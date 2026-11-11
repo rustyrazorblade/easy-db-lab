@@ -1,7 +1,14 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -98,6 +105,16 @@ class LeaseLoopTest {
         }
 
         fun holds(): Boolean = loop.isHolder()
+    }
+
+    /**
+     * An interrupt test that fails before it reads the flag must not leave it set for the next
+     * test, and a captured log must not outlive its test.
+     */
+    @AfterEach
+    fun clearInterrupt() {
+        Thread.interrupted()
+        appenders.forEach { loopLogger.detachAppender(it) }
     }
 
     private fun lease(): LeaseRecord? = store.read(LeaseRecord.KEY)?.let { LeaseRecord.fromJson(it.content) }
@@ -438,6 +455,147 @@ class LeaseLoopTest {
         assertThat(node.gate.validUntil).isNotNull()
     }
 
+    @Test
+    fun `an interrupt during a round ends the loop's round by propagating, with the gate closed and the interrupt flag set`() {
+        val flaky = FlakyObjects(store)
+        val node = Node("lab-a/pod-1", flaky)
+        node.step()
+        flaky.failure = { InterruptedException("pod stopping") }
+        flaky.failing = true
+
+        assertThatThrownBy { node.step() }.isInstanceOf(InterruptedException::class.java)
+
+        assertThat(Thread.interrupted()).describedAs("the interrupt flag is restored").isTrue()
+        assertThat(node.gate.events.last()).isEqualTo("revoke")
+        assertThat(node.gate.validUntil).isNull()
+    }
+
+    @Test
+    fun `runUntilInterrupted ends cleanly when its sleep is interrupted, with the gate closed and the interrupt flag set`() {
+        val gate = RecordingGate()
+        val loop = LeaseLoop(store, "lab-a/pod-1", timing, FakeClock(start), gate) {}
+        var sleeps = 0
+
+        loop.runUntilInterrupted {
+            sleeps++
+            if (sleeps == 2) throw InterruptedException("pod stopping")
+        }
+
+        assertThat(Thread.interrupted()).isTrue()
+        assertThat(lease()?.sequence).describedAs("it renewed once before the interrupt").isEqualTo(1)
+        assertThat(gate.events.last()).isEqualTo("revoke")
+        assertThat(gate.validUntil).isNull()
+    }
+
+    @Test
+    fun `a renewal that lands but reports a failure keeps the lease and its gate, and the next renewal lands`() {
+        val node = Node("lab-a/pod-1")
+        node.step()
+        store.loseNextReplaceAnswer { error("read timed out after the PUT was sent") }
+
+        node.step()
+
+        assertThat(node.holds()).isTrue()
+        assertThat(lease()?.sequence).isEqualTo(1)
+        assertThat(node.gate.validUntil).describedAs("granted from the write that landed").isEqualTo(start.plusSeconds(15 + 60))
+
+        node.step()
+
+        assertThat(node.holds()).isTrue()
+        assertThat(lease()?.sequence).isEqualTo(2)
+        assertThat(node.gate.validUntil).isEqualTo(start.plusSeconds(30 + 60))
+        assertThat(node.gate.events).doesNotContain("revoke")
+    }
+
+    @Test
+    fun `a renewal refused with a conflict while the store holds its own write keeps the lease`() {
+        val node = Node("lab-a/pod-1")
+        node.step()
+        // S3 answers 409 when another conditional write to the key is in flight, even for a write that committed.
+        store.loseNextReplaceAnswer { ReplaceResult.VersionMismatch }
+
+        node.step()
+        node.step()
+
+        assertThat(node.holds()).isTrue()
+        assertThat(lease()?.holder).isEqualTo("lab-a/pod-1")
+        assertThat(lease()?.sequence).isEqualTo(2)
+        assertThat(node.gate.validUntil).isEqualTo(start.plusSeconds(30 + 60))
+        assertThat(node.gate.events).doesNotContain("revoke")
+    }
+
+    @Test
+    fun `a renewal refused while the lease names another holder at the same sequence and time stands the node by`() {
+        val node = Node("lab-a/pod-1")
+        node.step()
+        val current = checkNotNull(store.read(LeaseRecord.KEY))
+        val impostor = LeaseRecord("other/pod", 1, 120, start.plusSeconds(15))
+        store.replaceIfVersionMatches(LeaseRecord.KEY, impostor.toJson(), current.version)
+
+        node.step()
+
+        assertThat(node.holds()).isFalse()
+        assertThat(node.gate.events.last()).isEqualTo("revoke")
+        assertThat(lease()).isEqualTo(impostor)
+    }
+
+    @Test
+    fun `a renewal that lands after the renew deadline keeps the version but does not reopen the gate until the next renewal`() {
+        val flaky = FlakyObjects(store)
+        val node = Node("lab-a/pod-1", flaky)
+        node.step()
+        flaky.failing = true
+        node.runFor(timing.renewDeadline + timing.renewInterval)
+        assertThat(node.gate.validUntil).describedAs("closed at the deadline").isNull()
+        flaky.failing = false
+        store.loseNextReplaceAnswer { error("read timed out after the PUT was sent") }
+
+        node.step()
+
+        assertThat(node.holds()).isTrue()
+        assertThat(node.gate.validUntil).describedAs("the adopted write does not reopen the gate").isNull()
+
+        node.step()
+
+        assertThat(node.holds()).isTrue()
+        assertThat(node.gate.validUntil).isEqualTo(node.clock.wall().plusSeconds(60))
+        assertThat(node.gate.events.count { it == "wipe" }).isEqualTo(1)
+    }
+
+    @Test
+    fun `an unparsable lease seen again after the node held the lease is logged at ERROR again`() {
+        val etags = InMemoryConditionalObjects(versionsFromContent = true)
+        val node = Node("lab-b/pod-1", etags)
+        etags.createIfAbsent(LeaseRecord.KEY, "not a lease")
+        val errors = errorLog()
+        node.runFor(timing.ttl * 2)
+        assertThat(errors.cannotParse()).describedAs("the first time").isEqualTo(1)
+
+        etags.remove(LeaseRecord.KEY)
+        node.runFor(timing.standbyPoll * 2)
+        assertThat(node.holds()).isTrue()
+        node.clock.failNextRead = true
+        node.step()
+        etags.put(LeaseRecord.KEY, "not a lease")
+        node.runFor(timing.ttl * 2)
+
+        assertThat(errors.cannotParse()).describedAs("the same body, at the same ETag, after a holding").isEqualTo(2)
+    }
+
+    private val loopLogger = LoggerFactory.getLogger(LeaseLoop::class.java) as Logger
+    private val appenders = mutableListOf<ListAppender<ILoggingEvent>>()
+
+    /** Captures the loop's log; [clearInterrupt] detaches it after the test. */
+    private fun errorLog(): ListAppender<ILoggingEvent> =
+        ListAppender<ILoggingEvent>().also {
+            it.start()
+            loopLogger.addAppender(it)
+            appenders += it
+        }
+
+    private fun ListAppender<ILoggingEvent>.cannotParse(): Int =
+        list.count { it.level == Level.ERROR && it.formattedMessage.contains("cannot parse the lease body") }
+
     /**
      * Runs [onRead] inside a read, before it answers, and [beforeWrite] before each conditional
      * write reaches the store, so a test can put another pod's write between the loop's read and its
@@ -475,13 +633,14 @@ class LeaseLoopTest {
         }
     }
 
-    /** A store that throws while [failing], as S3 does when it cannot be reached. */
+    /** A store that throws [failure] while [failing], as S3 does when it cannot be reached. */
     private class FlakyObjects(
         private val delegate: ConditionalObjects,
     ) : ConditionalObjects {
         var failing = false
+        var failure: () -> Throwable = { IllegalStateException("store unreachable") }
 
-        private fun <T> unlessFailing(call: () -> T): T = if (failing) error("store unreachable") else call()
+        private fun <T> unlessFailing(call: () -> T): T = if (failing) throw failure() else call()
 
         override fun read(key: String) = unlessFailing { delegate.read(key) }
 

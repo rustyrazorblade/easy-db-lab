@@ -15,6 +15,7 @@
 - [x] 2.4 Test `LeaseLoop` with the in-memory store and a fake monotonic clock: create when absent, renew with a rising sequence, stand by while the version changes, take over only after the TTL on the standby's own clock, revoke on `VersionMismatch` or a missing lease, never take back its own lease after a restart
 - [x] 2.5 Implement `LeaseLoop`, `GateFile` (write and rename, revoke) and the scratch wipe on acquire
 - [x] 2.6 Implement `LeaseAgentMain` (environment, default credentials chain, bucket region, stdout logging of every transition, a readiness file after the first lease read)
+- [x] 2.7 Review round 5: `LeaseLoop` catches `Exception` only; an `InterruptedException` closes the gate and propagates with the flag set, and `runUntilInterrupted` ends `LeaseAgentMain` cleanly. A renewal that throws or answers `VersionMismatch` reads the lease back once, in the same round, and adopts its own write (it never reopens a closed or overdue gate). Acquiring clears the unparsed-version memo. Comments on the first gate window and on the wall-clock `valid-until`. `InMemoryConditionalObjects` gains `loseNextReplaceAnswer` and content-derived versions
 
 ## 3. The gate script
 

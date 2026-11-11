@@ -18,7 +18,7 @@ Keep the dependency direction one way: the root module may use this module, and 
 - `LeaseRecord` — the body of `leases/compactor.json`: holder, sequence, TTL and renewal time.  No lease decision reads the renewal time.
 - `LeaseTiming` — the timing values.  It cannot be built when the worst-case stop is not less than the TTL.  The values come from `Constants.Compactor.Lease` in the root module, through environment variables.
 - `LeaseClock` — one node's monotonic and wall clocks.  Every lease decision uses the monotonic clock only.
-- `LeaseLoop` — the lease state machine.  It creates, renews, takes over and gives up the lease, and opens or closes the gate.
+- `LeaseLoop` — the lease state machine.  It creates, renews, takes over and gives up the lease, and opens or closes the gate.  A renewal that does not succeed reads the lease back once and keeps the lease when the store holds its own write.  It catches `Exception` only: an `InterruptedException` closes the gate and propagates with the flag set, and `runUntilInterrupted` is the agent's loop.
 - `Gate` and `GateFile` — what the agent tells the compactor containers.  `GateFile` writes `valid-until` (epoch seconds, by a write and a rename) and the `ready` marker for the readiness probe, in the emptyDir the pod shares.
 - `ScratchWipe` — empties the compactors' scratch directories when the agent takes the lease.
 - `LeaseAgentConfig` — the agent's configuration, read from the pod's environment.

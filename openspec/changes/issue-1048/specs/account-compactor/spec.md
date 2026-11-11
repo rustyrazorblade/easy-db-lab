@@ -78,7 +78,7 @@ The timing SHALL be held in `Constants`: TTL 120 seconds, renew interval 15 seco
 
 ### Requirement: A holder that cannot renew stops work
 
-The lease agent SHALL write the time until which its lease is valid to a file shared with the compactor containers, by writing a temporary file and renaming it.  The valid-until time SHALL be the send time of the last successful renewal plus the renew deadline.  When a renewal returns `VersionMismatch`, or the lease is missing, the agent SHALL remove the file and become a standby.
+The lease agent SHALL write the time until which its lease is valid to a file shared with the compactor containers, by writing a temporary file and renaming it.  The valid-until time SHALL be the send time of the last successful renewal plus the renew deadline.  When a renewal throws or returns `VersionMismatch`, the agent SHALL read the lease back once before it decides.  When the lease holds exactly the record the agent tried to write, the agent SHALL keep the lease at the version it read; that write SHALL NOT reopen a gate that is closed or past the renew deadline.  Otherwise, when a renewal returns `VersionMismatch`, or the lease is missing, the agent SHALL remove the file and become a standby.  An interrupt SHALL remove the file and end the agent.
 
 Each compactor container SHALL run its binary under a gate script, run by a static busybox (`busybox:1.37.0-musl`) copied in by an init container, with every applet called explicitly.  The gate SHALL:
 
@@ -92,6 +92,10 @@ The gate SHALL stop the binary on its own when the agent dies, because the valid
 #### Scenario: A holder that loses the lease stops compacting
 - **WHEN** the holder's renewal fails and the valid-until time passes
 - **THEN** every compactor binary in its pod is stopped within the gate poll plus the gate grace
+
+#### Scenario: A renewal that landed but answered otherwise keeps the lease
+- **WHEN** the holder's renewal times out, or answers 409, after the store committed it
+- **THEN** the holder reads the lease back, finds its own write, and keeps the lease and its gate
 
 #### Scenario: A dead agent fences its own compactors
 - **WHEN** the lease container stops while it holds the lease

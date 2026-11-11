@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
@@ -10,12 +11,35 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Each operation is atomic on its key ([ConcurrentHashMap.compute]), so racing writers behave as
  * they do against S3.
+ *
+ * @property versionsFromContent when set, a version is the MD5 of the content, as a single-part S3
+ *   ETag is, so writing the same content again gets the same version back.
  */
-class InMemoryConditionalObjects : ConditionalObjects {
+class InMemoryConditionalObjects(
+    private val versionsFromContent: Boolean = false,
+) : ConditionalObjects {
     private val objects = ConcurrentHashMap<String, VersionedObject>()
     private val versions = AtomicLong()
 
-    private fun nextVersion(): ObjectVersion = ObjectVersion("v${versions.incrementAndGet()}")
+    /** What the next replace that lands answers instead of [ReplaceResult.Replaced]; see [loseNextReplaceAnswer]. */
+    @Volatile
+    private var lostAnswer: (() -> ReplaceResult)? = null
+
+    private fun nextVersion(content: String): ObjectVersion =
+        when {
+            versionsFromContent ->
+                ObjectVersion(MessageDigest.getInstance("MD5").digest(content.toByteArray()).joinToString("") { "%02x".format(it) })
+            else -> ObjectVersion("v${versions.incrementAndGet()}")
+        }
+
+    /**
+     * Makes the next replace that lands answer with [answer] instead: it throws, as a PUT that S3
+     * committed but whose response timed out does, or returns a [ReplaceResult.VersionMismatch], as
+     * a 409 for a write that committed does. The write is in the store either way.
+     */
+    fun loseNextReplaceAnswer(answer: () -> ReplaceResult) {
+        lostAnswer = answer
+    }
 
     override fun read(key: String): VersionedObject? = objects[key]
 
@@ -25,7 +49,7 @@ class InMemoryConditionalObjects : ConditionalObjects {
     ): CreateResult {
         var result: CreateResult = CreateResult.AlreadyExists
         objects.computeIfAbsent(key) {
-            VersionedObject(content, nextVersion()).also { result = CreateResult.Created(it.version) }
+            VersionedObject(content, nextVersion(content)).also { result = CreateResult.Created(it.version) }
         }
         return result
     }
@@ -38,9 +62,14 @@ class InMemoryConditionalObjects : ConditionalObjects {
         var result: ReplaceResult = ReplaceResult.VersionMismatch
         objects.computeIfPresent(key) { _, current ->
             when (current.version) {
-                expected -> VersionedObject(content, nextVersion()).also { result = ReplaceResult.Replaced(it.version) }
+                expected -> VersionedObject(content, nextVersion(content)).also { result = ReplaceResult.Replaced(it.version) }
                 else -> current
             }
+        }
+        val answer = lostAnswer
+        if (result is ReplaceResult.Replaced && answer != null) {
+            lostAnswer = null
+            return answer()
         }
         return result
     }
@@ -52,7 +81,7 @@ class InMemoryConditionalObjects : ConditionalObjects {
     fun put(
         key: String,
         content: String,
-    ): ObjectVersion = nextVersion().also { objects[key] = VersionedObject(content, it) }
+    ): ObjectVersion = nextVersion(content).also { objects[key] = VersionedObject(content, it) }
 
     /** Removes the object at [key], as an operator might by hand; the lease code never deletes. */
     fun remove(key: String) {

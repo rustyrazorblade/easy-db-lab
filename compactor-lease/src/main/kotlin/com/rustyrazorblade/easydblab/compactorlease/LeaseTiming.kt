@@ -13,6 +13,12 @@ import kotlin.time.Duration.Companion.seconds
  * [ttl] on its own clock. So the holder stops before a standby can take over exactly when
  * [worstCaseStop] is less than [ttl], and a timing that breaks that cannot be built.
  *
+ * The holder's side of that margin is on the wall clock: [GateFile] writes `valid-until` as wall
+ * epoch seconds and the gates compare it with the node's `date`. So the margin holds only while the
+ * node's clock is slewed, as chrony does, and is never stepped forward or back by more than the
+ * slack, `ttl - worstCaseStop`, during one lease window. The standby's side is on its monotonic
+ * clock and does not depend on this.
+ *
  * @property ttl how long a standby waits on one version before it takes over.
  * @property renewInterval how often the holder renews; shorter than [renewDeadline], so a renewal
  *   that is a little late does not expire the lease.

@@ -1,7 +1,7 @@
 ## Overrides existing behavior
 
 - `dynamic-otel-scrape-config`: `yace` is no longer one of the static scrape jobs; the builder renders it where CloudWatch exists.
-- `tool-execution` "Journald log collection pipeline" says the journald collector is deployed on all nodes. It is now deployed only where the environment has a systemd journal. That requirement is already stale (it describes `otel-journald` in chroot mode, not Fluent Bit). Correcting it is left to a spec cleanup, not this change.
+- `tool-execution` "Journald log collection pipeline" says the journald collector is deployed on all nodes. It is now deployed only where the environment has a systemd journal. This change rewrites the requirement (MODIFIED delta in `specs/tool-execution`), which also corrects its stale `otel-journald` wording.
 
 ## Conflicts with other in-flight changes
 

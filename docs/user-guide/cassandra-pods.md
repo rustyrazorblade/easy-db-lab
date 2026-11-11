@@ -67,3 +67,9 @@ image tag as `cassandra_build`, so the Cassandra dashboards show these pods with
 
 Both would report under `job="cassandra"`, so `start` refuses to run while the AMI-based Cassandra
 is running on a db node. Stop it first with `easy-db-lab cassandra stop`.
+
+## Local clusters
+
+The memory request equals the limit, so N db pods reserve N × `--memory`. On a 3-node K3s-in-docker
+cluster, pass `--memory 3Gi` or less (the heap is half the limit, or set it with `--heap`), or run
+fewer nodes. A 2Gi limit was OOM-killed in testing, so do not go below about 3Gi without testing it.

@@ -22,3 +22,6 @@ SSH path for the AMI; this kit is the pods path, so its name must not match a bu
   sizes the heap from host memory, not the cgroup limit, so the pod always exports `MAX_HEAP_SIZE`:
   `--heap`, else half of `MEMORY_LIMIT_MIB` (the limit, from the downward API). The readiness probe
   matches `running` as a whole line (`grep -qx`); `not running` contains `running`.
+- Local clusters: request equals limit, so N db pods reserve N x `--memory`. On a 3-node K3s-in-docker
+  cluster pass `--memory 3Gi` or less (the heap is half the limit, or set it with `--heap`), or run
+  fewer nodes. 2Gi was OOM-killed in testing; do not go below about 3Gi without testing it.

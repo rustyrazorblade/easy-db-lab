@@ -663,12 +663,15 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      * `grafana update-config` redeploys it through this service. Both must stamp the same config
      * hash, or that next deploy sees a "changed" collector and rolls it for nothing.
      */
-    @ParameterizedTest(name = "{0}, redirect={1}")
+    @ParameterizedTest(name = "{0}, redirect={1}, aws={2}")
     @MethodSource("collectorClusters")
     fun `the stack deploy and a kit sync stamp the collector with the same config hash`(
         cni: CniMode,
         redirect: TelemetryRedirect?,
+        awsCapabilities: Boolean,
     ) {
+        val sharedCapabilities = if (awsCapabilities) NodeCapabilities.AWS else NodeCapabilities.LOCAL_DOCKER
+        capabilities = sharedCapabilities
         val state =
             ClusterState(
                 name = "test-cluster",
@@ -690,6 +693,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             mockClusterStateManager,
             getKoin().get(),
             ConfigChangeReport(mockK8sService, getKoin().get()),
+            { sharedCapabilities },
         ).syncConfigMap(controlNode).getOrThrow()
 
         assertThat(appliedCollectorHash()).isEqualTo(deployHash)
@@ -713,10 +717,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         @JvmStatic
         fun collectorClusters(): List<Arguments> =
             listOf(CniMode.Flannel, CniMode.Cilium).flatMap { cni ->
-                listOf(
-                    Arguments.of(cni, null),
-                    Arguments.of(cni, TelemetryRedirect.fromBaseHost("10.0.0.9")),
-                )
+                listOf(true, false).flatMap { capabilities ->
+                    listOf(
+                        Arguments.of(cni, null, capabilities),
+                        Arguments.of(cni, TelemetryRedirect.fromBaseHost("10.0.0.9"), capabilities),
+                    )
+                }
             }
     }
 }

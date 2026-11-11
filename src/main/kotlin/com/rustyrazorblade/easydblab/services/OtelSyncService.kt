@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.User
@@ -25,6 +26,9 @@ interface OtelSyncService {
  * ConfigMap, not because of a forced restart. A forced restart would leave the old hash on the
  * template, and the next `up` or `grafana update-config` would see a "changed" collector and roll
  * it again for nothing.
+ *
+ * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
+ *   like the one on [DefaultObservabilityStackService] (#1040 replaces them with one provider).
  */
 class DefaultOtelSyncService(
     private val k8sClientProvider: K8sClientProvider,
@@ -33,6 +37,7 @@ class DefaultOtelSyncService(
     private val clusterStateManager: ClusterStateManager,
     private val user: User,
     private val configChangeReport: ConfigChangeReport,
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
 ) : OtelSyncService {
     private val log = KotlinLogging.logger {}
 
@@ -54,7 +59,7 @@ class DefaultOtelSyncService(
                     clusterState,
                     user.region,
                     scrapeConfigs,
-                    NodeCapabilities.from(clusterState),
+                    capabilitiesOf(clusterState),
                 )
             configChangeReport.report(controlHost, resources, Constants.K8s.NAMESPACE)
             for (resource in resources) {

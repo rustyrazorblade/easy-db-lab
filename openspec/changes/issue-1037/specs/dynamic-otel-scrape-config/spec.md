@@ -27,7 +27,6 @@ Cassandra is NOT among them. It formerly had a `cassandra-maac` scrape job on `:
 - **WHEN** any built-in kit's `kit.yaml` declares a `scrape` metrics entry
 - **THEN** it carries a `pod-selector` AND `up` for that job has exactly one series per scraped pod
 
-
 #### Scenario: YACE scrape job only with CloudWatch
 - **WHEN** `OtelManifestBuilder` builds the ConfigMap for an environment without CloudWatch
 - **THEN** the resulting config SHALL NOT contain a `yace` scrape job

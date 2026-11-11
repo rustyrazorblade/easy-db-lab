@@ -66,6 +66,20 @@ class ServicesModuleTest {
         }
     }
 
+    /**
+     * [HostOperationsService] takes a defaulted host-concurrency bound, an [Int] Koin cannot resolve
+     * by type, so `up` crashed resolving it until the registration became an explicit lambda.
+     */
+    @Test
+    fun `servicesModule resolves HostOperationsService`() {
+        val app = koinApplication { modules(servicesModule, leafDependenciesModule) }
+        try {
+            assertThatCode { app.koin.get<HostOperationsService>() }.doesNotThrowAnyException()
+        } finally {
+            app.close()
+        }
+    }
+
     @Test
     fun `servicesModule resolves StressJobService without NoDefinitionFoundException`() {
         val app = koinApplication { modules(servicesModule, leafDependenciesModule) }

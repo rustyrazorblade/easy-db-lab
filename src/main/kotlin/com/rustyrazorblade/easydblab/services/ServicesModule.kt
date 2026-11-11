@@ -177,7 +177,9 @@ val servicesModule =
         // Explicit single (not singleOf) so the jobPollInterval constructor default applies
         // instead of Koin trying to resolve a Duration binding.
         single<StressJobService> { DefaultStressJobService(get(), get(), get(), get(), get()) }
-        singleOf(::HostOperationsService)
+        // Explicit single (not singleOf) so the maxConcurrency constructor default applies
+        // instead of Koin trying to resolve an Int binding.
+        single { HostOperationsService(get()) }
 
         // Builds a Cassandra branch checkout on this machine
         singleOf(::CassandraBuildService)

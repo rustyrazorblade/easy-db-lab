@@ -257,6 +257,19 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `skips are reported before the config-change report and the apply`() {
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        val firstSkip = emitted.indexOfFirst { it is Event.Grafana.StageSkipped }
+        val firstCompared = emitted.indexOfFirst { it is Event.Grafana.WorkloadConfigCompared }
+        assertThat(firstSkip).isNotNegative()
+        assertThat(firstSkip).isLessThan(firstCompared)
+    }
+
+    @Test
     fun `AWS applies the gated stages and emits no skip`() {
         val emitted = collectEvents()
 

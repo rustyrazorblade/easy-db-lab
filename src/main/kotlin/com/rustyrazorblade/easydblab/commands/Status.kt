@@ -68,6 +68,10 @@ import java.time.format.DateTimeFormatter
  * by a script for a healthy cluster. See design decision D9 in
  * `openspec/changes/up-fail-fast/design.md`. **No command that mutates state may take this
  * exception.**
+ *
+ * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
+ *   whose default keeps the no-argument construction picocli's factories use
+ *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]).
  */
 @RequireProfileSetup
 @RequiresProxy(tolerateFailure = true)

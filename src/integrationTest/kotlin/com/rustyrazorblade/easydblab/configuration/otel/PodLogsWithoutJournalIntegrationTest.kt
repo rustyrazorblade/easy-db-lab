@@ -15,6 +15,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.PodBuilder
+import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.client.Config
@@ -120,75 +121,80 @@ class PodLogsWithoutJournalIntegrationTest : BaseKoinTest() {
         return KubernetesClientBuilder().withConfig(Config.fromKubeconfig(container.kubeConfigYaml)).build()
     }
 
-    private fun lokiResources(): List<HasMetadata> {
-        val labels = mapOf("app.kubernetes.io/name" to Constants.K8s.LOKI_APP_LABEL)
-        val configMap =
-            ConfigMapBuilder()
-                .withNewMetadata()
-                .withName("loki-test-config")
-                .endMetadata()
-                .addToData("loki.yaml", LOKI_CONFIG)
-                .build()
-        val deployment =
-            DeploymentBuilder()
-                .withNewMetadata()
-                .withName(Constants.K8s.LOKI_APP_LABEL)
-                .endMetadata()
-                .withNewSpec()
-                .withReplicas(1)
-                .withNewSelector()
-                .addToMatchLabels(labels)
-                .endSelector()
-                .withNewTemplate()
-                .withNewMetadata()
-                .addToLabels(labels)
-                .endMetadata()
-                .withNewSpec()
-                .addNewContainer()
-                .withName(Constants.K8s.LOKI_APP_LABEL)
-                .withImage(LokiManifestBuilder.IMAGE)
-                .withArgs("-config.file=/etc/loki/loki.yaml")
-                .addNewPort()
-                .withContainerPort(Constants.K8s.LOKI_HTTP_PORT)
-                .endPort()
-                .addNewVolumeMount()
-                .withName("config")
-                .withMountPath("/etc/loki")
-                .endVolumeMount()
-                .addNewVolumeMount()
-                .withName("data")
-                .withMountPath("/loki")
-                .endVolumeMount()
-                .endContainer()
-                .addNewVolume()
-                .withName("config")
-                .withNewConfigMap()
-                .withName("loki-test-config")
-                .endConfigMap()
-                .endVolume()
-                .addNewVolume()
-                .withName("data")
-                .withNewEmptyDir()
-                .endEmptyDir()
-                .endVolume()
-                .endSpec()
-                .endTemplate()
-                .endSpec()
-                .build()
-        val service =
-            ServiceBuilder()
-                .withNewMetadata()
-                .withName(Constants.K8s.LOKI_APP_LABEL)
-                .endMetadata()
-                .withNewSpec()
-                .addToSelector(labels)
-                .addNewPort()
-                .withPort(Constants.K8s.LOKI_HTTP_PORT)
-                .endPort()
-                .endSpec()
-                .build()
-        return listOf(configMap, deployment, service)
-    }
+    private fun lokiResources(): List<HasMetadata> = listOf(lokiConfigMap(), lokiDeployment(), lokiService())
+
+    private fun lokiLabels() = mapOf("app.kubernetes.io/name" to Constants.K8s.LOKI_APP_LABEL)
+
+    private fun lokiConfigMap() =
+        ConfigMapBuilder()
+            .withNewMetadata()
+            .withName("loki-test-config")
+            .endMetadata()
+            .addToData("loki.yaml", LOKI_CONFIG)
+            .build()
+
+    private fun lokiDeployment() =
+        DeploymentBuilder()
+            .withNewMetadata()
+            .withName(Constants.K8s.LOKI_APP_LABEL)
+            .endMetadata()
+            .withNewSpec()
+            .withReplicas(1)
+            .withNewSelector()
+            .addToMatchLabels(lokiLabels())
+            .endSelector()
+            .withNewTemplate()
+            .withNewMetadata()
+            .addToLabels(lokiLabels())
+            .endMetadata()
+            .withSpec(lokiPodSpec())
+            .endTemplate()
+            .endSpec()
+            .build()
+
+    private fun lokiPodSpec() =
+        PodSpecBuilder()
+            .addNewContainer()
+            .withName(Constants.K8s.LOKI_APP_LABEL)
+            .withImage(LokiManifestBuilder.IMAGE)
+            .withArgs("-config.file=/etc/loki/loki.yaml")
+            .addNewPort()
+            .withContainerPort(Constants.K8s.LOKI_HTTP_PORT)
+            .endPort()
+            .addNewVolumeMount()
+            .withName("config")
+            .withMountPath("/etc/loki")
+            .endVolumeMount()
+            .addNewVolumeMount()
+            .withName("data")
+            .withMountPath("/loki")
+            .endVolumeMount()
+            .endContainer()
+            .addNewVolume()
+            .withName("config")
+            .withNewConfigMap()
+            .withName("loki-test-config")
+            .endConfigMap()
+            .endVolume()
+            .addNewVolume()
+            .withName("data")
+            .withNewEmptyDir()
+            .endEmptyDir()
+            .endVolume()
+            .build()
+
+    private fun lokiService() =
+        ServiceBuilder()
+            .withNewMetadata()
+            .withName(Constants.K8s.LOKI_APP_LABEL)
+            .endMetadata()
+            .withNewSpec()
+            .addToSelector(lokiLabels())
+            .addNewPort()
+            .withPort(Constants.K8s.LOKI_HTTP_PORT)
+            .endPort()
+            .endSpec()
+            .build()
 
     private fun clusterConfig() =
         ConfigMapBuilder()
@@ -228,79 +234,101 @@ class PodLogsWithoutJournalIntegrationTest : BaseKoinTest() {
         }
     }
 
-    @Test
-    fun `a pod's stdout line reaches Loki through the collector on a node with no journal`() {
-        startK3s().use { client ->
-            lokiResources().forEach { client.resource(it).inNamespace("default").create() }
-            client.resource(clusterConfig()).inNamespace("default").create()
-            awaitReady(client, "Loki") {
-                client
-                    .apps()
-                    .deployments()
-                    .inNamespace("default")
-                    .withName("loki")
-                    .get()
-                    ?.status
-                    ?.readyReplicas == 1
-            }
-
-            OtelManifestBuilder(getKoin().get()).buildAllResources(NodeCapabilities.LOCAL_DOCKER).forEach {
-                client.resource(it).inNamespace("default").create()
-            }
-            awaitReady(client, "the collector") {
-                client
-                    .apps()
-                    .daemonSets()
-                    .inNamespace("default")
-                    .withName("otel-collector")
-                    .get()
-                    ?.status
-                    ?.numberReady == 1
-            }
-
+    /** Loki is up, with the cluster-config ConfigMap the collector reads. */
+    private fun deployLoki(client: KubernetesClient) {
+        lokiResources().forEach { client.resource(it).inNamespace("default").create() }
+        client.resource(clusterConfig()).inNamespace("default").create()
+        awaitReady(client, "Loki") {
             client
-                .resource(
-                    NamespaceBuilder()
-                        .withNewMetadata()
-                        .withName(WORKLOAD_NAMESPACE)
-                        .endMetadata()
-                        .build(),
-                ).create()
-            awaitReady(client, "the default ServiceAccount") {
-                client
-                    .serviceAccounts()
-                    .inNamespace(WORKLOAD_NAMESPACE)
-                    .withName("default")
-                    .get() != null
-            }
-            client.resource(markerPod()).create()
+                .apps()
+                .deployments()
+                .inNamespace("default")
+                .withName("loki")
+                .get()
+                ?.status
+                ?.readyReplicas == 1
+        }
+    }
 
-            val lokiPod =
-                client
-                    .pods()
-                    .inNamespace("default")
-                    .withLabel("app.kubernetes.io/name", "loki")
-                    .list()
-                    .items
-                    .single()
+    /** The real collector DaemonSet, rendered for an environment with no capabilities. */
+    private fun deployCollector(client: KubernetesClient) {
+        OtelManifestBuilder(getKoin().get()).buildAllResources(NodeCapabilities.LOCAL_DOCKER).forEach {
+            client.resource(it).inNamespace("default").create()
+        }
+        awaitReady(client, "the collector") {
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace("default")
+                .withName("otel-collector")
+                .get()
+                ?.status
+                ?.numberReady == 1
+        }
+    }
+
+    /** A pod in its own namespace that prints [MARKER] until it is found. */
+    private fun startMarkerPod(client: KubernetesClient) {
+        client
+            .resource(
+                NamespaceBuilder()
+                    .withNewMetadata()
+                    .withName(WORKLOAD_NAMESPACE)
+                    .endMetadata()
+                    .build(),
+            ).create()
+        awaitReady(client, "the default ServiceAccount") {
+            client
+                .serviceAccounts()
+                .inNamespace(WORKLOAD_NAMESPACE)
+                .withName("default")
+                .get() != null
+        }
+        client.resource(markerPod()).create()
+    }
+
+    /** Loki's answer to a query for [MARKER], polled until it appears or the attempts run out. */
+    private fun awaitMarkerInLoki(client: KubernetesClient): String {
+        val lokiPod =
             client
                 .pods()
                 .inNamespace("default")
-                .withName(lokiPod.metadata.name)
-                .portForward(Constants.K8s.LOKI_HTTP_PORT)
-                .use { forward ->
-                    val query = URLEncoder.encode("{cluster=\"$CLUSTER\"} |= \"$MARKER\"", Charsets.UTF_8)
-                    val url = "http://127.0.0.1:${forward.localPort}/loki/api/v1/query_range?query=$query&since=10m"
-                    val http = HttpClient.newHttpClient()
-                    var body = ""
-                    repeat(ARRIVAL_ATTEMPTS) {
-                        if (!body.contains(MARKER)) {
-                            Thread.sleep(POLL_MILLIS)
-                            body = http.send(HttpRequest.newBuilder(URI(url)).build(), HttpResponse.BodyHandlers.ofString()).body()
-                        }
-                    }
-                    assertThat(body).describedAs("Loki's answer; the node has no /var/log/journal").contains(MARKER)
-                }
+                .withLabel("app.kubernetes.io/name", "loki")
+                .list()
+                .items
+                .single()
+        return client
+            .pods()
+            .inNamespace("default")
+            .withName(lokiPod.metadata.name)
+            .portForward(Constants.K8s.LOKI_HTTP_PORT)
+            .use { forward -> pollLoki(forward.localPort) }
+    }
+
+    private fun pollLoki(port: Int): String {
+        val query = URLEncoder.encode("{cluster=\"$CLUSTER\"} |= \"$MARKER\"", Charsets.UTF_8)
+        val request = HttpRequest.newBuilder(URI("http://127.0.0.1:$port/loki/api/v1/query_range?query=$query&since=10m")).build()
+        val http = HttpClient.newHttpClient()
+        var body = ""
+        repeat(ARRIVAL_ATTEMPTS) {
+            if (!body.contains(MARKER)) {
+                Thread.sleep(POLL_MILLIS)
+                body = http.send(request, HttpResponse.BodyHandlers.ofString()).body()
+            }
+        }
+        return body
+    }
+
+    @Test
+    fun `a pod's stdout line reaches Loki through the collector on a node with no journal`() {
+        startK3s().use { client ->
+            deployLoki(client)
+            deployCollector(client)
+            startMarkerPod(client)
+
+            val body = awaitMarkerInLoki(client)
+
+            assertThat(body).describedAs("Loki's answer; the node has no /var/log/journal").contains(MARKER)
         }
     }
 }

@@ -214,7 +214,8 @@ class EC2InstanceService(
         eventBus.emit(Event.Ec2.InstancesStartWaiting)
 
         val ready = mutableMapOf<InstanceId, InstanceDetails>()
-        val ended = mutableListOf<InstanceDetails>()
+        // Keyed by ID: a look retried after an exception sees the same ended instance again.
+        val ended = mutableMapOf<InstanceId, InstanceDetails>()
         // An ended instance stops the poll through `done`, not by throwing: the poll retries any exception.
         val pending =
             pollUntil(
@@ -228,7 +229,7 @@ class EC2InstanceService(
                 waiting.chunked(Constants.Scale.DESCRIBE_INSTANCES_BATCH).forEach { batch ->
                     describeTolerantly(batch).forEach { instance ->
                         when {
-                            instance.state in ENDED_STATES -> ended += instance
+                            instance.state in ENDED_STATES -> ended[instance.instanceId] = instance
                             instance.state == InstanceStateName.RUNNING.toString() && !instance.publicIp.isNullOrEmpty() ->
                                 ready[instance.instanceId] = instance
                         }
@@ -239,7 +240,7 @@ class EC2InstanceService(
 
         check(ended.isEmpty()) {
             "${ended.size} instances will never run; EC2 ended them: " +
-                ended.take(MAX_NAMED_IDS).joinToString(", ") { "${it.instanceId} (${it.name ?: "unnamed"}): ${it.state}" } +
+                ended.values.take(MAX_NAMED_IDS).joinToString(", ") { "${it.instanceId} (${it.name ?: "unnamed"}): ${it.state}" } +
                 ". A re-run of up replaces them."
         }
         check(pending.isEmpty()) {
@@ -341,11 +342,25 @@ class EC2InstanceService(
                     privateIp = instance.privateIpAddress(),
                     availabilityZone = instance.placement().availabilityZone(),
                     instanceType = instance.instanceType()?.toString(),
-                    name = instance.tags().firstOrNull { it.key() == "Name" }?.value(),
+                    name = aliasOf(instance.tags().associate { it.key() to it.value() }, instance.amiLaunchIndex()),
                 )
             }
         }
     }
+
+    /**
+     * The alias of an instance with [tags] and launch index [launchIndex]: its `Name` tag, or, when
+     * that never landed, the server type plus the ordinal its launch tags give it. Null when it has
+     * neither.
+     */
+    private fun aliasOf(
+        tags: Map<String, String>,
+        launchIndex: Int?,
+    ): String? =
+        tags["Name"]
+            ?: tags["ServerType"]?.let { serverType ->
+                OrdinalRun.ordinalOf(tags, launchIndex)?.let { "$serverType$it" }
+            }
 
     /**
      * Updates created instances with their final public IPs after they reach running state.
@@ -470,10 +485,7 @@ class EC2InstanceService(
                     val tags = instance.tags().associate { it.key() to it.value() }
 
                     val serverTypeStr = tags["ServerType"]
-                    // An instance whose Name tag never landed is named from its launch tags.
-                    val alias =
-                        tags["Name"]
-                            ?: OrdinalRun.ordinalOf(tags, instance.amiLaunchIndex())?.let { "$serverTypeStr$it" }
+                    val alias = aliasOf(tags, instance.amiLaunchIndex())
 
                     if (serverTypeStr == null || alias == null) {
                         log.warn {

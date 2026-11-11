@@ -90,6 +90,7 @@
 - [x] 8b.23 Review round 3: the running wait fails at the first poll that finds an instance shutting-down, terminated, stopping or stopped, naming its ID, alias and state, and says a re-run of `up` replaces it
 - [x] 8b.24 Review round 3: `down --dry-run` with no cluster state, or with no VPC and no tailnet device, ends through `TeardownOutcome.DryRun` (carrying the failure): it exits non-zero as before and never stops the tunnel
 - [x] 8b.25 Review round 3: the dry-run test asserts the first call's `minCount`/`maxCount`; the `up` not-ready wait test covers a running instance with a null or blank public IP
+- [x] 8b.26 Review round 4: the running wait keys ended instances by ID, so a look retried after an exception names each once, and names one with no `Name` tag by the alias its ordinal launch tags derive (the derivation discovery uses); `docs/reference/commands.md` says `down --dry-run` with nothing to tear down exits non-zero, and `docs/user-guide/large-clusters.md` and `services/aws/CLAUDE.md` describe the ended-instance failure
 
 ## 9. Verification
 

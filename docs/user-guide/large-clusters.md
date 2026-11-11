@@ -68,6 +68,9 @@ after an upgrade so your user has it.
   launched, and a re-run does not launch them again. Each instance carries launch tags
   (`easydblab/first-ordinal`, `easydblab/ordinal-stride`) from which its name is known even if
   its `Name` tag was never set.
+- The wait for instances to run fails as soon as EC2 reports one `shutting-down`, `terminated`,
+  `stopping` or `stopped`, naming its ID, name and state, instead of waiting out the deadline.
+  A re-run of `up` launches a replacement under the same name.
 - The pod readiness wait fails as soon as a pod's container is in `CrashLoopBackOff`,
   `ImagePullBackOff`, `ErrImagePull` or `Error`, naming the pod and the reason, instead of
   waiting out the deadline.

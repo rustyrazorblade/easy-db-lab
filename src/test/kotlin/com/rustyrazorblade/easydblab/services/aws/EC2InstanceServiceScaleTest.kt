@@ -574,6 +574,74 @@ class EC2InstanceServiceScaleTest {
         verify(ec2, times(1)).describeInstances(any<DescribeInstancesRequest>())
     }
 
+    private fun endedInstance(
+        id: String,
+        vararg tags: Pair<String, String>,
+    ): Instance =
+        Instance
+            .builder()
+            .instanceId(id)
+            .amiLaunchIndex(1)
+            .state(InstanceState.builder().name(InstanceStateName.TERMINATED).build())
+            .tags(
+                tags.map { (key, value) ->
+                    Tag
+                        .builder()
+                        .key(key)
+                        .value(value)
+                        .build()
+                },
+            ).placement(Placement.builder().availabilityZone("us-west-2a").build())
+            .build()
+
+    /**
+     * An instance ended before its `Name` tag landed is named by the alias its launch tags give it,
+     * the same one discovery gives it, so the owner knows which node a re-run replaces.
+     */
+    @Test
+    fun `an ended instance with no Name tag is named by the alias its launch tags derive`() {
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenReturn(
+            reservation(
+                endedInstance(
+                    "i-2",
+                    "ServerType" to "db",
+                    Constants.Scale.FIRST_ORDINAL_TAG to "4",
+                    Constants.Scale.ORDINAL_STRIDE_TAG to "3",
+                ),
+            ),
+        )
+
+        assertThatThrownBy { service.waitForInstancesRunning(listOf("i-2"), timeoutMs = 2_000) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("i-2 (db7): terminated")
+    }
+
+    /**
+     * A look that saw an instance ended and then failed on a later batch is retried. The retried
+     * look sees the same instance again; it is still one instance, named once.
+     */
+    @Test
+    fun `an ended instance seen again by a retried look is counted and named once`() {
+        val ids = (0 until 150).map { "i-$it" }
+        var call = 0
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenAnswer { invocation ->
+            val request = invocation.getArgument<DescribeInstancesRequest>(0)
+            // The first look's second batch fails after its first batch reported i-0 ended.
+            if (call++ == 1) throw throttled()
+            reservation(
+                *request
+                    .instanceIds()
+                    .map { if (it == "i-0") endedInstance(it, "Name" to "db0") else running(it) }
+                    .toTypedArray(),
+            )
+        }
+
+        assertThatThrownBy { service.waitForInstancesRunning(ids, timeoutMs = 2_000) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageStartingWith("1 instances will never run")
+            .satisfies({ assertThat(Regex("i-0 \\(").findAll(it.message!!).count()).isEqualTo(1) })
+    }
+
     @Test
     fun `discovery reads every page and counts pending instances as existing`() {
         fun tagged(

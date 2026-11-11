@@ -92,7 +92,7 @@ Each pod SHALL advertise its node's IP as `broadcast_rpc_address` and listen for
 - **AND** every PersistentVolumeClaim of the kit remains
 
 ### Requirement: Telemetry without the AMI
-Each pod SHALL load the OpenTelemetry Java agent, copied by an init container from the pinned `autoinstrumentation-java` image whose tag equals the build's OpenTelemetry agent version. It SHALL NOT read any host path the AMI provides. The agent SHALL send OTLP to the collector on the pod's node, with service name `cassandra`, `host.name` set to the node name, `node_role=db`, `cassandra_build` set to the image tag, and the packaged Cassandra JMX rules.
+Each pod SHALL load the OpenTelemetry Java agent, copied by an init container from the pinned `autoinstrumentation-java` image whose tag equals the build's OpenTelemetry agent version. It SHALL NOT read any host path the AMI provides. The agent SHALL send OTLP to the collector on the pod's node, with service name `cassandra`, `host.name` set to the node name, `node_role=db`, `cassandra_build` set to the image tag (`sha256-` plus the first 12 hex chars of the digest for a digest-only reference), and the packaged Cassandra JMX rules.
 
 #### Scenario: Metrics and logs reach the stack
 - **WHEN** the kit has been running for two minutes

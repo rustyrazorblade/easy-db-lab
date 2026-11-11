@@ -78,7 +78,7 @@ GossipingPropertyFileSnitch with `dc=--dc` (default `dc1`) and `rack=rack1`.
   - `metrics: [{type: java-agent, service-name: cassandra}]`
   - `runtime: {type: pods, selector: "easydblab/kit=${KIT_NAME}"}`
   - endpoint `CQL`: `node-type: db`, port 30942, type `native`
-- `args`: `--version` (`CASSANDRA_VERSION`, default `5.0`), `--image` (`CASSANDRA_IMAGE`, default empty), `--nodes` (`CASSANDRA_NODES`), `--memory` (`CASSANDRA_MEMORY`, default `2Gi`), `--heap` (`CASSANDRA_HEAP`, default half of `--memory`), `--dc` (`CASSANDRA_DC`, default `dc1`), `--storage-size` (`STORAGE_SIZE`, default `10Ti`). All are named options.
+- `args`: `--version` (`CASSANDRA_VERSION`, default `5.0`), `--image` (`CASSANDRA_IMAGE`, default empty), `--nodes` (`CASSANDRA_NODES`), `--memory` (`CASSANDRA_MEMORY`, default `4Gi`), `--heap` (`CASSANDRA_HEAP`, default half of `--memory`), `--dc` (`CASSANDRA_DC`, default `dc1`), `--storage-size` (`STORAGE_SIZE`, default `10Ti`). All are named options.
 - `install`: `platform-pvs` on db nodes, `count: ${CASSANDRA_NODES}`, `volume-claim-template-name: data`.
 - `start`:
   1. Shell step (sources `EDL_KIT_LIB`):
@@ -101,7 +101,7 @@ The kit creates no ad hoc pods. If a later script must create one, it uses a `<n
 | `job="cassandra"` | `OTEL_SERVICE_NAME=cassandra` |
 | `cluster` | the collector's resource attribute, unchanged (the pod sends to its node's collector) |
 | `host_name` | `OTEL_RESOURCE_ATTRIBUTES=host.name=$(NODE_NAME)` from `spec.nodeName`; one pod per node keeps it unique |
-| `cassandra_build` | the image tag (or the `--image` reference) |
+| `cassandra_build` | the image tag; `sha256-` plus 12 hex chars for a digest-only `--image` |
 | `node_role` | `db` |
 
 ## Risks / Trade-offs

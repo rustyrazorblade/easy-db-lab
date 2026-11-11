@@ -314,9 +314,10 @@ class OtelManifestBuilder(
 
     /** The scrape jobs for workloads that exist only where the environment has CloudWatch: YACE. */
     private fun buildCloudWatchScrapeJobs(capabilities: NodeCapabilities): List<PrometheusScrapeJob> =
-        when (NodeCapability.CLOUDWATCH in capabilities) {
-            true -> listOf(buildLocalhostScrapeJob("yace", Constants.Yace.PORT, YACE_SCRAPE_INTERVAL, YACE_SCRAPE_INTERVAL))
-            false -> emptyList()
+        if (NodeCapability.CLOUDWATCH in capabilities) {
+            listOf(buildLocalhostScrapeJob("yace", Constants.Yace.PORT, YACE_SCRAPE_INTERVAL, YACE_SCRAPE_INTERVAL))
+        } else {
+            emptyList()
         }
 
     private fun buildLocalhostScrapeJob(

@@ -45,6 +45,9 @@ import kotlin.system.exitProcess
  *
  * Periodically fetches live data from AWS, SSH, and Kubernetes,
  * storing the result in memory for instant retrieval via the /status endpoint.
+ *
+ * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
+ *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]).
  */
 class StatusCache(
     private val refreshIntervalSeconds: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS,
@@ -485,14 +488,13 @@ class StatusCache(
         val kits = buildKitAccess(state)
 
         val s3Manager =
-            when (NodeCapability.S3 in capabilitiesOf(state)) {
-                true -> {
-                    val s3Path = state.s3Path()
-                    S3ManagerAccess(
-                        ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
-                    )
-                }
-                false -> null
+            if (NodeCapability.S3 in capabilitiesOf(state)) {
+                val s3Path = state.s3Path()
+                S3ManagerAccess(
+                    ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
+                )
+            } else {
+                null
             }
         val registry =
             RegistryAccess(

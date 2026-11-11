@@ -186,6 +186,18 @@ class SecurityGroupNotFoundException(
 ) : RuntimeException("Security group $securityGroupId does not exist", cause)
 
 /**
+ * EC2 reports that [vpcId] does not exist (`InvalidVpcID.NotFound`).
+ *
+ * The id alone cannot say why: an earlier teardown may have deleted it, or it never existed (a
+ * mistyped `down <vpc-id>`). Only the caller knows which, so this is an exception it must decide
+ * on, never a successful empty teardown.
+ */
+class VpcNotFoundException(
+    val vpcId: VpcId,
+    cause: Throwable? = null,
+) : RuntimeException("VPC $vpcId does not exist", cause)
+
+/**
  * Operations for discovering VPC resources.
  */
 interface VpcDiscoveryOperations {

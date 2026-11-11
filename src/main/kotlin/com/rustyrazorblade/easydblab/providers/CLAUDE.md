@@ -18,7 +18,7 @@ providers/
 │   ├── IamPolicySerializers.kt # IAM policy serialization
 │   ├── AWSClientFactory.kt # Factory interface for AWS clients
 │   ├── AWSCredentialsManager.kt # Credentials management
-│   ├── VpcService.kt       # VPC service interface (contract); IngressAuthorization, IngressRevocation, SecurityGroupNotFoundException
+│   ├── VpcService.kt       # VPC service interface (contract); IngressAuthorization, IngressRevocation, SecurityGroupNotFoundException, VpcNotFoundException
 │   ├── VpcInfrastructure.kt # VPC infrastructure data types
 │   ├── InfrastructureConfig.kt # Infrastructure configuration
 │   ├── TeardownTypes.kt    # Data classes: DiscoveredResources, TeardownResult, TeardownMode

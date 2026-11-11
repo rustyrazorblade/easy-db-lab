@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
 import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRule
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
+import com.rustyrazorblade.easydblab.providers.aws.VpcNotFoundException
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -68,24 +69,22 @@ class AwsInfrastructureServiceTest {
             verify(vpcService, never()).deleteVpc(any())
         }
 
-        /** A `down` that failed after deleting the VPC is re-run: the VPC is gone, so its teardown is done. */
+        /**
+         * Only the caller knows whether a missing VPC was torn down earlier or never existed (a
+         * mistyped `--vpc-id`), so the service names the id and deletes nothing.
+         */
         @Test
-        fun `a VPC that no longer exists is already torn down, with nothing to delete`() {
+        fun `a VPC EC2 does not know fails as not found, naming it, with nothing deleted`() {
             val vpcId = "vpc-gone"
             setupEmptyResourcesFor(vpcId)
             whenever(vpcService.getVpcName(vpcId)).thenThrow(ec2Exception(Constants.AWS.EC2_VPC_NOT_FOUND, 400))
-            val events = recordEvents()
 
-            val preview = service.teardownVpc(vpcId, dryRun = true)
-            val teardown = service.teardownVpc(vpcId, dryRun = false)
-
-            assertThat(listOf(preview, teardown)).allSatisfy { result ->
-                assertThat(result.success).isTrue()
-                assertThat(result.resourcesDeleted).isEmpty()
-                assertThat(result.errors).isEmpty()
+            listOf(true, false).forEach { dryRun ->
+                assertThatThrownBy { service.teardownVpc(vpcId, dryRun = dryRun) }
+                    .isInstanceOfSatisfying(VpcNotFoundException::class.java) { e ->
+                        assertThat(e.vpcId).isEqualTo(vpcId)
+                    }.hasMessageContaining(vpcId)
             }
-            assertThat(events.filterIsInstance<Event.Infra.VpcAlreadyDeleted>())
-                .containsExactly(Event.Infra.VpcAlreadyDeleted(vpcId), Event.Infra.VpcAlreadyDeleted(vpcId))
             verify(vpcService, never()).terminateInstances(any())
             verify(vpcService, never()).deleteVpc(any())
         }
@@ -820,6 +819,23 @@ class AwsInfrastructureServiceTest {
 
             assertThat(result.success).isTrue()
             assertThat(result.resourcesDeleted).isEmpty()
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        /** The packer VPC is found by name, so one that vanishes before its teardown is simply gone. */
+        @Test
+        fun `a packer VPC deleted between the lookup and the teardown counts as no packer VPC`() {
+            val packerVpcId = "vpc-packer"
+            whenever(vpcService.findVpcByName(InfrastructureConfig.PACKER_VPC_NAME)).thenReturn(packerVpcId)
+            whenever(vpcService.getVpcName(packerVpcId)).thenThrow(ec2Exception(Constants.AWS.EC2_VPC_NOT_FOUND, 400))
+            setupEmptyResourcesFor(packerVpcId)
+            val events = recordEvents()
+
+            val result = service.teardownPackerInfrastructure(dryRun = false)
+
+            assertThat(result.success).isTrue()
+            assertThat(result.resourcesDeleted).isEmpty()
+            assertThat(events).contains(Event.Infra.PackerVpcNotFound(InfrastructureConfig.PACKER_VPC_NAME))
             verify(vpcService, never()).deleteVpc(any())
         }
 

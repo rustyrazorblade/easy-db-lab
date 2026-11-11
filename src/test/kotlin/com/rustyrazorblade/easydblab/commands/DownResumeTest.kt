@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -97,27 +98,68 @@ class DownResumeTest : BaseKoinTest() {
         whenever(vpcService.getVpcName(clusterVpcId)).thenReturn("test-cluster")
     }
 
-    private fun vpcIsGone() {
-        whenever(vpcService.getVpcName(clusterVpcId)).thenThrow(
+    private fun vpcIsGone(vpcId: String = clusterVpcId) {
+        whenever(vpcService.getVpcName(vpcId)).thenThrow(
             Ec2Exception
                 .builder()
                 .awsErrorDetails(
                     AwsErrorDetails
                         .builder()
                         .errorCode(Constants.AWS.EC2_VPC_NOT_FOUND)
-                        .errorMessage("The vpc ID '$clusterVpcId' does not exist")
+                        .errorMessage("The vpc ID '$vpcId' does not exist")
                         .build(),
                 ).statusCode(400)
                 .build(),
         )
     }
 
-    private fun down(dryRun: Boolean = false): Int =
+    private fun down(
+        dryRun: Boolean = false,
+        vpcId: String? = null,
+    ): Int =
         Down()
             .apply {
                 autoApprove = true
                 this.dryRun = dryRun
+                this.vpcId = vpcId
             }.call()
+
+    @Test
+    fun `an explicit VPC id EC2 does not know fails, naming the id, and changes nothing`() {
+        vpcIsGone("vpc-typo")
+
+        val exitCode = down(vpcId = "vpc-typo")
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(errorOutput()).contains("vpc-typo", "does not exist")
+        assertThat(savedState().infrastructureStatus).isEqualTo(InfrastructureStatus.UP)
+        assertThat(savedState().vpcId).isEqualTo(clusterVpcId)
+        verify(compactor, never()).stopIfLastCluster(any(), any())
+        verify(vpcService, never()).deleteVpc(any())
+    }
+
+    @Test
+    fun `the cluster's own VPC id given explicitly is already torn down when EC2 no longer knows it`() {
+        vpcIsGone()
+
+        assertThat(down(vpcId = clusterVpcId)).isZero()
+
+        assertThat(savedState().infrastructureStatus).isEqualTo(InfrastructureStatus.DOWN)
+        verify(vpcService, never()).deleteVpc(any())
+    }
+
+    @Test
+    fun `an interrupt during the compactor step is not swallowed`() {
+        vpcExists()
+        doAnswer { throw InterruptedException("stop") }.whenever(compactor).stopIfLastCluster(any(), any())
+
+        try {
+            assertThatThrownBy { down() }.isInstanceOf(InterruptedException::class.java)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+    }
 
     @Test
     fun `a re-run whose VPC an earlier down already deleted finishes the teardown`() {

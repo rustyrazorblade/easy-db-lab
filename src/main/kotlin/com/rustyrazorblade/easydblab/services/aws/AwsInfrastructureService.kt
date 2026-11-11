@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
+import com.rustyrazorblade.easydblab.providers.aws.VpcNotFoundException
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
@@ -359,13 +360,14 @@ class AwsInfrastructureService(
     /**
      * Tears down a specific VPC and all its resources.
      *
-     * A VPC EC2 no longer knows (`InvalidVpcID.NotFound`) was deleted by an earlier teardown, which
-     * then failed at a later step. Its teardown is done, so this succeeds with nothing deleted and
-     * lets the caller finish the remaining steps. Every other EC2 error propagates.
+     * A VPC EC2 does not know (`InvalidVpcID.NotFound`) raises [VpcNotFoundException] with nothing
+     * deleted. Whether that means "already torn down" or "no such VPC" is the caller's call: only
+     * it knows where the id came from. Every other EC2 error propagates.
      *
      * @param vpcId The VPC ID to tear down
      * @param dryRun If true, only discover and report resources without deleting
      * @return TeardownResult with information about deleted resources or errors
+     * @throws VpcNotFoundException when EC2 does not know [vpcId]
      */
     fun teardownVpc(
         vpcId: VpcId,
@@ -378,8 +380,7 @@ class AwsInfrastructureService(
                 discoverResources(vpcId)
             } catch (e: Ec2Exception) {
                 if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_VPC_NOT_FOUND) throw e
-                eventBus.emit(Event.Infra.VpcAlreadyDeleted(vpcId))
-                return TeardownResult.success(emptyList())
+                throw VpcNotFoundException(vpcId, e)
             }
 
         if (dryRun) {
@@ -457,13 +458,22 @@ class AwsInfrastructureService(
 
         val packerVpcId = vpcService.findVpcByName(InfrastructureConfig.PACKER_VPC_NAME)
 
-        if (packerVpcId == null) {
+        // Found by name, so a VPC EC2 no longer knows was deleted after the lookup: there is no packer VPC.
+        val result = packerVpcId?.let { id -> runCatchingVpcNotFound { teardownVpc(id, dryRun) } }
+        if (result == null) {
             eventBus.emit(Event.Infra.PackerVpcNotFound(InfrastructureConfig.PACKER_VPC_NAME))
             return TeardownResult.success(emptyList())
         }
-
-        return teardownVpc(packerVpcId, dryRun)
+        return result
     }
+
+    /** [block]'s result, or null when its VPC does not exist. */
+    private inline fun runCatchingVpcNotFound(block: () -> TeardownResult): TeardownResult? =
+        try {
+            block()
+        } catch (_: VpcNotFoundException) {
+            null
+        }
 
     // ==================== Private Teardown Implementation ====================
 

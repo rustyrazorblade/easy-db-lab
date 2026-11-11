@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
+import com.rustyrazorblade.easydblab.providers.aws.VpcNotFoundException
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
 import com.rustyrazorblade.easydblab.services.BackendState
@@ -26,6 +27,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine
 import java.util.Scanner
+import java.util.concurrent.CancellationException
 
 /**
  * Shut down AWS infrastructure using direct AWS API calls.
@@ -204,12 +206,12 @@ class Down : PicoBaseCommand() {
         // it down. A tunnel failure touched nothing and fails every signal the save would have saved.
         // Either failure stops `down` with the standard "no infrastructure removed / --force"
         // guidance rather than a raw stack trace.
-        runCatching { socksProxyService.ensureRunning(controlHost) }.onFailure { failure ->
+        catchingStepFailure { socksProxyService.ensureRunning(controlHost) }.onFailure { failure ->
             log.error(failure) { "The SOCKS tunnel to the control node failed before the pre-teardown save" }
             eventBus.emit(unsavedAbort(state, TUNNEL_STEP, failure))
             return false
         }
-        return runCatching { teardownBackupService.backupBeforeTeardown(controlHost, state).getOrThrow() }.fold(
+        return catchingStepFailure { teardownBackupService.backupBeforeTeardown(controlHost, state).getOrThrow() }.fold(
             onSuccess = { true },
             onFailure = { failure ->
                 eventBus.emit(abortEvent(failure, state))
@@ -323,7 +325,7 @@ class Down : PicoBaseCommand() {
                 else -> user.s3Bucket
             }
         if (bucket.isNullOrBlank()) return result
-        return runCatching { compactorService.stopIfLastCluster(bucket, result.resourcesDeleted.map { it.vpcId }.toSet()) }
+        return catchingStepFailure { compactorService.stopIfLastCluster(bucket, result.resourcesDeleted.map { it.vpcId }.toSet()) }
             .fold(
                 onSuccess = { result },
                 onFailure = { failure ->
@@ -416,7 +418,7 @@ class Down : PicoBaseCommand() {
         eventBus.emit(Event.Teardown.PreparingVpc(targetVpcId))
 
         // Preview to discover resources
-        val previewResult = teardownService.teardownVpc(targetVpcId, dryRun = true)
+        val previewResult = teardownKnownVpc(targetVpcId, dryRun = true)
 
         if (previewResult.resourcesDeleted.isEmpty()) {
             eventBus.emit(Event.Teardown.NoResourcesFound)
@@ -440,8 +442,33 @@ class Down : PicoBaseCommand() {
         if (saveTail && !force && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
 
         beforeRemovingInfrastructure()
-        return TeardownOutcome.Finished(teardownService.teardownVpc(targetVpcId, dryRun = false))
+        return TeardownOutcome.Finished(teardownKnownVpc(targetVpcId, dryRun = false))
     }
+
+    /**
+     * Tears down [targetVpcId], deciding what a VPC EC2 does not know means. Only the VPC this
+     * cluster's own state records is known to have existed: an earlier `down` deleted it and then
+     * failed a later step, so its teardown is done and succeeds with nothing deleted. Any other id
+     * (a mistyped `down <vpc-id>`) never existed as far as `down` can tell, so it fails, naming it.
+     */
+    private fun teardownKnownVpc(
+        targetVpcId: String,
+        dryRun: Boolean,
+    ): TeardownResult =
+        try {
+            teardownService.teardownVpc(targetVpcId, dryRun)
+        } catch (e: VpcNotFoundException) {
+            if (isRecordedClusterVpc(targetVpcId)) {
+                eventBus.emit(Event.Infra.VpcAlreadyDeleted(targetVpcId))
+                TeardownResult.success(emptyList())
+            } else {
+                log.warn(e) { "VPC $targetVpcId does not exist" }
+                TeardownResult.failure("VPC $targetVpcId does not exist. Check the VPC ID and the region.")
+            }
+        }
+
+    private fun isRecordedClusterVpc(targetVpcId: String): Boolean =
+        clusterStateManager.exists() && clusterStateManager.load().vpcId == targetVpcId
 
     /**
      * Tears down all VPCs tagged with easy_cass_lab.
@@ -742,3 +769,19 @@ class Down : PicoBaseCommand() {
         }
     }
 }
+
+/**
+ * Runs a teardown step and captures its failure, like [runCatching], except that an interrupt or a
+ * cancellation is never captured: the thread was asked to stop, so it is rethrown, with the
+ * interrupt flag restored, instead of being reported as the step failing.
+ */
+private inline fun <T> catchingStepFailure(step: () -> T): Result<T> =
+    runCatching(step).onFailure { failure ->
+        when (failure) {
+            is InterruptedException -> {
+                Thread.currentThread().interrupt()
+                throw failure
+            }
+            is CancellationException -> throw failure
+        }
+    }

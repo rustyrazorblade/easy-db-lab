@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CompletionException
 
@@ -139,6 +140,19 @@ class CommandFailureReporterTest {
 
         reporter(handler("AWS")).report(error)
 
+        assertThat(emitted).isEmpty()
+    }
+
+    @Test
+    fun `a handler interrupted while describing keeps the interrupt flag and propagates`() {
+        val interrupting = ProviderErrorHandler { throw InterruptedException("stop") }
+        try {
+            assertThatThrownBy { reporter(interrupting).report(RuntimeException("boom")) }
+                .isInstanceOf(InterruptedException::class.java)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
         assertThat(emitted).isEmpty()
     }
 }

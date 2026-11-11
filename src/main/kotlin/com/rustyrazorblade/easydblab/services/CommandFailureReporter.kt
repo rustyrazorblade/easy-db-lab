@@ -64,6 +64,9 @@ class CommandFailureReporter(
     ): ErrorDescription? =
         try {
             handler.describe(cause)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw e
         } catch (e: Exception) {
             log.warn(e) { "Provider error handler ${handler::class.simpleName} failed on ${cause::class.simpleName}" }
             null

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -243,7 +244,9 @@ class PodLogsWithoutJournalIntegrationTest : BaseKoinTest() {
                     ?.readyReplicas == 1
             }
 
-            OtelManifestBuilder(getKoin().get()).buildAllResources().forEach { client.resource(it).inNamespace("default").create() }
+            OtelManifestBuilder(getKoin().get()).buildAllResources(NodeCapabilities.LOCAL_DOCKER).forEach {
+                client.resource(it).inNamespace("default").create()
+            }
             awaitReady(client, "the collector") {
                 client
                     .apps()

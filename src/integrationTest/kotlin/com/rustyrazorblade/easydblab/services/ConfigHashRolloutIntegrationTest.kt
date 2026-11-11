@@ -311,7 +311,7 @@ class ConfigHashRolloutIntegrationTest {
      */
     private fun deployCollectorStage(): List<Event.Grafana.WorkloadConfigCompared> {
         val scrapeConfigs = otel.listWorkloadScrapeConfigs(client)
-        val resources = CollectorResources.build(otel, controlHost, stateManager.load(), user.region, scrapeConfigs)
+        val resources = CollectorResources.build(otel, controlHost, stateManager.load(), user.region, scrapeConfigs, NodeCapabilities.AWS)
         val emitted = mutableListOf<Event.Grafana.WorkloadConfigCompared>()
         ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(controlHost, resources, Constants.K8s.NAMESPACE)
         resources.forEach { manifests.applyResource(controlHost, it).getOrThrow() }

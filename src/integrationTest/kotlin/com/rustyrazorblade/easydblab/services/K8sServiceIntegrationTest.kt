@@ -210,7 +210,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(14)
     fun `should apply OTel Journald resources`() {
-        val resources = JournaldOtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS)
+        val resources = JournaldOtelManifestBuilder(templateService).buildAllResources()
         applyAndVerify(resources)
 
         assertConfigMapExists("fluent-bit-journald-config", "fluent-bit-journald.yaml")
@@ -827,7 +827,7 @@ class K8sServiceIntegrationTest {
     }
 
     private fun collectAllResources(): List<HasMetadata> =
-        JournaldOtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS) +
+        JournaldOtelManifestBuilder(templateService).buildAllResources() +
             OtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS) +
             EbpfExporterManifestBuilder().buildAllResources() +
             MimirManifestBuilder(templateService).buildAllResources() +

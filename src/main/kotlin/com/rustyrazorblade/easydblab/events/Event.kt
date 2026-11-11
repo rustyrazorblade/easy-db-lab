@@ -2499,16 +2499,16 @@ sealed interface Event {
 
         /**
          * A deploy stage was not applied because the environment lacks the [capability] it needs.
-         * It is not awaited either, so the rollout wait does not time out on it.
+         * It is not awaited either, so the rollout wait does not time out on it. The reason shown is
+         * derived from [capability] (`NodeCapability.absentReason`), so the event carries one fact once.
          */
         @Serializable
         @SerialName("Grafana.StageSkipped")
         data class StageSkipped(
             val stage: String,
             val capability: NodeCapability,
-            val reason: String,
         ) : Grafana {
-            override fun toDisplayString(): String = "Skipping $stage: $reason"
+            override fun toDisplayString(): String = "Skipping $stage: ${capability.absentReason}"
         }
 
         /**

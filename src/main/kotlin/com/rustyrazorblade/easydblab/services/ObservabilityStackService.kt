@@ -120,7 +120,7 @@ class DefaultObservabilityStackService(
         val (runnable, skipped) = stages.partition { it.requires == null || it.requires in capabilities }
         skipped.forEach { stage ->
             val capability = checkNotNull(stage.requires)
-            eventBus.emit(Event.Grafana.StageSkipped(stage.label, capability, capability.absentReason))
+            eventBus.emit(Event.Grafana.StageSkipped(stage.label, capability))
         }
         return runnable
     }

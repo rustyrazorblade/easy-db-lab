@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.events
 
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.lang.ArchCondition
@@ -38,6 +39,16 @@ class EventSerializationTest {
         assertThat(deserialized)
             .describedAs("Round-trip failed for ${event::class.qualifiedName}")
             .isEqualTo(envelope)
+    }
+
+    @Test
+    fun `a skipped stage serializes its capability and displays the reason derived from it`() {
+        val event = Event.Grafana.StageSkipped("YACE", NodeCapability.CLOUDWATCH)
+
+        val json = EventEnvelope.toJson(EventEnvelope(event, "2026-01-01T00:00:00.000Z", "up"))
+
+        assertThat(json).contains("\"capability\":\"cloudwatch\"").doesNotContain("reason")
+        assertThat(event.toDisplayString()).isEqualTo("Skipping YACE: ${NodeCapability.CLOUDWATCH.absentReason}")
     }
 
     // --- ArchUnit: structural constraints on all concrete Event subtypes ---

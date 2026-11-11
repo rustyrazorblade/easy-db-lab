@@ -46,6 +46,7 @@ cat > "${WORK}/stubs/kubectl" << 'STUB'
 #!/bin/bash
 echo "$*" >> "${STUB_DIR}/kubectl.calls"
 case "$1" in
+  apply) cat > "${STUB_DIR}/applied.yaml" ;;
   exec) if [ -n "${STUB_NT_ERROR:-}" ]; then echo "${STUB_NT_ERROR}" >&2; exit 1; fi; i=0; while [ "$i" -lt "${STUB_UN:-0}" ]; do echo "UN  10.0.0.$i  1 GiB"; i=$((i + 1)); done ;;
   get) echo "EVENT-MARKER pod cassandra-pods-1 FailedScheduling" ;;
 esac
@@ -112,6 +113,38 @@ begin "a tag plus digest is looked up by the digest"
 run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:5.0@sha256:0123abcd
 [ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
 grep -q 'ghcr.io/v2/example/cassandra/manifests/sha256:0123abcd' "${WORK}/curl.calls" || fail "digest not used"
+
+begin "the build label is the tag for a tagged reference"
+run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:sha-abc
+grep -q '^RESOLVED_BUILD=sha-abc$' "${WORK}/kit/resolved-image.env" || fail "build is not the tag: $(cat "${WORK}/kit/resolved-image.env")"
+
+begin "the build label is sha256- plus 12 hex chars for a digest-only reference"
+run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra@sha256:0123456789abcdef0123456789abcdef
+grep -q '^RESOLVED_BUILD=sha256-0123456789ab$' "${WORK}/kit/resolved-image.env" || fail "build is not the short digest: $(cat "${WORK}/kit/resolved-image.env")"
+
+begin "the build label is the tag for a tag plus digest reference"
+run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:5.0-nightly@sha256:0123456789abcdef0123456789abcdef
+grep -q '^RESOLVED_BUILD=5.0-nightly$' "${WORK}/kit/resolved-image.env" || fail "build is not the tag: $(cat "${WORK}/kit/resolved-image.env")"
+
+begin "the build label is the version when no --image is given"
+run_check
+grep -q '^RESOLVED_BUILD=5.0$' "${WORK}/kit/resolved-image.env" || fail "build is not the version"
+
+begin "an image reference with a character outside the OCI set is rejected before any lookup"
+for bad in 'ghcr.io/example/cassandra:a&b' 'ghcr.io/example/cassandra:a|b' 'ghcr.io/example/cass andra:1' 'ghcr.io/example/cassandra:$(id)'; do
+  run_check CASSANDRA_IMAGE="${bad}"
+  [ "${rc}" -eq 1 ] || fail "'${bad}' exit ${rc}"
+  case "${out}" in *"${bad}"*"not a valid image reference"*) ;; *) fail "'${bad}' message: ${out}" ;; esac
+  [ ! -f "${WORK}/curl.calls" ] || fail "'${bad}' reached the registry"
+  [ ! -f "${WORK}/kit/resolved-image.env" ] || fail "'${bad}' wrote resolved-image.env"
+done
+
+begin "apply-statefulset substitutes the image and build literally, even with sed metacharacters"
+printf 'image: "@RESOLVED_IMAGE@"\nbuild=@RESOLVED_BUILD@\n' > "${WORK}/kit/statefulset.yaml"
+printf "RESOLVED_IMAGE='a&b|c\\\\d'\nRESOLVED_BUILD='x&y'\n" >"${WORK}/kit/resolved-image.env"
+(cd "${WORK}/kit" && env PATH="${WORK}/stubs:${PATH}" "${BASH}" lib/apply-statefulset.sh) > "${WORK}/out" 2>&1 || fail "exit $?: $(cat "${WORK}/out")"
+grep -qxF 'image: "a&b|c\d"' "${WORK}/applied.yaml" || fail "image not literal: $(cat "${WORK}/applied.yaml")"
+grep -qxF 'build=x&y' "${WORK}/applied.yaml" || fail "build not literal"
 
 begin "a 401 or 403 is not reported as not-found and does not block start"
 for code in 401 403; do
@@ -265,6 +298,28 @@ begin "the UN wait timeout prints the last nodetool error"
 run_wait STUB_UN=0 STUB_NT_ERROR="Error: connection refused JMX" CASSANDRA_UN_WAIT_SECONDS=1
 [ "${rc}" -eq 1 ] || fail "exit ${rc}"
 case "${out}" in *"connection refused JMX"*) ;; *) fail "nodetool error dropped: ${out}" ;; esac
+
+bound_for() {
+  run_wait STUB_UN="$1" CASSANDRA_NODES="$1"
+  printf '%s' "${out}" | sed -n 's/.*up to \([0-9][0-9]*\)s.*/\1/p' | head -n 1
+}
+
+begin "the UN wait bound grows linearly with the node count"
+b1="$(bound_for 1)"
+b3="$(bound_for 3)"
+b5="$(bound_for 5)"
+if [ -z "${b1}" ] || [ -z "${b3}" ] || [ -z "${b5}" ]; then
+  fail "no bound printed: ${out}"
+else
+  [ "${b3}" -gt "${b1}" ] && [ "${b5}" -gt "${b3}" ] || fail "bound does not grow: ${b1} ${b3} ${b5}"
+  [ $((b5 - b3)) -eq $((b3 - b1)) ] || fail "bound is not linear in nodes: ${b1} ${b3} ${b5}"
+  # One pod's readiness window is initialDelay 30s + 60 failures x 10s period = 630s.
+  [ $(((b3 - b1) / 2)) -ge 630 ] || fail "per-node budget below one pod's readiness window"
+fi
+
+begin "CASSANDRA_UN_WAIT_SECONDS overrides the computed bound"
+run_wait STUB_UN=3 CASSANDRA_UN_WAIT_SECONDS=77
+case "${out}" in *"up to 77s"*) ;; *) fail "override ignored: ${out}" ;; esac
 
 echo "${tests_run} run, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

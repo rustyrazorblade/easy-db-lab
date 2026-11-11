@@ -2,10 +2,18 @@
 # Waits until `nodetool status` on pod 0 lists CASSANDRA_NODES nodes as UN. On timeout it prints
 # the pods' recent events and exits 1.
 #
+# The bound is BASE + NODES x PER_NODE. StatefulSet pods start one at a time (OrderedReady), and
+# each must pass its readiness probe, which allows initialDelaySeconds 30 + 60 failures x 10s =
+# 630s, plus image pulls. PER_NODE covers that window with margin; BASE covers the first
+# scheduling and the final nodetool poll. Keep PER_NODE >= the probe window in the template.
+#
 # CASSANDRA_UN_WAIT_SECONDS overrides the bound, for tests only.
 set -euo pipefail
 
-timeout="${CASSANDRA_UN_WAIT_SECONDS:-900}"
+BASE_SECONDS=300
+PER_NODE_SECONDS=720
+timeout="${CASSANDRA_UN_WAIT_SECONDS:-$((BASE_SECONDS + CASSANDRA_NODES * PER_NODE_SECONDS))}"
+echo "Waiting for ${CASSANDRA_NODES} nodes to be UN, up to ${timeout}s."
 poll="${EDL_POLL_SECONDS:-5}"
 pod="${KIT_NAME}-0"
 deadline=$(($(date +%s) + timeout))

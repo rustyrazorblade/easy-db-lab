@@ -71,6 +71,14 @@ else
   image="cassandra:${CASSANDRA_VERSION}"
 fi
 
+# The OCI reference grammar's characters. apply-statefulset.sh substitutes the image into the
+# manifest, so anything else (such as '&' or '|') is refused here, before any lookup.
+case "${image}" in
+  '' | *[!A-Za-z0-9._/:@-]*)
+    fail "ERROR: '${image}' is not a valid image reference; use only letters, digits and . _ / : @ - (for example ghcr.io/example/cassandra:my-branch)."
+    ;;
+esac
+
 i=0
 while [ "${i}" -lt "${DB_NODE_COUNT}" ]; do
   # systemctl is-active exits 0 when active and 3 (or 4) when not; anything else, such as ssh's
@@ -89,6 +97,7 @@ done
 # Docker Hub namespace, and a Hub name with no namespace is under library/.
 name="${image}"
 tag=latest
+tag_given=no
 reference=""
 case "${name}" in
   *@*)
@@ -100,6 +109,7 @@ last="${name##*/}"
 case "${last}" in
   *:*)
     tag="${last##*:}"
+    tag_given=yes
     name="${name%:*}"
     ;;
 esac
@@ -158,10 +168,15 @@ case "${code}" in
     ;;
 esac
 
-if [ -n "${CASSANDRA_IMAGE:-}" ]; then
-  build="${CASSANDRA_IMAGE}"
-else
+# The cassandra_build label is the image tag; for a digest-only reference, sha256- plus the first
+# 12 hex chars of the digest, so a dashboard variable stays short.
+if [ -z "${CASSANDRA_IMAGE:-}" ]; then
   build="${CASSANDRA_VERSION}"
+elif [ "${tag_given}" = yes ]; then
+  build="${tag}"
+else
+  digest="${reference#sha256:}"
+  build="sha256-$(printf '%s' "${digest}" | cut -c1-12)"
 fi
 printf 'RESOLVED_IMAGE=%s\nRESOLVED_BUILD=%s\n' "${image}" "${build}" > resolved-image.env
 echo "Image ${image} found."

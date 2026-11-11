@@ -7,5 +7,11 @@ set -euo pipefail
   exit 1
 }
 . ./resolved-image.env
-sed -e "s|@RESOLVED_IMAGE@|${RESOLVED_IMAGE}|g" -e "s|@RESOLVED_BUILD@|${RESOLVED_BUILD}|g" statefulset.yaml |
+# check-start.sh already limits the image to [A-Za-z0-9._/:@-]; the replacement is escaped anyway
+# (backslash, '&', and the '|' delimiter), so a value can never be read as sed syntax.
+sed_escape() {
+  printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'
+}
+sed -e "s|@RESOLVED_IMAGE@|$(sed_escape "${RESOLVED_IMAGE}")|g" \
+  -e "s|@RESOLVED_BUILD@|$(sed_escape "${RESOLVED_BUILD}")|g" statefulset.yaml |
   kubectl apply -f -

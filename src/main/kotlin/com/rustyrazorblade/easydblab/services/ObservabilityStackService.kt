@@ -112,8 +112,11 @@ class DefaultObservabilityStackService(
         val requires: NodeCapability? = null,
     )
 
-    /** The stages the environment can run; each one it cannot is reported as skipped. */
-    private fun runnableStages(
+    /**
+     * The stages the environment can run. Not a pure filter: each stage it cannot run is reported
+     * as skipped (an event is emitted), so call it once, before anything is applied.
+     */
+    private fun applyCapabilityGate(
         stages: List<Stage>,
         capabilities: NodeCapabilities,
     ): List<Stage> {
@@ -148,7 +151,7 @@ class DefaultObservabilityStackService(
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
-            val stages = runnableStages(buildStages(telemetryRedirect), capabilities)
+            val stages = applyCapabilityGate(buildStages(telemetryRedirect), capabilities)
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
             // not, so prepare them only in local mode.

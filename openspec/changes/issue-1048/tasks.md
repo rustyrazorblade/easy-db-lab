@@ -87,6 +87,9 @@
 - [x] 8b.20 Review round 2: `up` waits for every discovered instance that is pending or has no public IP (running wait and status check) and keeps it with the IPs the wait read
 - [x] 8b.21 Review round 2: the RunInstances dry run asks about the launch's first call (`RunInstancesRequests.launchPlan`), in its subnet with its ordinal tags; the LocalStack dry-run test names an instance profile it creates, and the refused-subnet LocalStack test is removed (LocalStack answers `DryRunOperation` before checking the subnet; `Ec2AccountCapacityTest` covers the refusal mapping)
 - [x] 8b.22 Review round 2: multi-digit ordinals sort numerically (gap test holds db0, db2, db10 and launches db1, db9, db11; the 250-node chunk test asserts db0..db249 in order); `docs/user-guide/tutorial.md` gives the `--azs` default as `a,b,c`, at most 8
+- [x] 8b.23 Review round 3: the running wait fails at the first poll that finds an instance shutting-down, terminated, stopping or stopped, naming its ID, alias and state, and says a re-run of `up` replaces it
+- [x] 8b.24 Review round 3: `down --dry-run` with no cluster state, or with no VPC and no tailnet device, ends through `TeardownOutcome.DryRun` (carrying the failure): it exits non-zero as before and never stops the tunnel
+- [x] 8b.25 Review round 3: the dry-run test asserts the first call's `minCount`/`maxCount`; the `up` not-ready wait test covers a running instance with a null or blank public IP
 
 ## 9. Verification
 

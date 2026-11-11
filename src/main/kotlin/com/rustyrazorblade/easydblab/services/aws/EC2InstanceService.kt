@@ -76,6 +76,15 @@ class EC2InstanceService(
 
         /** How many instance IDs a timeout names before it stops listing them. */
         private const val MAX_NAMED_IDS = 20
+
+        /** States an instance never leaves for running: EC2 is ending it, or has ended it. */
+        private val ENDED_STATES =
+            setOf(
+                InstanceStateName.SHUTTING_DOWN,
+                InstanceStateName.TERMINATED,
+                InstanceStateName.STOPPING,
+                InstanceStateName.STOPPED,
+            ).map { it.toString() }.toSet()
     }
 
     /**
@@ -182,10 +191,16 @@ class EC2InstanceService(
      * short retry budget. Each poll asks only about the instances not yet running, in requests of
      * at most [Constants.Scale.DESCRIBE_INSTANCES_BATCH] IDs.
      *
+     * An instance EC2 is ending or has ended (shutting-down, terminated, stopping, stopped) never
+     * runs, so the first poll that sees one fails the wait at once instead of polling to the
+     * deadline. A re-run of `up` replaces it: discovery skips terminated instances, so its ordinal
+     * is launched again.
+     *
      * @param instanceIds List of instance IDs to wait for
      * @param timeoutMs Maximum time to wait in milliseconds
      * @return the details of every instance, in the order of [instanceIds]
-     * @throws IllegalStateException naming the instances that were not running in time
+     * @throws IllegalStateException naming each instance EC2 ended, with its alias and state, or
+     *   naming the instances that were not running in time
      */
     fun waitForInstancesRunning(
         instanceIds: List<InstanceId>,
@@ -199,23 +214,34 @@ class EC2InstanceService(
         eventBus.emit(Event.Ec2.InstancesStartWaiting)
 
         val ready = mutableMapOf<InstanceId, InstanceDetails>()
+        val ended = mutableListOf<InstanceDetails>()
+        // An ended instance stops the poll through `done`, not by throwing: the poll retries any exception.
         val pending =
             pollUntil(
                 operationName = "instances-running",
                 maxAttempts = Int.MAX_VALUE,
                 interval = pollInterval,
                 deadline = Instant.now().plusMillis(timeoutMs),
-                done = { it.isEmpty() },
+                done = { it.isEmpty() || ended.isNotEmpty() },
             ) {
                 val waiting = instanceIds.filterNot { it in ready }
                 waiting.chunked(Constants.Scale.DESCRIBE_INSTANCES_BATCH).forEach { batch ->
-                    describeTolerantly(batch)
-                        .filter { it.state == InstanceStateName.RUNNING.toString() && !it.publicIp.isNullOrEmpty() }
-                        .forEach { ready[it.instanceId] = it }
+                    describeTolerantly(batch).forEach { instance ->
+                        when {
+                            instance.state in ENDED_STATES -> ended += instance
+                            instance.state == InstanceStateName.RUNNING.toString() && !instance.publicIp.isNullOrEmpty() ->
+                                ready[instance.instanceId] = instance
+                        }
+                    }
                 }
                 instanceIds.filterNot { it in ready }
             }
 
+        check(ended.isEmpty()) {
+            "${ended.size} instances will never run; EC2 ended them: " +
+                ended.take(MAX_NAMED_IDS).joinToString(", ") { "${it.instanceId} (${it.name ?: "unnamed"}): ${it.state}" } +
+                ". A re-run of up replaces them."
+        }
         check(pending.isEmpty()) {
             "Timeout waiting for instances to reach running state after ${timeoutMs}ms; " +
                 "${pending.size} not running with a public IP: ${pending.take(MAX_NAMED_IDS).joinToString(", ")}"
@@ -315,6 +341,7 @@ class EC2InstanceService(
                     privateIp = instance.privateIpAddress(),
                     availabilityZone = instance.placement().availabilityZone(),
                     instanceType = instance.instanceType()?.toString(),
+                    name = instance.tags().firstOrNull { it.key() == "Name" }?.value(),
                 )
             }
         }

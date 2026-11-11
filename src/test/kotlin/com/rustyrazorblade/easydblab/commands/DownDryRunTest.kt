@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
@@ -149,6 +150,38 @@ class DownDryRunTest : BaseKoinTest() {
         assertThat(state.infrastructureStatus).isEqualTo(InfrastructureStatus.UP)
         verify(getKoin().get<SocksProxyService>(), never()).stop()
         verify(getKoin().get<TailscaleService>(), never()).deleteDevice(any(), any(), any())
+    }
+
+    /**
+     * A dry run with nothing to preview, because the state records no VPC and no tailnet device,
+     * fails as the real teardown would, and still leaves the tunnel and the state alone.
+     */
+    @Test
+    fun `a dry run with no VPC and no tailnet device fails without stopping the tunnel`() {
+        stateManager.save(
+            ClusterState(name = "test-cluster", versions = mutableMapOf(), vpcId = null).apply { markInfrastructureUp() },
+        )
+
+        val exitCode = Down().apply { dryRun = true }.call()
+
+        val state = stateManager.load()
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(output()).doesNotContain("Stopped SOCKS5 proxy").doesNotContain("marked as DOWN")
+        assertThat(state.vpcId).isNull()
+        assertThat(state.infrastructureStatus).isEqualTo(InfrastructureStatus.UP)
+        verify(getKoin().get<SocksProxyService>(), never()).stop()
+    }
+
+    @Test
+    fun `a dry run with no cluster state fails without stopping the tunnel`() {
+        File(tempDir, "state.json").delete()
+
+        val exitCode = Down().apply { dryRun = true }.call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(output()).doesNotContain("Stopped SOCKS5 proxy")
+        assertThat(stateManager.exists()).isFalse()
+        verify(getKoin().get<SocksProxyService>(), never()).stop()
     }
 
     private companion object {

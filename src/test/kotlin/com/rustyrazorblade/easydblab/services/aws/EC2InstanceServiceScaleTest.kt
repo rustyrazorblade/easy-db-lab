@@ -8,6 +8,8 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
@@ -536,6 +538,40 @@ class EC2InstanceServiceScaleTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("i-2")
             .hasMessageNotContaining("i-1,")
+    }
+
+    /**
+     * An instance EC2 ends while it is waited on never runs. The wait says so at once, naming the
+     * instance and its state, instead of polling to its deadline and reporting a generic timeout.
+     */
+    @ParameterizedTest
+    @EnumSource(value = InstanceStateName::class, names = ["SHUTTING_DOWN", "TERMINATED", "STOPPING", "STOPPED"])
+    fun `the running wait fails at once, naming an instance EC2 ended`(ended: InstanceStateName) {
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenReturn(
+            reservation(
+                running("i-1"),
+                Instance
+                    .builder()
+                    .instanceId("i-2")
+                    .state(InstanceState.builder().name(ended).build())
+                    .tags(
+                        Tag
+                            .builder()
+                            .key("Name")
+                            .value("db1")
+                            .build(),
+                    ).placement(Placement.builder().availabilityZone("us-west-2a").build())
+                    .build(),
+            ),
+        )
+
+        assertThatThrownBy { service.waitForInstancesRunning(listOf("i-1", "i-2"), timeoutMs = 2_000) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("i-2 (db1): $ended")
+            .hasMessageNotContaining("i-1")
+            .hasMessageContaining("re-run")
+        // One poll, not a poll every millisecond until the deadline.
+        verify(ec2, times(1)).describeInstances(any<DescribeInstancesRequest>())
     }
 
     @Test

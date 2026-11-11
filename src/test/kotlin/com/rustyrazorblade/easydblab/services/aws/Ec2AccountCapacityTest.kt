@@ -184,6 +184,9 @@ class Ec2AccountCapacityTest {
                 .associate { it.key() to it.value() }
         assertThat(request.firstValue.dryRun()).isTrue()
         assertThat(request.firstValue.subnetId()).isEqualTo(subnets[1])
+        // That call launches ordinals 1 and 4, and nothing else.
+        assertThat(request.firstValue.minCount()).isEqualTo(2)
+        assertThat(request.firstValue.maxCount()).isEqualTo(2)
         assertThat(tags[Constants.Scale.FIRST_ORDINAL_TAG]).isEqualTo("1")
         assertThat(tags[Constants.Scale.ORDINAL_STRIDE_TAG]).isEqualTo("3")
     }

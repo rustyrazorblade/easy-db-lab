@@ -39,6 +39,7 @@ import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -233,22 +234,27 @@ class UpTest : UpTestFixture() {
     }
 
     /**
-     * A re-run inside an earlier `up`'s pending window discovers db0 still pending, with no public
-     * IP yet. `up` keeps it, so it must give it what a new instance gets: wait until it runs and
-     * passes its status checks, and record the public IP it was given, never a blank address.
+     * A re-run inside an earlier `up`'s pending window discovers db0 not ready: still pending, or
+     * already running but with no public IP yet (null or blank). `up` keeps it, so it must give it
+     * what a new instance gets: wait until it runs and passes its status checks, and record the
+     * public IP it was given, never a blank address.
      */
-    @Test
-    fun `up waits for a discovered pending instance and keeps it with its assigned public IP`() {
+    @ParameterizedTest(name = "state {0}, public IP [{1}]")
+    @CsvSource(value = ["pending,NULL", "running,NULL", "running,''"], nullValues = ["NULL"])
+    fun `up waits for a discovered instance that is not ready and keeps it with its assigned public IP`(
+        state: String,
+        publicIp: String?,
+    ) {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 2))
         val pendingDb0 =
             DiscoveredInstance(
                 instanceId = "i-db0",
-                publicIp = null,
+                publicIp = publicIp,
                 privateIp = "10.0.0.2",
                 alias = "db0",
                 availabilityZone = "us-west-2a",
                 serverType = ServerType.Cassandra,
-                state = "pending",
+                state = state,
             )
         val runningDb1 =
             pendingDb0.copy(instanceId = "i-db1", publicIp = "54.1.1.5", privateIp = "10.0.0.5", alias = "db1", state = "running")

@@ -80,6 +80,13 @@ Rules for both phases:
 - **THEN** it reports that the device would be removed from the tailnet and exits zero
 - **AND** the device stays recorded, the cluster state is not marked down, and the SOCKS tunnel is not stopped
 
+#### Scenario: A dry run with nothing recorded to tear down fails and changes nothing
+
+- **GIVEN** a workspace with no cluster state, or a cluster state that records neither a VPC nor a Tailscale device
+- **WHEN** the user runs `down --dry-run`
+- **THEN** it reports that there is nothing to tear down and exits non-zero, as `down` without `--dry-run` does
+- **AND** the SOCKS tunnel is not stopped and the cluster state is not changed
+
 #### Scenario: The tail of every signal reaches S3 before teardown
 
 - **GIVEN** a running cluster whose Mimir, Loki and Tempo hold data not yet in S3
@@ -277,7 +284,7 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 - RunInstances MUST launch one call per subnet, with `minCount = maxCount = n`, in chunks of at most `Constants.Scale.RUN_INSTANCES_CHUNK`, with a client token, and retry a throttled call (`RequestLimitExceeded`) with the same token.  The ordinals of one call are `subnets` apart, a gap starting a new call, and the call tags its instances with its first ordinal and that stride (`Constants.Scale.FIRST_ORDINAL_TAG`, `Constants.Scale.ORDINAL_STRIDE_TAG`), so the instance with launch index `k` is `first + k * stride`.  Each instance also gets its `Name` tag after launch.
 - Each launched instance MUST be recorded in the cluster state as soon as RunInstances returns it, before it is named.
 - Discovery MUST name an instance from its `Name` tag, or, when that tag never landed, from its launch ordinal tags and launch index.  The hosts in the cluster state MUST be one per alias, in ordinal order.
-- The running wait MUST wait for every instance ID, tolerate `InvalidInstanceID.NotFound` while EC2 catches up, and ask only about the instances not yet running.  DescribeInstanceStatus and DescribeInstances requests MUST name at most 100 IDs.
+- The running wait MUST wait for every instance ID, tolerate `InvalidInstanceID.NotFound` while EC2 catches up, and ask only about the instances not yet running.  An instance it finds shutting-down, terminated, stopping or stopped MUST end the wait at the poll that sees it, naming each such instance with its alias and state and saying that a re-run of `up` replaces it; it MUST NOT be waited on until the deadline.  DescribeInstanceStatus and DescribeInstances requests MUST name at most 100 IDs.
 - Per-host work (instance setup, AxonOps, registry TLS, K3s agents, the SSH readiness wait, the Cilium node image check) MUST run in parallel on at most `Constants.Scale.HOST_CONCURRENCY` hosts at once.  The SSH readiness wait MUST re-probe only the hosts not yet ready, within one time budget.
 - After the K3s agents start, `up` MUST wait until every node is registered.  The node type and ordinal labels MUST be set in each agent's K3s configuration, not by a later per-node label call.
 - The observability readiness wait MUST list pods once per poll under one deadline, and the rollout deadline MUST grow with the node count.  A pod with a container in a terminal state (`CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, `Error`) MUST end the wait at the poll that sees it, naming the pod, the container and the reason; it MUST NOT be retried until the deadline.
@@ -305,6 +312,12 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 - **GIVEN** an `up` that launched db0, which is still pending with no public IP
 - **WHEN** `up` runs again
 - **THEN** it waits until db0 runs and passes its status checks, does not launch it again, and records db0 with its public IP
+
+#### Scenario: An instance EC2 ends during the running wait fails up at once
+
+- **GIVEN** an `up` waiting for db1 to run
+- **WHEN** EC2 reports db1 terminated
+- **THEN** `up` fails at that poll, well before the wait's deadline, naming db1's instance ID, its alias and its state, and saying a re-run of `up` replaces it
 
 #### Scenario: A re-run continues the numbering
 

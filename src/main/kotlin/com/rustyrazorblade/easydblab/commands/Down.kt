@@ -127,8 +127,14 @@ class Down : PicoBaseCommand() {
         /**
          * `--dry-run`: the preview was reported and nothing changed, locally or remotely. The
          * tunnel, the tailnet device and the cluster state are left exactly as they were.
+         *
+         * [failure] is set when there was nothing to preview (no cluster state, or no VPC and no
+         * tailnet device recorded): the dry run fails as the teardown would, and still changes
+         * nothing.
          */
-        data object DryRun : TeardownOutcome
+        data class DryRun(
+            val failure: TeardownResult? = null,
+        ) : TeardownOutcome
     }
 
     override fun execute() {
@@ -142,7 +148,10 @@ class Down : PicoBaseCommand() {
                     exitCode = Constants.ExitCodes.ERROR
                     return
                 }
-                TeardownOutcome.DryRun -> return
+                is TeardownOutcome.DryRun -> {
+                    outcome.failure?.let(::reportResult)
+                    return
+                }
                 is TeardownOutcome.Finished -> outcome.result
             }
 
@@ -339,7 +348,7 @@ class Down : PicoBaseCommand() {
         // Get the VPC ID from cluster state
         if (!clusterStateManager.exists()) {
             eventBus.emit(Event.Teardown.NoClusterState)
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("No cluster state found"))
+            return nothingToTearDown(TeardownResult.Companion.failure("No cluster state found"))
         }
 
         val clusterState = clusterStateManager.load()
@@ -349,18 +358,25 @@ class Down : PicoBaseCommand() {
         if (currentVpcId == null && !deviceId.isNullOrBlank()) {
             if (dryRun) {
                 eventBus.emit(Event.Teardown.DryRunDeviceRemovalPreview(deviceId))
-                return TeardownOutcome.DryRun
+                return TeardownOutcome.DryRun()
             }
             return TeardownOutcome.Finished(TeardownResult.success(emptyList()))
         }
 
         if (currentVpcId == null) {
             eventBus.emit(Event.Teardown.NoVpcId(clusterState.name))
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("No VPC ID in cluster state"))
+            return nothingToTearDown(TeardownResult.Companion.failure("No VPC ID in cluster state"))
         }
 
         return teardownSpecificVpc(currentVpcId, saveTail = true)
     }
+
+    /**
+     * The outcome when the cluster state names nothing to tear down: [failure] either way, but a
+     * dry run reports it as a [TeardownOutcome.DryRun], so nothing, the tunnel included, is touched.
+     */
+    private fun nothingToTearDown(failure: TeardownResult): TeardownOutcome =
+        if (dryRun) TeardownOutcome.DryRun(failure) else TeardownOutcome.Finished(failure)
 
     /**
      * Tears down a specific VPC by ID.
@@ -381,7 +397,7 @@ class Down : PicoBaseCommand() {
 
         if (previewResult.resourcesDeleted.isEmpty()) {
             eventBus.emit(Event.Teardown.NoResourcesFound)
-            return if (dryRun) TeardownOutcome.DryRun else TeardownOutcome.Finished(previewResult)
+            return if (dryRun) TeardownOutcome.DryRun() else TeardownOutcome.Finished(previewResult)
         }
 
         val summary = previewResult.resourcesDeleted.first().summary()
@@ -389,7 +405,7 @@ class Down : PicoBaseCommand() {
 
         if (dryRun) {
             eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.DryRun
+            return TeardownOutcome.DryRun()
         }
 
         // Confirm if not auto-approved
@@ -415,7 +431,7 @@ class Down : PicoBaseCommand() {
 
         if (previewResult.resourcesDeleted.isEmpty()) {
             eventBus.emit(Event.Teardown.NoTaggedVpcsFound)
-            return if (dryRun) TeardownOutcome.DryRun else TeardownOutcome.Finished(previewResult)
+            return if (dryRun) TeardownOutcome.DryRun() else TeardownOutcome.Finished(previewResult)
         }
 
         // Build summary from discovered resources
@@ -423,7 +439,7 @@ class Down : PicoBaseCommand() {
 
         if (dryRun) {
             eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.DryRun
+            return TeardownOutcome.DryRun()
         }
 
         // Confirm if not auto-approved
@@ -454,14 +470,14 @@ class Down : PicoBaseCommand() {
 
         if (previewResult.resourcesDeleted.isEmpty()) {
             eventBus.emit(Event.Teardown.NoPackerVpcFound)
-            return if (dryRun) TeardownOutcome.DryRun else TeardownOutcome.Finished(previewResult)
+            return if (dryRun) TeardownOutcome.DryRun() else TeardownOutcome.Finished(previewResult)
         }
 
         val summary = previewResult.resourcesDeleted.first().summary()
 
         if (dryRun) {
             eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.DryRun
+            return TeardownOutcome.DryRun()
         }
 
         // Confirm if not auto-approved

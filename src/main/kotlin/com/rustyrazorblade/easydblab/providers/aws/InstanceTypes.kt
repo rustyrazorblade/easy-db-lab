@@ -82,6 +82,7 @@ data class CreatedInstance(
  * @property privateIp Private IP address (may be null if terminated)
  * @property availabilityZone AWS availability zone
  * @property instanceType EC2 instance type (e.g., "r3.2xlarge")
+ * @property name the instance's `Name` tag (its alias), or null when it has none yet
  */
 data class InstanceDetails(
     val instanceId: InstanceId,
@@ -90,6 +91,7 @@ data class InstanceDetails(
     val privateIp: String?,
     val availabilityZone: String,
     val instanceType: String? = null,
+    val name: String? = null,
 )
 
 /**

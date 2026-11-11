@@ -59,7 +59,8 @@ class AwsKeyPairService(
             } else {
                 clientFactory.createEc2Client(accessKey, secret, region)
             }
-        return generate(profileDir, ec2Client)
+        // This method built the client, so it closes it; the overload below never closes a client it was given.
+        return ec2Client.use { generate(profileDir, it) }
     }
 
     /**

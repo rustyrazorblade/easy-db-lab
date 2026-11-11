@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails
@@ -116,6 +119,28 @@ class AwsKeyPairServiceTest {
     }
 
     @Test
+    fun `the user sees one policy block when the reporter handles the rethrown denial`(
+        @TempDir profileDir: File,
+    ) {
+        val denied =
+            Ec2Exception
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("UnauthorizedOperation").build())
+                .message("not allowed")
+                .build()
+        whenever(ec2.createKeyPair(any<CreateKeyPairRequest>())).thenThrow(denied)
+        val failure = runCatching { service.generate(profileDir, ec2) }.exceptionOrNull()!!
+        val afterService = emitted.size
+
+        CommandFailureReporter(eventBus, listOf(AwsErrorHandler())).report(failure)
+
+        assertThat(emitted).hasSize(afterService)
+        assertThat(emitted.filterIsInstance<Event.Command.ProviderError>()).isEmpty()
+        assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionError>()).hasSize(1)
+    }
+
+    @Test
     fun `an existing secret file is replaced and ends up owner-only`(
         @TempDir profileDir: File,
     ) {
@@ -147,5 +172,46 @@ class AwsKeyPairServiceTest {
         assertThatThrownBy { service.generate(profileDir, ec2) }.isSameAs(other)
 
         assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionError>()).isEmpty()
+    }
+
+    @Test
+    fun `a client the service built from a profile is closed after success`(
+        @TempDir profileDir: File,
+    ) {
+        val factory: AWSClientFactory = mock()
+        whenever(factory.createEc2ClientWithProfile("lab", "us-west-2")).thenReturn(ec2)
+        whenever(ec2.createKeyPair(any<CreateKeyPairRequest>()))
+            .thenReturn(CreateKeyPairResponse.builder().keyMaterial("K").build())
+
+        AwsKeyPairService(eventBus, factory, AwsErrorHandler()).generate(profileDir, "us-west-2", "lab", "", "")
+
+        verify(ec2).close()
+    }
+
+    @Test
+    fun `a client the service built from static keys is closed after failure`(
+        @TempDir profileDir: File,
+    ) {
+        val factory: AWSClientFactory = mock()
+        whenever(factory.createEc2Client("key", "secret", "us-west-2")).thenReturn(ec2)
+        whenever(ec2.createKeyPair(any<CreateKeyPairRequest>())).thenThrow(RuntimeException("boom"))
+
+        assertThatThrownBy {
+            AwsKeyPairService(eventBus, factory, AwsErrorHandler()).generate(profileDir, "us-west-2", "", "key", "secret")
+        }.hasMessage("boom")
+
+        verify(ec2).close()
+    }
+
+    @Test
+    fun `a client the caller injected is never closed by the service`(
+        @TempDir profileDir: File,
+    ) {
+        whenever(ec2.createKeyPair(any<CreateKeyPairRequest>()))
+            .thenReturn(CreateKeyPairResponse.builder().keyMaterial("K").build())
+
+        service.generate(profileDir, ec2)
+
+        verify(ec2, never()).close()
     }
 }

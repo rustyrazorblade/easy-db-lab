@@ -42,12 +42,15 @@ your db nodes; images built for amd64 only do not run on arm64 nodes.
 
 A private image (the registry answers 401 or 403 to the anonymous check) prints a warning and
 continues, because the pods may pull with credentials the check does not have. Docker Hub and
-ghcr.io are checked anonymously; other registries usually answer 401 and are not checked.
+ghcr.io are checked anonymously; other registries usually answer 401 and are not checked. The
+check reads the registry token with `jq`, which must be installed on your machine.
 
 A custom image must be built like the Docker Official `cassandra` image: its entrypoint is
 `docker-entrypoint.sh`, `cassandra.yaml` is at `/etc/cassandra/cassandra.yaml` and writable by the
-container user, and data lives in `/var/lib/cassandra`. A different layout fails when the pod
-starts, not in the registry check.
+container user with an uncommented `native_transport_port:` line, and data lives in
+`/var/lib/cassandra`. A different layout fails when the pod starts, not in the registry check; a
+`cassandra.yaml` with no `native_transport_port:` line makes the container exit at once with an
+error naming the file.
 
 ## CQL access
 

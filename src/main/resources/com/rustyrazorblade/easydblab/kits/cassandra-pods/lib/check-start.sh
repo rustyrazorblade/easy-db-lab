@@ -12,6 +12,7 @@
 #   - a db node cannot be checked over ssh (fail fast: an unchecked node may be running the AMI Cassandra)
 #   - EDL_NODE_SSH is not true or false. With EDL_NODE_SSH=false (no node SSH) the AMI Cassandra
 #     check is skipped with one printed line.
+#   - jq is not installed (it reads the registry token, `token` or `access_token`)
 #   - the image's manifest is definitely not in its registry (404). A 401/403 (private image) warns
 #     and continues; any other answer fails with curl's own message.
 #
@@ -158,6 +159,10 @@ else
   token_url="https://${registry}/token?service=${registry}&scope=repository:${repository}:pull"
 fi
 
+# The registry's token answer is JSON, read with jq on the operator's machine.
+command -v jq > /dev/null 2>&1 ||
+  fail "ERROR: jq is not installed; the cassandra-pods start check needs it to read the registry token. Install jq (for example 'brew install jq') and run start again."
+
 curl_err="$(mktemp)"
 token_body="$(mktemp)"
 trap 'rm -f "${curl_err}" "${token_body}"' EXIT
@@ -166,7 +171,7 @@ trap 'rm -f "${curl_err}" "${token_body}"' EXIT
 token_code="$(curl -sS -o "${token_body}" -w '%{http_code}' "${token_url}" 2> "${curl_err}")" || token_code=""
 token=""
 case "${token_code}" in
-  200) token="$(sed -n 's/.*"token" *: *"\([^"]*\)".*/\1/p' "${token_body}")" ;;
+  200) token="$(jq -r '.token // .access_token // empty' "${token_body}")" ;;
   401 | 403 | 404) ;;
   *)
     detail="$(cat "${curl_err}")"

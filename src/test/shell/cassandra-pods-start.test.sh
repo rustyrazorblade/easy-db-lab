@@ -28,7 +28,9 @@ case "$*" in
   *"/token?"*)
     out=""; prev=""
     for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
-    [ -n "$out" ] && echo '{"token":"abc"}' > "$out"
+    json='{"token":"abc"}'
+    [ -n "${STUB_TOKEN_JSON:-}" ] && json="${STUB_TOKEN_JSON}"
+    [ -n "$out" ] && printf '%s\n' "$json" > "$out"
     printf '%s' "${STUB_TOKEN_CODE:-200}"
     ;;
   *"-w"*) printf '%s' "${STUB_MANIFEST_CODE:-200}" ;;
@@ -238,6 +240,51 @@ heap_for() {
   sh -c 'CASSANDRA_HEAP="$1"; MEMORY_LIMIT_MIB="$2"; . "$3"; echo "${MAX_HEAP_SIZE} ${HEAP_NEWSIZE}"' sh "$1" "$2" "${WORK}/heap-snippet.sh" 2>&1
 }
 
+# The pod's native port edit, extracted from the shipped template (from the sed through the line
+# that checks it) and run through sh against a copy of cassandra.yaml.
+sed -n '/^ *sed -i .s\/^native_transport_port/,/^ *fi$/p' "${TEMPLATE}" | sed 's/^ *//' |
+  sed 's#/etc/cassandra/cassandra.yaml#"$CASSANDRA_YAML"#g' > "${WORK}/port-snippet.sh"
+
+# The container's sed is GNU sed, whose `-i` takes no suffix; BSD sed (macOS) reads the script as
+# one. This shim gives `sed -i SCRIPT FILE` the GNU meaning on either, for the snippet run only.
+mkdir -p "${WORK}/gnu-sed"
+real_sed="$(command -v sed)"
+cat > "${WORK}/gnu-sed/sed" << STUB
+#!/bin/sh
+if [ "\$1" = -i ]; then
+  "${real_sed}" "\$2" "\$3" > "\$3.tmp" && mv "\$3.tmp" "\$3"
+else
+  exec "${real_sed}" "\$@"
+fi
+STUB
+chmod +x "${WORK}/gnu-sed/sed"
+
+# Runs the port snippet against a cassandra.yaml holding $1; sets rc and out.
+port_edit() {
+  printf '%s\n' "$1" > "${WORK}/cassandra.yaml"
+  out="$(PATH="${WORK}/gnu-sed:${PATH}" CASSANDRA_YAML="${WORK}/cassandra.yaml" sh "${WORK}/port-snippet.sh" 2>&1)"
+  rc=$?
+}
+
+begin "the port snippet was extracted from the template and checks the edit"
+grep -q 'native_transport_port: 30942' "${WORK}/port-snippet.sh" || fail "no port edit in snippet: $(cat "${WORK}/port-snippet.sh")"
+grep -q 'grep -q' "${WORK}/port-snippet.sh" || fail "snippet does not check the edit: $(cat "${WORK}/port-snippet.sh")"
+
+begin "a cassandra.yaml with native_transport_port is set to 30942"
+port_edit 'cluster_name: x
+native_transport_port: 9042
+storage_port: 7000'
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+grep -qx 'native_transport_port: 30942' "${WORK}/cassandra.yaml" || fail "port not set: $(cat "${WORK}/cassandra.yaml")"
+
+begin "a cassandra.yaml with the port commented out or absent fails, naming the file and the setting"
+for yaml in '# native_transport_port: 9042' 'cluster_name: x'; do
+  port_edit "${yaml}"
+  [ "${rc}" -ne 0 ] || fail "'${yaml}': exit 0"
+  case "${out}" in *"${WORK}/cassandra.yaml"*"native_transport_port: 30942"*) ;; *) fail "'${yaml}': message: ${out}" ;; esac
+  [ "$(printf '%s\n' "${out}" | wc -l | tr -d ' ')" = 1 ] || fail "'${yaml}': not one line: ${out}"
+done
+
 begin "the heap snippet was extracted from the template"
 [ -s "${WORK}/heap-snippet.sh" ] || fail "no heap snippet found in the template"
 grep -q 'HEAP_NEWSIZE=' "${WORK}/heap-snippet.sh" || fail "snippet lacks HEAP_NEWSIZE"
@@ -302,6 +349,39 @@ begin "ghcr.io uses its own token endpoint and sends the token"
 run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:sha-abc
 grep -q 'https://ghcr.io/token?service=ghcr.io&scope=repository:example/cassandra:pull' "${WORK}/curl.calls" || fail "wrong token request"
 grep -q 'Authorization: Bearer abc' "${WORK}/curl.calls" || fail "token not sent"
+
+begin "a token answered as access_token is sent"
+run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:sha-abc STUB_TOKEN_JSON='{"access_token":"xyz","expires_in":300}'
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+grep -q 'Authorization: Bearer xyz' "${WORK}/curl.calls" || fail "access_token not sent: $(cat "${WORK}/curl.calls")"
+
+begin "token wins over access_token, even when the JSON spans lines and has spaces"
+run_check STUB_TOKEN_JSON='{
+  "access_token" : "second",
+  "token" : "first"
+}'
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+grep -q 'Authorization: Bearer first' "${WORK}/curl.calls" || fail "token not preferred: $(cat "${WORK}/curl.calls")"
+
+begin "a token answer with neither field is checked anonymously"
+run_check STUB_TOKEN_JSON='{"other":"x"}'
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+if grep -q 'Authorization' "${WORK}/curl.calls"; then fail "an Authorization header was sent: $(cat "${WORK}/curl.calls")"; fi
+
+begin "without jq on PATH start fails naming jq, before any registry request"
+mkdir -p "${WORK}/nojq"
+for tool in cat cut mktemp rm; do ln -sf "$(command -v "${tool}")" "${WORK}/nojq/${tool}"; done
+for stub in curl ssh; do ln -sf "${WORK}/stubs/${stub}" "${WORK}/nojq/${stub}"; done
+(
+  cd "${WORK}/kit" &&
+    env PATH="${WORK}/nojq" EDL_NODE_SSH=true DB_NODE_COUNT=3 CASSANDRA_VERSION=5.0 CASSANDRA_IMAGE= CASSANDRA_NODES=3 \
+      "${BASH}" lib/check-start.sh
+) > "${WORK}/out" 2>&1
+rc=$?
+out="$(cat "${WORK}/out")"
+[ "${rc}" -eq 1 ] || fail "exit ${rc}: ${out}"
+case "${out}" in *"jq"*"not installed"*) ;; *) fail "message does not name jq: ${out}" ;; esac
+[ ! -f "${WORK}/curl.calls" ] || fail "registry was queried without jq"
 
 begin "a failed token request exits 1 naming the image"
 run_check STUB_TOKEN_CODE=503

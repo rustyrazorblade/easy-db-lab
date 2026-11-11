@@ -54,6 +54,12 @@ spec:
             - -c
             - |
               sed -i 's/^native_transport_port:.*/native_transport_port: 30942/' /etc/cassandra/cassandra.yaml
+              # An image whose cassandra.yaml lacks the line (or comments it out) would keep 9042
+              # while the Service targets 30942, and only the readiness probe would ever show it.
+              if ! grep -q '^native_transport_port: 30942$' /etc/cassandra/cassandra.yaml; then
+                echo "ERROR: /etc/cassandra/cassandra.yaml has no 'native_transport_port:' line to set; expected 'native_transport_port: 30942' after the edit." >&2
+                exit 1
+              fi
               # The image's cassandra-env.sh sizes the heap from the host's memory (free -m), not the
               # container limit, so the heap is always set here. --heap, validated at start to fit
               # inside --memory, wins; otherwise half the limit, leaving the rest for off-heap

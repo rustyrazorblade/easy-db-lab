@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.architecture
 
+import com.rustyrazorblade.easydblab.architecture.fixtures.SdkOnlyInCatch
+import com.rustyrazorblade.easydblab.architecture.fixtures.SdkTypeInField
 import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.domain.JavaClasses
 import com.tngtech.archunit.core.domain.JavaCodeUnit
@@ -11,6 +13,7 @@ import com.tngtech.archunit.lang.SimpleConditionEvent
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.codeUnits
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
@@ -41,24 +44,47 @@ class PackageBoundaryTest {
 
     @Test
     fun `no class outside the adapters depends on an SDK type`() {
+        sdkDependencyRule().check(mainClasses)
+    }
+
+    @Test
+    fun `no code outside the adapters catches an SDK throwable`() {
+        sdkCatchRule().check(mainClasses)
+    }
+
+    @Test
+    fun `the dependency rule fails on a class outside the adapters that holds an SDK type`() {
+        val violating = ClassFileImporter().importClasses(SdkTypeInField::class.java)
+
+        assertThatThrownBy { sdkDependencyRule().check(violating) }
+            .isInstanceOf(AssertionError::class.java)
+            .hasMessageContaining("SdkTypeInField")
+    }
+
+    @Test
+    fun `the catch rule fails on a class outside the adapters that names an SDK type only in a catch`() {
+        val violating = ClassFileImporter().importClasses(SdkOnlyInCatch::class.java)
+
+        assertThatThrownBy { sdkCatchRule().check(violating) }
+            .isInstanceOf(AssertionError::class.java)
+            .hasMessageContaining("SdkOnlyInCatch")
+            .hasMessageContaining("software.amazon.awssdk.core.exception.SdkException")
+    }
+
+    private fun sdkDependencyRule() =
         noClasses()
             .that()
             .resideOutsideOfPackages(*adapters)
             .should()
             .dependOnClassesThat()
             .resideInAPackage(sdk)
-            .check(mainClasses)
-    }
 
-    @Test
-    fun `no code outside the adapters catches an SDK throwable`() {
+    private fun sdkCatchRule() =
         codeUnits()
             .that()
             .areDeclaredInClassesThat()
             .resideOutsideOfPackages(*adapters)
             .should(notCatchSdkThrowables())
-            .check(mainClasses)
-    }
 
     @Test
     fun `providers do not depend on services`() {

@@ -29,7 +29,7 @@
 
 ## 5. SingleStore kit: operator and kit.yaml
 
-- [x] 5.1 Vendor the CRD (schemaless), RBAC, and operator Deployment from the upstream `singlestore-labs/singlestore-helm` templates into `kits/singlestore/`. Pin the image tag to `__OPERATOR_VERSION__`, set the operator args, and pin the pod to the control node
+- [x] 5.1 Vendor the CRD (schemaless), RBAC, and operator Deployment from the upstream `singlestore-labs/singlestore-helm` templates into `kits/singlestore/`. Pin the image tag to `__OPERATOR_VERSION__`, and set the operator args; the pod has no node selector or toleration
 - [x] 5.2 Write `kits/singlestore/kit.yaml`: `type: db`, every arg with its default, `required: true` on `--license`, `pattern` on `--database` and `--password`, the `install` steps, the pod-selector scrape on 9104 `/cluster-metrics`, the runtime selector, the two endpoints on 30306 with `database: "__SINGLESTORE_DATABASE__"`, and the `sql` capability with `user: root`, `password: "__SINGLESTORE_PASSWORD__"`, and the MySQL driver class
 - [x] 5.3 Add the NodePort Service template on 30306 selecting `easydblab/tier=aggregator`
 

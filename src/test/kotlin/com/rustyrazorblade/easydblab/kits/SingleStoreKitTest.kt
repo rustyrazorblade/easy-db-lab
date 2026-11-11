@@ -39,7 +39,7 @@ class SingleStoreKitTest : BaseKoinTest() {
     private fun arg(flag: String): KitArgSpec = kit.config.args.single { it.flag == flag }
 
     @Test
-    fun `the operator runs the pinned image with the upstream args on the control node`() {
+    fun `the operator runs the pinned image with the upstream args and no node placement`() {
         val operator = kit.render("operator-deployment.yaml.template").filterIsInstance<Deployment>().single()
         val pod = operator.spec.template.spec
         val container = pod.containers.single()
@@ -53,8 +53,8 @@ class SingleStoreKitTest : BaseKoinTest() {
             "--cluster-id",
             "singlestore",
         )
-        assertThat(pod.nodeSelector).containsEntry("node-role.kubernetes.io/control-plane", "true")
-        assertThat(pod.tolerations.map { it.key }).contains("node-role.kubernetes.io/control-plane")
+        assertThat(pod.nodeSelector).isNullOrEmpty()
+        assertThat(pod.tolerations).isNullOrEmpty()
         assertThat(pod.serviceAccountName).isEqualTo("singlestore-operator")
     }
 

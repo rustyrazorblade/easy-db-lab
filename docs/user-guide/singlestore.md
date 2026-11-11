@@ -2,7 +2,7 @@
 
 The `singlestore` kit runs a distributed [SingleStore](https://www.singlestore.com/) cluster on the
 db nodes. SingleStore is a distributed SQL database that speaks the MySQL wire protocol. The kit
-installs the SingleStore Kubernetes Operator on the control node, and each `start` deploys a fresh
+installs the SingleStore Kubernetes Operator, and each `start` deploys a fresh
 cluster: one master aggregator, optional child aggregators, and one leaf per db node.
 
 ## Prerequisites
@@ -80,7 +80,7 @@ than the db node count, or when `--aggregators` plus the master is, naming the f
 count.
 
 Every SingleStore pod runs on a db node; none runs on an app node or the control node. The
-operator runs on the control node.
+operator is not pinned to a node; Kubernetes places it, as it does every other kit's operator.
 
 ### Redundancy
 

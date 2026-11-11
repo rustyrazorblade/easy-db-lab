@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
  * `singlestore-operator` ClusterRole and binding) belong to no other test. The operator image is not
  * preloaded and need not run: the test checks that the API server accepts every object as the kit
  * writes it, that the stored cluster keeps the computed sizes as numbers, and that the operator pod
- * is scheduled onto the control-plane node.
+ * is scheduled with no node selector.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SingleStoreKitIntegrationTest {
@@ -84,7 +84,7 @@ class SingleStoreKitIntegrationTest {
     }
 
     @Test
-    fun `the operator RBAC is in place and its pod is scheduled on the control-plane node`() {
+    fun `the operator RBAC is in place and its pod is scheduled onto a node`() {
         assertThat(
             client
                 .serviceAccounts()
@@ -111,9 +111,7 @@ class SingleStoreKitIntegrationTest {
                 .informOnCondition { pods -> pods.any { !it.spec.nodeName.isNullOrBlank() } }
                 .get(WAIT_SECONDS, TimeUnit.SECONDS)
                 .single()
-        val node = client.nodes().withName(pod.spec.nodeName).get()
-
-        assertThat(node.metadata.labels).containsEntry("node-role.kubernetes.io/control-plane", "true")
+        assertThat(client.nodes().withName(pod.spec.nodeName).get()).isNotNull()
         assertThat(pod.spec.serviceAccountName).isEqualTo("singlestore-operator")
     }
 

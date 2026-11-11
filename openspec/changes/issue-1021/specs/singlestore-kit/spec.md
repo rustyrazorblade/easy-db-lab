@@ -2,12 +2,12 @@
 
 ### Requirement: SingleStore kit installs the operator from packaged manifests
 
-The system SHALL ship a built-in kit named `singlestore` with `type: db` and no kit-specific Kotlin. Its `install` phase SHALL apply packaged manifests taken from the upstream `singlestore-labs/singlestore-helm` templates: the `MemsqlCluster` CRD (vendored, schemaless), the operator RBAC, and the operator Deployment. The operator image SHALL be `singlestore/operator:<--operator-version>`, with the default `4.252.0-3adf6c3d`. The operator SHALL run with the args `--merge-service-annotations`, `--disable-finalizer`, `--fs-group-id 5555`, and `--cluster-id singlestore`. The operator pod SHALL be pinned to the control node. The install SHALL NOT use a Helm chart or a manifest URL.
+The system SHALL ship a built-in kit named `singlestore` with `type: db` and no kit-specific Kotlin. Its `install` phase SHALL apply packaged manifests taken from the upstream `singlestore-labs/singlestore-helm` templates: the `MemsqlCluster` CRD (vendored, schemaless), the operator RBAC, and the operator Deployment. The operator image SHALL be `singlestore/operator:<--operator-version>`, with the default `4.252.0-3adf6c3d`. The operator SHALL run with the args `--merge-service-annotations`, `--disable-finalizer`, `--fs-group-id 5555`, and `--cluster-id singlestore`. The operator pod SHALL set no node selector or toleration. The install SHALL NOT use a Helm chart or a manifest URL.
 
-#### Scenario: Install applies the operator on the control node
+#### Scenario: Install applies the operator
 - **WHEN** the user runs `kit install singlestore --license <key>` and then `singlestore start`
 - **THEN** the CRD, RBAC, and operator Deployment are applied from files in the installed kit directory
-- **AND** the operator pod runs on the control node with the pinned operator image and args
+- **AND** the operator pod runs with the pinned operator image and args and no node selector or toleration
 
 #### Scenario: Operator version arg selects the image tag
 - **WHEN** the kit is installed with `--operator-version <tag>`

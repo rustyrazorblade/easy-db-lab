@@ -5,7 +5,7 @@ easy-db-lab cannot run SingleStore, a distributed SQL database that speaks the M
 ## What Changes
 
 - New kit `singlestore` (`type: db`) under `kits/singlestore/`, with no kit-specific Kotlin. It is modeled on `kits/tidb`.
-  - Packaged operator manifests taken from the upstream `singlestore-labs/singlestore-helm` templates: a vendored schemaless CRD, RBAC, and an operator Deployment pinned to `singlestore/operator:4.252.0-3adf6c3d` and to the control node.
+  - Packaged operator manifests taken from the upstream `singlestore-labs/singlestore-helm` templates: a vendored schemaless CRD, RBAC, and an operator Deployment pinned to `singlestore/operator:4.252.0-3adf6c3d`, with no node selector.
   - A `MemsqlCluster` on the db nodes with the node image `singlestore/node:alma-9.0.44-1322a9e639` by default. One master aggregator shares a db node with a leaf. One leaf runs on each db node.
   - Named args: `--license` (required), `--version`, `--operator-version`, `--aggregators`, `--leaves`, `--redundancy`, `--size`, `--leaf-cores`, `--leaf-memory`, `--aggregator-cores`, `--aggregator-memory`, `--password` (default `easydblab`), `--database` (default `test`), `--unlimited-storage`, `--blob-cache`.
   - `start` clears leftovers from a failed start, sizes the leaf from the db node's allocatable resources (`lib/singlestore-sizing.sh`), checks the redundancy rule, creates the license and root password Secrets, applies the CR, waits, detects a license refusal, creates the NodePort Service on 30306, and creates the database. With `--unlimited-storage` it creates the database `ON S3` at a new path under the per-cluster data bucket on each start, and prints the path.

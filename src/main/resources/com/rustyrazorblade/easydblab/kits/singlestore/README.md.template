@@ -1,7 +1,6 @@
 # SingleStore Kit
 
-A distributed SingleStore cluster on the db nodes, managed by the SingleStore Operator, which
-runs on the control node.
+A distributed SingleStore cluster on the db nodes, managed by the SingleStore Operator.
 
 ## Cluster Layout
 

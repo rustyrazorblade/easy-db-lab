@@ -1,7 +1,7 @@
 # The SingleStore operator, taken from singlestore-labs/singlestore-helm
 # (singlestore/templates/operator-deployment.yaml, commit 10a5743e). Changes from the chart: the
-# image tag comes from --operator-version, the cluster id is the kit's MemsqlCluster name, and the
-# pod is pinned to the control node, so no database node gives it CPU or memory.
+# image tag comes from --operator-version and the cluster id is the kit's MemsqlCluster name. Like
+# every other kit's operator, the pod has no node selector or toleration.
 #
 # The pod carries no easydblab/kit label: the kit's runtime selector must match only the database
 # pods a start creates, not the operator that install leaves running.
@@ -25,12 +25,6 @@ spec:
         app.kubernetes.io/name: singlestore-operator
     spec:
       serviceAccountName: singlestore-operator
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: "true"
-      tolerations:
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: NoSchedule
       containers:
         - name: sdb-operator
           image: singlestore/operator:__OPERATOR_VERSION__

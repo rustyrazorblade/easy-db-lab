@@ -71,7 +71,7 @@ import java.time.format.DateTimeFormatter
  *
  * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
  *   whose default keeps the no-argument construction picocli's factories use
- *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]).
+ *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]); consolidated by #1040.
  */
 @RequireProfileSetup
 @RequiresProxy(tolerateFailure = true)

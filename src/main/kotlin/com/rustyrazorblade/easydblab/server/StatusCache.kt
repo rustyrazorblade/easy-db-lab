@@ -47,7 +47,7 @@ import kotlin.system.exitProcess
  * storing the result in memory for instant retrieval via the /status endpoint.
  *
  * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
- *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]).
+ *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]); consolidated by #1040.
  */
 class StatusCache(
     private val refreshIntervalSeconds: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS,

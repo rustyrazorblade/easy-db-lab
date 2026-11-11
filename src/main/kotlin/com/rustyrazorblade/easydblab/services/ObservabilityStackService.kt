@@ -69,9 +69,9 @@ interface ObservabilityStackService {
  * directories over SSH.
  *
  * @property capabilitiesOf derives what the environment provides from cluster state. It is a test
- *   seam so a unit test can run a non-AWS environment; production takes the default, and #1040
- *   replaces the four such seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
- *   [com.rustyrazorblade.easydblab.server.StatusCache]) with one provider.
+ *   seam so a unit test can run a non-AWS environment; production takes the default. The four such
+ *   seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
+ *   [com.rustyrazorblade.easydblab.server.StatusCache]) are consolidated by #1040 into one provider.
  */
 @Suppress("LongParameterList")
 class DefaultObservabilityStackService(

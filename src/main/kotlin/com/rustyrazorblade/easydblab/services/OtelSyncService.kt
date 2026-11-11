@@ -28,7 +28,7 @@ interface OtelSyncService {
  * it again for nothing.
  *
  * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
- *   like the one on [DefaultObservabilityStackService] (#1040 replaces them with one provider).
+ *   like the one on [DefaultObservabilityStackService] (consolidated by #1040).
  */
 class DefaultOtelSyncService(
     private val k8sClientProvider: K8sClientProvider,

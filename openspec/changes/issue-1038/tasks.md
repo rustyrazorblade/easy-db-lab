@@ -52,5 +52,5 @@
 
 ## 6. Verify
 
-- [x] 6.1 Ran `./gradlew ktlintFormat detekt test` fresh on JDK 21 (all pass). `integrationTest` was not run locally; CI is its gate.
+- [x] 6.1 Ran `./gradlew testCassandraPodsStart ktlintCheck detekt test integrationTest` on JDK 21 (all pass).
 - [x] 6.2 Run `openspec validate issue-1038 --strict`.

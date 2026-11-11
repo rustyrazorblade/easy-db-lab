@@ -12,6 +12,6 @@
 | Risk | Duplicate series when the AMI Cassandra also runs | cassandra-kit: AMI Cassandra already running | ✅ Covered |
 | Risk | Slow start with OrderedReady | cassandra-kit: Start times out | ✅ Covered (bounded wait with diagnostics) |
 | Risk | Apple Silicon: GHCR images are amd64-only | — | ⏭ Excluded: tracked by #1036 (multi-arch images); Docker Official images work |
-| Risk | Registry check needs network access | — | ⏭ Excluded: the image pull needs the same access, so the check adds no new failure mode |
+| Risk | Registry check needs network access | — | ✅ Covered: the check needs network access, and the nodes' pull may use credentials the check lacks; a 401/403 warns and continues, a 404 fails, any other failure stops start naming the image (design D6) |
 | Scope | Existing Cassandra dashboards show kit pods | cassandra-kit: Overview dashboard shows the kit | ✅ Covered |
 | Scope | Docs | cassandra-kit: Docs list the kit | ✅ Covered |

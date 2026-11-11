@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 
-LABELS="easydblab.com/kit=cqlite-flight"
+LABELS="easydblab/kit=cqlite-flight"
 
-echo "Stopping cqlite-flight (deleting DaemonSet by label selector: ${LABELS})..."
-kubectl delete daemonset -l "${LABELS}" --namespace default --ignore-not-found
+echo "Stopping cqlite-flight (deleting the DaemonSet and its NodePort Service by label selector: ${LABELS})..."
+kubectl delete daemonset,service -l "${LABELS}" --namespace default --ignore-not-found
 
 echo "cqlite-flight stopped. The Cassandra data dir mount was read-only; nothing to clean up on-node."

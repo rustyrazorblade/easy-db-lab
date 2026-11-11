@@ -7,22 +7,32 @@ each reading that node's own local SSTables read-only. This is the data plane th
 
 ## What it deploys
 
-A single `DaemonSet/cqlite-flight` in the `default` namespace:
+A `DaemonSet/cqlite-flight` and a `Service/cqlite-flight-nodeport` in the `default`
+namespace:
 
 - **`nodeSelector: {type: db}`** — schedules exactly one pod per Cassandra node,
   matching the pattern used by the Cassandra sidecar and OTel collector DaemonSets
   already in this lab.
-- **`hostNetwork: true`** — the Flight gRPC port is bound directly on the node's
-  network namespace, so it is reachable from Trino (or any other in-cluster pod)
-  at `<db-node-private-ip>:<flight-port>` — the same node-IP-addressing model the
-  connector already needs from Sidecar-based topology discovery. It also means
-  `localhost:4317` on the pod reaches the **node-local** OTel collector DaemonSet
-  with no extra Service/DNS hop (see [Observability](#observability)).
+- **Pod network, NodePort 30815** — the pods run on the pod network (no
+  `hostNetwork`, no `hostPort`). The Flight gRPC port is published by the
+  `cqlite-flight-nodeport` Service on NodePort **30815** with
+  `externalTrafficPolicy: Local`, so `<db-node-private-ip>:30815` always reaches
+  **that node's own pod** — the only pod holding that node's SSTables. This keeps
+  the node-IP-addressing model the connector needs from Sidecar-based topology
+  discovery. (With the default `Cluster` policy, kube-proxy would send a request to
+  any node's pod and a read would silently return another node's data.)
 - **Read-only hostPath mount** of the Cassandra data directory (default
   `/mnt/db1/cassandra/data`, matching `cassandra.service`'s
   `data_file_directories`), mounted at `/data` in the container and passed to
   `--data-dir`.
 - **Image**: `ghcr.io/pmcfadin/cqlite-flight:<tag>` (default `latest`).
+
+**Works only where the database runs on the node.** The kit reads the data
+directory straight off the db node's filesystem through a read-only `hostPath`
+mount — that is what it is for. It therefore works only on the VM path, where
+Cassandra runs directly on the db nodes, and only on a cluster that allows
+`hostPath` volumes. It cannot read a database that runs in Kubernetes pods on its
+own volumes.
 
 Default read path is the **live** Cassandra data directory — this kit does not
 select a Sidecar snapshot. Snapshot-consistent reads (a stable file set while
@@ -30,19 +40,19 @@ compaction runs underneath) are driven by the **trino-connector's Flight ticket*
 (`"snapshot": "<name>"`), not by this kit. See the
 [flight ticket contract](../../cqlite-flight/README.md#flight-ticket-contract).
 
-No `dashboards/` are shipped by this change — auto-discovery will pick up any
-`.json` files placed there later without any kit.yaml change.
+`dashboards/cqlite-flight.json` (Flight RPC, latency, admission and cache metrics) is
+installed into a Grafana folder named after the kit on `start`.
 
 ## Args
 
 | Flag | Variable | Default | Description |
 |------|----------|---------|--------------|
 | `--tag` | `TAG` | `latest` | `cqlite-flight` image tag. |
-| `--flight-port` | `FLIGHT_PORT` | `8815` | Arrow Flight gRPC port (host + container, via `hostNetwork`). |
+| `--flight-port` | `FLIGHT_PORT` | `8815` | Arrow Flight gRPC container port. Clients connect to NodePort 30815 on each db node, which forwards to it. |
 | `--data-dir` | `CASSANDRA_DATA_DIR` | `/mnt/db1/cassandra/data` | Host path to the Cassandra data dir, mounted read-only. **Exactly one** — see [Multi-disk nodes](#multi-disk-nodes-single-data-dir-limitation-2114). |
 | `--data-root` | `CASSANDRA_DATA_ROOT` | `/mnt` | Host path under which per-disk data dirs live; the `detect-multidisk` init container scans it read-only and warns on more than one candidate (#2114). |
 | `--data-gid` | `CASSANDRA_DATA_GID` | `999` | Host GID that owns the Cassandra data dir; added as a pod `supplementalGroup`. |
-| `--otel-endpoint` | `OTEL_ENDPOINT` | `http://localhost:4317` | OTLP gRPC endpoint (defaults to the node-local collector). |
+| `--otel-endpoint` | `OTEL_ENDPOINT` | `http://$(HOST_IP):4317` | OTLP gRPC endpoint (defaults to the collector on the pod's node). |
 
 ## Multi-disk nodes: single-data-dir limitation (#2114)
 
@@ -104,7 +114,8 @@ dir on the node), never as a rollout failure and never as a false single-disk
 making the gap visible):
 
 - Keep the queried tables on the served disk.
-- Run one `cqlite-flight` DaemonSet per disk on distinct `--flight-port`s.
+- Run one `cqlite-flight` DaemonSet per disk, each with its own Service on its own
+  NodePort (this kit publishes one, 30815).
 - There is deliberately **no way to silence the check entirely** — on a genuine
   single-disk node it is already a quiet one-line `OK`, and every other state
   is exactly the misconfiguration the detector exists to surface.
@@ -120,7 +131,7 @@ there is no `kit source add` step. Its declared `args:` are substituted normally
 install time:
 
 ```bash
-easy-db-lab kit install cqlite-flight --tag v0.13.0 --flight-port 8815
+easy-db-lab kit install cqlite-flight --tag v0.13.0
 easy-db-lab cqlite-flight start
 ```
 
@@ -159,32 +170,30 @@ actually owns it.
 ## Observability
 
 `CQLITE_OTEL_ENABLED=true`, `CQLITE_OTEL_ENDPOINT` (default
-`http://localhost:4317`), `CQLITE_OTEL_PROTOCOL=grpc`, and
+`http://$(HOST_IP):4317`), `CQLITE_OTEL_PROTOCOL=grpc`, and
 `CQLITE_OTEL_SERVICE_NAME=cqlite-flight` are set as container env vars — see
 `cqlite_core::observability::config` for the full `CQLITE_OTEL_*` contract.
 Metrics/traces are **OTLP-push**; no Prometheus scrape config or `metrics:` block
 is declared in `kit.yaml` (there is nothing for the OTel DaemonSet to scrape).
 
-The default endpoint relies on this pod running `hostNetwork: true` **on the same
-node** as the lab's OTel collector DaemonSet (`otel-collector-config.yaml`, OTLP
-gRPC receiver on `0.0.0.0:4317`), so `localhost:4317` reaches it directly — the
-same idiom the Cassandra sidecar DaemonSet already uses
-(`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`). Override `--otel-endpoint`
-if that topology ever changes (e.g. a control-node-only collector reachable via
-the in-cluster `otel-collector.default.svc.cluster.local:4317` Service).
+The default endpoint is the OTel collector DaemonSet on the pod's own node: the
+collector runs on the host network with its OTLP gRPC receiver on `0.0.0.0:4317`,
+and the pod reads its node's IP from the downward API (`HOST_IP` from
+`status.hostIP`), the convention every pod-network kit uses (see neo4j).
+Override `--otel-endpoint` to send telemetry elsewhere.
 
 ## Lifecycle
 
 ```bash
-easy-db-lab cqlite-flight start   # kubectl apply the DaemonSet, wait for rollout
-easy-db-lab cqlite-flight stop    # kubectl delete daemonset -l easydblab.com/kit=cqlite-flight
+easy-db-lab cqlite-flight start   # kubectl apply the DaemonSet and Service, wait for rollout
+easy-db-lab cqlite-flight stop    # kubectl delete daemonset,service -l easydblab/kit=cqlite-flight
 easy-db-lab cqlite-flight status  # built-in kit status command
 ```
 
 `bin/start.sh` / `bin/stop.sh` are plain scripts (no typed `start:`/`stop:` steps
 in `kit.yaml`), following the `sysbench`/`trino` bin-script pattern — this also
 keeps them working identically regardless of which install path was used.
-`stop.sh` deletes strictly by label selector (`easydblab.com/kit=cqlite-flight`),
+`stop.sh` deletes strictly by label selector (`easydblab/kit=cqlite-flight`),
 never by resource name, matching the issue's requirement.
 
 ## Open risks for a real lab run
@@ -192,11 +201,11 @@ never by resource name, matching the issue's requirement.
 - **Host directory permissions** for the Cassandra data dir were not verified
   live (see [uid 10001](#uid-10001-and-the-cassandra-data-dir) above).
 - **Trino reachability** assumes the trino-connector resolves each replica's
-  `cqlite-flight` endpoint as `<db-node-private-ip>:<flight-port>` (consistent
-  with the connector's stated Sidecar-based topology discovery). If the
-  connector instead expects a stable DNS name, swap `hostNetwork` for a headless
-  `Service` — not done here since it doesn't match the "replica's endpoint"
-  model described in `cqlite-flight/README.md`.
+  `cqlite-flight` endpoint as `<db-node-private-ip>:30815` (consistent with the
+  connector's stated Sidecar-based topology discovery). If the connector instead
+  expects a stable per-pod DNS name, add a headless `Service` — not done here
+  since it doesn't match the "replica's endpoint" model described in
+  `cqlite-flight/README.md`.
 - **No `kubectl apply --dry-run=client` against a live lab cluster** was
   possible while authoring this kit (no cluster available); it was validated
   against a throwaway local k3s control plane instead (see PR/validation notes).

@@ -40,19 +40,28 @@ easy-db-lab cqlite-flight status
 
 `cqlite-flight start` rolls out one Arrow Flight pod per db node (a DaemonSet with
 `nodeSelector: type=db`) and mounts each node's Cassandra data directory read-only into
-its pod. The Flight gRPC port is bound directly on the node (`hostNetwork`), reachable at
-`<db-node-private-ip>:<flight-port>`.
+its pod. The pods run on the pod network. Clients reach the Flight gRPC port through the
+`cqlite-flight-nodeport` Service at `<db-node-private-ip>:30815`. That Service is node-local
+(`externalTrafficPolicy: Local`): a db node's IP always reaches that node's own pod, because
+that pod is the only one holding the node's SSTables.
+
+```admonish warning title="Needs the database on the node itself"
+cqlite-flight reads the data directory from the db node's filesystem through a read-only
+`hostPath` mount. It works only where the database runs directly on the node (the VM path,
+e.g. Cassandra installed on the db nodes), and the cluster must allow `hostPath` volumes. It
+cannot read a database that runs in Kubernetes pods with its own volumes.
+```
 
 ## Flags
 
 | Flag | Default | Description |
 |---|---|---|
 | `--tag` | `latest` | `cqlite-flight` image tag (`ghcr.io/pmcfadin/cqlite-flight:<tag>`) |
-| `--flight-port` | `8815` | Arrow Flight gRPC listen port (host + container) |
+| `--flight-port` | `8815` | Arrow Flight gRPC container port; clients connect to NodePort 30815, which forwards to it |
 | `--data-dir` | `/mnt/db1/cassandra/data` | Host path to the database data directory, mounted read-only. Serves **exactly one** directory |
 | `--data-root` | `/mnt` | Host path under which per-disk data dirs live; an init container scans it and warns on multi-disk layouts |
 | `--data-gid` | `999` | Host GID that owns the data directory; added as a pod `supplementalGroup` |
-| `--otel-endpoint` | `http://localhost:4317` | OTLP gRPC endpoint for metrics/traces (defaults to the node-local OTel collector) |
+| `--otel-endpoint` | `http://$(HOST_IP):4317` | OTLP gRPC endpoint for metrics/traces (defaults to the OTel collector on the pod's node) |
 
 ## Multi-disk nodes
 
@@ -68,7 +77,7 @@ silent. Every lab run to date uses single-disk nodes.
 ```bash
 easy-db-lab cqlite-flight start       # roll out the DaemonSet
 easy-db-lab cqlite-flight status      # show running pods and endpoints
-easy-db-lab cqlite-flight stop        # remove the DaemonSet
+easy-db-lab cqlite-flight stop        # remove the DaemonSet and its NodePort Service
 easy-db-lab cqlite-flight uninstall   # remove all kit resources
 ```
 

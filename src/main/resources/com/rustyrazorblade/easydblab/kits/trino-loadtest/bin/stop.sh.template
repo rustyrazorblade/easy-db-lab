@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
+#
+# Deletes this instance's driver pods and ConfigMaps by the easydblab/kit label. The workload is
+# read-only; there is no target-side data to clean up.
 set -euo pipefail
 
-LABELS="easydblab.com/kit=${KIT_NAME},easydblab.com/role=trino-loadtest-run"
-
-echo "Stopping trino-loadtest (deleting pod + ConfigMap by label selector: ${LABELS})..."
-kubectl --kubeconfig="${KUBECONFIG}" delete pods -l "${LABELS}" --ignore-not-found
-kubectl --kubeconfig="${KUBECONFIG}" delete configmaps -l "${LABELS}" --ignore-not-found
-
-echo "trino-loadtest stopped. Read-only workload; no target-side data to clean up."
+echo "Stopping trino-loadtest pods for kit ${KIT_NAME}..."
+kubectl --kubeconfig="${KUBECONFIG}" delete pods,configmaps -l "easydblab/kit=${KIT_NAME}" --ignore-not-found

@@ -7,7 +7,9 @@ collision-check: true
 endpoints:
   - name: "Arrow Flight gRPC"
     node-type: db
-    port: 8815
+    # The NodePort of cqlite-flight-nodeport (daemonset.yaml.template). It is node-local
+    # (externalTrafficPolicy: Local): <db-node-ip>:30815 reaches that node's own Flight pod.
+    port: 30815
     type: native
 
 args:
@@ -18,7 +20,7 @@ args:
     default: "latest"
   - flag: --flight-port
     variable: FLIGHT_PORT
-    description: "Arrow Flight gRPC listen port (host + container, via hostNetwork)"
+    description: "Arrow Flight gRPC container port. Clients connect to NodePort 30815 on each db node, which forwards to it"
     type: int
     default: "8815"
   - flag: --data-dir
@@ -38,6 +40,6 @@ args:
     default: "999"
   - flag: --otel-endpoint
     variable: OTEL_ENDPOINT
-    description: "OTLP gRPC endpoint for metrics/traces (default: the node-local OTel collector, reachable at localhost since this pod also runs with hostNetwork)"
+    description: "OTLP gRPC endpoint for metrics/traces (default: the OTel collector on the pod's node, at the downward-API host IP)"
     type: string
-    default: "http://localhost:4317"
+    default: "http://$(HOST_IP):4317"

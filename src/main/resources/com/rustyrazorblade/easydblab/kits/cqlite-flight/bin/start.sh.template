@@ -12,7 +12,7 @@ kubectl apply -f "${MANIFEST}"
 echo "Waiting for cqlite-flight DaemonSet rollout on db nodes..."
 kubectl rollout status daemonset/cqlite-flight --namespace default --timeout=180s
 
-echo "cqlite-flight is ready — Arrow Flight gRPC on <db-node-ip>:__FLIGHT_PORT__ (one pod per db node)."
+echo "cqlite-flight is ready — Arrow Flight gRPC on <db-node-ip>:30815 (NodePort, node-local: each db node's own pod)."
 echo "Read path: live Cassandra data dir mount (__CASSANDRA_DATA_DIR__). Sidecar-snapshot reads are"
 echo "driven by the trino-connector's ticket, not by this kit."
 echo

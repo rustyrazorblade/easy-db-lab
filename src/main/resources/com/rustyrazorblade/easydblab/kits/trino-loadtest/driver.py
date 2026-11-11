@@ -5,7 +5,7 @@ Runs a fixed-size pool of threads, each holding one persistent Trino connection,
 issuing queries against ``cqlite.<keyspace>.<table>`` (or a custom query file) for
 a configured duration. Every ``--interval`` seconds it prints a single parseable
 stats line (qps, rows/s, p50/p99 latency, error rate); the kit's start.sh scrapes
-these lines out of ``kubectl logs -f`` and pushes them to VictoriaMetrics — see
+these lines out of ``kubectl logs -f`` and pushes them to the collector (Mimir) — see
 README.md for the full metric contract.
 
 Networking (the real ``trino`` package, real sockets) is imported lazily inside
@@ -221,7 +221,7 @@ def format_interval_line(elapsed_s: int, threads: int, interval_s: float, snap: 
     """Format one periodic stats line.
 
     Matches ``^\\[ [0-9]+s \\]`` so the kit's start.sh can pick it out of the
-    pod's log stream and push it to VictoriaMetrics as
+    pod's log stream and push it to the collector (Mimir) as
     ``trino_loadtest_{qps,rows_per_sec,lat_p50_ms,lat_p99_ms,errors_per_second}``.
     """
     qps = snap.queries / interval_s if interval_s else 0.0

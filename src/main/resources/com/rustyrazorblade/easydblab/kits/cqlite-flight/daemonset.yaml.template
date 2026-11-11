@@ -1,10 +1,10 @@
 # cqlite-flight DaemonSet — one Arrow Flight server pod per Cassandra ("db") node.
 #
-# Runs with hostNetwork so the Flight gRPC port is reachable at <db-node-ip>:__FLIGHT_PORT__
-# (the same node-IP-addressing model the Cassandra sidecar DaemonSet and the OTel collector
-# DaemonSet already use in this lab), and so CQLITE_OTEL_ENDPOINT can point at
-# "localhost:4317" to reach the co-located, node-local OTel collector without any extra
-# Service/DNS hop.
+# Runs on the pod network. Each pod serves only the SSTables of the db node it runs on, so a
+# client must reach one particular node's pod: the NodePort Service at the end of this file
+# uses externalTrafficPolicy: Local, which sends <db-node-ip>:30815 to the pod on that node and
+# never to another node's. Telemetry goes to the OTel collector on the pod's node, at the
+# downward-API host IP (the collector listens on the host network).
 #
 # Reads the Cassandra data dir directly off the host (read-only) — no data of its own.
 # Default read path here is the LIVE data dir; a Sidecar-snapshot read (for a stable file
@@ -17,7 +17,8 @@ metadata:
   namespace: default
   labels:
     app.kubernetes.io/name: cqlite-flight
-    easydblab.com/kit: cqlite-flight
+    easydblab/kit: cqlite-flight
+    easydblab/role: flight
 spec:
   selector:
     matchLabels:
@@ -26,12 +27,11 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: cqlite-flight
-        easydblab.com/kit: cqlite-flight
+        easydblab/kit: cqlite-flight
+        easydblab/role: flight
     spec:
       nodeSelector:
         type: db
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
       securityContext:
         # The image's Dockerfile declares `USER flight` (a NAME, not a numeric
         # uid: `useradd -r -u 10001 flight`). With runAsNonRoot: true but no
@@ -190,9 +190,13 @@ spec:
           ports:
             - name: flight-grpc
               containerPort: __FLIGHT_PORT__
-              hostPort: __FLIGHT_PORT__
               protocol: TCP
           env:
+            # HOST_IP must precede the endpoint that references it.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
             - name: RUST_LOG
               value: "info"
             - name: CQLITE_OTEL_ENABLED
@@ -233,3 +237,26 @@ spec:
           hostPath:
             path: "__CASSANDRA_DATA_ROOT__"
             type: DirectoryOrCreate
+---
+# The Flight endpoint. externalTrafficPolicy: Local keeps <db-node-ip>:30815 on that node's own
+# pod, which is the only pod holding that node's SSTables; with Cluster, kube-proxy would send it
+# to any node's pod and a read would silently return another node's data.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cqlite-flight-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: cqlite-flight
+    easydblab/role: flight
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/name: cqlite-flight
+  ports:
+    - name: flight-grpc
+      port: 8815
+      targetPort: flight-grpc
+      nodePort: 30815
+      protocol: TCP

@@ -466,21 +466,35 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
-     * The `yace` job used to be a static block in the YAML template. On AWS it must render exactly
-     * that block: 5s interval and timeout, `localhost:5001`, and the `instance` and `cluster`
-     * relabels. `metrics_path` is `/metrics`, Prometheus's default, which the old block left
-     * implicit. Its position among the jobs changed (it used to sit between `ebpf-exporter` and
-     * `otel-collector`); scrape job order has no effect in Prometheus.
+     * YACE is one pod on the control node, so its job uses node-local pod discovery like
+     * kube-state-metrics: only the collector on its node scrapes it, and no other node reports
+     * `up{job="yace"} = 0`. The values the old static block carried stay: 5s interval and timeout,
+     * port 5001, and `instance` = `<host>:5001` and `cluster` relabels. Its position among the jobs
+     * changed too; scrape job order has no effect in Prometheus.
      */
     @Test
-    fun `the AWS yace job matches the static block it replaced`() {
+    fun `the AWS yace job is scraped by node-local pod discovery and keeps its old labels`() {
         val job = builder.buildInfraScrapeJobs(NodeCapabilities.AWS, CniMode.Flannel).single { it.jobName == "yace" }
 
+        assertThat(job.staticConfigs).isNull()
+        assertThat(job.kubernetesSdConfigs?.single()?.role).isEqualTo("pod")
+        assertThat(
+            job.kubernetesSdConfigs
+                ?.single()
+                ?.namespaces
+                ?.names,
+        ).containsExactly("default")
         assertThat(job.scrapeInterval).isEqualTo("5s")
         assertThat(job.scrapeTimeout).isEqualTo("5s")
-        assertThat(job.staticConfigs?.single()?.targets).containsExactly("localhost:5001")
         assertThat(job.metricsPath).isEqualTo("/metrics")
-        assertThat(job.relabelConfigs.map { it.targetLabel to it.replacement }).containsExactly(
+        val keeps = job.relabelConfigs.filter { it.action == "keep" }
+        assertThat(keeps.map { it.sourceLabels?.single() to it.regex }).containsExactly(
+            "__meta_kubernetes_pod_label_app_kubernetes_io_name" to "yace",
+            "__meta_kubernetes_pod_node_name" to "\${env:HOSTNAME}",
+            "__meta_kubernetes_pod_container_port_number" to "5001",
+        )
+        assertThat(job.relabelConfigs.filter { it.targetLabel != null }.map { it.targetLabel to it.replacement }).containsExactly(
+            "__address__" to "\$\$1:5001",
             "instance" to "\${env:HOSTNAME}:5001",
             "cluster" to "\${env:CLUSTER_NAME}",
         )

@@ -30,4 +30,4 @@ Cassandra is NOT among them. It formerly had a `cassandra-maac` scrape job on `:
 #### Scenario: YACE scrape job only with CloudWatch
 - **WHEN** `OtelManifestBuilder` builds the ConfigMap for an environment without CloudWatch
 - **THEN** the resulting config SHALL NOT contain a `yace` scrape job
-- **AND** with CloudWatch it SHALL contain the `yace` job targeting `localhost:5001`
+- **AND** with CloudWatch it SHALL contain the `yace` job, found by node-local pod discovery on port 5001 so only the collector on YACE's node scrapes it

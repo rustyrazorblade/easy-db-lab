@@ -312,10 +312,26 @@ class OtelManifestBuilder(
                 )
         }
 
-    /** The scrape jobs for workloads that exist only where the environment has CloudWatch: YACE. */
+    /**
+     * The scrape jobs for workloads that exist only where the environment has CloudWatch: YACE.
+     * YACE is one pod on the control node (hostNetwork, so its pod IP is the node IP), so it is
+     * found by node-local pod discovery: only the collector on its node scrapes it, and no other
+     * node reports `up{job="yace"} = 0`. `instance` keeps its old value, `<host>:<port>`.
+     */
     private fun buildCloudWatchScrapeJobs(capabilities: NodeCapabilities): List<PrometheusScrapeJob> =
         if (NodeCapability.CLOUDWATCH in capabilities) {
-            listOf(buildLocalhostScrapeJob("yace", Constants.Yace.PORT, YACE_SCRAPE_INTERVAL, YACE_SCRAPE_INTERVAL))
+            listOf(
+                buildNodeLocalPodScrapeJob(
+                    jobName = "yace",
+                    namespace = NAMESPACE,
+                    podLabel = "app.kubernetes.io/name",
+                    podLabelValue = Constants.Yace.DEPLOYMENT_NAME,
+                    port = Constants.Yace.PORT,
+                    scrapeInterval = YACE_SCRAPE_INTERVAL,
+                    scrapeTimeout = YACE_SCRAPE_INTERVAL,
+                    instance = "\${env:HOSTNAME}:${Constants.Yace.PORT}",
+                ),
+            )
         } else {
             emptyList()
         }
@@ -359,9 +375,13 @@ class OtelManifestBuilder(
         podLabel: String,
         podLabelValue: String,
         port: Int,
+        scrapeInterval: String = SCRAPE_INTERVAL,
+        scrapeTimeout: String? = null,
+        instance: String? = null,
     ) = PrometheusScrapeJob(
         jobName = jobName,
-        scrapeInterval = SCRAPE_INTERVAL,
+        scrapeInterval = scrapeInterval,
+        scrapeTimeout = scrapeTimeout,
         kubernetesSdConfigs =
             listOf(
                 PrometheusKubernetesSdConfig(
@@ -393,13 +413,17 @@ class OtelManifestBuilder(
                     targetLabel = "__address__",
                     replacement = "\$\$1:$port",
                 ),
-                PrometheusRelabelConfig(
-                    sourceLabels = listOf("__meta_kubernetes_pod_name"),
-                    targetLabel = "instance",
-                ),
+                instanceRelabel(instance),
                 PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
             ),
     )
+
+    /** `instance` is the pod name unless the job names a fixed value, such as `\${env:HOSTNAME}:port`. */
+    private fun instanceRelabel(instance: String?) =
+        when (instance) {
+            null -> PrometheusRelabelConfig(sourceLabels = listOf("__meta_kubernetes_pod_name"), targetLabel = "instance")
+            else -> PrometheusRelabelConfig(targetLabel = "instance", replacement = instance)
+        }
 
     private fun renderScrapeJobs(jobs: List<PrometheusScrapeJob>): String {
         if (jobs.isEmpty()) return ""

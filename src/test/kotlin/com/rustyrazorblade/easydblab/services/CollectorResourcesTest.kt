@@ -36,7 +36,7 @@ class CollectorResourcesTest : BaseKoinTest() {
 
     @Test
     fun `the yace scrape job exists only with CloudWatch`() {
-        assertThat(config(NodeCapabilities.AWS)).contains("job_name: \"yace\"").contains("localhost:5001")
+        assertThat(config(NodeCapabilities.AWS)).contains("job_name: \"yace\"").contains("__meta_kubernetes_pod_node_name")
         assertThat(config(NodeCapabilities.LOCAL_DOCKER)).doesNotContain("yace").doesNotContain("5001")
     }
 }

@@ -6,7 +6,7 @@ Verified at b1c5056b. Paths are under `src/main/kotlin/com/rustyrazorblade/easyd
 |---|---|---|
 | fluent-bit-journald | hostPath `/var/log/journal`, `type: Directory` (`configuration/otel/JournaldOtelManifestBuilder.kt:157-161`). It is deployed unconditionally (`services/ObservabilityStackService.kt:196`). | FailedMount, then the rollout timeout. `rancher/k3s:v1.35.1-k3s1` has no `/var/log/journal` and no `/run/systemd` (checked). |
 | Pod logs | The collector tails `/var/log/pods/**/*.log` (`otel-collector-config.yaml:124-127`, pipeline `:691`) and mounts `/var/log` as `DirectoryOrCreate` (`OtelManifestBuilder.kt:637-643`). | Nothing breaks. Fluent Bit adds only systemd unit logs. |
-| YACE | The node IAM role and CloudWatch (`YaceManifestBuilder.kt:61-66`), plus a static scrape job `localhost:5001` (`otel-collector-config.yaml:78-87`). | It runs with nothing to scrape, and the job reports `up=0`. |
+| YACE | The node IAM role and CloudWatch (`YaceManifestBuilder.kt:61-66`), plus a scrape job on port 5001 (a static `localhost:5001` block at `otel-collector-config.yaml:78-87`, now node-local pod discovery). | It runs with nothing to scrape, and the job reports `up=0`. |
 | s3manager | `USE_IAM=true` and the S3 endpoint (`S3ManagerManifestBuilder.kt:50,89-97`). It is advertised in `Status.kt:529-545` and `server/StatusCache.kt:485-498`. | Nothing to browse. It is also amd64-only (#1036). |
 
 The rollout wait covers only what was applied (`ObservabilityStackService.kt:166,246-255`), so a skipped stage needs no special handling there.

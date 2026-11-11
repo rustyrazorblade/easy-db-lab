@@ -434,6 +434,8 @@ tasks.register("testScripts") {
         "testBaseJdkInstall",
         "testBaseChronyPoll",
         "testTrinoLoadtestDriver",
+        "testTrinoLoadtestStartScript",
+        "testTrinoLoadtestStopScript",
     )
 }
 
@@ -535,6 +537,24 @@ tasks.register<Exec>("testSysbenchStopScript") {
     description = "Unit-test the sysbench kit stop script"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-stop.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's start script: its driver pod runs on an app node and its
+// interval figures go to the collector as OTLP JSON gauges. kubectl and curl are stubbed.
+tasks.register<Exec>("testTrinoLoadtestStartScript") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-start.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's stop script: it deletes only this instance's pods and
+// ConfigMaps, by label. kubectl is stubbed.
+tasks.register<Exec>("testTrinoLoadtestStopScript") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-stop.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,

@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "Arrow Flight gRPC service RPC metrics for cqlite-flight (issue #2109): request rate by method/status, p50/p95/p99 latency, rows/bytes throughput, in-flight requests, and error rate. Metric names match cqlite-core/src/observability/catalog.rs; the lab's OTel Collector prometheusremotewrite exporter sanitises dotted OTLP names to underscores, appends _total to counters, and adds unit suffixes (_seconds for s, _bytes for By) before they land in VictoriaMetrics \u2014 see docs/observability/configuration.md.",
+  "description": "Arrow Flight gRPC service RPC metrics for cqlite-flight (issue #2109): request rate by method/status, p50/p95/p99 latency, rows/bytes throughput, in-flight requests, and error rate. Metric names match cqlite-core/src/observability/catalog.rs; the lab's OTel Collector prometheusremotewrite exporter sanitises dotted OTLP names to underscores, appends _total to counters, and adds unit suffixes (_seconds for s, _bytes for By) before they land in Mimir \u2014 see docs/observability/configuration.md.",
   "editable": true,
   "graphTooltip": 1,
   "id": null,
@@ -36,7 +36,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -70,7 +70,7 @@
           "links": [
             {
               "title": "View traces for this method",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20span.rpc.method%20%3D%20%5C%22${__field.labels.cqlite_rpc_method}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20span.rpc.method%20%3D%20%5C%22${__field.labels.cqlite_rpc_method}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -103,10 +103,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cqlite_rpc_requests_total{cluster=~\"$cluster\"}[1m])) by (cqlite_rpc_method, cqlite_rpc_status)",
-          "legendFormat": "{{cqlite_rpc_method}} \u00b7 {{cqlite_rpc_status}}",
+          "expr": "label_replace(sum(rate(cqlite_rpc_requests_total{cluster=~\"$cluster\"}[1m])) by (cluster, cqlite_rpc_method, cqlite_rpc_status), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_method}} \u00b7 {{cqlite_rpc_status}}",
           "refId": "A"
         }
       ],
@@ -117,7 +117,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -177,10 +177,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cqlite_rpc_requests_total{cluster=~\"$cluster\"}[1m])) by (cqlite_rpc_status)",
-          "legendFormat": "{{cqlite_rpc_status}}",
+          "expr": "label_replace(sum(rate(cqlite_rpc_requests_total{cluster=~\"$cluster\"}[1m])) by (cluster, cqlite_rpc_status), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_status}}",
           "refId": "A"
         }
       ],
@@ -203,7 +203,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -237,7 +237,7 @@
           "links": [
             {
               "title": "View traces for this method",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20span.rpc.method%20%3D%20%5C%22${__field.labels.cqlite_rpc_method}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20span.rpc.method%20%3D%20%5C%22${__field.labels.cqlite_rpc_method}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -270,10 +270,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.50, sum(rate(cqlite_rpc_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (le, cqlite_rpc_method))",
-          "legendFormat": "{{cqlite_rpc_method}}",
+          "expr": "label_replace(histogram_quantile(0.50, sum(rate(cqlite_rpc_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (cluster, le, cqlite_rpc_method)), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_method}}",
           "refId": "A"
         }
       ],
@@ -284,7 +284,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -318,7 +318,7 @@
           "links": [
             {
               "title": "View traces for this method",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20span.rpc.method%20%3D%20%5C%22${__field.labels.cqlite_rpc_method}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20span.rpc.method%20%3D%20%5C%22${__field.labels.cqlite_rpc_method}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -351,10 +351,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(cqlite_rpc_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (le, cqlite_rpc_method))",
-          "legendFormat": "{{cqlite_rpc_method}}",
+          "expr": "label_replace(histogram_quantile(0.95, sum(rate(cqlite_rpc_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (cluster, le, cqlite_rpc_method)), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_method}}",
           "refId": "A"
         }
       ],
@@ -365,7 +365,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -399,7 +399,7 @@
           "links": [
             {
               "title": "View traces for this method",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20span.rpc.method%20%3D%20%5C%22${__field.labels.cqlite_rpc_method}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20span.rpc.method%20%3D%20%5C%22${__field.labels.cqlite_rpc_method}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -432,10 +432,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.99, sum(rate(cqlite_rpc_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (le, cqlite_rpc_method))",
-          "legendFormat": "{{cqlite_rpc_method}}",
+          "expr": "label_replace(histogram_quantile(0.99, sum(rate(cqlite_rpc_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (cluster, le, cqlite_rpc_method)), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_method}}",
           "refId": "A"
         }
       ],
@@ -458,7 +458,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -518,10 +518,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cqlite_rpc_rows_total{cluster=~\"$cluster\"}[1m])) by (cqlite_rpc_method)",
-          "legendFormat": "{{cqlite_rpc_method}}",
+          "expr": "label_replace(sum(rate(cqlite_rpc_rows_total{cluster=~\"$cluster\"}[1m])) by (cluster, cqlite_rpc_method), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_method}}",
           "refId": "A"
         }
       ],
@@ -532,7 +532,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -592,10 +592,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cqlite_rpc_bytes_total{cluster=~\"$cluster\"}[1m])) by (cqlite_rpc_method)",
-          "legendFormat": "{{cqlite_rpc_method}}",
+          "expr": "label_replace(sum(rate(cqlite_rpc_bytes_total{cluster=~\"$cluster\"}[1m])) by (cluster, cqlite_rpc_method), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_method}}",
           "refId": "A"
         }
       ],
@@ -618,7 +618,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -678,10 +678,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "cqlite_rpc_in_flight{cluster=~\"$cluster\"}",
-          "legendFormat": "{{cqlite_rpc_method}}",
+          "expr": "label_replace(cqlite_rpc_in_flight{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_method}}",
           "refId": "A"
         }
       ],
@@ -704,7 +704,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -738,7 +738,7 @@
           "links": [
             {
               "title": "View error traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20status%20%3D%20error%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.service.name%20%3D%20%5C%22${service_name}%5C%22%20%26%26%20status%20%3D%20error%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -771,10 +771,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cqlite_errors_total{cqlite_subsystem=\"flight\", cluster=~\"$cluster\"}[1m])) by (cqlite_error_category)",
-          "legendFormat": "{{cqlite_error_category}}",
+          "expr": "label_replace(sum(rate(cqlite_errors_total{cqlite_subsystem=\"flight\", cluster=~\"$cluster\"}[1m])) by (cluster, cqlite_error_category), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_error_category}}",
           "refId": "A"
         }
       ],
@@ -785,7 +785,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -845,10 +845,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "100 * sum(rate(cqlite_errors_total{cqlite_subsystem=\"flight\", cluster=~\"$cluster\"}[1m])) / sum(rate(cqlite_rpc_requests_total{cluster=~\"$cluster\"}[1m]))",
-          "legendFormat": "error %",
+          "expr": "label_replace(100 * sum by (cluster) (rate(cqlite_errors_total{cqlite_subsystem=\"flight\", cluster=~\"$cluster\"}[1m])) / sum by (cluster) (rate(cqlite_rpc_requests_total{cluster=~\"$cluster\"}[1m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} error %",
           "refId": "A"
         }
       ],
@@ -864,7 +864,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -880,9 +880,9 @@
       "options": { "legend": { "calcs": [ "mean", "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.50, sum(rate(cqlite_rpc_phase_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (le, cqlite_rpc_phase))",
-          "legendFormat": "{{cqlite_rpc_phase}}",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(histogram_quantile(0.50, sum(rate(cqlite_rpc_phase_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (cluster, le, cqlite_rpc_phase)), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_phase}}",
           "refId": "A"
         }
       ],
@@ -891,7 +891,7 @@
       "description": "p50 wall time per do_get phase from cqlite.rpc.phase.duration (validate / admission / resolve / merge_setup / stream). Time piling up in merge_setup = SSTable-open stall (#2157); in admission = queued behind the #2420 admission ceiling. See docs/reports/flight-metrics-reference.md (#2426) for the phase contract."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -907,9 +907,9 @@
       "options": { "legend": { "calcs": [ "mean", "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(cqlite_rpc_phase_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (le, cqlite_rpc_phase))",
-          "legendFormat": "{{cqlite_rpc_phase}}",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(histogram_quantile(0.95, sum(rate(cqlite_rpc_phase_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])) by (cluster, le, cqlite_rpc_phase)), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_phase}}",
           "refId": "A"
         }
       ],
@@ -918,7 +918,7 @@
       "description": "p95 wall time per do_get phase from cqlite.rpc.phase.duration. Pairs with the p50 panel to localize a slow do_get to a single phase."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -934,9 +934,9 @@
       "options": { "legend": { "calcs": [ "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(cqlite_rpc_phase_active{cluster=~\"$cluster\"}) by (cqlite_rpc_phase)",
-          "legendFormat": "{{cqlite_rpc_phase}}",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum(cqlite_rpc_phase_active{cluster=~\"$cluster\"}) by (cluster, cqlite_rpc_phase), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_rpc_phase}}",
           "refId": "A"
         }
       ],
@@ -952,7 +952,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -968,15 +968,15 @@
       "options": { "legend": { "calcs": [ "mean", "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cqlite_sstable_index_parses_total{cluster=~\"$cluster\"}[1m]))",
-          "legendFormat": "full Index.db parses (cqlite.sstable.index_parses_total)",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (rate(cqlite_sstable_index_parses_total{cluster=~\"$cluster\"}[1m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} full Index.db parses (cqlite.sstable.index_parses_total)",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cqlite_sstable_index_interval_parses_total{cluster=~\"$cluster\"}[1m]))",
-          "legendFormat": "bounded interval parses (cqlite.sstable.index_interval_parses_total)",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (rate(cqlite_sstable_index_interval_parses_total{cluster=~\"$cluster\"}[1m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} bounded interval parses (cqlite.sstable.index_interval_parses_total)",
           "refId": "B"
         }
       ],
@@ -985,7 +985,7 @@
       "description": "Rate of WHOLE-file Index.db parses (cqlite.sstable.index_parses_total, #2383) vs bounded Summary-guided interval parses (cqlite.sstable.index_interval_parses_total, #2412). A climbing full-parse rate under lazy open is the #2367 R9/R10 redundant-parse regression signal."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1000,9 +1000,9 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(cqlite_sstable_index_parses_total{cluster=~\"$cluster\"})",
-          "legendFormat": "full parses",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (cqlite_sstable_index_parses_total{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} full parses",
           "refId": "A"
         }
       ],
@@ -1011,7 +1011,7 @@
       "description": "Cumulative cqlite.sstable.index_parses_total. The field check: this should be flat (warm) or ~= number of generations (cold) — NOT climbing per query (the #2383 8x-reparse smell). This was THE R9/R10 verification signal the field team hand-scraped."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1026,9 +1026,9 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(cqlite_sstable_index_interval_parses_total{cluster=~\"$cluster\"})",
-          "legendFormat": "interval parses",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (cqlite_sstable_index_interval_parses_total{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} interval parses",
           "refId": "A"
         }
       ],
@@ -1044,7 +1044,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1060,15 +1060,15 @@
       "options": { "legend": { "calcs": [ "mean", "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(cqlite_flight_admission_in_use{cluster=~\"$cluster\"})",
-          "legendFormat": "in use (cqlite.flight.admission.in_use)",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (cqlite_flight_admission_in_use{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} in use (cqlite.flight.admission.in_use)",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(cqlite_flight_admission_limit{cluster=~\"$cluster\"})",
-          "legendFormat": "limit K (cqlite.flight.admission.limit)",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (cqlite_flight_admission_limit{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} limit K (cqlite.flight.admission.limit)",
           "refId": "B"
         }
       ],
@@ -1077,7 +1077,7 @@
       "description": "Fleet-total admitted in-flight scans (sum of cqlite.flight.admission.in_use across pods) against the fleet-total ceiling (sum of cqlite.flight.admission.limit, #2420) — both series share the same sum() scope so the saturation threshold is apples-to-apples. Total in_use riding the total limit = saturation; new do_get requests queue on the permit-wait."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1093,9 +1093,9 @@
       "options": { "legend": { "calcs": [ "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(cqlite_flight_admission_waiting{cluster=~\"$cluster\"})",
-          "legendFormat": "waiting",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (cqlite_flight_admission_waiting{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} waiting",
           "refId": "A"
         }
       ],
@@ -1104,7 +1104,7 @@
       "description": "cqlite.flight.admission.waiting — do_get requests parked on acquire. Non-zero = backpressure: offered concurrency exceeds the ceiling and requests are queuing rather than degrading together (#2420)."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1120,9 +1120,9 @@
       "options": { "legend": { "calcs": [ "mean", "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cqlite_flight_admission_rejected_total{cluster=~\"$cluster\"}[1m]))",
-          "legendFormat": "rejected/sec",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (rate(cqlite_flight_admission_rejected_total{cluster=~\"$cluster\"}[1m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} rejected/sec",
           "refId": "A"
         }
       ],
@@ -1131,7 +1131,7 @@
       "description": "Rate of do_get requests rejected as gRPC UNAVAILABLE because no permit freed within the permit-wait timeout (#2420). The connector treats these as retry-safe (#2241). Any sustained non-zero rate means the ceiling is too low for offered load."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "custom": { "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "scaleDistribution": { "type": "linear" } },
@@ -1154,10 +1154,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cqlite_flight_admission_wait_seconds_bucket{cluster=~\"$cluster\"}[1m])) by (le)",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum(rate(cqlite_flight_admission_wait_seconds_bucket{cluster=~\"$cluster\"}[1m])) by (cluster, le), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "heatmap",
-          "legendFormat": "{{le}}",
+          "legendFormat": "{{cluster_name}} {{le}}",
           "refId": "A"
         }
       ],
@@ -1173,7 +1173,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1189,21 +1189,21 @@
       "options": { "legend": { "calcs": [ "mean", "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cqlite_warm_cache_hits_total{cluster=~\"$cluster\"}[1m]))",
-          "legendFormat": "hits (cqlite.warm.cache.hits)",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (rate(cqlite_warm_cache_hits_total{cluster=~\"$cluster\"}[1m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} hits (cqlite.warm.cache.hits)",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cqlite_warm_cache_misses_total{cluster=~\"$cluster\"}[1m]))",
-          "legendFormat": "misses (cqlite.warm.cache.misses)",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (rate(cqlite_warm_cache_misses_total{cluster=~\"$cluster\"}[1m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} misses (cqlite.warm.cache.misses)",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cqlite_warm_cache_evicts_total{cluster=~\"$cluster\"}[1m]))",
-          "legendFormat": "evicts (cqlite.warm.cache.evicts)",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (rate(cqlite_warm_cache_evicts_total{cluster=~\"$cluster\"}[1m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} evicts (cqlite.warm.cache.evicts)",
           "refId": "C"
         }
       ],
@@ -1212,7 +1212,7 @@
       "description": "Flight warm-handle cache activity (#2310): a hit serves from warm parsed state with ZERO reader-open. A high miss/evict rate under a stable generation set is a warm-reuse regression."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1228,9 +1228,9 @@
       "options": { "legend": { "calcs": [ "mean", "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(cqlite_warm_cache_refresh_total{cluster=~\"$cluster\"}[1m])) by (cqlite_warm_refresh_outcome)",
-          "legendFormat": "{{cqlite_warm_refresh_outcome}}",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum(rate(cqlite_warm_cache_refresh_total{cluster=~\"$cluster\"}[1m])) by (cluster, cqlite_warm_refresh_outcome), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cqlite_warm_refresh_outcome}}",
           "refId": "A"
         }
       ],
@@ -1246,7 +1246,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1262,9 +1262,9 @@
       "options": { "legend": { "calcs": [ "mean", "max", "lastNotNull" ], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(cqlite_merge_producer_threads{cluster=~\"$cluster\"})",
-          "legendFormat": "live producer threads",
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "expr": "label_replace(sum by (cluster) (cqlite_merge_producer_threads{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} live producer threads",
           "refId": "A"
         }
       ],
@@ -1273,7 +1273,7 @@
       "description": "cqlite.merge.producer_threads (#2316): live OS producer threads the k-way merge holds open, one per input SSTable. Bounded by O(M) inputs; a runaway value on a loaded node is the M*num_cpus amplification #2316 replaced."
     }
   ],
-  "refresh": "10s",
+  "refresh": "",
   "schemaVersion": 38,
   "tags": [
     "cqlite-flight",
@@ -1285,22 +1285,37 @@
         "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Metrics",
         "multi": false,
-        "name": "datasource",
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
-        "regex": "VictoriaMetrics",
+        "regex": "Mimir",
         "type": "datasource"
       },
       {
         "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Traces",
+        "multi": false,
+        "name": "traces_datasource",
+        "options": [],
+        "query": "tempo",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cqlite_rpc_requests_total, cluster)",
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
         "hide": 0,
         "includeAll": true,
         "label": "Cluster",
@@ -1308,11 +1323,12 @@
         "name": "cluster",
         "options": [],
         "query": {
-          "query": "label_values(cqlite_rpc_requests_total, cluster)",
-          "refId": "StandardVariableQuery"
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "regex": "",
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
         "sort": 1,
         "type": "query"
       },
@@ -1320,9 +1336,9 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cqlite_rpc_requests_total, service_name)",
+        "definition": "label_values(cqlite_rpc_requests_total{cluster=~\"$cluster\"}, service_name)",
         "hide": 0,
         "includeAll": false,
         "label": "Service name (for trace links)",
@@ -1330,7 +1346,7 @@
         "name": "service_name",
         "options": [],
         "query": {
-          "query": "label_values(cqlite_rpc_requests_total, service_name)",
+          "query": "label_values(cqlite_rpc_requests_total{cluster=~\"$cluster\"}, service_name)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,

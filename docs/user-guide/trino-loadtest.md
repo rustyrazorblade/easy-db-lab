@@ -6,7 +6,7 @@ The `trino-loadtest` kit is a bench kit that drives concurrent read load against
 to `pmcfadin/cqlite#2869`, so this kit cannot run end-to-end until #2869 lands.) It
 runs a fixed-size pool of persistent Trino connections, each issuing queries against
 `cqlite.<keyspace>.<table>` (or a custom query file) for a configured duration, and pushes
-per-interval stats (qps, rows/s, p50/p99 latency, error rate) to VictoriaMetrics.
+per-interval stats (qps, rows/s, p50/p99 latency, error rate) to the metrics store (Mimir).
 
 ```admonish warning title="Offline, read-only, flushed-SSTables-only load"
 This kit only reads. It issues `SELECT` queries against the `cqlite` catalog, which reads
@@ -67,8 +67,10 @@ Install-time:
 
 ## Metrics
 
-During a run, per-interval stats are pushed to VictoriaMetrics, labelled by instance
-(`kit`):
+During a run, per-interval stats are pushed to the OpenTelemetry Collector on the control
+node and stored in Mimir, labelled by instance (`kit`) and `cluster`. A run that exits
+non-zero (bad arguments, a failed run, a snapshot leak) fails `start`. `stop` deletes the
+instance's driver pods and ConfigMaps.
 
 | Metric | Description |
 |--------|-------------|

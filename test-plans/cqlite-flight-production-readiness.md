@@ -147,7 +147,7 @@ Wait for `kubectl rollout status deployment/trino-coordinator`.
 ### 5. Install and start cqlite-flight (built-in — no external kit source)
 
 ```bash
-$EDB kit install cqlite-flight --flight-port 8815
+$EDB kit install cqlite-flight
 $EDB cqlite-flight start
 ```
 
@@ -193,7 +193,7 @@ $EDB trino-loadtest-trino start \
 ```
 
 Per-interval stats (qps, rows/s, p50/p99, errors/s) stream to the terminal and push to
-VictoriaMetrics. Measure with discipline: never report latency from a single query — take
+Mimir. Measure with discipline: never report latency from a single query — take
 ≥10 samples per query shape, split warm vs cold, use multiple distinct keys, and run in
 isolation (no competing `count(*)`).
 

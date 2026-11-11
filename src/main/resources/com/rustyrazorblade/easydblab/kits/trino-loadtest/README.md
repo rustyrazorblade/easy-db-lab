@@ -4,7 +4,8 @@ A concurrent read-load driver against a running `trino` kit's `cqlite` catalog.
 Each `start` runs one timestamped, labelled pod (`python:3.12-slim` + `pip install
 trino` at pod start — no Java toolchain needed) that holds a pool of persistent
 Trino connections and issues queries for a fixed duration, printing periodic
-stats that `start.sh` scrapes and pushes to VictoriaMetrics.
+stats that `start.sh` scrapes and pushes, as OTLP gauges, to the OpenTelemetry
+Collector on the control node, which stores them in Mimir.
 
 ## Install
 
@@ -118,9 +119,11 @@ standard this is one item of.
 ## Metrics
 
 Every `INTERVAL` seconds the driver prints one stats line to stdout, which
-`start.sh` scrapes out of `kubectl logs -f` and pushes to VictoriaMetrics
-(mirroring the sysbench kit's push pattern — the shell script parses the line
-with `awk`, not the Python process itself):
+`start.sh` scrapes out of the pod log and pushes as OTLP gauges to the
+collector on the control node with the shared kit library's `edl_push_gauges`
+(the sysbench kit's path — the shell script parses the line with `awk`, not the
+Python process itself). The collector adds the `cluster` label and stores them
+in Mimir:
 
 ```
 [ 30s ] threads: 8 qps: 143.20 rows_s: 21345.67 lat_p50_ms: 12.34 lat_p99_ms: 98.76 err_s: 0.20
@@ -142,17 +145,16 @@ of the run — it deliberately does not match the interval-line pattern, so
 
 ### Viewing results in Grafana
 
-These metrics land in VictoriaMetrics like every other kit's push-based
-metrics (see `sysbench`'s dashboard for the same pattern). There is no bundled
+These metrics land in Mimir like every other kit's push-based metrics (see `sysbench`'s dashboard for the same pattern). There is no bundled
 dashboard here yet — either:
 
 - Add a panel to an existing dashboard with a query like
   `trino_loadtest_qps{kit=~"trino-loadtest.*"}`, or
-- Use Grafana Explore against the VictoriaMetrics datasource with the same
+- Use Grafana Explore against the Mimir (`metrics_datasource`) datasource with the same
   query, filtering by `cluster=~"$cluster"` and `kit`.
 
 `trino.rpc.*` / `cqlite.rpc.*` metrics from the coordinator and cqlite-flight
-sit in the same VictoriaMetrics instance, so you can correlate load-test qps
+sit in the same Mimir tenant, so you can correlate load-test qps
 against coordinator-side and Flight-side latency on one dashboard.
 
 ## Risks / caveats

@@ -330,6 +330,28 @@ easy-db-lab
 
 You should see the help output with available commands.
 
+## When an AWS Command Fails
+
+A failed command prints one message that says what went wrong and what to do, instead of a raw error chain.
+
+**Credentials are missing, expired or invalid.** The message begins `AWS credentials are missing, expired or invalid.` and ends with:
+
+```text
+Run: easy-db-lab profile setup. If you use SSO with the AWS CLI, log in again with: aws sso login (add --profile and your profile name if it is not the default), and check with: aws sts get-caller-identity
+```
+
+**AWS denied permission.** The message begins `AWS denied permission for this operation.` and names the lab IAM policy that covers the failing service, for example:
+
+```text
+If this is missing permissions on your AWS user, attach the EasyDBLabEC2 IAM policy (print it with: easy-db-lab show-iam-policies EasyDBLabEC2). An SCP or permissions boundary can also deny the request.
+```
+
+For S3 the last sentence reads `A bucket policy, SCP or KMS key policy can also deny the request.` A denial from STS names no policy, because its only call, `GetCallerIdentity`, needs no IAM permission. That message points at a service control policy, permissions boundary or session policy instead. See [Step 2](#step-2-getting-iam-policies) to print and attach the policies.
+
+**Docker is not running.** A failure to reach Docker says so, and asks you to check that Docker is running and run the command again.
+
+**Anything else.** The message lists the exception and each cause in turn. The full details are in `logs/info.log`.
+
 ## Next Steps
 
 Once setup is complete, follow the [Tutorial](../user-guide/tutorial.md) to create your first cluster.

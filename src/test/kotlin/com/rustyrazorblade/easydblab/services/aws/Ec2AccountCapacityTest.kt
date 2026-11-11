@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import org.assertj.core.api.Assertions.assertThat
@@ -22,6 +23,7 @@ import software.amazon.awssdk.services.ec2.model.Instance
 import software.amazon.awssdk.services.ec2.model.InstanceLifecycleType
 import software.amazon.awssdk.services.ec2.model.InstanceTypeInfo
 import software.amazon.awssdk.services.ec2.model.Reservation
+import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse
 import software.amazon.awssdk.services.ec2.model.VCpuInfo
@@ -158,6 +160,32 @@ class Ec2AccountCapacityTest {
         whenever(ec2.runInstances(any<RunInstancesRequest>())).thenThrow(ec2Error(412, "DryRunOperation", "would have succeeded"))
 
         assertThat(capacity.dryRunLaunch(launch)).isEqualTo(LaunchDryRun.Permitted)
+    }
+
+    /**
+     * Ordinal `i` launches in subnet `i % subnets`, so a re-run that fills ordinals 1, 2 and 4 of
+     * three subnets first launches 1 and 4 into the second subnet. The dry run asks about that
+     * call, not about the first subnet.
+     */
+    @Test
+    fun `the dry run asks about the launch's first RunInstances call, in its subnet and with its ordinal tags`() {
+        whenever(ec2.runInstances(any<RunInstancesRequest>())).thenThrow(ec2Error(412, "DryRunOperation"))
+        val subnets = listOf("subnet-a", "subnet-b", "subnet-c")
+
+        capacity.dryRunLaunch(launch.copy(indexes = listOf(1, 2, 4), subnetIds = subnets))
+
+        val request = argumentCaptor<RunInstancesRequest>()
+        verify(ec2).runInstances(request.capture())
+        val tags =
+            request.firstValue
+                .tagSpecifications()
+                .single { it.resourceType() == ResourceType.INSTANCE }
+                .tags()
+                .associate { it.key() to it.value() }
+        assertThat(request.firstValue.dryRun()).isTrue()
+        assertThat(request.firstValue.subnetId()).isEqualTo(subnets[1])
+        assertThat(tags[Constants.Scale.FIRST_ORDINAL_TAG]).isEqualTo("1")
+        assertThat(tags[Constants.Scale.ORDINAL_STRIDE_TAG]).isEqualTo("3")
     }
 
     @Test

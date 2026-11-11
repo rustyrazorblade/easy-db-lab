@@ -60,7 +60,7 @@ interface AccountCapacity {
     /** The free IPv4 addresses of [vpcId]'s subnets, summed per availability zone. */
     fun freeAddressesByZone(vpcId: String): Map<String, Int>
 
-    /** Asks AWS, with `DryRun`, whether it would run one instance of [config] in its first subnet. */
+    /** Asks AWS, with `DryRun`, whether it would run the first RunInstances call of [config]'s launch. */
     fun dryRunLaunch(config: InstanceCreationConfig): LaunchDryRun
 }
 

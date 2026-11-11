@@ -248,7 +248,9 @@ class EC2InstanceServiceScaleTest {
         verify(ec2, times(3)).runInstances(requests.capture())
         assertThat(requests.allValues.map { it.maxCount() })
             .containsExactly(Constants.Scale.RUN_INSTANCES_CHUNK, Constants.Scale.RUN_INSTANCES_CHUNK, 50)
-        assertThat(created.map { it.alias }.toSet()).hasSize(Constants.Scale.RUN_INSTANCES_CHUNK * 2 + 50)
+        // In numeric order: db2 before db10 before db100.
+        val expected = (0 until Constants.Scale.RUN_INSTANCES_CHUNK * 2 + 50).map { "db$it" }
+        assertThat(created.map { it.alias }).containsExactlyElementsOf(expected)
     }
 
     @Test

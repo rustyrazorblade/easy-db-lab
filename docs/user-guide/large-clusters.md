@@ -12,6 +12,10 @@ with a larger count checks only the added nodes, and a re-run after a partial la
 the nodes that are missing, in the zones they go to. When nothing is to be launched, `up` makes no capacity
 call.
 
+A node an earlier `up` launched that is still starting (pending, or without a public IP yet) is
+kept, not launched again: `up` waits until it runs and passes its status checks, and records it
+with its public IP.
+
 | Check | What it compares |
 |-------|------------------|
 | Availability zones | The configured zones (`--azs`) against the eight subnets the VPC is split into |
@@ -19,7 +23,7 @@ call.
 | vCPU quota | The On-Demand standard vCPU quota (`L-1216C47A`) minus the vCPUs of the region's running and pending On-Demand standard instances, against the new nodes' vCPUs |
 | Network interfaces | The network interface quota (`L-DF5E4CA3`) minus the interfaces in the region, against the interfaces the new nodes need |
 | Subnet addresses | Each zone's free subnet addresses against the addresses its new nodes and their pods need |
-| Launch dry run | A `RunInstances` dry run of each node type's launch, with the real AMI, type, subnet, security group, instance profile and key |
+| Launch dry run | A `RunInstances` dry run of each node type's first launch call, the exact request that call makes: its subnet and node count, and the real AMI, type, security group, instance profile and key |
 
 Every shortfall is reported, each with what is needed, what is available and the difference,
 before `up` stops. The dry run runs once the VPC's subnets and security group exist and before

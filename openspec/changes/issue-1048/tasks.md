@@ -84,6 +84,9 @@
 - [x] 8b.17 Review round 1: the pod readiness wait ends at once on a terminal container state (sealed `PodsPoll`), and logs the PVCs only on a timeout
 - [x] 8b.18 Review round 1: `down --dry-run` with the VPC gone and a tailnet device recorded only previews the device removal (`Teardown.DryRunDeviceRemovalPreview`)
 - [x] 8b.19 Review round 1: the RunInstances dry run runs under the EC2 throttle retry
+- [x] 8b.20 Review round 2: `up` waits for every discovered instance that is pending or has no public IP (running wait and status check) and keeps it with the IPs the wait read
+- [x] 8b.21 Review round 2: the RunInstances dry run asks about the launch's first call (`RunInstancesRequests.launchPlan`), in its subnet with its ordinal tags; the LocalStack dry-run test names an instance profile it creates, and the refused-subnet LocalStack test is removed (LocalStack answers `DryRunOperation` before checking the subnet; `Ec2AccountCapacityTest` covers the refusal mapping)
+- [x] 8b.22 Review round 2: multi-digit ordinals sort numerically (gap test holds db0, db2, db10 and launches db1, db9, db11; the 250-node chunk test asserts db0..db249 in order); `docs/user-guide/tutorial.md` gives the `--azs` default as `a,b,c`, at most 8
 
 ## 9. Verification
 

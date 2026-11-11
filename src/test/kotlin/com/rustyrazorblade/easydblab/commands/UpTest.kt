@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
+import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -232,6 +233,42 @@ class UpTest : UpTestFixture() {
     }
 
     /**
+     * A re-run inside an earlier `up`'s pending window discovers db0 still pending, with no public
+     * IP yet. `up` keeps it, so it must give it what a new instance gets: wait until it runs and
+     * passes its status checks, and record the public IP it was given, never a blank address.
+     */
+    @Test
+    fun `up waits for a discovered pending instance and keeps it with its assigned public IP`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 2))
+        val pendingDb0 =
+            DiscoveredInstance(
+                instanceId = "i-db0",
+                publicIp = null,
+                privateIp = "10.0.0.2",
+                alias = "db0",
+                availabilityZone = "us-west-2a",
+                serverType = ServerType.Cassandra,
+                state = "pending",
+            )
+        val runningDb1 =
+            pendingDb0.copy(instanceId = "i-db1", publicIp = "54.1.1.5", privateIp = "10.0.0.5", alias = "db1", state = "running")
+        whenever(mockEc2InstanceService.findInstancesByClusterId(any()))
+            .thenReturn(mapOf(ServerType.Cassandra to listOf(pendingDb0, runningDb1)))
+        whenever(mockEc2InstanceService.waitForInstancesRunning(any(), any())).thenReturn(
+            listOf(InstanceDetails("i-db0", "running", "54.7.7.7", "10.0.0.2", "us-west-2a")),
+        )
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        verify(mockEc2InstanceService).waitForInstancesRunning(eq(listOf("i-db0")), any())
+        verify(mockEc2InstanceService).waitForInstanceStatusOk(eq(listOf("i-db0")), any())
+        val existing = argumentCaptor<Map<ServerType, List<ClusterHost>>>()
+        verify(mockClusterProvisioningService).provisionAll(any(), any(), existing.capture(), any())
+        assertThat(existing.firstValue[ServerType.Cassandra]?.associate { it.alias to it.publicIp })
+            .containsExactlyEntriesOf(mapOf("db0" to "54.7.7.7", "db1" to "54.1.1.5"))
+    }
+
+    /**
      * A partial launch persisted db0, db3 and db6 (subnet a's batch) before subnet b's failed. The
      * re-run fills exactly the missing ordinals, and the capacity checks count the same ones, in
      * the zones they land in: only b and c, so a type zone a no longer offers does not stop it.
@@ -273,20 +310,21 @@ class UpTest : UpTestFixture() {
      * Provisioning reports each batch twice: at launch with no public IP, then with its final IPs.
      * State already holds db0..db2. Each report must merge by alias into what state holds: the
      * hosts saved are db0..db4, in order, once each, and db3 and db4 end with their final IPs.
-     * The gap case is the same with db1 missing: the hosts fill in by alias, never duplicated.
+     * The gap case holds db0, db2 and db10 and launches db1, db9 and db11: the hosts fill in by
+     * alias, never duplicated, in numeric order (db2 before db9 before db10), not text order.
      */
     @ParameterizedTest
     @ValueSource(strings = ["contiguous", "gap"])
     fun `hosts reported at launch and again with final IPs are saved once each, by alias`(case: String) {
-        val held = if (case == "gap") listOf(0, 2) else listOf(0, 1, 2)
-        val launched = if (case == "gap") listOf(1, 3, 4) else listOf(3, 4)
+        val held = if (case == "gap") listOf(0, 2, 10) else listOf(0, 1, 2)
+        val launched = if (case == "gap") listOf(1, 9, 11) else listOf(3, 4)
 
         fun host(
             ordinal: Int,
             publicIp: String,
         ) = ClusterHost(publicIp, "10.0.0.$ordinal", "db$ordinal", "us-west-2a", "i-db$ordinal")
         val state =
-            happyState(cassandraInstances = 5).apply {
+            happyState(cassandraInstances = (held + launched).max() + 1).apply {
                 updateHosts(mapOf(ServerType.Cassandra to held.map { host(it, "54.0.0.$it") }))
             }
         whenever(mockClusterStateManager.load()).thenReturn(state)

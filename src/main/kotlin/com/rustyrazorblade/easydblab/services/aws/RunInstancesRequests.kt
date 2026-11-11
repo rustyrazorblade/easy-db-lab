@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.EBSConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
@@ -41,27 +42,68 @@ data class OrdinalRun(
     }
 }
 
+/** One RunInstances call of a launch: the subnet and the ordinals it launches. */
+data class LaunchBatch(
+    val subnetId: SubnetId,
+    val run: OrdinalRun,
+    val serverType: ServerType,
+) {
+    /** The aliases, in launch-index order. */
+    val aliases: List<String> get() = run.ordinals.map { "${serverType.serverType}$it" }
+}
+
 /**
- * Builds the RunInstances request for a launch. The real launch ([EC2InstanceService]) and its
+ * Plans and builds the RunInstances requests for a launch. The real launch ([EC2InstanceService]) and its
  * pre-launch dry run ([Ec2AccountCapacity]) both use it, so the dry run asks AWS about exactly the
- * request the launch will make: the same AMI, type, subnet, security group, instance profile, key,
- * tags, volumes and metadata options.
+ * request the launch makes first: the same batch, so the same subnet and ordinal tags, and the
+ * same AMI, type, security group, instance profile, key, tags, volumes and metadata options.
  */
 object RunInstancesRequests {
     private const val IMDS_HOP_LIMIT = 2
     private val IOPS_VOLUME_TYPES = setOf("gp3", "io1", "io2")
 
     /**
-     * The request that launches the instances of [run] for [config] in [subnetId]. [clientToken]
-     * makes a retried call idempotent.
+     * The RunInstances calls that launch [config]'s ordinals, in call order. Ordinal `i` goes to
+     * subnet `i % subnets`; the subnets are taken in order of first use; each subnet's ordinals
+     * are split into runs `subnets` apart, a gap starting a new run; and each run into chunks of
+     * at most [Constants.Scale.RUN_INSTANCES_CHUNK].
+     */
+    fun launchPlan(config: InstanceCreationConfig): List<LaunchBatch> {
+        val stride = config.subnetIds.size
+        return config.indexes
+            .sorted()
+            .groupBy { index -> config.subnetIds[index % stride] }
+            .flatMap { (subnetId, indexes) ->
+                arithmeticRuns(indexes, stride)
+                    .flatMap { it.chunked(Constants.Scale.RUN_INSTANCES_CHUNK) }
+                    .map { chunk -> LaunchBatch(subnetId, OrdinalRun(chunk.first(), stride, chunk.size), config.serverType) }
+            }
+    }
+
+    /** [ascending] split wherever two neighbours are not exactly [stride] apart. */
+    private fun arithmeticRuns(
+        ascending: List<Int>,
+        stride: Int,
+    ): List<List<Int>> {
+        val runs = mutableListOf<MutableList<Int>>()
+        ascending.forEach { ordinal ->
+            val last = runs.lastOrNull()
+            if (last != null && ordinal - last.last() == stride) last += ordinal else runs += mutableListOf(ordinal)
+        }
+        return runs
+    }
+
+    /**
+     * The request that launches [batch] for [config]. [clientToken] makes a retried call
+     * idempotent.
      */
     fun build(
         config: InstanceCreationConfig,
-        subnetId: SubnetId,
-        run: OrdinalRun,
+        batch: LaunchBatch,
         clientToken: String,
         dryRun: Boolean = false,
     ): RunInstancesRequest {
+        val run = batch.run
         val builder =
             RunInstancesRequest
                 .builder()
@@ -72,7 +114,7 @@ object RunInstancesRequests {
                 .clientToken(clientToken)
                 .keyName(config.keyName)
                 .securityGroupIds(config.securityGroupId)
-                .subnetId(subnetId)
+                .subnetId(batch.subnetId)
                 .iamInstanceProfile(
                     IamInstanceProfileSpecification
                         .builder()

@@ -10,7 +10,6 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
-import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import com.rustyrazorblade.easydblab.providers.aws.withEc2InstanceRetry
@@ -109,7 +108,7 @@ class EC2InstanceService(
         eventBus.emit(Event.Ec2.InstancesCreating(config.count, config.serverType.serverType))
 
         val instances =
-            launchPlan(config).flatMap { batch ->
+            RunInstancesRequests.launchPlan(config).flatMap { batch ->
                 launchBatch(config, batch).also { launched ->
                     onLaunched(launched)
                     nameInstances(launched)
@@ -121,46 +120,6 @@ class EC2InstanceService(
         return instances.sortedBy { it.alias.removePrefix(config.serverType.serverType).toIntOrNull() ?: 0 }
     }
 
-    /** One RunInstances call: the subnet and the ordinals it launches. */
-    private data class LaunchBatch(
-        val subnetId: SubnetId,
-        val run: OrdinalRun,
-        val serverType: ServerType,
-    ) {
-        /** The aliases, in launch-index order. */
-        val aliases: List<String> get() = run.ordinals.map { "${serverType.serverType}$it" }
-    }
-
-    /**
-     * Splits the new instances by subnet (ordinal `i` to subnet `i % subnets`), in subnet order of
-     * first use; each subnet's ordinals into runs `subnets` apart, a gap starting a new run; and
-     * each run into chunks of at most [Constants.Scale.RUN_INSTANCES_CHUNK].
-     */
-    private fun launchPlan(config: InstanceCreationConfig): List<LaunchBatch> {
-        val stride = config.subnetIds.size
-        return config.indexes
-            .sorted()
-            .groupBy { index -> config.subnetIds[index % stride] }
-            .flatMap { (subnetId, indexes) ->
-                arithmeticRuns(indexes, stride)
-                    .flatMap { it.chunked(Constants.Scale.RUN_INSTANCES_CHUNK) }
-                    .map { chunk -> LaunchBatch(subnetId, OrdinalRun(chunk.first(), stride, chunk.size), config.serverType) }
-            }
-    }
-
-    /** [ascending] split wherever two neighbours are not exactly [stride] apart. */
-    private fun arithmeticRuns(
-        ascending: List<Int>,
-        stride: Int,
-    ): List<List<Int>> {
-        val runs = mutableListOf<MutableList<Int>>()
-        ascending.forEach { ordinal ->
-            val last = runs.lastOrNull()
-            if (last != null && ordinal - last.last() == stride) last += ordinal else runs += mutableListOf(ordinal)
-        }
-        return runs
-    }
-
     /**
      * Launches one [batch] with a single RunInstances call that asks for exactly its size. A call
      * that EC2 throttles is retried with the same client token, so the retry cannot launch a
@@ -170,8 +129,7 @@ class EC2InstanceService(
         config: InstanceCreationConfig,
         batch: LaunchBatch,
     ): List<CreatedInstance> {
-        val request =
-            RunInstancesRequests.build(config, batch.subnetId, batch.run, UUID.randomUUID().toString())
+        val request = RunInstancesRequests.build(config, batch, UUID.randomUUID().toString())
         val response = withThrottleRetry("run-instances-${batch.aliases.first()}") { ec2Client.runInstances(request) }
 
         return response

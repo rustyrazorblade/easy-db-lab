@@ -227,7 +227,7 @@ The checks are:
 3. The On-Demand standard vCPU quota (`L-1216C47A`) minus the vCPUs of the running and pending On-Demand standard-family instances covers the new instances' vCPUs.  An instance type outside the standard families (A, C, D, H, I, M, R, T, Z) is not counted against it; `up` reports that its family's quota is not checked.
 4. The network interface quota (`L-DF5E4CA3`) minus the network interfaces in the region covers the new nodes' interfaces: one per node under Flannel; under Cilium, the interfaces its node address and `Constants.Capacity.POD_ADDRESSES_PER_NODE` pod addresses fill, at most the type's maximum.
 5. Each zone's subnet has free addresses for the node address of each new node landing in it, and under Cilium its pod addresses.  Without a VPC yet, the subnet size comes from the VPC CIDR.
-6. Once the subnets and the security group exist, a RunInstances dry run of each server type's launch, with the real AMI, instance type, subnet, security group, instance profile and key, answers `DryRunOperation`.  A throttled (`RequestLimitExceeded`) or 5xx answer is retried; only the final answer decides.
+6. Once the subnets and the security group exist, a RunInstances dry run of each server type's first RunInstances call, the same request that call makes (its subnet, count and ordinal tags, and the real AMI, instance type, security group, instance profile and key), answers `DryRunOperation`.  A throttled (`RequestLimitExceeded`) or 5xx answer is retried; only the final answer decides.
 
 Every shortfall MUST be reported with a typed event naming what is short and by how much, and all of them MUST be reported before `up` stops.
 
@@ -272,6 +272,7 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 `up` MUST provision and set up a cluster of 1,000 database nodes, and a re-run of `up` with a larger count MUST launch only the missing nodes.
 
 - Discovery MUST read every page of DescribeInstances, count running and pending instances, and run once per `up`.
+- A discovered instance that is pending, or has no public IP, MUST be waited on as a new instance is, until it runs with a public IP and passes its status checks, and MUST be kept with the IPs that wait read, so no host in the cluster state has a blank address.
 - The instances to launch MUST be the ordinals in `0` to the configured count that no existing instance's alias holds, so a re-run fills the gaps an interrupted `up` left and never reuses the alias of a running instance.  Ordinal `i` is named `<serverType><i>` and lands in subnet `i % subnets`.
 - RunInstances MUST launch one call per subnet, with `minCount = maxCount = n`, in chunks of at most `Constants.Scale.RUN_INSTANCES_CHUNK`, with a client token, and retry a throttled call (`RequestLimitExceeded`) with the same token.  The ordinals of one call are `subnets` apart, a gap starting a new call, and the call tags its instances with its first ordinal and that stride (`Constants.Scale.FIRST_ORDINAL_TAG`, `Constants.Scale.ORDINAL_STRIDE_TAG`), so the instance with launch index `k` is `first + k * stride`.  Each instance also gets its `Name` tag after launch.
 - Each launched instance MUST be recorded in the cluster state as soon as RunInstances returns it, before it is named.
@@ -298,6 +299,12 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 - **GIVEN** an `up` whose CreateTags call fails after RunInstances returned the instances
 - **WHEN** `up` stops, and a later `up` discovers the cluster
 - **THEN** the instances are in the cluster state, and discovery names them from their launch tags and does not launch them again
+
+#### Scenario: A re-run in the pending window waits for the pending instances
+
+- **GIVEN** an `up` that launched db0, which is still pending with no public IP
+- **WHEN** `up` runs again
+- **THEN** it waits until db0 runs and passes its status checks, does not launch it again, and records db0 with its public IP
 
 #### Scenario: A re-run continues the numbering
 

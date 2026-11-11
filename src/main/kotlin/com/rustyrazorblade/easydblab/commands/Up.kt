@@ -62,6 +62,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import org.koin.core.component.inject
 import picocli.CommandLine
+import software.amazon.awssdk.services.ec2.model.InstanceStateName
 import java.io.File
 import java.time.Duration
 import kotlin.random.Random
@@ -335,7 +336,7 @@ class Up(
                 "ClusterId" to workingState.clusterId,
             ) + initConfig.tags
 
-        val existingHosts = existingInstances.mapValues { (_, instances) -> instances.map { it.toClusterHost() } }
+        val existingHosts = awaitNotReady(existingInstances).mapValues { (_, instances) -> instances.map { it.toClusterHost() } }
         val instanceConfig = buildInstanceConfig(initConfig, securityGroupId, subnetIds, baseTags, existingInstances)
         val servicesConfig = buildServicesConfig(initConfig, subnetIds, securityGroupId, baseTags)
         // The subnets and the security group exist now: ask AWS whether it would run each launch.
@@ -419,6 +420,30 @@ class Up(
 
     private fun discoverExistingInstances(): Map<ServerType, List<DiscoveredInstance>> =
         ec2InstanceService.findInstancesByClusterId(workingState.clusterId).also(::logExistingInstances)
+
+    /**
+     * [discovered] with every instance that is still pending, or has no public IP yet, waited on
+     * as a new instance is: until it runs with a public IP and passes its status checks. Each
+     * such instance takes the IPs the running wait read, so a kept host never has a blank
+     * address. A re-run inside an earlier `up`'s pending window finds such instances.
+     */
+    private fun awaitNotReady(discovered: Map<ServerType, List<DiscoveredInstance>>): Map<ServerType, List<DiscoveredInstance>> {
+        val notReady =
+            discovered.values
+                .flatten()
+                .filter { it.state != InstanceStateName.RUNNING.toString() || it.publicIp.isNullOrEmpty() }
+                .map { it.instanceId }
+        if (notReady.isEmpty()) return discovered
+        val details = ec2InstanceService.waitForInstancesRunning(notReady).associateBy { it.instanceId }
+        ec2InstanceService.waitForInstanceStatusOk(notReady)
+        return discovered.mapValues { (_, instances) ->
+            instances.map { instance ->
+                details[instance.instanceId]?.let {
+                    instance.copy(publicIp = it.publicIp, privateIp = it.privateIp ?: instance.privateIp, state = it.state)
+                } ?: instance
+            }
+        }
+    }
 
     private fun buildInstanceConfig(
         initConfig: InitConfig,

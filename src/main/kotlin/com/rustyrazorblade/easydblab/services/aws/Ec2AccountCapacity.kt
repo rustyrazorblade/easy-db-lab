@@ -118,9 +118,14 @@ class Ec2AccountCapacity(
         }
     }
 
+    /**
+     * Dry-runs the first RunInstances call [config]'s launch makes: the same batch of
+     * [RunInstancesRequests.launchPlan], so the same subnet, ordinal tags and count.
+     */
     override fun dryRunLaunch(config: InstanceCreationConfig): LaunchDryRun {
-        val run = OrdinalRun(first = config.indexes.firstOrNull() ?: 0, stride = config.subnetIds.size, count = 1)
-        val request = RunInstancesRequests.build(config, config.subnetIds.first(), run, UUID.randomUUID().toString(), dryRun = true)
+        val batch =
+            requireNotNull(RunInstancesRequests.launchPlan(config).firstOrNull()) { "No instances to dry-run for ${config.clusterName}." }
+        val request = RunInstancesRequests.build(config, batch, UUID.randomUUID().toString(), dryRun = true)
         // A throttle or a 5xx is retried; only the final answer is mapped to Permitted or Refused.
         val retry = Retry.of("dry-run-${config.serverType.serverType}", RetryUtil.createEc2ThrottleRetryConfig<Any>(throttleBackoff))
         return try {

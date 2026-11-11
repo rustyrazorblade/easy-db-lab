@@ -16,7 +16,7 @@ services/aws/
 ├── SshIngressService.kt       # SSH ingress for ingress allow / revoke: IngressResult, AllowOutcome, RevokeOutcome
 ├── EC2InstanceService.kt      # Instance lifecycle: launches the missing ordinals (`InstanceCreationConfig.indexes`), per-subnet batched RunInstances (runs of ordinals `subnets` apart, chunks of 100, client token, throttle retry, ordinal launch tags), reports each batch before naming it, Name tags, waits in batches of 100, paginated discovery that names an untagged instance from its ordinal tags
 ├── InstanceSpecFactory.kt     # Instance specs; `missingOrdinals` is the one source of the ordinals to launch, for the launch and the capacity plan
-├── RunInstancesRequests.kt    # The RunInstances request, shared by the launch and its dry run; `OrdinalRun` (first ordinal, stride, count) and its launch tags
+├── RunInstancesRequests.kt    # The launch plan (`LaunchBatch` per RunInstances call) and the request, shared by the launch and its dry run (which asks about the first batch); `OrdinalRun` (first ordinal, stride, count) and its launch tags
 ├── AccountCapacity.kt         # The account facts the pre-launch checks read (port), LaunchDryRun, InstanceFamily
 ├── Ec2AccountCapacity.kt      # AccountCapacity from EC2 and Service Quotas; the dry run is on the EC2 throttle retry
 ├── LaunchCapacityPreflight.kt # The pre-launch capacity checks and the launch dry run, for the new instances only

@@ -16,6 +16,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
+import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
@@ -37,8 +38,8 @@ import software.amazon.awssdk.services.sts.StsClient
  * shutdown hook to reap the container when the JVM exits — so this object never
  * calls `.stop()`.
  *
- * The container enables the union of services the six tests need — S3, STS, and
- * EC2 — and exposes ready-to-use AWS SDK clients (each pointed at the container's
+ * The container enables the union of services the tests need — S3, STS, EC2 and IAM (EC2's
+ * RunInstances looks up the instance profile it names in IAM) — and exposes ready-to-use AWS SDK clients (each pointed at the container's
  * single LocalStack endpoint with the container's credentials). Because one EC2 and one
  * S3 backend are now shared across classes, tests must scope their assertions to
  * the resources they create rather than asserting on global container state.
@@ -52,7 +53,7 @@ object SharedLocalStack {
 
     private val container: LocalStackContainer by lazy {
         LocalStackContainer(DockerImageName.parse(IMAGE))
-            .withServices("s3", "sts", "ec2")
+            .withServices("s3", "sts", "ec2", "iam")
             .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
             .apply { start() }
     }
@@ -125,6 +126,17 @@ object SharedLocalStack {
      */
     fun ec2Client(): Ec2Client =
         Ec2Client
+            .builder()
+            .endpointOverride(container.endpoint)
+            .region(Region.of(container.region))
+            .credentialsProvider(credentialsProvider())
+            .build()
+
+    /**
+     * IAM client pointed at the shared container.
+     */
+    fun iamClient(): IamClient =
+        IamClient
             .builder()
             .endpointOverride(container.endpoint)
             .region(Region.of(container.region))

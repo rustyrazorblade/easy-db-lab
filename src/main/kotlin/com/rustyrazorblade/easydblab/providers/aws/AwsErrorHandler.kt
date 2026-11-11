@@ -114,9 +114,10 @@ class AwsErrorHandler : ProviderErrorHandler {
         const val OTHER_DENIALS = "A bucket policy, SCP or KMS key policy can also deny the request."
 
         const val CREDENTIALS_REMEDY =
-            "If your profile uses SSO, log in again with: aws sso login (add --profile and your profile name if it is not the default). " +
-                "Otherwise run: easy-db-lab profile setup. " +
-                "Check the result with: aws sts get-caller-identity"
+            "Run: easy-db-lab profile setup. " +
+                "If you use SSO with the AWS CLI, log in again with: aws sso login " +
+                "(add --profile and your profile name if it is not the default), " +
+                "and check with: aws sts get-caller-identity"
 
         val ALL_POLICIES =
             listOf(

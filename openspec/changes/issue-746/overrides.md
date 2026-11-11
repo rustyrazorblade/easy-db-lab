@@ -5,7 +5,7 @@
 - Profile setup's credential check showed permission guidance for any non-STS service error, including a 5xx or throttling. It now shows permission guidance only for a permission-denied failure, credentials guidance for a credentials failure, and `CredentialValidationFailed` for everything else.
 - A failure from a command that is not a `PicoCommand`, reaching `CommandLineParser`'s handler, no longer prints a raw stack trace; it is reported as one event and the trace goes to `info.log`. The same holds for a failure in top-level dispatch outside the lifecycle (state restore, resource cleanup).
 - The old `Main` prefixes ("Invalid argument", "Invalid state") and the `RemoteException` "try rerunning" hint are dropped on purpose: the cause chain names the exception type and message.
-- The credentials remedy no longer prints a `<profile>` placeholder. The handler takes no dependencies, so it cannot know the profile; the text tells an SSO user to run `aws sso login` and to add `--profile` for a non-default profile.
+- The credentials remedy no longer prints a `<profile>` placeholder. The handler takes no dependencies, so it cannot know the profile; the text tells the user to run `easy-db-lab profile setup` and, only if they use SSO with the AWS CLI, `aws sso login` (with `--profile` for a non-default profile).
 - Otherwise this change only adds requirements.
 
 ## Conflicts with other in-flight changes

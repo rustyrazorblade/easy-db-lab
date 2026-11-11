@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -64,6 +65,26 @@ class AwsErrorHandlerTest {
         assertThat(description.provider).isEqualTo("AWS")
         assertThat(description.detail).contains(code)
         assertThat(description.remedy).contains("aws sso login").contains("easy-db-lab profile setup")
+    }
+
+    @Test
+    fun `the credentials remedy gives profile setup unconditionally and the AWS CLI steps only conditionally`() {
+        val remedy = handler.describe(awsError(StsException.builder(), "ExpiredToken", 400))!!.remedy
+        val conditional = remedy.indexOf("If you use SSO with the AWS CLI")
+
+        assertThat(remedy).startsWith("Run: easy-db-lab profile setup.")
+        assertThat(conditional).isGreaterThan(remedy.indexOf("profile setup"))
+        assertThat(remedy.indexOf("aws sso login")).isGreaterThan(conditional)
+        assertThat(remedy.indexOf("aws sts get-caller-identity")).isGreaterThan(remedy.indexOf("aws sso login"))
+    }
+
+    @Test
+    fun `the clock skew code is in neither error code set, and the two sets are disjoint`() {
+        val codes = Constants.AWS.ErrorCodes
+
+        assertThat(codes.CREDENTIALS).doesNotContain(codes.CLOCK_SKEW)
+        assertThat(codes.PERMISSION_DENIED).doesNotContain(codes.CLOCK_SKEW)
+        assertThat(codes.CREDENTIALS).doesNotContainAnyElementsOf(codes.PERMISSION_DENIED)
     }
 
     @Test

@@ -98,7 +98,7 @@ Once `User.kt` loses `getRequiredIAMPolicies` and its key-pair code, `configurat
 - It logs the error.
 - It walks the cause chain from the outermost exception inward, using an identity set so a cause loop terminates.  At each level it asks every handler in turn.
 - It emits `ProviderError` on the first match and `ExecutionError` otherwise.
-- Every wrapper is walked through `.cause`; no wrapper type is special-cased.  Suppressed exceptions are not walked.  A `CommandFailedException` anywhere in the chain means the failure is already reported.  A handler that throws counts as not claiming.
+- Every wrapper is walked through `.cause`; no wrapper type is special-cased.  Suppressed exceptions are not walked.  A `CommandFailedException` anywhere in the chain means the failure is already reported.  A handler that throws counts as not claiming, except `InterruptedException`, which restores the interrupt flag and propagates.
 
 **Wiring.**
 - Koin: `single { CommandFailureReporter(get(), getAll()) }`.  Each handler binds `bind ProviderErrorHandler::class`.
@@ -123,7 +123,7 @@ The error code is checked first: STS, IAM and S3 return 403 for bad credentials.
 | else | anything else, including network `SdkClientException`s | null |
 
 **Remedies:**
-- **CREDENTIALS:** run `aws sso login` for SSO (the text says to add `--profile` and the profile name when it is not the default; the handler takes no dependencies, so it cannot name the profile), otherwise `easy-db-lab profile setup`; check with `aws sts get-caller-identity`.
+- **CREDENTIALS:** "Run: easy-db-lab profile setup. If you use SSO with the AWS CLI, log in again with: aws sso login (add --profile and your profile name if it is not the default), and check with: aws sts get-caller-identity". `profile setup` is the unconditional path because a Homebrew install does not guarantee the AWS CLI; the handler takes no dependencies, so it cannot name the profile.
 - **PERMISSION_DENIED:** "If this is missing permissions on your AWS user, attach `<policy>` (print it with `easy-db-lab show-iam-policies <policy>`). A bucket policy, SCP or KMS key policy can also deny the request." A 403 does not prove the cause, so the remedy does not assert it.
 
 The policy comes from the exception class.  The five policy names become constants on `AWSPolicy.UserIAM`.

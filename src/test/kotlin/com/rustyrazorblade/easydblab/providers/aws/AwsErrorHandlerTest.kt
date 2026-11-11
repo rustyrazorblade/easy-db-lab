@@ -177,6 +177,30 @@ class AwsErrorHandlerTest {
     }
 
     @Test
+    fun `an SdkClientException that only mentions credentials mid-sentence is not claimed`() {
+        val mentioned =
+            SdkClientException
+                .builder()
+                .message("Unable to execute HTTP request: proxy said 'Unable to load credentials from any of the providers in the chain'")
+                .build()
+        val wrapper =
+            SdkClientException
+                .builder()
+                .message("Failed to read the bucket")
+                .cause(
+                    SdkClientException
+                        .builder()
+                        .message("Unable to load credentials from any of the providers in the chain")
+                        .build(),
+                ).build()
+
+        assertThat(handler.describe(mentioned)).isNull()
+        // Only the exception's own message counts; the reporter offers the inner cause separately.
+        assertThat(handler.describe(wrapper)).isNull()
+        assertThat(handler.describe(wrapper.cause!!)!!.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
+    }
+
+    @Test
     fun `a network SdkClientException is not claimed`() {
         val error =
             SdkClientException

@@ -257,11 +257,14 @@ object Constants {
             /** A 403 from clock skew is neither a credentials nor a permission problem. */
             const val CLOCK_SKEW = "RequestTimeTooSkewed"
 
-            /** Substrings of the `SdkClientException` messages that mean no usable credentials. */
+            /**
+             * Prefixes of the `SdkClientException` messages that mean no usable credentials. The SDK starts each
+             * of its own messages with one, so a message that merely quotes one mid-sentence is not matched.
+             */
             val CREDENTIALS_MESSAGES =
                 listOf(
                     "Unable to load credentials",
-                    "contained no credentials for profile",
+                    "Profile file contained no credentials for profile",
                     "The SSO session associated with this profile has expired",
                 )
         }

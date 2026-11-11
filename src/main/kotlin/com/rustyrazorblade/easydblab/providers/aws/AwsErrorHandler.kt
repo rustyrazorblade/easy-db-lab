@@ -41,6 +41,8 @@ class AwsErrorHandler : ProviderErrorHandler {
         return when {
             code in Constants.AWS.ErrorCodes.CREDENTIALS -> describeAs(ProviderErrorKind.CREDENTIALS, detail, CREDENTIALS_REMEDY)
             code in Constants.AWS.ErrorCodes.PERMISSION_DENIED -> permissionDenied(error, detail)
+            // Deliberate null: clock skew is neither credentials nor permission, and it answers 403, so this branch
+            // must stay ahead of the 403 fallback below or it would be reported as permission denied.
             code == Constants.AWS.ErrorCodes.CLOCK_SKEW -> null
             error.statusCode() == Constants.HttpStatus.FORBIDDEN -> permissionDenied(error, detail)
             else -> null
@@ -62,7 +64,7 @@ class AwsErrorHandler : ProviderErrorHandler {
         val isCredentialsProblem =
             error is ExpiredTokenException ||
                 Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES
-                    .any { message.contains(it) }
+                    .any { message.startsWith(it) }
         return if (isCredentialsProblem) {
             describeAs(ProviderErrorKind.CREDENTIALS, message, CREDENTIALS_REMEDY)
         } else {

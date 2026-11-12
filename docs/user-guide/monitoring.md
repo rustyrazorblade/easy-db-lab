@@ -72,6 +72,8 @@ Pick one or more roles to show every host of those roles, with no host selection
 
 A combined dashboard showing S3, EBS, and EC2 metrics via CloudWatch. Available after running `easy-db-lab up`.
 
+Environments without CloudWatch (the `CLOUDWATCH` capability) skip YACE and its scrape job, and without S3 (the `S3` capability) skip the S3 Manager; `up` reports each skip, and the CloudWatch panels stay empty there.
+
 **S3 metrics:**
 
 - **Throughput:** BytesDownloaded, BytesUploaded

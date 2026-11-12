@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.events
 
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.lang.ArchCondition
 import com.tngtech.archunit.lang.ConditionEvents
 import com.tngtech.archunit.lang.SimpleConditionEvent
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition
+import kotlinx.serialization.SerialName
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestTemplate
@@ -38,6 +40,25 @@ class EventSerializationTest {
         assertThat(deserialized)
             .describedAs("Round-trip failed for ${event::class.qualifiedName}")
             .isEqualTo(envelope)
+    }
+
+    @Test
+    fun `a skipped stage round-trips for every capability under its declared wire name`() {
+        NodeCapability.entries.forEach { capability ->
+            val declared =
+                NodeCapability::class.java
+                    .getField(capability.name)
+                    .getAnnotation(SerialName::class.java)
+            assertThat(declared).describedAs("@SerialName on $capability").isNotNull()
+            val event = Event.Grafana.StageSkipped("stage", capability)
+            val envelope = EventEnvelope(event, "2026-01-01T00:00:00.000Z", "up")
+
+            val json = EventEnvelope.toJson(envelope)
+
+            assertThat(json).contains("\"capability\":\"${declared.value}\"").doesNotContain("reason")
+            assertThat(EventEnvelope.fromJson(json)).isEqualTo(envelope)
+            assertThat(event.toDisplayString()).isEqualTo("Skipping stage: ${capability.absentReason}")
+        }
     }
 
     // --- ArchUnit: structural constraints on all concrete Event subtypes ---

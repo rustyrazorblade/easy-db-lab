@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -43,12 +45,16 @@ import kotlin.system.exitProcess
  *
  * Periodically fetches live data from AWS, SSH, and Kubernetes,
  * storing the result in memory for instant retrieval via the /status endpoint.
+ *
+ * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
+ *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]); consolidated by #1040.
  */
 class StatusCache(
     private val refreshIntervalSeconds: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS,
     private val autoShutdown: Boolean = false,
     private val vpcName: String? = null,
     private val onShutdown: () -> Unit = { exitProcess(0) },
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
 ) : KoinComponent,
     CachedStatus {
     companion object {
@@ -481,12 +487,15 @@ class StatusCache(
 
         val kits = buildKitAccess(state)
 
-        val s3Path = state.s3Path()
         val s3Manager =
-            S3ManagerAccess(
-                ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
-            )
-
+            if (NodeCapability.S3 in capabilitiesOf(state)) {
+                val s3Path = state.s3Path()
+                S3ManagerAccess(
+                    ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
+                )
+            } else {
+                null
+            }
         val registry =
             RegistryAccess(
                 endpoint = "$controlIp:${Constants.K8s.REGISTRY_PORT}",

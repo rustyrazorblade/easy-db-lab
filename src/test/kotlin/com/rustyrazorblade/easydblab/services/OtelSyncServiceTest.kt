@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -39,6 +40,9 @@ class OtelSyncServiceTest : BaseKoinTest() {
     private lateinit var mockK8sClient: KubernetesClient
     private lateinit var mockFiltered: FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>
     private lateinit var service: OtelSyncService
+
+    /** The capabilities the sync under test sees; AWS unless a test declares otherwise. */
+    private var capabilities: NodeCapabilities = NodeCapabilities.AWS
 
     private val controlHost =
         ClusterHost(
@@ -93,6 +97,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
+                capabilitiesOf = { capabilities },
             )
     }
 
@@ -110,6 +115,27 @@ class OtelSyncServiceTest : BaseKoinTest() {
         service.syncConfigMap(controlHost)
 
         assertThat(applied.filterIsInstance<ConfigMap>().map { it.metadata.name }).containsExactly("otel-collector-config")
+    }
+
+    @Test
+    fun `a sync under an environment without CloudWatch renders no yace scrape job`() {
+        val awsConfig = collectorConfigFromSync()
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+
+        val localConfig = collectorConfigFromSync()
+
+        assertThat(awsConfig).contains("job_name: \"yace\"")
+        assertThat(localConfig).doesNotContain("yace")
+    }
+
+    private fun collectorConfigFromSync(): String {
+        val applied = captureApplied()
+        service.syncConfigMap(controlHost)
+        return applied
+            .filterIsInstance<ConfigMap>()
+            .single()
+            .data.values
+            .single()
     }
 
     /** Every resource the sync applies, in order. */

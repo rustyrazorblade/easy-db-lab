@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -2494,6 +2495,20 @@ sealed interface Event {
             val label: String,
         ) : Grafana {
             override fun toDisplayString(): String = "$label resources applied successfully"
+        }
+
+        /**
+         * A deploy stage was not applied because the environment lacks the [capability] it needs.
+         * It is not awaited either, so the rollout wait does not time out on it. The reason shown is
+         * derived from [capability] (`NodeCapability.absentReason`), so the event carries one fact once.
+         */
+        @Serializable
+        @SerialName("Grafana.StageSkipped")
+        data class StageSkipped(
+            val stage: String,
+            val capability: NodeCapability,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Skipping $stage: ${capability.absentReason}"
         }
 
         /**

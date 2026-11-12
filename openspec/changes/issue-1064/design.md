@@ -6,6 +6,8 @@ The base AMI bakes three files for Cilium ENI mode (`configure_cilium_eni_networ
 - `/etc/systemd/network/06-cilium-eni-unmanaged.network`: `Driver=ena`, `Unmanaged=yes`.
 - `/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg`: no netplan re-render on a NIC hotplug.
 
+This change adds a fourth, `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg` (D8).
+
 networkd picks the lexically first matching `.network` file per link across `/etc`, `/run` and `/usr/lib`, so 05 and 06 win over cloud-init's `10-netplan-*`.  The primary NIC's name depends on its PCI slot: `ens5` on c7gd and c6id, `ens52` on c8gd and m8gd, `enp39s0` on i7i.  On the last three the primary falls to 06 and gets no network.
 
 The image is stacked: the cassandra AMI is baked on a real instance launched from the base AMI.  Anything the base AMI writes about the bake instance's own hardware ends up in the cassandra AMI.
@@ -84,9 +86,23 @@ On a missing or unreadable `instance-data.json`, a null or empty `.ds."meta-data
 
 `edl-primary-eni-network.test.sh` is Docker-free.  The script takes its input file, output directory and `/etc` directory from environment variables with the real paths as defaults, so the test points them at a temp dir.  It is registered as a Gradle task in the `testScripts` aggregate.  `testPackerBase` runs `configure_cilium_eni_networkd.sh`, whose self-checks fail on a missing or wrong unit or 06 file.
 
+### D8. cloud-init configures only the primary NIC (found during the AWS proof)
+
+The AWS proof (task 6.7) found that a reboot with Cilium secondaries attached takes the node off the network.  The cause is in cloud-init 26.2, not in the 05 or 06 files:
+
+- The Ec2 datasource inherits the base `check_instance_id`, which returns `False`, so every boot is treated as `boot-new-instance` and the network config is rebuilt.
+- With the default `apply_full_imds_network_config: true`, `convert_ec2_metadata_network_config` calls `_configure_policy_routing` for each non-primary NIC.  That runs `dhcpcd --persistent` on the NIC to learn its gateway, then kills it with SIGKILL.
+- `--persistent` leaves the lease address and a `proto dhcp` default route (metric 1000 + ifindex) on each secondary.  These sort ahead of the primary (metric 1024), so host egress and SSM fail and the node InternalIP can move to a secondary.
+- `networkctl` still shows the secondaries `unmanaged`; networkd never configures them.  Neither `updates.network.when` nor `network: {config: disabled}` stops the DHCP, because it runs while the network config is generated.
+
+The base AMI therefore adds `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg` with `datasource: Ec2: apply_full_imds_network_config: false`.  In that mode cloud-init renders only its fallback NIC with plain DHCP and never calls `_configure_policy_routing`.  The primary stays matched by MAC through the `/run` 05 file, which sorts ahead of `10-netplan-*`, so the fallback NIC choice never decides which link is the primary.  Cilium keeps its own per-ENI routing tables, so cloud-init's per-NIC policy routing is not needed.  Verified on c8gd with three secondaries: two reboots in a row with no DHCP on any secondary, one default route via the primary, host egress, SSM, IMDS and the node InternalIP correct, and Cilium's static addresses on the secondaries.
+
+The file is added to `Constants.Cilium.NODE_FIX_FILES` and to the bake self-checks.
+
 ## Alternatives Considered
 
-- **Rely on cloud-init's netplan for the primary, with `apply_full_imds_network_config: false` and the unmanaged file sorted after `10-netplan-*`.**  Rejected.  In reduced mode cloud-init renders a "fallback NIC", not device index 0.  With Cilium secondaries attached at reboot, that NIC can be a secondary.
+- **Rely on cloud-init's netplan for the primary, with `apply_full_imds_network_config: false` and the unmanaged file sorted after `10-netplan-*`.**  Rejected as the way to pick the primary.  In reduced mode cloud-init renders a "fallback NIC", not device index 0.  With Cilium secondaries attached at reboot, that NIC can be a secondary.  D8 still sets this option, but only to stop cloud-init's per-NIC DHCP; the primary is still matched by MAC.
+- **Clean up cloud-init's leftover DHCP addresses and routes on non-primary links at boot.**  Rejected.  It removes the symptom after the fact and races with cloud-init's second network-config pass in `init-network`; D8 stops the DHCP at its source.
 - **Count ENA links at first boot and record the only one.**  Rejected.  The cassandra AMI is baked on a real instance from the base AMI, so the recorded MAC leaks into it and every node has no network.  Counting also races with the ENA probe.
 - **PCI `Path=` match, or a wider name list (`ens5 ens52 enp39s0`).**  Rejected.  Both encode the slot number per family, so the next family breaks the same way.
 - **Write the 05 file to `/etc/systemd/network/`, as the Decision text said.**  Rejected for `/run`; the owner's Decision text is deviated from on purpose.  A file in `/etc` persists into any AMI baked from the instance, so the bake instance's MAC would reach the cassandra AMI unless a cleanup step ran at exactly the right moment.  `/run` is a tmpfs, so the leak cannot happen, and the file still sorts ahead of 06 and `10-netplan-*`.
@@ -98,6 +114,7 @@ On a missing or unreadable `instance-data.json`, a null or empty `.ds."meta-data
 - **cloud-init ordering on 26.04.**  If `instance-data.json` is not in `/run` before `network-pre.target`, the script fails and the node has no primary network.  Mitigation: `Wants=` and `After=cloud-init-local.service`; an early AWS step reboots a node and checks the order.
 - **`/etc` shadowing `/run`.**  An `/etc` 05 file overrides the `/run` one.  Mitigation: the bake removes it and the script refuses to run while it exists.
 - **Xen ENA types.**  No DMI check is used, so Xen types such as i3 are not broken by one.
+- **cloud-init fallback NIC.**  With D8, cloud-init's primary search still runs an ephemeral `dhcpcd --persistent` on candidate NICs in order, ENA first, then by name, and stops at the first one that reaches IMDS.  The primary has the lowest slot, so it is tried first.  A secondary would get a lease only if the primary itself fails to reach IMDS, and then the node has no network anyway.
 - **Merge conflict with open PR 1031**, which also edits `CiliumService.kt`.
 
 ## AWS verification

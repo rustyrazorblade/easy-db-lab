@@ -13,6 +13,9 @@
 - [x] 2.5 `packer/base/base.pkr.hcl`: add a `file` provisioner that uploads `install/edl-primary-eni-network` before the networkd provisioner; update that provisioner's comment
 - [x] 2.6 `packer/docker-compose.yml`: make the script available to `configure_cilium_eni_networkd.sh` in the `test-base` service the same way the bake does
 - [x] 2.7 Run `./gradlew testPackerBase` and `./gradlew testScripts` (in a subagent) and confirm both pass, and that removing the unit or the `Driver=ena` line makes `testPackerBase` fail
+- [ ] 2.8 Same script: write `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg` with `datasource: Ec2: apply_full_imds_network_config: false` (design D8); self-check fails if it is missing or does not set the option; header and README describe why
+- [ ] 2.9 `Constants.Cilium.NODE_FIX_FILES`: add the 91 drop-in; update the `CiliumNodeImageCheck` KDoc and any test that asserts the list
+- [ ] 2.10 Run `./gradlew testPackerBase`, `./gradlew testScripts` and `./gradlew test` (in a subagent) and confirm they pass, and that removing the 91 file makes `testPackerBase` fail
 
 ## 3. CLI changes
 
@@ -39,11 +42,12 @@
 - [x] 6.1 `./gradlew installDist`; bake the base AMI; confirm the bake's reload check passed in the build log
 - [x] 6.2 Bake the cassandra AMI on the new base AMI
 - [x] 6.3 Early ordering check: boot one node, reboot it, and confirm from `journalctl -b` / `systemd-analyze critical-chain` that `cloud-init-local` finished before the unit and the unit before `systemd-networkd` on the cached boot; confirm `.ds."meta-data".mac` exists, `ethtool -P` on the primary equals IMDS `meta-data/mac`, and the 05 file survives `netplan generate` plus `networkctl reload`
-- [ ] 6.4 Cilium clusters on c8gd, m8gd, c7gd, i7i and c6id: every node gets DHCP on its primary, one default route, reaches IMDS, `up` completes; `CiliumNodeImageCheck` passes
+- [x] 6.4 Cilium clusters on c8gd, m8gd, c7gd, i7i and c6id: every node gets DHCP on its primary, one default route, reaches IMDS, `up` completes; `CiliumNodeImageCheck` passes
 - [x] 6.5 Flannel clusters on an 8th-gen type and on i7i: the primary is managed and no primary ENA link is unmanaged
-- [ ] 6.6 Force a runtime secondary ENI (more pods than one ENI holds) on c8gd, i7i and c7gd: the secondary is `unmanaged` in `networkctl`, has no OS address and no default route; the node stays `Ready` with IMDS, egress and kubelet-to-apiserver working
-- [ ] 6.7 Reboot a node with a secondary attached: the primary is managed again and the secondary stays unmanaged
+- [ ] 6.6 Force a runtime secondary ENI (more pods than one ENI holds) on c8gd, i7i and c7gd: the secondary is `unmanaged` in `networkctl`, has no DHCP (`dynamic`) address and no default route in the main table (Cilium's own static address and per-ENI tables are expected); the node stays `Ready` with IMDS, egress and kubelet-to-apiserver working
+- [ ] 6.7 Reboot a node with a secondary attached: the primary is managed again and the secondary stays unmanaged; cloud-init runs no DHCP discovery on the secondary; exactly one default route in main, via the primary; host egress, SSM and IMDS work; the node InternalIP is the primary's; repeat on a second reboot
 - [ ] 6.8 Cilium on i7i: `devices` and `egressMasqueradeInterfaces` match `enp39s0` and pod egress works; Tailscale on that cluster reaches db nodes over the tailnet
 - [x] 6.9 Failure path: on a test node, make `.ds."meta-data".mac` unavailable to the script (for example, run it against a copy without the key) and confirm the one-line console message, exit 1 and no 05 file
 - [x] 6.10 `CiliumNodeImageCheck` fails on a node from the previous base AMI, naming the unit
 - [ ] 6.11 Tear down every cluster created for the proof
+- [ ] 6.12 Rebake the base and cassandra AMIs with the 91 drop-in and re-run 6.6 and 6.7 on c8gd on the new AMI

@@ -81,7 +81,7 @@ When the CNI is Cilium and Tailscale is enabled, `up` SHALL install on the contr
 ## ADDED Requirements
 
 ### Requirement: Base image manages the primary ENI by its IMDS MAC
-The base AMI SHALL identify the primary ENI by the MAC that IMDS reports as the primary (`meta-data/mac`), never by interface name or PCI path. A oneshot unit, `edl-primary-eni-network.service` (`Type=oneshot`, `DefaultDependencies=no`, `Wants=` and `After=cloud-init-local.service`, `Before=network-pre.target systemd-networkd.service`, output to `journal+console`, `WantedBy=sysinit.target`), SHALL run `/usr/local/sbin/edl-primary-eni-network` on every boot. The script SHALL read the MAC from `.ds."meta-data".mac` in `/run/cloud-init/instance-data.json` with `jq`, with no fallback path, validate it as six colon-separated hex pairs, lowercase it, and write `/run/systemd/network/05-cilium-eni-primary.network` with `[Match] PermanentMACAddress=<mac>` and `[Network] DHCP=ipv4`, replacing any existing file atomically. The 05 file SHALL live only under `/run`; no `/etc/systemd/network/05-cilium-eni-primary.network` SHALL exist in the image. On any failure the script SHALL print one line naming the cause to the console, write no 05 file, and exit 1; it SHALL never pick a link by any other rule. The `06-cilium-eni-unmanaged.network` (`Driver=ena`, `Unmanaged=yes`) and `90-easydblab-no-network-hotplug.cfg` drop-ins SHALL stay unchanged. No list of NIC names or PCI slots SHALL exist anywhere in the networkd setup. The setup applies to every node on every CNI.
+The base AMI SHALL identify the primary ENI by the MAC that IMDS reports as the primary (`meta-data/mac`), never by interface name or PCI path. A oneshot unit, `edl-primary-eni-network.service` (`Type=oneshot`, `DefaultDependencies=no`, `Wants=` and `After=cloud-init-local.service`, `Before=network-pre.target systemd-networkd.service`, output to `journal+console`, `WantedBy=sysinit.target`), SHALL run `/usr/local/sbin/edl-primary-eni-network` on every boot. The script SHALL read the MAC from `.ds."meta-data".mac` in `/run/cloud-init/instance-data.json` with `jq`, with no fallback path, validate it as six colon-separated hex pairs, lowercase it, and write `/run/systemd/network/05-cilium-eni-primary.network` with `[Match] PermanentMACAddress=<mac>` and `[Network] DHCP=ipv4`, replacing any existing file atomically. The 05 file SHALL live only under `/run`; no `/etc/systemd/network/05-cilium-eni-primary.network` SHALL exist in the image. On any failure the script SHALL print one line naming the cause to the console, write no 05 file, and exit 1; it SHALL never pick a link by any other rule. The `06-cilium-eni-unmanaged.network` (`Driver=ena`, `Unmanaged=yes`) and `90-easydblab-no-network-hotplug.cfg` drop-ins SHALL stay unchanged. The base AMI SHALL also bake `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg`, which sets `datasource: Ec2: apply_full_imds_network_config: false`, so cloud-init never runs DHCP on a non-primary NIC to build per-NIC policy routing; cloud-init 26.2 leaves that lease address and its default route on the link. No list of NIC names or PCI slots SHALL exist anywhere in the networkd setup. The setup applies to every node on every CNI.
 
 #### Scenario: Primary ENI managed on every instance family
 - **GIVEN** a cluster created from the new base AMI (or the cassandra AMI built on it), on Cilium
@@ -119,6 +119,8 @@ The base AMI SHALL identify the primary ENI by the MAC that IMDS reports as the 
 - **WHEN** the node reboots
 - **THEN** cloud-init-local finishes before the unit runs, and the unit finishes before systemd-networkd starts
 - **AND** the primary is managed again by the 05 file and the secondary stays `unmanaged`
+- **AND** cloud-init runs no DHCP discovery on the secondary, so the main routing table holds exactly one default route, via the primary
+- **AND** host egress, IMDS and SSM work, and the node InternalIP is the primary's address
 
 #### Scenario: Derived AMI carries no bake MAC
 - **GIVEN** the cassandra AMI is baked on an instance launched from the new base AMI
@@ -133,10 +135,10 @@ The base AMI SHALL identify the primary ENI by the MAC that IMDS reports as the 
 
 #### Scenario: Packer base test checks the unit and the unmanaged rule
 - **WHEN** `./gradlew testPackerBase` runs
-- **THEN** its self-checks fail if the unit is missing or lacks its `After=cloud-init-local.service` or `Before=network-pre.target` ordering, or if the 06 file lacks `Driver=ena` or `Unmanaged=yes`
+- **THEN** its self-checks fail if the unit is missing or lacks its `After=cloud-init-local.service` or `Before=network-pre.target` ordering, or if the 06 file lacks `Driver=ena` or `Unmanaged=yes`, or if the 91 cloud.cfg drop-in is missing or does not set `apply_full_imds_network_config: false`
 
 ### Requirement: Cilium nodes must come from an AMI carrying the node fixes
-On a Cilium cluster, `up` SHALL check every node for the files the base AMI bakes for Cilium (`Constants.Cilium.NODE_FIX_FILES`) before starting K3s, and SHALL fail with the nodes and the missing paths if any node lacks one. The list SHALL be `/etc/systemd/system/edl-primary-eni-network.service`, `/usr/local/sbin/edl-primary-eni-network`, `/etc/systemd/network/06-cilium-eni-unmanaged.network` and `/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg`. A node that cannot be reached SHALL fail the check.
+On a Cilium cluster, `up` SHALL check every node for the files the base AMI bakes for Cilium (`Constants.Cilium.NODE_FIX_FILES`) before starting K3s, and SHALL fail with the nodes and the missing paths if any node lacks one. The list SHALL be `/etc/systemd/system/edl-primary-eni-network.service`, `/usr/local/sbin/edl-primary-eni-network`, `/etc/systemd/network/06-cilium-eni-unmanaged.network`, `/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg` and `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg`. A node that cannot be reached SHALL fail the check.
 
 #### Scenario: Node from the new AMI passes
 - **GIVEN** a Cilium cluster whose nodes come from the new base AMI

@@ -45,5 +45,5 @@
 - [ ] 6.7 Reboot a node with a secondary attached: the primary is managed again and the secondary stays unmanaged
 - [ ] 6.8 Cilium on i7i: `devices` and `egressMasqueradeInterfaces` match `enp39s0` and pod egress works; Tailscale on that cluster reaches db nodes over the tailnet
 - [ ] 6.9 Failure path: on a test node, make `.ds."meta-data".mac` unavailable to the script (for example, run it against a copy without the key) and confirm the one-line console message, exit 1 and no 05 file
-- [ ] 6.10 `CiliumNodeImageCheck` fails on a node from the previous base AMI, naming the unit
+- [x] 6.10 `CiliumNodeImageCheck` fails on a node from the previous base AMI, naming the unit
 - [ ] 6.11 Tear down every cluster created for the proof

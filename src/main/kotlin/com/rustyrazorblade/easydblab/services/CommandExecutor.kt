@@ -11,7 +11,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
@@ -98,6 +97,9 @@ class DefaultCommandExecutor(
     // Lazy injection - only resolves when first accessed (defers AWS dependency chain)
     private val backupRestoreService: BackupRestoreService by inject()
 
+    // Lazy for the same reason: the handlers take no profile, but resolving them stays off the startup path.
+    private val failureReporter: CommandFailureReporter by inject()
+
     // Thread-local queue for deferred command factories (supports nested command chains)
     private val scheduledQueue = ThreadLocal.withInitial { ArrayDeque<() -> PicoCommand>() }
 
@@ -121,7 +123,12 @@ class DefaultCommandExecutor(
      * @param command The command to execute
      * @return Exit code (0 for success, non-zero for failure)
      */
-    fun executeTopLevel(command: PicoCommand): Int {
+    fun executeTopLevel(command: PicoCommand): Int =
+        // Failures raised outside executeWithLifecycle (state restore, resource cleanup) would
+        // otherwise reach Picocli as a raw stack trace. An Error (out of memory) is not ours to report.
+        runCatchingException { runTopLevel(command) }.getOrElse(::reportFailure)
+
+    private fun runTopLevel(command: PicoCommand): Int {
         // VPC reconstruction from environment variable (if set)
         handleVpcReconstructionFromEnv()
 
@@ -181,7 +188,7 @@ class DefaultCommandExecutor(
             runCatchingException {
                 checkRequirements(command)
                 command.call()
-            }.getOrElse { failure -> reportFailure(failure) }
+            }.getOrElse(::reportFailure)
 
         // 3. Post-success actions
         if (exitCode == 0) {
@@ -191,23 +198,17 @@ class DefaultCommandExecutor(
         return exitCode
     }
 
-    /** Reports [failure] of a command, or of its requirement checks, and returns the exit code that stands for it. */
-    private fun reportFailure(failure: Throwable): Int =
-        when (failure) {
-            // The command already reported this failure through its own event.
-            is CommandFailedException -> {
-                log.debug(failure) { "Command reported failure" }
-                Constants.ExitCodes.ERROR
-            }
-            else -> {
-                log.error(failure) { "Command execution failed" }
-                val causeChain =
-                    generateSequence(failure) { it.cause }
-                        .joinToString("\n  caused by: ") { "${it::class.simpleName}: ${it.message}" }
-                eventBus.emit(Event.Command.ExecutionError(causeChain))
-                Constants.ExitCodes.ERROR
-            }
-        }
+    /**
+     * Reports [failure] of a command, or of its requirement checks, through [CommandFailureReporter]
+     * and returns the exit code that stands for it. An [InterruptedException] is Ctrl-C or SIGTERM in
+     * REPL or server mode: cancellation is not a command failure, so it propagates;
+     * [runCatchingException] has already restored the interrupt flag.
+     */
+    private fun reportFailure(failure: Throwable): Int {
+        if (failure is InterruptedException) throw failure
+        failureReporter.report(failure)
+        return Constants.ExitCodes.ERROR
+    }
 
     /**
      * Checks and enforces command requirements based on annotations.

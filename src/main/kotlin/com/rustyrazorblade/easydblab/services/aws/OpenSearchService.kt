@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
 import software.amazon.awssdk.services.opensearch.model.CreateDomainRequest
@@ -96,6 +97,25 @@ data class OpenSearchDomainResult(
     val dashboardsEndpoint: String? = null,
     val state: DomainState,
 )
+
+/**
+ * What a domain lookup found, as [OpenSearchService.lookupDomain] reports it. A value rather than an
+ * SDK exception, so the command layer can tell a missing domain from AWS not answering.
+ */
+sealed interface DomainLookup {
+    /** The domain exists; [result] is its current status. */
+    data class Found(
+        val result: OpenSearchDomainResult,
+    ) : DomainLookup
+
+    /** AWS reports no domain by that name. */
+    data object NotFound : DomainLookup
+
+    /** AWS could not answer; [reason] is the SDK's message. */
+    data class Unavailable(
+        val reason: String,
+    ) : DomainLookup
+}
 
 /**
  * Service for creating and managing AWS OpenSearch domains.
@@ -219,6 +239,27 @@ class OpenSearchService(
             .tagList(tags)
             .build()
     }
+
+    /**
+     * Looks a domain up and reports the outcome as a value: found, not found, or unavailable when
+     * AWS could not answer (a network failure, a throttle that outlasted the retry, a denial).
+     *
+     * The outcome is a value, so callers outside the AWS adapter need no SDK exception type. The
+     * catch sits outside the retry on purpose: translating an error inside a retried call would hide
+     * it from the retry's predicate. Any failure that is not an AWS SDK failure propagates.
+     *
+     * @param domainName The domain name
+     * @return What AWS reported for [domainName]
+     */
+    fun lookupDomain(domainName: String): DomainLookup =
+        try {
+            DomainLookup.Found(describeDomain(domainName))
+        } catch (_: ResourceNotFoundException) {
+            DomainLookup.NotFound
+        } catch (e: SdkException) {
+            log.warn(e) { "Failed to describe OpenSearch domain $domainName" }
+            DomainLookup.Unavailable(e.message ?: e::class.simpleName.orEmpty())
+        }
 
     /**
      * Gets the current status of an OpenSearch domain.

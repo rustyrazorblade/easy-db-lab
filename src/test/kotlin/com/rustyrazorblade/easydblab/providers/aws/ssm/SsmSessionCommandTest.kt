@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.providers.ssm
+package com.rustyrazorblade.easydblab.providers.aws.ssm
 
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager

@@ -14,30 +14,41 @@ import software.amazon.awssdk.services.sts.StsClient
  * Allows injection of mock clients during testing.
  */
 interface AWSClientFactory {
+    companion object {
+        /**
+         * Rejects a blank region, which is the only input `Region.of` refuses. Callers outside the
+         * adapter hold a plain region name, so this is where their bad input fails, before any
+         * client is built. A misspelt region is not detected here, by decision.
+         */
+        fun requireValidRegion(region: String) {
+            Region.of(region)
+        }
+    }
+
     /**
      * Creates an [AccountIdentity] with the given credentials.
      *
      * @param accessKey AWS access key
      * @param secret AWS secret key
-     * @param region AWS region
+     * @param region AWS region name, for example us-west-2
      * @return account identity for those credentials
      */
     fun createAccountIdentity(
         accessKey: String,
         secret: String,
-        region: Region,
+        region: String,
     ): AccountIdentity
 
     /**
      * Creates an [AccountIdentity] using an AWS profile from ~/.aws/credentials.
      *
      * @param profileName AWS profile name
-     * @param region AWS region
+     * @param region AWS region name, for example us-west-2
      * @return account identity for that profile
      */
     fun createAccountIdentityWithProfile(
         profileName: String,
-        region: Region,
+        region: String,
     ): AccountIdentity
 
     /**
@@ -45,25 +56,25 @@ interface AWSClientFactory {
      *
      * @param accessKey AWS access key
      * @param secret AWS secret key
-     * @param region AWS region
+     * @param region AWS region name, for example us-west-2
      * @return EC2 client
      */
     fun createEc2Client(
         accessKey: String,
         secret: String,
-        region: Region,
+        region: String,
     ): Ec2Client
 
     /**
      * Creates an EC2 client using an AWS profile from ~/.aws/credentials.
      *
      * @param profileName AWS profile name
-     * @param region AWS region
+     * @param region AWS region name, for example us-west-2
      * @return EC2 client
      */
     fun createEc2ClientWithProfile(
         profileName: String,
-        region: Region,
+        region: String,
     ): Ec2Client
 }
 
@@ -76,41 +87,41 @@ class DefaultAWSClientFactory : AWSClientFactory {
     override fun createAccountIdentity(
         accessKey: String,
         secret: String,
-        region: Region,
+        region: String,
     ): AccountIdentity {
         val credentialsProvider =
             StaticCredentialsProvider.create(
                 AwsBasicCredentials.create(accessKey, secret),
             )
-        return createAccountIdentityWithProvider(credentialsProvider, region)
+        return createAccountIdentityWithProvider(credentialsProvider, Region.of(region))
     }
 
     override fun createAccountIdentityWithProfile(
         profileName: String,
-        region: Region,
+        region: String,
     ): AccountIdentity {
         val credentialsProvider = ProfileCredentialsProvider.create(profileName)
-        return createAccountIdentityWithProvider(credentialsProvider, region)
+        return createAccountIdentityWithProvider(credentialsProvider, Region.of(region))
     }
 
     override fun createEc2Client(
         accessKey: String,
         secret: String,
-        region: Region,
+        region: String,
     ): Ec2Client {
         val credentialsProvider =
             StaticCredentialsProvider.create(
                 AwsBasicCredentials.create(accessKey, secret),
             )
-        return createEc2ClientWithProvider(credentialsProvider, region)
+        return createEc2ClientWithProvider(credentialsProvider, Region.of(region))
     }
 
     override fun createEc2ClientWithProfile(
         profileName: String,
-        region: Region,
+        region: String,
     ): Ec2Client {
         val credentialsProvider = ProfileCredentialsProvider.create(profileName)
-        return createEc2ClientWithProvider(credentialsProvider, region)
+        return createEc2ClientWithProvider(credentialsProvider, Region.of(region))
     }
 
     private fun createAccountIdentityWithProvider(

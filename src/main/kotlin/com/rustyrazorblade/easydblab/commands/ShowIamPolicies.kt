@@ -1,8 +1,8 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -38,7 +38,7 @@ class ShowIamPolicies : PicoBaseCommand() {
                 throw e
             }
 
-        val policies = User.getRequiredIAMPolicies(accountId)
+        val policies = AWSPolicy.UserIAM.loadAll(accountId)
 
         // Filter by name if provided
         val filtered =

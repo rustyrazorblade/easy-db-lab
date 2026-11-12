@@ -15,6 +15,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
 import software.amazon.awssdk.services.opensearch.model.CreateDomainRequest
@@ -61,6 +62,60 @@ internal class OpenSearchServiceTest {
             },
         )
         openSearchService = OpenSearchService(mockOpenSearchClient, mockIamRoles, mockAccountIdentity, eventBus)
+    }
+
+    @Test
+    fun `lookupDomain reports a domain that does not exist as not found, without retrying`() {
+        whenever(mockOpenSearchClient.describeDomain(any<DescribeDomainRequest>()))
+            .thenThrow(ResourceNotFoundException.builder().message("gone").build())
+
+        assertThat(openSearchService.lookupDomain("missing")).isEqualTo(DomainLookup.NotFound)
+
+        verify(mockOpenSearchClient, org.mockito.kotlin.times(1)).describeDomain(any<DescribeDomainRequest>())
+    }
+
+    @Test
+    fun `lookupDomain returns the domain when it exists`() {
+        whenever(mockOpenSearchClient.describeDomain(any<DescribeDomainRequest>()))
+            .thenReturn(
+                DescribeDomainResponse
+                    .builder()
+                    .domainStatus(
+                        DomainStatus
+                            .builder()
+                            .domainName("lab-os")
+                            .domainId("123/lab-os")
+                            .endpoint("search-lab.example.com")
+                            .processing(false)
+                            .deleted(false)
+                            .build(),
+                    ).build(),
+            )
+
+        val lookup = openSearchService.lookupDomain("lab-os")
+
+        assertThat(lookup).isInstanceOf(DomainLookup.Found::class.java)
+        val result = (lookup as DomainLookup.Found).result
+        assertThat(result.domainName).isEqualTo("lab-os")
+        assertThat(result.endpoint).isEqualTo("search-lab.example.com")
+    }
+
+    @Test
+    fun `lookupDomain reports an SDK failure as unavailable with its message`() {
+        whenever(mockOpenSearchClient.describeDomain(any<DescribeDomainRequest>()))
+            .thenThrow(SdkClientException.create("Unable to execute HTTP request"))
+
+        assertThat(openSearchService.lookupDomain("lab-os"))
+            .isEqualTo(DomainLookup.Unavailable("Unable to execute HTTP request"))
+    }
+
+    @Test
+    fun `lookupDomain lets a failure that is not an SDK failure propagate`() {
+        whenever(mockOpenSearchClient.describeDomain(any<DescribeDomainRequest>()))
+            .thenThrow(IllegalStateException("bug"))
+
+        assertThatThrownBy { openSearchService.lookupDomain("lab-os") }
+            .isInstanceOf(IllegalStateException::class.java)
     }
 
     @Test

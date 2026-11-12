@@ -28,6 +28,8 @@ services/aws/
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 ├── CompactorLeaseReader.kt    # Reads the account compactor's lease for `observability compactor status`, in the bucket's region
+├── AwsKeyPairService.kt       # Creates the EC2 key pair for profile setup; saves secret.pem owner-only
+├── AwsServicesModule.kt       # Koin bindings for this package
 ├── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
 └── DataDiskRequirement.kt     # Every node needs a data disk: db has instance store or --ebs.type, control and app have instance store (checked by init, and by InstanceSpecFactory for db)
 ```
@@ -87,7 +89,7 @@ Services are organized by resource, not by operation type:
 
 ## Koin Registration
 
-All services in this package are registered in `providers/aws/AWSModule.kt` as Koin singletons, alongside the SDK clients they depend on.
+All services in this package are registered in `AwsServicesModule.kt` (this package); the SDK clients they depend on come from `providers/aws/AwsClientsModule.kt`.
 
 ## Testing Rule: LocalStack Integration Tests Are Mandatory
 

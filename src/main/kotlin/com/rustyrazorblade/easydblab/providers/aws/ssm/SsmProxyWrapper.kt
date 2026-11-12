@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.providers.ssm
+package com.rustyrazorblade.easydblab.providers.aws.ssm
 
 import com.rustyrazorblade.easydblab.PackagedExecutable
 import java.io.File

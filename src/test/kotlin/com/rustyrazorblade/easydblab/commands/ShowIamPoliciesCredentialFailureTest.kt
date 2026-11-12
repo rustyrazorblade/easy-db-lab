@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.assertj.core.api.Assertions.assertThat
@@ -35,7 +36,7 @@ class ShowIamPoliciesCredentialFailureTest : BaseKoinTest() {
                         override fun checkPermissions() = Unit
                     }
                 }
-                single { AWSResourceSetupService(get<AccountIdentity>(), mock<IamRoles>(), get(), get()) }
+                single { AWSResourceSetupService(get<AccountIdentity>(), mock<IamRoles>(), get(), get(), AwsErrorHandler()) }
             },
         )
 

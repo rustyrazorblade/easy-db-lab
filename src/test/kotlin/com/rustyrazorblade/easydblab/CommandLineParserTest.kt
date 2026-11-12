@@ -2,8 +2,13 @@ package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService
@@ -47,6 +52,7 @@ class CommandLineParserTest : BaseKoinTest() {
                 single<KitCommandScanner> { DefaultKitCommandScanner() }
                 single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
                 single<HelpTopicService> { DefaultHelpTopicService() }
+                single { CommandFailureReporter(get(), emptyList()) }
             },
         )
 
@@ -78,6 +84,59 @@ class CommandLineParserTest : BaseKoinTest() {
         val output = stdout.toString()
         assertThat(output).contains("clickhouse")
         assertThat(output).doesNotContain("trunk")
+    }
+
+    @Test
+    fun `a failing non-PicoCommand is reported through the failure reporter with a non-zero exit`() {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() {
+                    // Nothing to release.
+                }
+            },
+        )
+        val parser = CommandLineParser()
+        parser.commandLine.addSubcommand("boom", BoomCommand())
+
+        val exitCode = parser.commandLine.execute("boom")
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(events.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("IllegalStateException")
+            .contains("boom happened")
+    }
+
+    @Test
+    fun `an interrupt reaching the picocli handler keeps the interrupt flag and is not reported`() {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() {
+                    // Nothing to release.
+                }
+            },
+        )
+        val parser = CommandLineParser()
+        parser.commandLine.addSubcommand("stop", StopCommand())
+
+        try {
+            val exitCode = parser.commandLine.execute("stop")
+
+            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+        assertThat(events.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
     }
 
     @Test
@@ -326,5 +385,17 @@ class CommandLineParserTest : BaseKoinTest() {
         assertThatThrownBy { commandLine.parseArgs("init", "--name", "my-cluster", "--db", "3") }
             .isInstanceOf(CommandLine.ParameterException::class.java)
             .hasMessageContaining("easy-db-lab init <name>")
+    }
+
+    /** A plain Picocli command that is interrupted, as Ctrl-C or SIGTERM does to a REPL or server thread. */
+    @CommandLine.Command(name = "stop")
+    class StopCommand : Runnable {
+        override fun run(): Unit = throw InterruptedException("stopped")
+    }
+
+    /** A plain Picocli command, not a PicoCommand, so the executor never sees it. */
+    @CommandLine.Command(name = "boom")
+    class BoomCommand : Runnable {
+        override fun run(): Unit = throw IllegalStateException("boom happened")
     }
 }

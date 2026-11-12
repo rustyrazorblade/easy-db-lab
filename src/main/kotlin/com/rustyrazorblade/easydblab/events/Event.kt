@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -4551,6 +4552,31 @@ sealed interface Event {
             val exitCode: Int,
         ) : Command {
             override fun toDisplayString(): String = "$command failed: $nested exited with code $exitCode; its error is shown above."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A command failed with an error a provider's [com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler]
+         * recognised: bad credentials or missing permissions. Carries the provider's detail and the remedy.
+         */
+        @Serializable
+        @SerialName("Command.ProviderError")
+        data class ProviderError(
+            val provider: String,
+            val kind: ProviderErrorKind,
+            val detail: String,
+            val remedy: String,
+        ) : Command {
+            override fun toDisplayString(): String {
+                val headline =
+                    when (kind) {
+                        ProviderErrorKind.CREDENTIALS -> "$provider credentials are missing, expired or invalid."
+                        ProviderErrorKind.PERMISSION_DENIED -> "$provider denied permission for this operation."
+                        ProviderErrorKind.UNAVAILABLE -> "$provider is not available."
+                    }
+                return "$headline\n$detail\n$remedy\nFor detailed error information, check the logs (logs/info.log by default)"
+            }
 
             override fun isError(): Boolean = true
         }

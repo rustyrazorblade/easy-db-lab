@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.lang.ArchCondition
@@ -243,6 +244,31 @@ private object NoPackagePrefixInSerialName : ArchCondition<JavaClass>(
                     "${item.name} has package-prefixed @SerialName '$value' — use short form like 'Domain.ClassName'",
                 ),
             )
+        }
+    }
+
+    @Test
+    fun `a provider error keeps its kind on the wire as the serial name and round-trips`() {
+        val expectedWire =
+            mapOf(
+                ProviderErrorKind.CREDENTIALS to "credentials",
+                ProviderErrorKind.PERMISSION_DENIED to "permission-denied",
+                ProviderErrorKind.UNAVAILABLE to "unavailable",
+            )
+        assertThat(expectedWire.keys).containsExactlyInAnyOrder(*ProviderErrorKind.entries.toTypedArray())
+
+        for ((kind, wire) in expectedWire) {
+            val envelope =
+                EventEnvelope(
+                    event = Event.Command.ProviderError("AWS", kind, "detail", "remedy"),
+                    timestamp = "2026-01-01T00:00:00.000Z",
+                    commandName = "test",
+                )
+
+            val json = EventEnvelope.toJson(envelope)
+
+            assertThat(json).describedAs(kind.name).contains("\"kind\":\"$wire\"")
+            assertThat(EventEnvelope.fromJson(json)).isEqualTo(envelope)
         }
     }
 }

@@ -28,6 +28,7 @@ import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
@@ -141,6 +142,7 @@ class StatusTest : BaseKoinTest() {
                 single<EMRService> { mockEmrService }
                 single<StressJobService> { mockStressJobService }
                 single<ProxyAvailability> { DefaultProxyAvailability() }
+                single { CommandFailureReporter(get(), emptyList()) }
                 // Real instance: the scanner only reads the filesystem, so faking it would
                 // hide the very rule these tests exercise.
                 single { WorkspaceKitScanner(get()) }

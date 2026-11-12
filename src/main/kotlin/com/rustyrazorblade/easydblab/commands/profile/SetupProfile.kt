@@ -13,15 +13,16 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidationException
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
-import software.amazon.awssdk.regions.Region
 
 /**
  * Sets up user profile interactively.
@@ -45,6 +46,7 @@ class SetupProfile : PicoBaseCommand() {
     private val commandExecutor: CommandExecutor by inject()
     private val prompter: Prompter by inject()
     private val awsClientFactory: AWSClientFactory by inject()
+    private val keyPairService: AwsKeyPairService by inject()
     private val externalIpService: ExternalIpService by inject()
 
     override fun execute() {
@@ -131,12 +133,13 @@ class SetupProfile : PicoBaseCommand() {
      * Returns validated credentials and region.
      * @throws SetupProfileException if credentials fail validation after max retries
      */
-    private fun collectAndValidateCredentials(existingConfig: Map<String, Any>): Pair<CoreCredentials, Region> {
+    private fun collectAndValidateCredentials(existingConfig: Map<String, Any>): Pair<CoreCredentials, String> {
         var attempt = 0
         while (attempt < MAX_CREDENTIAL_RETRIES) {
             attempt++
             val credentials = collectCoreCredentials(existingConfig)
-            val regionObj = Region.of(credentials.region)
+            AWSClientFactory.requireValidRegion(credentials.region)
+            val regionObj = credentials.region
 
             try {
                 validateAwsCredentials(credentials, regionObj)
@@ -202,7 +205,7 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun validateAwsCredentials(
         credentials: CoreCredentials,
-        regionObj: Region,
+        regionObj: String,
     ) {
         eventBus.emit(Event.Setup.ValidatingCredentials)
 
@@ -224,7 +227,7 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun createAwsClient(
         credentials: CoreCredentials,
-        regionObj: Region,
+        regionObj: String,
     ): AWS =
         if (credentials.awsProfile.isNotEmpty()) {
             awsClientFactory.createAWSClientWithProfile(credentials.awsProfile, regionObj)
@@ -415,7 +418,7 @@ class SetupProfile : PicoBaseCommand() {
     private fun ensureAwsResources(
         userConfig: User,
         credentials: CoreCredentials,
-        regionObj: Region,
+        regionObj: String,
     ) {
         ensureKeyPair(userConfig, credentials, regionObj)
         ensureIamRoles(userConfig)
@@ -430,33 +433,22 @@ class SetupProfile : PicoBaseCommand() {
     private fun ensureKeyPair(
         userConfig: User,
         credentials: CoreCredentials,
-        regionObj: Region,
+        regionObj: String,
     ) {
         if (userConfig.keyName.isBlank()) {
             eventBus.emit(Event.Setup.GeneratingKeyPair)
-            val ec2Client = createEc2Client(credentials, regionObj)
             val keyName =
-                User.generateAwsKeyPair(
-                    context,
-                    ec2Client,
-                    eventBus,
+                keyPairService.generate(
+                    context.profileDir,
+                    regionObj,
+                    credentials.awsProfile,
+                    credentials.awsAccessKey,
+                    credentials.awsSecret,
                 )
             userConfig.keyName = keyName
             userConfigProvider.saveUserConfig(userConfig)
             eventBus.emit(Event.Setup.KeyPairSaved)
         }
-    }
-
-    /**
-     * Creates an EC2 client using either profile or static credentials.
-     */
-    private fun createEc2Client(
-        credentials: CoreCredentials,
-        regionObj: Region,
-    ) = if (credentials.awsProfile.isNotEmpty()) {
-        awsClientFactory.createEc2ClientWithProfile(credentials.awsProfile, regionObj)
-    } else {
-        awsClientFactory.createEc2Client(credentials.awsAccessKey, credentials.awsSecret, regionObj)
     }
 
     /**
@@ -474,7 +466,7 @@ class SetupProfile : PicoBaseCommand() {
     private fun ensureS3Bucket(
         userConfig: User,
         credentials: CoreCredentials,
-        regionObj: Region,
+        regionObj: String,
     ) {
         if (userConfig.s3Bucket.isBlank()) {
             eventBus.emit(Event.Setup.S3BucketCreating)
@@ -582,7 +574,7 @@ class SetupProfile : PicoBaseCommand() {
      * @param accountId The AWS account ID to substitute in policies
      */
     private fun displayIAMPolicies(accountId: String) {
-        val policies = User.getRequiredIAMPolicies(accountId)
+        val policies = AWSPolicy.UserIAM.loadAll(accountId)
         eventBus.emit(Event.Setup.IamPoliciesHeader)
         displayPolicyBodies(policies)
         eventBus.emit(Event.Setup.IamPoliciesFooter)

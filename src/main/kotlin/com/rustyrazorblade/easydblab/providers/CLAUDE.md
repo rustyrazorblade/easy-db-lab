@@ -7,7 +7,8 @@ This package contains low-level infrastructure providers for AWS, SSH, and Docke
 ```
 providers/
 ├── aws/                    # AWS SDK wrappers and data types
-│   ├── AWSModule.kt        # Koin DI registration for all AWS services
+│   ├── AwsClientsModule.kt # Koin: region, credentials, the SDK clients, AWS, AWSClientFactory, AWSCredentialsManager (factory), AwsErrorHandler, SSM
+│   ├── AwsErrorHandler.kt  # Classifies AWS credential and permission failures for the ProviderErrorHandler contract
 │   ├── AWS.kt              # Low-level IAM, S3, STS operations
 │   ├── EC2.kt              # Low-level EC2 operations
 │   ├── RetryUtil.kt        # Centralized retry configuration
@@ -30,7 +31,8 @@ providers/
 ├── docker/                 # Docker client providers
 │   ├── DockerModule.kt
 │   ├── DockerClientProvider.kt
-│   └── DefaultDockerClientProvider.kt
+│   ├── DefaultDockerClientProvider.kt
+│   └── DockerErrorHandler.kt  # An unreachable Docker daemon (connection failure only) as a ProviderErrorHandler, kind unavailable
 ├── ssh/                    # SSH connection providers
 │   ├── SSHModule.kt
 │   ├── SSHConnectionProvider.kt
@@ -38,14 +40,9 @@ providers/
 │   ├── SshRoute.kt        # How each SSH transport reaches a node (DirectSshRoute)
 │   ├── RemoteOperationsService.kt
 │   └── DefaultRemoteOperationsService.kt
-└── ssm/                    # SSM Session Manager SSH transport
-    ├── SsmModule.kt
-    ├── SsmSessionCommand.kt # `aws ssm start-session` command lines + credentials
-    ├── SsmProxyWrapper.kt  # Installs the edl-ssm-proxy ProxyCommand wrapper into the profile dir
-    ├── SsmSessionTerminator.kt # Ends a stopped forward's Session Manager session (TerminateSession)
-    ├── SsmForwardNotReadyException.kt # Unchecked, retryable: a forward exited or timed out before ready
-    └── SsmSshRoute.kt       # The `ssm` SshRoute: ProxyCommands + per-instance port forwards
 ```
+
+The SSM Session Manager SSH transport lives in `providers/aws/ssm/` (it is AWS, so the SDK boundary applies), and its Koin bindings are in `AwsClientsModule`: `SsmSessionCommand` (`aws ssm start-session` command lines and credentials), `SsmProxyWrapper` (installs the `edl-ssm-proxy` ProxyCommand wrapper into the profile dir), `SsmSessionTerminator` (ends a stopped forward's session with TerminateSession), `SsmForwardNotReadyException` (unchecked, retryable: a forward exited or timed out before ready) and `SsmSshRoute` (the `ssm` `SshRoute`: ProxyCommands and per-instance port forwards).
 
 ## What Belongs Here vs `services/aws/`
 
@@ -114,9 +111,27 @@ val pods = pollUntil("wait-for-pod", maxAttempts = 10, interval = Duration.ofSec
 }
 ```
 
-## AWSModule.kt Registration
+## Koin Registration
 
-`AWSModule.kt` remains here because it registers both low-level SDK clients and service-layer singletons via Koin. Services from `services/aws/` are imported and registered here alongside their SDK client dependencies.
+`AwsClientsModule.kt` registers the region, the credentials provider, the SDK clients, `AWS`, `AWSClientFactory`, `AWSCredentialsManager`, `AwsErrorHandler` and the SSM transport. Its only edges are `configuration`, `events` and `Context`. The bindings of `services/aws` classes live in `services/aws/AwsServicesModule.kt`, so the services layer never builds an SDK client. `AWSCredentialsManager` is a `factory`, not a `single`: its credentials file is lazy, and a single would keep stale SSO credentials across builds in REPL or Server mode.
+
+## The SDK Boundary
+
+AWS SDK types stay inside `providers/aws` and `services/aws` (see the root `CLAUDE.md` and `architecture/PackageBoundaryTest`). Three rules follow:
+
+- **No SDK-touching `inline` functions in the adapters.** An inline function copies its body, SDK references included, into every caller outside the adapter, and the boundary test then fails there.
+- **Translation wraps a retried call and never runs inside it.** A `catch` that turns an SDK exception into a value or a project exception goes outside `withAwsRetry` (see `OpenSearchService.describeDomainOrNull`). Inside the retry, it would hide the exception from the retry's predicate.
+- **`Up.kt` retries on `SdkException` through `createVpcAutoCidrRetryConfig`, from outside the adapter.** If an adapter ever translated exceptions, that retry would silently stop. Adapter-level exception translation is therefore blocked until the ClusterNetwork work moves that retry into the adapter.
+
+## Provider Errors
+
+`kernel/ProviderErrorHandler` returns an `ErrorDescription` (provider, kind, detail, remedy) for an exception it owns, or null. `AwsErrorHandler` classifies by SDK class and error code, and checks the code before the HTTP status because STS, IAM and S3 answer 403 for bad credentials:
+
+- **Credentials:** `ExpiredToken`, `InvalidClientTokenId`, `SignatureDoesNotMatch` and the other codes in `Constants.AWS.ErrorCodes.CREDENTIALS`, an expired SSO session (`sso.auth.ExpiredTokenException`, by type), and an `SdkClientException` that an SDK credentials provider raised itself (its first frame past the SDK exception builder is in `software.amazon.awssdk.auth.credentials`) with a message starting with one of `Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES`. The SDK gives a missing chain no subtype or code, so where it was raised is what tells it from a wrapped S3 or network error that quotes the same words. The remedy is `easy-db-lab profile setup`, then, conditionally on the user having the AWS CLI, `aws sso login` (add `--profile` and the profile name for a non-default profile; the handler has no profile to name) and `aws sts get-caller-identity`; the AWS CLI is never assumed. The provider check is pinned by tests that build the exceptions from real SDK providers; the expired-SSO case is recognised by `sso.auth.ExpiredTokenException`'s type.
+- **Permission denied:** `AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`, or any other 403 except clock skew. The remedy names the lab policy for the exception's service (`AWSPolicy.UserIAM` constants) and `easy-db-lab show-iam-policies <policy>`, worded "if this is missing permissions on your AWS user" and noting what else can also deny the request (a bucket policy, SCP or KMS key policy for S3; an SCP or permissions boundary for any other service), because a 403 does not prove the cause. An STS denial names no policy: its only call, `GetCallerIdentity`, needs no IAM permission, so the remedy points at an SCP, permissions boundary or session policy.
+- A network `SdkClientException` is not claimed and stays an ordinary execution error.
+
+A handler claims an exception by its type alone and takes no dependencies, so it works before a profile exists. `services/CommandFailureReporter` walks the cause chain across every registered handler (`getAll()` in Koin) and emits `Event.Command.ProviderError`; a site that already printed a detailed message rethrows `CommandFailedException(message, cause)` so the user sees one block.
 
 ## SSH Provider
 
@@ -131,7 +146,7 @@ itself is the same either way. It is read from the profile at runtime, never sna
 `state.json`, because clusters are provisioned identically under both transports.
 
 The transport is decided in exactly one place: the `SshRoute` binding in `SSHModule.kt`
-(`DirectSshRoute` or `ssm/SsmSshRoute`). Everything else asks the route; do not add another
+(`DirectSshRoute` or `aws/ssm/SsmSshRoute`). Everything else asks the route; do not add another
 `when (sshTransport)` elsewhere. The only other reader is `up`'s local-tooling preflight.
 
 - **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper and the `bin/` SSH wrappers) use
@@ -178,7 +193,7 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
   and fail fast on any other `IOException`.
 - Forward processes, including the `session-manager-plugin` child, are stopped by
   `SsmSshRoute.close()` and its JVM shutdown hook, from the moment they are spawned. Every stop
-  also calls TerminateSession (`ssm/SsmSessionTerminator`, the SDK `SsmClient` from `SsmModule`)
+  also calls TerminateSession (`ssm/SsmSessionTerminator`, the SDK `SsmClient` from `AwsClientsModule`)
   for the session ID the CLI printed, because killing the processes leaves the session open in
   Session Manager for 20 minutes. Nothing calls
   `SSHConnectionProvider.stop()` in production today; if something starts to, it closes the route

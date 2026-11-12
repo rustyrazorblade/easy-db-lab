@@ -23,6 +23,10 @@ services/aws/
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 ├── CompactorService.kt        # The account compactor on ECS Fargate (ensureRunning, stop, stopIfLastCluster, status); composes the classes below
+├── CompactorTaskDefinition.kt # Pure builder of the compactor's ECS task definition; loads tempo-backend.yaml (beside it under resources) relative to the class
+├── AwsKeyPairService.kt       # Creates the EC2 key pair for profile setup; saves secret.pem owner-only
+├── EcrPullSecretService.kt    # Implements services/ImagePullSecretService: an ECR token as a dockerconfigjson secret
+├── AwsServicesModule.kt       # Koin bindings for this package
 ├── CompactorStatusReader.kt   # Read-only status: counts, service events, the latest task and why it stopped, its log lines
 ├── CompactorTaskRegistrar.kt  # Registers the task definition, or reuses the latest revision with the same config hash
 ├── CompactorIam.kt            # Its task and execution roles and ECS's service-linked role
@@ -87,7 +91,7 @@ Services are organized by resource, not by operation type:
 
 ## Koin Registration
 
-All services in this package are registered in `providers/aws/AWSModule.kt` as Koin singletons, alongside the SDK clients they depend on.
+All services in this package are registered in `AwsServicesModule.kt` (this package); the SDK clients they depend on come from `providers/aws/AwsClientsModule.kt`.
 
 ## Testing Rule: LocalStack Integration Tests Are Mandatory
 

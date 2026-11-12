@@ -23,6 +23,7 @@ import software.amazon.awssdk.services.opensearch.model.EncryptionAtRestOptions
 import software.amazon.awssdk.services.opensearch.model.ListDomainNamesRequest
 import software.amazon.awssdk.services.opensearch.model.NodeToNodeEncryptionOptions
 import software.amazon.awssdk.services.opensearch.model.OpenSearchPartitionInstanceType
+import software.amazon.awssdk.services.opensearch.model.ResourceNotFoundException
 import software.amazon.awssdk.services.opensearch.model.Tag
 import software.amazon.awssdk.services.opensearch.model.VPCOptions
 import software.amazon.awssdk.services.opensearch.model.VolumeType
@@ -214,6 +215,23 @@ class OpenSearchService(
             .tagList(tags)
             .build()
     }
+
+    /**
+     * Describes a domain, or returns null when it does not exist.
+     *
+     * The not-found case is a value, so callers outside the AWS adapter need no SDK exception type.
+     * The catch sits outside the retry on purpose: translating an error inside a retried call would
+     * hide it from the retry's predicate.
+     *
+     * @param domainName The domain name
+     * @return Current domain status, or null when AWS reports no such domain
+     */
+    fun describeDomainOrNull(domainName: String): OpenSearchDomainResult? =
+        try {
+            describeDomain(domainName)
+        } catch (_: ResourceNotFoundException) {
+            null
+        }
 
     /**
      * Gets the current status of an OpenSearch domain.

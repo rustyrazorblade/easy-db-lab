@@ -3,11 +3,11 @@ package com.rustyrazorblade.easydblab.commands.spark
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.SparkJobState
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
-import software.amazon.awssdk.services.emr.model.StepState
 
 /**
  * Check the status of a Spark job on the EMR cluster.
@@ -96,7 +96,7 @@ class SparkStatus : PicoBaseCommand() {
             eventBus.emit(Event.Emr.StepStatusInfo(statusInfo.trimEnd()))
 
             // Show log query hint for failed jobs
-            if (jobStatus.state == StepState.FAILED) {
+            if (jobStatus.state == SparkJobState.FAILED) {
                 eventBus.emit(Event.Emr.StepFailedHint(targetStepId))
             }
         }

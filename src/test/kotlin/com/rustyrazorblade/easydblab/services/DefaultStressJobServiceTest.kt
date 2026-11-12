@@ -36,7 +36,7 @@ import java.time.Duration
 class DefaultStressJobServiceTest : BaseKoinTest() {
     private lateinit var service: DefaultStressJobService
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockEcrPullSecrets: EcrPullSecretService
+    private lateinit var mockEcrPullSecrets: ImagePullSecretService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -660,7 +660,7 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                     },
                 )
             }
-        val ecrPullSecrets: EcrPullSecretService = mock()
+        val ecrPullSecrets: ImagePullSecretService = mock()
         whenever(ecrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
         return DefaultStressJobService(
             k8sService = k8sService,

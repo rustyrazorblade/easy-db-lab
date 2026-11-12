@@ -9,7 +9,7 @@ import software.amazon.awssdk.services.ecs.EcsClient
 /**
  * AWS clients for a region named at call time. The account compactor runs in the account bucket's
  * region, which can differ from the profile's, and `down` counts clusters in every enabled region;
- * the profile-region clients in [awsModule] cannot reach either.
+ * the profile-region clients in [awsClientsModule] cannot reach either.
  *
  * Each call builds a new client; callers close it.
  */

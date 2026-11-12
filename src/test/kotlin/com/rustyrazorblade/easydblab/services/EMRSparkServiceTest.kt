@@ -375,7 +375,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
         assertThat(result.isSuccess).isTrue()
         val status = result.getOrNull()
         assertThat(status).isNotNull
-        assertThat(status!!.state).isEqualTo(StepState.RUNNING)
+        assertThat(status!!.state).isEqualTo(SparkJobState.RUNNING)
     }
 
     @Test
@@ -457,7 +457,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
         assertThat(result.isSuccess).isTrue()
         val status = result.getOrNull()
         assertThat(status).isNotNull
-        assertThat(status!!.state).isEqualTo(StepState.FAILED)
+        assertThat(status!!.state).isEqualTo(SparkJobState.FAILED)
         assertThat(status.failureDetails).isEqualTo("Out of memory error")
     }
 
@@ -494,7 +494,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
         assertThat(result.isSuccess).isTrue()
         val status = result.getOrNull()
         assertThat(status).isNotNull
-        assertThat(status!!.state).isEqualTo(StepState.COMPLETED)
+        assertThat(status!!.state).isEqualTo(SparkJobState.COMPLETED)
     }
 
     @Test
@@ -609,7 +609,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
 
         // Then
         assertThat(result.isSuccess).isTrue()
-        assertThat(result.getOrNull()?.state).isEqualTo(StepState.COMPLETED)
+        assertThat(result.getOrNull()?.state).isEqualTo(SparkJobState.COMPLETED)
     }
 
     // ========== CANCEL JOB TESTS ==========

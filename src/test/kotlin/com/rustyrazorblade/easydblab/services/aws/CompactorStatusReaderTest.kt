@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RegionalClients
 import org.assertj.core.api.Assertions.assertThat

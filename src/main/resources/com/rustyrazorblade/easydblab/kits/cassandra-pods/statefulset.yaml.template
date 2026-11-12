@@ -80,9 +80,9 @@ spec:
               exec docker-entrypoint.sh cassandra -f
           env:
             - name: CASSANDRA_CLUSTER_NAME
-              value: __CLUSTER_NAME__
+              value: "__CLUSTER_NAME__"
             - name: CASSANDRA_DC
-              value: __CASSANDRA_DC__
+              value: "__CASSANDRA_DC__"
             - name: CASSANDRA_RACK
               value: rack1
             - name: CASSANDRA_ENDPOINT_SNITCH
@@ -189,11 +189,11 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
-        storageClassName: __STORAGE_CLASS_WFC__
+        storageClassName: "__STORAGE_CLASS_WFC__"
         # Binds only this kit's platform PVs; every kit's PVs share the storage class.
         selector:
           matchLabels:
-            app.kubernetes.io/name: __KIT_NAME__
+            app.kubernetes.io/name: "__KIT_NAME__"
         resources:
           requests:
-            storage: __STORAGE_SIZE__
+            storage: "__STORAGE_SIZE__"

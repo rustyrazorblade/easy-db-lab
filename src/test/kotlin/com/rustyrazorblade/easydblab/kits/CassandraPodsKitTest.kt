@@ -13,6 +13,9 @@ import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.apps.StatefulSet
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
+import org.yaml.snakeyaml.Yaml
 import java.io.File
 
 /**
@@ -96,6 +99,34 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(env.getValue("CASSANDRA_RACK").value).isEqualTo("rack1")
         assertThat(env.getValue("CASSANDRA_ENDPOINT_SNITCH").value).isEqualTo("GossipingPropertyFileSnitch")
     }
+
+    /**
+     * `--dc` accepts letters, digits, `_` and `-`, so a DC can look like a YAML 1.1 int, float, bool
+     * or null. Parsed as Kubernetes parses it, the env value must still be that string.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = ["123", "true", "no", "null", "1e3", "0x1F"])
+    fun `a DC that looks like another YAML type stays a string env value`(dc: String) {
+        val env = renderedCassandraEnv(mapOf("CASSANDRA_DC" to dc))
+
+        assertThat(env.getValue("CASSANDRA_DC")).isEqualTo(dc)
+        assertThat(env.getValue("CASSANDRA_CLUSTER_NAME")).isInstanceOf(String::class.java)
+    }
+
+    /** The cassandra container's env as name to parsed value, from the template rendered and loaded with YAML 1.1 rules. */
+    private fun renderedCassandraEnv(args: Map<String, String>): Map<String, Any?> {
+        val rendered = kit.renderText("statefulset.yaml.template", mapOf("CASSANDRA_NODES" to "2") + args)
+        val statefulSet =
+            Yaml()
+                .loadAll(rendered)
+                .filterIsInstance<Map<*, *>>()
+                .single { it["kind"] == "StatefulSet" }
+        val containers = statefulSet.path("spec", "template", "spec")["containers"] as List<*>
+        val cassandra = containers.filterIsInstance<Map<*, *>>().single { it["name"] == "cassandra" }
+        return (cassandra["env"] as List<*>).filterIsInstance<Map<*, *>>().associate { it["name"].toString() to it["value"] }
+    }
+
+    private fun Map<*, *>.path(vararg keys: String): Map<*, *> = keys.fold(this) { node, key -> node[key] as Map<*, *> }
 
     @Test
     fun `NodePort service maps the CQL port to itself and keeps traffic on the node`() {

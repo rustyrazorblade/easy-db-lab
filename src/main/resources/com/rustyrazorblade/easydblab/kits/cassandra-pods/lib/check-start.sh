@@ -7,7 +7,7 @@
 #   - the AMI-based Cassandra is running on a db node (both would report under job="cassandra")
 #   - --nodes is not a whole number >= 1, or --heap is not a whole number of G or M
 #   - --dc is not a plain name (letters, digits, _ and -, starting with a letter or digit): the
-#     name is substituted into the StatefulSet as a YAML scalar and used as the snitch DC
+#     name is substituted into a double-quoted YAML string in the StatefulSet and used as the snitch DC
 #   - --memory is not a whole number of Gi or Mi, or --heap is not smaller than --memory
 #   - a db node cannot be checked over ssh (fail fast: an unchecked node may be running the AMI Cassandra)
 #   - EDL_NODE_SSH is not true or false. With EDL_NODE_SSH=false (no node SSH) the AMI Cassandra
@@ -46,7 +46,8 @@ if [ -n "${heap}" ]; then
   esac
 fi
 
-# --dc is rendered into the StatefulSet as a bare YAML scalar, so only a plain name is accepted.
+# --dc is rendered inside a double-quoted YAML string in the StatefulSet (so 123, no or null stay
+# strings), and only a plain name is accepted, so it can never contain the quote that would end it.
 dc="${CASSANDRA_DC:-dc1}"
 case "${dc}" in
   '' | -* | *[!A-Za-z0-9_-]*)

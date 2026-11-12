@@ -6,22 +6,22 @@
 
 ## 2. Base image setup
 
-- [ ] 2.1 `packer/base/install/configure_cilium_eni_networkd.sh`: stop writing `/etc/systemd/network/05-cilium-eni-primary.network` and remove it if present; install the script to `/usr/local/sbin/edl-primary-eni-network` (0755); write `/etc/systemd/system/edl-primary-eni-network.service` (`Type=oneshot`, `DefaultDependencies=no`, `Wants=` and `After=cloud-init-local.service`, `Before=network-pre.target systemd-networkd.service`, `StandardOutput=journal+console`, `StandardError=journal+console`, `WantedBy=sysinit.target`) and enable it; keep 06 and the cloud.cfg drop-in unchanged
-- [ ] 2.2 Same script: on a host with an ENA link, run the script once, run `networkctl reload`, and fail unless `networkctl status` for the primary link names `/run/systemd/network/05-cilium-eni-primary.network`; skip this where there is no ENA link (Docker)
-- [ ] 2.3 Same script: self-checks fail if the unit is missing, not enabled, or lacks its ordering lines; if 06 lacks `Driver=ena` or `Unmanaged=yes`; if the script is missing or not executable; or if an `/etc` 05 file exists
-- [ ] 2.4 Same script: rewrite the header without fixed `ens5`/`ens6` names, describe the MAC match and the `/run` location, and correct the claim that networkd configures a hotplugged link under its pre-rename name (networkd waits for the rename; `Driver=ena` is still the right match)
-- [ ] 2.5 `packer/base/base.pkr.hcl`: add a `file` provisioner that uploads `install/edl-primary-eni-network` before the networkd provisioner; update that provisioner's comment
-- [ ] 2.6 `packer/docker-compose.yml`: make the script available to `configure_cilium_eni_networkd.sh` in the `test-base` service the same way the bake does
-- [ ] 2.7 Run `./gradlew testPackerBase` and `./gradlew testScripts` (in a subagent) and confirm both pass, and that removing the unit or the `Driver=ena` line makes `testPackerBase` fail
+- [x] 2.1 `packer/base/install/configure_cilium_eni_networkd.sh`: stop writing `/etc/systemd/network/05-cilium-eni-primary.network` and remove it if present; install the script to `/usr/local/sbin/edl-primary-eni-network` (0755); write `/etc/systemd/system/edl-primary-eni-network.service` (`Type=oneshot`, `DefaultDependencies=no`, `Wants=` and `After=cloud-init-local.service`, `Before=network-pre.target systemd-networkd.service`, `StandardOutput=journal+console`, `StandardError=journal+console`, `WantedBy=sysinit.target`) and enable it; keep 06 and the cloud.cfg drop-in unchanged
+- [x] 2.2 Same script: on a host with an ENA link, run the script once, run `networkctl reload`, and fail unless `networkctl status` for the primary link names `/run/systemd/network/05-cilium-eni-primary.network`; skip this where there is no ENA link (Docker)
+- [x] 2.3 Same script: self-checks fail if the unit is missing, not enabled, or lacks its ordering lines; if 06 lacks `Driver=ena` or `Unmanaged=yes`; if the script is missing or not executable; or if an `/etc` 05 file exists
+- [x] 2.4 Same script: rewrite the header without fixed `ens5`/`ens6` names, describe the MAC match and the `/run` location, and correct the claim that networkd configures a hotplugged link under its pre-rename name (networkd waits for the rename; `Driver=ena` is still the right match)
+- [x] 2.5 `packer/base/base.pkr.hcl`: add a `file` provisioner that uploads `install/edl-primary-eni-network` before the networkd provisioner; update that provisioner's comment
+- [x] 2.6 `packer/docker-compose.yml`: make the script available to `configure_cilium_eni_networkd.sh` in the `test-base` service the same way the bake does
+- [x] 2.7 Run `./gradlew testPackerBase` and `./gradlew testScripts` (in a subagent) and confirm both pass, and that removing the unit or the `Driver=ena` line makes `testPackerBase` fail
 
 ## 3. CLI changes
 
-- [ ] 3.1 `Constants.Cilium.NODE_FIX_FILES`: the unit, the script, the 06 file and the cloud.cfg drop-in; drop the `/etc` 05 file
-- [ ] 3.2 `services/CiliumNodeImageCheck.kt`: update the KDoc for the new file set
-- [ ] 3.3 `services/CiliumService.kt`: `devices=en+` and `egressMasqueradeInterfaces=en+`; comments no longer name `ens5`/`ens6` as fixed names; update the test that asserts the flags
-- [ ] 3.4 `services/install-tailscale-masquerade.sh`: `oifname "en*"`; update comments; update any test that asserts the rule
-- [ ] 3.5 `services/metrics/StreamMetric.kt`: `NETWORK_DEVICES = device=~"en.*|eth.*"`; update its test to cover `ens5` and `enp39s0`
-- [ ] 3.6 Run `./gradlew test` and `detekt` (in a subagent) and confirm both pass
+- [x] 3.1 `Constants.Cilium.NODE_FIX_FILES`: the unit, the script, the 06 file and the cloud.cfg drop-in; drop the `/etc` 05 file
+- [x] 3.2 `services/CiliumNodeImageCheck.kt`: update the KDoc for the new file set
+- [x] 3.3 `services/CiliumService.kt`: `devices=en+` and `egressMasqueradeInterfaces=en+`; comments no longer name `ens5`/`ens6` as fixed names; update the test that asserts the flags
+- [x] 3.4 `services/install-tailscale-masquerade.sh`: `oifname "en*"`; update comments; update any test that asserts the rule
+- [x] 3.5 `services/metrics/StreamMetric.kt`: `NETWORK_DEVICES = device=~"en.*|eth.*"`; update its test to cover `ens5` and `enp39s0`
+- [x] 3.6 Run `./gradlew test` and `detekt` (in a subagent) and confirm both pass
 
 ## 4. Dashboards
 
@@ -29,10 +29,10 @@
 
 ## 5. Docs
 
-- [ ] 5.1 `docs/user-guide/networking.md`: Cilium devices `en+`; the primary ENI is matched by its IMDS MAC
-- [ ] 5.2 `docs/integrations/metrics-stream.md`: `en*` and `eth*`
-- [ ] 5.3 `packer/README.md`: MAC match, the 05 file under `/run`, no fixed `ens5`/`ens6` names
-- [ ] 5.4 `packer/CLAUDE.md`: the new Docker-free test and where the 05 file lives
+- [x] 5.1 `docs/user-guide/networking.md`: Cilium devices `en+`; the primary ENI is matched by its IMDS MAC
+- [x] 5.2 `docs/integrations/metrics-stream.md`: `en*` and `eth*`
+- [x] 5.3 `packer/README.md`: MAC match, the 05 file under `/run`, no fixed `ens5`/`ens6` names
+- [x] 5.4 `packer/CLAUDE.md`: the new Docker-free test and where the 05 file lives
 
 ## 6. AWS proof
 

@@ -109,17 +109,16 @@ docker build -t easy-db-lab-packer-test .
 
 ## Base AMI networking (Cilium ENI mode)
 
-Cilium ENI native-routing requires the OS to leave Cilium's runtime-attached secondary ENIs
-alone. `base/install/configure_cilium_eni_networkd.sh` bakes three files into the image:
-`05-cilium-eni-primary.network` keeps the primary interface (`ens5`) OS-managed via DHCP;
-`06-cilium-eni-unmanaged.network` matches `Driver=ena`, so every other ENA interface, under its
-pre-rename `eth0` name or its final `ens6`, is `Unmanaged=yes` and Cilium owns it; and
-`/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg` removes `hotplug` from cloud-init's
-`updates.network.when`, so an ENI attach no longer re-renders `/etc/netplan/50-cloud-init.yaml`
-(which would list every pod IP as a static address on `ens5` and DHCP the new ENI). Without these
-the OS DHCPs the new ENI and adds a competing default route, multi-homing the host and breaking
-IMDS/egress/kubelet. The files are inert on Flannel (no secondary ENIs are ever attached) and are
-covered by `./gradlew testPackerBase`.
+Cilium ENI native-routing requires the OS to leave Cilium's runtime-attached secondary ENIs alone, while it keeps the primary ENI managed.  `base/install/configure_cilium_eni_networkd.sh` sets this up.  No file names a NIC or a PCI slot: the primary's name differs per instance family (`ens5` on c7gd and c6id, `ens52` on c8gd and m8gd, `enp39s0` on i7i).
+
+- **The primary ENI, by its IMDS MAC.**  The script installs `/usr/local/sbin/edl-primary-eni-network` (from `base/install/edl-primary-eni-network`) and enables `edl-primary-eni-network.service`.  On every boot, after `cloud-init-local` and before `systemd-networkd`, the unit reads the primary MAC from `.ds.meta_data.mac` in `/run/cloud-init/instance-data.json` and writes `/run/systemd/network/05-cilium-eni-primary.network` with `PermanentMACAddress=<mac>` and `DHCP=ipv4`.  If it cannot read a valid MAC, it prints one line to the console and exits 1; it never guesses.
+- **The 05 file lives only under `/run`.**  `/run` is a tmpfs, so the file is never captured into an AMI.  The cassandra AMI is baked on an instance launched from the base AMI, so an `/etc` file would carry the bake instance's MAC into it.  A file of the same name in `/etc` would also override the `/run` one, so the bake removes it and the boot script refuses to run while it exists.
+- **Every other ENA link is unmanaged.**  `/etc/systemd/network/06-cilium-eni-unmanaged.network` matches `Driver=ena` and sets `Unmanaged=yes`, so Cilium owns every ENA link that the 05 file does not claim, under any name.
+- **No cloud-init hotplug.**  `/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg` removes `hotplug` from cloud-init's `updates.network.when`, so an ENI attach no longer re-renders `/etc/netplan/50-cloud-init.yaml`.  That rendering would list every pod IP as a static address on the primary and DHCP the new ENI.
+
+Without these files, the OS DHCPs a new ENI and adds a competing default route.  That multi-homes the host and breaks IMDS, egress and the kubelet.  On Flannel, the 05 file gives the only ENA link normal DHCP and the rest is inert.
+
+On a real bake instance the script runs the boot script once, runs `networkctl reload`, and fails the bake unless `networkctl status` names the `/run` 05 file for the primary link.  `./gradlew testPackerBase` runs the static checks in Docker, and `./gradlew testBasePrimaryEniNetwork` tests the boot script without Docker.
 
 ## Base AMI clock sync
 

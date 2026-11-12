@@ -5,12 +5,10 @@ import com.rustyrazorblade.easydblab.DockerException
 import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
-import java.io.IOException
+import com.rustyrazorblade.easydblab.kernel.causeChain
 import java.net.ConnectException
 import java.net.SocketException
 import java.net.URI
-import java.util.Collections
-import java.util.IdentityHashMap
 
 /**
  * Tells the command layer that the Docker daemon cannot be reached, and what to do.
@@ -19,12 +17,14 @@ import java.util.IdentityHashMap
  * Docker failure. A connection failure alone proves nothing: a refused K3s API, SOCKS tunnel, Redis
  * or SSH connection looks the same. So it claims a failure only when it is tied to Docker:
  *
- * - a connection failure sits in the cause chain of a Docker exception (docker-java's, or the
- *   project's [DockerException]), or
- * - an `IOException` names the Docker socket (`docker.sock`) or the configured `DOCKER_HOST`.
+ * - a connection failure sits below a Docker exception (docker-java's, or the project's
+ *   [DockerException]) in the cause chain, or
+ * - a connection failure names the Docker socket (`docker.sock`) or the configured `DOCKER_HOST`.
  *
- * An answer from a running daemon (a 404 `NotFoundException`, a `ConflictException`) carries no
- * connection failure and is not claimed, so its own message reaches the user.
+ * The detail is the message of the exception that matched, not of whatever wraps it. A file or
+ * bind-mount error that names the socket is not a connection failure and is not claimed. An answer
+ * from a running daemon (a 404 `NotFoundException`, a `ConflictException`) carries no connection
+ * failure and is not claimed either, so its own message reaches the user.
  *
  * It claims an exception by type and message alone and has no collaborators, so it works before a
  * profile exists. The configured Docker host is read from the environment by default.
@@ -37,18 +37,20 @@ class DockerErrorHandler(
     private val hostMarkers: Pair<String, String>? = dockerHost?.let(::hostAndPort)
 
     override fun describe(error: Throwable): ErrorDescription? {
-        val chain = causeChain(error)
-        val tiedToDocker = chain.any { it.isDockerFailure() } && chain.any { it.isConnectionFailure() }
-        val namesDocker = chain.any { it is IOException && namesDockerEndpoint(it.message.orEmpty()) }
-        return if (tiedToDocker || namesDocker) {
+        val chain = error.causeChain()
+        val matched =
+            chain
+                .withIndex()
+                .firstOrNull { (index, cause) ->
+                    cause.isDockerFailure() && chain.drop(index + 1).any { it.isConnectionFailure() }
+                }?.value ?: chain.firstOrNull { it.isConnectionFailure() && namesDockerEndpoint(it.message.orEmpty()) }
+        return matched?.let {
             ErrorDescription(
                 provider = PROVIDER,
                 kind = ProviderErrorKind.UNAVAILABLE,
-                detail = error.message.orEmpty(),
+                detail = it.message.orEmpty(),
                 remedy = REMEDY,
             )
-        } else {
-            null
         }
     }
 
@@ -57,6 +59,11 @@ class DockerErrorHandler(
             this is DockerClientException ||
             this is com.github.dockerjava.api.exception.DockerException
 
+    /**
+     * A failure to reach an endpoint. docker-java's httpclient5 transport reports a missing unix socket as a
+     * `SocketException` ("No such file or directory") and a refused `DOCKER_HOST` as `HttpHostConnectException`,
+     * a `ConnectException`. A plain `IOException` (a file copy or a bind mount that names the socket) is not one.
+     */
     private fun Throwable.isConnectionFailure(): Boolean = this is ConnectException || this is SocketException
 
     private fun namesDockerEndpoint(message: String): Boolean =
@@ -68,11 +75,6 @@ class DockerErrorHandler(
             .getOrNull()
             ?.takeIf { it.host != null && it.port != -1 }
             ?.let { it.host to it.port.toString() }
-
-    private fun causeChain(error: Throwable): List<Throwable> {
-        val seen: MutableSet<Throwable> = Collections.newSetFromMap(IdentityHashMap())
-        return generateSequence(error) { it.cause }.takeWhile { seen.add(it) }.toList()
-    }
 
     private companion object {
         const val PROVIDER = "Docker"

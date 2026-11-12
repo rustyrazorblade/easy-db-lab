@@ -41,10 +41,53 @@ class DockerErrorHandlerTest {
     }
 
     @Test
-    fun `an IO failure naming the docker socket is unavailable`() {
-        val description = handler.describe(IOException("/var/run/docker.sock: No such file or directory"))
+    fun `a socket failure naming the docker socket is unavailable`() {
+        val description = handler.describe(SocketException("/var/run/docker.sock: No such file or directory"))
 
         assertThat(description!!.kind).isEqualTo(ProviderErrorKind.UNAVAILABLE)
+    }
+
+    @Test
+    fun `a file or bind-mount failure that names the docker socket is not claimed`() {
+        // Mounting the socket into a container, or reading it as a file, is not a failure to reach the daemon.
+        val bindMount =
+            DockerException(
+                "IO error starting container abc",
+                IOException("error mounting \"/var/run/docker.sock\" to rootfs: not a directory"),
+            )
+
+        assertThat(handler.describe(IOException("cannot copy /var/run/docker.sock: Permission denied"))).isNull()
+        assertThat(handler.describe(java.nio.file.NoSuchFileException("/home/me/.colima/docker.sock"))).isNull()
+        assertThat(handler.describe(bindMount)).isNull()
+    }
+
+    @Test
+    fun `a real docker-java connect failure to a missing socket is unavailable, detailed from the docker failure`() {
+        // What docker-java's httpclient5 transport throws for a missing unix socket, wrapped as Docker.pullImage
+        // wraps it, inside an unrelated outer exception the reporter would offer first.
+        val dockerFailure =
+            DockerException("IO error pulling image x:1", SocketException("No such file or directory"))
+        val outer = IllegalStateException("setup failed", dockerFailure)
+
+        val description = handler.describe(outer)
+
+        assertThat(description!!.kind).isEqualTo(ProviderErrorKind.UNAVAILABLE)
+        assertThat(description.detail).contains("IO error pulling image x:1").doesNotContain("setup failed")
+    }
+
+    @Test
+    fun `a socket failure named after the docker endpoint is detailed from itself, not its wrapper`() {
+        val outer = IllegalStateException("setup failed", SocketException("/var/run/docker.sock: Connection refused"))
+
+        assertThat(handler.describe(outer)!!.detail).isEqualTo("/var/run/docker.sock: Connection refused")
+    }
+
+    @Test
+    fun `a connection failure outside the docker failure does not tie it to docker`() {
+        // The refused connection wraps the Docker answer, so it is not the reason Docker failed.
+        val error = ConnectException("Connection refused").initCause(NotFoundException("No such image"))
+
+        assertThat(handler.describe(error)).isNull()
     }
 
     @Test

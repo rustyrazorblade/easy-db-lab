@@ -9,9 +9,14 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
+import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider
+import software.amazon.awssdk.core.exception.SdkClientException
+import software.amazon.awssdk.profiles.ProfileFile
 import java.util.concurrent.CompletionException
 
 /**
@@ -141,6 +146,39 @@ class CommandFailureReporterTest {
         reporter(handler("AWS")).report(error)
 
         assertThat(emitted).isEmpty()
+    }
+
+    @Test
+    fun `a wrapped real credentials provider failure is reported once as credentials, from the inner cause`() {
+        val emptyProfile =
+            ProfileFile
+                .builder()
+                .content("[default]\n")
+                .type(ProfileFile.Type.CREDENTIALS)
+                .build()
+        val provider =
+            ProfileCredentialsProvider
+                .builder()
+                .profileFile(emptyProfile)
+                .profileName("default")
+                .build()
+        val inner = runCatching { provider.resolveCredentials() }.exceptionOrNull()!!
+        val outer =
+            SdkClientException
+                .builder()
+                .message("Unable to load credentials while reading s3://bucket/key")
+                .cause(inner)
+                .build()
+        val awsHandler = AwsErrorHandler()
+
+        reporter(DockerErrorHandler(dockerHost = null), awsHandler).report(outer)
+
+        assertThat(awsHandler.describe(outer)).isNull()
+        val event = emitted.single() as Event.Command.ProviderError
+        assertThat(event.provider).isEqualTo("AWS")
+        assertThat(event.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
+        assertThat(event.detail).isEqualTo(inner.message).startsWith("Profile file contained no credentials")
+        assertThat(event.remedy).startsWith("Run: easy-db-lab profile setup.")
     }
 
     @Test

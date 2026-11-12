@@ -5,9 +5,8 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
+import com.rustyrazorblade.easydblab.kernel.causeChain
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.util.Collections
-import java.util.IdentityHashMap
 
 private val log = KotlinLogging.logger {}
 
@@ -34,7 +33,7 @@ class CommandFailureReporter(
 ) {
     /** Reports [error] as one event, unless the command already reported it. */
     fun report(error: Throwable) {
-        val chain = causeChain(error)
+        val chain = error.causeChain()
         // A site that already showed its own block rethrows CommandFailedException; a CompletionException
         // or ExecutionException around it must not make the user see a second block.
         if (chain.any { it is CommandFailedException }) {
@@ -75,9 +74,4 @@ class CommandFailureReporter(
             log.warn(e) { "Provider error handler ${handler::class.simpleName} failed on ${cause::class.simpleName}" }
             null
         }
-
-    private fun causeChain(error: Throwable): List<Throwable> {
-        val seen: MutableSet<Throwable> = Collections.newSetFromMap(IdentityHashMap())
-        return generateSequence(error) { it.cause }.takeWhile { seen.add(it) }.toList()
-    }
 }

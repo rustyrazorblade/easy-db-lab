@@ -180,11 +180,18 @@ if [[ -n "$(ena_links)" ]]; then
         || fail "networkctl status ${primary_link} does not name ${RUN_PRIMARY}: ${status}"
     echo "✓ the primary link ${primary_link} uses ${RUN_PRIMARY}"
     # The line checks below only prove what this script wrote. Ask cloud-init what it reads, so a
-    # wrong key or wrong nesting in the 91- file fails the bake.
-    sudo cloud-init query merged_system_cfg \
-        | jq -e '.datasource.Ec2.apply_full_imds_network_config == false' >/dev/null \
-        || fail "cloud-init does not read apply_full_imds_network_config as false from ${PRIMARY_NIC_ONLY}"
-    echo "✓ cloud-init reads apply_full_imds_network_config: false from ${PRIMARY_NIC_ONLY}"
+    # wrong key or wrong nesting in the 91- file fails the bake. This loads the config through
+    # cloud-init's own loader, the one it uses at boot. `cloud-init query merged_system_cfg` is
+    # wrong here: it reads the instance-data.json snapshot cloud-init wrote at boot, before this
+    # script wrote the 91- file.
+    # stdout carries only the value; a logged warning on stderr must not change it.
+    loader_err="$(mktemp)"
+    apply_full="$(sudo python3 -c "from cloudinit import stages; i = stages.Init(); i.read_cfg(); print(repr(i.cfg.get('datasource', {}).get('Ec2', {}).get('apply_full_imds_network_config')))" 2>"${loader_err}")" \
+        || fail "cloud-init could not load its config to check ${PRIMARY_NIC_ONLY}: $(tr '\n' ' ' <"${loader_err}")"
+    rm -f "${loader_err}"
+    [[ "${apply_full}" == "False" ]] \
+        || fail "cloud-init does not read apply_full_imds_network_config as false from ${PRIMARY_NIC_ONLY}: got '${apply_full}'"
+    echo "✓ cloud-init reads apply_full_imds_network_config: False from ${PRIMARY_NIC_ONLY}"
 else
     echo "no ENA link (not an EC2 instance); skipping the networkd reload check"
 fi

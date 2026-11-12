@@ -11,12 +11,16 @@ data class NodeMissingCiliumFixes(
 )
 
 /**
- * Checks that nodes were launched from an AMI carrying the Cilium node fixes: the
- * systemd-networkd ENI drop-ins and the cloud-init no-hotplug setting the base image bakes.
+ * Checks that nodes were launched from an AMI carrying the Cilium node fixes the base image bakes:
+ * the `edl-primary-eni-network` unit and script, the systemd-networkd drop-in that leaves every
+ * other ENA link unmanaged, and the cloud-init no-hotplug setting.
  *
- * A node from an older AMI boots and joins K3s normally; it breaks only once Cilium attaches a
- * second ENI and the OS takes it over, taking the node off the network well into `up`. Checking
- * the files up front turns that into an immediate, actionable failure.
+ * The unit writes the primary ENI's networkd file under `/run` on each boot, matched by the IMDS
+ * primary MAC, so that file is not in the image and is not checked here; the unit and the script
+ * that write it are. A node from an older AMI matches its primary by a fixed name, which is wrong
+ * on families whose primary has another name, and it breaks once Cilium attaches a second ENI and
+ * the OS takes it over, taking the node off the network well into `up`. Checking the files up
+ * front turns that into an immediate, actionable failure.
  */
 class CiliumNodeImageCheck(
     private val remoteOps: RemoteOperationsService,

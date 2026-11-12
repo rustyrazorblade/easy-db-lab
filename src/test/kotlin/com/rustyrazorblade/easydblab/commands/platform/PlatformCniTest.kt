@@ -129,7 +129,7 @@ class PlatformCniTest : BaseKoinTest() {
                         routingMode = "native",
                         ipamMode = "eni",
                         kubeProxyReplacement = "false",
-                        masqueradeInterfaces = "ens+",
+                        masqueradeInterfaces = "en+",
                         nativeRoutingCidr = "10.0.0.0/16",
                         ipv4Masquerade = "true",
                     ),
@@ -152,7 +152,7 @@ class PlatformCniTest : BaseKoinTest() {
         assertThat(report).contains("Routing mode:            native")
         assertThat(report).contains("IPAM mode:               eni")
         assertThat(report).contains("kube-proxy replacement:  false")
-        assertThat(report).contains("Masquerade interfaces:   ens+")
+        assertThat(report).contains("Masquerade interfaces:   en+")
         assertThat(report).contains("Native routing CIDR:     10.0.0.0/16")
         assertThat(report).contains("http://10.0.0.1:${Constants.Cilium.HUBBLE_UI_NODE_PORT}")
         assertThat(report).contains("Nodes (2):")
@@ -169,7 +169,7 @@ class PlatformCniTest : BaseKoinTest() {
     fun `buildReport says so when the operator has produced no CiliumNode objects yet`() {
         val inspection =
             CiliumInspection(
-                config = CiliumConfigSummary("native", "eni", "false", "ens+", "10.0.0.0/16", "true"),
+                config = CiliumConfigSummary("native", "eni", "false", "en+", "10.0.0.0/16", "true"),
                 nodes = emptyList(),
             )
 

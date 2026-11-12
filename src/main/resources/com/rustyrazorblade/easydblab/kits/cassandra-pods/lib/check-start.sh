@@ -19,6 +19,10 @@
 # Reads CASSANDRA_VERSION, CASSANDRA_IMAGE, CASSANDRA_NODES, CASSANDRA_HEAP, CASSANDRA_MEMORY, CASSANDRA_DC, DB_NODE_COUNT, EDL_NODE_SSH.
 set -euo pipefail
 
+# A resolved-image.env left by an earlier start would let apply-statefulset.sh apply that run's
+# image. Remove it before any check, so the file exists only when this run resolved the image.
+rm -f resolved-image.env
+
 fail() {
   printf '%s\n' "$*" >&2
   exit 1

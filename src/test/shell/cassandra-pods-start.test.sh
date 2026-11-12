@@ -23,6 +23,8 @@ cp -R "${KIT}/lib" "${WORK}/kit/"
 cat > "${WORK}/stubs/curl" << 'STUB'
 #!/bin/bash
 echo "$*" >> "${STUB_DIR}/curl.calls"
+# The check runs from the kit directory: note a resolved-image.env still present at lookup time.
+[ -f resolved-image.env ] && echo "resolved-image.env present during the registry lookup" >> "${STUB_DIR}/curl.stale"
 if [ -n "${STUB_CURL_ERROR:-}" ]; then echo "${STUB_CURL_ERROR}" >&2; case "$*" in *"-w"*) printf 000 ;; esac; exit 6; fi
 case "$*" in
   *"/token?"*)
@@ -148,6 +150,36 @@ printf "RESOLVED_IMAGE='a&b|c\\\\d'\nRESOLVED_BUILD='x&y'\n" >"${WORK}/kit/resol
 (cd "${WORK}/kit" && env PATH="${WORK}/stubs:${PATH}" "${BASH}" lib/apply-statefulset.sh) > "${WORK}/out" 2>&1 || fail "exit $?: $(cat "${WORK}/out")"
 grep -qxF 'image: "a&b|c\d"' "${WORK}/applied.yaml" || fail "image not literal: $(cat "${WORK}/applied.yaml")"
 grep -qxF 'build=x&y' "${WORK}/applied.yaml" || fail "build not literal"
+
+# Runs apply-statefulset.sh in the kit directory against a one-line statefulset.yaml; sets rc and out.
+run_apply() {
+  rm -f "${WORK}/applied.yaml"
+  printf 'image: "@RESOLVED_IMAGE@"\n' > "${WORK}/kit/statefulset.yaml"
+  (cd "${WORK}/kit" && env PATH="${WORK}/stubs:${PATH}" "${BASH}" lib/apply-statefulset.sh) > "${WORK}/out" 2>&1
+  rc=$?
+  out="$(cat "${WORK}/out")"
+}
+
+begin "a stale resolved-image.env from an earlier run is replaced by the new --version"
+printf "RESOLVED_IMAGE='cassandra:4.0'\nRESOLVED_BUILD='4.0'\n" > "${WORK}/kit/resolved-image.env"
+rm -f "${WORK}/curl.stale"
+run_check CASSANDRA_VERSION=5.0
+[ "${rc}" -eq 0 ] || fail "check exit ${rc}: ${out}"
+# The stale file must be gone before the check gets that far, not only overwritten at its end.
+[ ! -f "${WORK}/curl.stale" ] || fail "stale resolved-image.env still present while the check ran"
+run_apply
+[ "${rc}" -eq 0 ] || fail "apply exit ${rc}: ${out}"
+grep -qxF 'image: "cassandra:5.0"' "${WORK}/applied.yaml" || fail "stale image applied: $(cat "${WORK}/applied.yaml" 2> /dev/null)"
+
+begin "a start check that fails validation removes a stale resolved-image.env, so apply fails"
+printf "RESOLVED_IMAGE='cassandra:4.0'\nRESOLVED_BUILD='4.0'\n" > "${WORK}/kit/resolved-image.env"
+run_check CASSANDRA_NODES=0
+[ "${rc}" -eq 1 ] || fail "check exit ${rc}: ${out}"
+[ ! -f "${WORK}/kit/resolved-image.env" ] || fail "stale resolved-image.env survived a failed check"
+run_apply
+[ "${rc}" -ne 0 ] || fail "apply succeeded with the stale image: $(cat "${WORK}/applied.yaml" 2> /dev/null)"
+case "${out}" in *"resolved-image.env is missing"*) ;; *) fail "apply message: ${out}" ;; esac
+[ ! -f "${WORK}/applied.yaml" ] || fail "kubectl apply ran"
 
 begin "a 401 or 403 is not reported as not-found and does not block start"
 for code in 401 403; do

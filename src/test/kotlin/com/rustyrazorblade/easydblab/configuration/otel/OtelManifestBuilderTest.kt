@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardFiles
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -29,7 +30,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     /** The body of one named pipeline: every line indented under it, comments excluded. */
     private fun pipeline(name: String): String {
-        val lines = yamlFrom(builder.buildConfigMap(emptyList())).lines()
+        val lines = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList())).lines()
         val start = lines.indexOfFirst { it.trim() == name }
         check(start >= 0) { "pipeline $name is not in the rendered config" }
 
@@ -73,7 +74,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `buildConfigMap no longer scrapes the MAAC Prometheus endpoint`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).doesNotContain("cassandra-maac")
         assertThat(yaml).doesNotContain("localhost:9000")
@@ -88,7 +89,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `buildConfigMap drops the SDK resource from the OTLP metrics pipeline`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).contains("resource/drop_sdk_metadata:")
         assertThat(yaml).contains("key: process.command_line")
@@ -105,7 +106,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `the SDK resource drop covers the argv in both of its forms`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resource_detection:")
 
         assertThat(dropBlock).contains("key: process.command_line", "key: process.command_args")
@@ -117,7 +118,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `the SDK resource drop removes the per-restart container id`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resource_detection:")
 
         assertThat(dropBlock).contains("key: container.id")
@@ -142,7 +143,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `host metrics take node_role from the host name, after pod metadata for scraped kit pods`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(listAt(yaml, "service", "pipelines", "metrics/local", "processors"))
             .containsSubsequence("resource_detection", "k8s_attributes", "transform/node_role_from_host", "batch")
@@ -159,7 +160,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `every pipeline that scrapes kit pods runs k8s_attributes when a dashboard reads a label only it writes`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val written =
             (nodeAt(yaml, "processors", "k8s_attributes", "extract", "labels") as YamlList)
                 .items
@@ -191,7 +192,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `service-graph series name the collector that computed them`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(listAt(yaml, "service", "pipelines", "metrics/servicegraph", "processors"))
             .containsSubsequence("resource_detection", "batch")
@@ -207,7 +208,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `span-derived metrics flush on the collector's scrape cadence, not once a minute`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(scalarAt(yaml, "connectors", "service_graph", "metrics_flush_interval")).isEqualTo("15s")
         assertThat(scalarAt(yaml, "connectors", "span_metrics", "metrics_flush_interval")).isEqualTo("15s")
@@ -221,7 +222,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `hostmetrics reads the node through a read-only host root mount`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         // root_path belongs to the receiver, not to a scraper: indented two levels, beside
         // collection_interval, not four levels under `scrapers:`.
@@ -261,7 +262,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `hostmetrics scrapes paging alongside the scrapers it already had`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val scrapers = yaml.substringAfter("scrapers:").substringBefore("prometheus:")
 
         // paging is swap and page faults, and was simply never in the list.
@@ -275,7 +276,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // Measured against the collector image, not assumed: system.filesystem.utilization and
         // system.paging.utilization are optional metrics and are NOT emitted by default. They are
         // the ready-made 0-1 fractions the usage-percentage panels want.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).contains("system.filesystem.utilization:")
         assertThat(yaml).contains("system.paging.utilization:")
@@ -286,7 +287,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // include_virtual_filesystems defaults to false, so overlay, tmpfs, devtmpfs, sysfs and
         // proc are already gone. squashfs is device-backed, so it survives that default — and every
         // snap on an Ubuntu host is one more read-only squashfs mount sitting at 100% full.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).contains("exclude_fs_types:")
         assertThat(yaml).contains("- squashfs")
@@ -311,7 +312,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // Both are bounded sets. Nothing here reads a log body: a message can carry a keyspace, a
         // table, a host or an id, and grouping on one would be unbounded. That restraint is the
         // whole cardinality argument for this feature, so it is asserted rather than trusted.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val countBlock = yaml.substringAfter("  count:").substringBefore("  signal_to_metrics:")
 
         assertThat(countBlock).contains("cassandra.log.records")
@@ -327,7 +328,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // GCInspector logs the per-event pause the JVM metrics only aggregate. The pattern was
         // matched against real lines from both collectors on the cluster - "G1 Young Generation GC
         // in 635ms" and "ZGC Major Cycles GC in 1465ms" share a shape, so one regex serves both.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).contains("GC in (?P<gc_event_ms>[0-9,]+)ms")
         assertThat(yaml).contains("cassandra.log.gc_event_duration_seconds")
@@ -338,7 +339,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `compaction figures are parsed as values, never as labels`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).contains("cassandra.log.compaction_duration_seconds")
         assertThat(yaml).contains("cassandra.log.compaction_sstables_merged")
@@ -356,14 +357,14 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `severity is counted by number, not by the text each library happens to use`() {
         // Cassandra logs WARN; the AxonOps agent on the same node logs WARNING. Conditioning on the
         // text would split one level across two series and undercount both.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).contains("severity_number >= SEVERITY_NUMBER_WARN")
     }
 
     @Test
     fun `the loggers worth their own counter each have one`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).contains("cassandra.log.gc_events")
         assertThat(yaml).contains("cassandra.log.status_dumps")
@@ -376,7 +377,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // and NoSpamLogger - both plausible, both wrong - matched nothing at all while looking
         // exactly like a cluster that never drops a message. Nothing errors in that state, which is
         // why the logger name is pinned rather than described.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         // Settings only: the config explains at length why the other two names are wrong, and
         // names them while doing it.
@@ -391,7 +392,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `dropped messages split internal from cross-node, with the verb as the only label`() {
         // The JMX counter says how many dropped. Only this line says of what type, and separates a
         // node dropping its own work from a peer's messages dying in transit.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(yaml).contains("cassandra.log.dropped_messages_internal")
         assertThat(yaml).contains("cassandra.log.dropped_messages_cross_node")
@@ -410,7 +411,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // Cassandra prints "in 520,866ms" and "31,471 internal". A [0-9]+ capture does not fail
         // loudly on those: it matches nothing and drops exactly the largest events. Every numeric
         // capture allows a comma, and every one is stripped before conversion.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val captures = Regex("\\(\\?P<(\\w+)>\\[0-9([^\\]]*)\\]").findAll(yaml).toList()
 
         assertThat(captures).isNotEmpty()
@@ -430,7 +431,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // Three things have to line up or the metrics are built and thrown away: the logs pipeline
         // must export to the connector, a metrics pipeline must receive from it, and the transform
         // that supplies the grouping attributes must run before the export.
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val logsPipeline = pipeline("logs/otlp:")
         val metricsFromLogs = pipeline("metrics/logs:")
 
@@ -445,23 +446,58 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildConfigMap with empty list contains all static scrape jobs`() {
-        val configMap = builder.buildConfigMap(emptyList())
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, emptyList())
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
-        assertThat(yaml).contains("job_name: 'yace'")
+        assertThat(yaml).contains("job_name: \"yace\"")
         assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
     }
 
     @Test
     fun `buildConfigMap with empty list does not leave placeholder in output`() {
-        val configMap = builder.buildConfigMap(emptyList())
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, emptyList())
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).doesNotContain("__WORKLOAD_SCRAPE_JOBS__")
         assertThat(yaml).doesNotContain("__KIT_SCRAPE_JOBS__")
         assertThat(yaml).doesNotContain("__INFRA_SCRAPE_JOBS__")
+    }
+
+    /**
+     * YACE is one pod on the control node, so its job uses node-local pod discovery like
+     * kube-state-metrics: only the collector on its node scrapes it, and no other node reports
+     * `up{job="yace"} = 0`. The values the old static block carried stay: 5s interval and timeout,
+     * port 5001, and `instance` = `<host>:5001` and `cluster` relabels. Its position among the jobs
+     * changed too; scrape job order has no effect in Prometheus.
+     */
+    @Test
+    fun `the AWS yace job is scraped by node-local pod discovery and keeps its old labels`() {
+        val job = builder.buildInfraScrapeJobs(NodeCapabilities.AWS, CniMode.Flannel).single { it.jobName == "yace" }
+
+        assertThat(job.staticConfigs).isNull()
+        assertThat(job.kubernetesSdConfigs?.single()?.role).isEqualTo("pod")
+        assertThat(
+            job.kubernetesSdConfigs
+                ?.single()
+                ?.namespaces
+                ?.names,
+        ).containsExactly("default")
+        assertThat(job.scrapeInterval).isEqualTo("5s")
+        assertThat(job.scrapeTimeout).isEqualTo("5s")
+        assertThat(job.metricsPath).isEqualTo("/metrics")
+        val keeps = job.relabelConfigs.filter { it.action == "keep" }
+        assertThat(keeps.map { it.sourceLabels?.single() to it.regex }).containsExactly(
+            "__meta_kubernetes_pod_label_app_kubernetes_io_name" to "yace",
+            "__meta_kubernetes_pod_node_name" to "\${env:HOSTNAME}",
+            "__meta_kubernetes_pod_container_port_number" to "5001",
+        )
+        assertThat(job.relabelConfigs.filter { it.targetLabel != null }.map { it.targetLabel to it.replacement }).containsExactly(
+            "__address__" to "\$\$1:5001",
+            "instance" to "\${env:HOSTNAME}:5001",
+            "cluster" to "\${env:CLUSTER_NAME}",
+        )
     }
 
     /**
@@ -471,7 +507,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `kube-state-metrics is scraped through node-local pod discovery, not a static target`() {
-        val job = builder.buildInfraScrapeJobs(CniMode.Flannel).single { it.jobName == "kube-state-metrics" }
+        val job = builder.buildInfraScrapeJobs(NodeCapabilities.AWS, CniMode.Flannel).single { it.jobName == "kube-state-metrics" }
 
         assertThat(job.staticConfigs).isNull()
         assertThat(job.kubernetesSdConfigs?.single()?.role).isEqualTo("pod")
@@ -490,7 +526,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val address = job.relabelConfigs.single { it.targetLabel == "__address__" }
         assertThat(address.replacement).isEqualTo("\$\$1:8080")
 
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
         assertThat(yaml).doesNotContain("kube-state-metrics.default.svc")
         // Rendered at the depth of the static jobs under scrape_configs.
@@ -503,7 +539,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `buildConfigMap renders no Cilium scrape jobs on a Flannel cluster`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Flannel))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), cni = CniMode.Flannel))
 
         assertThat(yaml).doesNotContain("cilium-agent")
         assertThat(yaml).doesNotContain("cilium-operator")
@@ -515,13 +551,13 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildConfigMap defaults to the Flannel rendering when no CNI is given`() {
-        assertThat(yamlFrom(builder.buildConfigMap(emptyList())))
-            .isEqualTo(yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Flannel)))
+        assertThat(yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList())))
+            .isEqualTo(yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), cni = CniMode.Flannel)))
     }
 
     @Test
     fun `buildConfigMap on a Cilium cluster scrapes the agent and Hubble at localhost on every node`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Cilium))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), cni = CniMode.Cilium))
 
         assertThat(yaml).contains("job_name: \"cilium-agent\"")
         assertThat(yaml).contains("localhost:9962")
@@ -568,7 +604,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val instance = operator.relabelConfigs.single { it.targetLabel == "instance" }
         assertThat(instance.sourceLabels).containsExactly("__meta_kubernetes_pod_name")
 
-        assertThat(yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Cilium)))
+        assertThat(yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), cni = CniMode.Cilium)))
             .contains("job_name: \"cilium-operator\"")
             .doesNotContain("localhost:9963")
     }
@@ -577,7 +613,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `Cilium scrape jobs and kit scrape jobs coexist in one rendering`() {
         val kits = listOf(WorkloadScrapeConfig(kitName = "clickhouse", jobName = "clickhouse", port = 9363, path = "/metrics"))
 
-        val yaml = yamlFrom(builder.buildConfigMap(kits, cni = CniMode.Cilium))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, kits, cni = CniMode.Cilium))
 
         assertThat(yaml).contains("job_name: \"cilium-agent\"")
         assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")
@@ -592,7 +628,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
                 WorkloadScrapeConfig(kitName = "opensearch", jobName = "opensearch", port = 9600, path = "/_prometheus/metrics"),
             )
 
-        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("job_name: \"presto-presto\"")
@@ -633,7 +669,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
                 ),
             )
 
-        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("job_name: \"tidb-tikv\"")
@@ -667,7 +703,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
                 WorkloadScrapeConfig(kitName = "postgres-postgis", jobName = "postgres", port = 30988, path = "/metrics"),
             )
 
-        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
         // OTel job_name is kitName-jobName compound to ensure uniqueness for both:
@@ -683,12 +719,12 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `buildConfigMap with dynamic jobs still contains all static scrape jobs`() {
         val scrapeConfigs = listOf(WorkloadScrapeConfig(kitName = "clickhouse", jobName = "clickhouse", port = 9363, path = "/metrics"))
 
-        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
-        assertThat(yaml).contains("job_name: 'yace'")
+        assertThat(yaml).contains("job_name: \"yace\"")
         assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
         assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")
     }
@@ -697,7 +733,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `buildConfigMap dynamic jobs use OTel runtime env expansion not placeholder`() {
         val scrapeConfigs = listOf(WorkloadScrapeConfig(kitName = "mydb", jobName = "mydb", port = 9999, path = "/metrics"))
 
-        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("\${env:HOSTNAME}:9999")
@@ -706,7 +742,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildConfigMap has correct metadata`() {
-        val configMap = builder.buildConfigMap(emptyList())
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, emptyList())
 
         assertThat(configMap.metadata.name).isEqualTo("otel-collector-config")
         assertThat(configMap.metadata.namespace).isEqualTo("default")
@@ -720,7 +756,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
                 WorkloadScrapeConfig(kitName = "trino", jobName = "trino", port = 8080, path = "/metrics", username = "trino"),
             )
 
-        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("basic_auth:")
@@ -742,7 +778,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
                 ),
             )
 
-        val job = jobBlock(yamlFrom(builder.buildConfigMap(scrapeConfigs)), "trino-trino")
+        val job = jobBlock(yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)), "trino-trino")
 
         assertThat(job).contains("kubernetes_sd_configs").doesNotContain("static_configs").doesNotContain("localhost:8080")
         assertThat(job).contains("basic_auth:").contains("username: \"trino\"")
@@ -755,7 +791,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
                 WorkloadScrapeConfig(kitName = "clickhouse", jobName = "clickhouse", port = 9363, path = "/metrics"),
             )
 
-        val configMap = builder.buildConfigMap(scrapeConfigs)
+        val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).doesNotContain("basic_auth:")
@@ -769,7 +805,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `local mode ConfigMap exports to the in-cluster backend services`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
 
         assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "endpoint"))
             .isEqualTo("http://mimir.default.svc.cluster.local:9009/api/v1/push")
@@ -791,7 +827,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `redirect mode ConfigMap exports to the external stack endpoints`() {
         val redirect = TelemetryRedirect.fromBaseHost("10.0.0.9")
 
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = redirect))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = redirect))
 
         assertThat(yaml).contains("http://10.0.0.9:9009/api/v1/push")
         assertThat(yaml).contains("http://10.0.0.9:3100/otlp")
@@ -810,7 +846,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `the collector scrapes its own telemetry into the metric store`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val selfJob =
             yaml
                 .substringAfter("- job_name: 'otel-collector'")
@@ -829,7 +865,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `local mode scrapes the Mimir, Loki, Tempo and Pyroscope servers only from the node running them`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
 
         for ((job, port) in listOf("mimir" to 9009, "loki" to 3100, "tempo" to 3200, "pyroscope" to 4040)) {
             assertThat(jobBlock(yaml, job))
@@ -855,7 +891,10 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `redirect mode does not scrape the local Tempo and Pyroscope servers`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")))
+        val yaml =
+            yamlFrom(
+                builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
+            )
 
         assertThat(yaml).doesNotContain("job_name: \"mimir\"").doesNotContain("job_name: \"loki\"")
         assertThat(yaml).doesNotContain("job_name: \"tempo\"").doesNotContain("job_name: 'tempo'")
@@ -866,7 +905,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     /** Since 0.x the transform processor ignores statement errors by default; this stack fails fast. */
     @Test
     fun `every transform processor propagates its errors`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         val transforms = keysAt(yaml, "processors").filter { it.substringBefore("/") == "transform" }
 
         assertThat(transforms).isNotEmpty()
@@ -877,7 +916,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `the cluster collector uses no deprecated component ID`() {
-        assertThat(DeprecatedCollectorComponents.findIn(yamlFrom(builder.buildConfigMap(emptyList())))).isEmpty()
+        assertThat(DeprecatedCollectorComponents.findIn(yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList())))).isEmpty()
     }
 
     @Test
@@ -894,7 +933,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     /** Per-core CPU is opt-in on the host CPU scraper; dashboards break down CPU time by core. */
     @Test
     fun `the host CPU scraper reports time per core`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(listAt(yaml, "receivers", "host_metrics", "scrapers", "cpu", "metrics", "system.cpu.time", "attributes"))
             .contains("cpu", "state")
@@ -907,8 +946,8 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `the Tempo exporter sends the tenant from the environment, locally and under redirect`() {
-        val local = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
-        val redirected = yamlFrom(builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+        val local = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
+        val redirected = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
 
         assertThat(scalarAt(local, "exporters", "otlp_grpc/tempo", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
         assertThat(scalarAt(redirected, "exporters", "otlp_grpc/tempo", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
@@ -931,8 +970,8 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     /** Mimir and Loki run native multi-tenancy: every metric and log write carries the tenant. */
     @Test
     fun `metrics and logs exporters send the tenant from the environment, locally and under redirect`() {
-        val local = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
-        val redirected = yamlFrom(builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+        val local = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
+        val redirected = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
 
         for (yaml in listOf(local, redirected)) {
             assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
@@ -943,7 +982,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     /** Every logs pipeline exports to Loki, and no VictoriaLogs-only processor remains. */
     @Test
     fun `every logs pipeline exports to Loki with no VictoriaLogs processor`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         for (name in listOf("logs/local", "logs/containers", "logs/otlp")) {
             assertThat(listAt(yaml, "service", "pipelines", name, "exporters")).describedAs(name).contains("otlp_http/logs")
@@ -961,7 +1000,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `the log source is a resource attribute`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         for (receiver in listOf("file_log/system", "file_log/tools", "file_log/cassandra")) {
             assertThat(scalarAt(yaml, "receivers", receiver, "resource", "source")).describedAs(receiver).isNotBlank()
@@ -979,7 +1018,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `the Cassandra file receiver tails only the JVM GC log, under its own source`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(listAt(yaml, "receivers", "file_log/cassandra", "include"))
             .containsExactly("/mnt/db1/cassandra/logs/gc.log*")

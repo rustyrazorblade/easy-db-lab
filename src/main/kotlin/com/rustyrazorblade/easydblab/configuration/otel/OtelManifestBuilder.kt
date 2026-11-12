@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.configuration.otel
 import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -54,6 +56,7 @@ class OtelManifestBuilder(
         private const val READINESS_PERIOD = 10
         private val WORKLOAD_METRICS_LABEL = Constants.K8s.WORKLOAD_METRICS_LABEL
         private const val SCRAPE_INTERVAL = "15s"
+        private const val YACE_SCRAPE_INTERVAL = "5s"
 
         /** Volume carrying the node's root filesystem into the collector container. */
         const val HOST_ROOT_VOLUME = "host-root"
@@ -119,6 +122,7 @@ class OtelManifestBuilder(
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet, Service
      */
     fun buildAllResources(
+        capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
         cni: CniMode = CniMode.Flannel,
@@ -127,7 +131,7 @@ class OtelManifestBuilder(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
-            buildConfigMap(scrapeConfigs, telemetryRedirect, cni),
+            buildConfigMap(capabilities, scrapeConfigs, telemetryRedirect, cni),
             buildDaemonSet(),
             buildService(),
         )
@@ -191,8 +195,10 @@ class OtelManifestBuilder(
      * @param telemetryRedirect When non-null, the three export endpoints resolve to this external
      *   stack; when null they resolve to the in-cluster service addresses (local mode, unchanged).
      * @param cni The cluster's pod-network datapath; only Cilium renders the CNI scrape jobs.
+     * @param capabilities What the environment provides; the `yace` job needs CloudWatch.
      */
     fun buildConfigMap(
+        capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
         cni: CniMode = CniMode.Flannel,
@@ -212,7 +218,7 @@ class OtelManifestBuilder(
                     mapOf(
                         "KIT_SCRAPE_JOBS" to renderScrapeJobs(buildDynamicScrapeJobs(scrapeConfigs)),
                         "INFRA_SCRAPE_JOBS" to
-                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(cni)),
+                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(capabilities, cni)),
                         "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_METRICS_ENDPOINT),
                         "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_LOGS_ENDPOINT),
                         "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
@@ -230,7 +236,11 @@ class OtelManifestBuilder(
      * so cannot live in the YAML template (a bare `__x__` there is a template placeholder):
      * kube-state-metrics on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
      */
-    fun buildInfraScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> = listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni)
+    fun buildInfraScrapeJobs(
+        capabilities: NodeCapabilities,
+        cni: CniMode,
+    ): List<PrometheusScrapeJob> =
+        listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni) + buildCloudWatchScrapeJobs(capabilities)
 
     /**
      * The scrape jobs for the local telemetry backends' own metrics: Mimir, Loki, Tempo and the
@@ -302,12 +312,39 @@ class OtelManifestBuilder(
                 )
         }
 
+    /**
+     * The scrape jobs for workloads that exist only where the environment has CloudWatch: YACE.
+     * YACE is one pod on the control node (hostNetwork, so its pod IP is the node IP), so it is
+     * found by node-local pod discovery: only the collector on its node scrapes it, and no other
+     * node reports `up{job="yace"} = 0`. `instance` keeps its old value, `<host>:<port>`.
+     */
+    private fun buildCloudWatchScrapeJobs(capabilities: NodeCapabilities): List<PrometheusScrapeJob> =
+        if (NodeCapability.CLOUDWATCH in capabilities) {
+            listOf(
+                buildNodeLocalPodScrapeJob(
+                    jobName = "yace",
+                    namespace = NAMESPACE,
+                    podLabel = "app.kubernetes.io/name",
+                    podLabelValue = Constants.Yace.DEPLOYMENT_NAME,
+                    port = Constants.Yace.PORT,
+                    scrapeInterval = YACE_SCRAPE_INTERVAL,
+                    scrapeTimeout = YACE_SCRAPE_INTERVAL,
+                    instance = "\${env:HOSTNAME}:${Constants.Yace.PORT}",
+                ),
+            )
+        } else {
+            emptyList()
+        }
+
     private fun buildLocalhostScrapeJob(
         jobName: String,
         port: Int,
+        scrapeInterval: String = SCRAPE_INTERVAL,
+        scrapeTimeout: String? = null,
     ) = PrometheusScrapeJob(
         jobName = jobName,
-        scrapeInterval = SCRAPE_INTERVAL,
+        scrapeInterval = scrapeInterval,
+        scrapeTimeout = scrapeTimeout,
         staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:$port"))),
         metricsPath = "/metrics",
         relabelConfigs =
@@ -338,9 +375,13 @@ class OtelManifestBuilder(
         podLabel: String,
         podLabelValue: String,
         port: Int,
+        scrapeInterval: String = SCRAPE_INTERVAL,
+        scrapeTimeout: String? = null,
+        instance: String? = null,
     ) = PrometheusScrapeJob(
         jobName = jobName,
-        scrapeInterval = SCRAPE_INTERVAL,
+        scrapeInterval = scrapeInterval,
+        scrapeTimeout = scrapeTimeout,
         kubernetesSdConfigs =
             listOf(
                 PrometheusKubernetesSdConfig(
@@ -372,13 +413,17 @@ class OtelManifestBuilder(
                     targetLabel = "__address__",
                     replacement = "\$\$1:$port",
                 ),
-                PrometheusRelabelConfig(
-                    sourceLabels = listOf("__meta_kubernetes_pod_name"),
-                    targetLabel = "instance",
-                ),
+                instanceRelabel(instance),
                 PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
             ),
     )
+
+    /** `instance` is the pod name unless the job names a fixed value, such as `\${env:HOSTNAME}:port`. */
+    private fun instanceRelabel(instance: String?) =
+        when (instance) {
+            null -> PrometheusRelabelConfig(sourceLabels = listOf("__meta_kubernetes_pod_name"), targetLabel = "instance")
+            else -> PrometheusRelabelConfig(targetLabel = "instance", replacement = instance)
+        }
 
     private fun renderScrapeJobs(jobs: List<PrometheusScrapeJob>): String {
         if (jobs.isEmpty()) return ""

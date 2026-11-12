@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
@@ -65,6 +67,11 @@ interface ObservabilityStackService {
 /**
  * Default implementation that applies the stack over the K8s API and configures on-node
  * directories over SSH.
+ *
+ * @property capabilitiesOf derives what the environment provides from cluster state. It is a test
+ *   seam so a unit test can run a non-AWS environment; production takes the default. The four such
+ *   seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
+ *   [com.rustyrazorblade.easydblab.server.StatusCache]) are consolidated by #1040 into one provider.
  */
 @Suppress("LongParameterList")
 class DefaultObservabilityStackService(
@@ -89,21 +96,43 @@ class DefaultObservabilityStackService(
     private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
     private val configChangeReport: ConfigChangeReport,
     private val installContextFactory: DashboardInstallContextFactory,
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
     }
 
-    /** One deploy stage: a human label and the resources it applies. */
+    /**
+     * One deploy stage: a human label and the resources it applies. A stage with a [requires]
+     * capability is applied only where the environment provides it.
+     */
     private data class Stage(
         val label: String,
         val resources: List<HasMetadata>,
+        val requires: NodeCapability? = null,
     )
+
+    /**
+     * The stages the environment can run. Not a pure filter: each stage it cannot run is reported
+     * as skipped (an event is emitted), so call it once, before anything is applied.
+     */
+    private fun applyCapabilityGate(
+        stages: List<Stage>,
+        capabilities: NodeCapabilities,
+    ): List<Stage> {
+        val (runnable, skipped) = stages.partition { it.requires == null || it.requires in capabilities }
+        skipped.forEach { stage ->
+            val capability = checkNotNull(stage.requires)
+            eventBus.emit(Event.Grafana.StageSkipped(stage.label, capability))
+        }
+        return runnable
+    }
 
     override fun deploy(controlNode: ClusterHost): Result<Unit> =
         runCatching {
             val clusterState = clusterStateManager.load()
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
+            val capabilities = capabilitiesOf(clusterState)
 
             val clusterConfig = createClusterConfigMap(controlNode, clusterState)
 
@@ -117,12 +146,12 @@ class DefaultObservabilityStackService(
             val collector =
                 Stage(
                     "OTel Collector",
-                    CollectorResources.build(otelManifestBuilder, controlNode, clusterState, user.region, scrapeConfigs),
+                    CollectorResources.build(otelManifestBuilder, controlNode, clusterState, user.region, scrapeConfigs, capabilities),
                 )
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
-            val stages = buildStages(telemetryRedirect)
+            val stages = applyCapabilityGate(buildStages(telemetryRedirect), capabilities)
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
             // not, so prepare them only in local mode.
@@ -193,12 +222,12 @@ class DefaultObservabilityStackService(
     private fun buildStages(telemetryRedirect: TelemetryRedirect?): List<Stage> =
         buildList {
             add(Stage("kube-state-metrics", kubeStateMetricsManifestBuilder.buildAllResources()))
-            add(Stage("Fluent Bit Journald", journaldOtelManifestBuilder.buildAllResources()))
+            add(Stage("Fluent Bit Journald", journaldOtelManifestBuilder.buildAllResources(), NodeCapability.SYSTEMD_JOURNAL))
             add(Stage("ebpf_exporter", ebpfExporterManifestBuilder.buildAllResources()))
             add(Stage("Registry", registryManifestBuilder.buildAllResources()))
-            add(Stage("S3 Manager", s3ManagerManifestBuilder.buildAllResources()))
+            add(Stage("S3 Manager", s3ManagerManifestBuilder.buildAllResources(), NodeCapability.S3))
             add(Stage("Beyla", beylaManifestBuilder.buildAllResources()))
-            add(Stage("YACE", yaceManifestBuilder.buildAllResources()))
+            add(Stage("YACE", yaceManifestBuilder.buildAllResources(), NodeCapability.CLOUDWATCH))
             if (telemetryRedirect == null) {
                 add(Stage("Mimir", mimirManifestBuilder.buildAllResources()))
                 add(Stage("Loki", lokiManifestBuilder.buildAllResources()))

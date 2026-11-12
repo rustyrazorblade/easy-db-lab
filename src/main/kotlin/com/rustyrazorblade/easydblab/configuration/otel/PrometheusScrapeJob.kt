@@ -31,6 +31,8 @@ data class PrometheusScrapeJob(
     @SerialName("kubernetes_sd_configs") val kubernetesSdConfigs: List<PrometheusKubernetesSdConfig>? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     @SerialName("basic_auth") val basicAuth: PrometheusBasicAuth? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @SerialName("scrape_timeout") val scrapeTimeout: String? = null,
 )
 
 @Serializable

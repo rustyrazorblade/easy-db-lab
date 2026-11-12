@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
@@ -89,7 +90,7 @@ class ControlNodePortsTest : BaseKoinTest() {
         val tempo = TempoManifestBuilder(templates).buildAllResources()
         val resources =
             mimir + loki + tempo +
-                OtelManifestBuilder(templates).buildAllResources() +
+                OtelManifestBuilder(templates).buildAllResources(NodeCapabilities.AWS) +
                 JournaldOtelManifestBuilder(templates).buildAllResources() +
                 EbpfExporterManifestBuilder().buildAllResources() +
                 BeylaManifestBuilder(templates).buildAllResources() +

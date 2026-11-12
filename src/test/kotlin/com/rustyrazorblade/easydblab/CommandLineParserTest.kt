@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab
 
+import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -149,6 +150,18 @@ class CommandLineParserTest : BaseKoinTest() {
 
         assertThat(profileGroup.commandSpec.userObject()).isInstanceOf(Profile::class.java)
         assertThat(profileGroup.subcommands.keys).contains("show", "setup")
+    }
+
+    @Test
+    fun `the status command is instantiated with its defaulted capabilities by the CLI factory`() {
+        val status =
+            CommandLineParser()
+                .commandLine.subcommands
+                .getValue("status")
+                .commandSpec
+                .userObject()
+
+        assertThat(status).isInstanceOf(Status::class.java)
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.services.LogQl
@@ -128,7 +129,10 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         mimir: GenericContainer<*>,
         loki: GenericContainer<*>,
     ): GenericContainer<*> {
-        val config = OtelManifestBuilder(getKoin().get()).buildConfigMap(emptyList()).data.getValue("otel-collector-config.yaml")
+        val config =
+            OtelManifestBuilder(
+                getKoin().get(),
+            ).buildConfigMap(NodeCapabilities.AWS, emptyList()).data.getValue("otel-collector-config.yaml")
         return GenericContainer("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
             .withExtraHost("mimir.default.svc.cluster.local", bridgeAddress(mimir))
             .withExtraHost("loki.default.svc.cluster.local", bridgeAddress(loki))

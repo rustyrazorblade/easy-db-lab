@@ -44,7 +44,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Emr.*` — EMR/Spark operations
 - `Event.OpenSearch.*` — OpenSearch domain management
 - `Event.S3.*` — S3 object store operations
-- `Event.Grafana.*` — Grafana dashboard deployment
+- `Event.Grafana.*` — Grafana dashboard deployment and observability stack deploy steps, including `StageSkipped` (a stage left out because the environment lacks a `NodeCapability`)
 - `Event.Backup.*` — Backup/restore operations
 - `Event.Registry.*` — Container registry operations
 - `Event.Tailscale.*` — Tailscale VPN operations

@@ -50,9 +50,10 @@ new_case() {
     mkdir -p "$CASE" "$ETC_DIR"
 }
 
-# Writes instance data whose .ds.meta_data.mac is the given raw JSON value.
+# Writes instance data whose .ds."meta-data".mac is the given raw JSON value. This is the shape
+# cloud-init 26.x writes on the Ubuntu 26.04 AMI: the IMDS tree sits under "meta-data", hyphenated.
 write_data() {
-    printf '{"ds": {"meta_data": {"mac": %s, "instance-id": "i-0123456789abcdef0"}}}\n' "$1" >"$DATA"
+    printf '{"ds": {"_doc": "", "_metadata_api_version": "2021-03-23", "dynamic": {}, "meta-data": {"mac": %s, "instance-id": "i-0123456789abcdef0"}}}\n' "$1" >"$DATA"
 }
 
 # Runs the script against the current case; sets OUTPUT and STATUS.
@@ -123,19 +124,26 @@ expect_failure "malformed instance data" "$DATA"
 new_case
 write_data 'null'
 run_script
-expect_failure "null MAC" ".ds.meta_data.mac"
+expect_failure "null MAC" '.ds."meta-data".mac'
 
 # --- A missing MAC key fails loudly ---
 new_case
-echo '{"ds": {"meta_data": {"instance-id": "i-0123456789abcdef0"}}}' >"$DATA"
+echo '{"ds": {"meta-data": {"instance-id": "i-0123456789abcdef0"}}}' >"$DATA"
 run_script
-expect_failure "missing MAC key" ".ds.meta_data.mac"
+expect_failure "missing MAC key" '.ds."meta-data".mac'
+
+# --- The underscore shape (.ds.meta_data.mac) is not what cloud-init 26.x writes, so a MAC there is
+# missing: the script reads one path and never falls back to another. ---
+new_case
+echo '{"ds": {"meta_data": {"mac": "0a:1b:2c:3d:4e:5f", "instance-id": "i-0123456789abcdef0"}}}' >"$DATA"
+run_script
+expect_failure "underscore meta_data shape" '.ds."meta-data".mac'
 
 # --- An empty MAC fails loudly ---
 new_case
 write_data '""'
 run_script
-expect_failure "empty MAC" ".ds.meta_data.mac"
+expect_failure "empty MAC" '.ds."meta-data".mac'
 
 # --- Malformed MACs fail loudly ---
 for bad in '0a:1b:2c:3d:4e' '0a:1b:2c:3d:4e:5f:60' '0a-1b-2c-3d-4e-5f' '0a:1b:2c:3d:4e:zz' '0a1b2c3d4e5f' \

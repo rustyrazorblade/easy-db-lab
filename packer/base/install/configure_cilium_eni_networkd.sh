@@ -16,7 +16,7 @@
 # family, so no name or slot list can work. The base AMI instead installs
 # /usr/local/sbin/edl-primary-eni-network and the edl-primary-eni-network.service oneshot. On every
 # boot, after cloud-init-local and before systemd-networkd, the script reads the IMDS primary MAC
-# (.ds.meta_data.mac in /run/cloud-init/instance-data.json) and writes
+# (.ds."meta-data".mac in /run/cloud-init/instance-data.json) and writes
 # /run/systemd/network/05-cilium-eni-primary.network with PermanentMACAddress=<mac> and DHCP=ipv4.
 # If it cannot read a valid MAC it prints one line to the console and exits 1; it never guesses.
 #

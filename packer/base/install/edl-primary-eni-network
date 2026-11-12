@@ -36,7 +36,7 @@ ETC_NETWORK_DIR="${EDL_ETC_NETWORK_DIR:-/etc/systemd/network}"
 FILE_NAME="05-cilium-eni-primary.network"
 PRIMARY_FILE="${RUN_NETWORK_DIR}/${FILE_NAME}"
 SHADOW_FILE="${ETC_NETWORK_DIR}/${FILE_NAME}"
-MAC_PATH=".ds.meta_data.mac"
+MAC_PATH='.ds."meta-data".mac'
 
 TEMP_FILE=""
 trap '[ -z "$TEMP_FILE" ] || rm -f "$TEMP_FILE"' EXIT

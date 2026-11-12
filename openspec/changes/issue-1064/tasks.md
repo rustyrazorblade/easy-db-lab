@@ -25,7 +25,7 @@
 
 ## 4. Dashboards
 
-- [ ] 4.1 Through the `dashboard-editor` agent: change the network panel filters in `dashboards/infrastructure/system-overview.json` and `dashboards/infrastructure/system-ab-comparison.json` from `ens.*` to `en.*`, deploy, and read back from Grafana
+- [x] 4.1 Through the `dashboard-editor` agent: change the network panel filters in `dashboards/infrastructure/system-overview.json` and `dashboards/infrastructure/system-ab-comparison.json` from `ens.*` to `en.*`, deploy, and read back from Grafana
 
 ## 5. Docs
 
@@ -38,12 +38,12 @@
 
 - [x] 6.1 `./gradlew installDist`; bake the base AMI; confirm the bake's reload check passed in the build log
 - [x] 6.2 Bake the cassandra AMI on the new base AMI
-- [ ] 6.3 Early ordering check: boot one node, reboot it, and confirm from `journalctl -b` / `systemd-analyze critical-chain` that `cloud-init-local` finished before the unit and the unit before `systemd-networkd` on the cached boot; confirm `.ds."meta-data".mac` exists, `ethtool -P` on the primary equals IMDS `meta-data/mac`, and the 05 file survives `netplan generate` plus `networkctl reload`
+- [x] 6.3 Early ordering check: boot one node, reboot it, and confirm from `journalctl -b` / `systemd-analyze critical-chain` that `cloud-init-local` finished before the unit and the unit before `systemd-networkd` on the cached boot; confirm `.ds."meta-data".mac` exists, `ethtool -P` on the primary equals IMDS `meta-data/mac`, and the 05 file survives `netplan generate` plus `networkctl reload`
 - [ ] 6.4 Cilium clusters on c8gd, m8gd, c7gd, i7i and c6id: every node gets DHCP on its primary, one default route, reaches IMDS, `up` completes; `CiliumNodeImageCheck` passes
 - [x] 6.5 Flannel clusters on an 8th-gen type and on i7i: the primary is managed and no primary ENA link is unmanaged
 - [ ] 6.6 Force a runtime secondary ENI (more pods than one ENI holds) on c8gd, i7i and c7gd: the secondary is `unmanaged` in `networkctl`, has no OS address and no default route; the node stays `Ready` with IMDS, egress and kubelet-to-apiserver working
 - [ ] 6.7 Reboot a node with a secondary attached: the primary is managed again and the secondary stays unmanaged
 - [ ] 6.8 Cilium on i7i: `devices` and `egressMasqueradeInterfaces` match `enp39s0` and pod egress works; Tailscale on that cluster reaches db nodes over the tailnet
-- [ ] 6.9 Failure path: on a test node, make `.ds."meta-data".mac` unavailable to the script (for example, run it against a copy without the key) and confirm the one-line console message, exit 1 and no 05 file
+- [x] 6.9 Failure path: on a test node, make `.ds."meta-data".mac` unavailable to the script (for example, run it against a copy without the key) and confirm the one-line console message, exit 1 and no 05 file
 - [x] 6.10 `CiliumNodeImageCheck` fails on a node from the previous base AMI, naming the unit
 - [ ] 6.11 Tear down every cluster created for the proof

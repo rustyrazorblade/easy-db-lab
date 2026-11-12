@@ -119,7 +119,7 @@ Cilium ENI native-routing requires the OS to leave Cilium's runtime-attached sec
 
 Without these files, the OS DHCPs a new ENI and adds a competing default route.  That multi-homes the host and breaks IMDS, egress and the kubelet.  On Flannel, the 05 file gives the only ENA link normal DHCP and the rest is inert.
 
-On a real bake instance the script runs the boot script once, runs `networkctl reload`, and fails the bake unless `networkctl status` names the `/run` 05 file for the primary link.  `./gradlew testPackerBase` runs the static checks in Docker, and `./gradlew testBasePrimaryEniNetwork` tests the boot script without Docker.
+On a real bake instance the script runs the boot script once, runs `networkctl reload`, and fails the bake unless `networkctl status` names the `/run` 05 file for the primary link.  It also loads cloud-init's config through cloud-init's own loader (`stages.Init().read_cfg()`) and fails the bake unless `datasource.Ec2.apply_full_imds_network_config` is `False`.  `cloud-init query merged_system_cfg` cannot do this check: it reads the boot snapshot in `instance-data.json`, which predates the 91 file.  `./gradlew testPackerBase` runs the static checks in Docker, and `./gradlew testBasePrimaryEniNetwork` tests the boot script without Docker.
 
 ## Base AMI clock sync
 

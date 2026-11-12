@@ -64,7 +64,8 @@
 # in the image. This therefore belongs in the BASE AMI provisioning, not a post-attach hook.
 #
 # INERT ON FLANNEL: on a Flannel node the only ENA link is the primary, which 05- claims, so 06-
-# matches nothing and the hotplug drop-in has no attach event to act on. The 05- file just gives
+# matches nothing and the hotplug drop-in has no attach event to act on. The 91- drop-in leaves
+# cloud-init only its fallback NIC to render, which is the primary there. The 05- file just gives
 # the primary normal DHCP, which is what a Flannel node wants anyway. Hence this is safe to bake
 # unconditionally into the base AMI -- no CNI conditional needed.
 #

@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -25,11 +26,13 @@ import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.EcrPullSecretService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
+import com.rustyrazorblade.easydblab.services.ImagePullSecretService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
+import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.CompactorService
+import com.rustyrazorblade.easydblab.services.aws.EcrPullSecretService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -181,23 +184,23 @@ object TestModules {
                     override fun createAWSClient(
                         accessKey: String,
                         secret: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): AWS = aws
 
                     override fun createAWSClientWithProfile(
                         profileName: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): AWS = aws
 
                     override fun createEc2Client(
                         accessKey: String,
                         secret: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): software.amazon.awssdk.services.ec2.Ec2Client = mock()
 
                     override fun createEc2ClientWithProfile(
                         profileName: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): software.amazon.awssdk.services.ec2.Ec2Client = mock()
                 }
             }
@@ -220,7 +223,8 @@ object TestModules {
             // Real, over a mocked ECR client and K8s service: tests that exercise a custom image
             // assert on the secret this actually builds, so a mock here would verify nothing.
             single { mock<EcrClient>() }
-            single { EcrPullSecretService(get(), get()) }
+            single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
+            factory { AwsKeyPairService(get(), get(), AwsErrorHandler()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

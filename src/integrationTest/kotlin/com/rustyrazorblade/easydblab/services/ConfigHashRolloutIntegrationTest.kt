@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -310,7 +311,7 @@ class ConfigHashRolloutIntegrationTest {
      */
     private fun deployCollectorStage(): List<Event.Grafana.WorkloadConfigCompared> {
         val scrapeConfigs = otel.listWorkloadScrapeConfigs(client)
-        val resources = CollectorResources.build(otel, controlHost, stateManager.load(), user.region, scrapeConfigs)
+        val resources = CollectorResources.build(otel, controlHost, stateManager.load(), user.region, scrapeConfigs, NodeCapabilities.AWS)
         val emitted = mutableListOf<Event.Grafana.WorkloadConfigCompared>()
         ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(controlHost, resources, Constants.K8s.NAMESPACE)
         resources.forEach { manifests.applyResource(controlHost, it).getOrThrow() }
@@ -367,7 +368,7 @@ class ConfigHashRolloutIntegrationTest {
             assertThat(collectorGeneration()).isEqualTo(syncedGeneration)
         } finally {
             client.resource(kitMetrics).delete()
-            client.resourceList(otel.buildAllResources()).delete()
+            client.resourceList(otel.buildAllResources(NodeCapabilities.AWS)).delete()
         }
     }
 }

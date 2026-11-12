@@ -54,7 +54,9 @@ See [`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/command
 
 See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) for AWS/SSH/Docker patterns and retry logic.
 
-**Kernel (`kernel/`)**: The few types both of the layers above share. It holds `PicoCommand`, the interface `services/CommandExecutor` dispatches on and every command implements. Keeping it here is what stops `commands/` and `services/` from depending on each other. Add a type to `kernel/` only when both layers need it, and keep it free of dependencies on either.
+**Kernel (`kernel/`)**: The few types shared by commands, services and providers. It holds `PicoCommand` (the interface `services/CommandExecutor` dispatches on and every command implements), `CommandFailedException`, the provider error contract (`ProviderErrorHandler`, `ErrorDescription`, `ProviderErrorKind`) and `Throwable.causeChain()`, the cycle-safe cause walk the reporter and the handlers share. Keeping them here is what stops `commands/`, `services/` and `providers/` from depending on each other. Add a type to `kernel/` only when more than one of those layers needs it, and keep it free of dependencies on any of them.
+
+**Cloud SDK boundary**: AWS SDK types (`software.amazon.awssdk..`) appear only in `providers/aws` and `services/aws`: not in an import, a signature, an inferred type, a class literal, or a `catch` clause. A second cloud (GCP, Azure) would otherwise have to untangle them. `architecture/PackageBoundaryTest` enforces this with no allowlist, and also that `providers..` does not depend on `services..` and `configuration..` does not depend on `providers..`. To use an SDK concept elsewhere, put a project-owned type in front of it (`SparkJobState`, `OpenSearchService.describeDomainOrNull`, `ImagePullSecretService`) or classify the failure in the provider's `ProviderErrorHandler`.
 
 ### Server & REPL
 
@@ -65,7 +67,7 @@ Three commands run as long-lived processes instead of the typical run-and-exit p
 ### Dependency Injection
 
 Use **Koin** for dependency injection throughout the codebase:
-- Services are registered in Koin modules (`AWSModule.kt`, `ServicesModule.kt`, `KubernetesModule.kt`, etc.)
+- Services are registered in Koin modules (`AwsClientsModule.kt` for the SDK clients, credentials and error handler, `AwsServicesModule.kt` for the `services/aws` classes, `ServicesModule.kt`, `KubernetesModule.kt`, etc.)
 - Commands receive dependencies via Koin injection
 - Tests use `BaseKoinTest` which provides mocked dependencies
 

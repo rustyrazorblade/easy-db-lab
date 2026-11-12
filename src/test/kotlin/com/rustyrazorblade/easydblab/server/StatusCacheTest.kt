@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -457,6 +458,21 @@ class StatusCacheTest : BaseKoinTest() {
         assertThat(observability["loki"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3100")
         assertThat(observability["tempo"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3200")
         assertThat(observability["pyroscope"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:4040")
+    }
+
+    @Test
+    fun `accessInfo has an S3 Manager only where the environment has S3`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+
+        fun accessInfo(capabilities: NodeCapabilities): JsonObject {
+            statusCache = StatusCache(refreshIntervalSeconds = 3600, capabilitiesOf = { capabilities })
+            statusCache.forceRefresh()
+            return Json.parseToJsonElement(statusCache.getStatus("accessInfo")!!).jsonObject
+        }
+
+        assertThat(accessInfo(NodeCapabilities.AWS)).containsKey("s3Manager")
+        assertThat(accessInfo(NodeCapabilities.LOCAL_DOCKER)).doesNotContainKey("s3Manager")
     }
 
     @Test

@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
-import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmForwardNotReadyException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
 import org.apache.sshd.common.SshException

@@ -166,8 +166,6 @@ val servicesModule =
         factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultSidecarService) bind SidecarService::class
 
-        // Turns the nodes' ECR IAM permission into registry credentials a pod can use
-        singleOf(::EcrPullSecretService)
         // Explicit single (not singleOf) so the jobPollInterval constructor default applies
         // instead of Koin trying to resolve a Duration binding.
         single<StressJobService> { DefaultStressJobService(get(), get(), get(), get(), get()) }
@@ -253,6 +251,9 @@ val servicesModule =
 
         // Resolves the developer's public IP for scoping security-group SSH ingress to a /32
         single<ExternalIpService> { DefaultExternalIpService() }
+
+        // Reports a failed command as one event; getAll() collects every provider's error handler
+        single { CommandFailureReporter(get(), getAll()) }
 
         // Command executor for scheduling and executing commands with full lifecycle
         // Note: BackupRestoreService is lazily injected in DefaultCommandExecutor to avoid

@@ -15,7 +15,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
-import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState

@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
@@ -27,6 +28,7 @@ import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
@@ -140,6 +142,7 @@ class StatusTest : BaseKoinTest() {
                 single<EMRService> { mockEmrService }
                 single<StressJobService> { mockStressJobService }
                 single<ProxyAvailability> { DefaultProxyAvailability() }
+                single { CommandFailureReporter(get(), emptyList()) }
                 // Real instance: the scanner only reads the filesystem, so faking it would
                 // hide the very rule these tests exercise.
                 single { WorkspaceKitScanner(get()) }
@@ -367,6 +370,19 @@ class StatusTest : BaseKoinTest() {
         assertThat(output).contains("✓ clickhouse")
         assertThat(output).contains("http://10.0.1.100:30123", "http://10.0.1.101:30123", "10.0.1.100:30900")
         assertThat(output).doesNotContain(":8123", ":9000")
+    }
+
+    @Test
+    fun `the S3 Manager section appears only where the environment has S3`() {
+        setupBasicClusterStateWithS3Bucket("test-bucket")
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+
+        Status().execute()
+        assertThat(capturedOutput()).contains("S3 Manager:")
+
+        stdout.reset()
+        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+        assertThat(capturedOutput()).doesNotContain("S3 Manager")
     }
 
     @Test

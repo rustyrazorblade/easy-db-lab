@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -24,6 +26,9 @@ interface OtelSyncService {
  * ConfigMap, not because of a forced restart. A forced restart would leave the old hash on the
  * template, and the next `up` or `grafana update-config` would see a "changed" collector and roll
  * it again for nothing.
+ *
+ * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
+ *   like the one on [DefaultObservabilityStackService] (consolidated by #1040).
  */
 class DefaultOtelSyncService(
     private val k8sClientProvider: K8sClientProvider,
@@ -32,6 +37,7 @@ class DefaultOtelSyncService(
     private val clusterStateManager: ClusterStateManager,
     private val user: User,
     private val configChangeReport: ConfigChangeReport,
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
 ) : OtelSyncService {
     private val log = KotlinLogging.logger {}
 
@@ -46,7 +52,15 @@ class DefaultOtelSyncService(
             // The cluster's export destinations and CNI come from its recorded init config, so a
             // regenerated ConfigMap keeps a redirect cluster's external endpoints and a Cilium
             // cluster's Cilium scrape jobs.
-            val resources = CollectorResources.build(otelManifestBuilder, controlHost, clusterState, user.region, scrapeConfigs)
+            val resources =
+                CollectorResources.build(
+                    otelManifestBuilder,
+                    controlHost,
+                    clusterState,
+                    user.region,
+                    scrapeConfigs,
+                    capabilitiesOf(clusterState),
+                )
             configChangeReport.report(controlHost, resources, Constants.K8s.NAMESPACE)
             for (resource in resources) {
                 k8sService.applyResource(controlHost = controlHost, resource = resource).getOrThrow()

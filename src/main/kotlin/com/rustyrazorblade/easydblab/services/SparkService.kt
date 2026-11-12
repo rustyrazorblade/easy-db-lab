@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.events.Event
-import software.amazon.awssdk.services.emr.model.StepState
 import java.nio.file.Path
 import java.time.Instant
 
@@ -181,12 +180,12 @@ interface SparkService {
     /**
      * Represents the status of a Spark job.
      *
-     * @property state The current EMR step state
+     * @property state The current job state
      * @property stateChangeReason Optional reason for state change (e.g., "User request")
      * @property failureDetails Optional details if the job failed
      */
     data class JobStatus(
-        val state: StepState,
+        val state: SparkJobState,
         val stateChangeReason: String? = null,
         val failureDetails: String? = null,
     )
@@ -196,13 +195,13 @@ interface SparkService {
      *
      * @property stepId The EMR step ID
      * @property name The job name
-     * @property state The current EMR step state
+     * @property state The current job state
      * @property startTime When the job started (null if not yet started)
      */
     data class JobInfo(
         val stepId: String,
         val name: String,
-        val state: StepState,
+        val state: SparkJobState,
         val startTime: Instant?,
     )
 
@@ -211,7 +210,7 @@ interface SparkService {
      *
      * @property stepId The EMR step ID
      * @property name The step name
-     * @property state The current EMR step state
+     * @property state The current job state
      * @property stateChangeReasonCode Code indicating why state changed (e.g., "PENDING")
      * @property stateChangeReasonMessage Detailed reason for state change
      * @property failureReason Reason for failure if applicable
@@ -227,7 +226,7 @@ interface SparkService {
     data class StepDetails(
         val stepId: String,
         val name: String,
-        val state: StepState,
+        val state: SparkJobState,
         val stateChangeReasonCode: String?,
         val stateChangeReasonMessage: String?,
         val failureReason: String?,
@@ -295,7 +294,7 @@ interface SparkService {
             return Event.Emr.SparkStepDetails(
                 stepId = stepId,
                 name = name,
-                state = state.toString(),
+                state = state.name,
                 stateChangeReasonCode = stateChangeReasonCode,
                 stateChangeReasonMessage = stateChangeReasonMessage,
                 creationTime = creationTime?.toString(),

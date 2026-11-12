@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.LokiQueryService
+import com.rustyrazorblade.easydblab.services.SparkJobState
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -21,7 +22,6 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import software.amazon.awssdk.services.emr.model.StepState
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.time.Instant
@@ -72,7 +72,7 @@ class SparkLogsTest : BaseKoinTest() {
     ) = SparkService.StepDetails(
         stepId = stepId,
         name = name,
-        state = StepState.COMPLETED,
+        state = SparkJobState.COMPLETED,
         stateChangeReasonCode = null,
         stateChangeReasonMessage = null,
         failureReason = null,
@@ -145,7 +145,7 @@ class SparkLogsTest : BaseKoinTest() {
                 SparkService.JobInfo(
                     stepId = "s-RECENT",
                     name = "recent-job",
-                    state = StepState.COMPLETED,
+                    state = SparkJobState.COMPLETED,
                     startTime = Instant.now(),
                 )
             whenever(mockSparkService.listJobs(eq("j-TESTCLUSTER"), eq(1)))

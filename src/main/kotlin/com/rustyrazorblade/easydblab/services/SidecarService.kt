@@ -51,7 +51,7 @@ class DefaultSidecarService(
     private val k8sService: K8sService,
     private val manifestBuilder: SidecarManifestBuilder,
     private val clusterStateManager: ClusterStateManager,
-    private val ecrPullSecrets: EcrPullSecretService,
+    private val ecrPullSecrets: ImagePullSecretService,
 ) : SidecarService {
     private val log = KotlinLogging.logger {}
 

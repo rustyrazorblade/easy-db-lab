@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -2497,6 +2499,20 @@ sealed interface Event {
         }
 
         /**
+         * A deploy stage was not applied because the environment lacks the [capability] it needs.
+         * It is not awaited either, so the rollout wait does not time out on it. The reason shown is
+         * derived from [capability] (`NodeCapability.absentReason`), so the event carries one fact once.
+         */
+        @Serializable
+        @SerialName("Grafana.StageSkipped")
+        data class StageSkipped(
+            val stage: String,
+            val capability: NodeCapability,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Skipping $stage: ${capability.absentReason}"
+        }
+
+        /**
          * Whether [workload]'s configuration hash differs from the one running on the cluster. A
          * changed workload (or one not yet deployed) is rolled by the apply; an unchanged one is left
          * running.
@@ -3851,6 +3867,31 @@ sealed interface Event {
             val error: String,
         ) : Command {
             override fun toDisplayString(): String = error
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A command failed with an error a provider's [com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler]
+         * recognised: bad credentials or missing permissions. Carries the provider's detail and the remedy.
+         */
+        @Serializable
+        @SerialName("Command.ProviderError")
+        data class ProviderError(
+            val provider: String,
+            val kind: ProviderErrorKind,
+            val detail: String,
+            val remedy: String,
+        ) : Command {
+            override fun toDisplayString(): String {
+                val headline =
+                    when (kind) {
+                        ProviderErrorKind.CREDENTIALS -> "$provider credentials are missing, expired or invalid."
+                        ProviderErrorKind.PERMISSION_DENIED -> "$provider denied permission for this operation."
+                        ProviderErrorKind.UNAVAILABLE -> "$provider is not available."
+                    }
+                return "$headline\n$detail\n$remedy\nFor detailed error information, check the logs (logs/info.log by default)"
+            }
 
             override fun isError(): Boolean = true
         }

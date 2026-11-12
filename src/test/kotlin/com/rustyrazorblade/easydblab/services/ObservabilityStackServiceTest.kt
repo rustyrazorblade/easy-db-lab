@@ -8,6 +8,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -172,7 +174,105 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
                 DashboardInstallContextFactory(sharedStoreTenants()),
+                capabilitiesOf = { capabilities },
             )
+    }
+
+    /** The capabilities the service under test sees; AWS unless a test declares otherwise. */
+    private var capabilities: NodeCapabilities = NodeCapabilities.AWS
+
+    private fun collectEvents(): MutableList<Event> {
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return emitted
+    }
+
+    @Test
+    fun `an environment without capabilities skips the three gated stages and does not await them`() {
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        assertThat(applied).doesNotContain("fluent-bit-journald", "yace", "s3manager")
+        assertThat(applied).contains("otel-collector", "ebpf-exporter", "beyla")
+
+        val awaited = argumentCaptor<List<WorkloadRef>>()
+        verify(mockK8sService).waitForRollouts(any(), awaited.capture(), eq("default"), any())
+        assertThat(awaited.firstValue.map { it.toString() }).noneMatch {
+            it.contains("fluent-bit-journald") || it.contains("yace") || it.contains("s3manager")
+        }
+
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactlyInAnyOrder(
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.SYSTEMD_JOURNAL),
+                Event.Grafana.StageSkipped("YACE", NodeCapability.CLOUDWATCH),
+                Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
+            )
+    }
+
+    @Test
+    fun `the YACE stage and the yace scrape job follow the same capability set`() {
+        // One non-AWS set drives both sources: the stage list and the collector config.
+        capabilities = NodeCapabilities(setOf(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.S3))
+
+        service.deploy(controlNode).getOrThrow()
+
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        val collectorConfig =
+            captor.allValues
+                .filterIsInstance<ConfigMap>()
+                .single { it.metadata.name == "otel-collector-config" }
+                .data.values
+                .single()
+        assertThat(appliedKindNames()).doesNotContain("Deployment/yace")
+        assertThat(collectorConfig).doesNotContain("job_name: \"yace\"")
+    }
+
+    @Test
+    fun `an environment with only CloudWatch skips only the journal and S3 stages`() {
+        capabilities = NodeCapabilities(setOf(NodeCapability.CLOUDWATCH))
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        assertThat(applied).contains("yace").doesNotContain("fluent-bit-journald", "s3manager")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().map { it.capability })
+            .containsExactlyInAnyOrder(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.S3)
+    }
+
+    @Test
+    fun `skips are reported before the config-change report and the apply`() {
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        val firstSkip = emitted.indexOfFirst { it is Event.Grafana.StageSkipped }
+        val firstCompared = emitted.indexOfFirst { it is Event.Grafana.WorkloadConfigCompared }
+        assertThat(firstSkip).isNotNegative()
+        assertThat(firstSkip).isLessThan(firstCompared)
+    }
+
+    @Test
+    fun `AWS applies the gated stages and emits no skip`() {
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        assertThat(appliedKindNames()).contains("DaemonSet/fluent-bit-journald", "Deployment/yace", "Deployment/s3manager")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>()).isEmpty()
     }
 
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */
@@ -563,12 +663,15 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      * `grafana update-config` redeploys it through this service. Both must stamp the same config
      * hash, or that next deploy sees a "changed" collector and rolls it for nothing.
      */
-    @ParameterizedTest(name = "{0}, redirect={1}")
+    @ParameterizedTest(name = "{0}, redirect={1}, aws={2}")
     @MethodSource("collectorClusters")
     fun `the stack deploy and a kit sync stamp the collector with the same config hash`(
         cni: CniMode,
         redirect: TelemetryRedirect?,
+        awsCapabilities: Boolean,
     ) {
+        val sharedCapabilities = if (awsCapabilities) NodeCapabilities.AWS else NodeCapabilities.LOCAL_DOCKER
+        capabilities = sharedCapabilities
         val state =
             ClusterState(
                 name = "test-cluster",
@@ -590,6 +693,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             mockClusterStateManager,
             getKoin().get(),
             ConfigChangeReport(mockK8sService, getKoin().get()),
+            { sharedCapabilities },
         ).syncConfigMap(controlNode).getOrThrow()
 
         assertThat(appliedCollectorHash()).isEqualTo(deployHash)
@@ -613,10 +717,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         @JvmStatic
         fun collectorClusters(): List<Arguments> =
             listOf(CniMode.Flannel, CniMode.Cilium).flatMap { cni ->
-                listOf(
-                    Arguments.of(cni, null),
-                    Arguments.of(cni, TelemetryRedirect.fromBaseHost("10.0.0.9")),
-                )
+                listOf(true, false).flatMap { capabilities ->
+                    listOf(
+                        Arguments.of(cni, null, capabilities),
+                        Arguments.of(cni, TelemetryRedirect.fromBaseHost("10.0.0.9"), capabilities),
+                    )
+                }
             }
     }
 }

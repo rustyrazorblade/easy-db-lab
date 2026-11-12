@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -65,11 +66,14 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
             configMap.data.getValue("otel-collector-config.yaml")
         }
         return when (variant) {
-            "cluster-flannel" -> clusterConfig(builder.buildConfigMap(emptyList(), null, CniMode.Flannel))
-            "cluster-cilium-with-kits" -> clusterConfig(builder.buildConfigMap(listOf(kitJob, podJob), null, CniMode.Cilium))
+            "cluster-flannel" -> clusterConfig(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), null, CniMode.Flannel))
+            "cluster-cilium-with-kits" ->
+                clusterConfig(
+                    builder.buildConfigMap(NodeCapabilities.AWS, listOf(kitJob, podJob), null, CniMode.Cilium),
+                )
             "cluster-redirect" ->
                 clusterConfig(
-                    builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9"), CniMode.Cilium),
+                    builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9"), CniMode.Cilium),
                 )
             "emr" ->
                 checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/configuration/emr/otel-collector-config.yaml"))

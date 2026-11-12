@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.services.LogQl
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkJobRequest
+import com.rustyrazorblade.easydblab.services.SparkJobState
 import com.rustyrazorblade.easydblab.services.SparkService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
@@ -75,7 +76,7 @@ class EMRSparkService(
 
     companion object {
         private val VALID_CLUSTER_STATES = setOf("WAITING", "RUNNING")
-        private val TERMINAL_JOB_STATES = setOf(StepState.COMPLETED, StepState.FAILED, StepState.CANCELLED)
+        private val TERMINAL_JOB_STATES = setOf(SparkJobState.COMPLETED, SparkJobState.FAILED, SparkJobState.CANCELLED)
     }
 
     override fun submitJob(request: SparkJobRequest): Result<String> =
@@ -154,12 +155,12 @@ class EMRSparkService(
             } while (currentStatus.state !in TERMINAL_JOB_STATES)
 
             when (currentStatus.state) {
-                StepState.COMPLETED -> {
+                SparkJobState.COMPLETED -> {
                     eventBus.emit(Event.Emr.SparkJobCompleted)
                     currentStatus
                 }
-                StepState.FAILED -> handleFailedJob(clusterId, stepId, currentStatus)
-                StepState.CANCELLED -> {
+                SparkJobState.FAILED -> handleFailedJob(clusterId, stepId, currentStatus)
+                SparkJobState.CANCELLED -> {
                     val errorMessage = "Job was cancelled"
                     log.warn { errorMessage }
                     error(errorMessage)
@@ -331,7 +332,7 @@ class EMRSparkService(
                 val status = response.step().status()
 
                 SparkService.JobStatus(
-                    state = status.state(),
+                    state = status.state().toSparkJobState(),
                     stateChangeReason = status.stateChangeReason()?.message(),
                     failureDetails = status.failureDetails()?.message(),
                 )
@@ -366,7 +367,7 @@ class EMRSparkService(
                 SparkService.StepDetails(
                     stepId = step.id(),
                     name = step.name(),
-                    state = status.state(),
+                    state = status.state().toSparkJobState(),
                     stateChangeReasonCode = status.stateChangeReason()?.code()?.toString(),
                     stateChangeReasonMessage = status.stateChangeReason()?.message(),
                     failureReason = status.failureDetails()?.reason(),
@@ -458,7 +459,7 @@ class EMRSparkService(
                         SparkService.JobInfo(
                             stepId = step.id(),
                             name = step.name(),
-                            state = step.status().state(),
+                            state = step.status().state().toSparkJobState(),
                             startTime = step.status().timeline()?.startDateTime(),
                         )
                     }
@@ -791,3 +792,20 @@ class EMRSparkService(
         return Retry.decorateSupplier(retry, operation).get()
     }
 }
+
+/**
+ * Maps an EMR step state onto the project's [SparkJobState]. Exhaustive on purpose: an SDK upgrade
+ * that adds a state fails to compile here instead of showing a user a state nobody mapped. A state
+ * the SDK does not know, or none at all, is [SparkJobState.UNKNOWN].
+ */
+internal fun StepState?.toSparkJobState(): SparkJobState =
+    when (this) {
+        StepState.PENDING -> SparkJobState.PENDING
+        StepState.CANCEL_PENDING -> SparkJobState.CANCEL_PENDING
+        StepState.RUNNING -> SparkJobState.RUNNING
+        StepState.COMPLETED -> SparkJobState.COMPLETED
+        StepState.CANCELLED -> SparkJobState.CANCELLED
+        StepState.FAILED -> SparkJobState.FAILED
+        StepState.INTERRUPTED -> SparkJobState.INTERRUPTED
+        StepState.UNKNOWN_TO_SDK_VERSION, null -> SparkJobState.UNKNOWN
+    }

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
 import com.rustyrazorblade.easydblab.providers.aws.withEcsRoleRetry
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.ecs.model.ClientException

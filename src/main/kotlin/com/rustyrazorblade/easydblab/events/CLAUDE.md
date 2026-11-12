@@ -44,7 +44,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Emr.*` — EMR/Spark operations
 - `Event.OpenSearch.*` — OpenSearch domain management
 - `Event.S3.*` — S3 object store operations
-- `Event.Grafana.*` — Grafana dashboard deployment
+- `Event.Grafana.*` — Grafana dashboard deployment and observability stack deploy steps, including `StageSkipped` (a stage left out because the environment lacks a `NodeCapability`)
 - `Event.Backup.*` — Backup/restore operations
 - `Event.Registry.*` — Container registry operations
 - `Event.Tailscale.*` — Tailscale VPN operations
@@ -52,7 +52,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Stress.*` — Stress testing operations. `JobStarted` (from `cassandra stress start`, once the pod runs) carries `host`, the alias of the node the stress pod runs on. `JobCompleted(jobName, host, outcome, durationSeconds)` comes only from `metrics stream`: once for each job it saw running that has finished; `outcome` is `StressJobOutcome`, `succeeded` or `failed` on the wire
 - `Event.Service.*` — SystemD service management
 - `Event.Provision.*` — Cluster provisioning orchestration
-- `Event.Command.*` — Command execution and general command output
+- `Event.Command.*` — Command execution and general command output. `Command.ProviderError(provider, kind, detail, remedy)` (an error) is what `CommandFailureReporter` emits when a registered `ProviderErrorHandler` recognises a failure (`kind` is `credentials`, `permission-denied` or `unavailable`); any other failure is `Command.ExecutionError`
 - `Event.Status.*` — Cluster status display sections
 - `Event.Teardown.*` — Cluster teardown lifecycle
 - `Event.Ami.*` — AMI pruning, listing, validation

@@ -225,6 +225,56 @@ object Constants {
         // eventual consistency, not a missing instance.
         const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
 
+        /**
+         * AWS error codes, grouped by what the user must do. `AwsErrorHandler` checks the code
+         * before the HTTP status, because STS, IAM and S3 answer 403 for bad credentials.
+         */
+        object ErrorCodes {
+            val CREDENTIALS =
+                setOf(
+                    "ExpiredToken",
+                    "ExpiredTokenException",
+                    "RequestExpired",
+                    "AuthFailure",
+                    "InvalidClientTokenId",
+                    "UnrecognizedClientException",
+                    "InvalidAccessKeyId",
+                    "SignatureDoesNotMatch",
+                    "InvalidSignatureException",
+                    "InvalidToken",
+                    "TokenRefreshRequired",
+                    "MissingAuthenticationToken",
+                    "IncompleteSignature",
+                )
+
+            val PERMISSION_DENIED =
+                setOf(
+                    "AccessDenied",
+                    "AccessDeniedException",
+                    "UnauthorizedOperation",
+                )
+
+            /** A 403 from clock skew is neither a credentials nor a permission problem. */
+            const val CLOCK_SKEW = "RequestTimeTooSkewed"
+
+            /**
+             * Prefixes of the `SdkClientException` messages a credentials provider raises when it finds no usable
+             * credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGE]. An expired SSO session
+             * has its own type, `ExpiredTokenException`, so it needs no message here.
+             */
+            val CREDENTIALS_MESSAGES =
+                listOf(
+                    "Unable to load credentials",
+                    "Profile file contained no credentials for profile",
+                )
+
+            /** The SDK package whose providers raise a missing-credentials `SdkClientException`. */
+            const val CREDENTIALS_PROVIDER_PACKAGE = "software.amazon.awssdk.auth.credentials."
+
+            /** The SDK package of the exception builders, skipped to find the code that raised an exception. */
+            const val SDK_EXCEPTION_PACKAGE = "software.amazon.awssdk.core.exception."
+        }
+
         // IAM Role Names
         object Roles {
             const val EC2_INSTANCE_ROLE = "EasyDBLabEC2Role"

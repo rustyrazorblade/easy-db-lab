@@ -4228,7 +4228,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"receive\", device=~\"en.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} rx",
           "refId": "A"
         },
@@ -4237,7 +4237,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"transmit\", device=~\"en.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} tx",
           "refId": "B"
         }
@@ -4335,7 +4335,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_packets_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_packets_total{direction=\"receive\", device=~\"en.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} rx",
           "refId": "A"
         },
@@ -4344,7 +4344,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_packets_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_packets_total{direction=\"transmit\", device=~\"en.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} tx",
           "refId": "B"
         }
@@ -4441,7 +4441,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_errors_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_errors_total{direction=\"receive\", device=~\"en.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} rx errors",
           "refId": "A"
         },
@@ -4450,7 +4450,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_errors_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_errors_total{direction=\"transmit\", device=~\"en.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} tx errors",
           "refId": "B"
         },
@@ -4459,7 +4459,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_dropped_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_dropped_total{direction=\"receive\", device=~\"en.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} rx drops",
           "refId": "C"
         },
@@ -4468,7 +4468,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_dropped_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_dropped_total{direction=\"transmit\", device=~\"en.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} tx drops",
           "refId": "D"
         }

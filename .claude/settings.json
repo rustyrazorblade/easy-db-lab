@@ -29,6 +29,5 @@
     "easy-db-lab@rustyrazorblade-plugins": true,
     "dev-skills@rustyrazorblade-plugins": true,
     "mattpocock-skills@claude-plugins-official": true
-  },
-  "agent": "spec-flow:project-manager"
+  }
 }

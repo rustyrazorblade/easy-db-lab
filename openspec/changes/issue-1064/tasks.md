@@ -13,9 +13,9 @@
 - [x] 2.5 `packer/base/base.pkr.hcl`: add a `file` provisioner that uploads `install/edl-primary-eni-network` before the networkd provisioner; update that provisioner's comment
 - [x] 2.6 `packer/docker-compose.yml`: make the script available to `configure_cilium_eni_networkd.sh` in the `test-base` service the same way the bake does
 - [x] 2.7 Run `./gradlew testPackerBase` and `./gradlew testScripts` (in a subagent) and confirm both pass, and that removing the unit or the `Driver=ena` line makes `testPackerBase` fail
-- [ ] 2.8 Same script: write `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg` with `datasource: Ec2: apply_full_imds_network_config: false` (design D8); self-check fails if it is missing or does not set the option; header and README describe why
-- [ ] 2.9 `Constants.Cilium.NODE_FIX_FILES`: add the 91 drop-in; update the `CiliumNodeImageCheck` KDoc and any test that asserts the list
-- [ ] 2.10 Run `./gradlew testPackerBase`, `./gradlew testScripts` and `./gradlew test` (in a subagent) and confirm they pass, and that removing the 91 file makes `testPackerBase` fail
+- [x] 2.8 Same script: write `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg` with `datasource: Ec2: apply_full_imds_network_config: false` (design D8); self-check fails if it is missing or does not set the option; header and README describe why
+- [x] 2.9 `Constants.Cilium.NODE_FIX_FILES`: add the 91 drop-in; update the `CiliumNodeImageCheck` KDoc and any test that asserts the list
+- [x] 2.10 Run `./gradlew testPackerBase`, `./gradlew testScripts` and `./gradlew test` (in a subagent) and confirm they pass, and that removing the 91 file makes `testPackerBase` fail
 
 ## 3. CLI changes
 

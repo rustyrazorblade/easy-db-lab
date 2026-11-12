@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -7,7 +8,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Result of K3s cluster setup operation.
@@ -104,9 +104,11 @@ interface K3sClusterService {
     /**
      * Gets the node labels for a given server type and host.
      *
-     * Labels are used by Kubernetes for node selection and scheduling.
-     * For Cassandra nodes, includes a node-ordinal label parsed from the host alias
-     * (e.g., "db0" → node-ordinal=0) to support node pinning for Local Persistent Volumes.
+     * Labels are used by Kubernetes for node selection and scheduling. The agent registers its
+     * node with them (`node-label` in the agent config), so a node carries them from the moment it
+     * exists and `up` needs no per-node label call afterwards. db and app nodes include
+     * [Constants.NODE_ORDINAL_LABEL] parsed from the host alias (e.g., "db0" → 0) to support node
+     * pinning for Local Persistent Volumes.
      *
      * @param serverType The server type
      * @param host The cluster host to get labels for
@@ -130,6 +132,7 @@ class DefaultK3sClusterService(
     private val k3sAgentService: K3sAgentService,
     private val eventBus: EventBus = EventBus(),
     private val clusterBackupService: ClusterBackupService? = null,
+    private val parallel: BoundedParallel = BoundedParallel(),
 ) : K3sClusterService {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -297,7 +300,6 @@ class DefaultK3sClusterService(
         serverUrl: String,
         nodeToken: String,
     ): Map<String, AgentSetupResult> {
-        val results = ConcurrentHashMap<String, AgentSetupResult>()
         val workerServerTypes = listOf(ServerType.Cassandra, ServerType.Stress)
 
         val hostFilter =
@@ -306,29 +308,23 @@ class DefaultK3sClusterService(
                 .filter { it.isNotBlank() }
                 .toSet()
 
-        val allThreads = mutableListOf<Thread>()
-
-        workerServerTypes.forEach { serverType ->
-            val hosts =
-                config.workerHosts[serverType]?.filter {
-                    hostFilter.isEmpty() || it.alias in hostFilter
-                } ?: emptyList()
-
-            hosts.forEach { clusterHost ->
-                val nodeLabels = getNodeLabels(serverType, clusterHost)
-                allThreads.add(
-                    kotlin.concurrent.thread(start = true, name = "k3s-agent-${clusterHost.alias}") {
-                        val result = setupSingleAgent(clusterHost, serverUrl, nodeToken, nodeLabels)
-                        results[clusterHost.alias] = result
-                    },
-                )
+        val agents =
+            workerServerTypes.flatMap { serverType ->
+                config.workerHosts[serverType]
+                    .orEmpty()
+                    .filter { hostFilter.isEmpty() || it.alias in hostFilter }
+                    .map { it to getNodeLabels(serverType, it) }
             }
-        }
 
-        // Wait for all agents to complete
-        allThreads.forEach { it.join() }
-
-        return results.toMap()
+        // At most the pool's cap at once: one thread per agent is one SSH session per node.
+        return parallel
+            .map(agents) { (clusterHost, labels) -> setupSingleAgent(clusterHost, serverUrl, nodeToken, labels) }
+            .zip(agents) { result, (clusterHost, _) ->
+                clusterHost.alias to
+                    result.getOrElse { e ->
+                        AgentSetupResult(clusterHost.alias, success = false, error = Exception(e.message, e))
+                    }
+            }.toMap()
     }
 
     private fun setupSingleAgent(
@@ -378,15 +374,14 @@ class DefaultK3sClusterService(
         host: ClusterHost,
     ): Map<String, String> =
         when (serverType) {
-            ServerType.Cassandra -> {
-                // Parse ordinal from alias: "db0" → 0, "db1" → 1, etc.
-                val ordinal = host.alias.removePrefix("db").toIntOrNull() ?: 0
+            ServerType.Cassandra, ServerType.Stress -> {
+                // Parse ordinal from alias: "db0" → 0, "app3" → 3, etc.
+                val ordinal = serverType.ordinalOf(host.alias) ?: 0
                 mapOf(
-                    "type" to "db",
-                    "node-ordinal" to ordinal.toString(),
+                    Constants.NODE_TYPE_LABEL to serverType.serverType,
+                    Constants.NODE_ORDINAL_LABEL to ordinal.toString(),
                 )
             }
-            ServerType.Stress -> mapOf("type" to "app")
             ServerType.Control -> emptyMap()
         }
 }

@@ -38,23 +38,23 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
 - `Event.K3s.*` — K3s cluster management
 - `Event.Cilium.*` — Cilium CNI operations
-- `Event.K8s.*` — Kubernetes operations
+- `Event.K8s.*` — Kubernetes operations, including `NodesRegistering` / `NodesRegistered` (the count of nodes `up` waits on to register with K3s)
 - `Event.Infra.*` — AWS infrastructure (VPC, subnet, security group)
 - `Event.Ec2.*` — EC2 instance operations
 - `Event.Emr.*` — EMR/Spark operations
 - `Event.OpenSearch.*` — OpenSearch domain management
 - `Event.S3.*` — S3 object store operations
-- `Event.Grafana.*` — Grafana dashboard deployment
+- `Event.Grafana.*` — Grafana dashboard deployment, and `CompactorAgentPrepared` (the compactor agent jar's host path, and whether it was uploaded)
 - `Event.Backup.*` — Backup/restore operations
 - `Event.Registry.*` — Container registry operations
 - `Event.Tailscale.*` — Tailscale VPN operations
 - `Event.AwsSetup.*` — AWS resource setup (IAM roles, etc.)
 - `Event.Stress.*` — Stress testing operations. `JobStarted` (from `cassandra stress start`, once the pod runs) carries `host`, the alias of the node the stress pod runs on. `JobCompleted(jobName, host, outcome, durationSeconds)` comes only from `metrics stream`: once for each job it saw running that has finished; `outcome` is `StressJobOutcome`, `succeeded` or `failed` on the wire
 - `Event.Service.*` — SystemD service management
-- `Event.Provision.*` — Cluster provisioning orchestration
+- `Event.Provision.*` — Cluster provisioning orchestration, including the pre-launch capacity checks: `LaunchCapacityVerified`, and the errors `VcpuQuotaInsufficient`, `NetworkInterfaceQuotaInsufficient`, `SubnetAddressesInsufficient` (each with needed, available and shortBy), `InstanceTypeNotOffered`, `TooManyAvailabilityZones` and `LaunchDryRunRefused` (AWS's code and message); `VcpuQuotaNotChecked` names a type whose family has its own quota
 - `Event.Command.*` — Command execution and general command output
 - `Event.Status.*` — Cluster status display sections
-- `Event.Teardown.*` — Cluster teardown lifecycle
+- `Event.Teardown.*` — Cluster teardown lifecycle, including `DryRunPreview` (the resources `down --dry-run` would delete) and `DryRunDeviceRemovalPreview` (the tailnet device it would remove when the VPC is already gone)
 - `Event.Ami.*` — AMI pruning, listing, validation
 - `Event.Docker.*` — Container lifecycle operations
 - `Event.Logs.*` — Log queries (`logs query`)
@@ -67,7 +67,6 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Cleanup.*` — Per-node kit cleanup progress and completion
 - `Event.Server.*` — The REST status server: `Ready` (the `/status` and `/swagger` URLs, once it is bound) and `InfrastructureGone` (shutdown when the cluster's VPC no longer exists). There is no MCP domain.
 - `Event.Sql.*` — Shared SQL query results, used by every SQL kit command
-- `Event.Compactor.*` — The account compactor service: `Started` (created, or scaled from 0 to 1 task), `AlreadyRunning` (left as it is), `Starting` (no task runs yet, but one is pending or none has stopped; left as it is), `NoTaskRunning` (an error: a task is asked for, none runs or is pending, and the latest stopped; left as it is), `Stopped` (desired count set to 0; emitted only after the update), `AccessDenied` (an error: ECS refused a call because the operator lacks the `EasyDBLabCompactor` policy; the call then fails), `NotCreated` (a stop found no service and changed nothing), `KeptRunning` (`down` found other clusters that use the account bucket)
 - `Event.Proxy.*` — The SOCKS5 tunnel as `socks start` and `socks stop` manage it: `TunnelReady` (the port, and whether a running tunnel was reused; `up` emits it too for the tunnel it starts or reuses), `TunnelNotNeeded` (a Tailscale cluster), `NoRunningCluster` (an error: nothing to tunnel to), `TunnelStopped` (the PID), `TunnelStopFailed` (an error: the verified tunnel process did not end; it stays recorded), `NoTunnelRunning` (nothing recorded, or the recorded PID is gone or now another process's, and no orphaned ssh of it runs). `down` reports the same stop as `Teardown.Socks5ProxyStopped` or `Teardown.Socks5ProxyStopFailed`. `ProcessSocksProxyService` itself emits `TunnelReplaced` (a recorded tunnel failed the reuse check and a new one started: the old port, the new port, and a `ReplaceReason` of `gateway-changed`, `unreachable`, `process-gone`, `pid-reused` (a live process holds the recorded PID but is not the tunnel script) or `ssh-config-changed`; its text tells the user to change the browser's SOCKS port) and `SupersededTunnelStopFailed` (an error: the tunnel being replaced did not stop; its PID and port), for every caller of `ensureRunning`
 - `Event.Report.*` — Test documents: `DocumentsUploaded` (each stored document's name and S3 URI, and the rebuilt index's URI), from `report upload`
 - `Event.Ingress.*` — SSH ingress rules that `ingress allow` and `ingress revoke` change, one event per CIDR (canonical, e.g. `203.0.113.7/32`; `detected` is true for this machine's detected public IP): `RuleAdded`, `RuleAlreadyPresent`, `RuleRemoved`, and the errors `RuleNotFound` (revoke found no rule), `RuleChangeFailed` (AWS refused one CIDR; `action` `allow`/`revoke` and AWS's reason). One error per precondition that stops the command before any rule changes: `InvalidCidrs` (every bad value and its reason), `PublicIpDetectionFailed`, `NotInWorkspace`, `NoSecurityGroupInState`, `SecurityGroupNotFound`. `up` keeps reporting its own rules as `Infra.SecurityGroupRuleConfigured`, which `AwsInfrastructureService` emits once per rule it adds; the provider emits no rule event

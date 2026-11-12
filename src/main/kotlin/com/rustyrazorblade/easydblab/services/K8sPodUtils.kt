@@ -49,29 +49,33 @@ object K8sPodUtils {
         }
 
     /**
-     * Checks if a pod has any containers in a terminal failure state.
-     * Throws IllegalStateException if a failure is detected, causing
-     * waitUntilCondition to exit immediately.
+     * Describes the first container of [pod] in a terminal failure state, or null when none is.
+     * It returns rather than throws, so a poll can end on it at once instead of treating it as a
+     * failed look to retry.
      */
-    fun checkForPodFailure(pod: Pod?) {
+    fun failureOf(pod: Pod?): String? {
         val podName = pod?.metadata?.name ?: "unknown"
-        checkContainerStatuses(pod?.status?.containerStatuses, podName, "container")
-        checkContainerStatuses(pod?.status?.initContainerStatuses, podName, "init container")
+        return containerFailure(pod?.status?.containerStatuses, podName, "container")
+            ?: containerFailure(pod?.status?.initContainerStatuses, podName, "init container")
     }
 
-    private fun checkContainerStatuses(
+    private fun containerFailure(
         statuses: List<ContainerStatus>?,
         podName: String,
         containerType: String,
-    ) {
-        statuses?.forEach { containerStatus ->
-            val waitingReason = containerStatus.state?.waiting?.reason ?: return@forEach
+    ): String? =
+        statuses.orEmpty().firstNotNullOfOrNull { containerStatus ->
+            val waitingReason = containerStatus.state?.waiting?.reason
             if (waitingReason in TERMINAL_FAILURE_REASONS) {
                 val containerName = containerStatus.name ?: "unknown"
-                val waitingMessage = containerStatus.state?.waiting?.message
-                val suffix = waitingMessage?.let { ": $it" } ?: ""
-                error("Pod $podName $containerType $containerName is in $waitingReason state$suffix")
+                val suffix =
+                    containerStatus.state
+                        ?.waiting
+                        ?.message
+                        ?.let { ": $it" } ?: ""
+                "Pod $podName $containerType $containerName is in $waitingReason state$suffix"
+            } else {
+                null
             }
         }
-    }
 }

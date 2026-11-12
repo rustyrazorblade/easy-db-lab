@@ -21,7 +21,7 @@ class ShowIamPolicies : PicoBaseCommand() {
     private val awsResourceSetup: AWSResourceSetupService by inject()
 
     @Parameters(
-        description = ["Policy name filter (optional): ec2, iam, emr, opensearch, compactor"],
+        description = ["Policy name filter (optional): ec2, iam, emr, opensearch"],
         arity = "0..1",
         defaultValue = "",
     )

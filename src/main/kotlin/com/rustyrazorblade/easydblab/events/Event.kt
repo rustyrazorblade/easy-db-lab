@@ -1034,6 +1034,24 @@ sealed interface Event {
             override fun toDisplayString(): String = "All observability pods are ready"
         }
 
+        /** `up` started waiting for [count] nodes to register with K3s (their agents label them). */
+        @Serializable
+        @SerialName("K8s.NodesRegistering")
+        data class NodesRegistering(
+            val count: Int,
+        ) : K8s {
+            override fun toDisplayString(): String = "Waiting for $count node(s) to register with K3s..."
+        }
+
+        /** All [count] expected nodes are registered with K3s and carry their labels. */
+        @Serializable
+        @SerialName("K8s.NodesRegistered")
+        data class NodesRegistered(
+            val count: Int,
+        ) : K8s {
+            override fun toDisplayString(): String = "All $count node(s) registered with K3s"
+        }
+
         @Serializable
         @SerialName("K8s.ObservabilityNamespaceDeleting")
         data object ObservabilityNamespaceDeleting : K8s {
@@ -1384,15 +1402,6 @@ sealed interface Event {
             val vpcId: String,
         ) : Infra {
             override fun toDisplayString(): String = "Skipping packer VPC: $vpcId (use --packer to include)"
-        }
-
-        /** `down --all` keeps the account compactor's VPC: the compactor outlives every cluster. */
-        @Serializable
-        @SerialName("Infra.CompactorVpcSkipping")
-        data class CompactorVpcSkipping(
-            val vpcId: String,
-        ) : Infra {
-            override fun toDisplayString(): String = "Skipping the account compactor's VPC: $vpcId"
         }
 
         @Serializable
@@ -2561,6 +2570,24 @@ sealed interface Event {
             override fun toDisplayString(): String = "Preparing Loki data directory..."
         }
 
+        /**
+         * The account compactor's scratch directories and lease agent jar were prepared on the
+         * control node. [uploaded] is false when the jar at [agentPath] was already there.
+         */
+        @Serializable
+        @SerialName("Grafana.CompactorAgentPrepared")
+        data class CompactorAgentPrepared(
+            val agentPath: String,
+            val uploaded: Boolean,
+        ) : Grafana {
+            override fun toDisplayString(): String =
+                if (uploaded) {
+                    "Prepared the account compactor: uploaded its lease agent to $agentPath"
+                } else {
+                    "Prepared the account compactor: lease agent $agentPath already present"
+                }
+        }
+
         @Serializable
         @SerialName("Grafana.GrafanaDirectoryPreparing")
         data object GrafanaDirectoryPreparing : Grafana {
@@ -3638,6 +3665,120 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /** The pre-launch capacity checks passed for the [newNodes] instances `up` is about to launch. */
+        @Serializable
+        @SerialName("Provision.LaunchCapacityVerified")
+        data class LaunchCapacityVerified(
+            val newNodes: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Capacity check passed: the account has the vCPUs, network interfaces and subnet addresses for $newNodes new instance(s)."
+        }
+
+        /** The new instances need more On-Demand standard vCPUs than the region's quota leaves free. */
+        @Serializable
+        @SerialName("Provision.VcpuQuotaInsufficient")
+        data class VcpuQuotaInsufficient(
+            val neededVcpus: Int,
+            val quota: Int,
+            val inUse: Int,
+            val shortBy: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The new instances need $neededVcpus vCPUs, but the On-Demand standard vCPU quota ($quota) has " +
+                    "${quota - inUse} available ($inUse in use): short by $shortBy. Request a quota increase " +
+                    "(Service Quotas, EC2, L-1216C47A) or launch fewer or smaller nodes."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** An instance type outside the standard families, whose own vCPU quota `up` does not check. */
+        @Serializable
+        @SerialName("Provision.VcpuQuotaNotChecked")
+        data class VcpuQuotaNotChecked(
+            val instanceType: String,
+            val family: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The vCPU quota for $instanceType is not checked: its '$family' family has a quota of its own, " +
+                    "not the On-Demand standard quota. If it is too low, RunInstances fails with VcpuLimitExceeded."
+        }
+
+        /** The instance type is not offered in some of the zones its new instances would land in. */
+        @Serializable
+        @SerialName("Provision.InstanceTypeNotOffered")
+        data class InstanceTypeNotOffered(
+            val instanceType: String,
+            val zones: List<String>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$instanceType is not offered in ${zones.joinToString(", ")}. Choose zones that offer it (--azs) " +
+                    "or another instance type."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** More availability zones were configured than the VPC has subnets for. */
+        @Serializable
+        @SerialName("Provision.TooManyAvailabilityZones")
+        data class TooManyAvailabilityZones(
+            val count: Int,
+            val max: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The cluster is configured for $count availability zones, but the VPC is split into at most $max subnets."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The new instances and their pod ENIs need more network interfaces than the region's quota leaves free. */
+        @Serializable
+        @SerialName("Provision.NetworkInterfaceQuotaInsufficient")
+        data class NetworkInterfaceQuotaInsufficient(
+            val needed: Int,
+            val quota: Int,
+            val inUse: Int,
+            val shortBy: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The new instances need $needed network interfaces, but the network interface quota ($quota) has " +
+                    "${quota - inUse} available ($inUse in use): short by $shortBy. Request a quota increase " +
+                    "(Service Quotas, VPC, L-DF5E4CA3) or launch fewer nodes."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** A zone's subnet has fewer free addresses than its new instances and their pods need. */
+        @Serializable
+        @SerialName("Provision.SubnetAddressesInsufficient")
+        data class SubnetAddressesInsufficient(
+            val zone: String,
+            val needed: Int,
+            val available: Int,
+            val shortBy: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The subnet in $zone has $available free addresses, but its new instances and their pods need " +
+                    "$needed: short by $shortBy. Spread the cluster over more zones (--azs) or use a larger VPC (--cidr)."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** AWS refused a `RunInstances` dry run: the real launch would fail the same way. */
+        @Serializable
+        @SerialName("Provision.LaunchDryRunRefused")
+        data class LaunchDryRunRefused(
+            val serverType: String,
+            val instanceType: String,
+            val errorCode: String,
+            val message: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "AWS would refuse to launch the $serverType instances ($instanceType): $errorCode: $message"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Provision.IamUpdating")
         data object IamUpdating : Provision {
@@ -3783,21 +3924,6 @@ sealed interface Event {
         @SerialName("Provision.TailscaleStarting")
         data object TailscaleStarting : Provision {
             override fun toDisplayString(): String = "Starting Tailscale VPN..."
-        }
-
-        @Serializable
-        @SerialName("Provision.NodeLabeling")
-        data class NodeLabeling(
-            val count: Int,
-            val nodeType: String = "db",
-        ) : Provision {
-            override fun toDisplayString(): String = "Labeling $count $nodeType nodes with ordinals..."
-        }
-
-        @Serializable
-        @SerialName("Provision.NodeLabelingComplete")
-        data object NodeLabelingComplete : Provision {
-            override fun toDisplayString(): String = "Node labeling complete"
         }
 
         @Serializable
@@ -4123,6 +4249,21 @@ sealed interface Event {
             val summary: String,
         ) : Teardown {
             override fun toDisplayString(): String = "\n=== DRY RUN - Resources that would be deleted ===\n$summary\n=== End DRY RUN ===\n"
+        }
+
+        /**
+         * `down --dry-run` on a cluster whose VPC is already gone but whose control node is still
+         * a tailnet device: the only thing a real `down` would do is remove [deviceId].
+         */
+        @Serializable
+        @SerialName("Teardown.DryRunDeviceRemovalPreview")
+        data class DryRunDeviceRemovalPreview(
+            val deviceId: String,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "\n=== DRY RUN - The VPC is already gone ===\n" +
+                    "Tailscale device $deviceId (the control node) would be removed from the tailnet\n" +
+                    "=== End DRY RUN ===\n"
         }
 
         @Serializable
@@ -5914,114 +6055,6 @@ sealed interface Event {
             override fun toDisplayString(): String = "File not found: $path"
 
             override fun isError(): Boolean = true
-        }
-    }
-
-    // =========================================================================
-    // Event.Compactor — the account compactor service (ECS Fargate)
-    // =========================================================================
-
-    /**
-     * The account compactor: one ECS Fargate service per account that compacts the shared
-     * observability store. `up`, `down` and `observability compactor` start and stop it.
-     */
-    @Serializable
-    sealed interface Compactor : Event {
-        /** The compactor service was created or scaled from 0 to 1 task in [region]. */
-        @Serializable
-        @SerialName("Compactor.Started")
-        data class Started(
-            val region: String,
-            val taskDefinition: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor started in $region ($taskDefinition)"
-        }
-
-        /** The compactor service already runs [runningCount] task(s) in [region]; it is left as it is. */
-        @Serializable
-        @SerialName("Compactor.AlreadyRunning")
-        data class AlreadyRunning(
-            val region: String,
-            val runningCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor already running in $region ($runningCount task(s))"
-        }
-
-        /**
-         * The compactor service in [region] runs no task yet: [pendingCount] task(s) are pending, or ECS
-         * has not placed the first one, as happens for a minute or two after a start. It is left as it is.
-         */
-        @Serializable
-        @SerialName("Compactor.Starting")
-        data class Starting(
-            val region: String,
-            val pendingCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor starting in $region ($pendingCount task(s) pending)"
-        }
-
-        /**
-         * The compactor service in [region] asks for [desiredCount] task(s) but runs none, has none
-         * pending, and its latest task stopped, for example because the task fails and restarts. It is
-         * left as it is.
-         */
-        @Serializable
-        @SerialName("Compactor.NoTaskRunning")
-        data class NoTaskRunning(
-            val region: String,
-            val desiredCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "Account compactor in $region asks for $desiredCount task(s) but runs none; " +
-                    "run `observability compactor status` to see why"
-
-            override fun isError(): Boolean = true
-        }
-
-        /**
-         * ECS in [region] refused a compactor call because the operator's IAM lacks the
-         * `EasyDBLabCompactor` policy. [detail] is ECS's message, naming the refused action.
-         */
-        @Serializable
-        @SerialName("Compactor.AccessDenied")
-        data class AccessDenied(
-            val region: String,
-            val detail: String,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "ECS in $region refused the account compactor's call: $detail\n" +
-                    "Your IAM user or group needs the ${Constants.Compactor.OPERATOR_POLICY} policy. " +
-                    "Run `easy-db-lab show-iam-policies compactor` to print it, attach it, then run the command again."
-
-            override fun isError(): Boolean = true
-        }
-
-        /** The compactor service's desired count was set to 0 in [region]. */
-        @Serializable
-        @SerialName("Compactor.Stopped")
-        data class Stopped(
-            val region: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor stopped in $region"
-        }
-
-        /** A stop found no compactor service in [region], so there was nothing to stop. */
-        @Serializable
-        @SerialName("Compactor.NotCreated")
-        data class NotCreated(
-            val region: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "No account compactor to stop in $region"
-        }
-
-        /** `down` left the compactor running: [clusterVpcs] other cluster VPCs still name the account bucket. */
-        @Serializable
-        @SerialName("Compactor.KeptRunning")
-        data class KeptRunning(
-            val clusterVpcs: List<String>,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "Account compactor kept running: ${clusterVpcs.size} other cluster(s) use the account bucket"
         }
     }
 

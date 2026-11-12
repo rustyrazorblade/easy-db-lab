@@ -12,22 +12,21 @@ import com.rustyrazorblade.easydblab.services.aws.AMIService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
+import com.rustyrazorblade.easydblab.services.aws.AccountCapacity
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
-import com.rustyrazorblade.easydblab.services.aws.ClusterCensus
-import com.rustyrazorblade.easydblab.services.aws.CompactorIam
-import com.rustyrazorblade.easydblab.services.aws.CompactorNetwork
-import com.rustyrazorblade.easydblab.services.aws.CompactorService
+import com.rustyrazorblade.easydblab.services.aws.CompactorLeaseReader
 import com.rustyrazorblade.easydblab.services.aws.DefaultAMIResolver
-import com.rustyrazorblade.easydblab.services.aws.DefaultCompactorService
 import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.DefaultSshIngressService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
+import com.rustyrazorblade.easydblab.services.aws.Ec2AccountCapacity
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.SshIngressService
@@ -44,6 +43,7 @@ import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
 import software.amazon.awssdk.services.sts.StsClient
 
 /**
@@ -63,6 +63,7 @@ private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOv
  * - EmrClient: AWS EMR client for Elastic MapReduce (Spark) cluster management
  * - S3Client: AWS S3 client for object storage operations
  * - StsClient: AWS STS client for credential validation
+ * - ServiceQuotasClient: Service Quotas client for the pre-launch quota checks
  * - AWS: AWS service wrapper for lab environment operations
  * - AMIService: AMI lifecycle management (CRUD, pruning, validation)
  * - AMIValidator: AMI validation interface (implemented by AMIService)
@@ -164,8 +165,22 @@ val awsModule =
                 .build()
         }
 
+        single {
+            val overrideConfig = createClientOverrideConfig()
+            ServiceQuotasClient
+                .builder()
+                .region(get<Region>())
+                .credentialsProvider(get<AwsCredentialsProvider>())
+                .overrideConfiguration(overrideConfig)
+                .build()
+        }
+
         // Provide AWS service as singleton
         single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
+
+        // The account facts `up` checks before it launches anything, and the checks themselves
+        single<AccountCapacity> { Ec2AccountCapacity(get<Ec2Client>(), get<ServiceQuotasClient>()) }
+        single { LaunchCapacityPreflight(get(), get()) }
 
         // Provide EC2InstanceService as singleton
         single {
@@ -276,12 +291,22 @@ val awsModule =
         // Provide InstanceSpecFactory as singleton
         single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
 
-        // The account compactor: clients for the account bucket's region and every enabled region.
-        single<RegionalClients> { DefaultRegionalClients(get()) }
-        single { CompactorIam(get()) }
-        single { CompactorNetwork(get(), get(), get(), get()) }
-        single { ClusterCensus(get(), get()) }
-        single<CompactorService> { DefaultCompactorService(get(), get(), get(), get(), get(), get()) }
         factory { BucketRegion(get()) }
-        factory { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
+        factory {
+            val bucketRegion = get<BucketRegion>()
+            val credentials = get<AwsCredentialsProvider>()
+            CompactorLeaseReader(
+                regionOf = bucketRegion::of,
+                leaseIn =
+                    CompactorLeaseReader.fromS3 { region ->
+                        S3Client
+                            .builder()
+                            .region(Region.of(region))
+                            .credentialsProvider(credentials)
+                            .overrideConfiguration(createClientOverrideConfig())
+                            .build()
+                    },
+            )
+        }
+        factory { AccountBucketSetup(get(), get(), get(), get(), get()) }
     }

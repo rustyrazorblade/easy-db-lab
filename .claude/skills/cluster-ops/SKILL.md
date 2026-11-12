@@ -37,7 +37,7 @@ easy-db-lab init [OPTIONS] [CLUSTER_NAME]
 | `--instance, -i` | r3.2xlarge | EC2 instance type for db nodes |
 | `--stress-instance, -si` | c7i.2xlarge | EC2 instance type for app nodes |
 | `--clean` | false | Wipe existing local config before init |
-| `--cidr` | 10.0.0.0/16 | VPC CIDR (must be /20 or larger) |
+| `--cidr` | 10.0.0.0/16 | VPC CIDR (must be /25 or larger; must not overlap 10.224.0.0/12 or 10.240.0.0/16) |
 | `--tag key=value` | — | Tag EC2 instances |
 | `--ebs.type` | NONE | EBS volume type (NONE, gp2, gp3, io1, io2) |
 | `--ebs.size` | 256 | EBS volume size in GB |

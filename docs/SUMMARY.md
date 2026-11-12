@@ -34,6 +34,7 @@
 - [Kubernetes](user-guide/kubernetes.md)
 - [Pod Networking (CNI)](user-guide/networking.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
+- [Large Clusters](user-guide/large-clusters.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 
 # Integrations

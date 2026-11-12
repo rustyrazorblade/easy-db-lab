@@ -61,7 +61,10 @@ class K3sServiceTest : BaseKoinTest() {
     @Test
     fun `start should execute k3s server startup script successfully`() {
         // Given
-        val scriptCommand = "sudo /usr/local/bin/start-k3s-server.sh"
+        val scriptCommand =
+            "sudo /usr/local/bin/start-k3s-server.sh " +
+                "--cluster-cidr=${Constants.K3s.CLUSTER_CIDR} --service-cidr=${Constants.K3s.SERVICE_CIDR} " +
+                "--kube-controller-manager-arg=node-cidr-mask-size=${Constants.K3s.NODE_CIDR_MASK_SIZE}"
         val successResponse = Response(text = "", stderr = "")
 
         doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
@@ -79,7 +82,10 @@ class K3sServiceTest : BaseKoinTest() {
     @Test
     fun `start should return failure when script execution fails`() {
         // Given
-        val scriptCommand = "sudo /usr/local/bin/start-k3s-server.sh"
+        val scriptCommand =
+            "sudo /usr/local/bin/start-k3s-server.sh " +
+                "--cluster-cidr=${Constants.K3s.CLUSTER_CIDR} --service-cidr=${Constants.K3s.SERVICE_CIDR} " +
+                "--kube-controller-manager-arg=node-cidr-mask-size=${Constants.K3s.NODE_CIDR_MASK_SIZE}"
         val successResponse = Response(text = "", stderr = "")
 
         doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())

@@ -77,7 +77,7 @@ easy-db-lab show-iam-policies [policy-name]
 
 | Argument | Description |
 |----------|-------------|
-| `policy-name` | Optional filter: `ec2`, `iam`, `emr`, `opensearch` or `compactor` |
+| `policy-name` | Optional filter: `ec2`, `iam`, `emr` or `opensearch` |
 
 To create the policies and attach them to an IAM user, group, or role, see [Applying the Policies](../getting-started/setup.md#applying-the-policies).
 
@@ -132,7 +132,7 @@ determined fails at `init`, before any instance is created.
 | `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
 | `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
 | `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
-| `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all |
+| `--azs`, `-z` | Availability zones (e.g., `a,b,c`), at most 8: the VPC is split into eight equal subnets, one per zone | `a,b,c` |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
 | `--ebs.iops` | EBS IOPS (gp3 only) | 0 |
@@ -143,7 +143,7 @@ determined fails at `init`, before any instance is created.
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
 | `--vpc` | Use existing VPC ID | - |
-| `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
+| `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/25` or larger (it is split into eight equal subnets, `/19` each for a `/16`), name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--up` | Auto-provision after init | false |
@@ -161,9 +161,15 @@ easy-db-lab up [options]
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
 
-Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Starts the [account compactor](../user-guide/compactor.md) when it is not running, and leaves it as it is when it runs; `up` does not wait for its task.
+Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Deploys the [account compactor](../user-guide/compactor.md) pod with the observability stack.
 
-`up` fails fast. If any provisioning step fails — EC2 setup, K3s, node labeling, the
+Before it launches any instance, `up` checks that the account can hold the new instances: the
+availability zone count, each instance type's zone offerings, the On-Demand standard vCPU quota,
+the network interface quota, the free subnet addresses, and a `RunInstances` dry run of each
+node type. Only the instances still to launch are counted. See
+[Large Clusters](../user-guide/large-clusters.md).
+
+`up` fails fast. If any provisioning step fails — EC2 setup, K3s, node registration, the
 `local-storage`/`local-storage-wfc` StorageClasses, the observability stack, Tailscale, and so
 on — the command exits non-zero and stops rather than continuing with a partially-provisioned
 cluster. EC2 instances that were already launched are left running; there is no automatic
@@ -183,9 +189,10 @@ easy-db-lab down [vpc-id] [options]
 
 | Option | Description |
 |--------|-------------|
-| `--all` | Tear down all VPCs tagged with easy_cass_lab; the account compactor's VPC is kept |
+| `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
+| `--dry-run` | Preview the resources that would be deleted and change nothing: the cluster state, the SOCKS tunnel and the Tailscale device are left as they are, and the command exits 0. With no cluster state, or a state that records no VPC and no Tailscale device, it reports that there is nothing to tear down and exits non-zero, as `down` does, and still changes nothing. When the VPC is already gone and only the control node's Tailscale device is left, it reports that the device would be removed |
 
 **Save before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The save stops Loki, Mimir and the OTel collector, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops nothing. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. The save has two phases.
 
@@ -213,8 +220,6 @@ Every step has a timeout. `down` only flushes, waits for the flush to finish, an
 **Nothing is deleted.** `down` sets no S3 lifecycle, expiry or retention rule on any bucket and deletes no object that holds your data. With `--all`, a per-cluster data bucket is deleted only when it is already empty. A data bucket that still holds objects is left as it is, and `down` reports it as kept, with S3's reason.
 
 **`--force` skips the save.** Pass `--force` to skip both phases and tear down anyway. With the teardown preview, before the confirmation prompt, `down --force` lists the signals it will not save: logs and metrics unless an earlier `down` saved them, then traces and annotations. After a save of every signal, it lists none. Profiles are never listed. Use it only when the backends are already stopped or gone, or when you do not need the data.
-
-**The account compactor.** After the infrastructure teardown succeeds, `down` counts the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the account bucket, leaving out the ones it just removed. When none is left, it stops the [account compactor](../user-guide/compactor.md); otherwise the compactor keeps running.
 
 **Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the save stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 
@@ -272,7 +277,7 @@ Use it when your public IP changed and SSH and the SOCKS tunnel stopped working,
 - Values that are the same CIDR, such as `203.0.113.7` and `203.0.113.7/32`, count as one.
 - A rule that already exists is reported and left as it is.
 - If AWS refuses one rule, for example because the security group has too many rules, the command still adds the others, reports AWS's reason, and exits non-zero.
-- If the public IP cannot be detected, the command tells you to give it with `--cidr`.  Detection waits up to 5 seconds to connect to `api.ipify.org` and up to 10 seconds for its answer.
+- If the public IP cannot be detected, the command tells you to give it with `--cidr`.  Detection asks `checkip.amazonaws.com` first and falls back to `api.ipify.org` when that fails or does not answer with an IPv4 address.  Each waits up to 5 seconds to connect and up to 10 seconds for its answer.
 
 A security group allows a connection that is already open.  After a change, an SSH session or tunnel that is still connected can keep working until it reconnects.
 
@@ -898,37 +903,17 @@ On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement,
 
 ## Observability Commands
 
-These commands manage the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
-
-### observability compactor start
-
-Start the account compactor as `up` does: create it when it is missing, and start it at 1 task when it is stopped. A running compactor is left as it is.
-
-```bash
-easy-db-lab observability compactor start
-```
-
-### observability compactor stop
-
-Stop the account compactor by setting its desired count to 0. When the compactor was never created, it says so and changes nothing.
-
-```bash
-easy-db-lab observability compactor stop
-```
+These commands inspect the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
 
 ### observability compactor status
 
-Print the compactor's state, its desired, running and pending task counts, and its current or last task with its state. It changes nothing.
-
-The state is one of `not created`, `stopped`, `stopping`, `starting`, `running` or `failing`. A compactor that asks for a task but runs none is `starting` while a task is pending or before any task has stopped, and `failing` when none is pending and its latest task stopped, so a task that crashes in a loop never reads as running.
-
-For that task it prints why the task stopped (ECS's stop code and reason) and each container's status, exit code and reason. It also prints the service's 5 newest events and the last 20 log lines of the task's containers. It leaves out the Tempo worker's `no jobs found` line, which an idle worker logs on every poll.
-
-If your IAM user lacks the `EasyDBLabCompactor` policy, `observability compactor start`, `stop` and `status` fail and name the policy. Run `easy-db-lab show-iam-policies compactor` to print it, then attach it.
+Print who holds the compactor's store lease: the holder (the cluster and the pod), the lease's sequence number, when it was last renewed and how long ago. It reads the lease in the account bucket's region and changes nothing. A lease that has not been renewed for longer than its 2-minute TTL is shown as expired. When no compactor has ever taken the lease, it says so.
 
 ```bash
 easy-db-lab observability compactor status
 ```
+
+There is no `start` or `stop`: every cluster runs a compactor pod, and the lease decides which one compacts.
 
 ## Grafana Commands
 

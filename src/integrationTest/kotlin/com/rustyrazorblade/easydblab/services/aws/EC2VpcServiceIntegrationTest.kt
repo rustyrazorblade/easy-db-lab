@@ -82,7 +82,7 @@ class EC2VpcServiceIntegrationTest {
                 vpcService.findOrCreateSubnet(
                     vpcId,
                     "test-subnet",
-                    "10.0.1.0/24",
+                    "10.0.0.0/19",
                     emptyMap(),
                 )
 
@@ -93,8 +93,8 @@ class EC2VpcServiceIntegrationTest {
         fun `should return existing subnet on second call`() {
             val vpcId = vpcService.createVpc("test-subnet-idempotent", "10.0.0.0/16", emptyMap())
 
-            val first = vpcService.findOrCreateSubnet(vpcId, "idem-subnet", "10.0.1.0/24", emptyMap())
-            val second = vpcService.findOrCreateSubnet(vpcId, "idem-subnet", "10.0.1.0/24", emptyMap())
+            val first = vpcService.findOrCreateSubnet(vpcId, "idem-subnet", "10.0.0.0/19", emptyMap())
+            val second = vpcService.findOrCreateSubnet(vpcId, "idem-subnet", "10.0.0.0/19", emptyMap())
 
             assertThat(first).isEqualTo(second)
         }
@@ -130,7 +130,7 @@ class EC2VpcServiceIntegrationTest {
         @Test
         fun `should create default route to internet gateway`() {
             val vpcId = vpcService.createVpc("test-route", "10.0.0.0/16", emptyMap())
-            val subnetId = vpcService.findOrCreateSubnet(vpcId, "route-subnet", "10.0.1.0/24", emptyMap())
+            val subnetId = vpcService.findOrCreateSubnet(vpcId, "route-subnet", "10.0.0.0/19", emptyMap())
             val igwId = vpcService.findOrCreateInternetGateway(vpcId, "route-igw", emptyMap())
 
             // Should not throw
@@ -140,7 +140,7 @@ class EC2VpcServiceIntegrationTest {
         @Test
         fun `should be idempotent when called twice`() {
             val vpcId = vpcService.createVpc("test-route-idem", "10.0.0.0/16", emptyMap())
-            val subnetId = vpcService.findOrCreateSubnet(vpcId, "route-idem-subnet", "10.0.1.0/24", emptyMap())
+            val subnetId = vpcService.findOrCreateSubnet(vpcId, "route-idem-subnet", "10.0.0.0/19", emptyMap())
             val igwId = vpcService.findOrCreateInternetGateway(vpcId, "route-idem-igw", emptyMap())
 
             vpcService.ensureRouteTable(vpcId, subnetId, igwId)

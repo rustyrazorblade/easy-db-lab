@@ -27,7 +27,7 @@ Mimir queues up to 5000 queries per tenant (`query_scheduler.max_outstanding_req
 
 A memcached sidecar in the Mimir pod (2 GB, on the control node's loopback, port 11211) holds Mimir's caches. The store-gateway caches the index, chunks and bucket metadata it reads from S3, and the query frontend caches query results. So a dashboard refresh reads from memory what the last load already read from S3. Mimir also keeps its S3 connections open and reuses them, instead of opening a new TLS connection for each read. The caches only hold copies; a restart empties them, and nothing is lost.
 
-A tenant that has no bucket index yet returns no stored data rather than an error. A stale bucket index is accepted for about 10 years, so metrics queries still succeed while the compactor is stopped; blocks shipped after it stopped become readable once it runs again.
+A tenant that has no bucket index yet returns no stored data rather than an error. A stale bucket index is accepted for about 10 years, so metrics queries still succeed while no cluster holds the compactor lease; blocks shipped meanwhile become readable once a compactor runs again.
 
 **Nothing in the cluster deletes a block.** Mimir on a cluster runs no compactor and no retention. The account compactor merges blocks and removes the sources only after it wrote the merged block. Every sample stays in S3 until you delete it yourself.
 

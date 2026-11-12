@@ -137,7 +137,7 @@ class InstanceSpecFactoryTest {
                         ),
                     ServerType.Stress to
                         listOf(
-                            createDiscoveredInstance("i-3", ServerType.Stress),
+                            createDiscoveredInstance("i-3", ServerType.Stress, ordinal = 0),
                         ),
                 )
 
@@ -153,7 +153,7 @@ class InstanceSpecFactoryTest {
         }
 
         @Test
-        fun `should return zero or negative when sufficient instances exist`() {
+        fun `should return zero when sufficient instances exist`() {
             val initConfig =
                 createInitConfig(
                     cassandraInstances = 2,
@@ -171,7 +171,7 @@ class InstanceSpecFactoryTest {
                         ),
                     ServerType.Stress to
                         listOf(
-                            createDiscoveredInstance("i-4", ServerType.Stress),
+                            createDiscoveredInstance("i-4", ServerType.Stress, ordinal = 0),
                         ),
                 )
 
@@ -180,8 +180,26 @@ class InstanceSpecFactoryTest {
             val cassandraSpec = specs.find { it.serverType == ServerType.Cassandra }!!
             val stressSpec = specs.find { it.serverType == ServerType.Stress }!!
 
-            assertThat(cassandraSpec.neededCount).isEqualTo(-1) // 2 - 3
+            assertThat(cassandraSpec.neededCount).isEqualTo(0) // db0..db2 hold every configured ordinal
             assertThat(stressSpec.neededCount).isEqualTo(0) // 1 - 1
+        }
+
+        @Test
+        fun `the missing ordinals are the configured ones no existing alias holds, gaps included`() {
+            val initConfig = createInitConfig(cassandraInstances = 9, stressInstances = 0, controlInstances = 0)
+            val existing =
+                mapOf(
+                    ServerType.Cassandra to
+                        listOf(0, 3, 6).map { createDiscoveredInstance("i-db$it", ServerType.Cassandra, ordinal = it) },
+                )
+
+            val spec =
+                factory
+                    .createInstanceSpecs(initConfig, existing, dbHasInstanceStore = true, amiByArch = amiByArch)
+                    .single { it.serverType == ServerType.Cassandra }
+
+            assertThat(spec.missingIndexes).containsExactly(1, 2, 4, 5, 7, 8)
+            assertThat(spec.neededCount).isEqualTo(6)
         }
 
         @Test
@@ -367,12 +385,13 @@ class InstanceSpecFactoryTest {
     private fun createDiscoveredInstance(
         instanceId: String,
         serverType: ServerType,
+        ordinal: Int = instanceId.filter { it.isDigit() }.toInt() - 1,
     ): DiscoveredInstance =
         DiscoveredInstance(
             instanceId = instanceId,
             publicIp = "1.2.3.4",
             privateIp = "10.0.0.1",
-            alias = "${serverType.name.lowercase()}0",
+            alias = "${serverType.serverType}$ordinal",
             availabilityZone = "us-west-2a",
             serverType = serverType,
             state = "running",

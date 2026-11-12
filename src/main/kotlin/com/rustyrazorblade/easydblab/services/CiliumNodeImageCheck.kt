@@ -20,18 +20,21 @@ data class NodeMissingCiliumFixes(
  */
 class CiliumNodeImageCheck(
     private val remoteOps: RemoteOperationsService,
+    private val parallel: BoundedParallel = BoundedParallel(),
 ) {
     /**
-     * The nodes among [hosts] that lack any of [REQUIRED_FILES], with what each lacks. A node
-     * that cannot be reached fails the check rather than passing it.
+     * The nodes among [hosts] that lack any of [REQUIRED_FILES], with what each lacks, in the order
+     * of [hosts]. Nodes are checked in parallel on a bounded pool. A node that cannot be reached
+     * fails the check rather than passing it.
      */
     fun nodesMissingFixes(hosts: List<ClusterHost>): List<NodeMissingCiliumFixes> =
-        hosts.mapNotNull { host ->
-            val output = remoteOps.executeRemotely(host = host.toHost(), command = CHECK_COMMAND, output = false).text
-            // Only a required path counts: anything else the SSH session prints is noise.
-            val missing = output.lines().map { it.trim() }.filter { it in REQUIRED_FILES }
-            if (missing.isEmpty()) null else NodeMissingCiliumFixes(node = host.alias, missingFiles = missing)
-        }
+        parallel
+            .map(hosts) { host ->
+                val output = remoteOps.executeRemotely(host = host.toHost(), command = CHECK_COMMAND, output = false).text
+                // Only a required path counts: anything else the SSH session prints is noise.
+                val missing = output.lines().map { it.trim() }.filter { it in REQUIRED_FILES }
+                if (missing.isEmpty()) null else NodeMissingCiliumFixes(node = host.alias, missingFiles = missing)
+            }.mapNotNull { it.getOrThrow() }
 
     companion object {
         /** The files the base AMI bakes for Cilium; see `configure_cilium_eni_networkd.sh`. */

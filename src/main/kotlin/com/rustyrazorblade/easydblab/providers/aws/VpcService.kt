@@ -23,7 +23,7 @@ interface VpcCoreOperations {
      *
      * @param vpcId The VPC ID where the subnet should be created
      * @param name The name to use for the subnet (applied as Name tag)
-     * @param cidr The CIDR block for the subnet (e.g., "10.0.1.0/24")
+     * @param cidr The CIDR block for the subnet (e.g., "10.0.32.0/19")
      * @param tags Additional tags to apply to the subnet
      * @param availabilityZone Optional availability zone for the subnet
      * @return The subnet ID

@@ -4,10 +4,16 @@ set -euo pipefail
 
 echo "=== Starting K3s Server ==="
 
-# Parse flags
+# Parse flags. The pod and service ranges and the node CIDR size come from the CLI
+# (Constants.K3s): K3s's default 10.42.0.0/16 with a /24 per node runs out at 256 nodes.
 NO_FLANNEL=false
+CIDR_ARGS=""
 for arg in "$@"; do
-    [ "$arg" = "--flannel-backend=none" ] && NO_FLANNEL=true
+    case "$arg" in
+        --flannel-backend=none) NO_FLANNEL=true ;;
+        --cluster-cidr=*|--service-cidr=*|--kube-controller-manager-arg=node-cidr-mask-size=*)
+            CIDR_ARGS="$CIDR_ARGS $arg" ;;
+    esac
 done
 
 # Relocate K3s data directory to NVMe storage if available
@@ -45,9 +51,9 @@ else
         # InternalIP as the traefik LoadBalancer ingress IP, and Cilium installs a port-0 wildcard
         # per LoadBalancer IP that rejects every pod packet to a node IP on a non-service port, so
         # kubelet probes never get their SYN-ACK and no pod in the pod network becomes Ready.
-        K3S_EXEC_ARGS='server --write-kubeconfig-mode=644 --flannel-backend=none --disable-network-policy --disable=traefik,servicelb'
+        K3S_EXEC_ARGS="server --write-kubeconfig-mode=644 --flannel-backend=none --disable-network-policy --disable=traefik,servicelb$CIDR_ARGS"
     else
-        K3S_EXEC_ARGS='server --write-kubeconfig-mode=644'
+        K3S_EXEC_ARGS="server --write-kubeconfig-mode=644$CIDR_ARGS"
     fi
 
     INSTALL_K3S_SKIP_DOWNLOAD=true \

@@ -138,7 +138,7 @@ class PlatformCniTest : BaseKoinTest() {
                         CiliumNodeSummary(
                             name = "ip-10-0-1-10",
                             eniCount = 2,
-                            subnetCidrs = listOf("10.0.1.0/24", "10.0.2.0/24"),
+                            subnetCidrs = listOf("10.0.0.0/19", "10.0.32.0/19"),
                             ipsAllocated = 8,
                             ipsUsed = 3,
                         ),
@@ -158,7 +158,7 @@ class PlatformCniTest : BaseKoinTest() {
         assertThat(report).contains("Nodes (2):")
         assertThat(report).contains("ip-10-0-1-10")
         assertThat(report).contains("ENIs:           2")
-        assertThat(report).contains("Subnet CIDRs:   10.0.1.0/24, 10.0.2.0/24")
+        assertThat(report).contains("Subnet CIDRs:   10.0.0.0/19, 10.0.32.0/19")
         assertThat(report).contains("IPs allocated:  8")
         assertThat(report).contains("IPs used:       3")
         assertThat(report).contains("IPs available:  5")

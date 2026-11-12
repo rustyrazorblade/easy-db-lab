@@ -8,7 +8,6 @@ buildscript {
 }
 
 plugins {
-    java
     idea
     application
     alias(libs.plugins.kotlin.jvm)
@@ -38,6 +37,15 @@ val copyOtelAgent =
 dependencies {
     otelAgentConfig("io.opentelemetry.javaagent:opentelemetry-javaagent:${libs.versions.opentelemetry.agent.get()}")
 }
+
+// The account compactor's lease agent, a shadow jar built by `:compactor-lease`. It ships next to
+// the OTel agent: `agents/` in the distribution and `/agents` in the Jib image, and
+// `CompactorAgentInstaller` uploads it to each cluster's control node.
+val copyCompactorLeaseAgent =
+    tasks.register<Copy>("copyCompactorLeaseAgent") {
+        from(project(":compactor-lease").tasks.named("shadowJar"))
+        into(layout.buildDirectory.dir("compactor-lease-agent"))
+    }
 
 group = "com.rustyrazorblade"
 
@@ -182,9 +190,6 @@ dependencies {
     // Logging
     implementation(libs.bundles.logging)
 
-    // Kotlin
-    implementation(libs.kotlin.stdlib)
-
     // CLI and UI
     implementation(libs.picocli)
     implementation(libs.picocli.shell.jline3)
@@ -209,6 +214,7 @@ dependencies {
 
     // Project dependencies
     implementation(project(":core"))
+    implementation(project(":compactor-lease"))
 
     // Jackson
     implementation(libs.bundles.jackson)
@@ -254,6 +260,8 @@ dependencies {
     testImplementation(libs.bundles.testing)
     testImplementation(libs.bundles.koin.test)
     testImplementation(libs.kotlinx.coroutines.test)
+    // The conditional-write contract and its in-memory adapter, shared by both tiers.
+    testImplementation(testFixtures(project(":compactor-lease")))
 
     // Integration-tier-only dependencies. Deliberately scoped to `integrationTest` and NOT
     // to `testImplementation` so that a container / mock-server test can no longer COMPILE
@@ -314,6 +322,33 @@ tasks.named<ProcessResources>("processResources") {
 kotlin.target.compilations.named("integrationTest") {
     associateWith(kotlin.target.compilations.getByName("main"))
     associateWith(kotlin.target.compilations.getByName("test"))
+}
+
+// Every Kotlin subproject builds with any JDK >= 21 but emits Java 21 bytecode, enforces the
+// JDK-21 API surface with `release`, and treats warnings as errors, as the root module does above.
+// detekt 1.23.8 cannot run under a JDK newer than 22 (see the gate at the end of this file), so a
+// subproject's detekt tasks are disabled there too; CI runs `check` on JDK 21.
+subprojects {
+    plugins.withId("org.jetbrains.kotlin.jvm") {
+        extensions.configure<JavaPluginExtension> {
+            sourceCompatibility = JavaVersion.VERSION_21
+            targetCompatibility = JavaVersion.VERSION_21
+        }
+        tasks.withType<JavaCompile>().configureEach {
+            options.release.set(21)
+        }
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
+            compilerOptions {
+                jvmTarget.set(JvmTarget.JVM_21)
+                allWarningsAsErrors.set(true)
+            }
+        }
+        if (JavaVersion.current() > JavaVersion.VERSION_22) {
+            tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+                enabled = false
+            }
+        }
+    }
 }
 
 // Apply consistent test logging to every test task in every subproject.
@@ -402,6 +437,14 @@ tasks.named<Test>("test") {
     )
 }
 
+// The account compactor's integration test runs the real lease agent jar in containers.
+tasks.named<Test>("integrationTest") {
+    dependsOn(copyCompactorLeaseAgent)
+    val leaseJar = layout.buildDirectory.file("compactor-lease-agent/compactor-lease.jar")
+    inputs.file(leaseJar).withPropertyName("compactorLeaseJar").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("easydblab.test.compactorLeaseJar", leaseJar.get().asFile.absolutePath)
+}
+
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
@@ -433,7 +476,28 @@ tasks.register("testScripts") {
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
         "testBaseChronyPoll",
+        "testCompactorGate",
     )
+}
+
+// Unit-test the account compactor's gate: no start while the lease is not valid, SIGTERM then
+// SIGKILL when it lapses, a new start after an exit, SIGTERM passed on. A fake compactor and the
+// real clock; every applet the gate needs is stubbed and PATH points nowhere, as in the distroless
+// images. Runs under every POSIX shell found.
+tasks.register<Exec>("testCompactorGate") {
+    group = "Verification"
+    description = "Unit-test the account compactor's gate script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/compactor-gate.test.sh")
+}
+
+// The same gate cases under the static busybox:1.37.0-musl sh the pod runs the gate with. Needs
+// Docker, so, like the other Docker-backed script tests, it is not part of testScripts.
+tasks.register<Exec>("testCompactorGateBusybox") {
+    group = "Verification"
+    description = "Run the account compactor's gate cases under busybox sh in Docker"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/compactor-gate-busybox.test.sh")
 }
 
 // Unit-test the base AMI's chrony change: every Amazon Time Sync source polls every 8 s, other
@@ -801,6 +865,10 @@ distributions {
             from(copyOtelAgent) {
                 into("agents")
             }
+            // The account compactor's lease agent, which `up` uploads to the control node.
+            from(copyCompactorLeaseAgent) {
+                into("agents")
+            }
         }
     }
 }
@@ -813,7 +881,7 @@ tasks.distTar {
 // The OTel agent reaches install/easy-db-lab/agents through the `main` distribution's contents
 // above (`from(copyOtelAgent) { into("agents") }`), which installDist syncs.
 tasks.named("installDist") {
-    dependsOn(tasks.named("shadowJar"), copyOtelAgent)
+    dependsOn(tasks.named("shadowJar"), copyOtelAgent, copyCompactorLeaseAgent)
 }
 
 tasks.assemble {
@@ -934,6 +1002,8 @@ jib {
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",
                 "-Deasydblab.apphome=/app",
+                // The agents are under /agents in the image, not under the app home.
+                "-Deasydblab.agentsdir=/agents",
                 "-Xmx2048M",
             )
         environment =
@@ -948,6 +1018,10 @@ jib {
                 }
                 path {
                     setFrom("${project.layout.buildDirectory.get()}/otel-agent")
+                    into = "/agents"
+                }
+                path {
+                    setFrom("${project.layout.buildDirectory.get()}/compactor-lease-agent")
                     into = "/agents"
                 }
             }
@@ -969,11 +1043,11 @@ jib {
 
 // Jib doesn't fully support configuration cache yet
 tasks.named("jib") {
-    dependsOn(copyOtelAgent)
+    dependsOn(copyOtelAgent, copyCompactorLeaseAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }
 
 tasks.named("jibDockerBuild") {
-    dependsOn(copyOtelAgent)
+    dependsOn(copyOtelAgent, copyCompactorLeaseAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }

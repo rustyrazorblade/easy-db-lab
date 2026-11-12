@@ -114,6 +114,95 @@ object Constants {
         const val VPC_TEARDOWN_BACKOFF_BASE_MS = 5000L
     }
 
+    /**
+     * Limits for clusters of 1,000+ nodes: how much per-node work runs at once, how EC2 calls are
+     * batched so no request exceeds what the API accepts, and how long the waits that grow with
+     * node count may take.
+     */
+    object Scale {
+        /**
+         * The most hosts a parallel per-host operation (SSH setup, K3s agents, registry TLS, the
+         * Cilium image check, SSH readiness) works on at once. One thread per host at 1,000 nodes
+         * is 1,000 SSH sessions from the operator's machine.
+         */
+        const val HOST_CONCURRENCY = 50
+
+        /**
+         * How many hosts, nodes or instances a scale failure names before it counts the rest
+         * ("a, b, and 5 more"), so a 1,000-node failure stays readable.
+         */
+        const val MAX_NAMED_IN_ERROR = 20
+
+        /** The most instance IDs `DescribeInstanceStatus` accepts in one request. */
+        const val DESCRIBE_INSTANCE_STATUS_BATCH = 100
+
+        /** The most instance IDs one `DescribeInstances` request names. */
+        const val DESCRIBE_INSTANCES_BATCH = 100
+
+        /** The most instances one `RunInstances` call asks for; larger groups are split into chunks. */
+        const val RUN_INSTANCES_CHUNK = 100
+
+        /** Attempts for an EC2 call that AWS throttles (`RequestLimitExceeded`). */
+        const val THROTTLE_MAX_ATTEMPTS = 8
+
+        /** The first backoff after a throttled EC2 call; it doubles each attempt. */
+        const val THROTTLE_BACKOFF_BASE_MS = 1000L
+
+        /** The longest single backoff after a throttled EC2 call. */
+        const val THROTTLE_BACKOFF_MAX_MS = 30_000L
+
+        /** How long `up` waits for SSH on every node, however many there are. */
+        const val SSH_READY_TIMEOUT_SECONDS = 600L
+
+        /** How long `up` waits for every K3s agent to register its node with the server, at least. */
+        const val NODE_REGISTRATION_BASE_SECONDS = 300L
+
+        /** Extra registration wait per expected node, on top of [NODE_REGISTRATION_BASE_SECONDS]. */
+        const val NODE_REGISTRATION_PER_NODE_SECONDS = 1L
+
+        /** Extra observability rollout wait per cluster node; DaemonSets roll one pod per node. */
+        const val ROLLOUT_PER_NODE_SECONDS = 2L
+
+        /**
+         * Launch tag: the ordinal of the instance with launch index 0 in its RunInstances call.
+         * With [ORDINAL_STRIDE_TAG] it names an instance whose `Name` tag never landed.
+         */
+        const val FIRST_ORDINAL_TAG = "easydblab/first-ordinal"
+
+        /** Launch tag: how far apart the ordinals of one RunInstances call's instances are. */
+        const val ORDINAL_STRIDE_TAG = "easydblab/ordinal-stride"
+    }
+
+    /**
+     * The quotas and estimates `up` checks before it launches anything
+     * (`services/aws/LaunchCapacityPreflight`).
+     */
+    object Capacity {
+        /** Service Quotas service code for EC2. */
+        const val EC2_SERVICE_CODE = "ec2"
+
+        /** Service Quotas service code for VPC. */
+        const val VPC_SERVICE_CODE = "vpc"
+
+        /** "Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances", in vCPUs. */
+        const val STANDARD_VCPU_QUOTA_CODE = "L-1216C47A"
+
+        /** "Network interfaces per Region". */
+        const val NETWORK_INTERFACE_QUOTA_CODE = "L-DF5E4CA3"
+
+        /** Addresses AWS reserves in every subnet: the first four and the last. */
+        const val AWS_RESERVED_SUBNET_ADDRESSES = 5
+
+        /**
+         * The pod addresses one node is expected to take under Cilium's ENI IPAM, which gives pods
+         * VPC addresses from the node's subnet. Cilium keeps 8 spare addresses allocated per node
+         * (its `pre-allocate` default), and each node runs about 8 DaemonSet and system pods
+         * (Cilium, the collectors, Beyla, Alloy, ebpf_exporter, Fluent Bit, kube-proxy); a kit's
+         * pods come on top. Flannel pods take no VPC address.
+         */
+        const val POD_ADDRESSES_PER_NODE = 16
+    }
+
     // Exit codes
     object ExitCodes {
         const val ERROR = 1
@@ -137,8 +226,17 @@ object Constants {
         /** EC2 port value meaning "all ICMP types/codes" when used as both fromPort and toPort. */
         const val ALL_ICMP_TYPES = -1
 
-        /** The service that answers with the caller's public IPv4 address as plain text. */
-        const val EXTERNAL_IP_URL = "https://api.ipify.org/"
+        /**
+         * The first service asked for the caller's public IPv4 address; it answers in plain text
+         * with a trailing newline.
+         */
+        const val EXTERNAL_IP_URL = "https://checkip.amazonaws.com/"
+
+        /**
+         * The service asked when [EXTERNAL_IP_URL] fails or answers with something that is not an
+         * IPv4 address.
+         */
+        const val EXTERNAL_IP_FALLBACK_URL = "https://api.ipify.org/"
 
         /** How long public IP detection waits to connect before it fails. */
         const val EXTERNAL_IP_CONNECT_TIMEOUT_MS = 5000
@@ -237,47 +335,43 @@ object Constants {
     }
 
     /**
-     * The account compactor: one ECS Fargate service per AWS account, in the account bucket's
-     * region, that compacts the shared observability store.
+     * The account compactor: an `account-compactor` pod on every cluster's control node that
+     * compacts the shared observability store only while it holds the store lease.
      */
     object Compactor {
-        const val ECS_CLUSTER = "easy-db-lab"
-        const val SERVICE = "easy-db-lab-compactor"
-        const val TASK_FAMILY = "easy-db-lab-compactor"
-        const val LOG_GROUP = "/easy-db-lab/compactor"
-        const val TASK_ROLE = "EasyDBLabCompactorTaskRole"
-        const val EXECUTION_ROLE = "EasyDBLabCompactorExecutionRole"
+        /**
+         * The static busybox the init container copies into the pod, to run the gate in the
+         * distroless compactor images. It must be statically linked: musl, not the glibc build.
+         */
+        const val GATE_IMAGE = "busybox:1.37.0-musl"
 
-        /** The ECS task-definition tag holding the hash of the configuration it was built from. */
-        const val CONFIG_HASH_TAG = "easydblab.com/config-hash"
+        /** The stock multi-arch JRE image the lease container runs the agent jar with. */
+        const val AGENT_IMAGE = "eclipse-temurin:21-jre"
 
-        /** Fargate task size: 2 vCPU, 8 GiB, 100 GiB of ephemeral storage. */
-        const val CPU_UNITS = "2048"
-        const val MEMORY_MIB = "8192"
-        const val EPHEMERAL_STORAGE_GIB = 100
-        const val STOP_TIMEOUT_SECONDS = 120
+        /** The compactor's directory on the control node's data mount: its scratch and the agent jar. */
+        const val HOST_ROOT = "/mnt/db1/compactor"
 
-        /** How many of the newest log lines `observability compactor status` prints. */
-        const val STATUS_LOG_LINES = 20
+        /** The agent jar in the distribution's `agents` directory, and in the image's `/agents`. */
+        const val AGENT_JAR = "compactor-lease.jar"
 
-        /** How many of the service's newest events `observability compactor status` prints. */
-        const val STATUS_SERVICE_EVENTS = 5
+        /**
+         * The store lease's timing. A holder stops its compactors at most
+         * `RENEW_DEADLINE + GATE_POLL + GATE_GRACE` (81 s) after the send of its last successful
+         * renewal, and a standby takes over only after seeing one version for `TTL` (120 s) on its
+         * own clock, so the two never compact at once. `LeaseTiming` refuses values that break this.
+         * They reach the agent and the gate as environment variables.
+         */
+        object Lease {
+            const val TTL_SECONDS = 120L
+            const val RENEW_INTERVAL_SECONDS = 15L
+            const val RENEW_DEADLINE_SECONDS = 60L
+            const val STANDBY_POLL_SECONDS = 15L
+            const val GATE_POLL_SECONDS = 1L
+            const val GATE_GRACE_SECONDS = 20L
 
-        /** Availability zone IDs where Fargate does not run; the compactor's subnet is never placed in one. */
-        val NON_FARGATE_ZONE_IDS = setOf("use1-az3")
-
-        /** The busybox image of the init container that writes the configuration files. */
-        const val CONFIG_IMAGE = "busybox:1.37.0"
-
-        /** The operator's IAM policy that grants the compactor's ECS, IAM and Logs actions. */
-        const val OPERATOR_POLICY = "EasyDBLabCompactor"
-
-        /** The error code ECS answers with when the caller's IAM does not allow the action. */
-        const val ECS_ACCESS_DENIED = "AccessDeniedException"
-
-        /** What the idle Tempo backend worker logs on every poll that finds no job: its normal state. */
-        const val TEMPO_WORKER_IDLE_LOG =
-            "msg=\"error calling scheduler\" err=\"rpc error: code = NotFound desc = no jobs found\""
+            /** The pod's termination grace: longer than the gate poll plus the gate grace. */
+            const val TERMINATION_GRACE_SECONDS = 60L
+        }
     }
 
     // S3 configuration
@@ -368,6 +462,22 @@ object Constants {
         const val LOCAL_KUBECONFIG = "kubeconfig"
         const val NODE_TOKEN_PATH = "/var/lib/rancher/k3s/server/node-token"
         const val DEFAULT_SERVER_URL = "https://127.0.0.1:6443"
+
+        /**
+         * The pod range K3s hands node CIDRs out of (`--cluster-cidr`). K3s's default,
+         * 10.42.0.0/16 with a /24 per node, runs out at 256 nodes: under Flannel a node with no
+         * pod CIDR never gets pod networking, and under Cilium ENI IPAM (which ignores node CIDRs)
+         * the node IPAM controller reports `CIDRNotAvailable` for every node past it. A /12 holds
+         * 4,096 /24s. It and [SERVICE_CIDR] are kept out of every VPC block `up` picks or
+         * `init --cidr` accepts, so they never overlap a cluster's 10.X.0.0/16 VPC.
+         */
+        const val CLUSTER_CIDR = "10.224.0.0/12"
+
+        /** The ClusterIP range (`--service-cidr`); cluster DNS takes its tenth address. */
+        const val SERVICE_CIDR = "10.240.0.0/16"
+
+        /** The node CIDR size the controller manager carves out of [CLUSTER_CIDR], one per node. */
+        const val NODE_CIDR_MASK_SIZE = 24
     }
 
     // K8s observability configuration
@@ -1295,9 +1405,6 @@ object Constants {
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"
 
-        /** VPC name of the account compactor; tagged [TAG_KEY] but never [BUCKET_TAG_KEY]. */
-        const val COMPACTOR_VPC_NAME = "easy-db-lab-compactor"
-
         /** VPC tag key for the S3 bucket name */
         const val BUCKET_TAG_KEY = "bucket"
 
@@ -1311,9 +1418,9 @@ object Constants {
         const val SOCKS5_PROXY_STATE_FILE = ".socks5-proxy-state"
 
         /**
-         * Generates a subnet CIDR block for a given index within the VPC.
-         * Uses the pattern 10.0.{index+1}.0/24
+         * The most availability zones a cluster can span.  The VPC is split into this many equal
+         * subnets (VPC prefix + 3), one per zone; see `network/CidrBlock`.
          */
-        fun subnetCidr(index: Int): String = "10.0.${index + 1}.0/24"
+        const val MAX_AVAILABILITY_ZONES = 8
     }
 }

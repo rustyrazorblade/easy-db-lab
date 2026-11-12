@@ -143,7 +143,7 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--azs", "--az", "-z"],
-        description = ["Limit to specified availability zones"],
+        description = ["Limit to specified availability zones (at most 8)"],
         converter = [PicoAZConverter::class],
     )
     var azs: List<String> = listOf()
@@ -236,7 +236,10 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--cidr"],
-        description = ["VPC CIDR block (e.g. 10.2.0.0/16). Must be /20 or larger. Omit to auto-select a non-conflicting block."],
+        description = [
+            "VPC CIDR block (e.g. 10.2.0.0/16). Must be /25 or larger; it is split into eight equal subnets. " +
+                "Omit to auto-select a non-conflicting block.",
+        ],
     )
     var cidr: String? = null
 
@@ -384,7 +387,17 @@ class Init : PicoBaseCommand() {
         require(ebsSize > 0) { "EBS size must be positive" }
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
-        cidr?.let { CidrBlock(it) }
+        cidr?.let { CidrBlock(it) }?.let { block ->
+            require(!block.overlapsK3sRanges()) {
+                "CIDR $block overlaps K3s's pod range ${Constants.K3s.CLUSTER_CIDR} or service range " +
+                    "${Constants.K3s.SERVICE_CIDR}; node and pod addresses would collide. Pick another block."
+            }
+        }
+        require(azs.size <= Constants.Vpc.MAX_AVAILABILITY_ZONES) {
+            "A cluster can use at most ${Constants.Vpc.MAX_AVAILABILITY_ZONES} availability zones, " +
+                "because the VPC is split into ${Constants.Vpc.MAX_AVAILABILITY_ZONES} subnets; got ${azs.size}: " +
+                azs.joinToString(",")
+        }
         require(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(name)) {
             "Invalid cluster name '$name': a cluster name must match ${Constants.Observability.CLUSTER_NAME_PATTERN} " +
                 "(start with a lowercase letter; then lowercase letters, digits or '-'; at most 40 characters)."

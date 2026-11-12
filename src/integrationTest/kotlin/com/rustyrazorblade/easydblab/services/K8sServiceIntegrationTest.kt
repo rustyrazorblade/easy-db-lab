@@ -11,6 +11,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJar
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.Scratch
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -330,6 +333,42 @@ class K8sServiceIntegrationTest {
         // K8s objects, so nothing per dashboard is expected here.
         applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2")))
         assertDeploymentExists("grafana")
+    }
+
+    @Test
+    @Order(22)
+    fun `should apply the account compactor resources`() {
+        val jar = "0".repeat(64)
+        // The pod mounts its scratch host paths with type Directory and the agent jar with type File.
+        Scratch.entries.forEach { k3s.execInContainer("mkdir", "-p", it.hostPath) }
+        k3s.execInContainer("sh", "-c", "mkdir -p ${CompactorAgentJar.AGENT_DIR} && touch ${CompactorAgentJar(jar).hostPath}")
+
+        applyAndVerify(CompactorManifestBuilder(templateService).buildAllResources(CompactorAgentJar(jar), "us-west-2"))
+
+        assertConfigMapExists(CompactorManifestBuilder.CONFIGMAP_NAME, CompactorManifestBuilder.GATE_SCRIPT)
+        assertDeploymentExists(CompactorManifestBuilder.NAME)
+    }
+
+    /**
+     * Every image the account compactor's pod runs can be pulled by K3s's containerd, as the control
+     * node pulls it: the JRE the lease agent runs on, the static busybox the gate runs with, and the
+     * Grafana images whose binaries the gate starts. A wrong name or a removed tag fails here, not
+     * as an ImagePullBackOff during `up`.
+     */
+    @Test
+    @Order(22)
+    fun `every account compactor image can be pulled`() {
+        val pod =
+            CompactorManifestBuilder(templateService)
+                .buildDeployment(CompactorAgentJar("0".repeat(64)), "us-west-2")
+                .spec.template.spec
+        val images = (pod.initContainers + pod.containers).map { it.image }.distinct()
+
+        assertThat(images).contains(Constants.Compactor.AGENT_IMAGE, Constants.Compactor.GATE_IMAGE)
+        assertThat(images).allSatisfy { image ->
+            val result = k3s.execInContainer("crictl", "pull", image)
+            assertThat(result.exitCode).describedAs("crictl pull $image: ${result.stderr}").isZero()
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -838,6 +877,7 @@ class K8sServiceIntegrationTest {
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
             KubeStateMetricsManifestBuilder().buildAllResources() +
+            CompactorManifestBuilder(templateService).buildAllResources(CompactorAgentJar("0".repeat(64)), "us-west-2") +
             GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"))
 
     private fun waitForPvcBound(

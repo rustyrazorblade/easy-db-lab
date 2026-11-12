@@ -126,7 +126,7 @@ class SetupInstance : PicoBaseCommand() {
             remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
             remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
         }
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "") { host ->
+        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "", parallel = true) { host ->
             val h = host.toHost()
             setup(h)
             writeJmxRules(h)

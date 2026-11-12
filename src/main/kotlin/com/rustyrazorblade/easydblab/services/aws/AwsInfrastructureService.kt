@@ -141,7 +141,7 @@ class AwsInfrastructureService(
 
     /**
      * Ensures the single-subnet infrastructure [config] names exists, reusing its VPC when one
-     * with that name exists. The packer VPC and the account compactor's VPC are both kept this way.
+     * with that name exists. The packer VPC is kept this way.
      *
      * @return VpcInfrastructure containing the IDs of all created/found resources
      */
@@ -408,8 +408,6 @@ class AwsInfrastructureService(
             when {
                 // Skip packer VPC unless explicitly included
                 resources.isPackerVpc() && !includePackerVpc -> eventBus.emit(Event.Infra.PackerVpcSkipping(vpcId))
-                // The account compactor's VPC outlives every cluster
-                resources.isCompactorVpc() -> eventBus.emit(Event.Infra.CompactorVpcSkipping(vpcId))
                 else -> allResources.add(resources)
             }
         }

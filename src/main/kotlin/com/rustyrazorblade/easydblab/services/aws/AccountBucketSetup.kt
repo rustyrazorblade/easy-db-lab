@@ -9,14 +9,12 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
  * Makes the account bucket ready for a cluster before `up` provisions anything: the account and
- * per-cluster data buckets, the role and bucket policies, and the account compactor that works on
- * the bucket's observability data. It exists so `up` delegates the whole bucket step to one place.
+ * per-cluster data buckets, and the role and bucket policies. It exists so `up` delegates the whole bucket step to one place.
  */
 class AccountBucketSetup(
     private val s3BucketService: AwsS3BucketService,
     private val userConfig: User,
     private val clusterStateManager: ClusterStateManager,
-    private val compactorService: CompactorService,
     private val eventBus: EventBus,
     private val awsResourceSetup: AWSResourceSetupService,
 ) {
@@ -24,12 +22,10 @@ class AccountBucketSetup(
         private val log = KotlinLogging.logger {}
     }
 
-    /** Configures the buckets for [state], saving it when they change, and starts the account compactor. */
+    /** Configures the buckets for [state], saving it when they change, and re-applies the policies. */
     fun prepare(state: ClusterState) {
         configureBuckets(state)
-        val bucket = requireBucket(state)
-        reapplyPolicies(bucket)
-        compactorService.ensureRunning(bucket)
+        reapplyPolicies(requireBucket(state))
     }
 
     /**

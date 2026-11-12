@@ -81,4 +81,24 @@ class Ipv4CidrTest {
     fun `an IPv6 value is reported as unsupported`() {
         assertThat(Ipv4Cidr.parse("2001:db8::/32").exceptionOrNull()?.message).contains("IPv6")
     }
+
+    @Test
+    fun `two CIDRs overlap exactly when one contains the other's network`() {
+        val pods = cidr("10.224.0.0/12")
+
+        assertThat(cidr("10.230.0.0/16").overlaps(pods)).isTrue()
+        assertThat(pods.overlaps(cidr("10.230.0.0/16"))).isTrue()
+        assertThat(cidr("10.0.0.0/8").overlaps(pods)).isTrue()
+        assertThat(cidr("10.240.0.0/16").overlaps(pods)).isFalse()
+        assertThat(cidr("0.0.0.0/0").overlaps(pods)).isTrue()
+    }
+
+    @Test
+    fun `subnet returns the index-th block of a longer prefix, carrying into higher octets`() {
+        assertThat(cidr("10.0.0.0/16").subnet(19, 1).value).isEqualTo("10.0.32.0/19")
+        assertThat(cidr("10.0.0.0/20").subnet(23, 7).value).isEqualTo("10.0.14.0/23")
+        assertThat(cidr("192.168.0.0/16").subnet(19, 7).value).isEqualTo("192.168.224.0/19")
+    }
+
+    private fun cidr(raw: String): Ipv4Cidr = Ipv4Cidr.parse(raw).getOrThrow()
 }

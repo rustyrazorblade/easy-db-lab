@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
 import io.github.resilience4j.retry.Retry
+import java.time.Duration
 
 // Convenience wrappers that run an operation under one of the RetryUtil retry configs.
 // The config factories themselves stay in RetryUtil.
@@ -75,17 +76,19 @@ fun <T> withS3BucketPolicyRetry(
 }
 
 /**
- * Executes an ECS call that passes a role IAM has just created, retrying while ECS cannot yet
- * assume it (see [RetryUtil.createEcsRoleRetryConfig]).
+ * Executes an EC2 call under the EC2 throttle retry ([RetryUtil.createEc2ThrottleRetryConfig]):
+ * throttles, not-yet-visible instance IDs and 5xx answers are retried with exponential backoff.
  *
  * @param operationName Name of the operation for logging and metrics
+ * @param backoffBase The first backoff; tests pass a short one
  * @param operation The operation to execute with retry logic
  * @return The result of the operation
  */
-fun <T> withEcsRoleRetry(
+fun <T> withEc2ThrottleRetry(
     operationName: String,
+    backoffBase: Duration,
     operation: () -> T,
 ): T {
-    val retry = Retry.of(operationName, RetryUtil.createEcsRoleRetryConfig())
+    val retry = Retry.of(operationName, RetryUtil.createEc2ThrottleRetryConfig<T>(backoffBase))
     return Retry.decorateSupplier(retry, operation).get()
 }

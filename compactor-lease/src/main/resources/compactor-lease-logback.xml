@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The lease agent's logging, when it runs as its own jar in the account-compactor pod: every
+  lease transition goes to stdout, where the cluster's log collection ships it to Loki.
+  LeaseAgentMain selects this file by name, so it never replaces the CLI's own configuration.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSX} %-5level %logger{0} - %msg%n%ex</pattern>
+        </encoder>
+    </appender>
+
+    <!-- The SDK's request and wire loggers would print credentials; keep them quiet. -->
+    <logger name="software.amazon.awssdk" level="WARN"/>
+    <logger name="org.apache.http" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

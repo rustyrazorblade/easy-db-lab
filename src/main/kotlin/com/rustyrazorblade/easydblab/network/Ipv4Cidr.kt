@@ -22,6 +22,37 @@ value class Ipv4Cidr private constructor(
     val prefixLength: Int
         get() = value.substringAfter('/').toInt()
 
+    /** The network address as an unsigned 32-bit number held in a [Long]. */
+    val networkBits: Long
+        get() = address.split('.').fold(0L) { acc, octet -> (acc shl BITS_PER_OCTET) or octet.toLong() }
+
+    /** Whether this CIDR shares any address with [other]: exactly when one contains the other's network. */
+    fun overlaps(other: Ipv4Cidr): Boolean {
+        val mask = networkMask(minOf(prefixLength, other.prefixLength))
+        return (networkBits and mask) == (other.networkBits and mask)
+    }
+
+    /**
+     * The [index]-th block of length [subnetPrefix] inside this CIDR, counting from its network
+     * address: the network bits plus `index * 2^(32 - subnetPrefix)`.
+     *
+     * @throws IllegalArgumentException if [subnetPrefix] is shorter than this prefix or longer
+     *   than /32, or [index] is negative or names a block past the end of this CIDR
+     */
+    fun subnet(
+        subnetPrefix: Int,
+        index: Int,
+    ): Ipv4Cidr {
+        require(subnetPrefix in prefixLength..MAX_PREFIX) {
+            "Subnet prefix /$subnetPrefix must be from /$prefixLength to /$MAX_PREFIX for $value"
+        }
+        require(index >= 0 && index.toLong() < (1L shl (subnetPrefix - prefixLength))) {
+            "Subnet index $index is outside $value split into /$subnetPrefix blocks"
+        }
+        val subnetSize = 1L shl (MAX_PREFIX - subnetPrefix)
+        return Ipv4Cidr("${format(networkBits + index * subnetSize)}/$subnetPrefix")
+    }
+
     override fun toString(): String = value
 
     companion object {

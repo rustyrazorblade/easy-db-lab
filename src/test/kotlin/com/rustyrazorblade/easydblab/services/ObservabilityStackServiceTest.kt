@@ -8,8 +8,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentInstaller
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -29,10 +33,12 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.ssh.Response
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
@@ -56,6 +62,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.reset
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.nio.file.Files
 
 /**
  * Tests the two modes of [DefaultObservabilityStackService].
@@ -110,6 +117,19 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             },
         )
 
+    /** A Kubernetes client whose labelled ConfigMap listing, in any namespace, is empty. */
+    private fun clientWithNoLabelledConfigMaps(): KubernetesClient {
+        val client = mock<KubernetesClient>()
+        val configMaps = mock<MixedOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        val anyNamespace = mock<AnyNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        val filtered = mock<FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        whenever(client.configMaps()).thenReturn(configMaps)
+        whenever(configMaps.inAnyNamespace()).thenReturn(anyNamespace)
+        whenever(anyNamespace.withLabel(any<String>(), any<String>())).thenReturn(filtered)
+        whenever(filtered.list()).thenReturn(ConfigMapList().also { it.items = mutableListOf() })
+        return client
+    }
+
     @BeforeEach
     fun setup() {
         mockK8sService = getKoin().get()
@@ -118,16 +138,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         mockDashboardService = getKoin().get()
         mockClusterStateManager = getKoin().get()
 
-        mockK8sClient = mock()
-        val mockConfigMapOps = mock<MixedOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
-        val mockAnyNsOps = mock<AnyNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
-        val mockFiltered = mock<FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
-        val emptyConfigMapList = ConfigMapList().also { it.items = mutableListOf() }
-
-        whenever(mockK8sClient.configMaps()).thenReturn(mockConfigMapOps)
-        whenever(mockConfigMapOps.inAnyNamespace()).thenReturn(mockAnyNsOps)
-        whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
-        whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
+        mockK8sClient = clientWithNoLabelledConfigMaps()
         whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
 
         whenever(mockClusterStateManager.load()).thenReturn(
@@ -172,8 +183,19 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
                 DashboardInstallContextFactory(sharedStoreTenants()),
+                CompactorStage(
+                    CompactorManifestBuilder(getKoin().get()),
+                    CompactorAgentInstaller(mockRemoteOps, getKoin().get()),
+                    bucketRegion = { bucket -> "eu-west-1".also { bucketRegionAsked += bucket } },
+                    agentJar = { agentJar },
+                ),
             )
+        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
     }
+
+    private val bucketRegionAsked = mutableListOf<String>()
+
+    private val agentJar by lazy { CompactorAgentJarFile(Files.writeString(tempDir.toPath().resolve("compactor-lease.jar"), "agent")) }
 
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */
     private fun sharedStoreTenants(): TenantDirectory {
@@ -321,9 +343,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         // No Grafana in redirect mode, so no dashboards uploaded.
         verify(mockDashboardService, never()).deploy(any(), any(), any())
 
-        // Neither on-node directory (Pyroscope server data, Grafana data) is prepared: the server
-        // and Grafana do not exist here, so redirect makes no SSH calls at all.
-        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
+        // No backend or Grafana directory is prepared: they do not exist here. The only SSH work
+        // is the account compactor's, which runs on every cluster.
+        assertThat(remoteCommands()).allMatch { it.contains("/mnt/db1/compactor") || it.startsWith("test -f /mnt/db1/compactor") }
 
         // Readiness is still gated on the applied collectors coming up.
         verify(mockK8sService).waitForPodsReady(any(), any())
@@ -342,6 +364,62 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the account compactor is deployed in both local and redirect mode, for the jar it uploaded and the bucket's region`() {
+        service.deploy(controlNode).getOrThrow()
+        assertThat(appliedKindNames()).contains("ConfigMap/account-compactor-config", "Deployment/account-compactor")
+        assertThat(
+            compactorDeployment()
+                .spec.template.spec.volumes
+                .single { it.name == "agent-jar" }
+                .hostPath.path,
+        ).isEqualTo(agentJar.remote.hostPath)
+        assertThat(
+            compactorDeployment()
+                .spec.template.spec.containers
+                .first()
+                .env
+                .single { it.name == "AWS_REGION" }
+                .value,
+        ).isEqualTo("eu-west-1")
+        assertThat(bucketRegionAsked).containsExactly("easy-db-lab-test")
+
+        reset(mockK8sService)
+        stubK8sSuccess()
+        whenever(mockClusterStateManager.load()).thenReturn(redirectState())
+        service.deploy(controlNode).getOrThrow()
+        assertThat(appliedKindNames()).contains("Deployment/account-compactor")
+        assertThat(remoteCommands()).anyMatch { it.contains("sudo mkdir -p /mnt/db1/compactor/mimir") }
+    }
+
+    @Test
+    fun `the compactor's control node is prepared before its Deployment is applied`() {
+        service.deploy(controlNode).getOrThrow()
+
+        val order = inOrder(mockRemoteOps, mockK8sService)
+        order
+            .verify(
+                mockRemoteOps,
+            ).executeRemotely(any(), org.mockito.kotlin.argThat { contains("/mnt/db1/compactor/mimir") }, any(), any())
+        order.verify(mockK8sService).applyResource(any(), org.mockito.kotlin.argThat<HasMetadata> { metadata.name == "account-compactor" })
+    }
+
+    @Test
+    fun `the compactor's pod template carries the hash of its ConfigMap and cluster-config`() {
+        service.deploy(controlNode).getOrThrow()
+
+        assertThat(
+            compactorDeployment()
+                .spec.template.metadata.annotations,
+        ).containsKey(Constants.K8s.CONFIG_HASH_ANNOTATION)
+    }
+
+    private fun compactorDeployment(): Deployment {
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        return captor.allValues.filterIsInstance<Deployment>().last { it.metadata.name == "account-compactor" }
+    }
+
+    @Test
     fun `the collector config carries the Cilium scrape jobs only when the cluster state says Cilium`() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Cilium))
         service.deploy(controlNode).getOrThrow()
@@ -352,6 +430,37 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Flannel))
         service.deploy(controlNode).getOrThrow()
         assertThat(appliedOtelConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
+    }
+
+    /**
+     * The collector and node agents are DaemonSets that roll one pod per node, so a fixed deadline
+     * that fits 4 nodes times out at 1,000. Both waits get the base plus a per-node allowance.
+     */
+    @Test
+    fun `the rollout and readiness deadlines grow with the number of nodes`() {
+        val nodes =
+            (0 until 500).map {
+                ClusterHost(publicIp = "", privateIp = "10.0.$it.1", alias = "db$it", availabilityZone = "us-west-2a")
+            }
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
+                hosts = mapOf(ServerType.Control to listOf(controlNode), ServerType.Cassandra to nodes),
+            ),
+        )
+
+        service.deploy(controlNode).getOrThrow()
+
+        val expected =
+            Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS + Constants.Scale.ROLLOUT_PER_NODE_SECONDS.toInt() * 501
+        val rolloutTimeout = argumentCaptor<Int>()
+        val readyTimeout = argumentCaptor<Int>()
+        verify(mockK8sService).waitForRollouts(any(), any(), any(), rolloutTimeout.capture())
+        verify(mockK8sService).waitForPodsReady(any(), readyTimeout.capture())
+        assertThat(rolloutTimeout.firstValue).isEqualTo(expected)
+        assertThat(readyTimeout.firstValue).isEqualTo(expected)
     }
 
     @Test

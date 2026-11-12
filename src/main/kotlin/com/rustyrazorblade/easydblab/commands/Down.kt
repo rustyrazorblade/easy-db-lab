@@ -19,7 +19,6 @@ import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
-import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine
@@ -91,7 +90,6 @@ class Down : PicoBaseCommand() {
     private val user: User by inject()
     private val teardownBackupService: TeardownBackupService by inject()
     private val socksProxyService: SocksProxyService by inject()
-    private val compactorService: CompactorService by inject()
     private val log = KotlinLogging.logger {}
 
     private companion object {
@@ -115,8 +113,9 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * How a teardown ended: it ran (successfully or not, or it had nothing to do), or the
-     * pre-teardown flush failed and aborted it with no infrastructure removed.
+     * How a teardown ended: it ran (successfully or not, or it had nothing to do), the
+     * pre-teardown flush failed and aborted it with no infrastructure removed, or it was a dry run
+     * that only previewed what would be removed.
      */
     private sealed interface TeardownOutcome {
         data class Finished(
@@ -124,6 +123,18 @@ class Down : PicoBaseCommand() {
         ) : TeardownOutcome
 
         data object FlushAborted : TeardownOutcome
+
+        /**
+         * `--dry-run`: the preview was reported and nothing changed, locally or remotely. The
+         * tunnel, the tailnet device and the cluster state are left exactly as they were.
+         *
+         * [failure] is set when there was nothing to preview (no cluster state, or no VPC and no
+         * tailnet device recorded): the dry run fails as the teardown would, and still changes
+         * nothing.
+         */
+        data class DryRun(
+            val failure: TeardownResult? = null,
+        ) : TeardownOutcome
     }
 
     override fun execute() {
@@ -137,15 +148,15 @@ class Down : PicoBaseCommand() {
                     exitCode = Constants.ExitCodes.ERROR
                     return
                 }
+                is TeardownOutcome.DryRun -> {
+                    outcome.failure?.let(::reportResult)
+                    return
+                }
                 is TeardownOutcome.Finished -> outcome.result
             }
 
         // Kill the proxy process and remove its state file after AWS operations complete.
         cleanupSocks5Proxy()
-
-        if (result.success && !dryRun && mode != TeardownMode.PackerInfrastructure) {
-            stopCompactorIfLastCluster(mode, result)
-        }
 
         // Only clear cluster state on successful teardown to preserve VPC ID for retries
         if (result.success && (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc)) {
@@ -297,24 +308,6 @@ class Down : PicoBaseCommand() {
     )
 
     /**
-     * Stops the account compactor once the infrastructure teardown succeeded, when no other cluster
-     * VPC in any region still names the account bucket. The VPCs this `down` tore down are left
-     * out of the count. With no account bucket there is no compactor.
-     */
-    private fun stopCompactorIfLastCluster(
-        mode: TeardownMode,
-        result: TeardownResult,
-    ) {
-        val bucket =
-            when (mode) {
-                TeardownMode.CurrentCluster -> clusterStateManager.load().s3Bucket
-                else -> user.s3Bucket
-            }
-        if (bucket.isNullOrBlank()) return
-        compactorService.stopIfLastCluster(bucket, result.resourcesDeleted.map { it.vpcId }.toSet())
-    }
-
-    /**
      * Determines the teardown mode based on command line options.
      */
     private fun determineTeardownMode(): TeardownMode =
@@ -332,8 +325,8 @@ class Down : PicoBaseCommand() {
         when (mode) {
             is TeardownMode.CurrentCluster -> teardownCurrentCluster()
             is TeardownMode.SpecificVpc -> teardownSpecificVpc(mode.vpcId, saveTail = false)
-            is TeardownMode.AllTagged -> TeardownOutcome.Finished(teardownAllTagged())
-            is TeardownMode.PackerInfrastructure -> TeardownOutcome.Finished(teardownPackerInfrastructure())
+            is TeardownMode.AllTagged -> teardownAllTagged()
+            is TeardownMode.PackerInfrastructure -> teardownPackerInfrastructure()
         }
 
     /**
@@ -348,29 +341,42 @@ class Down : PicoBaseCommand() {
      *
      * A cluster whose VPC is already gone but whose tailnet device is still recorded is a previous
      * `down` that removed the infrastructure and failed only the device removal. There is no VPC
-     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry.
+     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry;
+     * under `--dry-run` it only reports that the device would be removed.
      */
     private fun teardownCurrentCluster(): TeardownOutcome {
         // Get the VPC ID from cluster state
         if (!clusterStateManager.exists()) {
             eventBus.emit(Event.Teardown.NoClusterState)
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("No cluster state found"))
+            return nothingToTearDown(TeardownResult.Companion.failure("No cluster state found"))
         }
 
         val clusterState = clusterStateManager.load()
         val currentVpcId = clusterState.vpcId
 
-        if (currentVpcId == null && !clusterState.tailscaleDeviceId.isNullOrBlank()) {
+        val deviceId = clusterState.tailscaleDeviceId
+        if (currentVpcId == null && !deviceId.isNullOrBlank()) {
+            if (dryRun) {
+                eventBus.emit(Event.Teardown.DryRunDeviceRemovalPreview(deviceId))
+                return TeardownOutcome.DryRun()
+            }
             return TeardownOutcome.Finished(TeardownResult.success(emptyList()))
         }
 
         if (currentVpcId == null) {
             eventBus.emit(Event.Teardown.NoVpcId(clusterState.name))
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("No VPC ID in cluster state"))
+            return nothingToTearDown(TeardownResult.Companion.failure("No VPC ID in cluster state"))
         }
 
         return teardownSpecificVpc(currentVpcId, saveTail = true)
     }
+
+    /**
+     * The outcome when the cluster state names nothing to tear down: [failure] either way, but a
+     * dry run reports it as a [TeardownOutcome.DryRun], so nothing, the tunnel included, is touched.
+     */
+    private fun nothingToTearDown(failure: TeardownResult): TeardownOutcome =
+        if (dryRun) TeardownOutcome.DryRun(failure) else TeardownOutcome.Finished(failure)
 
     /**
      * Tears down a specific VPC by ID.
@@ -386,27 +392,14 @@ class Down : PicoBaseCommand() {
     ): TeardownOutcome {
         eventBus.emit(Event.Teardown.PreparingVpc(targetVpcId))
 
-        // Preview to discover resources
-        val previewResult = teardownService.teardownVpc(targetVpcId, dryRun = true)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoResourcesFound)
-            return TeardownOutcome.Finished(previewResult)
-        }
-
-        val summary = previewResult.resourcesDeleted.first().summary()
-        if (saveTail && force) reportForceSkipsTail()
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.Finished(previewResult)
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardownService.teardownVpc(targetVpcId, dryRun = true),
+                noneFound = Event.Teardown.NoResourcesFound,
+                summarize = { it.first().summary() },
+                beforeDryRunCheck = { if (saveTail && force) reportForceSkipsTail() },
+            )
+        if (stop != null) return stop
 
         if (saveTail && !force && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
 
@@ -417,30 +410,16 @@ class Down : PicoBaseCommand() {
     /**
      * Tears down all VPCs tagged with easy_cass_lab.
      */
-    private fun teardownAllTagged(): TeardownResult {
+    private fun teardownAllTagged(): TeardownOutcome {
         eventBus.emit(Event.Teardown.FindingTaggedVpcs)
 
-        // Preview first
-        val previewResult = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoTaggedVpcsFound)
-            return previewResult
-        }
-
-        // Build summary from discovered resources
-        val summary = buildResourcesSummary(previewResult.resourcesDeleted)
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return previewResult
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownResult.Companion.failure("Teardown cancelled by user")
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker),
+                noneFound = Event.Teardown.NoTaggedVpcsFound,
+                summarize = ::buildResourcesSummary,
+            )
+        if (stop != null) return stop
 
         beforeRemovingInfrastructure()
         val result = teardownService.teardownAllTagged(dryRun = false, includePackerVpc = teardownPacker)
@@ -450,38 +429,57 @@ class Down : PicoBaseCommand() {
             teardownAllDataBuckets()
         }
 
-        return result
+        return TeardownOutcome.Finished(result)
     }
 
     /**
      * Tears down the packer infrastructure VPC.
      */
-    private fun teardownPackerInfrastructure(): TeardownResult {
+    private fun teardownPackerInfrastructure(): TeardownOutcome {
         eventBus.emit(Event.Teardown.FindingPackerVpc)
 
-        // Preview first
-        val previewResult = teardownService.teardownPackerInfrastructure(dryRun = true)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoPackerVpcFound)
-            return previewResult
-        }
-
-        val summary = previewResult.resourcesDeleted.first().summary()
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return previewResult
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownResult.Companion.failure("Teardown cancelled by user")
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardownService.teardownPackerInfrastructure(dryRun = true),
+                noneFound = Event.Teardown.NoPackerVpcFound,
+                summarize = { it.first().summary() },
+            )
+        if (stop != null) return stop
 
         beforeRemovingInfrastructure()
-        return teardownService.teardownPackerInfrastructure(dryRun = false)
+        return TeardownOutcome.Finished(teardownService.teardownPackerInfrastructure(dryRun = false))
+    }
+
+    /**
+     * The steps every teardown mode takes on its [preview] before it removes anything: report
+     * [noneFound] when the preview found nothing, run [beforeDryRunCheck], show the summary and
+     * stop on `--dry-run`, and ask for confirmation unless auto-approved.
+     *
+     * @return the outcome to stop with, or null when the teardown goes ahead
+     */
+    private fun previewAndConfirm(
+        preview: TeardownResult,
+        noneFound: Event.Teardown,
+        summarize: (List<DiscoveredResources>) -> String,
+        beforeDryRunCheck: () -> Unit = {},
+    ): TeardownOutcome? {
+        if (preview.resourcesDeleted.isEmpty()) {
+            eventBus.emit(noneFound)
+            return if (dryRun) TeardownOutcome.DryRun() else TeardownOutcome.Finished(preview)
+        }
+        val summary = summarize(preview.resourcesDeleted)
+        beforeDryRunCheck()
+        return when {
+            dryRun -> {
+                eventBus.emit(Event.Teardown.DryRunPreview(summary))
+                TeardownOutcome.DryRun()
+            }
+            !autoApprove && !confirmTeardown(summary) -> {
+                eventBus.emit(Event.Teardown.CancelledByUser)
+                TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
+            }
+            else -> null
+        }
     }
 
     /**

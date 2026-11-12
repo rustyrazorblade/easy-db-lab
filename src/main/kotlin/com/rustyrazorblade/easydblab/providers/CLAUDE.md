@@ -66,14 +66,14 @@ Always use factory methods instead of creating manual retry configurations.
 | `createAwsRetryConfig<T>()` | 3 | Exponential 1s→4s | S3, EC2, EMR (standard AWS) |
 | `createDockerRetryConfig<T>()` | 3 | Exponential 1s→4s | Container start/stop/remove; retries socket `IOException` and docker-java API errors except the 404 `NotFoundException` |
 | `createNetworkRetryConfig<T>()` | 3 | Exponential 1s→4s | Generic network ops |
-| `createSshConnectionRetryConfig(interval)` | 30 | Fixed 10s (tests pass a short `interval`) | SSH boot-up (~5 min total); retries `SshException` and `SsmForwardNotReadyException`, fails fast on any other `IOException`. `SshException` is checked: decorate with `decorateCheckedRunnable`/`decorateCheckedSupplier` |
+| `createSshConnectionRetryConfig(interval)` | 30 | Fixed 10s (tests pass a short `interval`) | SSH boot-up (~5 min total); retries `SshException` and `SsmForwardNotReadyException` (`isSshNotReady`, in `SshNotReady.kt`), fails fast on any other `IOException`. `SshException` is checked: decorate with `decorateCheckedRunnable`/`decorateCheckedSupplier` |
 | `createS3LogRetrievalRetryConfig<T>()` | 10 | Fixed 3s | S3 log retrieval (eventual consistency) |
 | `createBooleanPollRetryConfig(maxAttempts, interval)` | `maxAttempts` | Fixed `interval` | Retries on result until a boolean check is `true`: the tailnet reachability probe before K3s, and a failed step's `stderr.gz` uploaded after the step ended (28 attempts, 15s apart) |
 | `createVpcTeardownRetryConfig<T>()` | 5 | Exponential 5s→40s | VPC teardown DependencyViolation |
-| `createEcsRoleRetryConfig()` | 5 | Exponential 1s→16s | ECS calls that pass a role IAM just created (`InvalidParameterException`, `ClientException`); wrapper `withEcsRoleRetry` |
 | `createVpcAutoCidrRetryConfig()` | 3 | None | VPC creation on an auto-selected CIDR (`SdkException` only); `up` picks a new random unused block per attempt |
 | `createLocalPortBindRetryConfig()` | 3 | Fixed 100ms | Local listener lost its port between selection and bind (`BindException` only); the SOCKS proxy selects a new port per attempt |
-| `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline) |
+| `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?, retryExceptions = true)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline). With `retryExceptions = false` no exception is retried: the SSH readiness wait returns the hosts still pending and throws only a hard SSH failure. An `InterruptedException` is never retried in either mode |
+| `createEc2ThrottleRetryConfig<T>(backoffBase)` | `Constants.Scale.THROTTLE_MAX_ATTEMPTS` (8) | Exponential from `backoffBase`, capped at 30s | EC2 calls at scale: retries `RequestLimitExceeded`, `InvalidInstanceID.NotFound` and 5xx. RunInstances keeps one client token across its retries, so a retry cannot launch a second set |
 
 ### Checked Exceptions Need The Checked Decorators
 
@@ -106,6 +106,8 @@ val result = withAwsRetry("describe-cluster") { emrClient.describeCluster(reques
 val result = withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
 withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
 withS3BucketPolicyRetry("put-bucket-policy") { s3Client.putBucketPolicy(request) }
+// EC2 calls at scale (RunInstances, CreateTags, the RunInstances dry run), on createEc2ThrottleRetryConfig
+withEc2ThrottleRetry("run-instances-db0", throttleBackoff) { ec2Client.runInstances(request) }
 
 // Poll until a condition holds (top-level pollUntil in PollUntil.kt, over createPollUntilRetryConfig);
 // returns the last result if it never does

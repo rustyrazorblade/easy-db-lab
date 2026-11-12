@@ -10,6 +10,7 @@ import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.readiness.Readiness
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -88,6 +89,47 @@ class DefaultK8sNamespaceOperations(
             }
 
             eventBus.emit(Event.K8s.PodsReady(namespace))
+        }
+
+    override fun waitForNodesRegistered(
+        controlHost: ClusterHost,
+        nodeNames: List<String>,
+        timeout: Duration,
+    ): Result<Unit> =
+        runCatching {
+            if (nodeNames.isEmpty()) return@runCatching
+            eventBus.emit(Event.K8s.NodesRegistering(nodeNames.size))
+            clientProvider.createClient(controlHost).use { client ->
+                // One list per poll for the whole cluster, not one GET per node; a deadline, not
+                // an attempt count, bounds the wait.
+                val missing =
+                    pollUntil(
+                        operationName = "node-registration",
+                        maxAttempts = Int.MAX_VALUE,
+                        interval = podPollInterval,
+                        deadline = Instant.now().plus(timeout),
+                        done = { it.isEmpty() },
+                    ) {
+                        val registered =
+                            client
+                                .nodes()
+                                .list()
+                                .items
+                                .mapNotNull { it.metadata?.name }
+                                .toSet()
+                        nodeNames.filterNot { it in registered }
+                    }
+                check(missing.isEmpty()) {
+                    "${missing.size} of ${nodeNames.size} node(s) did not register with K3s within " +
+                        "${timeout.toSeconds()}s: " +
+                        missing.joinToString(
+                            ", ",
+                            limit = Constants.Scale.MAX_NAMED_IN_ERROR,
+                            truncated = "and ${missing.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
+                        )
+                }
+            }
+            eventBus.emit(Event.K8s.NodesRegistered(nodeNames.size))
         }
 
     override fun getNamespaceStatus(
@@ -307,76 +349,90 @@ class DefaultK8sNamespaceOperations(
         return (listOf(header) + lines).joinToString("\n")
     }
 
+    /**
+     * Waits until every pod in [namespace] that awaits readiness is Ready, with one pod list per
+     * poll and one deadline for the whole namespace, so the wait does not grow with the number of
+     * pods (a DaemonSet has one per node). A pod that reaches a failure state fails the wait at
+     * once; a pod that finished (a kit's Job pod) is not awaited.
+     */
     private fun waitForPodsInNamespace(
         client: KubernetesClient,
         namespace: String,
         timeoutSeconds: Int,
     ) {
-        val pods =
+        val initial =
             client
                 .pods()
                 .inNamespace(namespace)
                 .list()
-
-        if (pods.items.isEmpty()) {
+                .items
+        if (initial.isEmpty()) {
             log.warn { "No pods found in $namespace namespace" }
             return
         }
-
-        val (awaited, terminal) = pods.items.partition(K8sPodUtils::awaitsReadiness)
-        terminal.forEach { pod ->
+        initial.filterNot(K8sPodUtils::awaitsReadiness).forEach { pod ->
             log.info { "Skipping pod ${pod.metadata?.name}: finished in phase ${pod.status?.phase}" }
         }
-        val podNames = awaited.mapNotNull { it.metadata?.name }
-        log.info { "Waiting for ${podNames.size} pods: ${podNames.joinToString(", ")}" }
+        val awaited = initial.filter(K8sPodUtils::awaitsReadiness).mapNotNull { it.metadata?.name }.toSet()
+        log.info { "Waiting for ${awaited.size} pods: ${awaited.joinToString(", ")}" }
 
-        for (podName in podNames) {
-            val deadline = System.currentTimeMillis() + timeoutSeconds * Constants.Time.MILLIS_PER_SECOND
-            var lastLoggedState = ""
-
-            while (System.currentTimeMillis() < deadline) {
-                val pod =
+        var lastStates = emptyMap<String, String>()
+        val outcome =
+            pollUntil<PodsPoll>(
+                operationName = "pods-ready-$namespace",
+                maxAttempts = Int.MAX_VALUE,
+                interval = podPollInterval,
+                deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
+                done = { it is PodsPoll.Failed || (it is PodsPoll.Pending && it.states.isEmpty()) },
+            ) {
+                val pods =
                     client
                         .pods()
                         .inNamespace(namespace)
-                        .withName(podName)
-                        .get() ?: break
-
-                K8sPodUtils.checkForPodFailure(pod)
-
-                if (!K8sPodUtils.awaitsReadiness(pod)) {
-                    log.info { "Pod $podName finished in phase ${pod.status?.phase}" }
-                    break
+                        .list()
+                        .items
+                        .filter { it.metadata?.name in awaited }
+                val failure = pods.firstNotNullOfOrNull(K8sPodUtils::failureOf)
+                if (failure != null) {
+                    PodsPoll.Failed(failure)
+                } else {
+                    val pending = pods.filter { K8sPodUtils.awaitsReadiness(it) && !Readiness.isPodReady(it) }
+                    val states = pending.associate { (it.metadata?.name ?: "unknown") to describePodState(it) }
+                    states.filter { (name, state) -> lastStates[name] != state }.forEach { (name, state) ->
+                        log.info { "Pod $name: $state" }
+                    }
+                    lastStates = states
+                    PodsPoll.Pending(states)
                 }
+            }
 
-                val isReady =
-                    pod.status?.conditions?.any {
-                        it.type == "Ready" && it.status == "True"
-                    } == true
-
-                if (isReady) {
-                    log.info { "Pod $podName is ready" }
-                    break
-                }
-
-                val currentState = describePodState(pod)
-                if (currentState != lastLoggedState) {
-                    log.info { "Pod $podName: $currentState" }
-                    lastLoggedState = currentState
-                }
-
-                val remaining = (deadline - System.currentTimeMillis()) / Constants.Time.MILLIS_PER_SECOND
-                if (remaining <= 0) {
+        when (outcome) {
+            is PodsPoll.Failed -> error(outcome.reason)
+            is PodsPoll.Pending ->
+                if (outcome.states.isNotEmpty()) {
                     logPvcStatus(client, namespace)
                     error(
-                        "Timed out waiting for [$timeoutSeconds] seconds for pod $podName. " +
-                            "Last state: $currentState",
+                        "Timed out waiting for [$timeoutSeconds] seconds for ${outcome.states.size} pod(s): " +
+                            outcome.states.entries.joinToString("; ") { (name, state) -> "$name ($state)" },
                     )
                 }
-
-                Thread.sleep(podPollInterval.toMillis())
-            }
         }
+    }
+
+    /**
+     * One look at a namespace's awaited pods: a pod failed for good, which ends the wait at once,
+     * or the state of each pod not Ready yet (none left means the wait is done).
+     */
+    private sealed interface PodsPoll {
+        /** A container is in a terminal failure state; [reason] names the pod, container and why. */
+        data class Failed(
+            val reason: String,
+        ) : PodsPoll
+
+        /** The pods not Ready yet, by name, with their state. */
+        data class Pending(
+            val states: Map<String, String>,
+        ) : PodsPoll
     }
 
     private fun describePodState(pod: Pod): String {

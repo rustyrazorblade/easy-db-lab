@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
@@ -15,24 +16,31 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
+import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
+import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
+import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.SsmTool
 import com.rustyrazorblade.easydblab.services.SsmToolFault
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleAuthKey
 import com.rustyrazorblade.easydblab.services.TailscaleService
-import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import org.apache.sshd.common.SshException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -49,6 +57,9 @@ import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 import java.io.IOException
 import java.time.Instant
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Tests for [Up], the command that provisions and configures the complete cluster.
@@ -70,23 +81,37 @@ class UpTest : UpTestFixture() {
 
         verify(mockClusterProvisioningService).provisionAll(any(), any(), any(), any())
         verify(mockK8sService).labelNode(eq(testControlHost), eq("control0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("db0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
         verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
         verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
     }
 
-    /** Every `up` re-applies the bucket policy's delete deny, then makes sure the compactor runs, once. */
+    /**
+     * At 1,000 nodes one-at-a-time registry TLS is 1,000 SSH round trips. The latch opens only once
+     * every node is inside its TLS step together, so a serial loop times out on it.
+     */
     @Test
-    fun `up re-applies the bucket policy and then ensures the account compactor once`() {
-        val compactor = getKoin().get<CompactorService>()
+    fun `up configures registry TLS on every node in parallel`() {
+        val registry = getKoin().get<RegistryService>()
+        val allInside = CountDownLatch(happyHosts().values.flatten().size)
+        val configured = Collections.synchronizedList(mutableListOf<String>())
+        whenever(registry.configureTlsOnNode(any(), any(), any())).thenAnswer { invocation ->
+            allInside.countDown()
+            check(allInside.await(OVERLAP_WAIT_SECONDS, TimeUnit.SECONDS)) { "registry TLS ran one node at a time" }
+            configured.add(invocation.getArgument<Host>(0).alias)
+            Unit
+        }
 
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(configured).containsExactlyInAnyOrder("control0", "db0", "app0")
+    }
+
+    /** Every `up` re-applies the bucket policy's delete deny, even on a bucket it configured before. */
+    @Test
+    fun `up re-applies the bucket policy`() {
         newUp().execute()
 
-        val order = inOrder(mockS3BucketService, compactor)
-        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
-        order.verify(compactor).ensureRunning("easy-db-lab-test-bucket")
-        verify(compactor).ensureRunning(any())
+        verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
     }
 
     /** The test's document index is rebuilt with the operator's credentials once the account bucket is configured. */
@@ -169,8 +194,170 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(outputHandler.errors).isEmpty()
-        verify(mockK8sService, never()).labelNode(any(), eq("db0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
+        verify(mockK8sService).waitForNodesRegistered(eq(testControlHost), eq(listOf("control0", "app0")), any())
+    }
+
+    /**
+     * The instances `up` keeps and the ones it launches must come from one look at EC2: two looks
+     * can disagree (an instance leaves pending between them), and then the count to launch and
+     * the hosts kept in state do not match. Here the second look would see db0 gone.
+     */
+    @Test
+    fun `up discovers the existing instances once and launches only what is missing`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 3))
+        val db0 =
+            DiscoveredInstance(
+                instanceId = "i-db0",
+                publicIp = "54.1.1.2",
+                privateIp = "10.0.0.2",
+                alias = "db0",
+                availabilityZone = "us-west-2a",
+                serverType = ServerType.Cassandra,
+                state = "running",
+            )
+        whenever(mockEc2InstanceService.findInstancesByClusterId(any()))
+            .thenReturn(mapOf(ServerType.Cassandra to listOf(db0)))
+            .thenReturn(emptyMap())
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        verify(mockEc2InstanceService, times(1)).findInstancesByClusterId(any())
+        val config = argumentCaptor<InstanceProvisioningConfig>()
+        val existing = argumentCaptor<Map<ServerType, List<ClusterHost>>>()
+        verify(mockClusterProvisioningService).provisionAll(config.capture(), any(), existing.capture(), any())
+        assertThat(
+            config.firstValue.specs
+                .single { it.serverType == ServerType.Cassandra }
+                .neededCount,
+        ).isEqualTo(2)
+        assertThat(existing.firstValue[ServerType.Cassandra]?.map { it.alias }).containsExactly("db0")
+    }
+
+    /**
+     * A re-run inside an earlier `up`'s pending window discovers db0 not ready: still pending, or
+     * already running but with no public IP yet (null or blank). `up` keeps it, so it must give it
+     * what a new instance gets: wait until it runs and passes its status checks, and record the
+     * public IP it was given, never a blank address.
+     */
+    @ParameterizedTest(name = "state {0}, public IP [{1}]")
+    @CsvSource(value = ["pending,NULL", "running,NULL", "running,''"], nullValues = ["NULL"])
+    fun `up waits for a discovered instance that is not ready and keeps it with its assigned public IP`(
+        state: String,
+        publicIp: String?,
+    ) {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 2))
+        val pendingDb0 =
+            DiscoveredInstance(
+                instanceId = "i-db0",
+                publicIp = publicIp,
+                privateIp = "10.0.0.2",
+                alias = "db0",
+                availabilityZone = "us-west-2a",
+                serverType = ServerType.Cassandra,
+                state = state,
+            )
+        val runningDb1 =
+            pendingDb0.copy(instanceId = "i-db1", publicIp = "54.1.1.5", privateIp = "10.0.0.5", alias = "db1", state = "running")
+        whenever(mockEc2InstanceService.findInstancesByClusterId(any()))
+            .thenReturn(mapOf(ServerType.Cassandra to listOf(pendingDb0, runningDb1)))
+        whenever(mockEc2InstanceService.waitForInstancesRunning(any(), any())).thenReturn(
+            listOf(InstanceDetails("i-db0", "running", "54.7.7.7", "10.0.0.2", "us-west-2a")),
+        )
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        verify(mockEc2InstanceService).waitForInstancesRunning(eq(listOf("i-db0")), any())
+        verify(mockEc2InstanceService).waitForInstanceStatusOk(eq(listOf("i-db0")), any())
+        val existing = argumentCaptor<Map<ServerType, List<ClusterHost>>>()
+        verify(mockClusterProvisioningService).provisionAll(any(), any(), existing.capture(), any())
+        assertThat(existing.firstValue[ServerType.Cassandra]?.associate { it.alias to it.publicIp })
+            .containsExactlyEntriesOf(mapOf("db0" to "54.7.7.7", "db1" to "54.1.1.5"))
+    }
+
+    /**
+     * A partial launch persisted db0, db3 and db6 (subnet a's batch) before subnet b's failed. The
+     * re-run fills exactly the missing ordinals, and the capacity checks count the same ones, in
+     * the zones they land in: only b and c, so a type zone a no longer offers does not stop it.
+     */
+    @Test
+    fun `up fills the ordinals a partial launch left missing, and checks capacity for exactly those`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 9))
+        val existing =
+            listOf(0, 3, 6).map {
+                DiscoveredInstance(
+                    instanceId = "i-db$it",
+                    publicIp = "54.1.1.$it",
+                    privateIp = "10.0.0.$it",
+                    alias = "db$it",
+                    availabilityZone = "us-west-2a",
+                    serverType = ServerType.Cassandra,
+                    state = "running",
+                )
+            }
+        whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(mapOf(ServerType.Cassandra to existing))
+        accountCapacity.offeredZones = mapOf("i4i.xlarge" to setOf("us-west-2b", "us-west-2c"))
+        val events = captureEvents()
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        val config = argumentCaptor<InstanceProvisioningConfig>()
+        verify(mockClusterProvisioningService).provisionAll(config.capture(), any(), any(), any())
+        assertThat(
+            config.firstValue.specs
+                .single { it.serverType == ServerType.Cassandra }
+                .missingIndexes,
+        ).containsExactly(1, 2, 4, 5, 7, 8)
+        val verified = events.filterIsInstance<Event.Provision.LaunchCapacityVerified>().single()
+        // Six db nodes, plus the control and app node this fixture launches.
+        assertThat(verified.newNodes).isEqualTo(8)
+    }
+
+    /**
+     * Provisioning reports each batch twice: at launch with no public IP, then with its final IPs.
+     * State already holds db0..db2. Each report must merge by alias into what state holds: the
+     * hosts saved are db0..db4, in order, once each, and db3 and db4 end with their final IPs.
+     * The gap case holds db0, db2 and db10 and launches db1, db9 and db11: the hosts fill in by
+     * alias, never duplicated, in numeric order (db2 before db9 before db10), not text order.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = ["contiguous", "gap"])
+    fun `hosts reported at launch and again with final IPs are saved once each, by alias`(case: String) {
+        val held = if (case == "gap") listOf(0, 2, 10) else listOf(0, 1, 2)
+        val launched = if (case == "gap") listOf(1, 9, 11) else listOf(3, 4)
+
+        fun host(
+            ordinal: Int,
+            publicIp: String,
+        ) = ClusterHost(publicIp, "10.0.0.$ordinal", "db$ordinal", "us-west-2a", "i-db$ordinal")
+        val state =
+            happyState(cassandraInstances = (held + launched).max() + 1).apply {
+                updateHosts(mapOf(ServerType.Cassandra to held.map { host(it, "54.0.0.$it") }))
+            }
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        val saves = Collections.synchronizedList(mutableListOf<List<ClusterHost>>())
+        whenever(mockClusterStateManager.save(any())).thenAnswer {
+            saves += it.getArgument<ClusterState>(0).hosts[ServerType.Cassandra].orEmpty()
+            Unit
+        }
+        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenAnswer { invocation ->
+            val callbacks = invocation.getArgument<ProvisioningCallbacks>(3)
+            callbacks.onHostsCreated(ServerType.Cassandra, launched.map { host(it, "") })
+            callbacks.onHostsCreated(ServerType.Cassandra, launched.map { host(it, "54.9.9.$it") })
+            ProvisioningResult(hosts = happyHosts(), errors = emptyMap())
+        }
+
+        // Only the callbacks are under test; what follows provisioning is the fixture's.
+        runCatching { newUp().execute() }
+
+        val afterLaunch = saves.first { hosts -> hosts.any { it.alias == "db${launched.last()}" } }
+        val afterFinalIps = saves[saves.indexOf(afterLaunch) + 1]
+        val expectedOrder = (held + launched).sorted().map { "db$it" }
+        assertThat(afterLaunch.map { it.alias }).containsExactlyElementsOf(expectedOrder)
+        assertThat(afterFinalIps.map { it.alias }).containsExactlyElementsOf(expectedOrder)
+        assertThat(afterLaunch.filter { it.alias in launched.map { o -> "db$o" } }.map { it.publicIp }).containsOnly("")
+        assertThat(afterFinalIps.associate { it.alias to it.publicIp })
+            .containsAllEntriesOf(launched.associate { "db$it" to "54.9.9.$it" })
+            .containsAllEntriesOf(held.associate { "db$it" to "54.0.0.$it" })
     }
 
     @Test
@@ -317,32 +504,33 @@ class UpTest : UpTestFixture() {
             .hasMessageContaining("k8s api unreachable")
 
         verify(mockK8sService, times(1)).labelNode(any(), any(), any())
-        assertThat(outputHandler.messages).doesNotContain("Node labeling complete")
+    }
+
+    /**
+     * db and app nodes are labeled by their K3s agents when they register, so `up` waits for every
+     * node to register (one bounded wait, not a label call per node) before anything schedules on
+     * them. Every node in state is expected, the control node included.
+     */
+    @Test
+    fun `up waits for every node to register with K3s before the storage classes`() {
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        val order = inOrder(mockK8sService)
+        order.verify(mockK8sService).waitForNodesRegistered(eq(testControlHost), eq(listOf("control0", "db0", "app0")), any())
+        order.verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
+        verify(mockK8sService, never()).labelNode(any(), eq("db0"), any())
     }
 
     @Test
-    fun `up aborts when labeling a db node fails and never emits NodeLabelingComplete`() {
-        whenever(mockK8sService.labelNode(eq(testControlHost), eq("db0"), any()))
-            .thenReturn(Result.failure(RuntimeException("db label failed")))
+    fun `up aborts when a node never registers with K3s`() {
+        whenever(mockK8sService.waitForNodesRegistered(any(), any(), any()))
+            .thenReturn(Result.failure(IllegalStateException("1 node(s) did not register: db0")))
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
-            .hasMessageContaining("db label failed")
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("db0")
 
-        assertThat(outputHandler.messages.count { it == "Node labeling complete" }).isZero()
-    }
-
-    @Test
-    fun `up aborts when labeling an app node fails after db labeling already succeeded`() {
-        whenever(mockK8sService.labelNode(eq(testControlHost), eq("app0"), any()))
-            .thenReturn(Result.failure(RuntimeException("app label failed")))
-
-        assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
-            .hasMessageContaining("app label failed")
-
-        // db's completion event fired before the app loop started and failed; app's never did.
-        assertThat(outputHandler.messages.count { it == "Node labeling complete" }).isEqualTo(1)
+        verify(mockK8sService, never()).ensureLocalStorageClass(any())
     }
 
     /** A role made by an older version must carry the Session Manager policy before any node launches under it. */
@@ -837,4 +1025,8 @@ class UpTest : UpTestFixture() {
     }
 
     private fun ssmUser(): User = getKoin().get<User>().copy(sshTransport = SshTransport.Ssm)
+
+    private companion object {
+        const val OVERLAP_WAIT_SECONDS = 5L
+    }
 }

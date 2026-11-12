@@ -18,6 +18,7 @@ include 'services:webservice'
 rootProject.name = 'easy-db-lab'
 
 include "core"
+include "compactor-lease"
 
 // The Spark example jobs (bulk writers + connector read/write) live in their own
 // repository now: ../spark-examples. They were decoupled from this build because they

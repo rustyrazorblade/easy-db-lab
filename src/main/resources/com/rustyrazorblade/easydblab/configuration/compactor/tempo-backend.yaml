@@ -1,6 +1,6 @@
 # Tempo 3.0.3's backend-scheduler and backend-worker in the account compactor (issue 970).
 #
-# Tempo 3 runs one target per process, so the task runs this file twice: once as the scheduler
+# Tempo 3 runs one target per process, so the account-compactor pod runs this file twice: once as the scheduler
 # (-target=backend-scheduler) and once as the worker (-target=backend-worker, with its own ports).
 # The worker compacts every tenant's blocks under the traces root of the account bucket.
 #
@@ -9,8 +9,9 @@
 # so an unreachable retention (100 years) is the off switch. Do not add a per-tenant retention
 # override.
 #
-# Dollar-brace values are read from the environment (-config.expand-env=true); the task definition
-# sets them. Never write a dollar-brace in a comment here: the expansion reads comments too.
+# Dollar-brace values are read from the environment (-config.expand-env=true); the
+# account-compactor Deployment sets them. Never write a dollar-brace in a comment here: the expansion reads
+# comments too.
 multitenancy_enabled: true
 
 server:

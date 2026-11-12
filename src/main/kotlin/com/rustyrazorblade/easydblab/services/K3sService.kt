@@ -161,7 +161,14 @@ class DefaultK3sService(
 
             uploadScript(host, SERVER_SCRIPT_RESOURCE, SERVER_SCRIPT_PATH)
 
-            val args = if (useCustomCni) "--flannel-backend=none" else ""
+            // The pod range must hold one node CIDR per node at 1,000+ nodes; see Constants.K3s.
+            val args =
+                listOfNotNull(
+                    "--flannel-backend=none".takeIf { useCustomCni },
+                    "--cluster-cidr=${Constants.K3s.CLUSTER_CIDR}",
+                    "--service-cidr=${Constants.K3s.SERVICE_CIDR}",
+                    "--kube-controller-manager-arg=node-cidr-mask-size=${Constants.K3s.NODE_CIDR_MASK_SIZE}",
+                ).joinToString(" ")
             remoteOps.executeRemotely(
                 host,
                 "sudo $SERVER_SCRIPT_PATH $args".trim(),

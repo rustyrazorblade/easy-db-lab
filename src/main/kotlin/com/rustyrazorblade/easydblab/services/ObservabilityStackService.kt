@@ -64,7 +64,8 @@ interface ObservabilityStackService {
 
 /**
  * Default implementation that applies the stack over the K8s API and configures on-node
- * directories over SSH.
+ * directories over SSH. Every deploy also deploys the account compactor ([CompactorStage]), in
+ * both modes.
  */
 @Suppress("LongParameterList")
 class DefaultObservabilityStackService(
@@ -89,6 +90,7 @@ class DefaultObservabilityStackService(
     private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
     private val configChangeReport: ConfigChangeReport,
     private val installContextFactory: DashboardInstallContextFactory,
+    private val compactorStage: CompactorStage,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
@@ -121,8 +123,12 @@ class DefaultObservabilityStackService(
                 )
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
-            // dashboard upload hang off those, so they are guarded the same way.
-            val stages = buildStages(telemetryRedirect)
+            // dashboard upload hang off those, so they are guarded the same way. The account
+            // compactor runs on every cluster: its control-node preparation (scratch directories, the
+            // lease agent jar at its SHA-256 path) comes first, because its Deployment names that path.
+            val compactor =
+                Stage("Account compactor", compactorStage.prepare(controlNode, ObservabilityStore.from(clusterState).bucket))
+            val stages = buildStages(telemetryRedirect) + compactor
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
             // not, so prepare them only in local mode.
@@ -170,7 +176,7 @@ class DefaultObservabilityStackService(
             // replacements may not exist yet, so a pod-readiness check alone reports the stack ready
             // with new pods at 0/1.
             k8sService
-                .waitForRollouts(controlNode, workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+                .waitForRollouts(controlNode, workloads, DEFAULT_NAMESPACE, readyTimeoutSeconds(clusterState))
                 .getOrElse { exception ->
                     error("Observability stack did not finish rolling out: ${exception.message}")
                 }
@@ -180,11 +186,20 @@ class DefaultObservabilityStackService(
             // never reports success while the observability stack is broken or still coming up.
             // Pods that ran to completion (a kit's Job pods share this namespace) are not awaited.
             k8sService
-                .waitForPodsReady(controlNode, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+                .waitForPodsReady(controlNode, readyTimeoutSeconds(clusterState))
                 .getOrElse { exception ->
                     error("Observability stack did not become ready: ${exception.message}")
                 }
         }
+
+    /**
+     * How long the rollout and readiness waits may take: the base for the stack itself plus
+     * [Constants.Scale.ROLLOUT_PER_NODE_SECONDS] for every node, because the collector and node
+     * agents are DaemonSets that roll one pod per node.
+     */
+    private fun readyTimeoutSeconds(clusterState: ClusterState): Int =
+        Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS +
+            Constants.Scale.ROLLOUT_PER_NODE_SECONDS.toInt() * clusterState.hosts.values.sumOf { it.size }
 
     /**
      * The stages to apply after the collector. Collectors and supporting infra deploy in both modes;

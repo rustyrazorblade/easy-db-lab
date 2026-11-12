@@ -101,10 +101,9 @@ class StreamMetricValuesIntegrationTest : BaseKoinTest() {
             "lxc1a2b" to 70_000.0,
             "cilium_host" to 9000.0,
             "tailscale0" to 4000.0,
-        )
-            .forEach { (device, delta) ->
-                writeCounter(cluster, counter, mapOf("host_name" to "db0", "device" to device, "direction" to "receive"), delta)
-            }
+        ).forEach { (device, delta) ->
+            writeCounter(cluster, counter, mapOf("host_name" to "db0", "device" to device, "direction" to "receive"), delta)
+        }
 
         val samples = await(StreamMetric.NODE_NETWORK_RECEIVE, cluster) { it.isNotEmpty() }
         val oneInterface = reference("sum(rate($counter{device=\"ens5\", cluster=\"$cluster\"}[1m]))", cluster)

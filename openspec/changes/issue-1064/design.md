@@ -97,7 +97,7 @@ The AWS proof (task 6.7) found that a reboot with Cilium secondaries attached ta
 
 The base AMI therefore adds `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg` with `datasource: Ec2: apply_full_imds_network_config: false`.  In that mode cloud-init renders only its fallback NIC with plain DHCP and never calls `_configure_policy_routing`.  The primary stays matched by MAC through the `/run` 05 file, which sorts ahead of `10-netplan-*`, so the fallback NIC choice never decides which link is the primary.  Cilium keeps its own per-ENI routing tables, so cloud-init's per-NIC policy routing is not needed.  Verified on c8gd with three secondaries: two reboots in a row with no DHCP on any secondary, one default route via the primary, host egress, SSM, IMDS and the node InternalIP correct, and Cilium's static addresses on the secondaries.
 
-The file is added to `Constants.Cilium.NODE_FIX_FILES` and to the bake self-checks.
+The file is added to `Constants.Cilium.NODE_FIX_FILES` and to the bake self-checks.  The bake also checks cloud-init's merged config on the real instance: `cloud-init query merged_system_cfg` must give `.datasource.Ec2.apply_full_imds_network_config == false`, so a wrong key or wrong nesting fails the bake.
 
 ## Alternatives Considered
 

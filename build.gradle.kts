@@ -476,6 +476,7 @@ tasks.register("testScripts") {
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
         "testBaseChronyPoll",
+        "testBasePrimaryEniNetwork",
         "testCompactorGate",
     )
 }
@@ -507,6 +508,15 @@ tasks.register<Exec>("testBaseChronyPoll") {
     description = "Unit-test the base AMI chrony poll script"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/base/install/configure_chrony_poll.test.sh")
+}
+
+// Unit-test the base AMI's primary ENI boot script: the 05 networkd file matches the IMDS primary
+// MAC from cloud-init's instance data, and every bad input fails with one line and no 05 file.
+tasks.register<Exec>("testBasePrimaryEniNetwork") {
+    group = "Verification"
+    description = "Unit-test the base AMI primary ENI networkd boot script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/edl-primary-eni-network.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug

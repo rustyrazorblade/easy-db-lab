@@ -1,8 +1,8 @@
 ## 1. Boot script and its Docker-free test
 
-- [ ] 1.1 Write `packer/base/install/edl-primary-eni-network.test.sh` (POSIX, Docker-free, temp dir per case, input file, `/run` and `/etc` network dirs passed by environment variable) with cases: valid MAC writes `[Match] PermanentMACAddress=<mac>` and `[Network] DHCP=ipv4`; uppercase MAC is lowercased; missing `instance-data.json` exits 1 with one console line and no 05 file; `.ds.meta_data.mac` null or empty exits 1 with no 05 file; malformed MAC exits 1 with no 05 file; an `/etc` 05 file present exits 1 naming it; a stale `/run` 05 file with another MAC is replaced by the new one
-- [ ] 1.2 Write `packer/base/install/edl-primary-eni-network`: read `.ds.meta_data.mac` with `jq` (one path, no fallback), validate six hex pairs, lowercase, refuse while an `/etc` 05 file exists, write the `/run` 05 file through a temp file and rename; on any failure print one line naming the cause and exit 1; make the test pass
-- [ ] 1.3 Register `testBasePrimaryEniNetwork` in `build.gradle.kts` (`Exec`, `bash packer/base/install/edl-primary-eni-network.test.sh`) and add it to the `testScripts` aggregate
+- [x] 1.1 Write `packer/base/install/edl-primary-eni-network.test.sh` (POSIX, Docker-free, temp dir per case, input file, `/run` and `/etc` network dirs passed by environment variable) with cases: valid MAC writes `[Match] PermanentMACAddress=<mac>` and `[Network] DHCP=ipv4`; uppercase MAC is lowercased; missing `instance-data.json` exits 1 with one console line and no 05 file; `.ds.meta_data.mac` null or empty exits 1 with no 05 file; malformed MAC exits 1 with no 05 file; an `/etc` 05 file present exits 1 naming it; a stale `/run` 05 file with another MAC is replaced by the new one
+- [x] 1.2 Write `packer/base/install/edl-primary-eni-network`: read `.ds.meta_data.mac` with `jq` (one path, no fallback), validate six hex pairs, lowercase, refuse while an `/etc` 05 file exists, write the `/run` 05 file through a temp file and rename; on any failure print one line naming the cause and exit 1; make the test pass
+- [x] 1.3 Register `testBasePrimaryEniNetwork` in `build.gradle.kts` (`Exec`, `bash packer/base/install/edl-primary-eni-network.test.sh`) and add it to the `testScripts` aggregate
 
 ## 2. Base image setup
 

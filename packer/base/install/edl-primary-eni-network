@@ -1,0 +1,85 @@
+#!/bin/sh
+#
+# edl-primary-eni-network: tell systemd-networkd which link is the primary ENI.
+#
+# Runs on every boot from edl-primary-eni-network.service, after cloud-init-local and before
+# systemd-networkd. It reads the primary MAC that IMDS reports (meta-data/mac) from cloud-init's
+# instance data, and writes /run/systemd/network/05-cilium-eni-primary.network, which matches that
+# link by its permanent MAC and gives it DHCP. Every other ENA link falls to the baked
+# 06-cilium-eni-unmanaged.network (Driver=ena, Unmanaged=yes), so Cilium owns it.
+#
+# WHY A MAC, NOT A NAME: the primary's name comes from its PCI slot and changes per instance family
+# (ens5 on c7gd, ens52 on c8gd, enp39s0 on i7i). The IMDS primary MAC is the same on every family.
+#
+# WHY /run: /run is a tmpfs. The file is written fresh on each boot and can never be captured into
+# an AMI baked from this instance. It still sorts ahead of 06- and cloud-init's 10-netplan-*,
+# because networkd sorts by file name across /etc, /run and /usr/lib. A file of the same name in
+# /etc overrides the /run one, so this script refuses to run while one exists.
+#
+# FAILURE: on any failure it prints one line naming the cause, leaves no 05 file, and exits 1. It
+# never guesses the primary by any other rule.
+#
+# The paths come from environment variables so the Docker-free test can use a temp dir:
+#   EDL_INSTANCE_DATA    (default /run/cloud-init/instance-data.json)
+#   EDL_RUN_NETWORK_DIR  (default /run/systemd/network)
+#   EDL_ETC_NETWORK_DIR  (default /etc/systemd/network)
+
+set -u
+
+# Bracket ranges and tr classes below must mean ASCII only.
+export LC_ALL=C
+
+INSTANCE_DATA="${EDL_INSTANCE_DATA:-/run/cloud-init/instance-data.json}"
+RUN_NETWORK_DIR="${EDL_RUN_NETWORK_DIR:-/run/systemd/network}"
+ETC_NETWORK_DIR="${EDL_ETC_NETWORK_DIR:-/etc/systemd/network}"
+
+FILE_NAME="05-cilium-eni-primary.network"
+PRIMARY_FILE="${RUN_NETWORK_DIR}/${FILE_NAME}"
+SHADOW_FILE="${ETC_NETWORK_DIR}/${FILE_NAME}"
+MAC_PATH=".ds.meta_data.mac"
+
+TEMP_FILE=""
+trap '[ -z "$TEMP_FILE" ] || rm -f "$TEMP_FILE"' EXIT
+
+# Prints one line naming the cause, removes any 05 file, and exits 1.
+die() {
+    rm -f "$PRIMARY_FILE"
+    echo "edl-primary-eni-network: $1; the primary ENI has no network" >&2
+    exit 1
+}
+
+if [ -e "$SHADOW_FILE" ]; then
+    die "${SHADOW_FILE} exists and would override ${PRIMARY_FILE}; remove it"
+fi
+
+if [ ! -r "$INSTANCE_DATA" ]; then
+    die "cannot read ${INSTANCE_DATA}"
+fi
+
+# One path, no fallback. A null, missing or empty value prints nothing; a non-string is printed as
+# JSON and then fails the MAC check below.
+if ! mac="$(jq -r "${MAC_PATH} // empty | if type == \"string\" then . else tojson end" "$INSTANCE_DATA" 2>/dev/null)"; then
+    die "cannot parse ${INSTANCE_DATA} as JSON"
+fi
+
+if [ -z "$mac" ]; then
+    die "${MAC_PATH} is missing or empty in ${INSTANCE_DATA}"
+fi
+
+case "$mac" in
+    [[:xdigit:]][[:xdigit:]]:[[:xdigit:]][[:xdigit:]]:[[:xdigit:]][[:xdigit:]]:[[:xdigit:]][[:xdigit:]]:[[:xdigit:]][[:xdigit:]]:[[:xdigit:]][[:xdigit:]]) ;;
+    *) die "${MAC_PATH} in ${INSTANCE_DATA} is not a MAC: '$(printf '%s' "$mac" | tr '\n' ' ')'" ;;
+esac
+
+mac="$(printf '%s' "$mac" | tr 'A-F' 'a-f')"
+
+mkdir -p "$RUN_NETWORK_DIR" || die "cannot create ${RUN_NETWORK_DIR}"
+TEMP_FILE="$(mktemp "${RUN_NETWORK_DIR}/.${FILE_NAME}.XXXXXX")" || die "cannot create a temp file in ${RUN_NETWORK_DIR}"
+
+printf '[Match]\nPermanentMACAddress=%s\n\n[Network]\nDHCP=ipv4\n' "$mac" >"$TEMP_FILE" \
+    || die "cannot write ${TEMP_FILE}"
+chmod 0644 "$TEMP_FILE" || die "cannot set the mode of ${TEMP_FILE}"
+mv -f "$TEMP_FILE" "$PRIMARY_FILE" || die "cannot rename ${TEMP_FILE} to ${PRIMARY_FILE}"
+TEMP_FILE=""
+
+echo "edl-primary-eni-network: wrote ${PRIMARY_FILE} for the primary ENI ${mac}"

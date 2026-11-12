@@ -27,7 +27,7 @@ The image is stacked: the cassandra AMI is baked on a real instance launched fro
 
 ### D1. Match the primary by the IMDS primary MAC, read from cloud-init's data
 
-The mechanism is the owner's Decision.  `cloud-init-local` runs before the network.  On a new instance ID it reads IMDS over a short-lived lease; on the same instance it uses its cache.  It writes `/run/cloud-init/instance-data.json`.  The boot script reads the primary MAC from `.ds.meta_data.mac` in that file with `jq`.  It uses one path and no fallback.  This adds no second IMDS client before the network is up.
+The mechanism is the owner's Decision.  `cloud-init-local` runs before the network.  On a new instance ID it reads IMDS over a short-lived lease; on the same instance it uses its cache.  It writes `/run/cloud-init/instance-data.json`.  The boot script reads the primary MAC from `.ds."meta-data".mac` in that file with `jq`.  It uses one path and no fallback.  This adds no second IMDS client before the network is up.
 
 The script validates the MAC against six colon-separated hex pairs, lowercases it, and writes:
 
@@ -68,7 +68,7 @@ The Decision text names `/etc/systemd/network/05-cilium-eni-primary.network`.  T
 
 ### D4. Failure is loud and never guesses
 
-On a missing or unreadable `instance-data.json`, a null or empty `.ds.meta_data.mac`, a malformed MAC, or a shadowing `/etc` 05 file, the script prints one line naming the cause to the console (`journal+console`) and exits 1.  It writes no 05 file, so it never leaves a stale or wrong one in place.  It never picks "the only ENA link" or any other heuristic.  A stale `/run` 05 file from earlier in the same boot is replaced atomically (write to a temp file, then rename).
+On a missing or unreadable `instance-data.json`, a null or empty `.ds."meta-data".mac`, a malformed MAC, or a shadowing `/etc` 05 file, the script prints one line naming the cause to the console (`journal+console`) and exits 1.  It writes no 05 file, so it never leaves a stale or wrong one in place.  It never picks "the only ENA link" or any other heuristic.  A stale `/run` 05 file from earlier in the same boot is replaced atomically (write to a temp file, then rename).
 
 ### D5. The bake proves the path on a real instance
 
@@ -105,7 +105,7 @@ On a missing or unreadable `instance-data.json`, a null or empty `.ds.meta_data.
 These are confirmed on real instances, not in Docker:
 
 - **Ordering on a cached reboot:** `systemd-analyze critical-chain` / `journalctl -b` show `cloud-init-local.service` finished before `edl-primary-eni-network.service`, and that before `systemd-networkd.service`, on a reboot that uses cloud-init's cache.
-- **Which MAC key exists:** `.ds.meta_data.mac` is present in `/run/cloud-init/instance-data.json` on 26.04's cloud-init, on arm64 and x86.
+- **Which MAC key exists:** verified at bake time on 26.04 (cloud-init 26.2), arm64 and x86: the key is `.ds."meta-data".mac`.  `.ds` holds only `_doc`, `_metadata_api_version`, `dynamic` and `meta-data`; there is no `meta_data` key.
 - **The MAC matches the link:** `ethtool -P <primary>` equals IMDS `meta-data/mac` on each family.
 - **05 survives `netplan generate`:** after `netplan generate` and `networkctl reload`, the primary still uses `/run/systemd/network/05-cilium-eni-primary.network`.
 - The names secondaries get on 8th-gen and i7i, and whether the arm64 bake type (`c8g.2xlarge`) is itself affected.

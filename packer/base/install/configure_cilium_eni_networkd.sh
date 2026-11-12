@@ -48,6 +48,18 @@
 # install_hotplug stays in cloud.cfg; with hotplug absent from the `when` list the module removes
 # its udev rule.
 #
+# CLOUD-INIT PER-NIC DHCP (why the 91- drop-in): cloud-init 26.x's Ec2 datasource treats every
+# boot as a new instance and rebuilds the network config. With the default
+# apply_full_imds_network_config: true it runs `dhcpcd --persistent` on each non-primary NIC to learn
+# its gateway for policy routing, then SIGKILLs dhcpcd. The lease address and a `proto dhcp`
+# default route stay on each Cilium secondary and sort ahead of the primary's route, so a reboot
+# kills host egress and SSM. networkd still shows the secondaries unmanaged; the DHCP runs inside
+# cloud-init while it generates the config, so neither updates.network.when nor
+# `network: {config: disabled}` stops it. The drop-in sets the option to false: cloud-init then
+# renders plain DHCP for one fallback NIC and never runs the per-NIC DHCP. The primary is still
+# matched by MAC through the /run 05- file, which sorts ahead of 10-netplan-*, so the fallback NIC
+# choice never decides which link is the primary. Cilium keeps its own per-ENI routing tables.
+#
 # TIMING: secondary ENIs are attached at RUNTIME (post-boot), so 06- and the unit must PRE-EXIST
 # in the image. This therefore belongs in the BASE AMI provisioning, not a post-attach hook.
 #
@@ -74,6 +86,7 @@ RUN_PRIMARY="/run/systemd/network/05-cilium-eni-primary.network"
 SECONDARY="${NET_DIR}/06-cilium-eni-unmanaged.network"
 CLOUD_CFG_DIR="/etc/cloud/cloud.cfg.d"
 NO_HOTPLUG="${CLOUD_CFG_DIR}/90-easydblab-no-network-hotplug.cfg"
+PRIMARY_NIC_ONLY="${CLOUD_CFG_DIR}/91-easydblab-ec2-primary-nic-only.cfg"
 
 fail() {
     echo "ERROR: $1"
@@ -131,7 +144,14 @@ updates:
     when: ['boot-new-instance', 'boot']
 EOF2
 
-sudo chmod 0644 "${UNIT_FILE}" "${SECONDARY}" "${NO_HOTPLUG}"
+# cloud-init: configure only the primary NIC. See CLOUD-INIT PER-NIC DHCP above.
+sudo tee "${PRIMARY_NIC_ONLY}" >/dev/null <<'EOF2'
+datasource:
+  Ec2:
+    apply_full_imds_network_config: false
+EOF2
+
+sudo chmod 0644 "${UNIT_FILE}" "${SECONDARY}" "${NO_HOTPLUG}" "${PRIMARY_NIC_ONLY}"
 
 # Prove the path on a real instance: run the script against this instance's cloud-init data,
 # reload networkd, and require that the primary link now uses the /run 05- file. The primary is
@@ -188,6 +208,10 @@ grep -q "^    when: \['boot-new-instance', 'boot'\]$" "${NO_HOTPLUG}" || fail "$
 if grep -q 'hotplug' "${NO_HOTPLUG}"; then
     fail "'hotplug' must not appear in ${NO_HOTPLUG}"
 fi
+[[ -f "${PRIMARY_NIC_ONLY}" ]] || fail "${PRIMARY_NIC_ONLY} is missing"
+for line in 'datasource:' '  Ec2:' '    apply_full_imds_network_config: false'; do
+    grep -qxF "${line}" "${PRIMARY_NIC_ONLY}" || fail "${PRIMARY_NIC_ONLY} lacks '${line}'"
+done
 
-echo "✓ installed ${SCRIPT_TARGET} and enabled ${UNIT_NAME} (primary ENI by IMDS MAC, in /run), ${SECONDARY} (other ENA links Unmanaged), ${NO_HOTPLUG} (no cloud-init hotplug)"
+echo "✓ installed ${SCRIPT_TARGET} and enabled ${UNIT_NAME} (primary ENI by IMDS MAC, in /run), ${SECONDARY} (other ENA links Unmanaged), ${NO_HOTPLUG} (no cloud-init hotplug), ${PRIMARY_NIC_ONLY} (cloud-init configures only the primary NIC)"
 echo "✓ configure_cilium_eni_networkd.sh completed successfully"

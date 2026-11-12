@@ -913,7 +913,7 @@ sealed interface Event {
 
         /**
          * `up` found nodes launched from an AMI that predates the Cilium node fixes (the
-         * systemd-networkd ENI drop-ins and the cloud-init no-hotplug setting), before installing
+         * boot unit, the systemd-networkd ENI drop-in and the cloud-init settings), before installing
          * Cilium. [nodes] names them; [missingFiles] is every fix any of them lacks.
          */
         @Serializable

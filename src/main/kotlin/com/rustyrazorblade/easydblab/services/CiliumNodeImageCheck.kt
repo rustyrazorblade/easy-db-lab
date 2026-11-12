@@ -13,7 +13,9 @@ data class NodeMissingCiliumFixes(
 /**
  * Checks that nodes were launched from an AMI carrying the Cilium node fixes the base image bakes:
  * the `edl-primary-eni-network` unit and script, the systemd-networkd drop-in that leaves every
- * other ENA link unmanaged, and the cloud-init no-hotplug setting.
+ * other ENA link unmanaged, the cloud-init no-hotplug setting, and the cloud-init setting that keeps
+ * the Ec2 datasource from running DHCP on every non-primary NIC at boot (a reboot would otherwise
+ * leave a lease and a default route on each Cilium secondary).
  *
  * The unit writes the primary ENI's networkd file under `/run` on each boot, matched by the IMDS
  * primary MAC, so that file is not in the image and is not checked here; the unit and the script

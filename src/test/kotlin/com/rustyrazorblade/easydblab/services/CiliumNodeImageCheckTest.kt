@@ -69,6 +69,7 @@ class CiliumNodeImageCheckTest {
             "/usr/local/sbin/edl-primary-eni-network",
             "/etc/systemd/network/06-cilium-eni-unmanaged.network",
             "/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg",
+            "/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg",
         )
         assertThat(command.firstValue).contains(*CiliumNodeImageCheck.REQUIRED_FILES.toTypedArray())
     }

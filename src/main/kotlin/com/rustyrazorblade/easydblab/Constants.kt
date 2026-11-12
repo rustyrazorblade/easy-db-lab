@@ -579,6 +579,13 @@ object Constants {
         /** The variable that holds the absolute path of the workspace's kit shell library, for every kit process. */
         const val LIBRARY_ENV = "EDL_KIT_LIB"
 
+        /**
+         * The variable that tells every kit process whether the environment reaches its nodes over SSH:
+         * `true` or `false`. Today it is `true` when the workspace has an `sshConfig`; a `NODE_SSH`
+         * capability (issue #1096) can feed it later.
+         */
+        const val NODE_SSH_ENV = "EDL_NODE_SSH"
+
         // After the stop of a kit that declares a runtime, how often and how many times to look for its
         // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a
         // StatefulSet's or operator's cascading delete plus each pod's termination grace period.
@@ -586,6 +593,15 @@ object Constants {
         const val STOP_WAIT_MAX_POLLS = 150
 
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
+
+        /** The `cassandra-pods` kit: the CQL NodePort and the agent-carrying image. The UN wait bound lives in `lib/wait-un.sh`. */
+        object CassandraPods {
+            /** NodePort and native transport port; no other kit uses it. */
+            const val CQL_NODE_PORT = 30942
+
+            /** Image whose `/javaagent.jar` the init container copies; its tag is the build's agent version. */
+            const val AGENT_IMAGE_REPOSITORY = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java"
+        }
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

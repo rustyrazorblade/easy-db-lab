@@ -153,6 +153,64 @@ class CommandLineParserTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a workspace kit named after a built-in command is reported and the built-in stays`() {
+        val kitDir = File(context.workingDirectory, "cassandra")
+        kitDir.mkdirs()
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: cassandra\n")
+        val events = recordEvents()
+
+        val commandLine = CommandLineParser().commandLine
+
+        assertThat(events.filterIsInstance<Event.Kit.NameCollision>())
+            .containsExactly(Event.Kit.NameCollision(kit = "cassandra", command = "cassandra"))
+        assertThat(
+            commandLine.subcommands
+                .getValue("cassandra")
+                .subcommands.keys,
+        ).contains("start")
+    }
+
+    @Test
+    fun `a workspace kit that does not collide registers with no collision event`() {
+        val kitDir = File(context.workingDirectory, "cassandra-pods")
+        kitDir.mkdirs()
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: cassandra-pods\n")
+        val events = recordEvents()
+
+        val commandLine = CommandLineParser().commandLine
+
+        assertThat(commandLine.subcommands).containsKey("cassandra-pods")
+        assertThat(events.filterIsInstance<Event.Kit.NameCollision>()).isEmpty()
+    }
+
+    @Test
+    fun `the built-in command names are exactly the top-level commands of a workspace with no kits`() {
+        val commandLine = CommandLineParser().commandLine
+
+        // Names and aliases both: a kit named like an alias is just as unreachable. Fails when a
+        // command is added to the tree by code (addSubcommand) rather than the @Command annotation.
+        val registered =
+            commandLine.subcommands.values
+                .flatMap { listOf(it.commandName) + it.commandSpec.aliases().toList() }
+                .toSet()
+        assertThat(BuiltInCommands.names).containsAll(registered)
+    }
+
+    private fun recordEvents(): List<Event> {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return events
+    }
+
+    @Test
     fun `the status command is instantiated with its defaulted capabilities by the CLI factory`() {
         val status =
             CommandLineParser()

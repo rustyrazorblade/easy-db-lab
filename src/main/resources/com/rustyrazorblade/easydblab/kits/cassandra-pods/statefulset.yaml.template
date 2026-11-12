@@ -1,0 +1,199 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  # platform-pvs names the PV data-<kit>-<ordinal>; the StatefulSet's claim takes the same name
+  # only when the StatefulSet is named after the kit and its claim template is `data`.
+  name: cassandra-pods
+  namespace: default
+  labels:
+    app: cassandra-pods
+    easydblab/kit: cassandra-pods
+spec:
+  replicas: __CASSANDRA_NODES__
+  serviceName: cassandra-pods-gossip
+  # Nodes join one at a time: Cassandra does not support concurrent bootstraps.
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: cassandra-pods
+  template:
+    metadata:
+      labels:
+        app: cassandra-pods
+        easydblab/kit: cassandra-pods
+    spec:
+      terminationGracePeriodSeconds: 120
+      nodeSelector:
+        type: db
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: cassandra-pods
+      # The OpenTelemetry Java agent comes from a pinned, multi-arch image, not from a host path,
+      # so this works on any node. The image tag is stamped from the build's agent version.
+      initContainers:
+        - name: otel-agent
+          image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:@OTEL_AGENT_VERSION@
+          imagePullPolicy: IfNotPresent
+          command: ["cp", "/javaagent.jar", "/otel-agent/opentelemetry-javaagent.jar"]
+          volumeMounts:
+            - name: otel-agent
+              mountPath: /otel-agent
+      containers:
+        - name: cassandra
+          # start resolves --image (or cassandra:<--version>) and writes the resolved manifest.
+          image: "@RESOLVED_IMAGE@"
+          imagePullPolicy: IfNotPresent
+          # The image's entrypoint maps CASSANDRA_* variables onto cassandra.yaml, but not the
+          # native port, so it is set here before the entrypoint runs.
+          command:
+            - sh
+            - -c
+            - |
+              sed -i 's/^native_transport_port:.*/native_transport_port: 30942/' /etc/cassandra/cassandra.yaml
+              # An image whose cassandra.yaml lacks the line (or comments it out) would keep 9042
+              # while the Service targets 30942, and only the readiness probe would ever show it.
+              if ! grep -q '^native_transport_port: 30942$' /etc/cassandra/cassandra.yaml; then
+                echo "ERROR: /etc/cassandra/cassandra.yaml has no 'native_transport_port:' line to set; expected 'native_transport_port: 30942' after the edit." >&2
+                exit 1
+              fi
+              # The image's cassandra-env.sh sizes the heap from the host's memory (free -m), not the
+              # container limit, so the heap is always set here. --heap, validated at start to fit
+              # inside --memory, wins; otherwise half the limit, leaving the rest for off-heap
+              # memory, metaspace and the agent. The young generation is a quarter of the heap, in
+              # MiB (a G heap would otherwise divide to 0G).
+              if [ -n "$CASSANDRA_HEAP" ]; then
+                size="${CASSANDRA_HEAP%[GgMm]}"
+                case "$CASSANDRA_HEAP" in
+                  *[Gg]) heap_mib=$((size * 1024)) ;;
+                  *) heap_mib=$size ;;
+                esac
+              else
+                heap_mib=$((MEMORY_LIMIT_MIB / 2))
+              fi
+              newsize=$((heap_mib / 4))
+              [ "$newsize" -ge 1 ] || newsize=1
+              export MAX_HEAP_SIZE="${heap_mib}M" HEAP_NEWSIZE="${newsize}M"
+              exec docker-entrypoint.sh cassandra -f
+          env:
+            - name: CASSANDRA_CLUSTER_NAME
+              value: "__CLUSTER_NAME__"
+            - name: CASSANDRA_DC
+              value: "__CASSANDRA_DC__"
+            - name: CASSANDRA_RACK
+              value: rack1
+            - name: CASSANDRA_ENDPOINT_SNITCH
+              value: GossipingPropertyFileSnitch
+            - name: CASSANDRA_HEAP
+              value: "__CASSANDRA_HEAP__"
+            # The container's own memory limit in MiB, for the default heap.
+            - name: MEMORY_LIMIT_MIB
+              valueFrom:
+                resourceFieldRef:
+                  containerName: cassandra
+                  resource: limits.memory
+                  divisor: 1Mi
+            # Pod 0 is the seed, reached by its stable DNS name.
+            - name: CASSANDRA_SEEDS
+              value: cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local
+            # HOST_IP must precede the variables that reference it.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # Clients dial the node: the node IP, and the native port is the NodePort value.
+            - name: CASSANDRA_BROADCAST_RPC_ADDRESS
+              value: "$(HOST_IP)"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # The flags mirror packer/cassandra/cassandra.in.sh. JVM_EXTRA_OPTS, not JVM_OPTS, so
+            # nodetool does not load the agent.
+            - name: JVM_EXTRA_OPTS
+              value: >-
+                -javaagent:/otel-agent/opentelemetry-javaagent.jar
+                -Dotel.jmx.config=/etc/edl-jmx/cassandra-jmx-rules.yaml
+                -Dotel.jmx.discovery.delay=5000
+                -Dotel.instrumentation.runtime-telemetry.emit-experimental-jfr-metrics=true
+                -Dotel.instrumentation.runtime-telemetry.emit-experimental-telemetry=true
+            - name: OTEL_SERVICE_NAME
+              value: cassandra
+            # host.name names the node, not the pod, so every signal matches the node-keyed
+            # dashboard filters. NODE_NAME and POD_NAME must precede this variable.
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "host.name=$(NODE_NAME),service.instance.id=$(POD_NAME),node_role=db,cassandra_build=@RESOLVED_BUILD@"
+            # Port 4318 is the collector's OTLP http/protobuf receiver, the agent's default protocol.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4318"
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "5000"
+          # Drain flushes memtables and stops accepting writes before SIGTERM, so stop then start
+          # replays little commit log. The timeout keeps it inside terminationGracePeriodSeconds
+          # (120), and `|| true` is acceptable only because the SIGTERM shutdown hook drains again
+          # right after: a failed or timed-out drain loses nothing.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "timeout 100 nodetool drain || true"]
+          ports:
+            - name: cql
+              containerPort: 30942
+            - name: gossip
+              containerPort: 7000
+          # Memory request equals limit, so the scheduler places the pod
+          # only on a node where it fits.
+          resources:
+            requests:
+              memory: "__CASSANDRA_MEMORY__"
+            limits:
+              memory: "__CASSANDRA_MEMORY__"
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - nodetool statusbinary | grep -qx running
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 60
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/cassandra
+            - name: otel-agent
+              mountPath: /otel-agent
+              readOnly: true
+            - name: jmx-rules
+              mountPath: /etc/edl-jmx
+              readOnly: true
+      volumes:
+        - name: otel-agent
+          emptyDir: {}
+        - name: jmx-rules
+          configMap:
+            name: cassandra-pods-jmx-rules
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: cassandra-pods
+          easydblab/kit: cassandra-pods
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: "__STORAGE_CLASS_WFC__"
+        # Binds only this kit's platform PVs; every kit's PVs share the storage class.
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: "__KIT_NAME__"
+        resources:
+          requests:
+            storage: "__STORAGE_SIZE__"

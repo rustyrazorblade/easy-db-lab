@@ -5780,6 +5780,24 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * A workspace kit directory, or a kit install, is named [kit] but a built-in top-level
+         * command [command] already has that name. The built-in stays; the kit's own commands
+         * cannot be reached under that name.
+         */
+        @Serializable
+        @SerialName("Kit.NameCollision")
+        data class NameCollision(
+            val kit: String,
+            val command: String,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: kit '$kit' collides with the built-in command '$command'; the built-in is kept. " +
+                    "Use a kit name that is not a built-in command."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Kit.RequirementNotMet")
         data class RequirementNotMet(

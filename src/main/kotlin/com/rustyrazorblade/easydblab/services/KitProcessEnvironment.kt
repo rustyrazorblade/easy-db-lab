@@ -8,7 +8,7 @@ import java.io.File
  * Prepares the environment of every process a kit runs on the operator's machine: `type: shell`
  * steps in `install:` and in phases, phase scripts, and hook scripts.
  *
- * Every one of them gets the same two things, so a kit reaches the cluster the same way wherever its
+ * Every one of them gets the same things, so a kit reaches the cluster the same way wherever its
  * code runs:
  * - `<workspace>/bin` first on `PATH`, with the tool wrappers written there before the process
  *   starts, so `kubectl`, `helm`, `curl` and the other wrapped tools go through the SOCKS tunnel
@@ -17,7 +17,10 @@ import java.io.File
  *   from the kit directory, where the relative `kubeconfig` from [TemplateVariables] points at
  *   nothing;
  * - `EDL_KIT_LIB` set to the absolute path of the shared kit shell library in `<workspace>/bin`,
- *   which kit scripts source.
+ *   which kit scripts source;
+ * - `EDL_NODE_SSH` set to `true` when the workspace has an `sshConfig`, so the workspace `ssh` wrapper
+ *   can reach the nodes, and `false` otherwise (a local or bring-your-own Kubernetes cluster). A kit
+ *   skips its node checks over SSH on `false`, and never guesses from a failed `ssh`.
  *
  * @param installer writes the wrappers into the workspace
  */
@@ -47,6 +50,8 @@ class KitProcessEnvironment(
         environment["KUBECONFIG"] = kubeconfig.path
         val bin = File(workspace, Constants.ToolWrappers.DIRECTORY).absoluteFile
         environment[Constants.Kit.LIBRARY_ENV] = File(bin, Constants.ToolWrappers.KIT_LIBRARY).path
+        environment[Constants.Kit.NODE_SSH_ENV] =
+            File(workspace, DefaultClusterConfigurationService.SSH_CONFIG_FILE).isFile.toString()
         environment["PATH"] = listOfNotNull(bin.path, inheritedPath).joinToString(File.pathSeparator)
         return builder
     }

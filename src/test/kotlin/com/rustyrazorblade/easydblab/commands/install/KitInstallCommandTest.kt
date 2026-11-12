@@ -8,6 +8,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
@@ -101,6 +105,28 @@ class KitInstallCommandTest : BaseKoinTest() {
         val cmd = cl.commandSpec.userObject() as KitInstallCommand
         argValues.forEach { (k, v) -> cmd.argValues[k] = v }
         cmd.execute()
+    }
+
+    @Test
+    fun `an instance name matching a built-in command is refused before any write`() {
+        val events = mutableListOf<Event>()
+        get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        val cl = factory.build(KitConfig(name = "cassandra", type = null), source)
+        val cmd = cl.commandSpec.userObject() as KitInstallCommand
+
+        assertThat(cmd.call()).isNotEqualTo(0)
+
+        assertThat(events.filterIsInstance<Event.Kit.NameCollision>())
+            .containsExactly(Event.Kit.NameCollision(kit = "cassandra", command = "cassandra"))
+        assertThat(File(workingDir, "cassandra")).doesNotExist()
     }
 
     @Test

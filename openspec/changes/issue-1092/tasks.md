@@ -1,8 +1,8 @@
 ## 1. Capabilities and staging
 
-- [ ] 1.1 Ensure `NodeCapability` has `PRIVILEGED` and `HOST_PATH`. #1096 spec's these; whichever change lands first adds the two entries (AWS = `entries.toSet()` picks them up). Do not redefine them if #1096 has landed.
-- [ ] 1.2 Change `Stage.requires` from `NodeCapability?` to `Set<NodeCapability>` in `ObservabilityStackService`; emit one `StageSkipped` per missing capability, naming the stage and capability. Unit-test a stage needing two capabilities with one absent.
-- [ ] 1.3 Gate the host add-on, Beyla and ebpf_exporter on `{PRIVILEGED}`; journald on `{SYSTEMD_JOURNAL, PRIVILEGED}`.
+- [x] 1.1 Ensure `NodeCapability` has `PRIVILEGED` and `HOST_PATH`. #1096 spec's these; whichever change lands first adds the two entries (AWS = `entries.toSet()` picks them up). Do not redefine them if #1096 has landed.
+- [x] 1.2 Change `Stage.requires` from `NodeCapability?` to `Set<NodeCapability>` in `ObservabilityStackService`; emit one `StageSkipped` per missing capability, naming the stage and capability. Unit-test a stage needing two capabilities with one absent.
+- [x] 1.3 Gate the host add-on, Beyla and ebpf_exporter on `{PRIVILEGED}`; journald on `{SYSTEMD_JOURNAL, PRIVILEGED}`.
 - [ ] 1.4 Split the Pyroscope eBPF Alloy DaemonSet out of `PyroscopeManifestBuilder.buildAllResources` into its own stage gated on `{PRIVILEGED}`, so the server still reaches Ready and the rollout wait completes without it.
 
 ## 2. Core collector (`OtelManifestBuilder`)
@@ -30,8 +30,8 @@
 ## 5. Shared pieces
 
 - [ ] 5.1 Extract `renderScrapeJobs` into `PrometheusScrapeJob`, used by both builders (folded-in debt).
-- [ ] 5.2 Add `OtelEndpoints.serviceHost(namespace) = "otel-collector.$namespace.svc"`, written once.
-- [ ] 5.3 Add `OTEL_COLLECTOR_HOST`, `OTEL_OTLP_HTTP_ENDPOINT`, `OTEL_OTLP_GRPC_ENDPOINT` to `TemplateVariables` (`.svc` form).
+- [x] 5.2 Add `OtelEndpoints.serviceHost(namespace) = "otel-collector.$namespace.svc"`, written once.
+- [x] 5.3 Add `OTEL_COLLECTOR_HOST`, `OTEL_OTLP_HTTP_ENDPOINT`, `OTEL_OTLP_GRPC_ENDPOINT` to `TemplateVariables` (`.svc` form).
 
 ## 6. Re-point in-cluster producers
 

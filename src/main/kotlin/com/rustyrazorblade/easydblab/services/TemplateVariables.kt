@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import java.io.File
 
@@ -56,6 +57,11 @@ data class TemplateVariables(
             "OPENSEARCH_ENDPOINT" to opensearchEndpoint,
             "PYROSCOPE_URL" to pyroscopeUrl,
             "TENANT" to tenant,
+            // The core OTel collector's in-cluster Service addresses (`.svc` form), so a kit's pods
+            // and scripts push telemetry to their own node's core pod instead of a node IP.
+            "OTEL_COLLECTOR_HOST" to OtelEndpoints.serviceHost(),
+            "OTEL_OTLP_HTTP_ENDPOINT" to OtelEndpoints.otlpHttpEndpoint(),
+            "OTEL_OTLP_GRPC_ENDPOINT" to OtelEndpoints.otlpGrpcEndpoint(),
         )
 
     companion object {

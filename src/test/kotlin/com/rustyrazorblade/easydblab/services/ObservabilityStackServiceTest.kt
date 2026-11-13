@@ -198,27 +198,56 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `an environment without capabilities skips the three gated stages and does not await them`() {
-        capabilities = NodeCapabilities.LOCAL_DOCKER
+    fun `an environment without capabilities skips every gated stage and does not await them`() {
+        capabilities = NodeCapabilities(emptySet())
         val emitted = collectEvents()
 
         service.deploy().getOrThrow()
 
         val applied = appliedKindNames().map { it.substringAfter("/") }
-        assertThat(applied).doesNotContain("fluent-bit-journald", "yace", "s3manager")
-        assertThat(applied).contains("otel-collector", "ebpf-exporter", "beyla")
+        assertThat(applied).doesNotContain("fluent-bit-journald", "yace", "s3manager", "ebpf-exporter", "beyla")
+        // The core collector and kube-state-metrics need no capability and still deploy.
+        assertThat(applied).contains("otel-collector", "kube-state-metrics")
 
         val awaited = argumentCaptor<List<WorkloadRef>>()
         verify(mockK8sService).waitForRollouts(awaited.capture(), eq("default"), any())
         assertThat(awaited.firstValue.map { it.toString() }).noneMatch {
-            it.contains("fluent-bit-journald") || it.contains("yace") || it.contains("s3manager")
+            it.contains("fluent-bit-journald") ||
+                it.contains("yace") ||
+                it.contains("s3manager") ||
+                it.contains("ebpf-exporter") ||
+                it.contains("beyla")
         }
 
+        // Journald needs two capabilities; with neither present it reports both as missing.
         assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
             .containsExactlyInAnyOrder(
                 Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.SYSTEMD_JOURNAL),
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("YACE", NodeCapability.CLOUDWATCH),
                 Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
+            )
+    }
+
+    @Test
+    fun `a stage needing two capabilities is skipped for the one that is absent`() {
+        // SYSTEMD_JOURNAL present but PRIVILEGED absent: journald is skipped, reported for PRIVILEGED
+        // only (one event per missing capability), and nothing requiring PRIVILEGED is applied.
+        capabilities = NodeCapabilities(setOf(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.CLOUDWATCH, NodeCapability.S3))
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        assertThat(applied).doesNotContain("fluent-bit-journald", "ebpf-exporter", "beyla")
+        assertThat(applied).contains("yace", "s3manager")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactlyInAnyOrder(
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
             )
     }
 
@@ -242,16 +271,22 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `an environment with only CloudWatch skips only the journal and S3 stages`() {
+    fun `an environment with only CloudWatch runs YACE and skips the privileged and S3 stages`() {
         capabilities = NodeCapabilities(setOf(NodeCapability.CLOUDWATCH))
         val emitted = collectEvents()
 
         service.deploy().getOrThrow()
 
         val applied = appliedKindNames().map { it.substringAfter("/") }
-        assertThat(applied).contains("yace").doesNotContain("fluent-bit-journald", "s3manager")
-        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().map { it.capability })
-            .containsExactlyInAnyOrder(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.S3)
+        assertThat(applied).contains("yace").doesNotContain("fluent-bit-journald", "s3manager", "ebpf-exporter", "beyla")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactlyInAnyOrder(
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.SYSTEMD_JOURNAL),
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
+            )
     }
 
     @Test
@@ -279,7 +314,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `the stages init reports for an absent capability are exactly the ones up skips`() {
-        capabilities = NodeCapabilities.LOCAL_DOCKER
+        capabilities = NodeCapabilities(emptySet())
         val emitted = collectEvents()
 
         service.deploy().getOrThrow()
@@ -287,7 +322,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val reported =
             ObservabilityStage
                 .declared(null)
-                .mapNotNull { stage -> stage.requires?.takeIf { it !in capabilities }?.let { stage.label to it } }
+                .flatMap { stage -> stage.requires.filter { it !in capabilities }.map { stage.label to it } }
         assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().map { it.stage to it.capability })
             .containsExactlyInAnyOrderElementsOf(reported)
     }

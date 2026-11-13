@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -166,6 +167,17 @@ class TemplateVariablesTest : BaseKoinTest() {
 
         assertThat(vars.toMap()).containsKey("ACCOUNT_BUCKET")
         assertThat(vars.toMap()["ACCOUNT_BUCKET"]).isEqualTo("my-account-bucket")
+    }
+
+    @Test
+    fun `toMap resolves the collector endpoint variables to the service svc form`() {
+        val state = stateWith()
+        val map = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi").toMap()
+
+        // In-cluster producers dial the core collector Service, not a node IP.
+        assertThat(map["OTEL_COLLECTOR_HOST"]).isEqualTo(OtelEndpoints.serviceHost())
+        assertThat(map["OTEL_OTLP_HTTP_ENDPOINT"]).isEqualTo(OtelEndpoints.otlpHttpEndpoint())
+        assertThat(map["OTEL_OTLP_GRPC_ENDPOINT"]).isEqualTo(OtelEndpoints.otlpGrpcEndpoint())
     }
 
     @Test

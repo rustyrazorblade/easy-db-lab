@@ -16,14 +16,23 @@ class ObservabilityStageTest {
     }
 
     @Test
+    fun `the redirect-mode Pyroscope agent needs a privileged pod`() {
+        val agent = ObservabilityStage.declared(TelemetryRedirect.fromBaseHost("10.0.0.9")).single { it.label == "Pyroscope Agent" }
+
+        assertThat(agent.requires).containsExactly(NodeCapability.PRIVILEGED)
+    }
+
+    @Test
     fun `the gated stages declare the capability they need`() {
-        val requires = ObservabilityStage.declared(null).filter { it.requires != null }.associate { it.label to it.requires }
+        val requires = ObservabilityStage.declared(null).filter { it.requires.isNotEmpty() }.associate { it.label to it.requires }
 
         assertThat(requires).containsExactlyInAnyOrderEntriesOf(
             mapOf(
-                "Fluent Bit Journald" to NodeCapability.SYSTEMD_JOURNAL,
-                "S3 Manager" to NodeCapability.S3,
-                "YACE" to NodeCapability.CLOUDWATCH,
+                "Fluent Bit Journald" to setOf(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.PRIVILEGED),
+                "ebpf_exporter" to setOf(NodeCapability.PRIVILEGED),
+                "S3 Manager" to setOf(NodeCapability.S3),
+                "Beyla" to setOf(NodeCapability.PRIVILEGED),
+                "YACE" to setOf(NodeCapability.CLOUDWATCH),
             ),
         )
     }

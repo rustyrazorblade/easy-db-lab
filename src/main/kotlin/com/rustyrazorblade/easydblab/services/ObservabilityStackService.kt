@@ -103,30 +103,31 @@ class DefaultObservabilityStackService(
     }
 
     /**
-     * One deploy stage: a human label and the resources it applies. A stage with a [requires]
-     * capability is applied only where the environment provides it.
+     * One deploy stage: a human label and the resources it applies. A stage is applied only where
+     * the environment provides every capability in [requires]; a stage that needs more than one
+     * (e.g. journald needs a systemd journal *and* a privileged pod to read it) is skipped if any is
+     * absent.
      */
     private data class Stage(
         val label: String,
         val resources: List<HasMetadata>,
-        val requires: NodeCapability? = null,
+        val requires: Set<NodeCapability> = emptySet(),
     )
 
     /**
-     * The stages the environment can run. Not a pure filter: each stage it cannot run is reported
-     * as skipped (an event is emitted), so call it once, before anything is applied.
+     * The stages the environment can run. Not a pure filter: a stage it cannot run is reported as
+     * skipped with one [Event.Grafana.StageSkipped] per capability it is missing, so the operator
+     * sees every reason the stage was left out. Call it once, before anything is applied.
      */
     private fun applyCapabilityGate(
         stages: List<Stage>,
         capabilities: NodeCapabilities,
-    ): List<Stage> {
-        val (runnable, skipped) = stages.partition { it.requires == null || it.requires in capabilities }
-        skipped.forEach { stage ->
-            val capability = checkNotNull(stage.requires)
-            eventBus.emit(Event.Grafana.StageSkipped(stage.label, capability))
+    ): List<Stage> =
+        stages.filter { stage ->
+            val missing = stage.requires.filter { it !in capabilities }
+            missing.forEach { eventBus.emit(Event.Grafana.StageSkipped(stage.label, it)) }
+            missing.isEmpty()
         }
-        return runnable
-    }
 
     override fun deploy(): Result<Unit> =
         runCatching {

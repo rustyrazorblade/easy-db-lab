@@ -1,30 +1,60 @@
 package com.rustyrazorblade.easydblab.services.sql
 
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.SocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.proxy.defaultSocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.KitRuntime
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
+import com.rustyrazorblade.easydblab.services.access.ServiceEndpoint
+import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.sql.Connection
 import java.util.Properties
 
 /**
+ * The Kubernetes Service a kit publishes its endpoints on, which a port-forward targets.
+ *
+ * @property namespace the kit's namespace
+ * @property name the Service's name
+ */
+data class KitService(
+    val namespace: String,
+    val name: String,
+) {
+    companion object {
+        /** The Service of a kit: named for its Helm release or workload, or for the kit when it names neither. */
+        fun of(
+            kitName: String,
+            runtime: KitRuntime?,
+        ): KitService =
+            KitService(
+                namespace = runtime?.namespace ?: DEFAULT_NAMESPACE,
+                name = runtime?.release?.ifBlank { null } ?: runtime?.name?.ifBlank { null } ?: kitName,
+            )
+
+        private const val DEFAULT_NAMESPACE = "default"
+    }
+}
+
+/**
  * Executes SQL statements against a kit's JDBC endpoint.
  *
- * Resolves the target node IP from cluster state using the endpoint's declared node type,
- * then builds the connection URL via [KitEndpoint.formatUrl]. This replaces the
- * per-kit service classes that previously hard-coded the node type and URL pattern.
+ * Asks the service-access seam for the kit's [service] on the endpoint's node role and port, then
+ * builds the connection URL via [KitEndpoint.formatUrl]. JDBC drivers take no per-connection proxy,
+ * so a SOCKS endpoint is dialed through a loopback [com.rustyrazorblade.easydblab.proxy.SocksTcpBridge];
+ * any other endpoint is dialed as it is. No JVM-global proxy property is read.
  *
- * @property clusterStateManager Provides cluster state for node IP resolution.
+ * @property access the service-access seam
+ * @property service the kit's Service
  * @property endpoint JDBC endpoint declared in kit.yaml.
  * @property user JDBC username (from the sql capability config); omitted from properties if blank.
  * @property connectionFactory Injectable for testing; defaults to [defaultJdbcConnectionFactory].
  * @property bridgeFactory Injectable for testing; defaults to [defaultSocksTcpBridgeFactory].
  */
 class KitJdbcSqlService(
-    private val clusterStateManager: ClusterStateManager,
+    private val access: ServiceAccess,
+    private val service: KitService,
     private val endpoint: KitEndpoint,
     private val user: String,
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
@@ -35,37 +65,29 @@ class KitJdbcSqlService(
     /**
      * Executes [sql] against the endpoint and returns a [SqlQueryResult] on success.
      *
-     * Returns [Result.failure] if no nodes of the endpoint's node type are found in
-     * cluster state, or if the JDBC driver throws an exception.
+     * Returns [Result.failure] if the seam cannot open the endpoint (for example, no node of the
+     * endpoint's node type is in cluster state), or if the JDBC driver throws an exception.
      */
     fun execute(sql: String): Result<SqlQueryResult> =
         runCatching {
-            val state = clusterStateManager.load()
-            val serverType = ServerType.from(endpoint.nodeType)
-            val hosts = state.hosts[serverType]
-            if (hosts.isNullOrEmpty()) {
-                error("No ${serverType.serverType} nodes found in cluster state. Is the cluster running?")
-            }
-            val privateIp = hosts.first().privateIp
-            val url = endpoint.formatUrl(privateIp)
-
+            val target =
+                ServiceTarget(service.namespace, service.name, endpoint.port, ServerType.from(endpoint.nodeType), endpoint.port)
             val props =
                 Properties().apply {
                     if (user.isNotBlank()) setProperty("user", user)
                 }
-
-            val socksPort = System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()
-            if (socksPort == null) {
-                // Tailscale active or no proxy: connect directly to the private IP, unchanged.
-                log.debug { "Connecting to ${endpoint.name} at $url" }
-                connectAndRun(url, props, sql)
-            } else {
-                // SOCKS-only cluster: forward loopback through the existing tunnel to the private IP.
-                bridgeFactory.open(socksPort, privateIp, endpoint.port).use { bridge ->
-                    val bridged = endpoint.formatUrl("127.0.0.1", bridge.localPort)
-                    log.debug { "Connecting to ${endpoint.name} via SOCKS bridge at $bridged (target $url)" }
-                    connectAndRun(bridged, props, sql)
+            when (val opened = access.open(target)) {
+                is ServiceEndpoint.Plain -> {
+                    val url = endpoint.formatUrl(opened.host, opened.port)
+                    log.debug { "Connecting to ${endpoint.name} at $url" }
+                    connectAndRun(url, props, sql)
                 }
+                is ServiceEndpoint.ViaSocks ->
+                    bridgeFactory.open(opened.socksPort, opened.host, opened.port).use { bridge ->
+                        val bridged = endpoint.formatUrl(LOOPBACK, bridge.localPort)
+                        log.debug { "Connecting to ${endpoint.name} via SOCKS bridge at $bridged (target ${opened.host}:${opened.port})" }
+                        connectAndRun(bridged, props, sql)
+                    }
             }
         }
 
@@ -101,4 +123,8 @@ class KitJdbcSqlService(
                 SqlQueryResult(columns = listOf("rows affected"), rows = listOf(listOf(count.toString())))
             }
         }
+
+    private companion object {
+        const val LOOPBACK = "127.0.0.1"
+    }
 }

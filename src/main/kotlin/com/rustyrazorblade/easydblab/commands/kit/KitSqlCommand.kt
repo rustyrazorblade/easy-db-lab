@@ -7,9 +7,12 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import com.rustyrazorblade.easydblab.services.sql.KitJdbcSqlService
+import com.rustyrazorblade.easydblab.services.sql.KitService
 import com.rustyrazorblade.easydblab.services.sql.defaultJdbcConnectionFactory
+import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
@@ -41,11 +44,14 @@ import java.io.File
 )
 class KitSqlCommand(
     private val kitName: String,
+    private val service: KitService,
     private val endpoint: KitEndpoint,
     private val user: String,
     private val driverClass: String = "",
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
 ) : PicoBaseCommand() {
+    private val serviceAccess: ServiceAccess by inject()
+
     @Parameters(index = "0", description = ["SQL statement to execute"], arity = "0..1")
     var statement: String? = null
 
@@ -89,7 +95,8 @@ class KitSqlCommand(
             }
 
         KitJdbcSqlService(
-            clusterStateManager = clusterStateManager,
+            access = serviceAccess,
+            service = service,
             endpoint = endpoint,
             user = user,
             connectionFactory = connectionFactory,

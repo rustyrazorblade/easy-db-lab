@@ -95,7 +95,7 @@ class KitEndToEndTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-        whenever(mockGrafanaClient.installDashboard(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockGrafanaClient.installDashboard(any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory
         File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
     }

@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.converters.PicoEpochMillisConverter
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.AnnotationMirror
 import com.rustyrazorblade.easydblab.services.GrafanaAnnotationRequest
@@ -74,10 +73,6 @@ class GrafanaAnnotate : PicoBaseCommand() {
     private val annotationMirror: AnnotationMirror by inject()
 
     override fun execute() {
-        val controlHost =
-            clusterState.hosts[ServerType.Control]?.firstOrNull()
-                ?: error("No control node found in cluster state.")
-
         val effectiveTags = effectiveTags()
 
         val annotation =
@@ -90,7 +85,7 @@ class GrafanaAnnotate : PicoBaseCommand() {
                 panelId = panelId,
             )
 
-        val response = grafanaClient.createAnnotation(controlHost, annotation)
+        val response = grafanaClient.createAnnotation(annotation)
         val mirrored = annotationMirror.push(annotation.toMirrored(response.id))
 
         // Grafana holds the annotation whether or not Loki took it, so it is reported either way.

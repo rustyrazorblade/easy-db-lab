@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 
 /**
  * Flushes Loki before teardown and waits for the flush to finish.
@@ -37,7 +38,7 @@ class LokiTailFlush(
         progress.begin(FlushStep.LOKI_SHUTDOWN)
         // Marked before the call: a shutdown that times out may still have stopped the ingester.
         progress.mark(Constants.K8s.LOKI_APP_LABEL, BackendState.INGESTER_STOPPED)
-        val shutdown = http.post(Constants.K8s.LOKI_HTTP_PORT, SHUTDOWN_PATH, timeout = timeouts.shutdown)
+        val shutdown = http.post(ClusterServices.LOKI, SHUTDOWN_PATH, timeout = timeouts.shutdown)
         check(shutdown.code == Constants.HttpStatus.NO_CONTENT) {
             "Loki's ingester did not finish flushing (status ${shutdown.code}): ${shutdown.body}"
         }

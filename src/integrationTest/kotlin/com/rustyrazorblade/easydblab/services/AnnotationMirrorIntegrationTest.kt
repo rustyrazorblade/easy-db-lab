@@ -127,10 +127,7 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
                 )
             }
         val eventBus = getKoin().get<EventBus>()
-        return DefaultGrafanaClient(
-            eventBus = eventBus,
-            okHttpClient = OkHttpClient.Builder().addInterceptor(redirect).build(),
-        )
+        return fixedGrafanaClient(eventBus = eventBus, client = OkHttpClient.Builder().addInterceptor(redirect).build())
     }
 
     /**
@@ -228,7 +225,7 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
             )
         assertThat(created.statusCode()).describedAs(created.body()).isEqualTo(200)
 
-        assertThat(mirror.syncAll(control).getOrThrow()).isEqualTo(1)
+        assertThat(mirror.syncAll().getOrThrow()).isEqualTo(1)
 
         val (labels, line) = mirrored(expected = 1).single()
         assertThat(line).isEqualTo("made in the UI")

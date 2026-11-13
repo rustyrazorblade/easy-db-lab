@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
+import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import io.github.resilience4j.retry.RetryConfig
 import java.io.IOException
 import java.net.URLDecoder
@@ -74,7 +75,7 @@ internal class FakeMimirHttp : ObservabilityHttp {
     }
 
     override fun get(
-        port: Int,
+        target: ServiceTarget,
         pathAndQuery: String,
         timeout: Duration,
     ): ObservabilityResponse {
@@ -88,7 +89,7 @@ internal class FakeMimirHttp : ObservabilityHttp {
     }
 
     override fun post(
-        port: Int,
+        target: ServiceTarget,
         path: String,
         body: String,
         contentType: String,

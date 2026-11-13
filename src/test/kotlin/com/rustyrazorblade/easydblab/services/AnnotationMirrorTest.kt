@@ -49,7 +49,7 @@ class AnnotationMirrorTest {
     private class GrafanaListing(
         private val body: String,
     ) : GrafanaAnnotationSource {
-        override fun fetchAnnotations(controlHost: ClusterHost): String = body
+        override fun fetchAnnotations(): String = body
     }
 
     private fun mirror(
@@ -213,7 +213,7 @@ class AnnotationMirrorTest {
              {"id":2,"text":"region","tags":["ab"],"time":$start,"timeEnd":$end,"dashboardUID":"d1","panelId":4,"extra":"ignored"}]
             """.trimIndent()
 
-        val count = mirror(http, grafana).syncAll(control).getOrThrow()
+        val count = mirror(http, grafana).syncAll().getOrThrow()
 
         assertThat(count).isEqualTo(2)
         val pushed = streams(http.calls.single()).associate { it.labels().getValue("annotation_id") to it.entry() }
@@ -240,7 +240,7 @@ class AnnotationMirrorTest {
              {"id":3,"text":"next week","tags":[],"time":${ago(Duration.ofDays(-7))}}]
             """.trimIndent()
 
-        val count = mirror(http, grafana).syncAll(control).getOrThrow()
+        val count = mirror(http, grafana).syncAll().getOrThrow()
 
         assertThat(count).isEqualTo(1)
         assertThat(streams(http.calls.single()).map { it.labels().getValue("annotation_id") }).containsExactly("2")
@@ -258,7 +258,7 @@ class AnnotationMirrorTest {
              {"id":2,"text":"ahead","tags":[],"time":${ago(Duration.ofHours(-23))}}]
             """.trimIndent()
 
-        assertThat(mirror(http, grafana).syncAll(control).getOrThrow()).isEqualTo(2)
+        assertThat(mirror(http, grafana).syncAll().getOrThrow()).isEqualTo(2)
         assertThat(events).isEmpty()
     }
 
@@ -267,7 +267,7 @@ class AnnotationMirrorTest {
         val http = RecordingObservabilityHttp()
         val grafana = """[{"id":9,"text":"ancient","tags":[],"time":1000}]"""
 
-        assertThat(mirror(http, grafana).syncAll(control).getOrThrow()).isZero()
+        assertThat(mirror(http, grafana).syncAll().getOrThrow()).isZero()
         assertThat(http.calls).isEmpty()
         assertThat(events.filterIsInstance<Event.Grafana.AnnotationsOutsideLokiWindow>().single().ids).containsExactly(9L)
     }
@@ -276,7 +276,7 @@ class AnnotationMirrorTest {
     fun `syncAll with no annotations pushes nothing`() {
         val http = RecordingObservabilityHttp()
 
-        assertThat(mirror(http, "[]").syncAll(control).getOrThrow()).isZero()
+        assertThat(mirror(http, "[]").syncAll().getOrThrow()).isZero()
         assertThat(http.calls).isEmpty()
     }
 

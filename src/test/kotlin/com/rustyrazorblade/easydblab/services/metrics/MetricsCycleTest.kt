@@ -9,7 +9,9 @@ import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import com.rustyrazorblade.easydblab.proxy.RouteLookup
 import com.rustyrazorblade.easydblab.services.DefaultMimirQueryService
-import com.rustyrazorblade.easydblab.services.RoutedObservabilityHttp
+import com.rustyrazorblade.easydblab.services.DefaultObservabilityHttp
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
+import com.rustyrazorblade.easydblab.services.access.ServiceEndpoint
 import okhttp3.OkHttpClient
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -159,14 +161,14 @@ class MetricsCycleTest : BaseKoinTest() {
 
     @Test
     fun `one cycle instance follows the route recorded for each cycle`() {
-        val routes = mutableListOf<ObservabilityRoute>()
+        val routes = mutableListOf<ServiceEndpoint>()
         val queries =
             CycleQueries(
                 loadState = { state },
                 routes = { route },
                 httpClientFactory = clientFactory,
                 mimirFor = { routed ->
-                    routes += (routed as RoutedObservabilityHttp).route
+                    routes += (routed as DefaultObservabilityHttp).access.open(ClusterServices.MIMIR)
                     DefaultMimirQueryService(http)
                 },
             )
@@ -176,7 +178,7 @@ class MetricsCycleTest : BaseKoinTest() {
         route = RouteLookup.Usable(ObservabilityRoute.Socks(PORT + 1))
         cycle.run()
 
-        assertThat(routes).containsExactly(ObservabilityRoute.Socks(PORT), ObservabilityRoute.Socks(PORT + 1))
+        assertThat(routes.map { (it as ServiceEndpoint.ViaSocks).socksPort }).containsExactly(PORT, PORT + 1)
     }
 
     @Test

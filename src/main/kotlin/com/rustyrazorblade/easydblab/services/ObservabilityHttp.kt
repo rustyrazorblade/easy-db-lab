@@ -1,44 +1,41 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
+import com.rustyrazorblade.easydblab.services.access.ServiceTarget
+import com.rustyrazorblade.easydblab.services.access.baseUrl
+import com.rustyrazorblade.easydblab.services.access.forEndpoint
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.Duration
 
-/** A response from an observability service on the control node: its status code and body. */
+/** A response from an observability Service: its status code and body. */
 data class ObservabilityResponse(
     val code: Int,
     val body: String,
 )
 
 /**
- * The one path from this tool to the observability services on the control node (Mimir, Loki).
+ * The one path from this tool to the observability Services (Mimir, Loki, Tempo).
  *
- * Every request goes to the control node's private address, carries the cluster's tenant in
- * `X-Scope-OrgID`, and — unless Tailscale reaches the private address directly — travels through
- * the SOCKS tunnel, which the per-client proxy selector of [HttpClientFactory] uses. The JVM-wide
- * socks properties are never touched. Readers (`logs query`, `spark logs`, `metrics stream`) and the
- * teardown flush all go through it, so none of them can forget the tenant.  [DefaultObservabilityHttp]
- * starts or reuses the tunnel per request; `metrics stream` uses [RoutedObservabilityHttp], which only
- * reuses the recorded one.
+ * Every request carries the cluster's tenant in `X-Scope-OrgID` and goes to the endpoint the
+ * service-access seam opens for its [ServiceTarget], with the proxy that endpoint names set on that
+ * client alone. Readers (`logs query`, `spark logs`, `metrics stream`) and the teardown flush all go
+ * through it, so none of them can forget the tenant or pick a route of its own.
  */
 interface ObservabilityHttp {
-    /** GETs [pathAndQuery] from the service on [port], waiting up to [timeout] for the answer. */
+    /** GETs [pathAndQuery] from [target], waiting up to [timeout] for the answer. */
     fun get(
-        port: Int,
+        target: ServiceTarget,
         pathAndQuery: String,
         timeout: Duration = DEFAULT_TIMEOUT,
     ): ObservabilityResponse
 
-    /** POSTs [body] as [contentType] to [path] on the service on [port], waiting up to [timeout]. */
+    /** POSTs [body] as [contentType] to [path] on [target], waiting up to [timeout]. */
     fun post(
-        port: Int,
+        target: ServiceTarget,
         path: String,
         body: String = "",
         contentType: String = "application/json",
@@ -52,77 +49,57 @@ interface ObservabilityHttp {
 }
 
 /**
- * [ObservabilityHttp] over the cluster's proxied OkHttp client.
+ * [ObservabilityHttp] over the service-access seam.
  *
- * @property httpClientFactory the cluster HTTP client, with the SOCKS selector installed on it alone.
- * @property socksProxyService opens the tunnel when Tailscale is not active.
- * @property clusterStateManager the control node and the tenant.
+ * Each request opens its Service through [access] again, so it follows a tunnel that was replaced
+ * (or a forward that was reopened) since the last one; no client keeps a route of its own. A
+ * `metrics stream` cycle passes an access built from the route it looked up, which never starts a
+ * tunnel; every other command passes the process's seam.
+ *
+ * @property access opens the Service and names the route
+ * @property tenant the cluster's tenant, sent in `X-Scope-OrgID`
+ * @property httpClientFactory the base HTTP client the route is applied to
  */
 class DefaultObservabilityHttp(
+    val access: ServiceAccess,
+    private val tenant: () -> String,
     private val httpClientFactory: HttpClientFactory,
-    private val socksProxyService: SocksProxyService,
-    private val clusterStateManager: ClusterStateManager,
 ) : ObservabilityHttp {
     override fun get(
-        port: Int,
+        target: ServiceTarget,
         pathAndQuery: String,
         timeout: Duration,
-    ): ObservabilityResponse = send(port, pathAndQuery, timeout) { it.get() }
+    ): ObservabilityResponse = send(target, pathAndQuery, timeout) { it.get() }
 
     override fun post(
-        port: Int,
+        target: ServiceTarget,
         path: String,
         body: String,
         contentType: String,
         timeout: Duration,
-    ): ObservabilityResponse = send(port, path, timeout) { it.post(body.toRequestBody(contentType.toMediaType())) }
+    ): ObservabilityResponse = send(target, path, timeout) { it.post(body.toRequestBody(contentType.toMediaType())) }
 
     private fun send(
-        port: Int,
+        target: ServiceTarget,
         pathAndQuery: String,
         timeout: Duration,
         method: (Request.Builder) -> Request.Builder,
     ): ObservabilityResponse {
-        val clusterState = clusterStateManager.load()
-        val controlHost: ClusterHost =
-            clusterState.getControlHost() ?: error("No control node found. Please ensure the environment is running.")
-        if (!clusterState.isTailscaleEnabled()) {
-            socksProxyService.ensureRunning(controlHost)
+        val endpoint = access.open(target)
+        val request =
+            method(Request.Builder().url("${endpoint.baseUrl()}$pathAndQuery"))
+                .header(Constants.Observability.TENANT_HEADER, tenant())
+                .build()
+        val client =
+            httpClientFactory
+                .createClient()
+                .forEndpoint(endpoint)
+                .newBuilder()
+                .readTimeout(timeout)
+                .callTimeout(Duration.ZERO)
+                .build()
+        return client.newCall(request).execute().use { response ->
+            ObservabilityResponse(response.code, response.body.string())
         }
-        return httpClientFactory
-            .createClient()
-            .controlNodeCall(ControlNodeTarget(controlHost.privateIp, clusterState.tenant()), port, pathAndQuery, timeout, method)
-    }
-}
-
-/** Where a control-node request goes: the control node's private address, in a tenant. */
-internal data class ControlNodeTarget(
-    val privateIp: String,
-    val tenant: String,
-)
-
-/**
- * Sends one request to the service on [port] of [target] with this client, carrying the tenant in
- * `X-Scope-OrgID`, waiting up to [timeout] for the answer.  Every [ObservabilityHttp] builds its
- * requests here, so they all send the same URL, header and timeouts.
- */
-internal fun OkHttpClient.controlNodeCall(
-    target: ControlNodeTarget,
-    port: Int,
-    pathAndQuery: String,
-    timeout: Duration,
-    method: (Request.Builder) -> Request.Builder,
-): ObservabilityResponse {
-    val request =
-        method(Request.Builder().url("http://${target.privateIp}:$port$pathAndQuery"))
-            .header(Constants.Observability.TENANT_HEADER, target.tenant)
-            .build()
-    val client =
-        newBuilder()
-            .readTimeout(timeout)
-            .callTimeout(Duration.ZERO)
-            .build()
-    return client.newCall(request).execute().use { response ->
-        ObservabilityResponse(response.code, response.body.string())
     }
 }

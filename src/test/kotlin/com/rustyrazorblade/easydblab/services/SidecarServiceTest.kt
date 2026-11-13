@@ -147,4 +147,21 @@ class SidecarServiceTest : BaseKoinTest() {
                 .value
         assertThat(javaToolOptions).contains("-Dpyroscope.labels=hostname=\$(NODE_NAME),cluster=${testClusterState.clusterLabelName()} ")
     }
+
+    @Test
+    fun `deploy with an ECR image attaches no image pull secret`() {
+        val resources = argumentCaptor<HasMetadata>()
+        val ecrImage = "123456789012.dkr.ecr.us-west-2.amazonaws.com/cassandra-sidecar:latest"
+
+        sidecarService.deploy(testControlHost, ecrImage).getOrThrow()
+
+        verify(mockK8sService, times(2)).applyResource(any(), resources.capture())
+        val podSpec =
+            resources.allValues
+                .filterIsInstance<DaemonSet>()
+                .single()
+                .spec.template.spec
+        assertThat(podSpec.containers.map { it.image }).contains(ecrImage)
+        assertThat(podSpec.imagePullSecrets).isNullOrEmpty()
+    }
 }

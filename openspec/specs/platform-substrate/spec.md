@@ -115,7 +115,8 @@ The `CredentialProviderConfig` SHALL match the ECR hostnames `*.dkr.ecr.*.amazon
 `*.dkr.ecr.*.amazonaws.com.cn` and `*.dkr.ecr-fips.*.amazonaws.com`, use a `defaultCacheDuration`
 of `12h`, and declare the provider `apiVersion` `credentialprovider.kubelet.k8s.io/v1`. The
 provider SHALL resolve region and credentials from IMDSv2, so the instance metadata hop limit
-MUST permit kubelet on the host to reach it. No cluster workload (stress jobs, the sidecar
+MUST permit kubelet on the host to reach it (the launched instances and the AMI build both set a
+hop limit of 2). No cluster workload (stress jobs, the sidecar
 DaemonSet, kits, `kubectl run`) SHALL attach an ECR pull secret.
 
 #### Scenario: A pod with an ECR image pulls with no pull secret

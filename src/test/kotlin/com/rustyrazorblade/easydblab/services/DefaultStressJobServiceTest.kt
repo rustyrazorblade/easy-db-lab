@@ -210,6 +210,26 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `buildJob with an ECR image attaches no image pull secret`() {
+        val ecrImage = "123456789012.dkr.ecr.us-west-2.amazonaws.com/cassandra-easy-stress:latest"
+        val job =
+            service.buildJob(
+                StressJobConfig(
+                    jobName = "stress-test-ecr",
+                    image = ecrImage,
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
+            )
+
+        assertThat(
+            job.spec.template.spec.containers
+                .map { it.image },
+        ).contains(ecrImage)
+        assertThat(job.spec.template.spec.imagePullSecrets).isNullOrEmpty()
+    }
+
+    @Test
     fun `buildJob should use correct nodeSelector matching ServerType`() {
         val job =
             service.buildJob(

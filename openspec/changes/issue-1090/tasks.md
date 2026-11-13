@@ -1,30 +1,30 @@
 ## 1. The seam and its implementations
 
-- [ ] 1.1 Add `ServiceTarget`, the `ServiceEndpoint` sealed interface (`Plain`, `ViaSocks`) and the `ServiceAccess` interface (AutoCloseable), with class-level KDoc
-- [ ] 1.2 Add a `ClusterServices` catalog with the Mimir, Loki, Tempo, Pyroscope and Grafana targets
-- [ ] 1.3 Implement `SocksServiceAccess` (node private IP + port via the recorded tunnel route; never the JVM property)
-- [ ] 1.4 Implement `DirectServiceAccess` (node/Service address, no proxy)
-- [ ] 1.5 Implement `PortForwardServiceAccess`: verify the Service exists, open a Fabric8 port-forward bound to `127.0.0.1` on a `LoopbackPortSelector` port, check `errorOccurred()`/client throwables, fail fast naming namespace/Service/port/K8s error; hold one forward per target, reuse within a command, reopen a dead one; close all on `close()`
-- [ ] 1.6 Register `single<ServiceAccess>` in Koin chosen `when (clusterState.exposure)`, and register the PortForward impl with `ResourceManager` for exit close
+- [x] 1.1 Add `ServiceTarget`, the `ServiceEndpoint` sealed interface (`Plain`, `ViaSocks`) and the `ServiceAccess` interface (AutoCloseable), with class-level KDoc
+- [x] 1.2 Add a `ClusterServices` catalog with the Mimir, Loki, Tempo, Pyroscope and Grafana targets
+- [x] 1.3 Implement `SocksServiceAccess` (node private IP + port via the recorded tunnel route; never the JVM property)
+- [x] 1.4 Implement `DirectServiceAccess` (node/Service address, no proxy)
+- [x] 1.5 Implement `PortForwardServiceAccess`: verify the Service exists, open a Fabric8 port-forward bound to `127.0.0.1` on a `LoopbackPortSelector` port, check `errorOccurred()`/client throwables, fail fast naming namespace/Service/port/K8s error; hold one forward per target, reuse within a command, reopen a dead one; close all on `close()`
+- [x] 1.6 Register `single<ServiceAccess>` in Koin chosen `when (clusterState.exposure)`, and register the PortForward impl with `ResourceManager` for exit close
 
 ## 2. Exposure in cluster state
 
-- [ ] 2.1 Add `ClusterState.exposure: Exposure = Socks` (sealed/enum Socks|Direct|PortForward)
-- [ ] 2.2 `init` records `Socks` by default, `Direct` when Tailscale is active or the #1077 `direct` env-file key is set
-- [ ] 2.3 Test: recorded exposure selects the matching implementation; absent exposure defaults to Socks
+- [x] 2.1 Add `ClusterState.exposure: Exposure = Socks` (sealed/enum Socks|Direct|PortForward)
+- [x] 2.2 `init` records `Socks` by default, `Direct` when Tailscale is active or the #1077 `direct` env-file key is set
+- [x] 2.3 Test: recorded exposure selects the matching implementation; absent exposure defaults to Socks
 
 ## 3. Route HTTP clients through the seam (fixes #1104)
 
-- [ ] 3.1 Add the `OkHttpClient.forEndpoint(endpoint)` helper (per-client SOCKS `Proxy` or `NO_PROXY`)
-- [ ] 3.2 Merge `DefaultObservabilityHttp` and `RoutedObservabilityHttp` into one `ObservabilityHttp` over the seam; keep `metrics stream`'s non-starting-Socks behaviour
-- [ ] 3.3 Drop `controlHost` from `GrafanaClient`; build its URL from the endpoint
-- [ ] 3.4 Update `MimirQueryService`, `LokiQueryService`, `LokiTailFlush`, `MimirTailFlush`, `AnnotationMirror`, `CycleQueries`, `TeardownFlushService` to the new signatures
-- [ ] 3.5 Remove the global-selector `OkHttpClient` singleton from `ServicesModule`
-- [ ] 3.6 Regression test for #1104: a replaced tunnel port is used by the per-client path (no stale process-wide port); add `Closes #1104` to the PR
+- [x] 3.1 Add the `OkHttpClient.forEndpoint(endpoint)` helper (per-client SOCKS `Proxy` or `NO_PROXY`)
+- [x] 3.2 Merge `DefaultObservabilityHttp` and `RoutedObservabilityHttp` into one `ObservabilityHttp` over the seam; keep `metrics stream`'s non-starting-Socks behaviour
+- [x] 3.3 Drop `controlHost` from `GrafanaClient`; build its URL from the endpoint
+- [x] 3.4 Update `MimirQueryService`, `LokiQueryService`, `LokiTailFlush`, `MimirTailFlush`, `AnnotationMirror`, `CycleQueries`, `TeardownFlushService` to the new signatures
+- [x] 3.5 Remove the global-selector `OkHttpClient` singleton from `ServicesModule`
+- [x] 3.6 Regression test for #1104: a replaced tunnel port is used by the per-client path (no stale process-wide port); add `Closes #1104` to the PR
 
 ## 4. JDBC and CQL
 
-- [ ] 4.1 `KitJdbcSqlService` obtains the endpoint from the seam; `ViaSocks` keeps `SocksTcpBridge`, `Plain` connects directly; remove the `System.getProperty(PORT_PROPERTY)` branch
+- [x] 4.1 `KitJdbcSqlService` obtains the endpoint from the seam; `ViaSocks` keeps `SocksTcpBridge`, `Plain` connects directly; remove the `System.getProperty(PORT_PROPERTY)` branch
 - [ ] 4.2 Add the single-endpoint CQL mode for PortForward: forward one Cassandra StatefulSet pod on a fixed local port, sole contact point, `NodeDistanceEvaluator` marking other nodes IGNORED, token map off, `local-datacenter` set; restart a dead forward on the same port
 - [ ] 4.3 Keep the AWS multi-node SOCKS session unchanged in `CqlSessionService`/`CqlSessionFactory`
 - [ ] 4.4 Tests: single-endpoint evaluator ignores non-forward nodes; AWS path unchanged

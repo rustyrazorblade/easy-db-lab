@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.access
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -37,5 +38,19 @@ class NodeServiceAccessTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("control")
             .hasMessageContaining("tempo")
+    }
+
+    @Test
+    fun `a looked-up SOCKS route is used as it is, never starting a tunnel`() {
+        val access = RouteServiceAccess(state, ObservabilityRoute.Socks(24000))
+
+        assertThat(access.open(ClusterServices.MIMIR)).isEqualTo(ServiceEndpoint.ViaSocks("10.0.1.5", 9009, 24000))
+    }
+
+    @Test
+    fun `a looked-up direct route dials the node with no proxy`() {
+        val access = RouteServiceAccess(state, ObservabilityRoute.Direct)
+
+        assertThat(access.open(ClusterServices.MIMIR)).isEqualTo(ServiceEndpoint.Plain("10.0.1.5", 9009))
     }
 }

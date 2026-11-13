@@ -8,7 +8,6 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.doThrow
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -49,16 +48,16 @@ class CiliumInstallAnnotatorTest {
     @Test
     fun `post sends started then finished with the times they were recorded, tagged cilium and global`() {
         val grafana = mock<GrafanaClient>()
-        whenever(grafana.createAnnotation(any(), any()))
+        whenever(grafana.createAnnotation(any()))
             .doReturn(GrafanaAnnotationResponse(id = 1), GrafanaAnnotationResponse(id = 2))
         val annotator = CiliumInstallAnnotator(grafana, RecordingAnnotationMirror(), SteppingClock(t0, Duration.ofSeconds(90)))
 
         annotator.installStarted()
         annotator.installFinished()
-        val posted = annotator.post(controlHost).getOrThrow()
+        val posted = annotator.post().getOrThrow()
 
         val captor = argumentCaptor<GrafanaAnnotationRequest>()
-        verify(grafana, times(2)).createAnnotation(eq(controlHost), captor.capture())
+        verify(grafana, times(2)).createAnnotation(captor.capture())
         val requests = captor.allValues
         assertThat(requests[0].text).isEqualTo("Cilium install started")
         assertThat(requests[0].time).isEqualTo(t0.toEpochMilli())
@@ -92,23 +91,23 @@ class CiliumInstallAnnotatorTest {
         val grafana = mock<GrafanaClient>()
         val annotator = CiliumInstallAnnotator(grafana, RecordingAnnotationMirror())
 
-        val posted = annotator.post(controlHost).getOrThrow()
+        val posted = annotator.post().getOrThrow()
 
         assertThat(posted).isEmpty()
-        verify(grafana, never()).createAnnotation(any(), any())
+        verify(grafana, never()).createAnnotation(any())
     }
 
     @Test
     fun `a failed post keeps the unposted annotations pending and drops the posted one`() {
         val grafana = mock<GrafanaClient>()
-        whenever(grafana.createAnnotation(any(), any()))
+        whenever(grafana.createAnnotation(any()))
             .doReturn(GrafanaAnnotationResponse(id = 1))
             .doThrow(IllegalStateException("Grafana annotation API at http://10.0.0.1:3000 returned 502"))
         val annotator = CiliumInstallAnnotator(grafana, RecordingAnnotationMirror(), Clock.fixed(t0, ZoneOffset.UTC))
         annotator.installStarted()
         annotator.installFinished()
 
-        val result = annotator.post(controlHost)
+        val result = annotator.post()
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()).hasMessageContaining("returned 502")
@@ -118,14 +117,14 @@ class CiliumInstallAnnotatorTest {
     @Test
     fun `each posted annotation is mirrored to Loki with the id Grafana gave it`() {
         val grafana = mock<GrafanaClient>()
-        whenever(grafana.createAnnotation(any(), any()))
+        whenever(grafana.createAnnotation(any()))
             .doReturn(GrafanaAnnotationResponse(id = 11), GrafanaAnnotationResponse(id = 12))
         val mirror = RecordingAnnotationMirror()
         val annotator = CiliumInstallAnnotator(grafana, mirror, Clock.fixed(t0, ZoneOffset.UTC))
         annotator.installStarted()
         annotator.installFinished()
 
-        annotator.post(controlHost).getOrThrow()
+        annotator.post().getOrThrow()
 
         assertThat(mirror.pushed.map { it.id to it.text }).containsExactly(
             11L to "Cilium install started",
@@ -144,16 +143,16 @@ class CiliumInstallAnnotatorTest {
     @Test
     fun `a failed mirror fails the post without posting the annotation to Grafana twice`() {
         val grafana = mock<GrafanaClient>()
-        whenever(grafana.createAnnotation(any(), any())).doReturn(GrafanaAnnotationResponse(id = 1))
+        whenever(grafana.createAnnotation(any())).doReturn(GrafanaAnnotationResponse(id = 1))
         val mirror = RecordingAnnotationMirror(failure = IllegalStateException("Loki refused the push with status 503"))
         val annotator = CiliumInstallAnnotator(grafana, mirror, Clock.fixed(t0, ZoneOffset.UTC))
         annotator.installStarted()
         annotator.installFinished()
 
-        val result = annotator.post(controlHost)
+        val result = annotator.post()
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("503")
         assertThat(annotator.pending.map { it.text }).containsExactly("Cilium install finished")
-        verify(grafana, times(1)).createAnnotation(any(), any())
+        verify(grafana, times(1)).createAnnotation(any())
     }
 }

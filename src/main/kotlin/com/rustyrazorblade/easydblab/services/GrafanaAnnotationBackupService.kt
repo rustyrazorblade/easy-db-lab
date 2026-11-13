@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
@@ -35,14 +34,10 @@ interface GrafanaAnnotationBackupService {
     /**
      * Captures the cluster's Grafana annotations and uploads them to the tenant's annotations directory.
      *
-     * @param controlHost The control node running Grafana.
      * @param clusterState The cluster state carrying the account-level S3 bucket and cluster name.
      * @return A [GrafanaAnnotationBackupResult] on success, or a failure Result on any error.
      */
-    fun backup(
-        controlHost: ClusterHost,
-        clusterState: ClusterState,
-    ): Result<GrafanaAnnotationBackupResult>
+    fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult>
 }
 
 /**
@@ -59,10 +54,7 @@ class DefaultGrafanaAnnotationBackupService(
     private val eventBus: EventBus,
     private val clock: Clock = Clock.systemUTC(),
 ) : GrafanaAnnotationBackupService {
-    override fun backup(
-        controlHost: ClusterHost,
-        clusterState: ClusterState,
-    ): Result<GrafanaAnnotationBackupResult> =
+    override fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult> =
         runCatching {
             val store = ObservabilityStore.from(clusterState)
             // Never overwrite an earlier backup that took the same second.
@@ -71,7 +63,7 @@ class DefaultGrafanaAnnotationBackupService(
 
             eventBus.emit(Event.Backup.GrafanaAnnotationsBackupStarting(artifact.toUri()))
 
-            val annotationsJson = grafanaClient.fetchAnnotations(controlHost)
+            val annotationsJson = grafanaClient.fetchAnnotations()
             val count = countAnnotations(annotationsJson)
             objectStore.uploadContent(annotationsJson, artifact)
 

@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
+import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
@@ -200,19 +201,19 @@ class ContainerObservabilityHttp(
     private val http: HttpClient = HttpClient.newHttpClient()
 
     override fun get(
-        port: Int,
+        target: ServiceTarget,
         pathAndQuery: String,
         timeout: Duration,
-    ): ObservabilityResponse = send(port, pathAndQuery, timeout) { it.GET() }
+    ): ObservabilityResponse = send(target.servicePort, pathAndQuery, timeout) { it.GET() }
 
     override fun post(
-        port: Int,
+        target: ServiceTarget,
         path: String,
         body: String,
         contentType: String,
         timeout: Duration,
     ): ObservabilityResponse =
-        send(port, path, timeout) { it.header("Content-Type", contentType).POST(HttpRequest.BodyPublishers.ofString(body)) }
+        send(target.servicePort, path, timeout) { it.header("Content-Type", contentType).POST(HttpRequest.BodyPublishers.ofString(body)) }
 
     private fun send(
         port: Int,

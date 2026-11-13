@@ -6,9 +6,10 @@ import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoutes
 import com.rustyrazorblade.easydblab.proxy.RouteLookup
 import com.rustyrazorblade.easydblab.services.DefaultMimirQueryService
+import com.rustyrazorblade.easydblab.services.DefaultObservabilityHttp
 import com.rustyrazorblade.easydblab.services.MimirQueryService
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
-import com.rustyrazorblade.easydblab.services.RoutedObservabilityHttp
+import com.rustyrazorblade.easydblab.services.access.RouteServiceAccess
 
 /**
  * Prepares one `metrics stream` cycle's queries: it reads the cluster state and the route again,
@@ -61,7 +62,10 @@ class CycleQueries(
                 when (val lookup = routes.current(state)) {
                     is RouteLookup.Usable ->
                         Target.Ready(
-                            mimir = mimirFor(RoutedObservabilityHttp(state, lookup.route, httpClientFactory)),
+                            mimir =
+                                mimirFor(
+                                    DefaultObservabilityHttp(RouteServiceAccess(state, lookup.route), state::tenant, httpClientFactory),
+                                ),
                             cluster = state.clusterLabelName(),
                             stressJobs = { isStopping -> stressJobs.completed(state, lookup.route, isStopping) },
                         )

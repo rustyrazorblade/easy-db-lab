@@ -1,11 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -20,8 +20,8 @@ import java.time.Duration
 
 /** Lists every annotation a Grafana holds: the one part of the Grafana API the mirror needs. */
 interface GrafanaAnnotationSource {
-    /** The raw JSON array Grafana returns from `GET /api/annotations` on [controlHost]. */
-    fun fetchAnnotations(controlHost: ClusterHost): String
+    /** The raw JSON array Grafana returns from `GET /api/annotations`. */
+    fun fetchAnnotations(): String
 }
 
 /**
@@ -70,13 +70,13 @@ interface AnnotationMirror {
     fun push(annotation: MirroredAnnotation): Result<Unit>
 
     /**
-     * Mirrors every annotation Grafana on [controlHost] holds, including ones made in the UI. One
+     * Mirrors every annotation the cluster's Grafana holds, including ones made in the UI. One
      * Loki would refuse, because it falls outside Loki's accepted window, is skipped with a warning
      * rather than failing the rest.
      *
      * @return how many annotations were mirrored.
      */
-    fun syncAll(controlHost: ClusterHost): Result<Int>
+    fun syncAll(): Result<Int>
 }
 
 /**
@@ -120,11 +120,11 @@ class DefaultAnnotationMirror(
 
     override fun push(annotation: MirroredAnnotation): Result<Unit> = runCatching { pushAll(listOf(annotation)) }
 
-    override fun syncAll(controlHost: ClusterHost): Result<Int> =
+    override fun syncAll(): Result<Int> =
         runCatching {
             val annotations =
                 json
-                    .decodeFromString<List<GrafanaListedAnnotation>>(grafana.fetchAnnotations(controlHost))
+                    .decodeFromString<List<GrafanaListedAnnotation>>(grafana.fetchAnnotations())
                     .map { it.toMirrored() }
             val (accepted, refused) = annotations.partition { it.time in lokiWindow() }
             if (refused.isNotEmpty()) {
@@ -265,7 +265,7 @@ class LokiPushClient(
                     }
                 }
             }
-        val response = http.post(Constants.K8s.LOKI_HTTP_PORT, PUSH_PATH, body.toString())
+        val response = http.post(ClusterServices.LOKI, PUSH_PATH, body.toString())
         check(response.code == Constants.HttpStatus.NO_CONTENT || response.code == Constants.HttpStatus.OK) {
             "Loki refused the push with status ${response.code}: ${response.body}"
         }
@@ -278,7 +278,7 @@ class LokiPushClient(
      * @throws IllegalStateException when Loki refuses the flush.
      */
     fun flushIngester() {
-        val response = http.post(Constants.K8s.LOKI_HTTP_PORT, FLUSH_PATH)
+        val response = http.post(ClusterServices.LOKI, FLUSH_PATH)
         check(response.code == Constants.HttpStatus.NO_CONTENT) {
             "Loki refused to flush its ingester with status ${response.code}: ${response.body}"
         }
@@ -298,7 +298,7 @@ class LokiPushClient(
                 "end" to (stream.timestampNanos + NANOS_PER_MILLI).toString(),
                 "limit" to "1",
             ).joinToString("&") { (name, value) -> "$name=${URLEncoder.encode(value, Charsets.UTF_8)}" }
-        val response = http.get(Constants.K8s.LOKI_HTTP_PORT, "$QUERY_PATH?$params")
+        val response = http.get(ClusterServices.LOKI, "$QUERY_PATH?$params")
         check(response.code == Constants.HttpStatus.OK) { "Loki query failed with status ${response.code}: ${response.body}" }
         return json
             .decodeFromString<QueryResponse>(response.body)

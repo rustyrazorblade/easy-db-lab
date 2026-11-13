@@ -290,7 +290,7 @@ class DefaultTeardownFlushService private constructor(
         // Phase A, in order. The mirror writes to Loki, so it must finish before Loki's flush starts.
         if (TailSignal.LOGS in pending) {
             val progress = FlushProgress(FlushStep.ANNOTATION_MIRROR, Constants.K8s.LOKI_APP_LABEL).also(progresses::add)
-            attempt(progress) { mirrorToLoki(controlHost) }
+            attempt(progress) { mirrorToLoki() }
                 .onSuccess { tasks += SaveTask(TailSignal.LOGS, progress) { lokiFlush.flush(controlHost, clusterState, progress) } }
                 .onFailure { failed[TailSignal.LOGS] = it as FlushStepFailed }
         }
@@ -320,7 +320,7 @@ class DefaultTeardownFlushService private constructor(
             tasks +=
                 SaveTask(TailSignal.ANNOTATIONS, FlushProgress(FlushStep.ANNOTATIONS_BACKUP)) {
                     val backup =
-                        annotationBackupService.backup(controlHost, clusterState).getOrElse { failure ->
+                        annotationBackupService.backup(clusterState).getOrElse { failure ->
                             throw IllegalStateException(failure.message ?: failure.toString(), failure)
                         }
                     SignalReport.Annotations(backup.s3Path.getKey())
@@ -340,9 +340,9 @@ class DefaultTeardownFlushService private constructor(
     }
 
     /** Mirrors every Grafana annotation to Loki. */
-    private fun mirrorToLoki(controlHost: ClusterHost) {
+    private fun mirrorToLoki() {
         val mirrored =
-            annotationMirror.syncAll(controlHost).getOrElse { failure ->
+            annotationMirror.syncAll().getOrElse { failure ->
                 throw IllegalStateException(
                     "${failure.message ?: failure}; the Loki flush was not run, and Loki keeps running",
                     failure,

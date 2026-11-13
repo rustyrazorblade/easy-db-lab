@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -42,7 +43,7 @@ class DefaultLokiQueryService(
             val params =
                 listOf("query" to logql, "since" to since, "limit" to limit.toString(), "direction" to "backward")
                     .joinToString("&") { (name, value) -> "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8)}" }
-            val response = http.get(Constants.K8s.LOKI_HTTP_PORT, "$QUERY_PATH?$params")
+            val response = http.get(ClusterServices.LOKI, "$QUERY_PATH?$params")
             check(response.code == Constants.HttpStatus.OK) {
                 "Loki query failed with status ${response.code}: ${response.body}"
             }

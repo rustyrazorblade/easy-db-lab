@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.access
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 
 /** The private address of the first node of [target]'s role, or a failure naming the role and Service. */
 internal fun ClusterState.nodeAddressFor(target: ServiceTarget): String =
@@ -39,4 +40,25 @@ class DirectServiceAccess(
     private val loadState: () -> ClusterState,
 ) : ServiceAccess {
     override fun open(target: ServiceTarget): ServiceEndpoint = ServiceEndpoint.Plain(loadState().nodeAddressFor(target), target.nodePort)
+}
+
+/**
+ * [ServiceAccess] over a route a long-running reader looked up for one cycle (`metrics stream`): the
+ * node address of [state] through the route's tunnel port, or with no proxy. It never starts, stops
+ * or replaces a tunnel, so the reader follows whatever tunnel another command keeps.
+ *
+ * @param state the cluster state the cycle read
+ * @param route the route the cycle looked up
+ */
+class RouteServiceAccess(
+    private val state: ClusterState,
+    private val route: ObservabilityRoute,
+) : ServiceAccess {
+    override fun open(target: ServiceTarget): ServiceEndpoint {
+        val host = state.nodeAddressFor(target)
+        return when (route) {
+            ObservabilityRoute.Direct -> ServiceEndpoint.Plain(host, target.nodePort)
+            is ObservabilityRoute.Socks -> ServiceEndpoint.ViaSocks(host, target.nodePort, route.port)
+        }
+    }
 }

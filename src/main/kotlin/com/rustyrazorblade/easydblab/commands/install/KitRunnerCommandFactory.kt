@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.installConfigYaml
+import com.rustyrazorblade.easydblab.services.sql.KitService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import picocli.CommandLine
 import picocli.CommandLine.Model.CommandSpec
@@ -90,6 +91,7 @@ class KitRunnerCommandFactory {
         val command =
             KitSqlCommand(
                 kitName = kitName,
+                service = KitService.of(kitName, kitConfig.runtime),
                 endpoint = jdbcEndpoint,
                 user = cap.user,
                 driverClass = cap.driverClass,

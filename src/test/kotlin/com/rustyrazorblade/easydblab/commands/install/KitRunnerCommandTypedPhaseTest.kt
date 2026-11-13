@@ -220,7 +220,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockGrafanaClient).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient).installDashboard(any(), any())
     }
 
     @Test
@@ -249,7 +249,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         assertThat(skipped.dashboards).containsExactly("overview.json", "queries.json")
         assertThat(skipped.reason).contains("S3 Access Denied")
         assertThat(skipped.isError()).isTrue()
-        verify(mockGrafanaClient, never()).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient, never()).installDashboard(any(), any())
     }
 
     @Test
@@ -272,7 +272,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("memcached", "start").call()
 
         val installed = argumentCaptor<JsonObject>()
-        verify(mockGrafanaClient).installDashboard(installed.capture(), any(), eq("memcached"))
+        verify(mockGrafanaClient).installDashboard(installed.capture(), eq("memcached"))
         val current =
             installed.firstValue
                 .getValue("templating")
@@ -331,7 +331,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("postgres-duckdb", "start").call()
 
         val installed = argumentCaptor<JsonObject>()
-        verify(mockGrafanaClient, times(2)).installDashboard(installed.capture(), any(), eq("postgres-duckdb"))
+        verify(mockGrafanaClient, times(2)).installDashboard(installed.capture(), eq("postgres-duckdb"))
         assertThat(installed.allValues.map { it["uid"]?.jsonPrimitive?.content })
             .containsExactly("postgres-overview-duckdb", "postgres-duckdb-duckdb")
         val overview = installed.allValues.first().toString()

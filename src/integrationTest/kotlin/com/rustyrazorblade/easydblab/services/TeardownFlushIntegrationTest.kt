@@ -217,10 +217,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
 
     private val backups =
         object : GrafanaAnnotationBackupService {
-            override fun backup(
-                controlHost: ClusterHost,
-                clusterState: ClusterState,
-            ): Result<GrafanaAnnotationBackupResult> {
+            override fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult> {
                 annotationBackups.incrementAndGet()
                 return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root(bucket).resolve("grafana/annotations/a.json"), 0))
             }

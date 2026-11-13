@@ -27,16 +27,13 @@ class GrafanaBackupTest : BaseKoinTest() {
         object : AnnotationMirror {
             override fun push(annotation: MirroredAnnotation): Result<Unit> = Result.success(Unit)
 
-            override fun syncAll(controlHost: ClusterHost): Result<Int> =
+            override fun syncAll(): Result<Int> =
                 mirrorFailure?.let { Result.failure(it) } ?: Result.success(3).also { steps.add("mirror") }
         }
 
     private val backups =
         object : GrafanaAnnotationBackupService {
-            override fun backup(
-                controlHost: ClusterHost,
-                clusterState: ClusterState,
-            ): Result<GrafanaAnnotationBackupResult> {
+            override fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult> {
                 steps.add("backup")
                 return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root("acct").resolve("x.json"), 3))
             }

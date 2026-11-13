@@ -456,7 +456,7 @@ class KitRunnerCommand(
             }
         files.zip(rendered).forEach { (file, dashboard) ->
             grafanaClient
-                .installDashboard(dashboard = dashboard, controlHost = controlHost, folderName = kitName)
+                .installDashboard(dashboard = dashboard, folderName = kitName)
                 .onFailure { log.warn(it) { "Failed to install dashboard ${file.name}" } }
         }
     }

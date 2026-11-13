@@ -48,7 +48,7 @@ sealed interface ServiceEndpoint {
  * proxy route itself. The implementation is chosen from the cluster's recorded
  * [com.rustyrazorblade.easydblab.configuration.Exposure]; [close] releases whatever it opened.
  */
-interface ServiceAccess : AutoCloseable {
+fun interface ServiceAccess : AutoCloseable {
     /** The endpoint that reaches [target] now. */
     fun open(target: ServiceTarget): ServiceEndpoint
 

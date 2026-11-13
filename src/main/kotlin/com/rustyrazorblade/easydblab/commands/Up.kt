@@ -825,7 +825,7 @@ class Up(
         // Grafana exists only now, and only in local mode: post the Cilium install markers that
         // were recorded on the server-ready hook. A redirect cluster has no local Grafana to mark.
         if (workingState.initConfig?.telemetryRedirect == null) {
-            postCiliumInstallAnnotations(controlHosts.first())
+            postCiliumInstallAnnotations()
         }
     }
 
@@ -833,9 +833,9 @@ class Up(
      * Posts the Cilium install window annotations recorded during K3s bring-up. A failure here is
      * reported, not fatal: the cluster is up and only the dashboard marker is missing.
      */
-    private fun postCiliumInstallAnnotations(controlHost: ClusterHost) {
+    private fun postCiliumInstallAnnotations() {
         ciliumInstallAnnotator
-            .post(controlHost)
+            .post()
             .onSuccess { posted ->
                 posted.forEach { (request, response) ->
                     eventBus.emit(

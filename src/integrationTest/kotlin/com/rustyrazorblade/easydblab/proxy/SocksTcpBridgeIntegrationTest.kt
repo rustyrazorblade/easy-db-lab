@@ -1,14 +1,14 @@
 package com.rustyrazorblade.easydblab.proxy
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.access.SocksServiceAccess
 import com.rustyrazorblade.easydblab.services.sql.KitJdbcSqlService
+import com.rustyrazorblade.easydblab.services.sql.KitService
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.mock
@@ -24,8 +24,8 @@ import org.testcontainers.junit.jupiter.Testcontainers
  * cluster-private database through a real SOCKS5 proxy — the exact SOCKS-only-cluster scenario.
  *
  * A Postgres container and a `serjs/go-socks5-proxy` container share a Docker network; Postgres
- * is reachable only by its network alias (never by a mapped port). We publish the proxy's mapped
- * port via [Constants.Proxy.PORT_PROPERTY] and drive [KitJdbcSqlService.execute], which opens a
+ * is reachable only by its network alias (never by a mapped port). A SOCKS service-access seam names
+ * the proxy's mapped port and we drive [KitJdbcSqlService.execute], which opens a
  * loopback bridge and rewrites the URL authority. The query must reach Postgres via the proxy.
  */
 @Testcontainers
@@ -82,11 +82,6 @@ class SocksTcpBridgeIntegrationTest {
             path = "/postgres",
         )
 
-    @AfterEach
-    fun clearProxyPort() {
-        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
-    }
-
     @Test
     fun `raw-TCP jdbc query reaches a private-only postgres through the SOCKS bridge`() {
         val clusterStateManager = mock<ClusterStateManager>()
@@ -98,11 +93,10 @@ class SocksTcpBridgeIntegrationTest {
             ),
         )
 
-        System.setProperty(Constants.Proxy.PORT_PROPERTY, socks.getMappedPort(SOCKS_PORT).toString())
-
         val service =
             KitJdbcSqlService(
-                clusterStateManager = clusterStateManager,
+                access = SocksServiceAccess(clusterStateManager::load) { socks.getMappedPort(SOCKS_PORT) },
+                service = KitService("default", "postgres"),
                 endpoint = endpoint,
                 user = "postgres",
             )

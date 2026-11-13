@@ -63,10 +63,7 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
             }
         val eventBus = getKoin().get<EventBus>()
         val dashboards =
-            DefaultGrafanaClient(
-                eventBus = eventBus,
-                okHttpClient = OkHttpClient.Builder().addInterceptor(toGrafana).build(),
-            )
+            fixedGrafanaClient(eventBus = eventBus, client = OkHttpClient.Builder().addInterceptor(toGrafana).build())
         service = DefaultGrafanaAnnotationBackupService(dashboards, objectStore, eventBus, sameSecond)
     }
 
@@ -82,8 +79,8 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
         grafana.enqueue(MockResponse(code = 200, body = firstJson))
         grafana.enqueue(MockResponse(code = 200, body = secondJson))
 
-        val first = service.backup(controlHost, clusterState).getOrThrow()
-        val second = service.backup(controlHost, clusterState).getOrThrow()
+        val first = service.backup(clusterState).getOrThrow()
+        val second = service.backup(clusterState).getOrThrow()
 
         assertThat(second.s3Path).isNotEqualTo(first.s3Path)
         assertThat(first.s3Path.getKey()).isEqualTo("grafana/annotations/acme/20260924-130405_lab-c0ffee.json")

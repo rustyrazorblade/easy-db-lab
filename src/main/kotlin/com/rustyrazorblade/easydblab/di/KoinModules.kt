@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.providers.docker.dockerModule
 import com.rustyrazorblade.easydblab.providers.ssh.sshModule
 import com.rustyrazorblade.easydblab.proxy.proxyModule
+import com.rustyrazorblade.easydblab.services.access.serviceAccessModule
 import com.rustyrazorblade.easydblab.services.aws.awsServicesModule
 import com.rustyrazorblade.easydblab.services.metrics.metricsStreamModule
 import com.rustyrazorblade.easydblab.services.servicesModule
@@ -30,6 +31,7 @@ object KoinModules {
             awsClientsModule,
             awsServicesModule,
             servicesModule,
+            serviceAccessModule,
             metricsStreamModule,
             configurationModule,
             commandsModule,

@@ -45,12 +45,31 @@ class KitInstallCommandFactory(
             spec.add(forceOptionSpec(command))
         }
 
+        // KitConfig refuses an install arg named like this option, so the two never clash.
+        spec.add(sourceOptionSpec())
+
         for (arg in config.args) {
             spec.add(argOptionSpec(arg, command))
         }
 
         return CommandLine(spec)
     }
+
+    /**
+     * Declares `--source <dir>` so picocli accepts it and help lists it. The value is read before
+     * parsing, by [KitInstallSourceOverride], because it decides which `kit.yaml` builds this
+     * command; the command itself has no use for it.
+     */
+    private fun sourceOptionSpec(): OptionSpec =
+        OptionSpec
+            .builder(KitInstallSourceOverride.OPTION)
+            .type(String::class.java)
+            .arity("1")
+            .paramLabel("<dir>")
+            .description(
+                "Install this kit from <dir>/<kit>/ for this call only. The kit sources registered " +
+                    "with 'kit source add' are neither read nor changed.",
+            ).build()
 
     private fun forceOptionSpec(command: KitInstallCommand): OptionSpec =
         OptionSpec

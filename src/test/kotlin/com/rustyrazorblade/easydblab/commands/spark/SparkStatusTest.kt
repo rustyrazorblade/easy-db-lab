@@ -117,7 +117,7 @@ class SparkStatusTest : BaseKoinTest() {
         val args = printed.split(" ")
         assertThat(args.first()).isEqualTo("easy-db-lab")
 
-        val parsed = CommandLineParser().commandLine.parseArgs(*args.drop(1).toTypedArray())
+        val parsed = CommandLineParser(emptyArray()).commandLine.parseArgs(*args.drop(1).toTypedArray())
 
         val status =
             parsed

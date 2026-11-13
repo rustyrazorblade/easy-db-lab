@@ -15,6 +15,9 @@ import java.nio.file.Path
  * 3. Built-in classpath: `kits/<name>/` in resources
  * 4. Ad-hoc: any local path supplied via `--from` (not listed, install-time only)
  *
+ * A `kit install <name> --source <dir>` call bypasses this order for that one kit and that one
+ * call: [resolveIn] reads `<dir>/<name>/` and nothing else.
+ *
  * Profile templates override all others of the same name. Additional-source templates
  * override built-ins. Missing additional-source directories are silently skipped.
  */
@@ -126,6 +129,58 @@ class InstallTemplateResolver(
     }
 
     /**
+     * Resolves the kit [name] inside the kit source directory [dir], for one
+     * `kit install <name> --source <dir>` call. Neither the profile kits nor the sources
+     * registered with `kit source add` are read or changed.
+     *
+     * @throws IllegalArgumentException if [name] is not a single directory name inside [dir], or
+     *   [dir] holds no `<name>/` subdirectory with a `kit.yaml`
+     */
+    fun resolveIn(
+        dir: File,
+        name: String,
+    ): TemplateSource.Directory {
+        val kitDir = File(dir, name)
+        require(kitDir.canonicalFile.parentFile == dir.canonicalFile) {
+            "Kit name '$name' must be a directory name inside ${dir.canonicalPath}"
+        }
+        require(File(kitDir, Constants.Kit.CONFIG_FILE).isFile) {
+            val expected = File(kitDir.canonicalFile, Constants.Kit.CONFIG_FILE)
+            "Kit source directory ${dir.canonicalPath} has no kit '$name' (expected $expected)"
+        }
+        return TemplateSource.Directory(kitDir)
+    }
+
+    /**
+     * Reads the `kit.yaml` of a [source] that [resolveIn] returned, which therefore has one.
+     *
+     * @throws IllegalArgumentException naming the file if it is not a valid kit descriptor
+     */
+    fun loadKitConfigIn(source: TemplateSource.Directory): KitConfig =
+        decode(source, File(source.dir, Constants.Kit.CONFIG_FILE).readText())
+
+    /**
+     * Decodes [content], the `kit.yaml` of [source]. A descriptor that is not valid YAML for
+     * [KitConfig], or that [KitConfig] refuses (such as an arg named like a reserved install
+     * option), is an [IllegalArgumentException] naming where it came from.
+     */
+    private fun decode(
+        source: TemplateSource,
+        content: String,
+    ): KitConfig =
+        try {
+            installConfigYaml.decodeFromString(KitConfig.serializer(), content)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("${describe(source)} is not a valid kit descriptor: ${e.message}", e)
+        }
+
+    private fun describe(source: TemplateSource): String =
+        when (source) {
+            is TemplateSource.Directory -> File(source.dir, Constants.Kit.CONFIG_FILE).canonicalPath
+            is TemplateSource.Builtin -> "The built-in kit ${source.name}'s ${Constants.Kit.CONFIG_FILE}"
+        }
+
+    /**
      * Wraps an ad-hoc path (from --from flag) as a [TemplateSource].
      *
      * Every installed kit directory carries a `kit.yaml`, and that descriptor is the sole marker
@@ -164,9 +219,12 @@ class InstallTemplateResolver(
             }
         }
 
-    fun loadInstallConfig(source: TemplateSource): KitConfig? =
-        readInstallYamlContent(source)
-            ?.let { installConfigYaml.decodeFromString(KitConfig.serializer(), it) }
+    /**
+     * Reads and parses the `kit.yaml` of [source], or returns null when it has none.
+     *
+     * @throws IllegalArgumentException naming the file if it is not a valid kit descriptor
+     */
+    fun loadInstallConfig(source: TemplateSource): KitConfig? = readInstallYamlContent(source)?.let { decode(source, it) }
 
     /**
      * Lists all `.template` files in a template source as [TemplateEntry] objects.

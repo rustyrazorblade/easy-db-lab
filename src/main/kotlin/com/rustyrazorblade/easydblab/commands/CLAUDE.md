@@ -63,7 +63,7 @@ commands/
 ├── clickhouse/            # ClickHouse commands
 ├── grafana/               # Grafana commands
 ├── ingress/               # ingress allow, ingress revoke — SSH rules on the cluster's security group; EC2 API calls only, never the SOCKS tunnel (@RequireProfileSetup, no @RequiresProxy)
-├── install/               # Kit install internals (BaseInstallCommand, KitInstallCommand, KitRunnerCommand, KitStatusCommand, factories)
+├── install/               # Kit install internals (BaseInstallCommand, KitInstallCommand, KitRunnerCommand, KitStatusCommand, factories, KitInstallSourceOverride — the `kit install <name> --source <dir>` value, read from the raw args before parsing)
 ├── kit/                   # Kit management commands (kit install, kit list, kit uninstall) + <kit> sql
 │   ├── Kit.kt             # Parent command group
 │   ├── Install.kt         # kit install — scaffolds kit files (dynamic subcommands added at startup)

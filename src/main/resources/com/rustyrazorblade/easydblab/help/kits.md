@@ -8,7 +8,7 @@ A kit packages a workload's full lifecycle in `kit.yaml` (no K8s YAML). Built-in
 
 Steps:
 1. `easy-db-lab kit list` — available kits. `easy-db-lab kit info <name>` — args, endpoints, commands.
-2. `easy-db-lab kit install <name> [args]` — args are per-kit (see `kit info` or `--help`). Writes files to the workspace and registers the kit's commands automatically.
+2. `easy-db-lab kit install <name> [args]` — args are per-kit (see `kit info` or `--help`). Writes files to the workspace and registers the kit's commands automatically. Add `--source <dir>` to install the kit from `<dir>/<name>/` for that call only, without reading or changing the sources registered with `kit source add`.
 3. `easy-db-lab <name> start` / `easy-db-lab <name> stop` — each script in the kit is a subcommand. A Grafana dashboard installs after a successful start.
 4. `easy-db-lab kit uninstall <name>` — remove.
 

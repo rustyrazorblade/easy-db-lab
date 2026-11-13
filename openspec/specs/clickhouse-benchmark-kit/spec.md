@@ -7,7 +7,7 @@ TBD - created by archiving change issue-1022. Update Purpose after archive.
 The CLI SHALL ship a built-in kit `clickhouse-benchmark` under `kits/clickhouse-benchmark/`, with `type: app`.  Its `kit.yaml` SHALL declare:
 
 - Install args: `--target` (variable `TARGET`, `type: kit-ref`, `endpoints: [native, http]`, no `capability`, required) and `--version` (variable `VERSION`, default `latest`).
-- `prepare` args: `--workload` (default `clickbench`), `--source` (no default; the description names the pinned ClickBench URL), `--storage-policy` (default `default`) and `--recreate` (`boolean`, default `false`).
+- `prepare` args: `--workload` (default `clickbench`), `--data` (no default; the description names the pinned ClickBench URL), `--storage-policy` (default `default`) and `--recreate` (`boolean`, default `false`).
 - `start` args: `--workload` (no default; the description says `(default clickbench)`), `--queries` (no default), `--concurrency` (`int`, default `4`), `--duration` (`int`, default `60`), `--iterations` (`int`, default `0`), `--randomize` (`boolean`, default `true`), `--continue-on-errors` (`boolean`, default `false`) and `--settings` (no default).
 - A runtime probe of `type: pods` with selector `easydblab/kit=${KIT_NAME},easydblab/role=benchmark-run`, namespace `default`.
 - `collision-check: true`.
@@ -95,23 +95,23 @@ Every pod and ConfigMap the kit creates SHALL get its name from `edl_resource_na
 - **THEN** `start` goes on to report the exit code and does not wait for the limit
 
 ### Requirement: Prepare creates and loads hits
-`prepare` SHALL create `default.hits` from the packaged `workloads/clickbench/create-hits.sql` as a ReplicatedMergeTree table `ON CLUSTER clickhouse`, with `SETTINGS storage_policy = '<policy>'`, and SHALL load it on the server with `INSERT INTO hits SELECT * FROM s3(...)`, from a prepare pod that runs `clickhouse-client` (`pod/prepare-load.sh`).  With an empty `--source`, the server SHALL read `https://clickhouse-public-datasets.s3.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..99}.parquet` with `s3('<url>', NOSIGN, 'Parquet')`.  A given `--source` SHALL be read with `s3('<url>', 'Parquet')`, which uses the cluster's IAM role.  The cluster name `clickhouse` is a constant `CH_CLUSTER`.  `prepare --workload` SHALL accept only `clickbench`.
+`prepare` SHALL create `default.hits` from the packaged `workloads/clickbench/create-hits.sql` as a ReplicatedMergeTree table `ON CLUSTER clickhouse`, with `SETTINGS storage_policy = '<policy>'`, and SHALL load it on the server with `INSERT INTO hits SELECT * FROM s3(...)`, from a prepare pod that runs `clickhouse-client` (`pod/prepare-load.sh`).  With an empty `--data`, the server SHALL read `https://clickhouse-public-datasets.s3.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..99}.parquet` with `s3('<url>', NOSIGN, 'Parquet')`.  A given `--data` SHALL be read with `s3('<url>', 'Parquet')`, which uses the cluster's IAM role.  The cluster name `clickhouse` is a constant `CH_CLUSTER`.  `prepare --workload` SHALL accept only `clickbench`.
 
-#### Scenario: Default source
-- **WHEN** `prepare` runs with no `--source`
+#### Scenario: Default data
+- **WHEN** `prepare` runs with no `--data`
 - **THEN** `hits` is created as a ReplicatedMergeTree table `ON CLUSTER clickhouse` and loaded from the pinned public ClickBench parquet URL with `NOSIGN`, by an `INSERT INTO hits SELECT * FROM s3(...)` that runs on the server
 
-#### Scenario: Source override
-- **WHEN** `prepare --source <s3 url>` runs
+#### Scenario: Data override
+- **WHEN** `prepare --data <s3 url>` runs
 - **THEN** the server loads `hits` from that URL with the cluster's IAM role credentials
 
-#### Scenario: Source the role cannot read
-- **WHEN** the `--source` object cannot be read by the cluster's IAM role
+#### Scenario: Data the role cannot read
+- **WHEN** the `--data` object cannot be read by the cluster's IAM role
 - **THEN** `prepare` fails, shows the server's error and exits non-zero
 - **AND** it does not report success
 
-#### Scenario: Source with a quote or backslash
-- **WHEN** `--source` holds a `'` or a `\`
+#### Scenario: Data with a quote or backslash
+- **WHEN** `--data` holds a `'` or a `\`
 - **THEN** `prepare` fails before it creates a pod and names the value
 
 #### Scenario: Storage policy
@@ -348,15 +348,15 @@ After the run pod ends, `start` SHALL read the full log with `kubectl logs <pod>
 - **THEN** it replaces the previous run's `last-run.txt`
 
 ### Requirement: clickhouse-benchmark user guide
-`docs/user-guide/clickhouse-benchmark.md` SHALL cover install, `prepare`, `start`, `stop`, every arg in a Flags table, `--source`, `--queries` (one query per line, path relative to the current directory), `--settings` (no commas in values, the denylist), the app-node requirement, and how to read the dashboard.  It SHALL say that the server reads `--source` with the cluster's IAM role (`use_environment_credentials`), so a private source must be readable by that role.  It SHALL say that `hits` must be loaded again with `prepare` after the target `clickhouse` kit stops and starts.  `docs/SUMMARY.md` and the kit list in `docs/user-guide/kits.md` SHALL include `clickhouse-benchmark`.  A kit-flags-documented test SHALL check that every flag in the kit's `kit.yaml` appears in the page's Flags table.
+`docs/user-guide/clickhouse-benchmark.md` SHALL cover install, `prepare`, `start`, `stop`, every arg in a Flags table, `--data`, `--queries` (one query per line, path relative to the current directory), `--settings` (no commas in values, the denylist), the app-node requirement, and how to read the dashboard.  It SHALL say that the server reads `--data` with the cluster's IAM role (`use_environment_credentials`), so private data must be readable by that role.  It SHALL say that `hits` must be loaded again with `prepare` after the target `clickhouse` kit stops and starts.  `docs/SUMMARY.md` and the kit list in `docs/user-guide/kits.md` SHALL include `clickhouse-benchmark`.  A kit-flags-documented test SHALL check that every flag in the kit's `kit.yaml` appears in the page's Flags table.
 
 #### Scenario: User guide content
 - **WHEN** a user reads `docs/user-guide/clickhouse-benchmark.md`
-- **THEN** it covers install, `prepare`, `start`, `stop`, every arg, `--source`, `--queries`, the app node requirement, and how to read the dashboard
+- **THEN** it covers install, `prepare`, `start`, `stop`, every arg, `--data`, `--queries`, the app node requirement, and how to read the dashboard
 
-#### Scenario: IAM note for a private source
-- **WHEN** a user reads the `--source` section
-- **THEN** it says that the server reads `--source` with the cluster's IAM role (`use_environment_credentials`), so a private source must be readable by that role
+#### Scenario: IAM note for private data
+- **WHEN** a user reads the `--data` section
+- **THEN** it says that the server reads `--data` with the cluster's IAM role (`use_environment_credentials`), so private data must be readable by that role
 
 #### Scenario: Reload after the target restarts
 - **WHEN** a user reads the page

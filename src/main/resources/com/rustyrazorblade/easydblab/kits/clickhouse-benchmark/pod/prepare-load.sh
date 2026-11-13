@@ -54,10 +54,10 @@ echo "Creating hits on every replica of ${CH_CLUSTER} with storage policy ${poli
   exit 1
 }
 
-# A --source is read with the server's own credentials, the cluster's IAM role. Since 26.x the
+# A --data URL is read with the server's own credentials, the cluster's IAM role. Since 26.x the
 # server refuses that in a user query unless s3_allow_server_credentials_in_user_queries is on;
 # older servers lack the setting and reject an unknown one, so it is set only where it exists. The
-# anonymous (NOSIGN) default uses no credentials and never needs it. A --source cannot hold a
+# anonymous (NOSIGN) default uses no credentials and never needs it. A --data URL cannot hold a
 # quote, so only the default holds ', NOSIGN, '.
 set --
 case "${source}" in

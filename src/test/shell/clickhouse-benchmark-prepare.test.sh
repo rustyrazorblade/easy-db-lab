@@ -54,7 +54,7 @@ run_prepare() {
         EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 TARGET=clickhouse VERSION=25.4 \
         TARGET_NATIVE_HOST=10.0.1.5 TARGET_NATIVE_PORT=30900 TARGET_NATIVE_USER=default TARGET_NATIVE_DATABASE=default \
         TARGET_HTTP_URL=http://10.0.1.5:30123 \
-        WORKLOAD=clickbench SOURCE= STORAGE_POLICY=default RECREATE=false \
+        WORKLOAD=clickbench DATA= STORAGE_POLICY=default RECREATE=false \
         "$@" "${BASH}" "${WORK}/kit/bin/prepare.sh"
   ) > "${WORK}/out" 2>&1
   rc=$?
@@ -138,8 +138,8 @@ test_recreate_runs_the_pod_with_the_drop_and_the_default_source() {
 }
 
 test_a_given_source_is_read_with_the_role() {
-  start_test "--source"
-  run_prepare SOURCE=https://easy-db-lab-x.s3.amazonaws.com/hits.parquet
+  start_test "--data"
+  run_prepare DATA=https://easy-db-lab-x.s3.amazonaws.com/hits.parquet
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${out}"; return; }
   run_call | grep -Fq "s3('https://easy-db-lab-x.s3.amazonaws.com/hits.parquet', 'Parquet')" || fail "argv: $(run_call)"
 }
@@ -155,7 +155,7 @@ test_no_app_node_fails() {
 
 test_bad_values_fail_before_a_pod() {
   local pair
-  for pair in "SOURCE=s3://b/it's" "SOURCE=s3://b/a\\b" "STORAGE_POLICY=s3-main" "WORKLOAD=tpch"; do
+  for pair in "DATA=s3://b/it's" "DATA=s3://b/a\\b" "STORAGE_POLICY=s3-main" "WORKLOAD=tpch"; do
     start_test "bad ${pair}"
     run_prepare "${pair}"
     [ "${rc}" -ne 0 ] || fail "exited 0"
@@ -231,7 +231,7 @@ test_the_loader_drops_creates_loads_syncs_and_counts_in_order() {
 insert_argv() { grep -- "--query INSERT INTO hits" "${LOADER}/argv"; }
 
 test_a_role_source_load_allows_server_credentials_when_the_server_has_the_setting() {
-  current_test="loader --source, setting present"
+  current_test="loader --data, setting present"
   tests_run=$((tests_run + 1))
   SETTING_PRESENT=1 FAIL_ON="" run_loader false "$(printf 'r0\t5\n')" "s3('https://easy-db-lab-x.s3.amazonaws.com/h.parquet', 'Parquet')"
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${out}"; return; }
@@ -240,7 +240,7 @@ test_a_role_source_load_allows_server_credentials_when_the_server_has_the_settin
 }
 
 test_a_role_source_load_on_a_server_without_the_setting_does_not_pass_it() {
-  current_test="loader --source, setting absent"
+  current_test="loader --data, setting absent"
   tests_run=$((tests_run + 1))
   SETTING_PRESENT=0 FAIL_ON="" run_loader false "$(printf 'r0\t5\n')" "s3('https://easy-db-lab-x.s3.amazonaws.com/h.parquet', 'Parquet')"
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${out}"; return; }

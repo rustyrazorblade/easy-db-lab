@@ -51,6 +51,52 @@ The ad-hoc `--from` path is the one-time variant of a registered source: both re
 - **THEN** `kit list` does not include kits from that path
 - **THEN** no error is raised
 
+### Requirement: Per-call kit source directory
+`kit install <name>` SHALL accept `--source <dir>`. With it, the kit SHALL be read from
+`<dir>/<name>/` for that call only. The profile kits directory, the sources registered with
+`kit source add`, and the built-in kits SHALL NOT be consulted for that kit, and
+`kit-sources.yaml` SHALL NOT be read for it or changed. Without `--source`, resolution SHALL
+follow the template discovery order unchanged. The `--source` value is read before parsing,
+because the kit's `kit.yaml` declares the install options the command accepts.
+
+#### Scenario: --source installs from the given directory
+- **WHEN** a source named `shared` is registered and holds kit `my-kit`
+- **AND** the user runs `kit install my-kit --source <dir>` where `<dir>/my-kit/kit.yaml` exists
+- **THEN** the files from `<dir>/my-kit/` are installed, and options declared by that `kit.yaml` are accepted
+- **THEN** `kit-sources.yaml` is byte-for-byte unchanged
+
+#### Scenario: Without --source the registered source is used
+- **WHEN** a source is registered that holds kit `my-kit`
+- **AND** the user runs `kit install my-kit`
+- **THEN** the kit is installed from the registered source
+
+#### Scenario: --source directory lacks the kit
+- **WHEN** the user runs `kit install my-kit --source <dir>` and `<dir>/my-kit/kit.yaml` does not exist
+- **THEN** the command fails with an error that names `<dir>` and `my-kit`
+- **THEN** nothing is written to the workspace
+
+#### Scenario: --source kit has an invalid kit.yaml
+- **WHEN** the user runs `kit install my-kit --source <dir>` and `<dir>/my-kit/kit.yaml` is not a valid kit descriptor
+- **THEN** the command fails with an invalid-argument error that names that file, with no stack trace
+- **THEN** nothing is written to the workspace
+
+#### Scenario: --source kit name leaves the directory
+- **WHEN** the user runs `kit install <name> --source <dir>` and `<name>` is not a single directory name inside `<dir>` (for example `../other/my-kit`)
+- **THEN** the command fails with an error that names `<name>` and `<dir>`
+
+### Requirement: Reserved install option names
+`kit install <name>` itself owns `--source`, `--force`, `--help` and `-h` (`Constants.Kit.RESERVED_INSTALL_FLAGS`). A kit SHALL NOT declare a top-level (install) arg with one of these flags. Loading such a `kit.yaml` SHALL fail with an error that names the kit, the arg and the file. The failure SHALL stop only `kit install` of that kit; every other command and kit SHALL still work. A kit MAY declare `--version`, and a command arg (under `commands:`) MAY use any flag, because neither reaches the install subcommand.
+
+#### Scenario: A kit declares a reserved install flag
+- **WHEN** a kit's `kit.yaml` declares the install arg `--source`
+- **AND** the user runs `kit install <that kit>`
+- **THEN** the command fails with an error that names the kit, `--source` and the `kit.yaml`
+- **THEN** nothing is written to the workspace
+
+#### Scenario: Other kits are not affected
+- **WHEN** one registered kit declares a reserved install flag
+- **THEN** `kit install` of any other kit works as before
+
 ### Requirement: Kit descriptor filename
 The kit descriptor file SHALL be named `kit.yaml`.
 The CLI loader SHALL look for `kit.yaml` when resolving a kit's configuration from any template source (classpath, profile directory, or ad-hoc `--from` path).

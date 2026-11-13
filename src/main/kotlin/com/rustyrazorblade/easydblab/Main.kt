@@ -36,7 +36,7 @@ fun main(arguments: Array<String>) {
         }
     }
 
-    val parser = CommandLineParser()
+    val parser = CommandLineParser(arguments)
     try {
         parser.eval(arguments)
     } catch (e: DockerException) {

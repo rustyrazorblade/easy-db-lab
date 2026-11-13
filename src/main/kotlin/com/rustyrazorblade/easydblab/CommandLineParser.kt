@@ -29,6 +29,7 @@ import com.rustyrazorblade.easydblab.commands.exec.Exec
 import com.rustyrazorblade.easydblab.commands.grafana.Grafana
 import com.rustyrazorblade.easydblab.commands.ingress.Ingress
 import com.rustyrazorblade.easydblab.commands.install.KitInstallCommandFactory
+import com.rustyrazorblade.easydblab.commands.install.KitInstallSourceOverride
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommandFactory
 import com.rustyrazorblade.easydblab.commands.kit.Kit
 import com.rustyrazorblade.easydblab.commands.logs.Logs
@@ -131,8 +132,16 @@ class EasyDBLabCommand : Runnable {
  *
  * All commands are registered declaratively via @Command annotations.
  * KoinCommandFactory provides command instances with injected dependencies.
+ *
+ * [arguments] are the arguments [eval] will run. The parser reads them once, before it registers
+ * the dynamic kit install subcommands, for one reason: a `kit install <name> --source <dir>` call
+ * must register `<name>` from `<dir>`, whose `kit.yaml` declares the install options. Pass the
+ * same arguments to [eval]. There is no default, so no caller can drop `--source` by accident; a
+ * caller that only inspects [commandLine] passes `emptyArray()`.
  */
-class CommandLineParser : KoinComponent {
+class CommandLineParser(
+    private val arguments: Array<String>,
+) : KoinComponent {
     private val eventBus: EventBus by inject()
 
     /**
@@ -193,8 +202,23 @@ class CommandLineParser : KoinComponent {
         get<KitCommandScanner>().findAll()
     }
 
+    /**
+     * Why a kit's install subcommand could not be built, by kit name: its `kit.yaml` is not a valid
+     * descriptor, or (with `--source`) the directory has no such kit. One broken kit must not stop
+     * every other command, so the error is kept and reported only by `kit install` of that kit.
+     */
+    private val kitLoadErrors = mutableMapOf<String, IllegalArgumentException>()
+
+    /**
+     * Runs [input] through picocli.
+     *
+     * @throws IllegalArgumentException if [arguments] are `kit install <name>` and that kit could
+     *   not be loaded: its `kit.yaml` is invalid, or `--source <dir>` has no readable kit `<name>`.
+     */
     @Suppress("SpreadOperator")
     fun eval(input: Array<String>) {
+        KitInstallSourceOverride.kitName(arguments)?.let { kitLoadErrors[it] }?.let { throw it }
+
         // Use PicoCLI for all command execution
         val exitCode = commandLine.execute(*input)
 
@@ -277,6 +301,17 @@ class CommandLineParser : KoinComponent {
         val kitCL = commandLine.getSubcommands()["kit"] ?: return
         val installCL = kitCL.getSubcommands()["install"] ?: return
 
+        // `kit install <name> --source <dir>` reads that one kit from <dir> for this call only.
+        // It is registered first, so the same name from the shared sources never replaces it.
+        KitInstallSourceOverride.from(arguments)?.let { override ->
+            try {
+                val source = resolver.resolveIn(override.dir, override.kitName)
+                installCL.addSubcommand(override.kitName, factory.build(resolver.loadKitConfigIn(source), source))
+            } catch (e: IllegalArgumentException) {
+                kitLoadErrors[override.kitName] = e
+            }
+        }
+
         for (name in resolver.listAvailableTemplates()) {
             val source =
                 try {
@@ -284,10 +319,15 @@ class CommandLineParser : KoinComponent {
                 } catch (e: Exception) {
                     continue
                 }
-            val config = resolver.loadInstallConfig(source) ?: continue
-            if (name !in installCL.subcommands.keys) {
-                installCL.addSubcommand(name, factory.build(config, source))
-            }
+            if (name in installCL.subcommands.keys || name in kitLoadErrors) continue
+            val config =
+                try {
+                    resolver.loadInstallConfig(source)
+                } catch (e: IllegalArgumentException) {
+                    kitLoadErrors[name] = e
+                    null
+                } ?: continue
+            installCL.addSubcommand(name, factory.build(config, source))
         }
     }
 

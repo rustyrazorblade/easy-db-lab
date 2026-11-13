@@ -71,7 +71,7 @@ class CommandLineParserTest : BaseKoinTest() {
         }
 
         // --help exits 0, so eval() returns rather than reaching exitProcess.
-        CommandLineParser().eval(arrayOf("--help"))
+        CommandLineParser(arrayOf("--help")).eval(arrayOf("--help"))
 
         val output = stdout.toString()
         assertThat(output).contains("clickhouse")
@@ -87,7 +87,7 @@ class CommandLineParserTest : BaseKoinTest() {
         kitDir.mkdirs()
         File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: profile\n")
 
-        val commandLine = CommandLineParser().commandLine
+        val commandLine = CommandLineParser(emptyArray()).commandLine
         val profileGroup = commandLine.subcommands.getValue("profile")
 
         assertThat(profileGroup.commandSpec.userObject()).isInstanceOf(Profile::class.java)
@@ -96,7 +96,7 @@ class CommandLineParserTest : BaseKoinTest() {
 
     @Test
     fun `root usage includes a footer pointing to the help topic system`() {
-        CommandLineParser().eval(arrayOf("--help"))
+        CommandLineParser(arrayOf("--help")).eval(arrayOf("--help"))
 
         val output = stdout.toString()
         assertThat(output).contains("Run 'easy-db-lab help' to list task-oriented guides.")
@@ -105,7 +105,7 @@ class CommandLineParserTest : BaseKoinTest() {
     @Test
     fun `a command mapping to a topic includes a footer naming its related help topic`() {
         // cassandra is both a command group and a help topic.
-        val commandLine = CommandLineParser().commandLine
+        val commandLine = CommandLineParser(emptyArray()).commandLine
         val cassandraGroup = commandLine.subcommands.getValue("cassandra")
 
         // Request usage for the cassandra command.
@@ -121,7 +121,7 @@ class CommandLineParserTest : BaseKoinTest() {
         // If wireHelpFooters() hardcoded topic names, this test would fail when a new topic is
         // added. By verifying that the topic scan drives the footer, we prove the pointers
         // track the packaged topic set automatically.
-        val commandLine = CommandLineParser().commandLine
+        val commandLine = CommandLineParser(emptyArray()).commandLine
         val helpTopicService = getKoin().get<HelpTopicService>()
         val topics = helpTopicService.findAll()
 
@@ -144,7 +144,7 @@ class CommandLineParserTest : BaseKoinTest() {
     /** Metrics and logs are stored by Mimir and Loki; the snapshot commands went with VictoriaMetrics and VictoriaLogs. */
     @Test
     fun `the metrics and logs snapshot commands are unknown, and logs query remains`() {
-        val commandLine = CommandLineParser().commandLine
+        val commandLine = CommandLineParser(emptyArray()).commandLine
 
         for (args in listOf("metrics backup", "metrics import", "metrics ls", "logs backup", "logs import", "logs ls")) {
             assertThatThrownBy { commandLine.parseArgs(*args.split(" ").toTypedArray()) }
@@ -161,7 +161,7 @@ class CommandLineParserTest : BaseKoinTest() {
     /** The SOCKS tunnel is managed by the `socks` group; the old top-level names are gone, with no aliases. */
     @Test
     fun `socks start and socks stop parse, and start-socks and stop-socks are unknown`() {
-        val commandLine = CommandLineParser().commandLine
+        val commandLine = CommandLineParser(emptyArray()).commandLine
 
         assertThat(
             commandLine.subcommands
@@ -187,6 +187,6 @@ class CommandLineParserTest : BaseKoinTest() {
                     .distinct()
                     .flatMap { undescribed(it) }
 
-        assertThat(undescribed(CommandLineParser().commandLine)).isEmpty()
+        assertThat(undescribed(CommandLineParser(emptyArray()).commandLine)).isEmpty()
     }
 }

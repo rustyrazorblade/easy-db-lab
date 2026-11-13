@@ -31,6 +31,7 @@ import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
 import com.rustyrazorblade.easydblab.services.ResourceManager
@@ -38,6 +39,7 @@ import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -142,6 +144,7 @@ class StatusTest : BaseKoinTest() {
                 single<RemoteOperationsService> { mockRemoteOperationsService }
                 single<EMRService> { mockEmrService }
                 single<StressJobService> { mockStressJobService }
+                single<ObjectStore> { S3ObjectStore(get(), get()) }
                 single<ProxyAvailability> { DefaultProxyAvailability() }
                 single { CommandFailureReporter(get(), emptyList()) }
                 // Real instance: the scanner only reads the filesystem, so faking it would

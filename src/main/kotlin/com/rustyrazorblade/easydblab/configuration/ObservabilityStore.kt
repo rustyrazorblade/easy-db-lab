@@ -47,20 +47,32 @@ data class ObservabilityStore(
     /** Key prefix of the Pyroscope server's live backend; Pyroscope makes its own layout under it. */
     fun profilesPrefix(): String = Constants.Observability.PROFILES_ROOT
 
+    /** Location of Tempo's backend root. */
+    fun tracesRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket).resolve(tracesPrefix())
+
+    /** Location of Pyroscope's backend root. */
+    fun profilesRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket).resolve(profilesPrefix())
+
+    /** Location of this tenant's metrics, the directory Mimir makes under its root. */
+    fun tenantMetricsRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket).resolve(metricsPrefix()).resolve(tenant)
+
+    /** Location of Loki's backend root. */
+    fun logsRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket).resolve(logsPrefix())
+
     /** The tenant's Grafana annotation backups. */
-    fun annotationsRoot(): ClusterS3Path =
-        ClusterS3Path
+    fun annotationsRoot(): ClusterStoragePath =
+        ClusterStoragePath
             .root(bucket)
             .resolve(Constants.Observability.GRAFANA_ROOT)
             .resolve(Constants.Observability.ANNOTATIONS_DIR)
             .resolve(tenant)
 
     /** File of one Grafana annotations backup. */
-    fun annotationsArtifact(name: SnapshotName): ClusterS3Path = annotationsRoot().resolve("$name.json")
+    fun annotationsArtifact(name: SnapshotName): ClusterStoragePath = annotationsRoot().resolve("$name.json")
 
     /** The folder of one test's documents, `reports/<tenant>/<cluster>`, for the cluster label [cluster]. */
-    fun documentsRoot(cluster: String): ClusterS3Path =
-        ClusterS3Path
+    fun documentsRoot(cluster: String): ClusterStoragePath =
+        ClusterStoragePath
             .root(bucket)
             .resolve(Constants.Observability.REPORTS_ROOT)
             .resolve(tenant)
@@ -70,7 +82,7 @@ data class ObservabilityStore(
     fun document(
         cluster: String,
         name: String,
-    ): ClusterS3Path = documentsRoot(cluster).resolve(name)
+    ): ClusterStoragePath = documentsRoot(cluster).resolve(name)
 }
 
 /**

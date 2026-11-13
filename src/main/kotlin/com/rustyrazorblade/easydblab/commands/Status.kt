@@ -5,9 +5,9 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
@@ -23,6 +23,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -102,6 +103,7 @@ class Status(
     private val emrService: EMRService by inject()
     private val openSearchService: OpenSearchService by inject()
     private val stressJobService: StressJobService by inject()
+    private val objectStore: ObjectStore by inject()
     private val workspaceKitScanner: WorkspaceKitScanner by inject()
 
     private data class NodeDetail(
@@ -408,7 +410,7 @@ class Status(
             return
         }
 
-        val dataPath = ClusterS3Path(clusterState.dataBucket)
+        val dataPath = ClusterStoragePath.root(clusterState.dataBucket)
         val store = ObservabilityStore.from(clusterState)
         println(
             """
@@ -416,17 +418,17 @@ class Status(
                 |=== S3 BUCKET ===
                 |Bucket:    ${clusterState.s3Bucket}
                 |Fullpath:     ${clusterState.s3Bucket}/${clusterState.clusterPrefix()}
-                |  Cassandra: ${dataPath.cassandra()}
-                |  ClickHouse: ${dataPath.clickhouse()}
-                |  Spark: ${dataPath.spark()}
-                |  EMR Logs: ${dataPath.emrLogs()}
+                |  Cassandra: ${objectStore.uriOf(dataPath.cassandra())}
+                |  ClickHouse: ${objectStore.uriOf(dataPath.clickhouse())}
+                |  Spark: ${objectStore.uriOf(dataPath.spark())}
+                |  EMR Logs: ${objectStore.uriOf(dataPath.emrLogs())}
                 |Observability:
                 |  Tenant:    ${store.tenant}
-                |  Traces:    s3://${store.bucket}/${store.tracesPrefix()}
-                |  Profiles:  s3://${store.bucket}/${store.profilesPrefix()}
-                |  Metrics:   s3://${store.bucket}/${store.metricsPrefix()}/${store.tenant}
-                |  Logs:      s3://${store.bucket}/${store.logsPrefix()}
-                |  Annotations: ${store.annotationsRoot()}
+                |  Traces:    ${objectStore.uriOf(store.tracesRoot())}
+                |  Profiles:  ${objectStore.uriOf(store.profilesRoot())}
+                |  Metrics:   ${objectStore.uriOf(store.tenantMetricsRoot())}
+                |  Logs:      ${objectStore.uriOf(store.logsRoot())}
+                |  Annotations: ${objectStore.uriOf(store.annotationsRoot())}
             """.trimMargin(),
         )
     }

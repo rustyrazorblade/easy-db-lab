@@ -1,8 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.SnapshotName
 import com.rustyrazorblade.easydblab.events.Event
@@ -18,7 +18,7 @@ import java.time.Clock
  * @property annotationCount The number of annotations captured.
  */
 data class GrafanaAnnotationBackupResult(
-    val s3Path: ClusterS3Path,
+    val s3Path: ClusterStoragePath,
     val annotationCount: Int,
 )
 
@@ -69,13 +69,13 @@ class DefaultGrafanaAnnotationBackupService(
             val name = SnapshotName.firstFree(clusterState, clock.instant()) { objectStore.fileExists(store.annotationsArtifact(it)) }
             val artifact = store.annotationsArtifact(name)
 
-            eventBus.emit(Event.Backup.GrafanaAnnotationsBackupStarting(artifact.toUri()))
+            eventBus.emit(Event.Backup.GrafanaAnnotationsBackupStarting(objectStore.uriOf(artifact)))
 
             val annotationsJson = grafanaClient.fetchAnnotations(controlHost)
             val count = countAnnotations(annotationsJson)
             objectStore.uploadContent(annotationsJson, artifact)
 
-            eventBus.emit(Event.Backup.GrafanaAnnotationsBackupComplete(artifact.toUri(), count))
+            eventBus.emit(Event.Backup.GrafanaAnnotationsBackupComplete(objectStore.uriOf(artifact), count))
             GrafanaAnnotationBackupResult(s3Path = artifact, annotationCount = count)
         }
 

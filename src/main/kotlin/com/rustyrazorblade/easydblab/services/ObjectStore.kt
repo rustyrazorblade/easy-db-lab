@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import java.io.File
 import java.nio.file.Path
 
@@ -13,15 +13,15 @@ import java.nio.file.Path
  * - Azure Blob Storage
  * - Local filesystem (for testing/development)
  *
- * All operations use ClusterS3Path for type-safe path handling and proper cluster
- * namespacing. Note: ClusterS3Path will be renamed to ClusterStoragePath in a
+ * All operations use ClusterStoragePath for type-safe path handling and proper cluster
+ * namespacing. Note: ClusterStoragePath will be renamed to ClusterStoragePath in a
  * future refactoring to be truly cloud-agnostic.
  *
  * Implementations should:
  * - Use retry logic for transient failures (network issues, throttling)
  * - Provide user feedback via OutputHandler when showProgress is true
  * - Handle provider-specific exceptions and convert to appropriate types
- * - Support cluster-specific namespacing through ClusterS3Path
+ * - Support cluster-specific namespacing through ClusterStoragePath
  *
  * Example usage:
  * ```kotlin
@@ -43,7 +43,7 @@ interface ObjectStore {
      */
     fun uploadFile(
         localFile: File,
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         showProgress: Boolean = true,
     ): UploadResult
 
@@ -59,7 +59,7 @@ interface ObjectStore {
      * @throws Exception if remote file doesn't exist or download fails (provider-specific)
      */
     fun downloadFile(
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         localPath: Path,
         showProgress: Boolean = true,
     ): DownloadResult
@@ -74,7 +74,7 @@ interface ObjectStore {
      * @return List of FileInfo for files under the prefix
      */
     fun listFiles(
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         recursive: Boolean = true,
         startAfter: String = "",
     ): List<FileInfo>
@@ -87,7 +87,7 @@ interface ObjectStore {
      * @throws Exception if deletion fails (provider-specific)
      */
     fun deleteFile(
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         showProgress: Boolean = true,
     )
 
@@ -97,7 +97,7 @@ interface ObjectStore {
      * @param remotePath The cloud storage path to check
      * @return true if the file exists, false otherwise
      */
-    fun fileExists(remotePath: ClusterS3Path): Boolean
+    fun fileExists(remotePath: ClusterStoragePath): Boolean
 
     /**
      * Gets file metadata from cloud storage without downloading.
@@ -105,7 +105,7 @@ interface ObjectStore {
      * @param remotePath The cloud storage path to get metadata for
      * @return FileInfo with file metadata, or null if file doesn't exist
      */
-    fun getFileInfo(remotePath: ClusterS3Path): FileInfo?
+    fun getFileInfo(remotePath: ClusterStoragePath): FileInfo?
 
     /**
      * Downloads all files under a prefix to a local directory.
@@ -117,7 +117,7 @@ interface ObjectStore {
      * @return DownloadDirectoryResult with stats about the download
      */
     fun downloadDirectory(
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         localDir: Path,
         showProgress: Boolean = true,
     ): DownloadDirectoryResult
@@ -133,7 +133,7 @@ interface ObjectStore {
      */
     fun uploadDirectory(
         localDir: Path,
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         showProgress: Boolean = true,
     ): UploadDirectoryResult
 
@@ -145,7 +145,7 @@ interface ObjectStore {
      */
     fun uploadContent(
         content: String,
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
     )
 
     /**
@@ -155,7 +155,7 @@ interface ObjectStore {
      * @return The file content as a string
      * @throws Exception if the file doesn't exist or read fails (provider-specific)
      */
-    fun readContent(remotePath: ClusterS3Path): String
+    fun readContent(remotePath: ClusterStoragePath): String
 
     /**
      * Checks if any files exist under a cloud storage prefix.
@@ -163,7 +163,14 @@ interface ObjectStore {
      * @param remotePath The cloud storage path prefix to check
      * @return true if at least one file exists under the prefix, false otherwise
      */
-    fun directoryExists(remotePath: ClusterS3Path): Boolean
+    fun directoryExists(remotePath: ClusterStoragePath): Boolean
+
+    /**
+     * The location of [path] as this store spells it, for showing to the user: `s3://bucket/key`
+     * on S3. Every event and message that names a stored location renders it through here, so the
+     * text depends on the store that holds the object rather than on the path type.
+     */
+    fun uriOf(path: ClusterStoragePath): String
 
     /**
      * Represents a file in cloud storage with metadata.
@@ -173,7 +180,7 @@ interface ObjectStore {
      * @property lastModified Last modification timestamp (ISO-8601 format)
      */
     data class FileInfo(
-        val path: ClusterS3Path,
+        val path: ClusterStoragePath,
         val size: Long,
         val lastModified: String,
     )
@@ -185,7 +192,7 @@ interface ObjectStore {
      * @property fileSize Size of the uploaded file in bytes
      */
     data class UploadResult(
-        val remotePath: ClusterS3Path,
+        val remotePath: ClusterStoragePath,
         val fileSize: Long,
     )
 
@@ -221,7 +228,7 @@ interface ObjectStore {
      * @property totalBytes Total bytes uploaded
      */
     data class UploadDirectoryResult(
-        val remotePath: ClusterS3Path,
+        val remotePath: ClusterStoragePath,
         val filesUploaded: Int,
         val totalBytes: Long,
     )

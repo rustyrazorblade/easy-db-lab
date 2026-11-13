@@ -50,7 +50,7 @@ Key methods:
 - `clusterPrefix()` — returns `"clusters/{name}-{clusterId}"`
 - `metricsConfigId()` — returns `"edl-{name}-{clusterId}"` (truncated to 32 chars)
 - `dataBucketName()` — returns `"easy-db-lab-data-{clusterId}"`
-- `s3Path()` — extension function returning `ClusterS3Path` for this cluster
+- `s3Path()` — extension function returning `ClusterStoragePath` for this cluster
 
 ### ClusterHost
 
@@ -111,12 +111,12 @@ val testState = ClusterState(
 )
 ```
 
-## S3 Path Management (`ClusterS3Path.kt`)
+## S3 Path Management (`ClusterStoragePath.kt`)
 
 Immutable, type-safe S3 path abstraction. Each cluster is isolated under `clusters/{name}-{clusterId}/`.
 
 ```kotlin
-val path = ClusterS3Path.from(clusterState)
+val path = ClusterStoragePath.from(clusterState)
 path.cassandra()          // s3://bucket/clusters/.../cassandra
 path.backups()            // s3://bucket/clusters/.../backups
 path.kubeconfig()         // s3://bucket/clusters/.../config/kubeconfig

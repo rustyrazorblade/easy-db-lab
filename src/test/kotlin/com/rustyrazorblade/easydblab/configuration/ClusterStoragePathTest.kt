@@ -4,7 +4,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
-class ClusterS3PathTest {
+class ClusterStoragePathTest {
     @Test
     fun `from creates path with cluster prefix under account bucket`() {
         val state =
@@ -15,9 +15,9 @@ class ClusterS3PathTest {
                 clusterId = "abc12345-6789-0000-0000-000000000000",
             )
 
-        val path = ClusterS3Path.from(state)
+        val path = ClusterStoragePath.from(state)
 
-        assertThat(path.toString()).isEqualTo("s3://easy-db-lab-account-bucket/clusters/test-cluster-abc12345-6789-0000-0000-000000000000")
+        assertThat(path.toString()).isEqualTo("easy-db-lab-account-bucket/clusters/test-cluster-abc12345-6789-0000-0000-000000000000")
         assertThat(path.bucket).isEqualTo("easy-db-lab-account-bucket")
         assertThat(path.getKey()).isEqualTo("clusters/test-cluster-abc12345-6789-0000-0000-000000000000")
     }
@@ -32,14 +32,14 @@ class ClusterS3PathTest {
                 clusterId = "def456",
             )
 
-        val path = ClusterS3Path.from(state)
+        val path = ClusterStoragePath.from(state)
 
         assertThat(path.spark().toString())
-            .isEqualTo("s3://easy-db-lab-account-bucket/clusters/myproject-def456/spark")
+            .isEqualTo("easy-db-lab-account-bucket/clusters/myproject-def456/spark")
         assertThat(path.cassandra().toString())
-            .isEqualTo("s3://easy-db-lab-account-bucket/clusters/myproject-def456/cassandra")
+            .isEqualTo("easy-db-lab-account-bucket/clusters/myproject-def456/cassandra")
         assertThat(path.config().toString())
-            .isEqualTo("s3://easy-db-lab-account-bucket/clusters/myproject-def456/config")
+            .isEqualTo("easy-db-lab-account-bucket/clusters/myproject-def456/config")
     }
 
     @Test
@@ -51,44 +51,44 @@ class ClusterS3PathTest {
                 s3Bucket = null,
             )
 
-        assertThatThrownBy { ClusterS3Path.from(state) }
+        assertThatThrownBy { ClusterStoragePath.from(state) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("S3 bucket not configured")
     }
 
     @Test
     fun `resolve appends path segments`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val resolved = path.resolve("spark").resolve("app.jar")
 
         assertThat(resolved.toString())
-            .isEqualTo("s3://my-bucket/spark/app.jar")
+            .isEqualTo("my-bucket/spark/app.jar")
         assertThat(resolved.getKey())
             .isEqualTo("spark/app.jar")
     }
 
     @Test
     fun `resolve handles paths with slashes`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val resolved = path.resolve("spark/nested/app.jar")
 
         assertThat(resolved.toString())
-            .isEqualTo("s3://my-bucket/spark/nested/app.jar")
+            .isEqualTo("my-bucket/spark/nested/app.jar")
     }
 
     @Test
     fun `resolve ignores empty segments`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val resolved = path.resolve("spark//app.jar")
 
         assertThat(resolved.toString())
-            .isEqualTo("s3://my-bucket/spark/app.jar")
+            .isEqualTo("my-bucket/spark/app.jar")
     }
 
     @Test
     fun `getParent returns parent path`() {
         val path =
-            ClusterS3Path
+            ClusterStoragePath
                 .root("my-bucket")
                 .resolve("spark")
                 .resolve("app.jar")
@@ -97,12 +97,12 @@ class ClusterS3PathTest {
 
         assertThat(parent).isNotNull
         assertThat(parent.toString())
-            .isEqualTo("s3://my-bucket/spark")
+            .isEqualTo("my-bucket/spark")
     }
 
     @Test
     fun `getParent returns null for root`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
 
         assertThat(path.getParent()).isNull()
     }
@@ -110,7 +110,7 @@ class ClusterS3PathTest {
     @Test
     fun `getFileName returns last segment`() {
         val path =
-            ClusterS3Path
+            ClusterStoragePath
                 .root("my-bucket")
                 .resolve("spark")
                 .resolve("app.jar")
@@ -120,248 +120,238 @@ class ClusterS3PathTest {
 
     @Test
     fun `getFileName returns null for root`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
 
         assertThat(path.getFileName()).isNull()
     }
 
     @Test
-    fun `toString returns full S3 URI`() {
+    fun `toString is bucket and key with no URI scheme`() {
         val path =
-            ClusterS3Path
+            ClusterStoragePath
                 .root("my-bucket")
                 .resolve("backups")
                 .resolve("snapshot.tar.gz")
 
         assertThat(path.toString())
-            .isEqualTo("s3://my-bucket/backups/snapshot.tar.gz")
+            .isEqualTo("my-bucket/backups/snapshot.tar.gz")
+            .doesNotContain("://")
     }
 
     @Test
-    fun `toUri returns same as toString`() {
-        val path = ClusterS3Path.root("my-bucket").resolve("file.txt")
+    fun `an empty store prefix gives the unprefixed key`() {
+        val path = ClusterStoragePath("my-bucket", prefix = "").resolve("mimir")
 
-        assertThat(path.toUri()).isEqualTo(path.toString())
+        assertThat(path.getKey()).isEqualTo("mimir")
+    }
+
+    @Test
+    fun `a store prefix leads every key`() {
+        val root = ClusterStoragePath.root("my-bucket", prefix = "team-a")
+
+        assertThat(root.getKey()).isEqualTo("team-a")
+        assertThat(root.resolve("reports/acme").getKey()).isEqualTo("team-a/reports/acme")
+        assertThat(root.resolve("reports/acme").toString()).isEqualTo("my-bucket/team-a/reports/acme")
+    }
+
+    @Test
+    fun `a store prefix survives resolve, getParent and helpers but is never a file name`() {
+        val root = ClusterStoragePath.root("my-bucket", prefix = "team-a")
+
+        assertThat(
+            root
+                .spark()
+                .resolve("app.jar")
+                .getParent()
+                ?.getKey(),
+        ).isEqualTo("team-a/spark")
+        assertThat(root.getFileName()).isNull()
+        assertThat(root.getParent()).isNull()
+    }
+
+    @Test
+    fun `a nested store prefix is split like any other path`() {
+        val root = ClusterStoragePath.root("my-bucket", prefix = "/org/team-a/")
+
+        assertThat(root.resolve("loki").getKey()).isEqualTo("org/team-a/loki")
     }
 
     @Test
     fun `root creates path without path segments`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
 
-        assertThat(path.toString()).isEqualTo("s3://my-bucket")
+        assertThat(path.toString()).isEqualTo("my-bucket")
         assertThat(path.getKey()).isEmpty()
     }
 
     @Test
     fun `fromKey reconstructs path from S3 key`() {
-        val path = ClusterS3Path.fromKey("my-bucket", "spark/myapp.jar")
+        val path = ClusterStoragePath.fromKey("my-bucket", "spark/myapp.jar")
 
-        assertThat(path.toString()).isEqualTo("s3://my-bucket/spark/myapp.jar")
+        assertThat(path.toString()).isEqualTo("my-bucket/spark/myapp.jar")
         assertThat(path.getKey()).isEqualTo("spark/myapp.jar")
         assertThat(path.getFileName()).isEqualTo("myapp.jar")
     }
 
     @Test
     fun `spark returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val sparkPath = path.spark()
 
         assertThat(sparkPath.toString())
-            .isEqualTo("s3://my-bucket/spark")
+            .isEqualTo("my-bucket/spark")
     }
 
     @Test
     fun `cassandra returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val cassandraPath = path.cassandra()
 
         assertThat(cassandraPath.toString())
-            .isEqualTo("s3://my-bucket/cassandra")
+            .isEqualTo("my-bucket/cassandra")
     }
 
     @Test
     fun `clickhouse returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val clickhousePath = path.clickhouse()
 
         assertThat(clickhousePath.toString())
-            .isEqualTo("s3://my-bucket/clickhouse")
+            .isEqualTo("my-bucket/clickhouse")
     }
 
     @Test
     fun `emrLogs returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val emrLogsPath = path.emrLogs()
 
         assertThat(emrLogsPath.toString())
-            .isEqualTo("s3://my-bucket/spark/emr-logs")
+            .isEqualTo("my-bucket/spark/emr-logs")
     }
 
     @Test
     fun `backups returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val backupsPath = path.backups()
 
         assertThat(backupsPath.toString())
-            .isEqualTo("s3://my-bucket/backups")
+            .isEqualTo("my-bucket/backups")
     }
 
     @Test
     fun `logs returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val logsPath = path.logs()
 
         assertThat(logsPath.toString())
-            .isEqualTo("s3://my-bucket/logs")
+            .isEqualTo("my-bucket/logs")
     }
 
     @Test
     fun `data returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val dataPath = path.data()
 
         assertThat(dataPath.toString())
-            .isEqualTo("s3://my-bucket/data")
+            .isEqualTo("my-bucket/data")
     }
 
     @Test
     fun `convenience methods can be chained with resolve`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val jarPath = path.spark().resolve("myapp.jar")
 
         assertThat(jarPath.toString())
-            .isEqualTo("s3://my-bucket/spark/myapp.jar")
+            .isEqualTo("my-bucket/spark/myapp.jar")
         assertThat(jarPath.getFileName()).isEqualTo("myapp.jar")
     }
 
     @Test
     fun `immutability - resolve returns new instance`() {
-        val original = ClusterS3Path.root("my-bucket")
+        val original = ClusterStoragePath.root("my-bucket")
         val resolved = original.resolve("subdir")
 
-        assertThat(original.toString()).isEqualTo("s3://my-bucket")
-        assertThat(resolved.toString()).isEqualTo("s3://my-bucket/subdir")
+        assertThat(original.toString()).isEqualTo("my-bucket")
+        assertThat(resolved.toString()).isEqualTo("my-bucket/subdir")
     }
 
     @Test
     fun `kubeconfig returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val kubeconfigPath = path.kubeconfig()
 
         assertThat(kubeconfigPath.toString())
-            .isEqualTo("s3://my-bucket/config/kubeconfig")
+            .isEqualTo("my-bucket/config/kubeconfig")
     }
 
     @Test
     fun `k8s returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val k8sPath = path.k8s()
 
         assertThat(k8sPath.toString())
-            .isEqualTo("s3://my-bucket/config/k8s")
+            .isEqualTo("my-bucket/config/k8s")
     }
 
     @Test
     fun `config returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val configPath = path.config()
 
         assertThat(configPath.toString())
-            .isEqualTo("s3://my-bucket/config")
+            .isEqualTo("my-bucket/config")
     }
 
     @Test
     fun `cassandraPatch returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val cassandraPatchPath = path.cassandraPatch()
 
         assertThat(cassandraPatchPath.toString())
-            .isEqualTo("s3://my-bucket/config/cassandra.patch.yaml")
+            .isEqualTo("my-bucket/config/cassandra.patch.yaml")
     }
 
     @Test
     fun `cassandraVersions returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val cassandraVersionsPath = path.cassandraVersions()
 
         assertThat(cassandraVersionsPath.toString())
-            .isEqualTo("s3://my-bucket/config/cassandra_versions.yaml")
+            .isEqualTo("my-bucket/config/cassandra_versions.yaml")
     }
 
     @Test
     fun `envScript returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val envScriptPath = path.envScript()
 
         assertThat(envScriptPath.toString())
-            .isEqualTo("s3://my-bucket/config/env.sh")
+            .isEqualTo("my-bucket/config/env.sh")
     }
 
     @Test
     fun `environmentScript returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val environmentScriptPath = path.environmentScript()
 
         assertThat(environmentScriptPath.toString())
-            .isEqualTo("s3://my-bucket/config/environment.sh")
+            .isEqualTo("my-bucket/config/environment.sh")
     }
 
     @Test
     fun `setupInstanceScript returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
+        val path = ClusterStoragePath.root("my-bucket")
         val setupInstanceScriptPath = path.setupInstanceScript()
 
         assertThat(setupInstanceScriptPath.toString())
-            .isEqualTo("s3://my-bucket/config/setup_instance.sh")
-    }
-
-    // fromUri tests
-
-    @Test
-    fun `fromUri parses valid S3 URI with path`() {
-        val path = ClusterS3Path.fromUri("s3://my-bucket/path/to/file.jar")
-
-        assertThat(path.bucket).isEqualTo("my-bucket")
-        assertThat(path.getKey()).isEqualTo("path/to/file.jar")
-        assertThat(path.toString()).isEqualTo("s3://my-bucket/path/to/file.jar")
-    }
-
-    @Test
-    fun `fromUri parses bucket-only URI`() {
-        val path = ClusterS3Path.fromUri("s3://my-bucket")
-
-        assertThat(path.bucket).isEqualTo("my-bucket")
-        assertThat(path.getKey()).isEmpty()
-        assertThat(path.toString()).isEqualTo("s3://my-bucket")
-    }
-
-    @Test
-    fun `fromUri throws for non-S3 URI`() {
-        assertThatThrownBy { ClusterS3Path.fromUri("https://example.com/file.jar") }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("s3://")
-    }
-
-    @Test
-    fun `fromUri throws for empty scheme`() {
-        assertThatThrownBy { ClusterS3Path.fromUri("my-bucket/file.jar") }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("s3://")
-    }
-
-    @Test
-    fun `fromUri roundtrips with toString`() {
-        val original = "s3://test-bucket/spark/jars/app-1.0.jar"
-        val path = ClusterS3Path.fromUri(original)
-
-        assertThat(path.toString()).isEqualTo(original)
+            .isEqualTo("my-bucket/config/setup_instance.sh")
     }
 
     @Test
     fun `clickhouseBackupsRoot produces account-level path not under clusters prefix`() {
-        val path = ClusterS3Path.clickhouseBackupsRoot("easy-db-lab-account-bucket")
+        val path = ClusterStoragePath.clickhouseBackupsRoot("easy-db-lab-account-bucket")
 
-        assertThat(path.toString()).isEqualTo("s3://easy-db-lab-account-bucket/clickhouse-backups")
+        assertThat(path.toString()).isEqualTo("easy-db-lab-account-bucket/clickhouse-backups")
         assertThat(path.toString()).doesNotContain("clusters/")
         assertThat(path.bucket).isEqualTo("easy-db-lab-account-bucket")
         assertThat(path.getKey()).isEqualTo("clickhouse-backups")
@@ -369,9 +359,9 @@ class ClusterS3PathTest {
 
     @Test
     fun `clickhouseBackupsRoot can be resolved to a named backup`() {
-        val path = ClusterS3Path.clickhouseBackupsRoot("my-bucket").resolve("my-backup-2024")
+        val path = ClusterStoragePath.clickhouseBackupsRoot("my-bucket").resolve("my-backup-2024")
 
-        assertThat(path.toString()).isEqualTo("s3://my-bucket/clickhouse-backups/my-backup-2024")
+        assertThat(path.toString()).isEqualTo("my-bucket/clickhouse-backups/my-backup-2024")
         assertThat(path.getFileName()).isEqualTo("my-backup-2024")
     }
 }

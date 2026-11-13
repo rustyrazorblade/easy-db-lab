@@ -2,9 +2,9 @@ package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.CommandLineParser
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -21,6 +21,7 @@ import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -112,7 +113,7 @@ class SparkStatusTest : BaseKoinTest() {
 
     @Test
     fun `the command the late-stderr notice prints parses as spark status for that step with logs`() {
-        val notice = Event.Emr.StepStderrNotFinal(stepId, stderrPath().toUri(), waitedSeconds = 420).toDisplayString()
+        val notice = Event.Emr.StepStderrNotFinal(stepId, S3Uri.uri(stderrPath()), waitedSeconds = 420).toDisplayString()
         val printed = notice.lines().single { it.startsWith("Fetch it later with: ") }.substringAfter("Fetch it later with: ")
         val args = printed.split(" ")
         assertThat(args.first()).isEqualTo("easy-db-lab")
@@ -165,12 +166,12 @@ class SparkStatusTest : BaseKoinTest() {
         verify(mockObjectStore, never()).downloadFile(any(), any(), any())
         val notUploaded = events.filterIsInstance<Event.Emr.StepStderrNotUploaded>().single()
         assertThat(notUploaded.stepId).isEqualTo(stepId)
-        assertThat(notUploaded.s3Uri).isEqualTo(stderrPath().toUri())
-        assertThat(notUploaded.toDisplayString()).contains(stderrPath().toUri())
+        assertThat(notUploaded.s3Uri).isEqualTo(S3Uri.uri(stderrPath()))
+        assertThat(notUploaded.toDisplayString()).contains(S3Uri.uri(stderrPath()))
     }
 
     private fun stderrPath() =
-        ClusterS3Path
+        ClusterStoragePath
             .from(clusterState)
             .emrLogs()
             .resolve(clusterId)

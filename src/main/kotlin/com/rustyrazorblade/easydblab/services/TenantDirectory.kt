@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 
 /**
@@ -32,7 +32,7 @@ class TenantDirectory(
         val root = Constants.Observability.METRICS_ROOT
         val names =
             objectStore
-                .listFiles(ClusterS3Path.root(bucket).resolve(root), recursive = false)
+                .listFiles(ClusterStoragePath.root(bucket).resolve(root), recursive = false)
                 .map {
                     it.path
                         .getKey()

@@ -2,11 +2,12 @@ package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkJobRequest
 import com.rustyrazorblade.easydblab.services.SparkService
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -88,7 +89,7 @@ class SparkSubmit : PicoBaseCommand() {
         val s3JarPath =
             if (jarPath.startsWith("s3://")) {
                 // Validate the S3 jar exists before submitting
-                val s3Path = ClusterS3Path.fromUri(jarPath)
+                val s3Path = S3Uri.parse(jarPath)
                 require(objectStore.fileExists(s3Path)) {
                     "JAR file does not exist in S3: $jarPath"
                 }
@@ -152,11 +153,11 @@ class SparkSubmit : PicoBaseCommand() {
 
         // Upload to the per-cluster data bucket under spark/
         val clusterState = clusterStateManager.load()
-        val jarS3Path = ClusterS3Path.root(clusterState.dataBucket).resolve("spark").resolve(localFile.name)
+        val jarS3Path = ClusterStoragePath.root(clusterState.dataBucket).resolve("spark").resolve(localFile.name)
 
         // Upload using ObjectStore (handles retry logic and progress)
         val result = objectStore.uploadFile(localFile, jarS3Path, showProgress = true)
 
-        return result.remotePath.toString()
+        return S3Uri.uri(result.remotePath)
     }
 }

@@ -1,0 +1,6 @@
+backend: s3
+prefix: __PROFILES_S3_PREFIX__
+s3:
+  bucket_name: __ACCOUNT_BUCKET__
+  endpoint: s3.__AWS_REGION__.amazonaws.com
+  region: __AWS_REGION__

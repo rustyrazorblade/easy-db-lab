@@ -20,9 +20,9 @@
 ## 3. Store backend and block selection
 
 - [x] 3.1 Add `configuration/store/StoreBackend` (sealed) with `S3Backend` and the `from(clusterState, defaultRegion)` factory. Its KDoc names the volume case and the credential source as #1035's extension points.
-- [ ] 3.2 Test first: the stub-block rendering test (a test `StoreBlockSource` and a stub fragment in `src/test/resources`; parse each output and read the block at its path; assert no `s3://`, `amazonaws.com` or S3 endpoint). Then add `configuration/store/StoreBlockRenderer` and `StoreBlockSource`.
-- [ ] 3.3 Move each object-store block into its S3 fragment, verbatim: `mimir/store/s3.yaml`, `loki/store/s3.yaml`, `tempo/store/s3.yaml`, `pyroscope/store/s3.yaml` and the compactor's `tempo-backend` fragment. Replace each block with its placeholder; the Mimir, Loki, Tempo and Pyroscope builders and `CompactorTaskDefinition` splice the fragment in.
-- [ ] 3.4 The golden tests of task 0 pass unchanged.
+- [x] 3.2 Test first: the stub-block rendering test (a test `StoreBlockSource` and a stub fragment in `src/test/resources`; parse each output and read the block at its path; assert no `s3://`, `amazonaws.com` or S3 endpoint). Then add `configuration/store/StoreBlockRenderer` and `StoreBlockSource`.
+- [x] 3.3 Move each object-store block into its S3 fragment, verbatim: `mimir/store/s3.yaml`, `loki/store/s3.yaml`, `tempo/store/s3.yaml`, `pyroscope/store/s3.yaml` and the compactor's `tempo-backend` fragment. Replace each block with its placeholder; the Mimir, Loki, Tempo and Pyroscope builders and `CompactorTaskDefinition` splice the fragment in.
+- [x] 3.4 The golden tests of task 0 pass unchanged.
 
 ## 4. Neutral cluster-config keys
 

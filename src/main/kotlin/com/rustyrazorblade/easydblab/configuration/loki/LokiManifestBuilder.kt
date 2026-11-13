@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.loki
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.services.ClusterConfigData
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -30,9 +31,11 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * ingester is named `<tenant>.<cluster>`, which puts both in every index file name.
  *
  * @property templateService Loads the config file from the classpath.
+ * @property storeBlocks Places the store's object-store block into the config ([StoreBlockRenderer]).
  */
 class LokiManifestBuilder(
     private val templateService: TemplateService,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.S3,
 ) {
     companion object {
         private const val NAMESPACE = Constants.K8s.NAMESPACE
@@ -84,7 +87,7 @@ class LokiManifestBuilder(
             .endMetadata()
             .addToData(
                 CONFIG_FILE,
-                templateService.fromResource(LokiManifestBuilder::class.java, CONFIG_FILE).substitute(),
+                templateService.fromString(storeBlocks.renderResource(LokiManifestBuilder::class.java, CONFIG_FILE)).substitute(),
             ).build()
 
     /** The ClusterIP Service over Loki's HTTP and gRPC ports. */

@@ -169,6 +169,9 @@ data class InitConfig(
     // The observability tenant the cluster's data belongs to. Fixed at init; a state file written
     // before tenants existed has no field and reads as the default tenant.
     val tenant: String = Constants.Observability.DEFAULT_TENANT,
+    // Labels a node must carry to run the observability backends, Grafana and kube-state-metrics,
+    // merged into the environment's placement (`Placement.from`). Empty adds nothing.
+    val nodeLabels: Map<String, String> = emptyMap(),
 ) {
     companion object {
         /**
@@ -227,6 +230,7 @@ data class InitConfig(
                 cni = init.cni,
                 telemetryRedirect = init.resolvedTelemetryRedirect,
                 tenant = init.tenant,
+                nodeLabels = init.nodeLabels,
             )
     }
 }

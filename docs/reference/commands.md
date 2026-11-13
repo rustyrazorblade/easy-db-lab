@@ -151,6 +151,7 @@ determined fails at `init`, before any instance is created.
 | `--ami` | Override AMI ID | (auto-detected) |
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
+| `--node-label` | Node label (key=value, repeatable) the observability backends, Grafana and kube-state-metrics are scheduled by, added to the environment's own placement (the control node on AWS) | - |
 | `--vpc` | Use existing VPC ID | - |
 | `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |

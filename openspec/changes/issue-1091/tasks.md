@@ -1,6 +1,6 @@
 ## 1. Placement value
 
-- [ ] 1.1 Add a `Placement` data class (node selector, tolerations, host-network flag) and resolve it from the recorded environment/capabilities alongside `NodeCapabilities.from(ClusterState)`. AWS resolves to the control-node selector + toleration and `hostNetwork=false`; elsewhere empty selector/tolerations. Merge an `init` user node label into the selector. Unit test: AWS resolution carries the control-plane selector + toleration; an empty environment carries neither; a user label merges in. No consumer tests an environment name.
+- [x] 1.1 Add a `Placement` data class (node selector, tolerations, host-network flag) and resolve it from the recorded environment/capabilities alongside `NodeCapabilities.from(ClusterState)`. AWS resolves to the control-node selector + toleration and `hostNetwork=false`; elsewhere empty selector/tolerations. Merge an `init` user node label into the selector. Unit test: AWS resolution carries the control-plane selector + toleration; an empty environment carries neither; a user label merges in. No consumer tests an environment name.
 
 ## 2. Backends and Grafana on the pod network
 

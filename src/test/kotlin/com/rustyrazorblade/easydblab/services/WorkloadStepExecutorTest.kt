@@ -37,15 +37,6 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
     private lateinit var kubectlService: KubectlService
     private lateinit var executor: WorkloadStepExecutor
 
-    private val controlHost =
-        ClusterHost(
-            publicIp = "1.2.3.4",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-ctrl",
-        )
-
     private val dbHost =
         ClusterHost(
             publicIp = "1.2.3.5",
@@ -105,7 +96,6 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             context =
                 StepExecutionContext(
                     kitName = "testdb",
-                    controlHost = controlHost,
                     clusterState = clusterState,
                     variables = variables,
                     kitDir = kitDir,
@@ -142,7 +132,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
     @Test
     fun `a platform-pvs-delete step interpolates its node-type`() {
         val remoteOps = mock<RemoteOperationsService>()
-        whenever(k8sService.deleteLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.deleteLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
         val recordingExecutor =
             WorkloadStepExecutor(
                 k8sService = k8sService,
@@ -159,7 +149,6 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 context =
                     StepExecutionContext(
                         kitName = "testdb",
-                        controlHost = controlHost,
                         clusterState = clusterState,
                         variables = mapOf("POOL" to "app"),
                         kitDir = tempDir,
@@ -175,18 +164,18 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
     @Test
     fun `a label step interpolates its node-type`() {
-        whenever(k8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
 
         val result =
             execute(listOf(InstallStep.Label(nodeType = "\${POOL}", labels = mapOf("kit" to "x"))), mapOf("POOL" to "app"))
 
         assertThat(result.isSuccess).isTrue()
-        verify(k8sService).labelNode(controlHost, "app0", mapOf("kit" to "x"))
+        verify(k8sService).labelNode("app0", mapOf("kit" to "x"))
     }
 
     @Test
     fun `a label step interpolates the keys of its labels`() {
-        whenever(k8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
 
         val result =
             execute(
@@ -195,7 +184,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             )
 
         assertThat(result.isSuccess).isTrue()
-        verify(k8sService).labelNode(controlHost, "db0", mapOf("workload" to "bench"))
+        verify(k8sService).labelNode("db0", mapOf("workload" to "bench"))
     }
 
     /**
@@ -369,7 +358,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `succeeds with valid db node-type and STORAGE_SIZE`() {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any()))
+            whenever(k8sService.createLocalPersistentVolumes(any()))
                 .thenReturn(Result.success(Unit))
 
             val result =
@@ -389,12 +378,12 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 )
 
             assertThat(result.isSuccess).isTrue()
-            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
         }
 
         @Test
         fun `if-set runs the step when the named variable is set`() {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+            whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
 
             val result =
                 execute(
@@ -403,12 +392,12 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 )
 
             assertThat(result.isSuccess).isTrue()
-            verify(k8sService).createLocalPersistentVolumes(any(), any())
+            verify(k8sService).createLocalPersistentVolumes(any())
         }
 
         @Test
         fun `storage-size sets the PV capacity instead of the STORAGE_SIZE variable`() {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+            whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
 
             val result =
                 execute(
@@ -418,19 +407,19 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(result.isSuccess).isTrue()
             val config = argumentCaptor<PersistentVolumeConfig>()
-            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            verify(k8sService).createLocalPersistentVolumes(config.capture())
             assertThat(config.firstValue.storageSize).isEqualTo("10Ti")
         }
 
         /** db and app nodes both carry ordinals; a PV must also require the pool its step names. */
         @Test
         fun `the PVs are pinned to the node pool the step names`() {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+            whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
 
             execute(steps = listOf(InstallStep.PlatformPvs(nodeType = "app")), variables = mapOf("STORAGE_SIZE" to "1Gi"))
 
             val config = argumentCaptor<PersistentVolumeConfig>()
-            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            verify(k8sService).createLocalPersistentVolumes(config.capture())
             assertThat(config.firstValue.nodeType).isEqualTo("app")
         }
 
@@ -462,7 +451,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             val result = execute(listOf(InstallStep.PlatformPvs(nodeType = "\${UNSET}")), mapOf("STORAGE_SIZE" to "1Gi"))
 
             assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("'\${UNSET}'")
-            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
         }
 
         @Test
@@ -477,13 +466,13 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             step: InstallStep.PlatformPvs,
             variable: Pair<String, String>,
         ): PersistentVolumeConfig {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+            whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
 
             val result = execute(listOf(step), mapOf(variable, "STORAGE_SIZE" to "1Gi"))
 
             assertThat(result.isSuccess).isTrue()
             val config = argumentCaptor<PersistentVolumeConfig>()
-            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            verify(k8sService).createLocalPersistentVolumes(config.capture())
             return config.firstValue
         }
 
@@ -497,7 +486,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(result.isFailure).isTrue()
             assertThat(result.exceptionOrNull()?.message).contains("STORAGE_SIZE")
-            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
         }
     }
 

@@ -20,11 +20,16 @@ val kubernetesModule =
         }
 
         // Kubernetes service - factory because it holds state (API client) tied to proxy session
-        // The kubeconfigPath is resolved at runtime when the service is requested
+        // The kubeconfigPath is resolved at runtime when the service is requested; the context is
+        // the kubeconfig's current-context.
         factory<KubernetesService> { (kubeconfigPath: String) ->
+            val path = Paths.get(kubeconfigPath)
+            val context =
+                currentContextOf(path)
+                    ?: error("Kubeconfig $path names no current-context")
             DefaultKubernetesService(
                 clientFactory = get(),
-                kubeconfigPath = Paths.get(kubeconfigPath),
+                api = KubeApi(path, context),
             )
         }
     }

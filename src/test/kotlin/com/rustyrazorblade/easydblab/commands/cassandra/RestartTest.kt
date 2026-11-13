@@ -78,7 +78,7 @@ class RestartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
         whenever(mockCassandraService.restart(any())).thenReturn(Result.success(Unit))
-        whenever(mockSidecarService.restart(any())).thenReturn(Result.success(Unit))
+        whenever(mockSidecarService.restart()).thenReturn(Result.success(Unit))
     }
 
     @Test
@@ -94,7 +94,7 @@ class RestartTest : BaseKoinTest() {
         val command = Restart()
         command.execute()
 
-        verify(mockSidecarService).restart(any())
+        verify(mockSidecarService).restart()
     }
 
     @Test

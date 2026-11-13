@@ -295,7 +295,7 @@ class DefaultTeardownFlushService private constructor(
                 .onFailure { failed[TailSignal.LOGS] = it as FlushStepFailed }
         }
         val sendersProgress = FlushProgress(FlushStep.SENDERS_STOP, Constants.K8s.OTEL_COLLECTOR_APP_LABEL).also(progresses::add)
-        val sendersStop = attempt(sendersProgress) { stopSenders(controlHost, sendersProgress) }
+        val sendersStop = attempt(sendersProgress) { stopSenders(sendersProgress) }
 
         if (TailSignal.METRICS in pending) {
             val progress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, Constants.K8s.MIMIR_APP_LABEL).also(progresses::add)
@@ -352,13 +352,10 @@ class DefaultTeardownFlushService private constructor(
     }
 
     /** Deletes the OTel collector and waits for its pods to go; succeeds when it is already gone. */
-    private fun stopSenders(
-        controlHost: ClusterHost,
-        progress: FlushProgress,
-    ) {
+    private fun stopSenders(progress: FlushProgress) {
         // Marked before the call: a stop that times out may still have deleted the DaemonSet.
         progress.mark(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.DELETED)
-        telemetrySenders.stop(controlHost, timeouts.sendersStop)
+        telemetrySenders.stop(timeouts.sendersStop)
         eventBus.emit(Event.Teardown.TelemetrySendersStopped)
     }
 

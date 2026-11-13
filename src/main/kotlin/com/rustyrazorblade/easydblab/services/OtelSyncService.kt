@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -14,7 +13,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  * start/stop), so the collector scrapes exactly the running kits.
  */
 interface OtelSyncService {
-    fun syncConfigMap(controlHost: ClusterHost): Result<Unit>
+    fun syncConfigMap(): Result<Unit>
 }
 
 /**
@@ -41,12 +40,16 @@ class DefaultOtelSyncService(
 ) : OtelSyncService {
     private val log = KotlinLogging.logger {}
 
-    override fun syncConfigMap(controlHost: ClusterHost): Result<Unit> =
+    override fun syncConfigMap(): Result<Unit> =
         runCatching {
             log.debug { "Syncing OTel collector configuration" }
             val clusterState = clusterStateManager.load()
+            val controlNode =
+                checkNotNull(clusterState.getControlHost()) {
+                    "No control node in cluster state; cannot sync the OTel collector."
+                }
             val scrapeConfigs =
-                k8sClientProvider.createClient(controlHost).use { client ->
+                k8sClientProvider.createClient().use { client ->
                     otelManifestBuilder.listWorkloadScrapeConfigs(client)
                 }
             // The cluster's export destinations and CNI come from its recorded init config, so a
@@ -55,15 +58,15 @@ class DefaultOtelSyncService(
             val resources =
                 CollectorResources.build(
                     otelManifestBuilder,
-                    controlHost,
+                    controlNode,
                     clusterState,
                     user.region,
                     scrapeConfigs,
                     capabilitiesOf(clusterState),
                 )
-            configChangeReport.report(controlHost, resources, Constants.K8s.NAMESPACE)
+            configChangeReport.report(resources, Constants.K8s.NAMESPACE)
             for (resource in resources) {
-                k8sService.applyResource(controlHost = controlHost, resource = resource).getOrThrow()
+                k8sService.applyResource(resource = resource).getOrThrow()
             }
         }
 }

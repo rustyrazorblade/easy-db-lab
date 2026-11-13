@@ -1,14 +1,15 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
+import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
+import com.rustyrazorblade.easydblab.kubernetes.currentContextOf
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import io.fabric8.kubernetes.client.utils.Serialization
@@ -87,14 +88,10 @@ interface K3sService : SystemDServiceManager {
      * 2. Creates proxied Kubernetes client
      * 3. Lists all jobs across namespaces
      *
-     * @param controlHost The control node running K3s
      * @param kubeconfigPath Local path to the kubeconfig file
      * @return Result containing list of jobs or an error
      */
-    fun listJobs(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesJob>>
+    fun listJobs(kubeconfigPath: Path): Result<List<KubernetesJob>>
 
     /**
      * Lists Kubernetes pods from the K3s cluster.
@@ -104,14 +101,10 @@ interface K3sService : SystemDServiceManager {
      * 2. Creates proxied Kubernetes client
      * 3. Lists all pods across namespaces
      *
-     * @param controlHost The control node running K3s
      * @param kubeconfigPath Local path to the kubeconfig file
      * @return Result containing list of pods or an error
      */
-    fun listPods(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesPod>>
+    fun listPods(kubeconfigPath: Path): Result<List<KubernetesPod>>
 }
 
 /**
@@ -222,34 +215,37 @@ class DefaultK3sService(
                 // Write modified kubeconfig to local path
                 Files.writeString(localPath, Serialization.asYaml(kubeConfig))
 
+                // Pin the kubeconfig's context in cluster state. Every later command targets this
+                // context regardless of the user's current kubectl context.
+                kubeConfig.currentContext?.takeIf { it.isNotBlank() }?.let { context ->
+                    val state = clusterStateManager.load()
+                    state.kubeContext = context
+                    clusterStateManager.save(state)
+                    log.info { "Recorded Kubernetes context '$context' in cluster state" }
+                }
+
                 log.info { "Successfully configured kubeconfig at $localPath with server URL $newServerUrl" }
             } finally {
                 tempFile.delete()
             }
         }
 
-    override fun listJobs(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesJob>> =
+    override fun listJobs(kubeconfigPath: Path): Result<List<KubernetesJob>> =
         runCatching {
-            kubernetesService(controlHost, kubeconfigPath).listJobs().getOrThrow()
+            kubernetesService(kubeconfigPath).listJobs().getOrThrow()
         }
 
-    override fun listPods(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesPod>> =
+    override fun listPods(kubeconfigPath: Path): Result<List<KubernetesPod>> =
         runCatching {
-            kubernetesService(controlHost, kubeconfigPath).listPods().getOrThrow()
+            kubernetesService(kubeconfigPath).listPods().getOrThrow()
         }
 
-    private fun kubernetesService(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): DefaultKubernetesService {
+    private fun kubernetesService(kubeconfigPath: Path): DefaultKubernetesService {
         val clientFactory = ProxiedKubernetesClientFactory()
-        return DefaultKubernetesService(clientFactory, kubeconfigPath)
+        val context =
+            currentContextOf(kubeconfigPath)
+                ?: error("Kubeconfig $kubeconfigPath names no current-context")
+        return DefaultKubernetesService(clientFactory, KubeApi(kubeconfigPath, context))
     }
 
     /**

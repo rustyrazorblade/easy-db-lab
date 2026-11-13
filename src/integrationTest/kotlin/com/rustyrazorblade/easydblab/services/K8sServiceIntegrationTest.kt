@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -50,7 +49,6 @@ import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.slf4j.LoggerFactory
@@ -441,13 +439,6 @@ class K8sServiceIntegrationTest {
     @Order(24)
     fun `createLocalPersistentVolumes recycles stale PVs via service layer`() {
         val storageOps = createStorageOperations()
-        val testHost =
-            ClusterHost(
-                publicIp = "unused",
-                privateIp = "unused",
-                alias = "test",
-                availabilityZone = "us-west-2a",
-            )
         val config =
             PersistentVolumeConfig(
                 dbName = "recycletest",
@@ -460,7 +451,7 @@ class K8sServiceIntegrationTest {
         k3s.execInContainer("mkdir", "-p", "/tmp/recycletest")
 
         // First call: creates the PV
-        storageOps.createLocalPersistentVolumes(testHost, config).getOrThrow()
+        storageOps.createLocalPersistentVolumes(config).getOrThrow()
         val pvName = "data-recycletest-0"
         assertThat(client.persistentVolumes().withName(pvName).get()).isNotNull
 
@@ -489,7 +480,7 @@ class K8sServiceIntegrationTest {
         waitForPvPhase(pvName, "Released", timeoutSeconds = 30)
 
         // Second call: should detect stale claimRef and clear the UID
-        storageOps.createLocalPersistentVolumes(testHost, config).getOrThrow()
+        storageOps.createLocalPersistentVolumes(config).getOrThrow()
 
         // Verify the PV's claimRef UID was cleared (pre-bound state)
         val recycledPv = client.persistentVolumes().withName(pvName).get()
@@ -518,7 +509,7 @@ class K8sServiceIntegrationTest {
     @Order(25)
     fun `a db platform PV binds only on a db node with its ordinal, not an app node with the same ordinal`() {
         val storageOps = createStorageOperations()
-        storageOps.ensureLocalStorageWfcClass(testHost).getOrThrow()
+        storageOps.ensureLocalStorageWfcClass().getOrThrow()
         val nodeName =
             client
                 .nodes()
@@ -541,7 +532,6 @@ class K8sServiceIntegrationTest {
         try {
             storageOps
                 .createLocalPersistentVolumes(
-                    testHost,
                     PersistentVolumeConfig(
                         dbName = kit,
                         localPath = "/tmp/$kit",
@@ -583,7 +573,6 @@ class K8sServiceIntegrationTest {
             k3s.execInContainer("mkdir", "-p", "/tmp/$kit")
             storageOps
                 .createLocalPersistentVolumes(
-                    testHost,
                     PersistentVolumeConfig(
                         dbName = kit,
                         localPath = "/tmp/$kit",
@@ -660,12 +649,12 @@ class K8sServiceIntegrationTest {
                 .get()
                 .metadata.labels
         val clientProvider = mock<K8sClientProvider>()
-        whenever(clientProvider.createClient(any())).thenAnswer {
+        whenever(clientProvider.createClient()).thenAnswer {
             KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
         }
         val key = "easydblab.test/label-merge"
         try {
-            DefaultK8sManifestOperations(clientProvider, EventBus()).labelNode(testHost, nodeName, mapOf(key to "yes")).getOrThrow()
+            DefaultK8sManifestOperations(clientProvider, EventBus()).labelNode(nodeName, mapOf(key to "yes")).getOrThrow()
 
             val after =
                 client
@@ -885,9 +874,6 @@ class K8sServiceIntegrationTest {
         )
     }
 
-    private val testHost =
-        ClusterHost(publicIp = "unused", privateIp = "unused", alias = "test", availabilityZone = "us-west-2a")
-
     private fun labelNode(
         nodeName: String,
         labels: Map<String, String>,
@@ -996,7 +982,7 @@ class K8sServiceIntegrationTest {
 
     private fun createStorageOperations(): DefaultK8sStorageOperations {
         val mockClientProvider = mock<K8sClientProvider>()
-        whenever(mockClientProvider.createClient(any())).thenAnswer {
+        whenever(mockClientProvider.createClient()).thenAnswer {
             KubernetesClientBuilder()
                 .withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml))
                 .build()

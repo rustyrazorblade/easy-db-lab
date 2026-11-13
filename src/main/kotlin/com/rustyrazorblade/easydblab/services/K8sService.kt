@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
@@ -38,28 +37,15 @@ data class PersistentVolumeConfig(
  * Operations for applying Kubernetes manifests, YAML, and typed resources.
  */
 interface K8sManifestOperations {
-    fun applyManifests(
-        controlHost: ClusterHost,
-        manifestPath: Path,
-    ): Result<Unit>
+    fun applyManifests(manifestPath: Path): Result<Unit>
 
-    fun applyManifestFromResources(
-        controlHost: ClusterHost,
-        resourcePath: String,
-    ): Result<Unit>
+    fun applyManifestFromResources(resourcePath: String): Result<Unit>
 
-    fun applyYaml(
-        controlHost: ClusterHost,
-        yamlContent: String,
-    ): Result<Unit>
+    fun applyYaml(yamlContent: String): Result<Unit>
 
-    fun applyResource(
-        controlHost: ClusterHost,
-        resource: HasMetadata,
-    ): Result<Unit>
+    fun applyResource(resource: HasMetadata): Result<Unit>
 
     fun labelNode(
-        controlHost: ClusterHost,
         nodeName: String,
         labels: Map<String, String>,
     ): Result<Unit>
@@ -70,38 +56,32 @@ interface K8sManifestOperations {
  */
 interface K8sJobOperations {
     fun createJob(
-        controlHost: ClusterHost,
         namespace: String,
         jobYaml: String,
     ): Result<String>
 
     fun createJob(
-        controlHost: ClusterHost,
         namespace: String,
         job: Job,
     ): Result<String>
 
     fun deleteJob(
-        controlHost: ClusterHost,
         namespace: String,
         jobName: String,
     ): Result<Unit>
 
     fun getJobsByLabel(
-        controlHost: ClusterHost,
         namespace: String,
         labelKey: String,
         labelValue: String,
     ): Result<List<KubernetesJob>>
 
     fun getPodsForJob(
-        controlHost: ClusterHost,
         namespace: String,
         jobName: String,
     ): Result<List<KubernetesPod>>
 
     fun getPodLogs(
-        controlHost: ClusterHost,
         namespace: String,
         podName: String,
         tailLines: Int? = null,
@@ -112,46 +92,33 @@ interface K8sJobOperations {
  * Operations for managing Kubernetes namespaces, pods, and resource lifecycle.
  */
 interface K8sNamespaceOperations {
-    fun getObservabilityStatus(controlHost: ClusterHost): Result<String>
+    fun getObservabilityStatus(): Result<String>
 
-    fun deleteObservability(controlHost: ClusterHost): Result<Unit>
+    fun deleteObservability(): Result<Unit>
 
-    fun waitForPodsReady(
-        controlHost: ClusterHost,
-        timeoutSeconds: Int,
-    ): Result<Unit>
+    fun waitForPodsReady(timeoutSeconds: Int): Result<Unit>
 
     fun waitForPodsReady(
-        controlHost: ClusterHost,
         timeoutSeconds: Int,
         namespace: String,
     ): Result<Unit>
 
-    fun getNamespaceStatus(
-        controlHost: ClusterHost,
-        namespace: String,
-    ): Result<String>
+    fun getNamespaceStatus(namespace: String): Result<String>
 
-    fun deleteNamespace(
-        controlHost: ClusterHost,
-        namespace: String,
-    ): Result<Unit>
+    fun deleteNamespace(namespace: String): Result<Unit>
 
     fun deleteResourcesByLabel(
-        controlHost: ClusterHost,
         namespace: String,
         labelKey: String,
         labelValues: List<String>,
     ): Result<Unit>
 
     fun rolloutRestartDeployment(
-        controlHost: ClusterHost,
         name: String,
         namespace: String = Constants.K8s.NAMESPACE,
     ): Result<Unit>
 
     fun rolloutRestartDaemonSet(
-        controlHost: ClusterHost,
         name: String,
         namespace: String = Constants.K8s.NAMESPACE,
     ): Result<Unit>
@@ -165,7 +132,6 @@ interface K8sNamespaceOperations {
      *   all completed within [timeoutSeconds].
      */
     fun waitForRollouts(
-        controlHost: ClusterHost,
         workloads: List<WorkloadRef>,
         namespace: String,
         timeoutSeconds: Int,
@@ -176,7 +142,6 @@ interface K8sNamespaceOperations {
      * in [namespace] now; null for a workload that does not exist or carries no hash.
      */
     fun workloadConfigHashes(
-        controlHost: ClusterHost,
         workloads: List<WorkloadRef>,
         namespace: String,
     ): Result<Map<WorkloadRef, String?>>
@@ -187,14 +152,12 @@ interface K8sNamespaceOperations {
  */
 interface K8sStorageOperations {
     fun scaleStatefulSet(
-        controlHost: ClusterHost,
         namespace: String,
         statefulSetName: String,
         replicas: Int,
     ): Result<Unit>
 
     fun createConfigMap(
-        controlHost: ClusterHost,
         namespace: String,
         name: String,
         data: Map<String, String>,
@@ -202,31 +165,23 @@ interface K8sStorageOperations {
     ): Result<Unit>
 
     fun deleteConfigMap(
-        controlHost: ClusterHost,
         namespace: String,
         name: String,
     ): Result<Unit>
 
     /** Deletes all ConfigMaps in [namespace] whose labels match all entries in [labels]. */
     fun deleteConfigMapsByLabels(
-        controlHost: ClusterHost,
         namespace: String,
         labels: Map<String, String>,
     ): Result<Unit>
 
-    fun createLocalPersistentVolumes(
-        controlHost: ClusterHost,
-        config: PersistentVolumeConfig,
-    ): Result<Unit>
+    fun createLocalPersistentVolumes(config: PersistentVolumeConfig): Result<Unit>
 
-    fun deleteLocalPersistentVolumes(
-        controlHost: ClusterHost,
-        dbName: String,
-    ): Result<Unit>
+    fun deleteLocalPersistentVolumes(dbName: String): Result<Unit>
 
-    fun ensureLocalStorageClass(controlHost: ClusterHost): Result<Unit>
+    fun ensureLocalStorageClass(): Result<Unit>
 
-    fun ensureLocalStorageWfcClass(controlHost: ClusterHost): Result<Unit>
+    fun ensureLocalStorageWfcClass(): Result<Unit>
 }
 
 /**

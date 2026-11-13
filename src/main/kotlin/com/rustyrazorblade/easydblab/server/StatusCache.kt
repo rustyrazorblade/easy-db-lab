@@ -397,11 +397,11 @@ class StatusCache(
     }
 
     private fun buildKubernetesInfo(state: ClusterState): KubernetesInfo? {
-        val controlHost = state.getControlHost() ?: return null
+        state.getControlHost() ?: return null
         val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
         if (!File(kubeconfigPath).exists()) return null
 
-        val result = k3sService.listPods(controlHost, Paths.get(kubeconfigPath))
+        val result = k3sService.listPods(Paths.get(kubeconfigPath))
         return result.fold(
             onSuccess = { pods ->
                 KubernetesInfo(
@@ -426,10 +426,10 @@ class StatusCache(
     }
 
     private fun buildStressInfo(state: ClusterState): StressInfo? {
-        val controlHost = state.getControlHost() ?: return null
+        state.getControlHost() ?: return null
         return runCatching {
             stressJobService
-                .listJobs(controlHost)
+                .listJobs()
                 .getOrThrow()
                 .map { job ->
                     StressJobInfo(

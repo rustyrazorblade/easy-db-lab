@@ -24,6 +24,7 @@ import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kubernetes.KubeApiLocator
 import com.rustyrazorblade.easydblab.network.SocketTcpReachabilityProbe
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.AWS
@@ -97,7 +98,8 @@ val servicesModule =
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
-        single { K8sClientProvider(get(), get<Context>().workingDirectory) }
+        single<KubeApiLocator> { WorkspaceKubeApiLocator(get(), get<Context>().workingDirectory) }
+        single { K8sClientProvider(get(), get()) }
         factoryOf(::DefaultK8sService) bind K8sService::class bind K8sPodOperations::class
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)

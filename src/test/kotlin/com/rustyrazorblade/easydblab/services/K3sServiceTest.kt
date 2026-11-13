@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -32,6 +33,11 @@ import java.nio.file.Path
 class K3sServiceTest : BaseKoinTest() {
     private lateinit var mockRemoteOps: RemoteOperationsService
     private lateinit var k3sService: K3sService
+    private val stateManager by lazy {
+        ClusterStateManager(java.io.File(tempDir, "state.json")).also {
+            it.save(ClusterState(name = "test", versions = mutableMapOf()))
+        }
+    }
 
     private val testHost =
         Host(
@@ -45,7 +51,7 @@ class K3sServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single<RemoteOperationsService> { mockRemoteOps }
-                single<ClusterStateManager> { mock() }
+                single { stateManager }
                 factory<K3sService> { DefaultK3sService(get(), get(), get()) }
             },
         )
@@ -490,5 +496,21 @@ class K3sServiceTest : BaseKoinTest() {
         assertThat(result.exceptionOrNull())
             .hasMessageContaining("contains no clusters")
             .hasMessageContaining(host.alias)
+    }
+
+    @Test
+    fun `downloadAndConfigureKubeconfig pins the kubeconfig's current-context in cluster state`(
+        @TempDir kubeDir: Path,
+    ) {
+        val host = Host(public = "54.123.45.67", private = "10.0.1.42", alias = "control0", availabilityZone = "us-west-2a")
+        doAnswer { invocation ->
+            Files.writeString(invocation.getArgument<Path>(2), loopbackKubeconfigYaml)
+            null
+        }.whenever(mockRemoteOps)
+            .download(eq(host), eq(Constants.K3s.REMOTE_KUBECONFIG), any())
+
+        k3sService.downloadAndConfigureKubeconfig(host, kubeDir.resolve("kubeconfig")).getOrThrow()
+
+        assertThat(stateManager.load().kubeContext).isEqualTo("default")
     }
 }

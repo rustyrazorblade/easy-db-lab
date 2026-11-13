@@ -227,7 +227,7 @@ class UpCiliumTest : UpTestFixture() {
         setupClusterInvokingServerReadyHook()
         var stackDeployed = false
         var annotationsPostedBeforeStack = false
-        whenever(mockObservabilityStackService.deploy(any())).thenAnswer {
+        whenever(mockObservabilityStackService.deploy()).thenAnswer {
             stackDeployed = true
             Result.success(Unit)
         }

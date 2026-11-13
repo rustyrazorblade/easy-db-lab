@@ -5,7 +5,6 @@ import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.nio.file.Path
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -17,18 +16,18 @@ import java.time.format.DateTimeFormatter
  * for access to private K3s clusters.
  *
  * @property clientFactory Factory for creating Kubernetes clients
- * @property kubeconfigPath Path to the kubeconfig file
+ * @property api The kubeconfig path and context to reach the cluster
  */
 class DefaultKubernetesService(
     private val clientFactory: KubernetesClientFactory,
-    private val kubeconfigPath: Path,
+    private val api: KubeApi,
 ) : KubernetesService {
     companion object {
         private val log = KotlinLogging.logger {}
     }
 
     private val client: KubernetesClient by lazy {
-        clientFactory.createClient(kubeconfigPath)
+        clientFactory.createClient(api)
     }
 
     override fun listJobs(namespace: String?): Result<List<KubernetesJob>> =

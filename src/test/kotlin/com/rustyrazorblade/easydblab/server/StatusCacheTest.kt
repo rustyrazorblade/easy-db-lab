@@ -443,7 +443,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo observability names every backend on the control node`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK3sService.listPods(any())).thenReturn(Result.success(emptyList()))
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
 
@@ -463,7 +463,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo has an S3 Manager only where the environment has S3`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK3sService.listPods(any())).thenReturn(Result.success(emptyList()))
 
         fun accessInfo(capabilities: NodeCapabilities): JsonObject {
             statusCache = StatusCache(refreshIntervalSeconds = 3600, capabilitiesOf = { capabilities })
@@ -478,7 +478,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo lists a running kit's declared NodePort endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK3sService.listPods(any())).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
@@ -493,7 +493,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `a stopped kit prints no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK3sService.listPods(any())).thenReturn(Result.success(emptyList()))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
@@ -506,7 +506,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo says why a running kit with an unreadable kit descriptor has no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK3sService.listPods(any())).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("broken", "clickhouse")))
         installPackagedKit("clickhouse")
         File(context.workingDirectory, "broken").mkdirs()

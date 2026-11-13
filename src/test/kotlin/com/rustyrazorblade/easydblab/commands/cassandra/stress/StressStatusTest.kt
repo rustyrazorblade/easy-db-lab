@@ -13,7 +13,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -112,7 +111,7 @@ class StressStatusTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockStressJobService.listJobs(any())).thenReturn(Result.success(testJobs))
+        whenever(mockStressJobService.listJobs()).thenReturn(Result.success(testJobs))
 
         val command = StressStatus()
 
@@ -120,7 +119,7 @@ class StressStatusTest : BaseKoinTest() {
         command.execute()
 
         // Then - verify listJobs was called with control host
-        verify(mockStressJobService).listJobs(testControlHost)
+        verify(mockStressJobService).listJobs()
     }
 
     @Test
@@ -137,7 +136,7 @@ class StressStatusTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockStressJobService.listJobs(any()))
+        whenever(mockStressJobService.listJobs())
             .thenReturn(Result.failure(RuntimeException("Failed to list jobs")))
 
         val command = StressStatus()
@@ -162,7 +161,7 @@ class StressStatusTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockStressJobService.listJobs(any())).thenReturn(Result.success(emptyList()))
+        whenever(mockStressJobService.listJobs()).thenReturn(Result.success(emptyList()))
 
         val command = StressStatus()
 
@@ -170,6 +169,6 @@ class StressStatusTest : BaseKoinTest() {
         command.execute()
 
         // Then
-        verify(mockStressJobService).listJobs(testControlHost)
+        verify(mockStressJobService).listJobs()
     }
 }

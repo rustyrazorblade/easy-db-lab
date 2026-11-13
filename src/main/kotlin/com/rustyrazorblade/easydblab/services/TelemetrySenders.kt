@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -22,10 +21,7 @@ interface TelemetrySenders {
      * Deletes the collector's DaemonSet and waits up to [timeout] until its pods are gone. Succeeds
      * when the collector is already gone.
      */
-    fun stop(
-        controlHost: ClusterHost,
-        timeout: Duration,
-    )
+    fun stop(timeout: Duration)
 }
 
 /**
@@ -44,22 +40,20 @@ class K8sTelemetrySenders(
         const val COLLECTOR = Constants.K8s.OTEL_COLLECTOR_APP_LABEL
     }
 
-    override fun stop(
-        controlHost: ClusterHost,
-        timeout: Duration,
-    ) = clientProvider.createClient(controlHost).use { client ->
-        client
-            .apps()
-            .daemonSets()
-            .inNamespace(namespace)
-            .withName(COLLECTOR)
-            .delete()
-        val attempts = (timeout.toMillis() / pollInterval.toMillis()).toInt().coerceAtLeast(1) + 1
-        val gone: (List<Pod>) -> Boolean = { it.isEmpty() }
-        val config = RetryUtil.createPollUntilRetryConfig(attempts, pollInterval, gone, Instant.now().plus(timeout))
-        val pods = Retry.decorateSupplier(Retry.of("await-$COLLECTOR-gone", config)) { pods(client) }.get()
-        check(gone(pods)) { "$COLLECTOR still has ${pods.size} pod(s) ${timeout.seconds}s after its DaemonSet was deleted" }
-    }
+    override fun stop(timeout: Duration) =
+        clientProvider.createClient().use { client ->
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace(namespace)
+                .withName(COLLECTOR)
+                .delete()
+            val attempts = (timeout.toMillis() / pollInterval.toMillis()).toInt().coerceAtLeast(1) + 1
+            val gone: (List<Pod>) -> Boolean = { it.isEmpty() }
+            val config = RetryUtil.createPollUntilRetryConfig(attempts, pollInterval, gone, Instant.now().plus(timeout))
+            val pods = Retry.decorateSupplier(Retry.of("await-$COLLECTOR-gone", config)) { pods(client) }.get()
+            check(gone(pods)) { "$COLLECTOR still has ${pods.size} pod(s) ${timeout.seconds}s after its DaemonSet was deleted" }
+        }
 
     private fun pods(client: KubernetesClient): List<Pod> =
         client

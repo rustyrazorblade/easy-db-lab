@@ -800,15 +800,15 @@ class Up(
         labelNodesWithOrdinals(controlHosts.first())
 
         // Ensure StorageClasses exist for Local PVs
-        k8sService.ensureLocalStorageClass(controlHosts.first()).getOrThrow()
-        k8sService.ensureLocalStorageWfcClass(controlHosts.first()).getOrThrow()
+        k8sService.ensureLocalStorageClass().getOrThrow()
+        k8sService.ensureLocalStorageWfcClass().getOrThrow()
 
         // Bring-up drives the observability stack service directly rather than the
         // `grafana update-config` command: on a redirect cluster that command refuses, but bring-up
         // must still deploy the collectors pointed at the external stack. The service is the shared
         // deploy path; the command is the operator-facing local-stack reconfigure wrapper.
         observabilityStackService
-            .deploy(controlHosts.first())
+            .deploy()
             .getOrElse { exception ->
                 error("Observability stack deployment failed during provisioning: ${exception.message}")
             }
@@ -852,7 +852,7 @@ class Up(
      */
     private fun labelNodesWithOrdinals(controlHost: ClusterHost) {
         // Label control node with type=control (db and app nodes get this via K3s agent config)
-        k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrThrow()
+        k8sService.labelNode(controlHost.alias, mapOf("type" to "control")).getOrThrow()
 
         val dbHosts = workingState.hosts[ServerType.Cassandra] ?: emptyList()
         val appHosts = workingState.hosts[ServerType.Stress] ?: emptyList()
@@ -865,7 +865,7 @@ class Up(
             eventBus.emit(Event.Provision.NodeLabeling(dbHosts.size))
             dbHosts.forEachIndexed { index, host ->
                 k8sService
-                    .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
+                    .labelNode(host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
                     .getOrThrow()
             }
             eventBus.emit(Event.Provision.NodeLabelingComplete)
@@ -875,7 +875,7 @@ class Up(
             eventBus.emit(Event.Provision.NodeLabeling(count = appHosts.size, nodeType = "app"))
             appHosts.forEachIndexed { index, host ->
                 k8sService
-                    .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
+                    .labelNode(host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
                     .getOrThrow()
             }
             eventBus.emit(Event.Provision.NodeLabelingComplete)

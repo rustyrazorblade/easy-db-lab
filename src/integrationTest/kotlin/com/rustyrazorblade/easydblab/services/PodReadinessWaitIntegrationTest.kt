@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
@@ -12,7 +11,6 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.time.Duration
@@ -35,15 +33,6 @@ class PodReadinessWaitIntegrationTest {
         private const val WAIT_TIMEOUT_SECONDS = 20
     }
 
-    private val controlHost =
-        ClusterHost(
-            publicIp = "1.2.3.4",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-test",
-        )
-
     private lateinit var client: KubernetesClient
     private lateinit var ops: DefaultK8sNamespaceOperations
 
@@ -53,7 +42,7 @@ class PodReadinessWaitIntegrationTest {
         client = SharedK3s.client()
         val clientProvider = mock<K8sClientProvider>()
         // Each operation closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
+        whenever(clientProvider.createClient()).thenAnswer { SharedK3s.client() }
         ops = DefaultK8sNamespaceOperations(clientProvider, EventBus(), podPollInterval = Duration.ofMillis(500))
     }
 
@@ -112,7 +101,7 @@ class PodReadinessWaitIntegrationTest {
     }
 
     private fun awaitNamespaceReady() {
-        ops.waitForPodsReady(controlHost, WAIT_TIMEOUT_SECONDS, NAMESPACE).getOrElse { e ->
+        ops.waitForPodsReady(WAIT_TIMEOUT_SECONDS, NAMESPACE).getOrElse { e ->
             throw AssertionError("${e.message}\n${clusterDiagnostics(client, NAMESPACE)}", e)
         }
     }

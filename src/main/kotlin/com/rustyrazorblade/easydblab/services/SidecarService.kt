@@ -26,17 +26,13 @@ interface SidecarService {
 
     /**
      * Removes the sidecar DaemonSet and its ConfigMap from K3s.
-     *
-     * @param controlHost The control node running K3s
      */
-    fun undeploy(controlHost: ClusterHost): Result<Unit>
+    fun undeploy(): Result<Unit>
 
     /**
      * Performs a rolling restart of the sidecar DaemonSet pods.
-     *
-     * @param controlHost The control node running K3s
      */
-    fun restart(controlHost: ClusterHost): Result<Unit>
+    fun restart(): Result<Unit>
 }
 
 /**
@@ -68,7 +64,7 @@ class DefaultSidecarService(
             // The cluster label every signal carries, <name>-<id>, not the bare name.
             val clusterName = state.clusterLabelName()
 
-            val pullSecretName = ecrPullSecrets.ensureFor(controlHost, image, Constants.K8s.NAMESPACE)
+            val pullSecretName = ecrPullSecrets.ensureFor(image, Constants.K8s.NAMESPACE)
 
             log.info { "Deploying sidecar DaemonSet image=$image to K3s" }
             val resources =
@@ -81,17 +77,16 @@ class DefaultSidecarService(
                     telemetryRedirect = state.initConfig?.telemetryRedirect,
                 )
             for (resource in resources) {
-                k8sService.applyResource(controlHost, resource).getOrThrow()
+                k8sService.applyResource(resource).getOrThrow()
             }
             log.info { "Sidecar DaemonSet deployed successfully" }
         }
 
-    override fun undeploy(controlHost: ClusterHost): Result<Unit> =
+    override fun undeploy(): Result<Unit> =
         runCatching {
             log.info { "Removing sidecar DaemonSet from K3s" }
             k8sService
                 .deleteResourcesByLabel(
-                    controlHost,
                     Constants.K8s.NAMESPACE,
                     APP_LABEL_KEY,
                     listOf(SidecarManifestBuilder.APP_LABEL),
@@ -99,11 +94,11 @@ class DefaultSidecarService(
             log.info { "Sidecar DaemonSet removed" }
         }
 
-    override fun restart(controlHost: ClusterHost): Result<Unit> =
+    override fun restart(): Result<Unit> =
         runCatching {
             log.info { "Rolling restart of sidecar DaemonSet" }
             k8sService
-                .rolloutRestartDaemonSet(controlHost, SidecarManifestBuilder.APP_LABEL, Constants.K8s.NAMESPACE)
+                .rolloutRestartDaemonSet(SidecarManifestBuilder.APP_LABEL, Constants.K8s.NAMESPACE)
                 .getOrThrow()
             log.info { "Sidecar DaemonSet rolling restart triggered" }
         }

@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
@@ -252,9 +251,7 @@ class KitRunnerCommand(
         steps: List<InstallStep>,
         envVars: Map<String, String>,
     ): Int {
-        val controlHost =
-            clusterState.getControlHost()
-                ?: error("No control node found in cluster state")
+        checkNotNull(clusterState.getControlHost()) { "No control node found in cluster state" }
 
         // The step executor has already reported a failed step as a typed event; rethrowing it
         // would have the command executor print it again as a raw exception.
@@ -265,7 +262,6 @@ class KitRunnerCommand(
                 context =
                     StepExecutionContext(
                         kitName = kitName,
-                        controlHost = controlHost,
                         clusterState = clusterState,
                         variables = envVars,
                         kitDir = kitDir,
@@ -288,12 +284,11 @@ class KitRunnerCommand(
         if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
             kitDir.deleteRecursively()
         }
-        val controlHost =
-            clusterState.getControlHost() ?: run {
-                log.warn { "No control node found; skipping post-phase actions for $kitName" }
-                return
-            }
-        handlePostPhase(config, controlHost)
+        clusterState.getControlHost() ?: run {
+            log.warn { "No control node found; skipping post-phase actions for $kitName" }
+            return
+        }
+        handlePostPhase(config)
     }
 
     /**
@@ -345,10 +340,7 @@ class KitRunnerCommand(
             .start()
             .waitFor()
 
-    private fun handlePostPhase(
-        config: KitConfig,
-        controlHost: ClusterHost,
-    ) {
+    private fun handlePostPhase(config: KitConfig) {
         when (phaseName) {
             Constants.Kit.PHASE_START -> {
                 clusterStateManager.addRunningWorkload(kitName)
@@ -370,7 +362,6 @@ class KitRunnerCommand(
                 if (scrapeTargets.isNotEmpty()) {
                     metricsRegistryService
                         .register(
-                            controlHost = controlHost,
                             kitName = kitName,
                             targets = scrapeTargets,
                         ).onFailure { e -> log.warn(e) { "Failed to register metrics for $kitName" } }
@@ -378,12 +369,12 @@ class KitRunnerCommand(
                 installDashboards(config)
                 reportEndpoints(config)
             }
-            Constants.Kit.PHASE_STOP -> releaseWorkload(controlHost)
+            Constants.Kit.PHASE_STOP -> releaseWorkload()
             // Uninstalling a kit that is still running removes it just as `stop` would. Its
             // metrics ConfigMaps carry `easydblab.com/kit`, which the kit's own label-scoped
             // deletes (`easydblab/kit`) do not match, so without this they, their OTel scrape
             // jobs and the runningKits entry would outlive the kit.
-            Constants.Kit.PHASE_UNINSTALL -> if (kitName in clusterState.runningKits) releaseWorkload(controlHost)
+            Constants.Kit.PHASE_UNINSTALL -> if (kitName in clusterState.runningKits) releaseWorkload()
         }
     }
 
@@ -391,11 +382,11 @@ class KitRunnerCommand(
      * Records that [kitName] no longer runs: drops it from `runningKits`, fires the other running
      * kits' post-stop hooks, and deregisters its metrics, which also resyncs the OTel collector.
      */
-    private fun releaseWorkload(controlHost: ClusterHost) {
+    private fun releaseWorkload() {
         clusterStateManager.removeRunningWorkload(kitName)
         kitHookExecutor.firePostKitStop(kitName)
         metricsRegistryService
-            .deregister(controlHost = controlHost, kitName = kitName)
+            .deregister(kitName = kitName)
             .onFailure { e -> log.warn(e) { "Failed to deregister metrics for $kitName" } }
     }
 

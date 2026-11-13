@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
-
 /**
  * Grants a workload permission to pull its image from a private registry, without the caller
  * knowing which cloud's registry it is.
@@ -16,7 +14,6 @@ interface ImagePullSecretService {
      * or an empty string when the image needs none.
      */
     fun ensureFor(
-        controlHost: ClusterHost,
         image: String,
         namespace: String,
     ): String

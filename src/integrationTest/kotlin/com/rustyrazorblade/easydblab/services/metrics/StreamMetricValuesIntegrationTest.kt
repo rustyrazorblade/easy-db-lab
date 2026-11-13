@@ -91,13 +91,19 @@ class StreamMetricValuesIntegrationTest : BaseKoinTest() {
     }
 
     @Test
-    fun `network IO sums the ens and eth interfaces and leaves out lo and Cilium`() {
+    fun `network IO sums the en and eth interfaces under any slot name and leaves out lo, Cilium and Tailscale`() {
         val cluster = newCluster()
         val counter = "system_network_io_bytes_total"
-        listOf("ens5" to 1000.0, "ens6" to 2000.0, "lo" to 50_000.0, "lxc1a2b" to 70_000.0, "cilium_host" to 9000.0)
-            .forEach { (device, delta) ->
-                writeCounter(cluster, counter, mapOf("host_name" to "db0", "device" to device, "direction" to "receive"), delta)
-            }
+        listOf(
+            "ens5" to 1000.0,
+            "enp39s0" to 2000.0,
+            "lo" to 50_000.0,
+            "lxc1a2b" to 70_000.0,
+            "cilium_host" to 9000.0,
+            "tailscale0" to 4000.0,
+        ).forEach { (device, delta) ->
+            writeCounter(cluster, counter, mapOf("host_name" to "db0", "device" to device, "direction" to "receive"), delta)
+        }
 
         val samples = await(StreamMetric.NODE_NETWORK_RECEIVE, cluster) { it.isNotEmpty() }
         val oneInterface = reference("sum(rate($counter{device=\"ens5\", cluster=\"$cluster\"}[1m]))", cluster)

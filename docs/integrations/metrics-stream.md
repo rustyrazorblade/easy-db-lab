@@ -46,7 +46,7 @@ Notes on the values:
 
 - The `node.*` metrics publish one sample per host that reports, with the host's alias as the entity, for example `db0`, `app0` or `control0`.  EMR hosts use their EC2 host name.
 - `node.disk_read` and `node.disk_write` sum the host's whole disks; partitions and loop devices are left out.
-- `node.network_receive` and `node.network_transmit` sum the `ens*` and `eth*` interfaces; `lo` and the Cilium interfaces are left out.
+- `node.network_receive` and `node.network_transmit` sum the `en*` and `eth*` interfaces, so the primary ENI counts under any name its instance family gives it (`ens5`, `ens52`, `enp39s0`); `lo`, the Cilium interfaces and `tailscale0` are left out.
 - `node.filesystem_used` covers only the data mount, `/mnt/db1`.  A host without it publishes no sample.
 - Rates use a 1-minute window.
 - `cassandra.compaction_bytes_written` counts the bytes that compaction reads (its input bytes), because that is what Cassandra exports.

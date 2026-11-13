@@ -158,7 +158,7 @@ class CiliumServiceTest : BaseKoinTest() {
         assertThat(command).contains("routingMode=native")
         assertThat(command).contains("endpointRoutes.enabled=true")
         assertThat(command).contains("enableIPv4Masquerade=true")
-        assertThat(command).contains("egressMasqueradeInterfaces=ens+")
+        assertThat(command).contains("egressMasqueradeInterfaces=en+")
         assertThat(command).contains("kubeProxyReplacement=false")
         assertThat(command).contains("bpf.hostLegacyRouting=true")
         assertThat(command).contains("ipv4NativeRoutingCIDR=$vpcCidr")
@@ -393,7 +393,7 @@ class CiliumServiceTest : BaseKoinTest() {
                 ?: error("install-tailscale-masquerade.sh not found on classpath at $scriptPath")
 
         assertThat(script).contains("type nat hook postrouting priority 90; policy accept;")
-        assertThat(script).contains("meta mark & 0x00ff0000 == 0x00040000 oifname \"ens*\" masquerade")
+        assertThat(script).contains("meta mark & 0x00ff0000 == 0x00040000 oifname \"en*\" masquerade")
         // Declare + delete + recreate: re-running replaces the table instead of duplicating rules.
         assertThat(script).contains("table ip edl_tailscale\ndelete table ip edl_tailscale\ntable ip edl_tailscale {")
         assertThat(script).contains("systemctl enable edl-tailscale-masquerade.service")
@@ -428,6 +428,6 @@ class CiliumServiceTest : BaseKoinTest() {
 
         val commandCaptor = ciliumCommands()
 
-        assertThat(commandCaptor.chartCommand).contains("--set devices=ens+")
+        assertThat(commandCaptor.chartCommand).contains("--set devices=en+")
     }
 }

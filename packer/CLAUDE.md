@@ -34,7 +34,18 @@ and need no Docker:
 ./gradlew testCassandraScripts
 ./gradlew testBaseJdkInstall   # base AMI JDK install (install_jdks.sh)
 ./gradlew testBaseChronyPoll   # base AMI chrony poll (configure_chrony_poll.sh)
+./gradlew testBasePrimaryEniNetwork   # base AMI primary ENI boot script (edl-primary-eni-network)
 ```
+
+`base/install/edl-primary-eni-network` is a **boot-time** script, not a bake step:
+`configure_cilium_eni_networkd.sh` installs it to `/usr/local/sbin/` and enables
+`edl-primary-eni-network.service`, which runs it on every boot before `systemd-networkd`. It writes
+the primary ENI's `05-cilium-eni-primary.network` to **`/run/systemd/network/`**, matched by the IMDS
+primary MAC, never to `/etc` — a file in `/etc` would be baked into the cassandra AMI with the bake
+instance's MAC. It stays POSIX sh. Its test, `edl-primary-eni-network.test.sh`, needs no Docker: the
+script reads its input file and both network dirs from `EDL_INSTANCE_DATA`, `EDL_RUN_NETWORK_DIR`
+and `EDL_ETC_NETWORK_DIR`. Packer uploads it to `/tmp` with a `file` provisioner; `test-base` in
+`docker-compose.yml` points `EDL_PRIMARY_ENI_SCRIPT_SOURCE` at the mounted copy instead.
 
 Scripts in `packer/cassandra/bin/` are **not bake-time-only** — the AMI puts them on the node's
 `PATH` and the CLI invokes them over SSH against a running cluster (`cassandra install`,

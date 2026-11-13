@@ -76,7 +76,7 @@ class CiliumInspectionServiceTest : BaseKoinTest() {
         assertThat(config.routingMode).isEqualTo("native")
         assertThat(config.ipamMode).isEqualTo("eni")
         assertThat(config.kubeProxyReplacement).isEqualTo("false")
-        assertThat(config.masqueradeInterfaces).isEqualTo("ens+")
+        assertThat(config.masqueradeInterfaces).isEqualTo("en+")
         assertThat(config.nativeRoutingCidr).isEqualTo("10.0.0.0/16")
         assertThat(config.ipv4Masquerade).isEqualTo("true")
     }
@@ -137,7 +137,7 @@ class CiliumInspectionServiceTest : BaseKoinTest() {
                 "routing-mode": "native",
                 "ipam": "eni",
                 "kube-proxy-replacement": "false",
-                "egress-masquerade-interfaces": "ens+",
+                "egress-masquerade-interfaces": "en+",
                 "ipv4-native-routing-cidr": "10.0.0.0/16",
                 "enable-ipv4-masquerade": "true",
                 "tunnel-protocol": "vxlan"

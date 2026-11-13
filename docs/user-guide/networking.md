@@ -12,13 +12,19 @@ easy-db-lab init my-cluster --db 3 --cni=flannel
 
 A cluster whose saved state records no CNI was provisioned before Cilium existed and is treated as Flannel.
 
-AMIs built before the Cilium node fixes lack the base image's cloud-init hotplug setting and the systemd-networkd ENI drop-ins that Cilium's secondary ENIs need. If your AMI predates them, rebuild it with `easy-db-lab build-image` before provisioning a Cilium cluster.
+The base image keeps each node's primary ENI managed by the OS and leaves every other ENA interface to Cilium.  It finds the primary by the MAC address that the EC2 instance metadata service (IMDS) reports for it, not by its interface name.  The name differs per instance family (`ens5` on c7gd, `ens52` on c8gd, `enp39s0` on i7i), so the MAC is the only safe match.
+
+On every boot, the `edl-primary-eni-network.service` unit reads that MAC from cloud-init's instance data and writes `/run/systemd/network/05-cilium-eni-primary.network`, which gives the primary ENI DHCP.  The file is under `/run`, so it is written fresh on each boot and is never baked into an image.  If the unit cannot read a valid MAC, it prints one line that names the cause to the console and the journal, and the primary ENI gets no network.  Read it with `journalctl -u edl-primary-eni-network` or on the instance's serial console.
+
+AMIs built before the Cilium node fixes lack the boot unit, the systemd-networkd drop-in and the two cloud-init settings that Cilium's secondary ENIs need.  If your AMI predates them, rebuild it with `easy-db-lab build-image` before provisioning a cluster.
 
 On a Cilium cluster, `up` checks every node for those fixes before it starts K3s, and stops with an error naming each node that lacks them and the files it is missing:
 
-- `/etc/systemd/network/05-cilium-eni-primary.network`
+- `/etc/systemd/system/edl-primary-eni-network.service`
+- `/usr/local/sbin/edl-primary-eni-network`
 - `/etc/systemd/network/06-cilium-eni-unmanaged.network`
 - `/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg`
+- `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg`
 
 To recover, rebuild the images with `easy-db-lab build-image`, then run `easy-db-lab down` and `easy-db-lab up` so the nodes launch from the new AMI. Or initialize the cluster with `--cni=flannel`, which needs none of them. Without the check, such a node joins the cluster normally and drops off the network only once Cilium attaches its second ENI.
 
@@ -38,7 +44,7 @@ With Tailscale enabled, `up` installs a small nftables chain on the control node
 
 `hostPort` works on a Cilium cluster through portmap chaining. With kube-proxy replacement off, Cilium does not implement `hostPort` itself, so it is installed with `cni.chainingMode=portmap`: the `portmap` CNI plugin runs after `cilium-cni` for every pod and publishes its host ports on the node. The plugin binary is the one K3s bundles; each node links it into `/opt/cni/bin` when K3s starts. Kits that publish a port through `hostPort` (Trino, Presto, Flink) are reachable at their node's private IP and scraped, as on Flannel. A pod started before the chaining was applied keeps its old networking until it is restarted.
 
-Cilium's devices are pinned to the ENA interfaces (`ens+`). The tailnet interface `tailscale0` is not a Cilium device, so its 1280 MTU does not lower the NIC MTU below the 9001 AWS offers.
+Cilium's devices and its egress masquerade interfaces are pinned to the ENA interfaces (`en+`), which match the primary ENI under any name its instance family gives it.  The tailnet interface `tailscale0` is not a Cilium device, so its 1280 MTU does not lower the NIC MTU below the 9001 AWS offers.
 
 ### Reading the datapath back
 

@@ -29,7 +29,7 @@
 
 ## 5. Shared pieces
 
-- [ ] 5.1 Extract `renderScrapeJobs` into `PrometheusScrapeJob`, used by both builders (folded-in debt).
+- [x] 5.1 Extract `renderScrapeJobs` into `PrometheusScrapeJob`, used by both builders (folded-in debt).
 - [x] 5.2 Add `OtelEndpoints.serviceHost(namespace) = "otel-collector.$namespace.svc"`, written once.
 - [x] 5.3 Add `OTEL_COLLECTOR_HOST`, `OTEL_OTLP_HTTP_ENDPOINT`, `OTEL_OTLP_GRPC_ENDPOINT` to `TemplateVariables` (`.svc` form).
 

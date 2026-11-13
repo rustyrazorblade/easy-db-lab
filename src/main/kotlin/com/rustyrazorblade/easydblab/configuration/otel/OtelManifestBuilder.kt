@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
-import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -20,7 +19,6 @@ import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.serialization.builtins.ListSerializer
 
 /**
  * Builds all OpenTelemetry Collector K8s resources as typed Fabric8 objects.
@@ -425,17 +423,7 @@ class OtelManifestBuilder(
             else -> PrometheusRelabelConfig(targetLabel = "instance", replacement = instance)
         }
 
-    private fun renderScrapeJobs(jobs: List<PrometheusScrapeJob>): String {
-        if (jobs.isEmpty()) return ""
-        // 8-space indent matches the depth of `- job_name:` entries under
-        // `receivers.prometheus.config.scrape_configs` in otel-collector-config.yaml.
-        // If the scrape_configs indentation changes, this must change too.
-        return Yaml()
-            .encodeToString(ListSerializer(PrometheusScrapeJob.serializer()), jobs)
-            .trimEnd()
-            .lines()
-            .joinToString("\n") { line -> if (line.isEmpty()) "" else "        $line" }
-    }
+    private fun renderScrapeJobs(jobs: List<PrometheusScrapeJob>): String = PrometheusScrapeJob.render(jobs)
 
     /**
      * Builds a static NodePort scrape job. Every collector on every node scrapes the same

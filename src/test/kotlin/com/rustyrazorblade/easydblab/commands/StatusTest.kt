@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -374,6 +375,22 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
+    fun `on a port-forward cluster a kit endpoint names its Service and the command that forwards it`() {
+        setupBasicClusterState(runningKits = setOf("clickhouse"), exposure = Exposure.PortForward)
+        installPackagedKit("clickhouse")
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+
+        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+
+        val output = capturedOutput()
+        assertThat(output).contains("clickhouse-nodeport.default.svc.cluster.local")
+        assertThat(output).contains("run: bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123")
+        assertThat(output).contains("http://grafana.default.svc.cluster.local:3000")
+        assertThat(output).contains("run: bin/kubectl port-forward -n default svc/grafana 3000")
+        assertThat(output).doesNotContain("10.0.1.100:30123")
+    }
+
+    @Test
     fun `the S3 Manager section appears only where the environment has S3`() {
         setupBasicClusterStateWithS3Bucket("test-bucket")
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
@@ -595,7 +612,10 @@ class StatusTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }
 
-    private fun setupBasicClusterState(runningKits: Set<String> = emptySet()) {
+    private fun setupBasicClusterState(
+        runningKits: Set<String> = emptySet(),
+        exposure: Exposure = Exposure.Socks,
+    ) {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
@@ -606,7 +626,10 @@ class StatusTest : BaseKoinTest() {
                 infrastructureStatus = InfrastructureStatus.UP,
                 createdAt = Instant.parse("2024-01-15T10:00:00Z"),
                 default = NodeState(version = "5.0"),
-            ).also { it.runningKits = runningKits }
+            ).also {
+                it.runningKits = runningKits
+                it.exposure = exposure
+            }
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.access
 
 import com.rustyrazorblade.easydblab.Constants
+import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.LocalPortForward
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -19,9 +20,30 @@ fun interface ServiceForwarder {
 }
 
 /**
+ * The port of [service] a port-forward to [port] opens. A kit endpoint names its NodePort (30000-32767),
+ * which a Service port-forward cannot open, so a port that is one of [service]'s NodePorts maps to the
+ * Service port behind it; a Service port is used as it is.
+ *
+ * @throws IllegalStateException when [service] exposes [port] neither way
+ */
+fun servicePortFor(
+    service: Service,
+    port: Int,
+): Int {
+    val ports = service.spec?.ports.orEmpty()
+    return ports.firstOrNull { it.port == port }?.port
+        ?: ports.firstOrNull { it.nodePort == port }?.port
+        ?: error(
+            "Service ${service.metadata.namespace}/${service.metadata.name} exposes no port $port " +
+                "(its ports: ${ports.joinToString { p -> listOfNotNull(p.port, p.nodePort).joinToString("/") }})",
+        )
+}
+
+/**
  * [ServiceForwarder] over Fabric8: verifies the Service exists, then forwards to it bound to the
- * IPv4 loopback only, so nothing off this machine can reach the forward. The client is built on the
- * first forward and closed by [close].
+ * IPv4 loopback only, so nothing off this machine can reach the forward. A kit endpoint's NodePort
+ * is mapped to the Service port behind it ([servicePortFor]). The client is built on the first
+ * forward and closed by [close].
  *
  * @param newClient builds the cluster's Kubernetes client from the recorded kubeconfig
  */
@@ -40,9 +62,9 @@ class Fabric8ServiceForwarder(
                 .services()
                 .inNamespace(target.namespace)
                 .withName(target.service)
-        checkNotNull(service.get()) { "Service ${target.namespace}/${target.service} does not exist" }
+        val existing = checkNotNull(service.get()) { "Service ${target.namespace}/${target.service} does not exist" }
         return service.portForward(
-            target.servicePort,
+            servicePortFor(existing, target.servicePort),
             InetAddress.getByName(Constants.Proxy.TUNNEL_LISTEN_ADDRESS),
             localPort,
         )

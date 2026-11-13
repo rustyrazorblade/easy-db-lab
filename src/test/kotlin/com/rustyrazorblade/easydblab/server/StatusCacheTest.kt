@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -562,6 +563,35 @@ class StatusCacheTest : BaseKoinTest() {
             .isEqualTo("cannot read ${Constants.Kit.CONFIG_FILE}")
         assertThat(kits["clickhouse"]!!.jsonObject["endpointsUnavailable"]).isNull()
         assertThat(kits["clickhouse"]!!.jsonObject["endpoints"]!!.jsonArray).isNotEmpty()
+    }
+
+    @Test
+    fun `on a port-forward cluster accessInfo gives Service DNS names and the commands that forward them`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+        whenever(mockClusterStateManager.load())
+            .thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")).apply { exposure = Exposure.PortForward })
+        installPackagedKit("clickhouse")
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val access = Json.parseToJsonElement(statusCache.getStatus("accessInfo")!!).jsonObject
+        val observability = access["observability"]!!.jsonObject
+        val endpoint =
+            access["kits"]!!
+                .jsonArray
+                .single()
+                .jsonObject["endpoints"]!!
+                .jsonArray
+                .first()
+                .jsonObject
+
+        assertThat(observability["grafana"]?.jsonPrimitive?.content).isEqualTo("http://grafana.default.svc.cluster.local:3000")
+        assertThat(observability["portForwardCommands"]!!.jsonArray.map { it.jsonPrimitive.content })
+            .contains("bin/kubectl port-forward -n default svc/grafana 3000")
+        assertThat(endpoint["address"]?.jsonPrimitive?.content).contains("clickhouse-nodeport.default.svc.cluster.local")
+        assertThat(endpoint["portForwardCommand"]?.jsonPrimitive?.content)
+            .startsWith("bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123")
     }
 
     private fun installPackagedKit(name: String) {

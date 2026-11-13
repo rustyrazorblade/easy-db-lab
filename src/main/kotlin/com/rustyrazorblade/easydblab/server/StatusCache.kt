@@ -19,6 +19,8 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
+import com.rustyrazorblade.easydblab.services.access.StatusAddresses
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -475,13 +477,19 @@ class StatusCache(
 
         val controlIp = controlHost.privateIp
 
+        val statusAddresses = StatusAddresses(state)
+        val addresses = statusAddresses.observability()
         val observability =
             ObservabilityAccess(
-                grafana = "http://$controlIp:${Constants.K8s.GRAFANA_PORT}",
-                mimir = "http://$controlIp:${Constants.K8s.MIMIR_HTTP_PORT}",
-                loki = "http://$controlIp:${Constants.K8s.LOKI_HTTP_PORT}",
-                tempo = "http://$controlIp:${Constants.K8s.TEMPO_PORT}",
-                pyroscope = "http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
+                grafana = addresses.grafana.address,
+                mimir = statusAddresses.service(ClusterServices.MIMIR).address,
+                loki = addresses.loki.address,
+                tempo = addresses.tempo.address,
+                pyroscope = addresses.pyroscope.address,
+                portForwardCommands =
+                    listOf(addresses.grafana, addresses.mimir, addresses.loki, addresses.tempo, addresses.pyroscope)
+                        .mapNotNull { it.hint }
+                        .ifEmpty { null },
             )
 
         val kits = buildKitAccess(state)
@@ -518,13 +526,19 @@ class StatusCache(
             .filter { it.name in state.runningKits }
             .sortedBy { it.name }
             .map { kitDir ->
-                val resolved = KitEndpointAddresses.resolveInstalled(kitDir, state.hosts)
+                val resolved = StatusAddresses(state).installedKit(kitDir)
                 KitAccess(
                     name = kitDir.name,
                     endpoints =
                         resolved.getOrDefault(emptyList()).map {
-                            val address = KitEndpointAddresses.toEndpointAddress(it)
-                            KitEndpointAccess(name = address.name, type = address.type, address = address.address)
+                            KitEndpointAccess(
+                                name = it.endpoint.name,
+                                type =
+                                    it.endpoint.type.name
+                                        .lowercase(),
+                                address = it.address.address,
+                                portForwardCommand = it.address.hint,
+                            )
                         },
                     endpointsUnavailable = resolved.exceptionOrNull()?.let { KitEndpointAddresses.UNREADABLE_DESCRIPTOR },
                 )

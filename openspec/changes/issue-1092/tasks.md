@@ -66,7 +66,7 @@
 
 - [ ] 11.1 Root `CLAUDE.md` observability section (two collectors, gating, producer endpoints).
 - [ ] 11.2 `configuration/CLAUDE.md` OTel subpackage (core vs add-on, new builder, `PodLogSource`).
-- [ ] 11.3 `events/CLAUDE.md` for `StageSkipped` per capability.
+- [x] 11.3 `events/CLAUDE.md` for `StageSkipped` per capability.
 - [ ] 11.4 User docs: monitoring page notes which telemetry is absent without `PRIVILEGED`/`HOST_PATH`.
 
 ## Noted, not in scope

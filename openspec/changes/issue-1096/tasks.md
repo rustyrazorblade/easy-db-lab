@@ -7,9 +7,9 @@
 ## 2. Overrides and init reporting
 
 - [x] 2.1 `CapabilityOverrides.parse(List<String>)`: name=bool, fail on unknown name, bad value, conflicting repeats, listing valid names (constants in `Constants`)
-- [ ] 2.2 `init --capability` (repeatable); record declared set plus overrides before writing state; fail before any state write on a parse error
-- [ ] 2.3 Expose `ObservabilityStackService` stage label/`requires` pairs without building manifests; `init` prints one multiline block per absent capability with its reason and requiring stages (or "no component needs it yet")
-- [ ] 2.4 Tests: override removes and adds; unknown and conflicting overrides fail with no state; the init component list equals the stages `up` skips for the same set
+- [x] 2.2 `init --capability` (repeatable); record declared set plus overrides before writing state; fail before any state write on a parse error
+- [x] 2.3 Expose `ObservabilityStackService` stage label/`requires` pairs without building manifests; `init` prints one multiline block per absent capability with its reason and requiring stages (or "no component needs it yet")
+- [x] 2.4 Tests: override removes and adds; unknown and conflicting overrides fail with no state; the init component list equals the stages `up` skips for the same set
 
 ## 3. Probe
 

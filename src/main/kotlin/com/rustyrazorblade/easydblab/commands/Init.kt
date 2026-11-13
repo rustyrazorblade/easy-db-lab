@@ -8,15 +8,19 @@ import com.rustyrazorblade.easydblab.commands.converters.PicoCniModeConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
+import com.rustyrazorblade.easydblab.configuration.CapabilityOverrides
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
+import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.ObservabilityStage
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -259,6 +263,15 @@ class Init : PicoBaseCommand() {
     var tenant: String = Constants.Observability.DEFAULT_TENANT
 
     @Option(
+        names = [Constants.Capabilities.OVERRIDE_OPTION],
+        description = [
+            "Override one node capability, as <name>=true or <name>=false (repeatable). " +
+                "Names: systemd-journal, cloudwatch, s3, privileged, host-network, host-path, node-ssh.",
+        ],
+    )
+    var capabilityOverrides: List<String> = emptyList()
+
+    @Option(
         names = ["--redirect-telemetry"],
         description = [
             "Ship all telemetry to an external observability stack at this base host instead of " +
@@ -340,6 +353,8 @@ class Init : PicoBaseCommand() {
 
     override fun execute() {
         validateParameters()
+        // Parsed before anything is cleaned or written, so a bad override leaves the directory as it was.
+        val capabilities = effectiveCapabilities()
 
         if (clean) {
             eventBus.emit(Event.Setup.CleaningExistingConfig)
@@ -351,7 +366,7 @@ class Init : PicoBaseCommand() {
         // After the cleanup, which removes a bin/ that holds only easy-db-lab's wrappers.
         refuseExistingBin()
 
-        val clusterState = createClusterState()
+        val clusterState = createClusterState(capabilities)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
 
@@ -367,6 +382,7 @@ class Init : PicoBaseCommand() {
         extractResourceFiles()
 
         displayCompletionMessage(clusterState)
+        reportAbsentCapabilities(capabilities, clusterState)
 
         if (start) {
             eventBus.emit(Event.Setup.ProvisioningInstances)
@@ -405,6 +421,24 @@ class Init : PicoBaseCommand() {
         }
     }
 
+    /**
+     * The capability set `init` records: the environment's declared set with the operator's
+     * `--capability` overrides applied. `init` creates AWS clusters only, so the declared set is AWS.
+     *
+     * @throws IllegalArgumentException on an unknown capability, a bad value or conflicting overrides
+     */
+    private fun effectiveCapabilities(): NodeCapabilities =
+        CapabilityOverrides.parse(capabilityOverrides).applyTo(NodeCapabilities.AWS)
+
+    /** Prints each absent capability and the stages `up` will skip without it. */
+    private fun reportAbsentCapabilities(
+        capabilities: NodeCapabilities,
+        clusterState: ClusterState,
+    ) {
+        val stages = ObservabilityStage.declared(clusterState.initConfig?.telemetryRedirect).map { it.requirement }
+        AbsentCapabilityReport.render(capabilities, stages)?.let { println(it) }
+    }
+
     private fun checkExistingFiles() {
         val existingFiles = mutableListOf<String>()
 
@@ -439,7 +473,7 @@ class Init : PicoBaseCommand() {
         throw CommandFailedException("${context.workingDirectory.absolutePath} already has a bin/")
     }
 
-    private fun createClusterState(): ClusterState {
+    private fun createClusterState(capabilities: NodeCapabilities): ClusterState {
         val state =
             ClusterState(
                 name = name,
@@ -453,6 +487,7 @@ class Init : PicoBaseCommand() {
                         controlArch = deriveArch(DEFAULT_CONTROL_INSTANCE_TYPE),
                     ),
                 tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
+                capabilities = capabilities.present().toSet(),
             )
         clusterStateManager.save(state)
         return state

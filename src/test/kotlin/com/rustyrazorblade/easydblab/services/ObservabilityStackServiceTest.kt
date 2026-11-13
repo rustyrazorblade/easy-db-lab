@@ -277,6 +277,21 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>()).isEmpty()
     }
 
+    @Test
+    fun `the stages init reports for an absent capability are exactly the ones up skips`() {
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        val reported =
+            ObservabilityStage
+                .declared(null)
+                .mapNotNull { stage -> stage.requires?.takeIf { it !in capabilities }?.let { stage.label to it } }
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().map { it.stage to it.capability })
+            .containsExactlyInAnyOrderElementsOf(reported)
+    }
+
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */
     private fun sharedStoreTenants(): TenantDirectory {
         val objectStore = mock<ObjectStore>()

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.tempo
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -21,9 +22,11 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * cluster-config ConfigMap.
  *
  * @property templateService Used for loading config files from classpath resources
+ * @property storeBlocks Places the store's object-store block into the config ([StoreBlockRenderer]).
  */
 class TempoManifestBuilder(
     private val templateService: TemplateService,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.S3,
 ) {
     companion object {
         private const val NAMESPACE = "default"
@@ -76,10 +79,8 @@ class TempoManifestBuilder(
             .addToData(
                 "tempo.yaml",
                 templateService
-                    .fromResource(
-                        TempoManifestBuilder::class.java,
-                        "tempo.yaml",
-                    ).substitute(),
+                    .fromString(storeBlocks.renderResource(TempoManifestBuilder::class.java, "tempo.yaml"))
+                    .substitute(),
             ).build()
 
     /**

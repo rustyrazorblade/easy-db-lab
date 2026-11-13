@@ -7,12 +7,7 @@ architecture_storage: v2
 # The account bucket, under the pyroscope root. Pyroscope v2 lays out its own directories
 # (segments, blocks) under this prefix. Nothing is written to the cluster's data bucket.
 storage:
-  backend: s3
-  prefix: __PROFILES_S3_PREFIX__
-  s3:
-    bucket_name: __ACCOUNT_BUCKET__
-    endpoint: s3.__AWS_REGION__.amazonaws.com
-    region: __AWS_REGION__
+  __OBJECT_STORE_BLOCK__
 
 # The metastore holds the only index of the blocks this cluster wrote; v2 cannot rebuild it from
 # S3. Its data and Raft state live on the control node's disk (/data is a hostPath), so a pod

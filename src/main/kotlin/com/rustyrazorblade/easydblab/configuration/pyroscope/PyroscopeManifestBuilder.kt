@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -25,9 +26,11 @@ import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
  * and the Grafana Alloy eBPF agent (DaemonSet + ConfigMap) that collects CPU profiles from all nodes.
  *
  * @property templateService Used for loading config files from classpath resources
+ * @property storeBlocks Places the store's object-store block into the config ([StoreBlockRenderer]).
  */
 class PyroscopeManifestBuilder(
     private val templateService: TemplateService,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.S3,
 ) {
     companion object {
         private const val NAMESPACE = "default"
@@ -169,10 +172,8 @@ class PyroscopeManifestBuilder(
             .addToData(
                 "config.yaml",
                 templateService
-                    .fromResource(
-                        PyroscopeManifestBuilder::class.java,
-                        "config.yaml",
-                    ).substitute(),
+                    .fromString(storeBlocks.renderResource(PyroscopeManifestBuilder::class.java, "config.yaml"))
+                    .substitute(),
             ).build()
 
     /**

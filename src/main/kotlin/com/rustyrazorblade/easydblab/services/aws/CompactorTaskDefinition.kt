@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import software.amazon.awssdk.core.SdkPojo
 import software.amazon.awssdk.services.ecs.model.CPUArchitecture
@@ -105,15 +106,6 @@ data class CompactorTaskDefinition(
                 "-compactor.retention-enabled=false",
             )
 
-        /** Reads a configuration file from the classpath, next to [anchor]. */
-        fun resource(
-            anchor: Class<*>,
-            name: String,
-        ): String =
-            checkNotNull(anchor.getResourceAsStream(name)) { "Missing classpath resource $name next to ${anchor.simpleName}" }
-                .bufferedReader()
-                .use { it.readText() }
-
         /** The `awslogs-stream-prefix` of [container]; awslogs names its stream `<prefix>/<container>/<task id>`. */
         fun logStreamPrefix(container: String): String = container
 
@@ -149,12 +141,17 @@ data class CompactorTaskDefinition(
                 else -> value.toString()
             }
 
-        /** Every configuration file the task writes, by file name. */
-        fun configFiles(): Map<String, String> =
+        /**
+         * Every configuration file the task writes, by file name, each with the object-store block
+         * [storeBlocks] places. The account compactor stores on S3 today; #1035 passes its store's.
+         */
+        fun configFiles(storeBlocks: StoreBlockRenderer = StoreBlockRenderer.S3): Map<String, String> =
             mapOf(
-                MimirManifestBuilder.CONFIG_FILE to resource(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
-                LokiManifestBuilder.CONFIG_FILE to resource(LokiManifestBuilder::class.java, LokiManifestBuilder.CONFIG_FILE),
-                TEMPO_BACKEND_FILE to resource(CompactorTaskDefinition::class.java, TEMPO_BACKEND_FILE),
+                MimirManifestBuilder.CONFIG_FILE to
+                    storeBlocks.renderResource(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
+                LokiManifestBuilder.CONFIG_FILE to
+                    storeBlocks.renderResource(LokiManifestBuilder::class.java, LokiManifestBuilder.CONFIG_FILE),
+                TEMPO_BACKEND_FILE to storeBlocks.renderResource(CompactorTaskDefinition::class.java, TEMPO_BACKEND_FILE),
             )
     }
 

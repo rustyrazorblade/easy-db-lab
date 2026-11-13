@@ -28,10 +28,7 @@ common:
       store: inmemory
     instance_addr: 127.0.0.1
   storage:
-    s3:
-      bucketnames: ${S3_BUCKET}
-      endpoint: s3.${AWS_REGION}.amazonaws.com
-      region: ${AWS_REGION}
+    __OBJECT_STORE_BLOCK__
 
 storage_config:
   # Chunks land under <prefix>/<tenant>/ and index tables under <prefix>/index/.

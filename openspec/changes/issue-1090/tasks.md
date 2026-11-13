@@ -31,9 +31,9 @@
 
 ## 5. Status and Grafana Service
 
-- [ ] 5.1 `commands/Status.kt` and `mcp/StatusCache.kt` print kit endpoints via the seam: Socks/Direct reachable address; PortForward prints Service DNS + a `bin/kubectl port-forward` hint
+- [x] 5.1 `commands/Status.kt` and `mcp/StatusCache.kt` print kit endpoints via the seam: Socks/Direct reachable address; PortForward prints Service DNS + a `bin/kubectl port-forward` hint
 - [x] 5.2 Add a `ClusterIP` Service for Grafana in `GrafanaManifestBuilder` on `Constants.GRAFANA_PORT`
-- [ ] 5.3 Dedupe the `Status.kt`/`StatusCache.kt` access-info builders
+- [x] 5.3 Dedupe the `Status.kt`/`StatusCache.kt` access-info builders
 
 ## 6. Architecture rule
 

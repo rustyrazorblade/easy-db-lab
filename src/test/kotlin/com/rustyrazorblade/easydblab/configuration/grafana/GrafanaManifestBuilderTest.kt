@@ -1,9 +1,12 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
+import io.fabric8.kubernetes.api.model.Service
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -75,12 +78,34 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildAllResources is the provisioning ConfigMap, the documents web server ConfigMap and the Deployment`() {
+    fun `buildAllResources is the provisioning ConfigMap, the documents web server ConfigMap, the Deployment and the Service`() {
         // Dashboards reach Grafana as files on the hostPath, not as K8s objects, so nothing here
         // may vary with the catalog's contents.
-        val names = builder.buildAllResources(documents).map { it.metadata.name }
+        val resources = builder.buildAllResources(documents)
 
-        assertThat(names).containsExactly("grafana-dashboards-config", "grafana-documents-web", "grafana")
+        assertThat(resources.map { it.metadata.name })
+            .containsExactly("grafana-dashboards-config", "grafana-documents-web", "grafana", "grafana")
+        assertThat(resources.last()).isInstanceOf(Service::class.java)
+    }
+
+    @Test
+    fun `the Grafana Service is a ClusterIP on the HTTP port that selects the Deployment's pods`() {
+        val service = builder.buildService()
+        val podLabels =
+            builder
+                .buildDeployment(documents)
+                .spec.template.metadata.labels
+
+        assertThat(service.spec.type).isEqualTo("ClusterIP")
+        assertThat(service.metadata.namespace).isEqualTo(Constants.K8s.NAMESPACE)
+        assertThat(service.spec.ports.map { it.port }).containsExactly(Constants.K8s.GRAFANA_PORT)
+        assertThat(
+            service.spec.ports
+                .single()
+                .targetPort.intVal,
+        ).isEqualTo(Constants.K8s.GRAFANA_PORT)
+        assertThat(podLabels).containsAllEntriesOf(service.spec.selector)
+        assertThat(service.metadata.name).isEqualTo(ClusterServices.GRAFANA.service)
     }
 
     @Test

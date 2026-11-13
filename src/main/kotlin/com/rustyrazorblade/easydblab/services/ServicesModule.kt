@@ -25,14 +25,18 @@ import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubeApiLocator
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.network.SocketTcpReachabilityProbe
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.proxy.LoopbackPortSelector
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
+import com.rustyrazorblade.easydblab.services.access.CassandraPodForward
+import com.rustyrazorblade.easydblab.services.access.Fabric8PodForwarder
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -43,6 +47,7 @@ import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import java.io.File
 import java.nio.file.Path
 
 /**
@@ -90,7 +95,23 @@ val servicesModule =
 
         // CQL session factory and service - singleton for session caching in REPL/Server mode
         singleOf(::DefaultCqlSessionFactory) bind CqlSessionFactory::class
-        singleOf(::DefaultCqlSessionService) bind CqlSessionService::class
+        single<CqlSessionService> {
+            val workspace = get<Context>().workingDirectory
+            val clientFactory = get<KubernetesClientFactory>()
+            DefaultCqlSessionService(get(), get(), get(), get()) {
+                val target = CassandraPodTarget.inWorkspace(workspace)
+                val kubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG).toPath()
+                SingleEndpointCql(
+                    forward =
+                        CassandraPodForward(
+                            pod = target.pod,
+                            forwarder = Fabric8PodForwarder { clientFactory.createClient(kubeconfig) },
+                            localPorts = LoopbackPortSelector()::select,
+                        ),
+                    datacenter = target.datacenter,
+                )
+            }
+        }
 
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class

@@ -132,7 +132,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
         val order = inOrder(mockTreeUploader, mockK8sService)
         order.verify(mockTreeUploader).upload(eq(testControlHost), any())
-        order.verify(mockK8sService, times(3)).applyResource(any())
+        order.verify(mockK8sService, times(4)).applyResource(any())
     }
 
     @Test
@@ -182,7 +182,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         service.deploy(testControlHost, context("other"), "acct-bucket").getOrThrow()
 
         val deployments = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, times(9)).applyResource(deployments.capture())
+        verify(mockK8sService, times(12)).applyResource(deployments.capture())
         val hashes =
             deployments.allValues.filterIsInstance<Deployment>().map {
                 it.spec.template.metadata.annotations[Constants.K8s.CONFIG_HASH_ANNOTATION]
@@ -220,7 +220,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         service().deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
 
         val applied = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, times(3)).applyResource(applied.capture())
+        verify(mockK8sService, times(4)).applyResource(applied.capture())
         val proxy =
             applied.allValues
                 .filterIsInstance<Deployment>()

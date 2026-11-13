@@ -25,9 +25,9 @@
 ## 4. JDBC and CQL
 
 - [x] 4.1 `KitJdbcSqlService` obtains the endpoint from the seam; `ViaSocks` keeps `SocksTcpBridge`, `Plain` connects directly; remove the `System.getProperty(PORT_PROPERTY)` branch
-- [ ] 4.2 Add the single-endpoint CQL mode for PortForward: forward one Cassandra StatefulSet pod on a fixed local port, sole contact point, `NodeDistanceEvaluator` marking other nodes IGNORED, token map off, `local-datacenter` set; restart a dead forward on the same port
-- [ ] 4.3 Keep the AWS multi-node SOCKS session unchanged in `CqlSessionService`/`CqlSessionFactory`
-- [ ] 4.4 Tests: single-endpoint evaluator ignores non-forward nodes; AWS path unchanged
+- [x] 4.2 Add the single-endpoint CQL mode for PortForward: forward one Cassandra StatefulSet pod on a fixed local port, sole contact point, `NodeDistanceEvaluator` marking other nodes IGNORED, token map off, `local-datacenter` set; restart a dead forward on the same port
+- [x] 4.3 Keep the AWS multi-node SOCKS session unchanged in `CqlSessionService`/`CqlSessionFactory`
+- [x] 4.4 Tests: single-endpoint evaluator ignores non-forward nodes; AWS path unchanged
 
 ## 5. Status and Grafana Service
 

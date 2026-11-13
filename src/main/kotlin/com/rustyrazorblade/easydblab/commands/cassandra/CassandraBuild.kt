@@ -80,6 +80,6 @@ class CassandraBuild : PicoBaseCommand() {
             )
 
         val location = catalog.publish(result.manifest, result.tarball)
-        eventBus.emit(Event.Cassandra.BuildPublished(result.manifest.name, location.toUri()))
+        eventBus.emit(Event.Cassandra.BuildPublished(result.manifest.name, catalog.uriOf(location)))
     }
 }

@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -82,6 +83,7 @@ class StatusCache(
     private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
+    private val objectStore: ObjectStore by inject()
     private val vpcService: VpcService by inject()
     private val kubernetesService: KubernetesService by inject()
     private val remoteOperationsService: RemoteOperationsService by inject()
@@ -382,15 +384,15 @@ class StatusCache(
             fullpath = "${state.s3Bucket}/${state.clusterPrefix()}",
             paths =
                 S3Paths(
-                    cassandra = s3Path.cassandra().toString(),
-                    clickhouse = s3Path.clickhouse().toString(),
-                    spark = s3Path.spark().toString(),
-                    emrLogs = s3Path.emrLogs().toString(),
-                    traces = "s3://${store.bucket}/${store.tracesPrefix()}",
-                    profiles = "s3://${store.bucket}/${store.profilesPrefix()}",
-                    metrics = "s3://${store.bucket}/${store.metricsPrefix()}/${store.tenant}",
-                    logs = "s3://${store.bucket}/${store.logsPrefix()}",
-                    annotations = store.annotationsRoot().toString(),
+                    cassandra = objectStore.uriOf(s3Path.cassandra()),
+                    clickhouse = objectStore.uriOf(s3Path.clickhouse()),
+                    spark = objectStore.uriOf(s3Path.spark()),
+                    emrLogs = objectStore.uriOf(s3Path.emrLogs()),
+                    traces = objectStore.uriOf(store.tracesRoot()),
+                    profiles = objectStore.uriOf(store.profilesRoot()),
+                    metrics = objectStore.uriOf(store.tenantMetricsRoot()),
+                    logs = objectStore.uriOf(store.logsRoot()),
+                    annotations = objectStore.uriOf(store.annotationsRoot()),
                 ),
         )
     }

@@ -1,12 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -39,6 +40,8 @@ internal class ClusterBackupServiceTest {
 
     @BeforeEach
     fun setUp() {
+        // The service shows locations as the S3 adapter spells them; the real S3Uri does the spelling.
+        whenever(mockObjectStore.uriOf(any())).thenAnswer { S3Uri.uri(it.getArgument(0)) }
         capturedEvents.clear()
         eventBus = EventBus()
         eventBus.addListener(
@@ -67,7 +70,7 @@ internal class ClusterBackupServiceTest {
                     writeText("apiVersion: v1\nclusters: []")
                 }
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).kubeconfig()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).kubeconfig()
 
             whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
                 .thenReturn(ObjectStore.UploadResult(expectedS3Path, 100L))
@@ -78,7 +81,13 @@ internal class ClusterBackupServiceTest {
             // Then
             assertThat(result.isSuccess).isTrue()
             verify(mockObjectStore).uploadFile(eq(localKubeconfig), eq(expectedS3Path), eq(true))
-            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.KubeconfigBackedUp }
+            assertThat(
+                capturedEvents
+                    .map { it.event }
+                    .filterIsInstance<Event.Backup.KubeconfigBackedUp>()
+                    .single()
+                    .s3Path,
+            ).isEqualTo("s3://easy-db-lab-test-abc12345/${expectedS3Path.getKey()}")
         }
 
         @Test
@@ -128,7 +137,7 @@ internal class ClusterBackupServiceTest {
             // Given
             val localPath = tempDir.toPath().resolve("kubeconfig")
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).kubeconfig()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).kubeconfig()
 
             whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(true)
             whenever(mockObjectStore.downloadFile(any(), any(), any()))
@@ -148,7 +157,7 @@ internal class ClusterBackupServiceTest {
             // Given
             val localPath = tempDir.toPath().resolve("kubeconfig")
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).kubeconfig()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).kubeconfig()
 
             whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(false)
 
@@ -194,7 +203,7 @@ internal class ClusterBackupServiceTest {
                     File(this, "service.yaml").writeText("apiVersion: v1")
                 }
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).k8s()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).k8s()
 
             whenever(mockObjectStore.uploadDirectory(any<Path>(), any(), any()))
                 .thenReturn(ObjectStore.UploadDirectoryResult(expectedS3Path, 2, 100L))
@@ -231,7 +240,7 @@ internal class ClusterBackupServiceTest {
             // Given
             val localPath = tempDir.toPath().resolve(Constants.K8s.MANIFEST_DIR)
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).k8s()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).k8s()
 
             whenever(mockObjectStore.directoryExists(expectedS3Path)).thenReturn(true)
             whenever(mockObjectStore.downloadDirectory(any(), any(), any()))
@@ -251,7 +260,7 @@ internal class ClusterBackupServiceTest {
             // Given
             val localPath = tempDir.toPath().resolve(Constants.K8s.MANIFEST_DIR)
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).k8s()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).k8s()
 
             whenever(mockObjectStore.directoryExists(expectedS3Path)).thenReturn(false)
 
@@ -275,7 +284,7 @@ internal class ClusterBackupServiceTest {
                     writeText("cassandra:\n  jvm_options: -Xmx4G")
                 }
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).cassandraPatch()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
 
             whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
                 .thenReturn(ObjectStore.UploadResult(expectedS3Path, 50L))
@@ -336,7 +345,7 @@ internal class ClusterBackupServiceTest {
             // Given
             val localPath = tempDir.toPath().resolve(Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).cassandraPatch()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
 
             whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(true)
             whenever(mockObjectStore.downloadFile(any(), any(), any()))
@@ -356,7 +365,7 @@ internal class ClusterBackupServiceTest {
             // Given
             val localPath = tempDir.toPath().resolve(Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).cassandraPatch()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
 
             whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(false)
 
@@ -409,9 +418,9 @@ internal class ClusterBackupServiceTest {
             val clusterState = createClusterState()
 
             whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
-                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).kubeconfig(), 100L))
+                .thenReturn(ObjectStore.UploadResult(ClusterStoragePath.from(clusterState).kubeconfig(), 100L))
             whenever(mockObjectStore.uploadDirectory(any<Path>(), any(), any()))
-                .thenReturn(ObjectStore.UploadDirectoryResult(ClusterS3Path.from(clusterState).k8s(), 1, 50L))
+                .thenReturn(ObjectStore.UploadDirectoryResult(ClusterStoragePath.from(clusterState).k8s(), 1, 50L))
 
             // When
             val result = service.backupAll(workingDir, clusterState)
@@ -449,9 +458,9 @@ internal class ClusterBackupServiceTest {
             // Given
             val workingDir = tempDir.absolutePath
             val clusterState = createClusterState()
-            val kubeconfigPath = ClusterS3Path.from(clusterState).kubeconfig()
-            val k8sPath = ClusterS3Path.from(clusterState).k8s()
-            val cassandraPatchPath = ClusterS3Path.from(clusterState).cassandraPatch()
+            val kubeconfigPath = ClusterStoragePath.from(clusterState).kubeconfig()
+            val k8sPath = ClusterStoragePath.from(clusterState).k8s()
+            val cassandraPatchPath = ClusterStoragePath.from(clusterState).cassandraPatch()
 
             whenever(mockObjectStore.fileExists(kubeconfigPath)).thenReturn(true)
             whenever(mockObjectStore.fileExists(cassandraPatchPath)).thenReturn(true)
@@ -477,9 +486,9 @@ internal class ClusterBackupServiceTest {
             // Given
             val workingDir = tempDir.absolutePath
             val clusterState = createClusterState()
-            val kubeconfigPath = ClusterS3Path.from(clusterState).kubeconfig()
-            val k8sPath = ClusterS3Path.from(clusterState).k8s()
-            val cassandraPatchPath = ClusterS3Path.from(clusterState).cassandraPatch()
+            val kubeconfigPath = ClusterStoragePath.from(clusterState).kubeconfig()
+            val k8sPath = ClusterStoragePath.from(clusterState).k8s()
+            val cassandraPatchPath = ClusterStoragePath.from(clusterState).cassandraPatch()
 
             whenever(mockObjectStore.fileExists(kubeconfigPath)).thenReturn(false)
             whenever(mockObjectStore.fileExists(cassandraPatchPath)).thenReturn(false)
@@ -502,7 +511,7 @@ internal class ClusterBackupServiceTest {
         fun `kubeconfigExistsInS3 should return true when kubeconfig exists`() {
             // Given
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).kubeconfig()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).kubeconfig()
 
             whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(true)
 
@@ -535,7 +544,7 @@ internal class ClusterBackupServiceTest {
         fun `k8sManifestsExistInS3 should return true when manifests exist`() {
             // Given
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).k8s()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).k8s()
 
             whenever(mockObjectStore.directoryExists(expectedS3Path)).thenReturn(true)
 
@@ -568,7 +577,7 @@ internal class ClusterBackupServiceTest {
         fun `cassandraPatchExistsInS3 should return true when cassandra patch exists`() {
             // Given
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).cassandraPatch()
+            val expectedS3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
 
             whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(true)
 
@@ -609,7 +618,7 @@ internal class ClusterBackupServiceTest {
             val clusterState = createClusterState()
 
             whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
-                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).kubeconfig(), 100L))
+                .thenReturn(ObjectStore.UploadResult(ClusterStoragePath.from(clusterState).kubeconfig(), 100L))
 
             // When
             val result = service.backupChanged(workingDir, clusterState)
@@ -672,7 +681,7 @@ internal class ClusterBackupServiceTest {
                 )
 
             whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
-                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).cassandraPatch(), 50L))
+                .thenReturn(ObjectStore.UploadResult(ClusterStoragePath.from(clusterState).cassandraPatch(), 50L))
 
             // When
             val result = service.backupChanged(workingDir, clusterState)
@@ -695,7 +704,7 @@ internal class ClusterBackupServiceTest {
             val clusterState = createClusterState()
 
             whenever(mockObjectStore.uploadDirectory(any<Path>(), any(), any()))
-                .thenReturn(ObjectStore.UploadDirectoryResult(ClusterS3Path.from(clusterState).k8s(), 2, 200L))
+                .thenReturn(ObjectStore.UploadDirectoryResult(ClusterStoragePath.from(clusterState).k8s(), 2, 200L))
 
             // When
             val result = service.backupChanged(workingDir, clusterState)
@@ -737,7 +746,7 @@ internal class ClusterBackupServiceTest {
             val clusterState = createClusterState()
 
             whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
-                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).kubeconfig(), 100L))
+                .thenReturn(ObjectStore.UploadResult(ClusterStoragePath.from(clusterState).kubeconfig(), 100L))
 
             // When
             val result1 = service.backupChanged(workingDir, clusterState)
@@ -760,7 +769,7 @@ internal class ClusterBackupServiceTest {
             val clusterState = createClusterState()
 
             whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
-                .thenReturn(ObjectStore.UploadResult(ClusterS3Path.from(clusterState).kubeconfig(), 100L))
+                .thenReturn(ObjectStore.UploadResult(ClusterStoragePath.from(clusterState).kubeconfig(), 100L))
 
             // When - first backup
             val result1 = service.backupChanged(workingDir, clusterState)

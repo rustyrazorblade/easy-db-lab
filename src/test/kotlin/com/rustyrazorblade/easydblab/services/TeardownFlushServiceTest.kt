@@ -2,8 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -94,7 +94,9 @@ class TeardownFlushServiceTest {
                 clusterState: ClusterState,
             ): Result<GrafanaAnnotationBackupResult> {
                 order += "annotations backup"
-                return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root("acct").resolve("grafana/annotations/x.json"), 2))
+                return Result.success(
+                    GrafanaAnnotationBackupResult(ClusterStoragePath.root("acct").resolve("grafana/annotations/x.json"), 2),
+                )
             }
         }
 

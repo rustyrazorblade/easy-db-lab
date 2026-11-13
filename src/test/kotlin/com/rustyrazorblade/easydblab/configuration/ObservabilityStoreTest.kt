@@ -33,7 +33,7 @@ class ObservabilityStoreTest {
     fun `the annotations root carries the tenant`() {
         val store = ObservabilityStore.from(state)
 
-        assertThat(store.annotationsRoot().toString()).isEqualTo("s3://acct-bucket/grafana/annotations/acme")
+        assertThat(store.annotationsRoot().toString()).isEqualTo("acct-bucket/grafana/annotations/acme")
     }
 
     @Test

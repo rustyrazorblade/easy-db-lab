@@ -3,9 +3,9 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -745,7 +746,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
     private val stepEnd = Instant.parse("2026-09-28T14:08:52Z")
 
     private fun stderrPath() =
-        ClusterS3Path
+        ClusterStoragePath
             .from(defaultClusterState)
             .emrLogs()
             .resolve(testClusterId)
@@ -825,6 +826,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         verify(mockObjectStore, times(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS)).getFileInfo(stderrPath())
         verify(mockObjectStore, never()).downloadFile(any(), any(), any())
         assertThat(events.filterIsInstance<Event.Emr.StepStderrNotFinal>().single().s3Uri)
-            .isEqualTo(stderrPath().toUri())
+            .isEqualTo(S3Uri.uri(stderrPath()))
     }
 }

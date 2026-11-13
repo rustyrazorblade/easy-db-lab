@@ -3,11 +3,12 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.Interceptor
@@ -91,7 +92,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
         val result = service.backup(controlHost, clusterState("acct-bucket")).getOrThrow()
 
         val contentCaptor = argumentCaptor<String>()
-        val pathCaptor = argumentCaptor<ClusterS3Path>()
+        val pathCaptor = argumentCaptor<ClusterStoragePath>()
         verify(objectStore).uploadContent(contentCaptor.capture(), pathCaptor.capture())
 
         // The exact JSON Grafana returned is uploaded verbatim.
@@ -100,7 +101,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
         assertThat(pathCaptor.firstValue.getKey())
             .matches("grafana/annotations/acme/\\d{8}-\\d{6}_perf-test-c0ffee\\.json")
         assertThat(result.annotationCount).isEqualTo(2)
-        assertThat(result.s3Path.toUri()).startsWith("s3://acct-bucket/grafana/annotations/acme/")
+        assertThat(S3Uri.uri(result.s3Path)).startsWith("s3://acct-bucket/grafana/annotations/acme/")
 
         val request = mockWebServer.takeRequest()
         assertThat(request.url.encodedPath).isEqualTo("/api/annotations")

@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.services.ObjectStore
@@ -27,7 +27,7 @@ import com.rustyrazorblade.easydblab.events.Event as DomainEvent
  * This implementation provides S3-specific object storage operations with:
  * - Automatic retry logic using RetryUtil (exponential backoff: 1s, 2s, 4s)
  * - User feedback via OutputHandler for long-running operations
- * - Type-safe path handling using ClusterS3Path
+ * - Type-safe path handling using ClusterStoragePath
  * - Proper error handling for S3-specific exceptions
  *
  * All S3 operations use cluster-specific paths (clusters/{clusterId}/) to prevent
@@ -43,7 +43,7 @@ class S3ObjectStore(
 
     override fun uploadFile(
         localFile: File,
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         showProgress: Boolean,
     ): ObjectStore.UploadResult {
         require(localFile.exists()) {
@@ -51,7 +51,7 @@ class S3ObjectStore(
         }
 
         if (showProgress) {
-            eventBus.emit(DomainEvent.S3.Uploading(localFile.name, remotePath.toUri()))
+            eventBus.emit(DomainEvent.S3.Uploading(localFile.name, uriOf(remotePath)))
         }
 
         val putRequest =
@@ -67,11 +67,11 @@ class S3ObjectStore(
         Retry
             .decorateRunnable(retry) {
                 s3Client.putObject(putRequest, localFile.toPath())
-                log.info { "Uploaded ${localFile.name} to ${remotePath.toUri()}" }
+                log.info { "Uploaded ${localFile.name} to ${uriOf(remotePath)}" }
             }.run()
 
         if (showProgress) {
-            eventBus.emit(DomainEvent.S3.UploadComplete(remotePath.toUri()))
+            eventBus.emit(DomainEvent.S3.UploadComplete(uriOf(remotePath)))
         }
 
         return ObjectStore.UploadResult(
@@ -81,12 +81,12 @@ class S3ObjectStore(
     }
 
     override fun downloadFile(
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         localPath: Path,
         showProgress: Boolean,
     ): ObjectStore.DownloadResult {
         if (showProgress) {
-            eventBus.emit(DomainEvent.S3.Downloading(remotePath.toUri(), localPath.toString()))
+            eventBus.emit(DomainEvent.S3.Downloading(uriOf(remotePath), localPath.toString()))
         }
 
         val getRequest =
@@ -109,7 +109,7 @@ class S3ObjectStore(
                     s3Client.getObject(getRequest, partial)
                 }.run()
             Files.move(partial, localPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-            log.info { "Downloaded ${remotePath.toUri()} to $localPath" }
+            log.info { "Downloaded ${uriOf(remotePath)} to $localPath" }
         } finally {
             Files.deleteIfExists(partial)
         }
@@ -125,7 +125,7 @@ class S3ObjectStore(
     }
 
     override fun listFiles(
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         recursive: Boolean,
         startAfter: String,
     ): List<ObjectStore.FileInfo> {
@@ -154,7 +154,7 @@ class S3ObjectStore(
             response.contents()?.forEach { s3Object ->
                 results.add(
                     ObjectStore.FileInfo(
-                        path = ClusterS3Path.fromKey(remotePath.bucket, s3Object.key()),
+                        path = ClusterStoragePath.fromKey(remotePath.bucket, s3Object.key()),
                         size = s3Object.size(),
                         lastModified = s3Object.lastModified().toString(),
                     ),
@@ -163,7 +163,7 @@ class S3ObjectStore(
             response.commonPrefixes()?.forEach { prefix ->
                 results.add(
                     ObjectStore.FileInfo(
-                        path = ClusterS3Path.fromKey(remotePath.bucket, prefix.prefix()),
+                        path = ClusterStoragePath.fromKey(remotePath.bucket, prefix.prefix()),
                         size = 0,
                         lastModified = "",
                     ),
@@ -175,11 +175,11 @@ class S3ObjectStore(
     }
 
     override fun deleteFile(
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         showProgress: Boolean,
     ) {
         if (showProgress) {
-            eventBus.emit(DomainEvent.S3.Deleting(remotePath.toUri()))
+            eventBus.emit(DomainEvent.S3.Deleting(uriOf(remotePath)))
         }
 
         val deleteRequest =
@@ -195,15 +195,15 @@ class S3ObjectStore(
         Retry
             .decorateRunnable(retry) {
                 s3Client.deleteObject(deleteRequest)
-                log.info { "Deleted ${remotePath.toUri()}" }
+                log.info { "Deleted ${uriOf(remotePath)}" }
             }.run()
 
         if (showProgress) {
-            eventBus.emit(DomainEvent.S3.Deleted(remotePath.toUri()))
+            eventBus.emit(DomainEvent.S3.Deleted(uriOf(remotePath)))
         }
     }
 
-    override fun fileExists(remotePath: ClusterS3Path): Boolean =
+    override fun fileExists(remotePath: ClusterStoragePath): Boolean =
         try {
             s3Client.headObject(createHeadRequest(remotePath))
             true
@@ -214,7 +214,7 @@ class S3ObjectStore(
             throw e
         }
 
-    override fun getFileInfo(remotePath: ClusterS3Path): ObjectStore.FileInfo? =
+    override fun getFileInfo(remotePath: ClusterStoragePath): ObjectStore.FileInfo? =
         try {
             val response = s3Client.headObject(createHeadRequest(remotePath))
 
@@ -231,7 +231,7 @@ class S3ObjectStore(
         }
 
     override fun downloadDirectory(
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         localDir: Path,
         showProgress: Boolean,
     ): ObjectStore.DownloadDirectoryResult {
@@ -283,7 +283,7 @@ class S3ObjectStore(
 
     override fun uploadDirectory(
         localDir: Path,
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
         showProgress: Boolean,
     ): ObjectStore.UploadDirectoryResult {
         val localDirFile = localDir.toFile()
@@ -298,7 +298,7 @@ class S3ObjectStore(
                 .toList()
 
         if (showProgress) {
-            eventBus.emit(DomainEvent.S3.DirectoryUploadFound(files.size, remotePath.toUri()))
+            eventBus.emit(DomainEvent.S3.DirectoryUploadFound(files.size, uriOf(remotePath)))
         }
 
         var totalBytes = 0L
@@ -316,7 +316,7 @@ class S3ObjectStore(
         }
 
         if (showProgress) {
-            eventBus.emit(DomainEvent.S3.DirectoryUploadComplete(filesUploaded, remotePath.toUri()))
+            eventBus.emit(DomainEvent.S3.DirectoryUploadComplete(filesUploaded, uriOf(remotePath)))
         }
 
         return ObjectStore.UploadDirectoryResult(remotePath, filesUploaded, totalBytes)
@@ -324,7 +324,7 @@ class S3ObjectStore(
 
     override fun uploadContent(
         content: String,
-        remotePath: ClusterS3Path,
+        remotePath: ClusterStoragePath,
     ) {
         val putRequest =
             PutObjectRequest
@@ -345,11 +345,11 @@ class S3ObjectStore(
                     software.amazon.awssdk.core.sync.RequestBody
                         .fromBytes(bytes),
                 )
-                log.info { "Uploaded content (${bytes.size} bytes) to ${remotePath.toUri()}" }
+                log.info { "Uploaded content (${bytes.size} bytes) to ${uriOf(remotePath)}" }
             }.run()
     }
 
-    override fun readContent(remotePath: ClusterS3Path): String {
+    override fun readContent(remotePath: ClusterStoragePath): String {
         val getRequest =
             GetObjectRequest
                 .builder()
@@ -359,7 +359,7 @@ class S3ObjectStore(
         return s3Client.getObjectAsBytes(getRequest).asUtf8String()
     }
 
-    override fun directoryExists(remotePath: ClusterS3Path): Boolean {
+    override fun directoryExists(remotePath: ClusterStoragePath): Boolean {
         // Use recursive=true to find any files under the prefix
         // With recursive=false, S3's delimiter "/" would roll up nested files
         // into CommonPrefixes instead of Contents, causing false negatives
@@ -367,13 +367,15 @@ class S3ObjectStore(
         return files.isNotEmpty()
     }
 
+    override fun uriOf(path: ClusterStoragePath): String = S3Uri.uri(path)
+
     /**
      * Creates a HeadObjectRequest for the given S3 path.
      *
      * @param remotePath The S3 path to check
      * @return A configured HeadObjectRequest
      */
-    private fun createHeadRequest(remotePath: ClusterS3Path): HeadObjectRequest =
+    private fun createHeadRequest(remotePath: ClusterStoragePath): HeadObjectRequest =
         HeadObjectRequest
             .builder()
             .bucket(remotePath.bucket)

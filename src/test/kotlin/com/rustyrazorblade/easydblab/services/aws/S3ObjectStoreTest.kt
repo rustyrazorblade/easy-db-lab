@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -48,7 +48,7 @@ class S3ObjectStoreTest : BaseKoinTest() {
     ) {
         val testFile = tempDir.resolve("test.jar").toFile()
         testFile.writeText("test content")
-        val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")
+        val s3Path = ClusterStoragePath.root("test-bucket").spark().resolve("test.jar")
 
         objectStore = get()
 
@@ -68,7 +68,7 @@ class S3ObjectStoreTest : BaseKoinTest() {
 
     @Test
     fun `fileExists throws exception on S3 server error`() {
-        val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")
+        val s3Path = ClusterStoragePath.root("test-bucket").spark().resolve("test.jar")
 
         objectStore = get()
 
@@ -88,7 +88,7 @@ class S3ObjectStoreTest : BaseKoinTest() {
 
     @Test
     fun `getFileInfo throws exception on S3 server error`() {
-        val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")
+        val s3Path = ClusterStoragePath.root("test-bucket").spark().resolve("test.jar")
 
         objectStore = get()
 
@@ -110,7 +110,7 @@ class S3ObjectStoreTest : BaseKoinTest() {
     fun `downloadFile rethrows SdkClientException`(
         @TempDir tempDir: Path,
     ) {
-        val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")
+        val s3Path = ClusterStoragePath.root("test-bucket").spark().resolve("test.jar")
         val localPath = tempDir.resolve("downloaded.jar")
 
         objectStore = get()
@@ -133,7 +133,7 @@ class S3ObjectStoreTest : BaseKoinTest() {
     fun `downloadFile throws exception on S3 error`(
         @TempDir tempDir: Path,
     ) {
-        val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")
+        val s3Path = ClusterStoragePath.root("test-bucket").spark().resolve("test.jar")
         val localPath = tempDir.resolve("downloaded.jar")
 
         objectStore = get()

@@ -33,6 +33,18 @@ The lead reports at once, without a status request, when an agent finishes, merg
 - At most three issues are in progress at the same time.  Other items wait.
 - If the queue is empty and a slot is free, the lead proposes the highest-priority `status:ready` issue that has no `agent:active` or `blocked` label.  It waits for the owner's yes before it starts the issue.
 
+## Review trains
+
+To improve throughput, batch small changes into one review train.
+
+- A train is one agent, one worktree, one branch, and one PR for several small issues.
+- Each issue gets its own commit, with `Closes #<n>` in the commit message.
+- The five review lenses, the CI checks and the merge run once for the whole train.
+- A train merges with `gh pr merge --rebase`, not `--squash`, so each issue keeps its own commit on `main`.
+- A train counts as one of the three slots.
+- Put a feature, or any issue that needs its own spec approval, in its own PR.
+- The lead orders the commits so that an issue that touches the same files as an open PR comes last, and the train rebases on `main` before it starts those commits.
+
 ## Issue labels
 
 - **Lifecycle**, one at a time, in this order:

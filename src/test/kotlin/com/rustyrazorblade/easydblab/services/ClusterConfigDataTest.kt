@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -41,5 +42,29 @@ class ClusterConfigDataTest {
             .containsEntry("logs_s3_prefix", "loki")
             .containsEntry("traces_s3_prefix", "tempo")
             .containsEntry("cluster_name", "lab-abc123")
+    }
+
+    @Test
+    fun `publishes the present capabilities in enum order, without a removed one`() {
+        val recorded = setOf(NodeCapability.NODE_SSH, NodeCapability.S3, NodeCapability.HOST_PATH)
+
+        val data = ClusterConfigData.of(control, state.copy(capabilities = recorded), "us-west-2")
+
+        assertThat(data).containsEntry("capabilities", "s3,host-path,node-ssh")
+    }
+
+    @Test
+    fun `the same recorded set always publishes the same value`() {
+        val first = ClusterConfigData.of(control, state.copy(capabilities = linkedSetOf(NodeCapability.HOST_PATH, NodeCapability.S3)), "us-west-2")
+        val second = ClusterConfigData.of(control, state.copy(capabilities = linkedSetOf(NodeCapability.S3, NodeCapability.HOST_PATH)), "us-west-2")
+
+        assertThat(first["capabilities"]).isEqualTo(second["capabilities"])
+    }
+
+    @Test
+    fun `a state with no recorded set publishes every capability`() {
+        val data = ClusterConfigData.of(control, state, "us-west-2")
+
+        assertThat(data).containsEntry("capabilities", NodeCapability.entries.joinToString(",") { it.serialName })
     }
 }

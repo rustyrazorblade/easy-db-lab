@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
@@ -385,6 +386,24 @@ class StatusTest : BaseKoinTest() {
         assertThat(capturedOutput()).doesNotContain("S3 Manager")
     }
 
+
+    @Test
+    fun `the capabilities section lists every capability, an absent one with its reason`() {
+        setupBasicClusterState()
+        mockClusterStateManager.load().capabilities = NodeCapability.entries.toSet() - NodeCapability.HOST_PATH
+
+        Status().execute()
+
+        val section = capturedOutput().substringAfter("=== CAPABILITIES ===").lines().filter { it.isNotBlank() }
+        assertThat(section.take(NodeCapability.entries.size)).containsExactlyElementsOf(
+            NodeCapability.entries.map { capability ->
+                when (capability) {
+                    NodeCapability.HOST_PATH -> "  host-path: absent: ${capability.absentReason}"
+                    else -> "  ${capability.serialName}: present"
+                }
+            },
+        )
+    }
     @Test
     fun `a stopped kit prints no endpoints`() {
         // A bucket, because a present kubeconfig also renders the S3 Manager section.

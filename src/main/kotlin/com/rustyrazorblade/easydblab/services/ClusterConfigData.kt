@@ -1,13 +1,17 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 
 /**
  * The contents of the runtime `cluster-config` ConfigMap: the control node IP (log/OTLP destination),
  * AWS region, the account bucket and the Tempo, Mimir and Loki prefixes in it, the cluster name
- * (metric label), and the tenant every in-cluster producer and backend sends in `X-Scope-OrgID`.
+ * (metric label), the tenant every in-cluster producer and backend sends in `X-Scope-OrgID`, and the
+ * present node capabilities (serial names in enum order, comma-joined, so an unchanged set never
+ * changes the hash).
  *
  * The collectors and Tempo read it, so their config hashes
  * ([com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator]) cover it. Every path that
@@ -39,6 +43,11 @@ object ClusterConfigData {
             "logs_s3_prefix" to store.logsPrefix(),
             "cluster_name" to clusterState.clusterLabelName(),
             "tenant" to clusterState.tenant(),
+            Constants.Capabilities.CLUSTER_CONFIG_KEY to
+                NodeCapabilities
+                    .from(clusterState)
+                    .present()
+                    .joinToString(Constants.Capabilities.CLUSTER_CONFIG_SEPARATOR) { it.serialName },
         )
     }
 }

@@ -20,9 +20,9 @@
 
 ## 4. Publishing and status
 
-- [ ] 4.1 `ClusterConfigData.of()` adds `capabilities` (enum order, comma-joined); test stable output and absence of a removed capability
-- [ ] 4.2 `KitProcessEnvironment` sets `EDL_NODE_SSH` from `NODE_SSH in capabilities`; test sshConfig present but `NODE_SSH` absent gives `false`, AWS gives `true`
-- [ ] 4.3 `status` prints a Capabilities section (multiline `println`); test present and absent with reason
+- [x] 4.1 `ClusterConfigData.of()` adds `capabilities` (enum order, comma-joined); test stable output and absence of a removed capability
+- [x] 4.2 `KitProcessEnvironment` sets `EDL_NODE_SSH` from `NODE_SSH in capabilities`; test sshConfig present but `NODE_SSH` absent gives `false`, AWS gives `true`
+- [x] 4.3 `status` prints a Capabilities section (multiline `println`); test present and absent with reason
 
 ## 5. Docs
 

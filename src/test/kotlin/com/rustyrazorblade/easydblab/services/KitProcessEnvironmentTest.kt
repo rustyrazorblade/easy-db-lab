@@ -1,6 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -84,9 +88,20 @@ internal class KitProcessEnvironmentTest {
     }
 
     @Test
-    fun `EDL_NODE_SSH is true when the workspace has an sshConfig`() {
+    fun `EDL_NODE_SSH is false when the recorded set lacks NODE_SSH, even with an sshConfig`() {
         File(workspace, DefaultClusterConfigurationService.SSH_CONFIG_FILE).writeText("Host db0\n")
+        recordCapabilities(NodeCapability.entries.toSet() - NodeCapability.NODE_SSH)
         val builder = ProcessBuilder("true")
+
+        environment.applyTo(builder, workspace, mapOf(Constants.Kit.NODE_SSH_ENV to "true"))
+
+        assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("false")
+    }
+
+    @Test
+    fun `EDL_NODE_SSH is true on an AWS cluster that records no set`() {
+        ClusterStateManager(File(workspace, CLUSTER_STATE)).save(ClusterState(name = "lab", versions = mutableMapOf()))
+        val builder = ProcessBuilder("true").also { it.environment()[Constants.Kit.NODE_SSH_ENV] = "false" }
 
         environment.applyTo(builder, workspace, mapOf(Constants.Kit.NODE_SSH_ENV to "false"))
 
@@ -94,12 +109,18 @@ internal class KitProcessEnvironmentTest {
     }
 
     @Test
-    fun `EDL_NODE_SSH is false when the workspace has no sshConfig`() {
-        val builder = ProcessBuilder("true").also { it.environment()[Constants.Kit.NODE_SSH_ENV] = "true" }
+    fun `EDL_NODE_SSH is true when the recorded set has NODE_SSH, without an sshConfig`() {
+        recordCapabilities(setOf(NodeCapability.NODE_SSH))
+        val builder = ProcessBuilder("true")
 
-        environment.applyTo(builder, workspace, mapOf(Constants.Kit.NODE_SSH_ENV to "true"))
+        environment.applyTo(builder, workspace, emptyMap())
 
-        assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("false")
+        assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("true")
+    }
+
+    private fun recordCapabilities(capabilities: Set<NodeCapability>) {
+        ClusterStateManager(File(workspace, CLUSTER_STATE))
+            .save(ClusterState(name = "lab", versions = mutableMapOf(), capabilities = capabilities))
     }
 
     @Test

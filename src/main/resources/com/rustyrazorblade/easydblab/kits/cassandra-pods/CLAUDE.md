@@ -13,7 +13,7 @@ SSH path for the AMI; this kit is the pods path, so its name must not match a bu
 - `cassandra-jmx-rules.yaml` is copied into this kit's resources by `processResources` from
   `configuration/cassandra/`; it is not checked in here.
 - `lib/check-start.sh` checks for the AMI Cassandra over ssh only when `EDL_NODE_SSH=true` (set by
-  `KitProcessEnvironment` from the workspace `sshConfig`); on `false` it prints one skip line. It also validates `--nodes` (whole number >= 1), `--heap` (whole number of G or M), and `--memory` (whole number of Gi or Mi, with `--heap` smaller than it); a private image (HTTP 401/403) only warns, a 404 fails. `lib/wait-un.sh` bounds the wait at 300s + 720s per node (`CASSANDRA_UN_WAIT_SECONDS` overrides it for tests).
+  `KitProcessEnvironment` from the recorded `NODE_SSH` capability); on `false` it prints one skip line. It also validates `--nodes` (whole number >= 1), `--heap` (whole number of G or M), and `--memory` (whole number of Gi or Mi, with `--heap` smaller than it); a private image (HTTP 401/403) only warns, a 404 fails. `lib/wait-un.sh` bounds the wait at 300s + 720s per node (`CASSANDRA_UN_WAIT_SECONDS` overrides it for tests).
 - `lib/check-start.sh` resolves the image and writes `resolved-image.env`;
   `lib/apply-statefulset.sh` fills `@RESOLVED_IMAGE@` and `@RESOLVED_BUILD@`. Tests:
   `./gradlew testCassandraPodsStart` and `CassandraPodsKitTest`.

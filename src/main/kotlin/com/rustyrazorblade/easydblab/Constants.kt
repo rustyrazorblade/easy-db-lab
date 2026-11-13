@@ -581,8 +581,7 @@ object Constants {
 
         /**
          * The variable that tells every kit process whether the environment reaches its nodes over SSH:
-         * `true` or `false`. Today it is `true` when the workspace has an `sshConfig`; a `NODE_SSH`
-         * capability (issue #1096) can feed it later.
+         * `true` or `false`, from the recorded `NODE_SSH` capability (see `KitProcessEnvironment`).
          */
         const val NODE_SSH_ENV = "EDL_NODE_SSH"
 

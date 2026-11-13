@@ -97,8 +97,8 @@ case "${image}" in
     ;;
 esac
 
-# EDL_NODE_SSH comes from easy-db-lab: true when the workspace can reach its nodes over SSH (it has
-# an sshConfig). Without node SSH there is no AMI Cassandra to collide with, so the check is skipped.
+# EDL_NODE_SSH comes from easy-db-lab: true when the cluster has the NODE_SSH capability (it can reach
+# its nodes over SSH). Without node SSH there is no AMI Cassandra to collide with, so the check is skipped.
 case "${EDL_NODE_SSH:-}" in
   true) check_nodes=yes ;;
   false)

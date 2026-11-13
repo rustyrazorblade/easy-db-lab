@@ -32,6 +32,8 @@ The baseline Pod meets Pod Security "restricted": `runAsNonRoot`, seccomp `Runti
 
 A rejection with HTTP 403 or 422, or a 400 whose message says a webhook does not support dry run, makes the capability absent. The result carries a note with the API message. For the dry-run refusal, the note names the webhook (decision 3). Any other error fails the probe.
 
+Every failure, including reading or creating the namespace and waiting for a created namespace's default ServiceAccount (`Constants.Capabilities.NAMESPACE_READY_TIMEOUT_SECONDS`), is an `IllegalStateException` naming the namespace and the API server's message; a 403 there also says the probe needs cluster-admin. An interrupt during the wait is rethrown with the thread's flag set.
+
 `NODE_SSH` is never probed. A probed set has it absent. The other capabilities (`SYSTEMD_JOURNAL`, `CLOUDWATCH`, `S3`) are not probed either: #1082 decides their defaults for that environment.
 
 *Alternatives:*

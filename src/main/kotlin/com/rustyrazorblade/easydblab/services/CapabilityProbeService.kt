@@ -10,6 +10,8 @@ import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
+import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -42,9 +44,11 @@ data class ProbeResult(
  * calls it.
  *
  * @param clientFactory builds the client for the cluster named by the [KubeApi]
+ * @param namespaceReadyTimeout how long to wait for a created namespace's default ServiceAccount
  */
 class CapabilityProbeService(
     private val clientFactory: KubernetesClientFactory,
+    private val namespaceReadyTimeout: Duration = Duration.ofSeconds(Constants.Capabilities.NAMESPACE_READY_TIMEOUT_SECONDS),
 ) {
     /**
      * Probes [namespace] on the cluster [api] names.
@@ -104,7 +108,13 @@ class CapabilityProbeService(
         client: KubernetesClient,
         namespace: String,
     ) {
-        if (client.namespaces().withName(namespace).get() != null) return
+        val existing =
+            try {
+                client.namespaces().withName(namespace).get()
+            } catch (e: KubernetesClientException) {
+                fail(namespace, "reading the namespace: ${explain(e)}")
+            }
+        if (existing != null) return
         try {
             client
                 .namespaces()
@@ -117,15 +127,49 @@ class CapabilityProbeService(
                 ).create()
         } catch (e: KubernetesClientException) {
             // Another caller created it between the read and the create.
-            if (e.code != CONFLICT) fail(namespace, "creating the namespace: ${e.status?.message ?: e.message}")
+            if (e.code != CONFLICT) fail(namespace, "creating the namespace: ${explain(e)}")
         }
-        // Until its default ServiceAccount exists, the API server rejects every Pod in a new namespace
-        // with 403, which would read as a refused capability.
-        client
-            .serviceAccounts()
-            .inNamespace(namespace)
-            .withName(DEFAULT_SERVICE_ACCOUNT)
-            .waitUntilCondition({ it != null }, Constants.Capabilities.NAMESPACE_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        awaitDefaultServiceAccount(client, namespace)
+    }
+
+    /**
+     * Until its default ServiceAccount exists, the API server rejects every Pod in a new namespace
+     * with 403, which would read as a refused capability. Fabric8 reports a timeout, a refused watch
+     * and an interrupt all as a [KubernetesClientException]; an interrupt is rethrown as the
+     * [InterruptedException] it wraps, with the thread's flag set again.
+     */
+    private fun awaitDefaultServiceAccount(
+        client: KubernetesClient,
+        namespace: String,
+    ) {
+        try {
+            client
+                .serviceAccounts()
+                .inNamespace(namespace)
+                .withName(DEFAULT_SERVICE_ACCOUNT)
+                .waitUntilCondition({ it != null }, namespaceReadyTimeout.toMillis(), TimeUnit.MILLISECONDS)
+        } catch (e: KubernetesClientException) {
+            val interrupted = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<InterruptedException>().firstOrNull()
+            if (interrupted != null) {
+                Thread.currentThread().interrupt()
+                throw interrupted
+            }
+            val reason = "the default ServiceAccount did not appear within ${namespaceReadyTimeout.toSeconds()} s"
+            when (e) {
+                is KubernetesClientTimeoutException -> fail(namespace, reason)
+                else -> fail(namespace, "$reason: ${explain(e)}")
+            }
+        }
+    }
+
+    /** The API server's message for [e], pointing at the cluster-admin requirement on a 403. */
+    private fun explain(e: KubernetesClientException): String {
+        val message = e.status?.message ?: e.message.orEmpty()
+        return when (e.code) {
+            Constants.HttpStatus.FORBIDDEN ->
+                "$message. The capability probe needs cluster-admin on this cluster, to read and create the namespace"
+            else -> message
+        }
     }
 
     private fun fail(

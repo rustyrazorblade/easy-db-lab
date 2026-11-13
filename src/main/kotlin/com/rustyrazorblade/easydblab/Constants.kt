@@ -153,6 +153,7 @@ object Constants {
     // HTTP Status Codes
     object HttpStatus {
         const val OK = 200
+        const val CREATED = 201
         const val NO_CONTENT = 204
         const val MULTIPLE_CHOICES = 300
         const val BAD_REQUEST = 400

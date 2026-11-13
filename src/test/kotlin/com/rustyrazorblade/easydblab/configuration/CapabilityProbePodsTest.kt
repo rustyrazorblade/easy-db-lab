@@ -17,8 +17,10 @@ class CapabilityProbePodsTest {
         copy.metadata.name = CapabilityProbePods.baseline(namespace).metadata.name
         when (capability) {
             NodeCapability.PRIVILEGED ->
-                copy.spec.containers[0]
-                    .securityContext.privileged = null
+                copy.spec.containers[0].securityContext.apply {
+                    privileged = null
+                    allowPrivilegeEscalation = false
+                }
             NodeCapability.HOST_NETWORK -> copy.spec.hostNetwork = null
             NodeCapability.HOST_PATH -> {
                 copy.spec.volumes = emptyList()
@@ -37,6 +39,22 @@ class CapabilityProbePodsTest {
             assertThat(pod).isNotEqualTo(baseline)
             assertThat(withoutTestedField(pod, capability)).describedAs(capability.name).isEqualTo(baseline)
         }
+    }
+
+    @Test
+    fun `the privileged probe does not forbid privilege escalation, which the API server rejects`() {
+        val securityContext =
+            CapabilityProbePods
+                .probes(namespace)
+                .getValue(NodeCapability.PRIVILEGED)
+                .spec.containers
+                .single()
+                .securityContext
+
+        assertThat(securityContext.privileged).isTrue()
+        // Pod validation refuses privileged: true with allowPrivilegeEscalation: false (422), even
+        // under dryRun=All, which would report PRIVILEGED absent on every cluster.
+        assertThat(securityContext.allowPrivilegeEscalation).isNotEqualTo(false)
     }
 
     @Test

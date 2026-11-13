@@ -24,11 +24,11 @@ There is no `init --kubeconfig` yet (#1082). #1089 (spec on branch `issue-1089`,
 | Pod | Differs from the baseline Pod by | Decides |
 | --- | --- | --- |
 | baseline | nothing | whether the probe can attribute a result at all |
-| privileged | `securityContext.privileged: true` | `PRIVILEGED` |
+| privileged | `securityContext.privileged: true` (and `allowPrivilegeEscalation: true`) | `PRIVILEGED` |
 | host network | `hostNetwork: true` | `HOST_NETWORK` |
 | host path | one `hostPath` volume, `/var/log`, read-only | `HOST_PATH` |
 
-The baseline Pod meets Pod Security "restricted": `runAsNonRoot`, seccomp `RuntimeDefault`, all capabilities dropped, no privilege escalation, the pause image. Each probe Pod changes only the one field it tests, so a rejection is attributable to that field. When the baseline Pod itself is rejected, the probe fails, naming the reason: the namespace or the credentials admit no Pod at all, which is not a capability fact. The Pod builders are Fabric8 builders, not YAML strings.
+The baseline Pod meets Pod Security "restricted": `runAsNonRoot`, seccomp `RuntimeDefault`, all capabilities dropped, no privilege escalation, the pause image. Each probe Pod changes only the one field it tests, so a rejection is attributable to that field. The privileged Pod necessarily also lifts the escalation flag, because the API server's Pod validation rejects `privileged: true` with `allowPrivilegeEscalation: false` even under `dryRun=All`. When the baseline Pod itself is rejected, the probe fails, naming the reason: the namespace or the credentials admit no Pod at all, which is not a capability fact. The Pod builders are Fabric8 builders, not YAML strings.
 
 A rejection with HTTP 403 or 422, or a 400 whose message says a webhook does not support dry run, makes the capability absent. The result carries a note with the API message. For the dry-run refusal, the note names the webhook (decision 3). Any other error fails the probe.
 

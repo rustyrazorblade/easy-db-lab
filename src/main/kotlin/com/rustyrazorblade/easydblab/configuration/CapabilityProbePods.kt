@@ -27,12 +27,18 @@ object CapabilityProbePods {
             NodeCapability.HOST_PATH to hostPath(namespace),
         )
 
+    /**
+     * Pod validation refuses `privileged: true` next to `allowPrivilegeEscalation: false` (422, even
+     * under `dryRun=All`), so this probe necessarily lifts the escalation flag too; privileged implies
+     * escalation, so the rejection still names only this capability.
+     */
     private fun privileged(namespace: String): Pod =
         restricted(namespace, "privileged")
             .editSpec()
             .editFirstContainer()
             .editSecurityContext()
             .withPrivileged(true)
+            .withAllowPrivilegeEscalation(true)
             .endSecurityContext()
             .endContainer()
             .endSpec()

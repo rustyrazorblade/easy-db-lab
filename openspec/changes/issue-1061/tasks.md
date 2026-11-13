@@ -1,8 +1,8 @@
 ## 0. Baseline (before any refactor, its own commit)
 
-- [ ] 0.1 Write the test helper that expands `${VAR}` the way `-config.expand-env=true` does, and the fixed AWS test cluster (bucket `easy-db-lab-test`, region `us-west-2`, tenant `acme`).
-- [ ] 0.2 Capture the golden files under `src/test/resources/com/rustyrazorblade/easydblab/golden/store/` from the unchanged code: expanded `mimir.yaml`, `loki.yaml` and `tempo.yaml`; the Pyroscope `TemplateService` output; the compactor's `RegisterTaskDefinitionRequest` with each config decoded and expanded; and the instance-role, bucket and compactor task-role policy documents.
-- [ ] 0.3 Add the golden tests against the current code, so they pass before the refactor starts. Commit 0.1-0.3 alone.
+- [x] 0.1 Write the test helper that expands `${VAR}` the way `-config.expand-env=true` does, and the fixed AWS test cluster (bucket `easy-db-lab-test`, region `us-west-2`, tenant `acme`).
+- [x] 0.2 Capture the golden files under `src/test/resources/com/rustyrazorblade/easydblab/golden/store/` from the unchanged code: expanded `mimir.yaml`, `loki.yaml` and `tempo.yaml`; the Pyroscope `TemplateService` output; the compactor's `RegisterTaskDefinitionRequest` with each config decoded and expanded; and the instance-role, bucket and compactor task-role policy documents.
+- [x] 0.3 Add the golden tests against the current code, so they pass before the refactor starts. Commit 0.1-0.3 alone.
 
 ## 1. Neutral path
 

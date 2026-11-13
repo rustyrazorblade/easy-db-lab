@@ -63,14 +63,16 @@ class CapabilityProbeService(
                 else -> fail(namespace, "the restricted baseline Pod was rejected: ${baseline.message}")
             }
             val refused =
-                CapabilityProbePods.probes(namespace).mapNotNull { (capability, pod) ->
-                    submit(client, pod)?.let { rejection ->
-                        when (val outcome = ProbeRejection.classify(rejection.code, rejection.message)) {
-                            is ProbeRejection.Refused -> capability to outcome.note
-                            is ProbeRejection.Unexpected -> fail(namespace, "probing ${capability.serialName}: ${outcome.message}")
+                CapabilityProbePods
+                    .probes(namespace)
+                    .mapNotNull { (capability, pod) ->
+                        submit(client, pod)?.let { rejection ->
+                            when (val outcome = ProbeRejection.classify(rejection.code, rejection.message)) {
+                                is ProbeRejection.Refused -> capability to outcome.note
+                                is ProbeRejection.Unexpected -> fail(namespace, "probing ${capability.serialName}: ${outcome.message}")
+                            }
                         }
-                    }
-                }.toMap()
+                    }.toMap()
             val admitted = CapabilityProbePods.probes(namespace).keys - refused.keys
             ProbeResult(NodeCapabilities(admitted), refused)
         }

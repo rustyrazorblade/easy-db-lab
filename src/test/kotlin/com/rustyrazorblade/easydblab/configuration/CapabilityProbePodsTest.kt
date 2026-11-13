@@ -16,7 +16,9 @@ class CapabilityProbePodsTest {
         val copy = Serialization.clone(pod)
         copy.metadata.name = CapabilityProbePods.baseline(namespace).metadata.name
         when (capability) {
-            NodeCapability.PRIVILEGED -> copy.spec.containers[0].securityContext.privileged = null
+            NodeCapability.PRIVILEGED ->
+                copy.spec.containers[0]
+                    .securityContext.privileged = null
             NodeCapability.HOST_NETWORK -> copy.spec.hostNetwork = null
             NodeCapability.HOST_PATH -> {
                 copy.spec.volumes = emptyList()

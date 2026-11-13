@@ -427,8 +427,7 @@ class Init : PicoBaseCommand() {
      *
      * @throws IllegalArgumentException on an unknown capability, a bad value or conflicting overrides
      */
-    private fun effectiveCapabilities(): NodeCapabilities =
-        CapabilityOverrides.parse(capabilityOverrides).applyTo(NodeCapabilities.AWS)
+    private fun effectiveCapabilities(): NodeCapabilities = CapabilityOverrides.parse(capabilityOverrides).applyTo(NodeCapabilities.AWS)
 
     /** Prints each absent capability and the stages `up` will skip without it. */
     private fun reportAbsentCapabilities(

@@ -55,8 +55,18 @@ class ClusterConfigDataTest {
 
     @Test
     fun `the same recorded set always publishes the same value`() {
-        val first = ClusterConfigData.of(control, state.copy(capabilities = linkedSetOf(NodeCapability.HOST_PATH, NodeCapability.S3)), "us-west-2")
-        val second = ClusterConfigData.of(control, state.copy(capabilities = linkedSetOf(NodeCapability.S3, NodeCapability.HOST_PATH)), "us-west-2")
+        val first =
+            ClusterConfigData.of(
+                control,
+                state.copy(capabilities = linkedSetOf(NodeCapability.HOST_PATH, NodeCapability.S3)),
+                "us-west-2",
+            )
+        val second =
+            ClusterConfigData.of(
+                control,
+                state.copy(capabilities = linkedSetOf(NodeCapability.S3, NodeCapability.HOST_PATH)),
+                "us-west-2",
+            )
 
         assertThat(first["capabilities"]).isEqualTo(second["capabilities"])
     }

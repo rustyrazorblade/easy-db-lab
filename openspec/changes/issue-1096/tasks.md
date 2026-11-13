@@ -26,7 +26,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 `configuration/CLAUDE.md` "Node Capabilities": new capabilities, recorded set, probe, overrides
-- [ ] 5.2 `docs/development/kits.md` `EDL_NODE_SSH` row: derived from `NODE_SSH`
-- [ ] 5.3 `init` reference docs: `--capability`
+- [x] 5.1 `configuration/CLAUDE.md` "Node Capabilities": new capabilities, recorded set, probe, overrides
+- [x] 5.2 `docs/development/kits.md` `EDL_NODE_SSH` row: derived from `NODE_SSH`
+- [x] 5.3 `init` reference docs: `--capability`
 - [ ] 5.4 Run `ktlintFormat`, `detekt` (JDK 21), `test` and `integrationTest`

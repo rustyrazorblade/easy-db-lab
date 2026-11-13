@@ -386,7 +386,6 @@ class StatusTest : BaseKoinTest() {
         assertThat(capturedOutput()).doesNotContain("S3 Manager")
     }
 
-
     @Test
     fun `the capabilities section lists every capability, an absent one with its reason`() {
         setupBasicClusterState()
@@ -404,6 +403,7 @@ class StatusTest : BaseKoinTest() {
             },
         )
     }
+
     @Test
     fun `a stopped kit prints no endpoints`() {
         // A bucket, because a present kubeconfig also renders the S3 Manager section.

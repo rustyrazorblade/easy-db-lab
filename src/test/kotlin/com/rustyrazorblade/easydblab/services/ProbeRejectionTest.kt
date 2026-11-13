@@ -23,7 +23,9 @@ class ProbeRejectionTest {
         val message = "admission webhook \"validate.kyverno.svc-fail\" does not support dry run"
 
         assertThat(ProbeRejection.classify(400, message))
-            .isEqualTo(ProbeRejection.Refused("admission webhook validate.kyverno.svc-fail does not support dry run, so it cannot be probed"))
+            .isEqualTo(
+                ProbeRejection.Refused("admission webhook validate.kyverno.svc-fail does not support dry run, so it cannot be probed"),
+            )
     }
 
     @Test

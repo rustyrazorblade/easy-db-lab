@@ -482,6 +482,7 @@ object Constants {
         const val LOCAL_STORAGE_CLASS = "local-storage"
         const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
         const val GRAFANA_PORT = 3000
+        const val GRAFANA_APP_LABEL = "grafana"
         const val S3MANAGER_PORT = 8080
         const val REGISTRY_PORT = 5000
         const val TEMPO_PORT = 3200

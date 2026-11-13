@@ -855,4 +855,24 @@ class ClusterStateTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("S3 bucket not configured")
     }
+
+    @Test
+    fun `a state that records no exposure is reached through SOCKS`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{ "name": "pre-exposure" }""")
+
+        assertThat(ClusterStateManager(stateFile).load().exposure).isEqualTo(Exposure.Socks)
+    }
+
+    @Test
+    fun `a recorded exposure survives a save and load`(
+        @TempDir tempDir: File,
+    ) {
+        val manager = ClusterStateManager(File(tempDir, "state.json"))
+        manager.save(ClusterState(name = "c", versions = mutableMapOf(), exposure = Exposure.PortForward))
+
+        assertThat(manager.load().exposure).isEqualTo(Exposure.PortForward)
+    }
 }

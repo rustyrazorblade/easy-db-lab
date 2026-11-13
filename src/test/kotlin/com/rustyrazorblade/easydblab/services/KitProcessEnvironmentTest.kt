@@ -18,7 +18,8 @@ internal class KitProcessEnvironmentTest {
     @TempDir
     lateinit var workspace: File
 
-    private val environment = KitProcessEnvironment(ToolWrapperInstaller())
+    private val environment: KitProcessEnvironment
+        get() = KitProcessEnvironment(ToolWrapperInstaller(), ClusterStateManager(File(workspace, CLUSTER_STATE)))
     private val kubeconfig: File get() = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
     private val bin: File get() = File(workspace, Constants.ToolWrappers.DIRECTORY)
 
@@ -116,6 +117,26 @@ internal class KitProcessEnvironmentTest {
         environment.applyTo(builder, workspace, emptyMap())
 
         assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("true")
+    }
+
+    @Test
+    fun `EDL_NODE_SSH is true and the launch goes ahead when there is no state json`() {
+        val builder = ProcessBuilder("true")
+
+        environment.applyTo(builder, workspace, emptyMap())
+
+        assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("true")
+    }
+
+    @Test
+    fun `an unreadable state json does not stop the launch, and EDL_NODE_SSH reads as AWS`() {
+        File(workspace, CLUSTER_STATE).writeText("{ not json")
+        val builder = ProcessBuilder("true")
+
+        environment.applyTo(builder, workspace, emptyMap())
+
+        assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("true")
+        assertThat(builder.environment()["KUBECONFIG"]).isEqualTo(kubeconfig.absolutePath)
     }
 
     private fun recordCapabilities(capabilities: Set<NodeCapability>) {

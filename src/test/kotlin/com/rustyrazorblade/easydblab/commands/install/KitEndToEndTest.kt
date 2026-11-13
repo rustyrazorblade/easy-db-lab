@@ -88,7 +88,7 @@ class KitEndToEndTest : BaseKoinTest() {
                 single { TemplateService(get(), get()) }
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
-                single { KitProcessEnvironment(ToolWrapperInstaller()) }
+                single { KitProcessEnvironment(ToolWrapperInstaller(), get()) }
             },
         )
 

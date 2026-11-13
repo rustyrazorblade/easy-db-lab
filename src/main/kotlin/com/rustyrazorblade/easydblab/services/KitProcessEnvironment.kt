@@ -1,11 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 
 /**
@@ -29,11 +29,18 @@ import java.io.File
  *   no set (or has no `state.json`) reads as AWS, so `true`. A kit skips its node checks over SSH on
  *   `false`, and never guesses from a failed `ssh`.
  *
+ * A `state.json` that cannot be read also reads as AWS. Only `EDL_NODE_SSH` depends on the state, so a
+ * damaged file must not stop every kit launch; the commands that need the state report it.
+ *
  * @param installer writes the wrappers into the workspace
+ * @param clusterStateManager reads the workspace cluster state, for the recorded capability set
  */
 class KitProcessEnvironment(
     private val installer: ToolWrapperInstaller,
+    private val clusterStateManager: ClusterStateManager,
 ) {
+    private val log = KotlinLogging.logger {}
+
     /**
      * Applies the kit process environment to [builder] for [workspace], on top of [variables].
      *
@@ -57,17 +64,20 @@ class KitProcessEnvironment(
         environment["KUBECONFIG"] = kubeconfig.path
         val bin = File(workspace, Constants.ToolWrappers.DIRECTORY).absoluteFile
         environment[Constants.Kit.LIBRARY_ENV] = File(bin, Constants.ToolWrappers.KIT_LIBRARY).path
-        environment[Constants.Kit.NODE_SSH_ENV] = (NodeCapability.NODE_SSH in capabilitiesOf(workspace)).toString()
+        environment[Constants.Kit.NODE_SSH_ENV] = (NodeCapability.NODE_SSH in recordedCapabilities()).toString()
         environment["PATH"] = listOfNotNull(bin.path, inheritedPath).joinToString(File.pathSeparator)
         return builder
     }
 
-    /** The capabilities [workspace] records; AWS when it has no cluster state. */
-    private fun capabilitiesOf(workspace: File): NodeCapabilities {
-        val stateFile = File(workspace, CLUSTER_STATE)
-        return when {
-            stateFile.isFile -> NodeCapabilities.from(ClusterStateManager(stateFile).load())
+    /** The capabilities the workspace records; AWS when it has no cluster state or cannot read it. */
+    private fun recordedCapabilities(): NodeCapabilities =
+        when {
+            clusterStateManager.exists() ->
+                runCatching { NodeCapabilities.from(clusterStateManager.load()) }
+                    .getOrElse { e ->
+                        log.warn(e) { "Cannot read the cluster state; EDL_NODE_SSH reads as AWS" }
+                        NodeCapabilities.AWS
+                    }
             else -> NodeCapabilities.AWS
         }
-    }
 }

@@ -4,7 +4,9 @@ import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -141,7 +143,11 @@ class LocalClusterToolingIntegrationTest {
         assertSocksPropertiesUnset()
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText(k3s.kubeConfigYaml)
         ProxyEnvFile(workspace).recordDirect(true)
-        tooling = LocalClusterTooling(workspace, KitProcessEnvironment(ToolWrapperInstaller()))
+        tooling =
+            LocalClusterTooling(
+                workspace,
+                KitProcessEnvironment(ToolWrapperInstaller(), ClusterStateManager(File(workspace, CLUSTER_STATE))),
+            )
         client = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
     }
 

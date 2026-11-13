@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
@@ -63,7 +62,7 @@ class WorkloadStepExecutor(
     private val kubectlService: KubectlService,
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
-    private val kitProcessEnvironment: KitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
+    private val kitProcessEnvironment: KitProcessEnvironment,
 ) {
     fun execute(
         steps: List<InstallStep>,

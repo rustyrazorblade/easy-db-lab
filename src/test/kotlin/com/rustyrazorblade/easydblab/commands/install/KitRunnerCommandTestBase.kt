@@ -94,7 +94,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
                 single<KitEndpointResolver> { DefaultKitEndpointResolver() }
-                single { KitProcessEnvironment(ToolWrapperInstaller()) }
+                single { KitProcessEnvironment(ToolWrapperInstaller(), get()) }
                 single { KitWorkloadProbe(mockKubeService, mock(), pollInterval = Duration.ZERO, maxPolls = STOP_WAIT_POLLS) }
             },
         )

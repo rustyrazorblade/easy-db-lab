@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
@@ -30,7 +29,7 @@ class DefaultKitHookExecutor(
     private val context: Context,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
-    private val kitProcessEnvironment: KitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
+    private val kitProcessEnvironment: KitProcessEnvironment,
     private val maxAttempts: Int = MAX_HOOK_ATTEMPTS,
     private val backoffBaseMs: Long = HOOK_BACKOFF_BASE_MS,
     private val startProcess: (ProcessBuilder) -> Process = { it.start() },

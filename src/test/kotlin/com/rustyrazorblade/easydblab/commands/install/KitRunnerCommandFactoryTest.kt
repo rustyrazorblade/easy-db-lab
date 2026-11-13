@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -540,7 +541,8 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         File(kitDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
         val builder = ProcessBuilder("true").also { it.environment()["SETTINGS"] = "host=x" }
 
-        KitProcessEnvironment(ToolWrapperInstaller()).applyTo(builder, kitDir, command.runtimeArgValues)
+        KitProcessEnvironment(ToolWrapperInstaller(), ClusterStateManager(File(kitDir, CLUSTER_STATE)))
+            .applyTo(builder, kitDir, command.runtimeArgValues)
 
         assertThat(builder.environment()).containsEntry("SETTINGS", "")
     }

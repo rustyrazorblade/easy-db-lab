@@ -5,16 +5,19 @@ import com.datastax.oss.driver.api.core.CqlSessionBuilder
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader
 import com.datastax.oss.driver.api.core.config.DriverExecutionProfile
+import com.datastax.oss.driver.api.core.loadbalancing.NodeDistanceEvaluator
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.net.InetSocketAddress
 import java.time.Duration
 
 /**
@@ -190,5 +193,51 @@ class DefaultCqlSessionFactoryTest {
 
         verify(factory).newProxiedBuilder("127.0.0.1", 1080)
         verify(factory, never()).newDirectBuilder()
+    }
+}
+
+class SingleEndpointCqlSessionTest {
+    private val session = mock<CqlSession>()
+    private val builder = mock<CqlSessionBuilder>()
+    private val loader = argumentCaptor<DriverConfigLoader>()
+    private val evaluator = argumentCaptor<NodeDistanceEvaluator>()
+    private val contactPoints = argumentCaptor<InetSocketAddress>()
+    private val forward = InetSocketAddress("127.0.0.1", 24242)
+
+    @BeforeEach
+    fun setup() {
+        whenever(builder.withConfigLoader(loader.capture())).thenReturn(builder)
+        whenever(builder.addContactPoint(contactPoints.capture())).thenReturn(builder)
+        whenever(builder.withNodeDistanceEvaluator(evaluator.capture())).thenReturn(builder)
+        whenever(builder.build()).thenReturn(session)
+    }
+
+    private fun create(): CqlSession {
+        val factory = spy(DefaultCqlSessionFactory())
+        doReturn(builder).whenever(factory).newDirectBuilder()
+        return factory.createSingleEndpointSession(forward, "dc7")
+    }
+
+    @Test
+    fun `the forward is the sole contact point, dialed with no proxy`() {
+        assertThat(create()).isSameAs(session)
+
+        assertThat(contactPoints.allValues).containsExactly(forward)
+    }
+
+    @Test
+    fun `the token map is off and the local datacenter is the forwarded pod's`() {
+        create()
+
+        val profile = loader.firstValue.initialConfig.defaultProfile
+        assertThat(profile.getBoolean(DefaultDriverOption.METADATA_TOKEN_MAP_ENABLED)).isFalse()
+        assertThat(profile.getString(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER)).isEqualTo("dc7")
+    }
+
+    @Test
+    fun `every node but the forward is ignored`() {
+        create()
+
+        assertThat(evaluator.firstValue).isEqualTo(SingleEndpointDistanceEvaluator(forward))
     }
 }

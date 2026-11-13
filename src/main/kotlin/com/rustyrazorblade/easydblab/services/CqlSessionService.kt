@@ -5,9 +5,11 @@ import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.ResultSet
 import com.datastax.oss.driver.api.core.cql.SimpleStatement
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.services.access.CassandraPodForward
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.ByteBuffer
 
@@ -28,18 +30,36 @@ interface CqlSessionService : AutoCloseable {
 }
 
 /**
+ * What a single-endpoint CQL session needs on a cluster reached by port-forward: the forward to one
+ * Cassandra pod and that pod's datacenter.
+ *
+ * @property forward the port-forward the session dials as its only node
+ * @property datacenter the forwarded pod's datacenter, the driver's local datacenter
+ */
+class SingleEndpointCql(
+    val forward: CassandraPodForward,
+    val datacenter: String,
+)
+
+/**
  * Default implementation using Java Driver v4.
  *
- * Uses direct connection when Tailscale is active, SOCKS proxy otherwise.
+ * On a cluster reached by port-forward ([Exposure.PortForward]) the session talks to one Cassandra
+ * pod through [singleEndpoint]'s forward, which is checked before every statement and reopened on the
+ * same port when it has died, so the session keeps its only node. Otherwise it connects directly when
+ * Tailscale is active and through the SOCKS proxy to every node when it is not, as on AWS.
  *
  * The session is cached for reuse in REPL/Server mode.
  * Registers with [ResourceManager] when session is created for centralized cleanup.
+ *
+ * @param singleEndpoint builds the forward for a port-forwarded cluster, on its first use only
  */
 class DefaultCqlSessionService(
     private val socksProxyService: SocksProxyService,
     private val clusterStateManager: ClusterStateManager,
     private val sessionFactory: CqlSessionFactory,
     private val resourceManager: ResourceManager,
+    private val singleEndpoint: () -> SingleEndpointCql = { error("Single-endpoint CQL is not configured") },
 ) : CqlSessionService {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -52,6 +72,7 @@ class DefaultCqlSessionService(
     private var cachedSession: CqlSession? = null
     private var cachedDatacenter: String? = null
     private var registeredWithResourceManager = false
+    private var openedSingleEndpoint: SingleEndpointCql? = null
 
     override fun execute(cql: String): Result<String> =
         runCatching {
@@ -72,10 +93,13 @@ class DefaultCqlSessionService(
         cachedSession = null
         cachedDatacenter = null
         registeredWithResourceManager = false
+        openedSingleEndpoint?.forward?.close()
+        openedSingleEndpoint = null
     }
 
     private fun getOrCreateSession(): CqlSession {
         val clusterState = clusterStateManager.load()
+        if (clusterState.exposure == Exposure.PortForward) return getOrCreateSingleEndpointSession()
         val cassandraHosts = clusterState.hosts[ServerType.Cassandra] ?: emptyList()
 
         require(cassandraHosts.isNotEmpty()) { "No Cassandra hosts found in cluster state" }
@@ -106,13 +130,32 @@ class DefaultCqlSessionService(
 
         cachedSession = session
         cachedDatacenter = datacenter
+        registerOnce()
 
+        return session
+    }
+
+    private fun getOrCreateSingleEndpointSession(): CqlSession {
+        val target = openedSingleEndpoint ?: singleEndpoint().also { openedSingleEndpoint = it }
+        // Reopens a dead forward on the same port before the statement, so the cached session reconnects.
+        val endpoint = target.forward.endpoint()
+        cachedSession?.let { session ->
+            if (!session.isClosed && cachedDatacenter == target.datacenter) return session
+            session.close()
+        }
+        log.info { "Creating new CqlSession on the port-forward at $endpoint" }
+        val session = sessionFactory.createSingleEndpointSession(endpoint, target.datacenter)
+        cachedSession = session
+        cachedDatacenter = target.datacenter
+        registerOnce()
+        return session
+    }
+
+    private fun registerOnce() {
         if (!registeredWithResourceManager) {
             resourceManager.register(this)
             registeredWithResourceManager = true
         }
-
-        return session
     }
 
     private fun formatResultSet(resultSet: ResultSet): String {

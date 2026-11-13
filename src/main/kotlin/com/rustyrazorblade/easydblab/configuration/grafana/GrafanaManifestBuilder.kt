@@ -42,7 +42,7 @@ class GrafanaManifestBuilder(
         /** The Grafana Deployment's name, which the deploy waits on to finish rolling out. */
         const val DEPLOYMENT_NAME = "grafana"
         private const val NAMESPACE = "default"
-        private const val APP_LABEL = "grafana"
+        private const val APP_LABEL = Constants.K8s.GRAFANA_APP_LABEL
 
         /** The Grafana image the cluster deploys; tests run the same one. */
         const val GRAFANA_IMAGE = "grafana/grafana:13.2.2"

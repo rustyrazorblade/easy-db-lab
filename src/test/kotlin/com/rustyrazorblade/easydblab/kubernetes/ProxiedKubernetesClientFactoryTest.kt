@@ -146,4 +146,50 @@ class ProxiedKubernetesClientFactoryTest {
             assertThat(File(client.configuration.caCertFile).canonicalPath).isEqualTo(ca.canonicalPath)
         }
     }
+
+    @Test
+    fun `an exec auth plugin named by a relative path runs from the kubeconfig's directory`() {
+        val workspace = File(tempDir, "workspace").apply { mkdirs() }
+        File(workspace, "bin/fake-auth").apply {
+            parentFile.mkdirs()
+            writeText(
+                """
+                |#!/bin/sh
+                |printf '%s' '{"apiVersion":"client.authentication.k8s.io/v1","kind":"ExecCredential","status":{"token":"exec-plugin-token"}}'
+                |
+                """.trimMargin(),
+            )
+            setExecutable(true)
+        }
+        val kubeconfig =
+            writeKubeconfig(
+                """
+                apiVersion: v1
+                clusters:
+                - cluster:
+                    server: https://exec.example:6443
+                    insecure-skip-tls-verify: true
+                  name: c
+                contexts:
+                - context:
+                    cluster: c
+                    user: u
+                  name: x
+                current-context: x
+                kind: Config
+                users:
+                - name: u
+                  user:
+                    exec:
+                      apiVersion: client.authentication.k8s.io/v1
+                      command: ./bin/fake-auth
+                      interactiveMode: Never
+                """.trimIndent(),
+                workspace,
+            )
+
+        factory.createClient(KubeApi(kubeconfig, "x")).use { client ->
+            assertThat(client.configuration.autoOAuthToken).isEqualTo("exec-plugin-token")
+        }
+    }
 }

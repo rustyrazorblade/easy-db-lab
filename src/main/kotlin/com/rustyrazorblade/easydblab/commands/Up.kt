@@ -789,6 +789,15 @@ class Up(
 
         val result = k3sClusterService.setupCluster(config)
 
+        // Pin the written kubeconfig's context on up's own state, so a later save of that state
+        // keeps it. Every later command targets it, whatever the user's kubectl context is.
+        result.kubeContext?.let { kubeContext ->
+            synchronized(stateLock) {
+                workingState.kubeContext = kubeContext
+                clusterStateManager.save(workingState)
+            }
+        }
+
         if (!result.isSuccessful) {
             result.errors.forEach { (operation, error) ->
                 log.error(error) { "K3s setup failed: $operation" }

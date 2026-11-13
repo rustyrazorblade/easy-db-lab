@@ -9,7 +9,7 @@
 
 ## 2. Record the context on provisioning
 
-- [x] 2.1 When `up` writes the workspace kubeconfig (`K3sService.downloadAndConfigureKubeconfig`), record its `current-context` as `ClusterState.kubeContext`
+- [x] 2.1 When `up` writes the workspace kubeconfig (`K3sService.downloadAndConfigureKubeconfig` returns its `current-context`), record it as `ClusterState.kubeContext` on the state `up` holds and save that
 - [x] 2.2 Test that provisioning records the context in cluster state
 
 ## 3. Remove `controlHost` from K8s services

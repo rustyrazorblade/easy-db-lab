@@ -29,7 +29,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.koin.core.component.inject
-import org.koin.core.parameter.parametersOf
 import picocli.CommandLine
 import java.io.File
 import java.time.LocalDateTime
@@ -65,7 +64,7 @@ class KitRunnerCommand(
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
     private val workspace = kitDir.absoluteFile.parentFile
     private val workspaceKubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
-    private val workloadProbe: KitWorkloadProbe by inject { parametersOf(workspaceKubeconfig.path) }
+    private val workloadProbe: KitWorkloadProbe by inject()
 
     private var processExitCode: Int = 0
 

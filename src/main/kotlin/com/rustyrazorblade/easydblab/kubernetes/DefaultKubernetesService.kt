@@ -16,18 +16,18 @@ import java.time.format.DateTimeFormatter
  * for access to private K3s clusters.
  *
  * @property clientFactory Factory for creating Kubernetes clients
- * @property api The kubeconfig path and context to reach the cluster
+ * @property locator Finds the kubeconfig path and pinned context, when the client is first used
  */
 class DefaultKubernetesService(
     private val clientFactory: KubernetesClientFactory,
-    private val api: KubeApi,
+    private val locator: KubeApiLocator,
 ) : KubernetesService {
     companion object {
         private val log = KotlinLogging.logger {}
     }
 
     private val client: KubernetesClient by lazy {
-        clientFactory.createClient(api)
+        clientFactory.createClient(locator.locate())
     }
 
     override fun listJobs(namespace: String?): Result<List<KubernetesJob>> =

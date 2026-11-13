@@ -97,11 +97,12 @@ class K3sClusterServiceTest {
             val config = createConfig()
             setupSuccessfulServerStart()
             whenever(k3sService.downloadAndConfigureKubeconfig(any(), any()))
-                .thenReturn(Result.success(Unit))
+                .thenReturn(Result.success("k3s-ctx"))
 
             val result = service.setupCluster(config)
 
             assertThat(result.kubeconfigWritten).isTrue()
+            assertThat(result.kubeContext).isEqualTo("k3s-ctx")
             verify(k3sService).downloadAndConfigureKubeconfig(any(), eq(config.kubeconfigPath))
         }
 
@@ -419,7 +420,7 @@ class K3sClusterServiceTest {
     private fun setupSuccessfulServerStart() {
         whenever(k3sService.startServer(any(), any())).thenReturn(Result.success(Unit))
         whenever(k3sService.getNodeToken(any())).thenReturn(Result.success("test-token-12345"))
-        whenever(k3sService.downloadAndConfigureKubeconfig(any(), any())).thenReturn(Result.success(Unit))
+        whenever(k3sService.downloadAndConfigureKubeconfig(any(), any())).thenReturn(Result.success("default"))
     }
 
     private fun setupSuccessfulAgentSetup() {

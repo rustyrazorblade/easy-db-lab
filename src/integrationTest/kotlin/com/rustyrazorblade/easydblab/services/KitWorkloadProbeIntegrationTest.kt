@@ -79,7 +79,7 @@ class KitWorkloadProbeIntegrationTest {
         Files.writeString(kubeconfig, k3s.kubeConfigYaml)
         // The helm branch runs helm on the control node over SSH; no runtime here is helm-backed.
         kubeService =
-            DefaultKubernetesService(ProxiedKubernetesClientFactory(), KubeApi(kubeconfig, requireNotNull(currentContextOf(kubeconfig))))
+            DefaultKubernetesService(ProxiedKubernetesClientFactory()) { KubeApi(kubeconfig, requireNotNull(currentContextOf(kubeconfig))) }
         probe = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ofSeconds(1), maxPolls = WAIT_SECONDS.toInt())
 
         client

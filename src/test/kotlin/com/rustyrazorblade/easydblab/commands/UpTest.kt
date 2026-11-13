@@ -271,6 +271,19 @@ class UpTest : UpTestFixture() {
         verify(mockK3sClusterService, never()).setupCluster(any())
     }
 
+    /** The context is recorded on up's own state, so no later save of that state can erase it. */
+    @Test
+    fun `up records the kubeconfig's context in the cluster state it saves`() {
+        whenever(mockK3sClusterService.setupCluster(any()))
+            .thenReturn(K3sSetupResult(serverStarted = true, kubeContext = "k3s-ctx"))
+
+        newUp().execute()
+
+        val saved = argumentCaptor<ClusterState>()
+        verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+        assertThat(saved.lastValue.kubeContext).isEqualTo("k3s-ctx")
+    }
+
     @Test
     fun `up aborts when k3s cluster setup reports failure`() {
         whenever(mockK3sClusterService.setupCluster(any())).thenReturn(

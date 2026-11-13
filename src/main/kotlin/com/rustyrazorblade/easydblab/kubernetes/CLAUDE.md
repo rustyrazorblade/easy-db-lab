@@ -42,7 +42,9 @@ All methods return `Result<T>`. Namespace `null` means all namespaces.
 
 Every client is built from a `KubeApi(kubeconfig: Path, context: String)`. `ProxiedKubernetesClientFactory.createClient(api)` checks that the kubeconfig holds the context (failing fast with the context, the path and the contexts it does hold) and loads it with `Config.fromKubeconfig(api.context, file)`. That keeps the file location on the config, so a relative certificate or exec-plugin path resolves against the kubeconfig's directory, and it never reads `Config.KUBERNETES_KUBECONFIG_FILE` or the `KUBECONFIG` env var. **`Config.autoConfigure` is forbidden.**
 
-No K8s service takes a `ClusterHost`. `services/K8sClientProvider.createClient()` asks its `KubeApiLocator` for the address: `services/WorkspaceKubeApiLocator` reads `<workspace>/kubeconfig` and the context pinned in `ClusterState.kubeContext` (recorded by `K3sService.downloadAndConfigureKubeconfig` during `up`), falling back to the kubeconfig's `current-context`. The `KubernetesService` factory below and `K3sService` use `currentContextOf(path)` directly.
+No K8s service takes a `ClusterHost`. `services/K8sClientProvider.createClient()` asks its `KubeApiLocator` for the address: `services/WorkspaceKubeApiLocator` reads `<workspace>/kubeconfig` and the context pinned in `ClusterState.kubeContext`, falling back to the kubeconfig's `current-context`. `DefaultKubernetesService` takes the same `KubeApiLocator` and asks it for the address when its client is first used, so `kit status`, the kit workload probe and the server's pod listing target the pinned context too. No other main code calls `currentContextOf`.
+
+`up` records the context: `K3sService.downloadAndConfigureKubeconfig` returns the written kubeconfig's `current-context` (failing when it names none), `K3sClusterService` passes it back as `K3sSetupResult.kubeContext`, and `Up` sets it on its own `workingState` and saves that. The service never loads and saves `state.json` itself, so a later save of `up`'s in-memory state cannot erase the context.
 
 ## SOCKS5 Proxy Pattern
 
@@ -85,10 +87,8 @@ val kubernetesModule = module {
         // client-creation time (per-client, explicit; the global socksProxyHost is never set).
         ProxiedKubernetesClientFactory()
     }
-    factory<KubernetesService> { (kubeconfigPath: String) ->
-        val path = Paths.get(kubeconfigPath)
-        DefaultKubernetesService(get(), KubeApi(path, currentContextOf(path) ?: error("...")))
-    }
+    // The KubeApiLocator (services/WorkspaceKubeApiLocator) is bound in ServicesModule.
+    factory<KubernetesService> { DefaultKubernetesService(clientFactory = get(), locator = get()) }
 }
 ```
 

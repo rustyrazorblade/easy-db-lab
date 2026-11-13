@@ -128,6 +128,39 @@ spec:
     image: control0:5000/my-app:latest
 ```
 
+## Pulling Images from Amazon ECR
+
+Every node's kubelet can pull private images from the account's Amazon ECR with **no
+`imagePullSecrets`**. The nodes' instance role already carries ECR read permission, and each
+node runs the `ecr-credential-provider` kubelet plugin (baked into the AMI), which hands kubelet
+a fresh token from that role whenever it pulls an image whose registry matches
+`*.dkr.ecr.*.amazonaws.com` (also the `.com.cn` and `ecr-fips` variants). kubelet refreshes the
+token on its own, so long-running and rescheduled pods keep pulling after the 12-hour token
+lifetime.
+
+Reference an ECR image directly — on any node type, in any namespace, including namespaces
+easy-db-lab did not create:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+  - name: my-app
+    image: <account-id>.dkr.ecr.<region>.amazonaws.com/my-repo/my-app:latest
+```
+
+```bash
+# Works with no pull secret, in a brand-new namespace
+kubectl create namespace demo
+kubectl -n demo run my-app --image=<account-id>.dkr.ecr.<region>.amazonaws.com/my-repo/my-app:latest
+```
+
+This also covers `cassandra stress --image <ECR image>` and custom sidecar images: both pull
+straight from ECR without any secret.
+
 ## Node Labels
 
 Nodes are automatically labeled for workload scheduling:

@@ -36,6 +36,11 @@ fi
 mkdir -p /opt/cni/bin
 ln -sfn /var/lib/rancher/k3s/data/cni/portmap /opt/cni/bin/portmap
 
+# Kubelet ECR image credential provider: every node pulls *.dkr.ecr.*.amazonaws.com images
+# using its instance role, with no per-pod imagePullSecrets. The binary and config are baked
+# into the AMI by install/install_ecr_credential_provider.sh; keep these paths in sync.
+KUBELET_ECR_ARGS="--kubelet-arg=image-credential-provider-config=/var/lib/rancher/credentialprovider/config.yaml --kubelet-arg=image-credential-provider-bin-dir=/var/lib/rancher/credentialprovider/bin"
+
 # Note: Registry TLS configuration is handled by configure_registry_tls.sh
 # which runs before K3s startup to configure /etc/rancher/k3s/registries.yaml with HTTPS
 
@@ -45,10 +50,12 @@ if systemctl list-unit-files k3s-agent.service --no-pager --no-legend 2>/dev/nul
 else
     echo "Installing k3s in agent mode..."
 
-    # Run airgap installation in agent mode
+    # Run airgap installation in agent mode. INSTALL_K3S_EXEC carries the kubelet ECR
+    # credential provider args; "agent" keeps the subcommand that K3S_URL already implies.
     INSTALL_K3S_SKIP_DOWNLOAD=true \
     K3S_URL="$SERVER_URL" \
     K3S_TOKEN="$NODE_TOKEN" \
+    INSTALL_K3S_EXEC="agent $KUBELET_ECR_ARGS" \
     /usr/local/bin/install-k3s.sh
 
     echo "✓ K3s agent installed successfully"

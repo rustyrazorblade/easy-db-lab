@@ -9,7 +9,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.LocalObjectReferenceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
@@ -64,12 +63,11 @@ class SidecarManifestBuilder(
         controlNodeIp: String,
         clusterName: String,
         tenant: String,
-        imagePullSecretName: String = "",
         telemetryRedirect: TelemetryRedirect? = null,
     ): List<HasMetadata> =
         listOf(
             buildConfigMap(),
-            buildDaemonSet(image, controlNodeIp, clusterName, tenant, imagePullSecretName, telemetryRedirect),
+            buildDaemonSet(image, controlNodeIp, clusterName, tenant, telemetryRedirect),
         )
 
     /**
@@ -105,7 +103,6 @@ class SidecarManifestBuilder(
         controlNodeIp: String,
         clusterName: String,
         tenant: String,
-        imagePullSecretName: String = "",
         telemetryRedirect: TelemetryRedirect? = null,
     ) = DaemonSetBuilder()
         .withNewMetadata()
@@ -125,11 +122,6 @@ class SidecarManifestBuilder(
         .addToNodeSelector("type", "db")
         .withHostNetwork(true)
         .withDnsPolicy("ClusterFirstWithHostNet")
-        .apply {
-            if (imagePullSecretName.isNotEmpty()) {
-                addToImagePullSecrets(LocalObjectReferenceBuilder().withName(imagePullSecretName).build())
-            }
-        }
         // Init container: substitute __HOST_IP__ with the node's actual IP
         .addNewInitContainer()
         .withName("config-init")

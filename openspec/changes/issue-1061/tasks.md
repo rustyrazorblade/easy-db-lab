@@ -6,19 +6,20 @@
 
 ## 1. Neutral path
 
-- [ ] 1.1 Test first: `ClusterStoragePath` key rules (empty prefix gives today's key, a prefix leads every key, `toString()` holds no scheme). Rename `ClusterS3Path` to `ClusterStoragePath` with a `prefix` field; update its 15 main and 19 test users.
-- [ ] 1.2 Test first: `S3Uri.uri`, `S3Uri.parse` (rejects a non-`s3://` URI, as `fromUri` does today). Add `services/aws/S3Uri`; remove `toUri`, `fromUri` and the unused `toEndpointUrl` from the path type.
-- [ ] 1.3 Add `ObjectStore.uriOf(path)`; implement it in `S3ObjectStore`. Move the display sites in `ClusterBackupService`, `ReportUpload`, `GrafanaAnnotationBackupService`, `CassandraBuild`, `CassandraBuildCatalog` and `StatusCache`/`Status`/`EMRProvisioningService` (EMR log URIs) to `uriOf` or `S3Uri`. Assert the `s3://` string in their existing tests.
-- [ ] 1.4 `SparkSubmit` parses its jar argument with `S3Uri.parse`.
+- [x] 1.1 Test first: `ClusterStoragePath` key rules (empty prefix gives today's key, a prefix leads every key, `toString()` holds no scheme). Rename `ClusterS3Path` to `ClusterStoragePath` with a `prefix` field; update its 15 main and 19 test users.
+- [x] 1.2 Test first: `S3Uri.uri`, `S3Uri.parse` (rejects a non-`s3://` URI, as `fromUri` does today). Add `services/aws/S3Uri`; remove `toUri`, `fromUri` and the unused `toEndpointUrl` from the path type.
+- [x] 1.3 Add `ObjectStore.uriOf(path)`; implement it in `S3ObjectStore`. Move the display sites in `ClusterBackupService`, `ReportUpload`, `GrafanaAnnotationBackupService`, `CassandraBuild`, `CassandraBuildCatalog` and `StatusCache`/`Status`/`EMRProvisioningService` (EMR log URIs) to `uriOf` or `S3Uri`. Assert the `s3://` string in their existing tests.
+- [x] 1.4 `SparkSubmit` parses its jar argument with `S3Uri.parse`.
 
 ## 2. In-memory adapter
 
-- [ ] 2.1 Test first: the `InMemoryObjectStore` contract test (round trip, `recursive`, `startAfter`, missing-object read throws, directory upload and download, delete, `uriOf` gives `mem://`). Then implement `services/InMemoryObjectStore`.
-- [ ] 2.2 Sort the 9 test files that mock `ObjectStore` (`TestDocumentServiceTest`, `ReportUploadTest`, `TenantDirectoryTest`, `GrafanaUpdateConfigTest`, `ObservabilityStackServiceTest`, `KitRunnerCommandFactoryTest`, `KitEndToEndTest`, `SparkSubmitTest`, `GrafanaInstallTest`): move stub-only use to the adapter; keep a mock only where it makes a call fail. Record the sort in the PR description.
+- [x] 2.1 Test first: the `InMemoryObjectStore` contract test (round trip, `recursive`, `startAfter`, missing-object read throws, directory upload and download, delete, `uriOf` gives `mem://`). Then implement `services/InMemoryObjectStore`.
+- [x] 2.2 Sort the 9 test files that mock `ObjectStore` (`TestDocumentServiceTest`, `ReportUploadTest`, `TenantDirectoryTest`, `GrafanaUpdateConfigTest`, `ObservabilityStackServiceTest`, `KitRunnerCommandFactoryTest`, `KitEndToEndTest`, `SparkSubmitTest`, `GrafanaInstallTest`): move stub-only use to the adapter; keep a mock only where it makes a call fail. Record the sort in the PR description.
+  - Sort: moved to `InMemoryObjectStore`: `ReportUploadTest`, `TenantDirectoryTest`, `GrafanaUpdateConfigTest`, `ObservabilityStackServiceTest`, `KitRunnerCommandFactoryTest`, `KitEndToEndTest`, `SparkSubmitTest`, `GrafanaInstallTest`. Kept the mock: `TestDocumentServiceTest` (makes `uploadFile` throw), and `ClusterBackupServiceTest` (outside the 9; drives `fileExists` false and upload failures).
 
 ## 3. Store backend and block selection
 
-- [ ] 3.1 Add `configuration/store/StoreBackend` (sealed) with `S3Backend` and the `from(clusterState, defaultRegion)` factory. Its KDoc names the volume case and the credential source as #1035's extension points.
+- [x] 3.1 Add `configuration/store/StoreBackend` (sealed) with `S3Backend` and the `from(clusterState, defaultRegion)` factory. Its KDoc names the volume case and the credential source as #1035's extension points.
 - [ ] 3.2 Test first: the stub-block rendering test (a test `StoreBlockSource` and a stub fragment in `src/test/resources`; parse each output and read the block at its path; assert no `s3://`, `amazonaws.com` or S3 endpoint). Then add `configuration/store/StoreBlockRenderer` and `StoreBlockSource`.
 - [ ] 3.3 Move each object-store block into its S3 fragment, verbatim: `mimir/store/s3.yaml`, `loki/store/s3.yaml`, `tempo/store/s3.yaml`, `pyroscope/store/s3.yaml` and the compactor's `tempo-backend` fragment. Replace each block with its placeholder; the Mimir, Loki, Tempo and Pyroscope builders and `CompactorTaskDefinition` splice the fragment in.
 - [ ] 3.4 The golden tests of task 0 pass unchanged.

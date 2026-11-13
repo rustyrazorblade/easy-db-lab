@@ -155,16 +155,14 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - When describing directory structure, use normal lists. Don't draw them, I don't find them useful.
 - Do not use remote docker-compose commands, use docker compose, the subcommand version.
 
-### Issue Labels
+### Workflow
 
-GitHub issues use the spec-flow label vocabulary.
+**Read [`WORKFLOW.md`](WORKFLOW.md) before you start, delegate, test, review, or merge any issue.** It holds the owner's rules for:
 
-- **`status:ready`** means the issue is groomed and ready to work on. Pick the next work from the highest-priority `status:ready` issue.
-- The other lifecycle labels, in order: `status:spec-review` (spec waits for owner approval), `status:in-progress` (implementation in progress), `status:in-review` (PR open, waits for owner review), `status:addressing` (fixes for owner review comments). An issue carries one lifecycle label at a time.
-- Priority: `P0` (drop everything), `P1` (high), `P2` (normal), `P3` (low / someday).
-- Do not start an issue that carries `agent:active` (an agent already works on it) or `blocked` (a hard dependency stops it).
-- `requires-aws` and `requires-ami-bake` are repo-specific gates. Their rules are in [`spec-flow/WORKFLOWS.md`](spec-flow/WORKFLOWS.md).
-- The test tiers, local gates, CI, and merge gate are in [`spec-flow/TESTING.md`](spec-flow/TESTING.md).
+- The lead and issue-agent roles, state files, status reports, and the work queue.
+- Issue labels: lifecycle, priority, `agent:active`, `blocked`, `requires-aws`, `requires-ami-bake`.
+- Agent and model choice, specs before code, test tiers and local gates, real AWS tests, AMI bakes.
+- The five-lens review, CI, and the merge-on-green rule.
 
 ### Lab Test Plans
 

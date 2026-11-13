@@ -23,17 +23,25 @@ data class KitService(
     val name: String,
 ) {
     companion object {
-        /** The Service of a kit: named for its Helm release or workload, or for the kit when it names neither. */
+        /**
+         * The Service of a kit: a Helm kit's is named for its release; every other kit publishes its
+         * client ports on its `<kit>-nodeport` Service (see `docs/development/kits.md`).
+         */
         fun of(
             kitName: String,
             runtime: KitRuntime?,
         ): KitService =
             KitService(
                 namespace = runtime?.namespace ?: DEFAULT_NAMESPACE,
-                name = runtime?.release?.ifBlank { null } ?: runtime?.name?.ifBlank { null } ?: kitName,
+                name =
+                    runtime
+                        ?.takeIf { it.type == KitRuntime.RuntimeType.HELM }
+                        ?.release
+                        ?.ifBlank { null } ?: "$kitName$NODEPORT_SUFFIX",
             )
 
         private const val DEFAULT_NAMESPACE = "default"
+        private const val NODEPORT_SUFFIX = "-nodeport"
     }
 }
 

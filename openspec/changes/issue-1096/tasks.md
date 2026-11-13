@@ -13,10 +13,10 @@
 
 ## 3. Probe
 
-- [ ] 3.1 `CapabilityProbeService.probe(api: KubeApi, namespace)` using #1089's `KubernetesClientFactory`; Fabric8 builders for the restricted baseline Pod and the three single-field variants; create the namespace when missing
-- [ ] 3.2 Classify results: 403/422 or webhook dry-run refusal makes the capability absent with a note (webhook named); baseline rejection or other error fails naming namespace and message; `NODE_SSH` always absent
-- [ ] 3.3 Integration test (K3s TestContainer, `src/integrationTest/`): namespace enforcing baseline makes the three absent and leaves no Pod; an unlabelled namespace makes them present; a missing namespace is created; a namespace enforcing a policy that rejects the baseline Pod fails the probe
-- [ ] 3.4 Unit test of the dry-run-refusal classifier against the API server's message shape
+- [x] 3.1 `CapabilityProbeService.probe(api: KubeApi, namespace)` using #1089's `KubernetesClientFactory`; Fabric8 builders for the restricted baseline Pod and the three single-field variants; create the namespace when missing
+- [x] 3.2 Classify results: 403/422 or webhook dry-run refusal makes the capability absent with a note (webhook named); baseline rejection or other error fails naming namespace and message; `NODE_SSH` always absent
+- [x] 3.3 Integration test (K3s TestContainer, `src/integrationTest/`): namespace enforcing baseline makes the three absent and leaves no Pod; an unlabelled namespace makes them present; a missing namespace is created; a namespace enforcing a policy that rejects the baseline Pod fails the probe
+- [x] 3.4 Unit test of the dry-run-refusal classifier against the API server's message shape
 
 ## 4. Publishing and status
 

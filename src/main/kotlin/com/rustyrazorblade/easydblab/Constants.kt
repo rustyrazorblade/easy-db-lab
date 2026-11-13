@@ -629,8 +629,8 @@ object Constants {
         /** The non-root user the restricted baseline probe Pod runs as. */
         const val PROBE_RUN_AS_USER = 65532L
 
-        /** The `dryRun` value the API server takes for a request that persists nothing. */
-        const val DRY_RUN_ALL = "All"
+        /** How long the probe waits for a namespace it created to get its default ServiceAccount. */
+        const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
 
         /** HTTP 422, the status Pod Security admission and validation reject a Pod with. */
         const val HTTP_UNPROCESSABLE = 422

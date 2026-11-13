@@ -1,12 +1,12 @@
 ## 1. Vocabulary and recording
 
-- [ ] 1.1 Add `PRIVILEGED`, `HOST_NETWORK`, `HOST_PATH`, `NODE_SSH` to `NodeCapability` with serial names and absent reasons; set `LOCAL_DOCKER` to the three admission capabilities
-- [ ] 1.2 Add `ClusterState.capabilities: Set<NodeCapability>? = null`; `NodeCapabilities.from(state)` returns it, else `AWS`; expose the present set for publishing
-- [ ] 1.3 Unit tests: recorded set is used; missing set reads as AWS; state round-trip by serial name
+- [x] 1.1 Add `PRIVILEGED`, `HOST_NETWORK`, `HOST_PATH`, `NODE_SSH` to `NodeCapability` with serial names and absent reasons; set `LOCAL_DOCKER` to the three admission capabilities
+- [x] 1.2 Add `ClusterState.capabilities: Set<NodeCapability>? = null`; `NodeCapabilities.from(state)` returns it, else `AWS`; expose the present set for publishing
+- [x] 1.3 Unit tests: recorded set is used; missing set reads as AWS; state round-trip by serial name
 
 ## 2. Overrides and init reporting
 
-- [ ] 2.1 `CapabilityOverrides.parse(List<String>)`: name=bool, fail on unknown name, bad value, conflicting repeats, listing valid names (constants in `Constants`)
+- [x] 2.1 `CapabilityOverrides.parse(List<String>)`: name=bool, fail on unknown name, bad value, conflicting repeats, listing valid names (constants in `Constants`)
 - [ ] 2.2 `init --capability` (repeatable); record declared set plus overrides before writing state; fail before any state write on a parse error
 - [ ] 2.3 Expose `ObservabilityStackService` stage label/`requires` pairs without building manifests; `init` prints one multiline block per absent capability with its reason and requiring stages (or "no component needs it yet")
 - [ ] 2.4 Tests: override removes and adds; unknown and conflicting overrides fail with no state; the init component list equals the stages `up` skips for the same set

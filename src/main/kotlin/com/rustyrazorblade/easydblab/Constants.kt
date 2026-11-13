@@ -604,6 +604,39 @@ object Constants {
         }
     }
 
+    // Node capabilities: `init --capability` overrides and the admission probe (CapabilityProbeService)
+    object Capabilities {
+        /** The `init` option that overrides one capability, `--capability <name>=<bool>`. */
+        const val OVERRIDE_OPTION = "--capability"
+
+        /** Separates a capability's name from its value in an override. */
+        const val OVERRIDE_SEPARATOR = "="
+
+        /** The `cluster-config` key that lists the present capabilities. */
+        const val CLUSTER_CONFIG_KEY = "capabilities"
+
+        /** Separates the capability names in [CLUSTER_CONFIG_KEY]. */
+        const val CLUSTER_CONFIG_SEPARATOR = ","
+
+        /** The image of every dry-run probe Pod. Never pulled: a dry-run creates nothing. */
+        const val PROBE_IMAGE = "registry.k8s.io/pause:3.10"
+
+        /** The name prefix of the dry-run probe Pods. */
+        const val PROBE_POD_PREFIX = "edl-capability-probe"
+
+        /** The host directory the hostPath probe Pod mounts, read-only. */
+        const val PROBE_HOST_PATH = "/var/log"
+
+        /** The non-root user the restricted baseline probe Pod runs as. */
+        const val PROBE_RUN_AS_USER = 65532L
+
+        /** The `dryRun` value the API server takes for a request that persists nothing. */
+        const val DRY_RUN_ALL = "All"
+
+        /** HTTP 422, the status Pod Security admission and validation reject a Pod with. */
+        const val HTTP_UNPROCESSABLE = 422
+    }
+
     // YACE (Yet Another CloudWatch Exporter) configuration
     object Yace {
         const val IMAGE = "quay.io/prometheuscommunity/yet-another-cloudwatch-exporter:v0.63.0"

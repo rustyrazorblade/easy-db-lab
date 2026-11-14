@@ -63,6 +63,7 @@ import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
+import java.io.File
 import kotlin.system.exitProcess
 
 /**
@@ -278,18 +279,29 @@ class CommandLineParser : KoinComponent {
         val installCL = kitCL.getSubcommands()["install"] ?: return
 
         for (name in resolver.listAvailableTemplates()) {
+            if (name in installCL.subcommands.keys) continue
             val source =
                 try {
                     resolver.resolve(name)
                 } catch (e: Exception) {
                     continue
                 }
-            val config = resolver.loadInstallConfig(source) ?: continue
-            if (name !in installCL.subcommands.keys) {
+            // One bad kit.yaml must not stop the CLI: every command, `kit source remove` included,
+            // builds this tree. Skip the kit and say which file failed.
+            try {
+                val config = resolver.loadInstallConfig(source) ?: continue
                 installCL.addSubcommand(name, factory.build(config, source))
+            } catch (e: Exception) {
+                eventBus.emit(Event.Kit.LoadFailed(name, kitFileOf(source), e.message ?: e.javaClass.simpleName))
             }
         }
     }
+
+    private fun kitFileOf(source: InstallTemplateResolver.TemplateSource): String =
+        when (source) {
+            is InstallTemplateResolver.TemplateSource.Directory -> File(source.dir, Constants.Kit.CONFIG_FILE).path
+            is InstallTemplateResolver.TemplateSource.Builtin -> "built-in kit ${source.name}"
+        }
 
     /**
      * Registers a top-level PicoCLI subcommand for every installed kit directory found by
@@ -316,7 +328,9 @@ class CommandLineParser : KoinComponent {
                     }
                     commandLine.addSubcommand(kitName, kitGroup)
                 } catch (e: Exception) {
-                    log.debug(e) { "Failed to register kit subcommand for $kitName" }
+                    eventBus.emit(
+                        Event.Kit.LoadFailed(kitName, File(kitDir, Constants.Kit.CONFIG_FILE).path, e.message ?: e.javaClass.simpleName),
+                    )
                 }
             }
     }

@@ -38,6 +38,21 @@ Serve the documents web server same-origin through the grafana Service on a seco
 
 #1090 (service access) **adds** the grafana ClusterIP Service. This change does **not** add a second one — it adds the documents port to #1090's Service and treats #1090 as the owner of the Service definition. Implementation merges after #1090, because the CLI readers and the teardown flush dial node IPs and break the moment `hostNetwork` drops.
 
+### D — Node ports on an environment that owns its nodes (proposed; needs owner sign-off)
+
+On AWS, `Placement.CONTROL_NODE` sets `publishOnNode = true`. The five workloads leave `hostNetwork`, but each container port keeps the `hostPort` it declares on the control node. That port is reached through the CNI's `portmap` chaining. The ports are Mimir 9009, Loki 3100, Tempo 3200/4320/4321, Pyroscope 4040, Grafana 3000 and documents 3080. Off AWS (`ANY_NODE`) every host port is dropped.
+
+- **Why:** without this, AWS loses callers that reach the control node's private IP today. Some of them are not CLI readers, so landing #1090 does not fix them:
+  - another cluster's collector, under `init --telemetry-redirect` (`TelemetryRedirect.fromBaseHost`, `<host>:9009/3100/4320/4040`);
+  - the hostNetwork Alloy eBPF DaemonSet (`PyroscopeManifestBuilder.resolvePyroscopeWriteUrl`);
+  - the db-node sidecar's Pyroscope agent (`SidecarManifestBuilder`, `CONTROL_NODE_IP:4040`) and stress jobs (`StressJobService`);
+  - the documents iframe URL (`DashboardDefaults.documentsUrl`, `<privateIp>:3080`);
+  - the CLI readers and the teardown flush, until #1090 repoints them.
+
+  Dropping the host ports would break proposal AC1 ("on AWS: no behaviour change").
+- **Rejected: drop `publishOnNode` and merge after #1090.** #1090 repoints only the CLI and flush callers. Redirected clusters and the node-side agents would still lose the backends.
+- **Open for the owner:** whether this stays permanent on AWS (as the redirect callers need), or each node-IP caller moves to a Service or NodePort in a follow-up and this flag is removed.
+
 ## Placement value
 
 ```kotlin

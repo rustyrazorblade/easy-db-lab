@@ -22,6 +22,8 @@ import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine
+import software.amazon.awssdk.core.exception.SdkException
+import java.io.IOException
 import java.util.Scanner
 
 /**
@@ -585,7 +587,6 @@ class Down : PicoBaseCommand() {
     /**
      * Mark infrastructure as DOWN and clear resource data in cluster state.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun updateClusterState() {
         try {
             if (clusterStateManager.exists()) {
@@ -607,9 +608,16 @@ class Down : PicoBaseCommand() {
                 clusterStateManager.save(clusterState)
                 eventBus.emit(Event.Teardown.ClusterStateMarkedDown)
             }
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to update cluster state, continuing anyway" }
+        } catch (e: IOException) {
+            // The state loaded successfully earlier in this run, so only reading it again or
+            // saving it can fail here, and both fail with an IOException.
+            reportClusterStateFailure(e)
         }
+    }
+
+    private fun reportClusterStateFailure(e: Exception) {
+        log.warn(e) { "Failed to update cluster state, continuing anyway" }
+        eventBus.emit(Event.Teardown.ClusterStateUpdateFailed(e.message ?: e.toString()))
     }
 
     /**
@@ -663,7 +671,6 @@ class Down : PicoBaseCommand() {
      * Deletes the Tailscale auth key if one is stored in cluster state.
      * Non-fatal — failure to delete the key should not block teardown.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteTailscaleAuthKey(clusterState: ClusterState) {
         val keyId = clusterState.tailscaleAuthKeyId
         if (keyId.isNullOrBlank()) {
@@ -681,7 +688,7 @@ class Down : PicoBaseCommand() {
         try {
             tailscaleService.deleteAuthKey(clientId, clientSecret, keyId)
             eventBus.emit(Event.Tailscale.AuthKeyDeleted(keyId))
-        } catch (e: Exception) {
+        } catch (e: TailscaleApiException) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
         }
     }
@@ -690,7 +697,6 @@ class Down : PicoBaseCommand() {
      * Disables request metrics on the per-cluster data bucket. Sets no expiry: the bucket's objects
      * are the owner's data.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun teardownDataBucketIfNeeded(clusterState: ClusterState) {
         val dataBucket = clusterState.dataBucket
         if (dataBucket.isBlank()) {
@@ -700,8 +706,9 @@ class Down : PicoBaseCommand() {
 
         try {
             s3BucketService.teardownDataBucket(dataBucket, clusterState.metricsConfigId())
-        } catch (e: Exception) {
+        } catch (e: SdkException) {
             log.warn(e) { "Failed to tear down data bucket: $dataBucket" }
+            eventBus.emit(Event.Teardown.DataBucketMetricsDisableFailed(dataBucket, e.message ?: e.toString()))
         }
     }
 
@@ -709,7 +716,6 @@ class Down : PicoBaseCommand() {
      * Finds all data buckets and deletes each one that is empty. A bucket that still holds objects
      * is kept as it is, with no expiry rule. Called during --all teardown.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun teardownAllDataBuckets() {
         try {
             val dataBuckets = s3BucketService.findDataBuckets()
@@ -721,12 +727,12 @@ class Down : PicoBaseCommand() {
             for (bucket in dataBuckets) {
                 teardownSingleDataBucket(bucket)
             }
-        } catch (e: Exception) {
+        } catch (e: SdkException) {
             log.warn(e) { "Failed to discover data buckets" }
+            eventBus.emit(Event.Teardown.DataBucketDiscoveryFailed(e.message ?: e.toString()))
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun teardownSingleDataBucket(bucket: String) {
         try {
             eventBus.emit(Event.S3.DataBucketDeleting(bucket))
@@ -736,8 +742,9 @@ class Down : PicoBaseCommand() {
                 .onFailure { exception ->
                     eventBus.emit(Event.S3.DataBucketKept(bucket, exception.message ?: exception.toString()))
                 }
-        } catch (e: Exception) {
+        } catch (e: SdkException) {
             log.warn(e) { "Failed to handle data bucket: $bucket" }
+            eventBus.emit(Event.S3.DataBucketKept(bucket, e.message ?: e.toString()))
         }
     }
 }

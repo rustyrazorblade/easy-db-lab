@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -92,6 +93,11 @@ class AWSpolicyTest {
                 "arn:aws:s3:::easy-db-lab-*/tempo/*",
                 "arn:aws:s3:::easy-db-lab-*/grafana/*",
                 "arn:aws:s3:::easy-db-lab-*/reports/*",
+                "arn:aws:s3:::easy-db-lab-*/*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/*/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/*/grafana/*",
+                "arn:aws:s3:::easy-db-lab-*/*/reports/*",
             )
             assertThat(values("Resource")).noneMatch { it.contains("pyroscope") }
             // Only deletes are denied: the cluster still reads the documents and the owner uploads them.
@@ -129,6 +135,9 @@ class AWSpolicyTest {
                 "arn:aws:s3:::test-bucket/mimir/*",
                 "arn:aws:s3:::test-bucket/loki/*",
                 "arn:aws:s3:::test-bucket/tempo/*",
+                "arn:aws:s3:::test-bucket/*/mimir/*",
+                "arn:aws:s3:::test-bucket/*/loki/*",
+                "arn:aws:s3:::test-bucket/*/tempo/*",
             )
             assertThat(deny.getValue("Principal").jsonObject.values("AWS")).containsExactlyInAnyOrder(
                 "arn:aws:iam::123456789012:role/EasyDBLabEC2Role",
@@ -160,41 +169,55 @@ class AWSpolicyTest {
     @Nested
     inner class StorePrefix {
         private val prefix = "team-a"
+        private val prefixes = listOf("", "team-a", "team-b/nested")
 
+        private fun instanceDeny(storePrefix: String) =
+            statements(AWSPolicy.Inline.S3AccessWildcard("123456789012", storePrefix).toJson()).single { it.effect() == "Deny" }
+
+        private fun bucketDeny(storePrefix: String) =
+            statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "easy-db-lab-test", storePrefix).toJson()).single {
+                it.effect() == "Deny"
+            }
+
+        /**
+         * `up` puts each deny whole, so a deny built from one cluster's prefix replaces the one
+         * another cluster put. Only a deny that does not depend on the prefix keeps every cluster's
+         * guard, whichever cluster applied it last, and whether that was `profile setup` with none.
+         */
         @Test
-        fun `the instance role deny keeps every unprefixed root and adds the prefixed ones`() {
-            val deny = statements(AWSPolicy.Inline.S3AccessWildcard("123456789012", prefix).toJson()).single { it.effect() == "Deny" }
-
-            assertThat(deny.values("Resource")).containsExactlyInAnyOrder(
-                "arn:aws:s3:::easy-db-lab-*/mimir/*",
-                "arn:aws:s3:::easy-db-lab-*/loki/*",
-                "arn:aws:s3:::easy-db-lab-*/tempo/*",
-                "arn:aws:s3:::easy-db-lab-*/grafana/*",
-                "arn:aws:s3:::easy-db-lab-*/reports/*",
-                "arn:aws:s3:::easy-db-lab-*/team-a/mimir/*",
-                "arn:aws:s3:::easy-db-lab-*/team-a/loki/*",
-                "arn:aws:s3:::easy-db-lab-*/team-a/tempo/*",
-                "arn:aws:s3:::easy-db-lab-*/team-a/grafana/*",
-                "arn:aws:s3:::easy-db-lab-*/team-a/reports/*",
-            )
+        fun `every deny is the same whichever prefix it is built with`() {
+            prefixes.forEach { storePrefix ->
+                assertThat(instanceDeny(storePrefix)).isEqualTo(instanceDeny(StoreBackend.NO_PREFIX))
+                assertThat(bucketDeny(storePrefix)).isEqualTo(bucketDeny(StoreBackend.NO_PREFIX))
+            }
         }
 
         @Test
-        fun `the bucket policy deny keeps every unprefixed compacted root and adds the prefixed ones`() {
-            val deny =
-                statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", prefix).toJson()).single {
-                    it.effect() ==
-                        "Deny"
-                }
+        fun `the instance role deny built with no prefix covers every denied root under any prefix`() {
+            val resources = instanceDeny(StoreBackend.NO_PREFIX).values("Resource")
 
-            assertThat(deny.values("Resource")).containsExactlyInAnyOrder(
-                "arn:aws:s3:::test-bucket/mimir/*",
-                "arn:aws:s3:::test-bucket/loki/*",
-                "arn:aws:s3:::test-bucket/tempo/*",
-                "arn:aws:s3:::test-bucket/team-a/mimir/*",
-                "arn:aws:s3:::test-bucket/team-a/loki/*",
-                "arn:aws:s3:::test-bucket/team-a/tempo/*",
-            )
+            listOf("mimir", "loki", "tempo", "grafana", "reports").forEach { root ->
+                listOf("$root/x", "team-a/$root/x", "team-b/nested/$root/x").forEach { key ->
+                    assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", key)).describedAs(key).isTrue()
+                }
+            }
+            assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", "pyroscope/x")).isFalse()
+            assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", "team-a/pyroscope/x")).isFalse()
+            assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", "clusters/lab-1/state.json")).isFalse()
+        }
+
+        @Test
+        fun `the bucket policy deny built with no prefix covers every compacted root under any prefix`() {
+            val resources = bucketDeny(StoreBackend.NO_PREFIX).values("Resource")
+
+            listOf("mimir", "loki", "tempo").forEach { root ->
+                listOf("$root/x", "team-a/$root/x", "team-b/nested/$root/x").forEach { key ->
+                    assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-test", key)).describedAs(key).isTrue()
+                }
+            }
+            listOf("grafana/x", "reports/x", "pyroscope/x", "team-a/grafana/x").forEach { key ->
+                assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-test", key)).describedAs(key).isFalse()
+            }
         }
 
         @Test

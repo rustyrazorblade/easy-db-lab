@@ -16,7 +16,7 @@ Measured on `local-k8s-edbl` at `133c4661`.  Paths below are under `src/main/kot
 **Goals:**
 - No class outside the S3 adapter renders `s3://`, an S3 endpoint or an S3 ARN key.
 - A second store can plug in by adding one `StoreBackend` case, one adapter and one fragment per backend.
-- On AWS, every rendered backend config, the compactor task definition and every IAM and bucket policy document are byte-identical to today's.
+- On AWS, every rendered backend config, the compactor task definition and the compactor task-role policy are byte-identical to today's. The instance-role and bucket-policy denies gain only the same roots under any prefix (D6).
 
 **Non-Goals:** see the proposal's out-of-scope list.  In particular there is no credential source, no volume store and no GCS or Azure code.
 
@@ -99,18 +99,15 @@ The values come from `StoreBackend` and `ObservabilityStore`.  The container env
 
 The S3 fragments take the endpoint from `${STORE_ENDPOINT}` instead of the literal `s3.${AWS_REGION}.amazonaws.com`.  The expanded value is the same string, so the golden files of D7 still match.
 
-### D6. The delete guards are built from the store prefix
+### D6. The delete denies cover every prefix; the compactor allow names one
 
-`AWSPolicy` gains one helper that joins the store prefix and a root into the object ARN pattern (`arn:aws:s3:::<bucket>/<prefix>/<root>/*`, with an empty prefix dropped).  `denyDataDeletes`, `CompactorTaskAccess` and `S3BucketPolicy` use it for every root.  The policies take the prefix as a parameter, and every caller passes the cluster's store prefix (empty today).
+`AWSPolicy` builds the two denies (`denyDataDeletes` on the instance role, the Deny of `S3BucketPolicy`) from `underAnyPrefix`: each denied root at the top of the bucket, and the same root under any prefix (`arn:aws:s3:::<bucket>/*/<root>/*`; `*` spans `/` in an IAM resource, so a nested prefix is covered too).  The deny names no prefix, so every caller builds the same document whichever prefix it passes.
 
-A deny is never narrowed.  Each deny resource list is today's unprefixed roots, plus the same roots under the store prefix when the prefix is not empty.  A prefix can only add denied paths:
+This matters because each policy is put whole.  The EC2 instance role (`Constants.AWS.Roles.EC2_INSTANCE_ROLE`) is account-wide, and the bucket policy is shared by every cluster on the bucket.  `up` puts both with the cluster's prefix, and `profile setup`, `AwsS3BucketService.ensureAccountBucket` and `AWSResourceSetupService` put them with none.  A deny built from the caller's own prefix would be replaced by the next caller's, and a cluster on another prefix would lose its guard.  A deny that does not depend on the prefix keeps every cluster's guard, whoever put it last.
 
-- With the empty prefix, every document is byte-identical to today's, which a golden test proves.
-- With a non-empty prefix, the cluster roles still cannot delete under the unprefixed `mimir/`, `loki/`, `tempo/`, `grafana/` and `reports/`, and also cannot delete under `<prefix>/mimir/` and the other prefixed roots.
-- The compactor task role's allow gains the prefixed compacted roots, so it can still merge there.  It gains nothing outside `mimir/`, `loki/` and `tempo/`.
-
-This matters because the EC2 instance role (`Constants.AWS.Roles.EC2_INSTANCE_ROLE`) is account-wide.  If one `up` replaced the deny with only its own prefix, a cluster on another prefix, or on none, would lose its guard.  Union-only keeps every earlier guard.  How a bucket shared by several prefixes lists all of them is #1035's decision; this change covers one prefix per policy document.
-
+- With an empty prefix, each deny covers what it covered before and also the same roots under any prefix.  The golden files `instance-role-policy.json` and `bucket-policy.json` were updated for this one change: each deny's resource list gains the `*/<root>/*` entries.  Nothing else in either document changed.
+- A store prefix is validated where it is built (`StorePrefix`): plain path segments, no IAM wildcard, no `..`, and a first segment that is none of the roots.
+- The compactor task role's allow is the only policy that names the prefix (`storeRoots`): the unprefixed compacted roots and, when the prefix is not empty, the same roots under it.  It gains nothing outside `mimir/`, `loki/` and `tempo/`, and its document with an empty prefix is byte-identical to today's.
 ### D7. Golden files prove the AWS config is unchanged
 
 Task 0 runs before any refactor, on this branch, and writes the "before" captures under `src/test/resources/com/rustyrazorblade/easydblab/golden/store/`:
@@ -141,7 +138,7 @@ The 9 test files that mock `ObjectStore` are sorted: a file that only stubs stor
 - **A missed key rename gives an empty bucket at runtime.**  The builders, the `${...}` names and the fragments must change together.  Mitigation: the golden files of D7 compare the expanded output, so an unexpanded or empty variable fails the test.
 - **Display strings are a contract.**  Event payloads carry `s3://` locations.  Mitigation: `uriOf` keeps them; tests for `ClusterBackupService` and `ReportUpload` assert the `s3://` string.
 - **Golden files are brittle.**  A later, intended edit to a backend config must update the golden file in the same change.  `configuration/CLAUDE.md` says so.
-- **Shared-bucket deny (D6).**  A deny list is only ever extended, so no prefix can remove another cluster's guard.  Listing every prefix of a shared bucket in one document is #1035's decision.
+- **Shared-bucket deny (D6).**  Each deny covers every root under any prefix and names none, so whichever caller puts it last, no cluster loses its guard.
 - **All backends roll once** on the first `up` after the change, because `cluster-config` and the configs change.  Expected; clusters are ephemeral.
 - **Fragment indentation.**  A fragment spliced at the wrong depth gives valid but wrong YAML.  Mitigation: the golden files catch it on AWS, and the stub test parses the output with a YAML parser and reads the block at its expected path.
 - **ArchUnit.**  `ClusterStoragePath`, `StoreBackend`, `S3Backend`, `StoreBlockRenderer` and `InMemoryObjectStore` stay outside `services/aws` and import no SDK type; `S3Uri` lives in `services/aws`.

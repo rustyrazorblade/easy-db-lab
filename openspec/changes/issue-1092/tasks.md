@@ -59,7 +59,7 @@
   - `trace-red.json` filters every spanmetrics panel on `host_name`, but the `traces` pipeline is `[resource/cluster, batch]` on both the base branch and this one: it never stamped `host.name`, so span-derived `host_name` is the producer's own and does not move.
   - What does move: `system-overview.json` and `system-ab-comparison.json` group the unscoped `jvm_*` series (no `job` filter) by `host_name`, so the stress JVM's heap, CPU and allocation now count under its app node instead of `control0`. That is the stress JVM's real node; no filter there names `control0` or a stress job, so nothing goes empty.
   - Finding: no dashboard needs a `host_name` edit for this change, and this change edits no dashboard JSON. The check above was a static read of the dashboard files only.
-  - Deferred: the live read-back through the `dashboard-editor` agent (deploy, then read each panel back from Grafana) needs a running cluster and is deferred to the first real-cluster run of this change. This task stays unchecked until then.
+  - Deferred: Live Grafana readback via the dashboard-editor agent is explicitly deferred to the first real-cluster run; this PR changes no dashboard JSON. It needs a running cluster (deploy, then read each panel back from Grafana). This task stays unchecked until then.
 
 ## 10. Tests
 

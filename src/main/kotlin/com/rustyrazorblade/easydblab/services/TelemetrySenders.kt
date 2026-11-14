@@ -62,30 +62,42 @@ class K8sTelemetrySenders(
         onAbsent: (String) -> Unit,
         onDeleting: (String) -> Unit,
     ) = clientProvider.createClient().use { client ->
-        val deadline = Instant.now().plus(timeout)
+        val started = Instant.now()
+        val deadline = started.plus(timeout)
+        val waited = mutableListOf<String>()
         TelemetrySenders.COLLECTORS.forEach { name ->
             if (daemonSet(client, name).get() == null && pods(client, name).isEmpty()) {
                 onAbsent(name)
             } else {
                 onDeleting(name)
-                stopOne(client, name, deadline, timeout)
+                val began = Instant.now()
+                stopOne(client, name, deadline, timeout, waited)
+                waited += "$name took ${Duration.between(began, Instant.now()).seconds}s"
             }
         }
     }
 
-    /** Deletes [name]'s DaemonSet and waits, until [deadline], for its pods to go. */
+    /**
+     * Deletes [name]'s DaemonSet and waits, until [deadline], for its pods to go. A failure names
+     * [name] as the collector still running and, from [waited], how much of the budget each
+     * collector stopped before it used.
+     */
     private fun stopOne(
         client: KubernetesClient,
         name: String,
         deadline: Instant,
         timeout: Duration,
+        waited: List<String>,
     ) {
         daemonSet(client, name).delete()
         // The shared deadline, not an attempt count, bounds the poll: the add-on's wait uses part of it.
         val gone: (List<Pod>) -> Boolean = { it.isEmpty() }
         val config = RetryUtil.createPollUntilRetryConfig(Int.MAX_VALUE, pollInterval, gone, deadline)
         val pods = Retry.decorateSupplier(Retry.of("await-$name-gone", config)) { pods(client, name) }.get()
-        check(gone(pods)) { "$name still has ${pods.size} pod(s) ${timeout.seconds}s after the collectors' stop began" }
+        check(gone(pods)) {
+            val before = if (waited.isEmpty()) "" else " (${waited.joinToString()})"
+            "$name was still running: ${pods.size} pod(s) ${timeout.seconds}s after the collectors' stop began$before"
+        }
     }
 
     private fun daemonSet(

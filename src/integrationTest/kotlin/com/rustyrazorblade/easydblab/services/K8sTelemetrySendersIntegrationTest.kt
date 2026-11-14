@@ -220,6 +220,40 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
     }
 
     /**
+     * A DaemonSet an earlier `down` deleted can leave pods Terminating. The collector is not absent:
+     * the stop takes the delete path, waits for those pods, and succeeds once they are gone.
+     */
+    @Test
+    fun `a deleted DaemonSet whose pods are still terminating is waited for, not reported absent`() {
+        deployCollector()
+        holdCollectorPods()
+        client
+            .apps()
+            .daemonSets()
+            .inNamespace(namespace)
+            .withName(Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
+            .delete()
+        val releasedAt = AtomicLong()
+        val releaser =
+            Thread {
+                Thread.sleep(HOLD.toMillis())
+                releasedAt.set(System.nanoTime())
+                releaseCollectorPods()
+            }.apply { start() }
+        val absent = CopyOnWriteArrayList<String>()
+        val deleting = CopyOnWriteArrayList<String>()
+
+        senders.stop(TIMEOUT, onAbsent = { absent += it }, onDeleting = { deleting += it })
+        val stoppedAt = System.nanoTime()
+        releaser.join()
+
+        assertThat(deleting).containsExactly(Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
+        assertThat(absent).containsExactly(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+        assertThat(stoppedAt).describedAs("the stop returned after the pods were released").isGreaterThan(releasedAt.get())
+        assertThat(collectorPods()).isEmpty()
+    }
+
+    /**
      * The add-on forwards to the core, so it is stopped first: the core's DaemonSet is still there
      * while an add-on pod is Terminating, and goes only after the add-on's last pod is gone.
      */
@@ -260,8 +294,8 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         val started = System.nanoTime()
         assertThatThrownBy { senders.stop(SHORT_TIMEOUT) { deleting += it } }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining(Constants.OtelCollector.HOST_COLLECTOR_NAME)
-            .hasMessageNotContaining("${Constants.K8s.OTEL_COLLECTOR_APP_LABEL} still")
+            .hasMessageStartingWith("${Constants.OtelCollector.HOST_COLLECTOR_NAME} was still running")
+            .hasMessageNotContaining("${Constants.K8s.OTEL_COLLECTOR_APP_LABEL} was still")
         val elapsed = Duration.ofNanos(System.nanoTime() - started)
 
         assertThat(elapsed).isBetween(SHORT_TIMEOUT, SHORT_TIMEOUT.plus(SLACK))
@@ -290,7 +324,8 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         val started = System.nanoTime()
         assertThatThrownBy { senders.stop(SHORT_TIMEOUT) }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("${Constants.K8s.OTEL_COLLECTOR_APP_LABEL} still")
+            .hasMessageStartingWith("${Constants.K8s.OTEL_COLLECTOR_APP_LABEL} was still running")
+            .hasMessageContaining("${Constants.OtelCollector.HOST_COLLECTOR_NAME} took")
         val elapsed = Duration.ofNanos(System.nanoTime() - started)
         releaser.join()
 

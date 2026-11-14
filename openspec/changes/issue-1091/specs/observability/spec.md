@@ -46,6 +46,19 @@ Each backend's local state SHALL be stored on a `hostPath` where the environment
 - **WHEN** a backend Pod is rescheduled to another node in the volume's zone
 - **THEN** Grafana and the collector still reach it through its ClusterIP Service
 
+#### Scenario: Off owned nodes the stack and the collector sync need no control node
+- **GIVEN** an environment that does not own its nodes and a cluster state with no control node
+- **WHEN** the observability stack deploys, or a kit start or stop resyncs the collector
+- **THEN** it succeeds
+- **AND** the `cluster-config` ConfigMap carries no `control_node_ip` key
+- **AND** the collector configuration has no endpoint at a node IP, and the eBPF profiling agent writes to the Pyroscope Service
+
+#### Scenario: On AWS the control node IP is still published
+- **GIVEN** an AWS environment
+- **WHEN** the observability stack deploys
+- **THEN** `cluster-config` carries `control_node_ip` set to the control node's private IP, with every other key as today
+- **AND** a cluster state with no control node fails the deploy before anything is applied, naming the callers that reach the backends at that IP
+
 #### Scenario: Off owned nodes, backend state is on a retained claim
 - **GIVEN** an environment without `HOST_PATH`
 - **WHEN** a backend is rendered

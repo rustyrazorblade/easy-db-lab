@@ -59,6 +59,20 @@ On AWS, `Placement.CONTROL_NODE` sets `publishOnNode = true`. The five workloads
 - **Rejected: drop `publishOnNode` and merge after #1090.** #1090 repoints only the CLI and flush callers. Redirected clusters and the node-side agents would still lose the backends.
 - **Temporary.** The owner signed this off as "keep for now". A follow-up issue moves each node-IP caller (the telemetry redirect, Alloy eBPF, the sidecar Pyroscope agent, stress jobs) to Service DNS or a NodePort and then removes `publishOnNode`.
 
+### E — No control node required off owned nodes (owner decision, 2026-11-14)
+
+The observability deploy and the kit-driven collector sync (`OtelSyncService`) take no control host. Each reads `ClusterState.getControlHost()` itself and treats it as optional. The K8s client comes from the workspace kubeconfig (`K8sClientProvider`); the host it was handed only named the node in a debug log.
+
+- **`control_node_ip` is AWS-only.** `ClusterConfigData.of(state, hosting, region)` writes the key only when `hosting.placement.publishOnNode` (decision D). The IP comes from the control host in state. Off AWS the key is absent. No in-cluster workload reads the key (no `configMapKeyRef` names it); it is published for the callers in decision D.
+- **The Alloy eBPF agent** writes to `http://pyroscope.<namespace>.svc:4040` off AWS (it runs `hostNetwork` with `ClusterFirstWithHostNet`, so it resolves Service DNS). On AWS it keeps `CONTROL_NODE_IP:4040`.
+- **The collector config** already reaches Mimir, Loki and Tempo by Service DNS and carries no node IP in either mode, so the deploy and the sync render the same collector with or without a control host.
+- **Fail fast only where the node is truly required, and name why:**
+  - publishing the node IP under `Placement.CONTROL_NODE`, because redirected clusters, the Alloy eBPF agent, the sidecar Pyroscope agent and stress jobs reach the backends only at that IP (`ClusterConfigData.publishedNodeIp`). This fails the deploy and the sync before anything is applied.
+  - host-path state directories (`BackendStorage.HostPath`), which are prepared over SSH on the control node.
+  - the dashboard tree copy into Grafana's directory over SSH.
+- **Entry points:** `grafana update-config` no longer refuses a state with no control node; the deploy decides. Kit `start`, `stop` and `uninstall` run their post-phase actions (metrics registration and collector sync) with no control node. `up` builds AWS clusters, which always have one.
+- **AWS output is unchanged.** It is pinned by a golden test of the cluster-config data (`ClusterConfigDataTest`), and by the existing deploy and sync hash tests.
+
 ## Placement value
 
 ```kotlin

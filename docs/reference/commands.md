@@ -150,7 +150,7 @@ determined fails at `init`, before any instance is created.
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--up` | Auto-provision after init | false |
-| `--clean` | Remove existing config first | false |
+| `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
 
 ### up
 

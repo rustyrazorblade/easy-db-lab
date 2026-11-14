@@ -41,6 +41,18 @@ data class DiscoveredResources(
             natGatewayIds.isNotEmpty()
 
     /**
+     * Counts the resources that are not EC2 instances: EMR clusters, OpenSearch domains, security
+     * groups, subnets, NAT gateways and the internet gateway.
+     */
+    fun nonInstanceResourceCount(): Int =
+        emrClusterIds.size +
+            openSearchDomainNames.size +
+            securityGroupIds.size +
+            subnetIds.size +
+            natGatewayIds.size +
+            (if (internetGatewayId != null) 1 else 0)
+
+    /**
      * Returns a human-readable summary of discovered resources.
      */
     fun summary(): String {

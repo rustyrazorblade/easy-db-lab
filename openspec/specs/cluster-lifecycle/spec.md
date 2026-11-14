@@ -40,6 +40,21 @@ The workspace's `bin/` directory belongs to easy-db-lab, which writes its tool w
 - **WHEN** the user runs `init --clean`
 - **THEN** the cleanup removes the wrappers, the marker, and the empty `bin/`, and `init` succeeds
 
+`init --clean` MUST ask AWS whether the workspace's cluster has live infrastructure before it deletes anything, because it deletes `state.json`, the only local record of the cluster's VPC. It finds the cluster the way `down` does: from the VPC ID in the cluster state, through the same discovery as `down --dry-run` (the whole VPC, or only the cluster's `ClusterId`-tagged resources when the VPC came from `init --vpc`). A VPC that still holds any resource counts as live. When the lookup itself fails, `init --clean` MUST fail and delete nothing.
+
+#### Scenario: init --clean refuses while the cluster has live infrastructure
+
+- **GIVEN** a workspace whose cluster state records a VPC that still holds instances or other resources in AWS
+- **WHEN** the user runs `init --clean`
+- **THEN** `init` fails with `Setup.CleanRefusedLiveInfrastructure`, which names the VPC and the instances and tells the user to run `down` first
+- **AND** no local file is deleted
+
+#### Scenario: init --clean proceeds when AWS shows no infrastructure
+
+- **GIVEN** a workspace whose cluster state records a VPC that AWS shows empty or gone, or records no VPC
+- **WHEN** the user runs `init --clean`
+- **THEN** the cleanup runs and `init` proceeds as before
+
 ### Requirement: Infrastructure Provisioning
 
 The system MUST provision EC2 instances in AWS with configurable instance types and counts. The system MUST create a per-cluster data bucket for high-volume storage and CloudWatch metrics.

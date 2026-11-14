@@ -18,6 +18,8 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.LiveInfrastructureLookup
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
@@ -63,6 +65,8 @@ class Init : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
+    private val infrastructureService: AwsInfrastructureService by inject()
+    private val liveInfrastructure by lazy { LiveInfrastructureLookup(clusterStateManager, infrastructureService) }
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
@@ -356,6 +360,7 @@ class Init : PicoBaseCommand() {
         validateParameters()
 
         if (clean) {
+            refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)
             // Execute Clean immediately with full lifecycle
             commandExecutor.execute { Clean() }
@@ -449,6 +454,19 @@ class Init : PicoBaseCommand() {
             eventBus.emit(Event.Setup.InitError(existingFiles))
             exitProcess(1)
         }
+    }
+
+    /**
+     * `--clean` deletes `state.json`, the only local record of the cluster's VPC. Ask AWS first,
+     * and refuse while the cluster still has resources: they would keep running with no workspace
+     * pointing at them. Nothing has been deleted when this throws.
+     */
+    private fun refuseLiveInfrastructure() {
+        val live = liveInfrastructure.find() ?: return
+        eventBus.emit(
+            Event.Setup.CleanRefusedLiveInfrastructure(live.vpcId, live.instanceIds, live.nonInstanceResourceCount()),
+        )
+        throw CommandFailedException("The cluster in ${context.workingDirectory.absolutePath} still has infrastructure in ${live.vpcId}")
     }
 
     /**

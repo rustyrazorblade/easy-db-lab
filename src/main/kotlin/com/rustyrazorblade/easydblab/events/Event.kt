@@ -5518,6 +5518,29 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `init --clean` found live AWS infrastructure for the workspace's cluster and refused:
+         * deleting `state.json` would orphan it. [instanceIds] are the instances still running or
+         * starting; [otherResources] counts the rest (subnets, security groups, gateways, EMR,
+         * OpenSearch). Nothing was deleted.
+         */
+        @Serializable
+        @SerialName("Setup.CleanRefusedLiveInfrastructure")
+        data class CleanRefusedLiveInfrastructure(
+            val vpcId: String,
+            val instanceIds: List<String>,
+            val otherResources: Int,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Error: init --clean refused. This workspace's cluster still has infrastructure in AWS: " +
+                    "VPC $vpcId, ${instanceIds.size} instance(s)" +
+                    (if (instanceIds.isEmpty()) "" else " (${instanceIds.joinToString(", ")})") +
+                    ", $otherResources other resource(s). Deleting the local state would orphan it. " +
+                    "Run easy-db-lab down first."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {

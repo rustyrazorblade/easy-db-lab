@@ -1012,6 +1012,24 @@ spec:
       nodePort: 30999   # a port no other kit uses; Hubble UI owns 31234
 ```
 
+On a port-forward cluster the CLI reaches an endpoint through the Service it is published on, so
+each endpoint must resolve to one. An endpoint whose NodePort a Service manifest of the kit declares
+needs nothing more: the Service is found by that NodePort, whatever its name. An endpoint on a
+Service the kit does not declare itself (a Helm chart's, or one an operator such as Strimzi creates)
+names it in `kit.yaml`:
+
+```yaml
+endpoints:
+  - name: "Kafka Bootstrap"
+    node-type: db
+    port: 32100
+    type: kafka
+    service: kafka-kafka-external-bootstrap   # the Service Strimzi creates
+    service-port: 9094                        # its port behind the endpoint
+```
+
+`KitEndpointServiceTest` checks that every packaged kit's endpoints resolve this way.
+
 ## Adding a New Kit
 
 1. Create `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/kit.yaml`

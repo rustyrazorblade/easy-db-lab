@@ -10,7 +10,7 @@ Region: __REGION__
 
 **Internal** (in-cluster pods, e.g. Cassandra sidecar):
 ```
-kafka.default.svc.cluster.local:9092
+kafka-kafka-bootstrap.default.svc.cluster.local:9092
 ```
 
 **External** (from outside the cluster via Tailscale):
@@ -37,7 +37,7 @@ curl http://__CONTROL_HOST_PRIVATE__:32309/metrics   # Kafka Exporter
 
 Configure the Cassandra sidecar CDC connector with bootstrap server:
 ```
-kafka.default.svc.cluster.local:9092
+kafka-kafka-bootstrap.default.svc.cluster.local:9092
 ```
 
 The internal address avoids NodePort overhead for pod-to-pod traffic.

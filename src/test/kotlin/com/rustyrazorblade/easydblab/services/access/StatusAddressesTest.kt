@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.sql.KitService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -44,14 +45,15 @@ class StatusAddressesTest {
 
     @Test
     fun `a kit endpoint is shown on every host of its node type on Socks`() {
-        val shown = StatusAddresses(state(Exposure.Socks)).kitEndpoint("cassandra-pods", null, cql)
+        val shown = StatusAddresses(state(Exposure.Socks)).kitEndpoint(cql, null)
 
         assertThat(shown).containsExactly(StatusAddress("10.0.1.100:30942"))
     }
 
     @Test
-    fun `a kit endpoint on a port-forward cluster names the kit's Service and the command that forwards it`() {
-        val shown = StatusAddresses(state(Exposure.PortForward)).kitEndpoint("cassandra-pods", null, cql)
+    fun `a kit endpoint on a port-forward cluster names its Service and the command that forwards it`() {
+        val shown =
+            StatusAddresses(state(Exposure.PortForward)).kitEndpoint(cql, KitService("default", "cassandra-pods-nodeport", 30942))
 
         assertThat(shown).containsExactly(
             StatusAddress(
@@ -66,10 +68,19 @@ class StatusAddressesTest {
         val http = KitEndpoint(name = "HTTP", nodeType = "db", port = 30123, type = KitEndpoint.EndpointType.HTTP)
         val addresses = StatusAddresses(state(Exposure.PortForward))
 
-        val shown = addresses.kitEndpoint("clickhouse", null, http) { _, port -> if (port == 30123) 8123 else port }.single()
+        val shown = addresses.kitEndpoint(http, KitService("default", "clickhouse-nodeport", 8123)).single()
 
         assertThat(shown.address).isEqualTo("http://clickhouse-nodeport.default.svc.cluster.local:8123")
         assertThat(shown.hint).isEqualTo("bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123")
+    }
+
+    @Test
+    fun `a kit endpoint whose Service is unknown is shown with no forward command`() {
+        val addresses = StatusAddresses(state(Exposure.PortForward))
+
+        assertThat(addresses.kitEndpoint(cql, null)).containsExactly(StatusAddress("(Service unknown)"))
+        assertThat(addresses.kitEndpoint(cql, KitService("default", "presto")))
+            .containsExactly(StatusAddress("presto.default.svc.cluster.local (Service port unknown)"))
     }
 
     @Test
@@ -161,8 +172,8 @@ class StatusAddressesTest {
                 "http://web-nodeport.default.svc.cluster.local:8080",
                 "bin/kubectl port-forward -n default svc/web-nodeport 31080:8080",
             ),
-            // A port no manifest maps has no Service port to forward to, so no command is offered.
-            StatusAddress("web-nodeport.default.svc.cluster.local (Service port unknown)"),
+            // No manifest declares this NodePort, so no Service is known and no command is offered.
+            StatusAddress("(Service unknown)"),
         )
     }
 

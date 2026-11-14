@@ -94,10 +94,14 @@ CQL on a port-forward cluster does not use the seam's Service forward. It uses
 
 `status` cannot keep a forward open after it exits, so on a port-forward cluster `StatusAddresses`
 prints each Service's DNS name and the `bin/kubectl port-forward` command that reaches it. A kit
-endpoint names its NodePort, so `KitServicePorts` reads the Service manifests rendered into the kit's
-workspace directory and maps each NodePort to its Service port (clickhouse:
-`svc/clickhouse-nodeport 30123:8123`, address `...svc.cluster.local:8123`). A port no rendered
-manifest maps (a Helm kit's Service) is shown as it is.
+endpoint names its NodePort, so `KitEndpointServices` resolves the Service it is published on from
+the kit's own files, never from its name: the Service named on the endpoint's `kit.yaml` entry
+(`service:`/`service-port:`, for a chart's or an operator's Service: presto, trino, kafka), else the
+Service a manifest rendered into the kit's workspace directory declares with that NodePort, at the
+Service port behind it (clickhouse: `svc/clickhouse-nodeport 30123:8123`, address
+`...svc.cluster.local:8123`), else a Helm kit's release at an unknown port. `status` prints an
+endpoint with no known Service or port without a forward command; `<kit> sql` on a port-forward
+cluster fails naming the `service:` field. `KitEndpointServiceTest` resolves every packaged kit.
 ## ManifestApplier
 
 Applies K8s manifests using Fabric8's typed server-side apply (not generic resources).

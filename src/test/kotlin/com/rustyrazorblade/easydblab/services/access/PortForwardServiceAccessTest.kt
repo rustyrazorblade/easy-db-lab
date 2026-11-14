@@ -108,6 +108,17 @@ class PortForwardServiceAccessTest {
     }
 
     @Test
+    fun `a target with no Service named fails saying how to declare one, opening nothing`() {
+        val undeclared = ClusterServices.LOKI.copy(service = "", servicePort = 31090, nodePort = 31090)
+
+        assertThatThrownBy { access.open(undeclared) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("31090")
+            .hasMessageContaining("service:")
+        assertThat(opened).isEmpty()
+    }
+
+    @Test
     fun `closing the access closes every forward it opened`() {
         access.open(ClusterServices.LOKI)
         access.open(ClusterServices.GRAFANA)

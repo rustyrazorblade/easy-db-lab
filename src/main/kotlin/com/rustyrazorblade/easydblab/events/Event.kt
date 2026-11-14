@@ -5744,7 +5744,17 @@ sealed interface Event {
             val address: String,
         ) {
             /** Renders this endpoint as an indented `name  type  address` line. */
-            fun displayLine(): String = "  %-20s  %-8s  %s".format(name, type, address)
+            fun displayLine(): String = "$INDENT%-${NAME_WIDTH}s$GAP%-${TYPE_WIDTH}s$GAP%s".format(name, type, address)
+
+            companion object {
+                private const val INDENT = "  "
+                private const val GAP = "  "
+                private const val NAME_WIDTH = 20
+                private const val TYPE_WIDTH = 8
+
+                /** Blank space as wide as a line's name and type columns: text after it starts under the address. */
+                val ADDRESS_COLUMN: String = " ".repeat(INDENT.length + NAME_WIDTH + GAP.length + TYPE_WIDTH + GAP.length)
+            }
         }
 
         /**

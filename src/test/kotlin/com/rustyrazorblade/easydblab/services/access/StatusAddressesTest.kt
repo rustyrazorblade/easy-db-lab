@@ -75,6 +75,16 @@ class StatusAddressesTest {
     }
 
     @Test
+    fun `the forward command starts under the address column of the endpoint line`() {
+        val shown =
+            ShownEndpoint(cql, StatusAddress("cassandra-pods-nodeport.default.svc.cluster.local:30942", "bin/kubectl x"))
+
+        val (line, hint) = shown.displayLines().lines()
+
+        assertThat(hint.indexOf("run:")).isEqualTo(line.indexOf("cassandra-pods-nodeport"))
+    }
+
+    @Test
     fun `a kit endpoint whose Service is unknown is shown with no forward command`() {
         val addresses = StatusAddresses(state(Exposure.PortForward))
 

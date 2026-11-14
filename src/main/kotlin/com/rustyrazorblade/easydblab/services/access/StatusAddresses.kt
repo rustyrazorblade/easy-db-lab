@@ -36,7 +36,7 @@ data class ShownEndpoint(
     /** The `name  type  address` line `status` prints, then the forward command when there is one. */
     fun displayLines(): String {
         val line = Event.Kit.EndpointAddress(endpoint.name, endpoint.type.name.lowercase(), address.address).displayLine()
-        return address.hint?.let { "$line\n  %-20s  %-8s  run: %s".format("", "", it) } ?: line
+        return address.hint?.let { "$line\n${Event.Kit.EndpointAddress.ADDRESS_COLUMN}run: $it" } ?: line
     }
 }
 

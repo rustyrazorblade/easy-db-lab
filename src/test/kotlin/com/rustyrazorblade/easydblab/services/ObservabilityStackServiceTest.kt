@@ -357,11 +357,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
-        // The documents sidecars read the account bucket, never the data bucket.
+        // The documents front and its proxy read the account bucket, never the data bucket.
         verify(mockDashboardService).deploy(any(), context.capture(), eq("easy-db-lab-test"), any())
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
-        assertThat(context.firstValue.documentsUrl).isEqualTo("http://${controlNode.privateIp}:${Constants.Grafana.Documents.WEB_PORT}")
 
         // Both on-node data directories are prepared over SSH.
         val commands = remoteCommands()
@@ -484,6 +483,32 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val hosting = argumentCaptor<ObservabilityHosting>()
         verify(mockDashboardService).deploy(any(), any(), any(), hosting.capture())
         assertThat(hosting.firstValue.placement.nodeSelector).containsAllEntriesOf(labels)
+    }
+
+    /**
+     * An `init --node-label` no node carries leaves every backend Pending; the operator can only see
+     * why if the deploy says which selector it placed them with, before the rollout wait times out.
+     */
+    @Test
+    fun `the deploy reports the placement it resolved, node labels merged, before it applies anything`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
+                initConfig = InitConfig(region = "us-west-2", nodeLabels = mapOf("pool" to "observability")),
+            ),
+        )
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        val resolved = emitted.filterIsInstance<Event.Grafana.PlacementResolved>().single()
+        assertThat(resolved.nodeSelector)
+            .containsEntry("pool", "observability")
+            .containsEntry("node-role.kubernetes.io/control-plane", "true")
+        assertThat(resolved.tolerations).containsExactly("node-role.kubernetes.io/control-plane:Exists:NoSchedule")
+        assertThat(emitted.indexOf(resolved)).isLessThan(emitted.indexOfFirst { it is Event.Grafana.LabelResourcesApplying })
     }
 
     @Test

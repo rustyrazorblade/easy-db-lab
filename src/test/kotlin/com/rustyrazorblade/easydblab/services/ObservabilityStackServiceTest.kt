@@ -412,16 +412,16 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     fun `a core collector that does not roll out fails the deploy before the host add-on is applied`() {
         // thenReturn, not thenAnswer: an answer's Result is boxed and would read back as a success.
         whenever(
-            mockK8sService.waitForRollouts(any(), eq(listOf(WorkloadRef(WorkloadKind.DaemonSet, "otel-collector"))), any(), any()),
+            mockK8sService.waitForRollouts(eq(listOf(WorkloadRef(WorkloadKind.DaemonSet, "otel-collector"))), any(), any()),
         ).thenReturn(Result.failure(IllegalStateException("otel-collector: 1 of 3 pods updated")))
 
-        val result = service.deploy(controlNode)
+        val result = service.deploy()
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("otel-collector").hasMessageContaining("1 of 3 pods updated")
         val applied = appliedKindNames()
         assertThat(applied).contains("DaemonSet/otel-collector")
         assertThat(applied).doesNotContain("DaemonSet/otel-collector-host", "Deployment/kube-state-metrics")
-        verify(mockK8sService, never()).waitForPodsReady(any(), any())
+        verify(mockK8sService, never()).waitForPodsReady(any<Int>())
     }
 
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */

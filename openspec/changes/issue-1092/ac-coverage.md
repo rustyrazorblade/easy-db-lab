@@ -23,6 +23,8 @@
 | A TERM during a gauge push leaves `kubectl proxy` running | "An interrupted gauge push leaves nothing running" |
 | An add-on that does not drain gets the core deleted under it, or a fresh deadline | "An add-on that does not drain leaves the core running" |
 | The core skips kubelet TLS verification, or can write its root filesystem | "Core runs unprivileged on the pod network"; "Core verifies the kubelet it reads stats from" |
+| A node's core restart drops its host data (the add-on's exporter gives up after 300s) | "A core restart does not drop the node's host data" |
+| A never-deployed add-on is reported as deleted by the save | "Missing add-on does not fail down" |
 
 ## Intentional exclusions
 

@@ -192,6 +192,7 @@ class DownBackupTest : BaseKoinTest() {
                 "loki" to BackendState.SCALED_TO_ZERO,
                 "mimir" to BackendState.INGESTER_STOPPED,
                 "otel-collector" to BackendState.DELETED,
+                "otel-collector-host" to BackendState.ABSENT,
                 "tempo" to BackendState.RUNNING,
             )
         val failures =
@@ -225,7 +226,8 @@ class DownBackupTest : BaseKoinTest() {
             .contains("no infrastructure was removed")
             .contains("loki: ${BackendState.SCALED_TO_ZERO.description}")
             .contains("mimir: ${BackendState.INGESTER_STOPPED.description}")
-            .contains("left stopped: loki, mimir, otel-collector")
+            .contains("left stopped: loki, mimir, otel-collector.")
+            .contains("otel-collector-host: ${BackendState.ABSENT.description}")
             .contains("down --force")
     }
 

@@ -77,6 +77,9 @@ enum class BackendState(
     INGESTER_STOPPED("ingester stopped (the pod still runs and takes no new data)"),
     SCALED_TO_ZERO("scaled to 0"),
     DELETED("deleted"),
+
+    /** Not on the cluster when the save ran (an add-on never deployed); the save did not touch it. */
+    ABSENT("not deployed"),
 }
 
 /**
@@ -90,11 +93,8 @@ enum class BackendState(
  */
 class FlushProgress(
     first: FlushStep,
-    private val owns: Set<String>,
+    private val owns: Set<String> = emptySet(),
 ) {
-    /** A step that owns at most one workload. */
-    constructor(first: FlushStep, owned: String? = null) : this(first, setOfNotNull(owned))
-
     /** The step running now, or the one that failed. */
     @Volatile
     var step: FlushStep = first
@@ -293,7 +293,7 @@ class DefaultTeardownFlushService private constructor(
 
         // Phase A, in order. The mirror writes to Loki, so it must finish before Loki's flush starts.
         if (TailSignal.LOGS in pending) {
-            val progress = FlushProgress(FlushStep.ANNOTATION_MIRROR, Constants.K8s.LOKI_APP_LABEL).also(progresses::add)
+            val progress = FlushProgress(FlushStep.ANNOTATION_MIRROR, setOf(Constants.K8s.LOKI_APP_LABEL)).also(progresses::add)
             attempt(progress) { mirrorToLoki(controlHost) }
                 .onSuccess { tasks += SaveTask(TailSignal.LOGS, progress) { lokiFlush.flush(controlHost, clusterState, progress) } }
                 .onFailure { failed[TailSignal.LOGS] = it as FlushStepFailed }
@@ -302,14 +302,14 @@ class DefaultTeardownFlushService private constructor(
         val sendersStop = attempt(sendersProgress) { stopSenders(sendersProgress) }
 
         if (TailSignal.METRICS in pending) {
-            val progress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, Constants.K8s.MIMIR_APP_LABEL).also(progresses::add)
+            val progress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, setOf(Constants.K8s.MIMIR_APP_LABEL)).also(progresses::add)
             tasks += SaveTask(TailSignal.METRICS, progress) { mimirFlush.flush(controlHost, clusterState, progress) }
         }
         if (TailSignal.TRACES in pending) {
             // The collector is Tempo's only sender: while it may still run, Tempo cannot drain.
             sendersStop.exceptionOrNull()?.let { failed[TailSignal.TRACES] = it as FlushStepFailed }
             if (sendersStop.isSuccess) {
-                val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, Constants.K8s.TEMPO_APP_LABEL).also(progresses::add)
+                val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, setOf(Constants.K8s.TEMPO_APP_LABEL)).also(progresses::add)
                 tasks +=
                     SaveTask(TailSignal.TRACES, progress) {
                         eventBus.emit(Event.Teardown.TempoDrainStarting(timeouts.tempoDrain.seconds))
@@ -359,7 +359,11 @@ class DefaultTeardownFlushService private constructor(
     private fun stopSenders(progress: FlushProgress) {
         // Each is marked just before its own delete: a stop that times out on one has still deleted
         // it, and has not touched the collectors after it, which keep running.
-        telemetrySenders.stop(timeouts.sendersStop) { progress.mark(it, BackendState.DELETED) }
+        telemetrySenders.stop(
+            timeouts.sendersStop,
+            onAbsent = { progress.mark(it, BackendState.ABSENT) },
+            onDeleting = { progress.mark(it, BackendState.DELETED) },
+        )
         eventBus.emit(Event.Teardown.TelemetrySendersStopped)
     }
 

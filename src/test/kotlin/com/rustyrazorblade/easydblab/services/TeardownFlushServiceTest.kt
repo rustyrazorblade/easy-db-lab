@@ -75,6 +75,9 @@ class TeardownFlushServiceTest {
     /** The collector whose stop fails after its delete, as one whose pods outlive the deadline. */
     private var collectorThatDoesNotDrain: String? = null
 
+    /** The collectors with no DaemonSet when the stop runs, as the add-on where pods may not be privileged. */
+    private var absentCollectors: Set<String> = emptySet()
+
     private val mirror =
         object : AnnotationMirror by RecordingAnnotationMirror() {
             override fun syncAll(controlHost: ClusterHost): Result<Int> {
@@ -87,13 +90,18 @@ class TeardownFlushServiceTest {
         object : TelemetrySenders {
             override fun stop(
                 timeout: Duration,
+                onAbsent: (String) -> Unit,
                 onDeleting: (String) -> Unit,
             ) {
                 order += "senders stop"
                 sendersFailure?.let { throw it }
-                // As K8sTelemetrySenders does: each collector in order, announced just before its
-                // delete, and a collector that does not drain ends the stop there.
+                // As K8sTelemetrySenders does: each collector in order, announced as absent or just
+                // before its delete, and a collector that does not drain ends the stop there.
                 for (name in TelemetrySenders.COLLECTORS) {
+                    if (name in absentCollectors) {
+                        onAbsent(name)
+                        continue
+                    }
                     onDeleting(name)
                     if (name == collectorThatDoesNotDrain) error("$name still has 1 pod(s)")
                 }
@@ -346,6 +354,18 @@ class TeardownFlushServiceTest {
         assertThat(outcome.backends)
             .containsEntry(Constants.OtelCollector.HOST_COLLECTOR_NAME, BackendState.DELETED)
             .containsEntry(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.RUNNING)
+    }
+
+    /** An add-on that was never deployed was not deleted by the save: the report says it is absent. */
+    @Test
+    fun `a collector with no DaemonSet is reported absent, not deleted`() {
+        absentCollectors = setOf(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+
+        val outcome = service().saveTail(control, state, all)
+
+        assertThat(outcome.backends)
+            .containsEntry(Constants.OtelCollector.HOST_COLLECTOR_NAME, BackendState.ABSENT)
+            .containsEntry(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.DELETED)
     }
 
     @Test

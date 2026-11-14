@@ -189,8 +189,10 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
                 releasedAt.set(System.nanoTime())
                 releaseCollectorPods()
             }.apply { start() }
+        val absent = CopyOnWriteArrayList<String>()
+        val deleting = CopyOnWriteArrayList<String>()
 
-        senders.stop(TIMEOUT)
+        senders.stop(TIMEOUT, onAbsent = { absent += it }, onDeleting = { deleting += it })
         val stoppedAt = System.nanoTime()
         releaser.join()
 
@@ -206,6 +208,10 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
                 .withName(Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
                 .get(),
         ).isNull()
+
+        // The add-on was never deployed: the stop reports it absent and deletes only the core.
+        assertThat(absent).containsExactly(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+        assertThat(deleting).containsExactly(Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
 
         // A re-run of down finds the collector already gone: the stop still succeeds.
         senders.stop(TIMEOUT)

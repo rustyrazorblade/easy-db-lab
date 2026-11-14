@@ -28,14 +28,16 @@ interface TelemetrySenders {
 
     /**
      * Deletes each collector's DaemonSet in [COLLECTORS] order, waiting until its pods are gone
-     * before the next, all within one [timeout] that starts with the call. A collector that is
-     * already gone (or never deployed, as the add-on is where pods may not be privileged) counts as
-     * stopped. A collector whose pods outlive the deadline fails the stop, naming it, and no later
-     * collector is deleted. [onDeleting] is called with each collector's name just before its
-     * delete, so a caller knows which collectors a failed stop left untouched.
+     * before the next, all within one [timeout] that starts with the call. A collector with neither
+     * a DaemonSet nor a pod (never deployed, as the add-on is where pods may not be privileged, or
+     * gone after an earlier `down`) is not deleted: [onAbsent] is called with its name instead. A
+     * collector whose pods outlive the deadline fails the stop, naming it, and no later collector is
+     * deleted. [onDeleting] is called with each collector's name just before its delete, so a
+     * caller knows which collectors a failed stop left untouched.
      */
     fun stop(
         timeout: Duration,
+        onAbsent: (String) -> Unit = {},
         onDeleting: (String) -> Unit = {},
     )
 }
@@ -57,12 +59,17 @@ class K8sTelemetrySenders(
 
     override fun stop(
         timeout: Duration,
+        onAbsent: (String) -> Unit,
         onDeleting: (String) -> Unit,
     ) = clientProvider.createClient().use { client ->
         val deadline = Instant.now().plus(timeout)
         TelemetrySenders.COLLECTORS.forEach { name ->
-            onDeleting(name)
-            stopOne(client, name, deadline, timeout)
+            if (daemonSet(client, name).get() == null && pods(client, name).isEmpty()) {
+                onAbsent(name)
+            } else {
+                onDeleting(name)
+                stopOne(client, name, deadline, timeout)
+            }
         }
     }
 
@@ -73,18 +80,22 @@ class K8sTelemetrySenders(
         deadline: Instant,
         timeout: Duration,
     ) {
-        client
-            .apps()
-            .daemonSets()
-            .inNamespace(namespace)
-            .withName(name)
-            .delete()
+        daemonSet(client, name).delete()
         // The shared deadline, not an attempt count, bounds the poll: the add-on's wait uses part of it.
         val gone: (List<Pod>) -> Boolean = { it.isEmpty() }
         val config = RetryUtil.createPollUntilRetryConfig(Int.MAX_VALUE, pollInterval, gone, deadline)
         val pods = Retry.decorateSupplier(Retry.of("await-$name-gone", config)) { pods(client, name) }.get()
         check(gone(pods)) { "$name still has ${pods.size} pod(s) ${timeout.seconds}s after the collectors' stop began" }
     }
+
+    private fun daemonSet(
+        client: KubernetesClient,
+        name: String,
+    ) = client
+        .apps()
+        .daemonSets()
+        .inNamespace(namespace)
+        .withName(name)
 
     private fun pods(
         client: KubernetesClient,

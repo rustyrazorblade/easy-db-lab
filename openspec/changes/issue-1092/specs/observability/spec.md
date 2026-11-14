@@ -29,6 +29,12 @@ The system SHALL run the OTel collector as two DaemonSets. The **core** collecto
 - **THEN** it exports that data over OTLP to the `otel-collector` Service
 - **AND** it exports nothing directly to a backend
 
+#### Scenario: A core restart does not drop the node's host data
+
+- **GIVEN** the host add-on on a node whose core pod is restarting or crash-looping
+- **WHEN** the add-on's export to the core fails
+- **THEN** it keeps the batch in its sending queue and retries with no time limit until the core accepts it
+
 #### Scenario: Host processes keep their node endpoint
 
 - **GIVEN** an environment that has `PRIVILEGED`
@@ -130,6 +136,7 @@ During `down`, the telemetry-sender stop SHALL delete and wait for both collecto
 - **GIVEN** an environment that lacks `PRIVILEGED`, so no host add-on was deployed
 - **WHEN** `down` stops the telemetry senders
 - **THEN** the absent add-on counts as stopped and the core is deleted and awaited
+- **AND** a failure report lists the add-on as not deployed, not as deleted or stopped by the save
 
 #### Scenario: An add-on that does not drain leaves the core running
 

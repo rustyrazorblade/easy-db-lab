@@ -381,7 +381,7 @@ class StatusCache(
         val store = ObservabilityStore.from(state)
         return S3Info(
             bucket = requireNotNull(state.s3Bucket) { "s3Bucket is null after isNullOrBlank check" },
-            fullpath = "${state.s3Bucket}/${state.clusterPrefix()}",
+            fullpath = objectStore.uriOf(s3Path),
             paths =
                 S3Paths(
                     cassandra = objectStore.uriOf(s3Path.cassandra()),

@@ -402,11 +402,12 @@ class Status(
     }
 
     /**
-     * Display S3 bucket section
+     * Display the object store section: the account bucket, the cluster's path in it and the
+     * observability roots, each spelled by the store adapter ([ObjectStore.uriOf]).
      */
     private fun displayS3BucketSection() {
         if (clusterState.s3Bucket.isNullOrBlank()) {
-            println("\n=== S3 BUCKET ===\n(no S3 bucket configured)")
+            println("\n=== OBJECT STORE ===\n(no object store configured)")
             return
         }
 
@@ -415,9 +416,9 @@ class Status(
         println(
             """
                 |
-                |=== S3 BUCKET ===
+                |=== OBJECT STORE ===
                 |Bucket:    ${clusterState.s3Bucket}
-                |Fullpath:     ${clusterState.s3Bucket}/${clusterState.clusterPrefix()}
+                |Fullpath:  ${objectStore.uriOf(ClusterStoragePath.from(clusterState))}
                 |  Cassandra: ${objectStore.uriOf(dataPath.cassandra())}
                 |  ClickHouse: ${objectStore.uriOf(dataPath.clickhouse())}
                 |  Spark: ${objectStore.uriOf(dataPath.spark())}

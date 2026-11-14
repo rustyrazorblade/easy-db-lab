@@ -6,12 +6,14 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -133,6 +135,35 @@ class UseCassandraTest : BaseKoinTest() {
         command.execute()
 
         assertThat(testClusterState.versions).containsEntry("db0", "5.0")
+    }
+
+    /** DownloadConfig used to ignore the filter and fetch the first host's version. */
+    @Test
+    fun `use hands its host filter to download-config as well as update-config`() {
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.hosts.hostList = "db0"
+        command.execute()
+
+        val download = chained.filterIsInstance<DownloadConfig>().single()
+        assertThat(download.hosts.hostList).isEqualTo("db0")
+        assertThat(
+            chained
+                .filterIsInstance<UpdateConfig>()
+                .single()
+                .hosts.hostList,
+        ).isEqualTo("db0")
+    }
+
+    /** A chained command that fails used to be ignored, so `use` printed the failure and exited 0. */
+    @Test
+    fun `use fails when the config download or update it chains to fails`() {
+        chainedExitCode = 1
+
+        val command = UseCassandra()
+        command.version = "4.1"
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
     }
 
     /**

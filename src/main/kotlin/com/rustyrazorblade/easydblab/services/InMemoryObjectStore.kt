@@ -5,7 +5,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.time.Instant
+import java.time.Clock
 import java.util.concurrent.ConcurrentSkipListMap
 
 /**
@@ -17,8 +17,13 @@ import java.util.concurrent.ConcurrentSkipListMap
  * directory is listed under `<key>/` so a sibling whose name begins with it is never included, a
  * non-recursive listing rolls deeper keys up into one entry for their directory, and reading a
  * missing object throws. It has no policy layer: anything may be deleted.
+ *
+ * @param clock gives each object its last-modified time when it is written, so a test can place an
+ *   upload before or after a moment its code under test compares against.
  */
-class InMemoryObjectStore : ObjectStore {
+class InMemoryObjectStore(
+    private val clock: Clock = Clock.systemUTC(),
+) : ObjectStore {
     private data class StoredObject(
         val bytes: ByteArray,
         val lastModified: String,
@@ -33,7 +38,7 @@ class InMemoryObjectStore : ObjectStore {
         path: ClusterStoragePath,
         bytes: ByteArray,
     ) {
-        objects[idOf(path)] = StoredObject(bytes, Instant.now().toString())
+        objects[idOf(path)] = StoredObject(bytes, clock.instant().toString())
     }
 
     private fun get(path: ClusterStoragePath): StoredObject =

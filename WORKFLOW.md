@@ -22,6 +22,7 @@ When the owner asks for status, the lead answers with two bullet lists and nothi
 
 - **Now:** one bullet per active issue: the issue, the agent, and its current step.
 - **Queue:** one bullet per queued item, in priority order.
+- **Closed since last status:** one bullet per issue closed since the previous status report: the number, the title in a few words, and how it closed (merged PR, already done, or not planned).
 
 The lead reads the agent state files before it answers.
 

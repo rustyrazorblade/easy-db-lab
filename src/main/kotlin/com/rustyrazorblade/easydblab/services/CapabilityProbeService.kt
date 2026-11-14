@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CapabilityProbePods
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
@@ -149,7 +150,7 @@ class CapabilityProbeService(
                 .withName(DEFAULT_SERVICE_ACCOUNT)
                 .waitUntilCondition({ it != null }, namespaceReadyTimeout.toMillis(), TimeUnit.MILLISECONDS)
         } catch (e: KubernetesClientException) {
-            val interrupted = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<InterruptedException>().firstOrNull()
+            val interrupted = e.causeChain().filterIsInstance<InterruptedException>().firstOrNull()
             if (interrupted != null) {
                 Thread.currentThread().interrupt()
                 throw interrupted

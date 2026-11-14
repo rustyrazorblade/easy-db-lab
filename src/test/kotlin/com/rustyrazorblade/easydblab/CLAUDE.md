@@ -191,4 +191,5 @@ If K3s fails to start with `ContainerLaunchException` inside a nested container 
 - Aim to mock as minimally as possible.  I want to hit real code in tests as much as possible.
 - Prefer using LocalStack over mocking AWS services.  The more code that hits all the code paths the better.
 - Test the K8 configurations with TestContainers, not mocking.
+- **K8s integration tests build the real `K8sClientProvider` from the K3s container's kubeconfig** with `WorkspaceK8s.provider(kubeConfigYaml)` (`src/integrationTest/.../WorkspaceK8s.kt`): it writes the kubeconfig into a temp workspace and binds the provider to it through `Context`, as a command gets it. Never `mock<K8sClientProvider>()`.
 - **All K8s manifest builders MUST be tested in `K8sServiceIntegrationTest`** with K3s TestContainers. See `configuration/CLAUDE.md` for the full testing requirements (apply test, image pull test, no-resource-limits test).

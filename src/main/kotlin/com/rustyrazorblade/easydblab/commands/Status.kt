@@ -13,7 +13,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
-import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -29,7 +29,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
-import java.io.File
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 
@@ -455,15 +454,13 @@ class Status :
      * Display stress jobs section
      */
     private fun displayStressJobsSection() {
-        val controlHost = clusterState.getControlHost()
-        if (controlHost == null) {
-            eventBus.emit(Event.Status.StressJobsNoControlNode)
+        if (!WorkspaceKubeconfig.exists(context.workingDirectory)) {
+            eventBus.emit(Event.Status.StressJobsUnavailable)
             return
         }
-
         val jobs: List<KubernetesJob> =
             try {
-                stressJobService.listJobs(controlHost).getOrThrow()
+                stressJobService.listJobs().getOrThrow()
             } catch (
                 @Suppress("TooGenericExceptionCaught")
                 e: Exception,
@@ -504,8 +501,7 @@ class Status :
         val controlHost = clusterState.getControlHost() ?: return
 
         // Check if kubeconfig exists locally (indicates K3s is initialized)
-        val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
-        if (!File(kubeconfigPath).exists()) {
+        if (!WorkspaceKubeconfig.exists(context.workingDirectory)) {
             return
         }
 
@@ -530,8 +526,7 @@ Observability:
         val controlHost = clusterState.getControlHost() ?: return
 
         // Check if kubeconfig exists locally (indicates K3s is initialized)
-        val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
-        if (!File(kubeconfigPath).exists()) {
+        if (!WorkspaceKubeconfig.exists(context.workingDirectory)) {
             return
         }
 

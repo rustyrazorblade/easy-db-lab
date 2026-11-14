@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.commands.cassandra.stress
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -40,18 +39,10 @@ class StressLogs : PicoBaseCommand() {
     var tailLines: Int? = null
 
     override fun execute() {
-        // Get control node from cluster state
-        val controlHosts = clusterState.hosts[ServerType.Control]
-        if (controlHosts.isNullOrEmpty()) {
-            error("No control nodes found. Please ensure the environment is running.")
-        }
-        val controlNode = controlHosts.first()
-        log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
-
         // Get pods for the job
         val pods =
             stressJobService
-                .getPodsForJob(controlNode, jobName)
+                .getPodsForJob(jobName)
                 .getOrElse { e ->
                     error("Failed to get pods for job $jobName: ${e.message}")
                 }
@@ -66,7 +57,7 @@ class StressLogs : PicoBaseCommand() {
                 eventBus.emit(Event.Stress.PodLogHeader(podName = pod.name, podStatus = pod.status))
             }
 
-            val logsResult = stressJobService.getPodLogs(controlNode, pod.name, tailLines)
+            val logsResult = stressJobService.getPodLogs(pod.name, tailLines)
             if (logsResult.isFailure) {
                 eventBus.emit(
                     Event.Stress.PodLogFailed(

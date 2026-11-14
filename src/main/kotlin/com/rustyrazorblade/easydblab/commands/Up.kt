@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.nodeGroups
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
@@ -826,7 +827,7 @@ class Up(
                         ServerType.Cassandra to (workingState.hosts[ServerType.Cassandra] ?: emptyList()),
                         ServerType.Stress to (workingState.hosts[ServerType.Stress] ?: emptyList()),
                     ),
-                kubeconfigPath = File(context.workingDirectory, "kubeconfig").toPath(),
+                kubeconfigPath = WorkspaceKubeconfig.file(context.workingDirectory).toPath(),
                 hostFilter = hosts.hostList,
                 clusterState = workingState,
                 useCustomCni = ciliumEnabled,
@@ -846,8 +847,8 @@ class Up(
         labelControlAndAwaitNodes(controlHosts.first())
 
         // Ensure StorageClasses exist for Local PVs
-        k8sService.ensureLocalStorageClass(controlHosts.first()).getOrThrow()
-        k8sService.ensureLocalStorageWfcClass(controlHosts.first()).getOrThrow()
+        k8sService.ensureLocalStorageClass().getOrThrow()
+        k8sService.ensureLocalStorageWfcClass().getOrThrow()
 
         // Bring-up drives the observability stack service directly rather than the
         // `grafana update-config` command: on a redirect cluster that command refuses, but bring-up
@@ -899,7 +900,7 @@ class Up(
      * every label StatefulSet pod-to-node pinning needs, exists before anything is scheduled.
      */
     private fun labelControlAndAwaitNodes(controlHost: ClusterHost) {
-        k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrThrow()
+        k8sService.labelNode(controlHost.alias, mapOf("type" to "control")).getOrThrow()
 
         val expected = allNodes().map { it.alias }
         val timeout =
@@ -907,7 +908,7 @@ class Up(
                 Constants.Scale.NODE_REGISTRATION_BASE_SECONDS +
                     Constants.Scale.NODE_REGISTRATION_PER_NODE_SECONDS * expected.size,
             )
-        k8sService.waitForNodesRegistered(controlHost, expected, timeout).getOrThrow()
+        k8sService.waitForNodesRegistered(expected, timeout).getOrThrow()
     }
 
     /**

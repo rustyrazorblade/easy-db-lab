@@ -60,13 +60,6 @@ class StressStart : PicoBaseCommand() {
     var stressArgs: List<String> = emptyList()
 
     override fun execute() {
-        val controlHosts = clusterState.hosts[ServerType.Control]
-        if (controlHosts.isNullOrEmpty()) {
-            error("No control nodes found. Please ensure the environment is running.")
-        }
-        val controlNode = controlHosts.first()
-        log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
-
         val cassandraHosts = clusterState.hosts[ServerType.Cassandra]
         if (cassandraHosts.isNullOrEmpty()) {
             error("No Cassandra nodes found. Please ensure the environment is running.")
@@ -96,7 +89,6 @@ class StressStart : PicoBaseCommand() {
         val started =
             stressJobService
                 .startJob(
-                    controlHost = controlNode,
                     config =
                         StressJobConfig(
                             jobName = fullJobName,

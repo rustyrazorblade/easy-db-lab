@@ -1,12 +1,11 @@
 package com.rustyrazorblade.easydblab.commands.install
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.services.HelmService
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitRuntime
@@ -14,9 +13,7 @@ import com.rustyrazorblade.easydblab.services.podSelector
 import com.rustyrazorblade.easydblab.services.withKitName
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
-import org.koin.core.parameter.parametersOf
 import picocli.CommandLine.Command
-import java.nio.file.Paths
 
 private sealed interface KitRunningState {
     data class Running(
@@ -38,8 +35,7 @@ class KitStatusCommand(
     private val installConfig: KitConfig,
 ) : PicoBaseCommand() {
     private val helmService: HelmService by inject()
-    private val kubeconfigPath = Paths.get(context.workingDirectory.absolutePath, Constants.K3s.LOCAL_KUBECONFIG)
-    private val kubeService: KubernetesService by inject { parametersOf(kubeconfigPath.toString()) }
+    private val kubeService: K8sService by inject()
 
     override fun execute() {
         val controlHost =
@@ -72,7 +68,7 @@ class KitStatusCommand(
 
     private fun checkRuntimeState(
         runtime: KitRuntime,
-        kubeService: KubernetesService,
+        kubeService: K8sService,
         controlHost: ClusterHost,
     ): KitRunningState {
         val namespace = runtime.namespace
@@ -99,7 +95,7 @@ class KitStatusCommand(
         }
     }
 
-    private fun checkFallbackState(kubeService: KubernetesService): KitRunningState =
+    private fun checkFallbackState(kubeService: K8sService): KitRunningState =
         stateOfPods(kubeService, podSelector(kitName, runtime = null), "default", ::runningOrStopped)
 
     /**
@@ -108,7 +104,7 @@ class KitStatusCommand(
      * report a kit we could not see as stopped.
      */
     private fun stateOfPods(
-        kubeService: KubernetesService,
+        kubeService: K8sService,
         selector: String,
         namespace: String,
         fromPods: (List<KubernetesPod>) -> KitRunningState,

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -15,8 +16,6 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.any
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -49,9 +48,8 @@ class K8sBackendWorkloadsIntegrationTest {
     fun setup() {
         SharedK3s.createNamespace(NAMESPACE)
         client = SharedK3s.client()
-        val clientProvider = mock<K8sClientProvider>()
         // Each action closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         workloads = K8sBackendWorkloads(clientProvider, NAMESPACE, pollInterval = Duration.ofMillis(250))
     }
 
@@ -154,7 +152,7 @@ class K8sBackendWorkloadsIntegrationTest {
     fun `scaling down returns once the pod is gone, and the Deployment asks for no replica`() {
         deployReady("loki")
 
-        workloads.scaleDown(controlHost, "loki", TIMEOUT)
+        workloads.scaleDown("loki", TIMEOUT)
 
         assertThat(pods("loki")).isEmpty()
         assertThat(
@@ -174,7 +172,7 @@ class K8sBackendWorkloadsIntegrationTest {
         deployReady("mimir")
         val mimir = pods("mimir").single().metadata.uid
 
-        workloads.scaleDown(controlHost, "loki", TIMEOUT)
+        workloads.scaleDown("loki", TIMEOUT)
 
         assertThat(pods("loki")).isEmpty()
         assertThat(pods("mimir").map { it.metadata.uid }).containsExactly(mimir)
@@ -185,7 +183,7 @@ class K8sBackendWorkloadsIntegrationTest {
         // The pod ignores SIGTERM for its grace period, which is longer than this wait.
         deployReady("loki")
 
-        assertThatThrownBy { workloads.scaleDown(controlHost, "loki", SHORT_TIMEOUT) }
+        assertThatThrownBy { workloads.scaleDown("loki", SHORT_TIMEOUT) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessage("loki was not gone within ${SHORT_TIMEOUT.seconds}s")
     }

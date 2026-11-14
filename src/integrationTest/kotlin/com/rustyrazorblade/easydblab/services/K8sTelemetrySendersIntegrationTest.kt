@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -20,7 +21,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.time.Duration
@@ -70,9 +70,8 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
     fun setup() {
         SharedK3s.createNamespace(NAMESPACE)
         client = SharedK3s.client()
-        val clientProvider = mock<K8sClientProvider>()
         // Each stop closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         senders = K8sTelemetrySenders(clientProvider, NAMESPACE, pollInterval = Duration.ofMillis(POLL_MILLIS))
     }
 
@@ -142,7 +141,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
                 releaseCollectorPods()
             }.apply { start() }
 
-        senders.stop(controlHost, TIMEOUT)
+        senders.stop(TIMEOUT)
         val stoppedAt = System.nanoTime()
         releaser.join()
 
@@ -160,7 +159,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         ).isNull()
 
         // A re-run of down finds the collector already gone: the stop still succeeds.
-        senders.stop(controlHost, TIMEOUT)
+        senders.stop(TIMEOUT)
 
         assertThat(collectorPods()).isEmpty()
     }

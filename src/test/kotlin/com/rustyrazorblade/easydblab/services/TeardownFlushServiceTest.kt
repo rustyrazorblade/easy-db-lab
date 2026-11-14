@@ -81,10 +81,7 @@ class TeardownFlushServiceTest {
 
     private val senders =
         object : TelemetrySenders {
-            override fun stop(
-                controlHost: ClusterHost,
-                timeout: Duration,
-            ) {
+            override fun stop(timeout: Duration) {
                 order += "senders stop"
                 sendersFailure?.let { throw it }
             }

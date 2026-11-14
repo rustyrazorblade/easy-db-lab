@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
+import com.rustyrazorblade.easydblab.services.K8sService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -17,12 +17,12 @@ import java.time.Duration
 /**
  * The helm-backed branch of [KitWorkloadProbe], and how it reads pod phases. helm runs on the
  * control node over SSH, so [HelmService] is stubbed at that boundary; the phase tests stub
- * [KubernetesService] with pods in each phase. The pod-backed branch's selector and namespace
+ * [K8sService] with pods in each phase. The pod-backed branch's selector and namespace
  * handling runs against K3s in `KitWorkloadProbeIntegrationTest`.
  */
 class KitWorkloadProbeTest {
     private val helmService: HelmService = mock()
-    private val kubeService: KubernetesService = mock()
+    private val kubeService: K8sService = mock()
     private val probe = KitWorkloadProbe(kubeService, helmService)
     private val controlHost = ClusterHost(publicIp = "", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a")
 

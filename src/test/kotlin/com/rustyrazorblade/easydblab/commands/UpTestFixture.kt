@@ -394,10 +394,10 @@ abstract class UpTestFixture : BaseKoinTest() {
         whenever(mockK3sClusterService.setupCluster(any())).thenReturn(K3sSetupResult(serverStarted = true))
         stubCiliumSuccess()
 
-        whenever(mockK8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForNodesRegistered(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForNodesRegistered(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.ensureLocalStorageClass()).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.ensureLocalStorageWfcClass()).thenReturn(Result.success(Unit))
 
         whenever(mockObservabilityStackService.deploy(any())).thenReturn(Result.success(Unit))
 

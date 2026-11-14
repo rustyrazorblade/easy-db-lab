@@ -6,8 +6,10 @@ This package provides Kubernetes client operations using the Fabric8 Kubernetes 
 
 ```
 Command → SocksProxyService.ensureRunning(controlHost)
+        → K8sService (services/) → K8sClientProvider.createClient()
+        → WorkspaceKubeconfig.require(context.workingDirectory)
         → KubernetesClientFactory.createClient(kubeconfigPath)
-        → KubernetesService.listPods() / ManifestApplier.applyManifest()
+        → client operations / ManifestApplier.applyManifest()
         ↕
   SSH tunnel (SOCKS5) → K3s API (10.0.x.x:6443)
 ```
@@ -16,25 +18,20 @@ Command → SocksProxyService.ensureRunning(controlHost)
 
 | File | Purpose |
 |------|---------|
-| `KubernetesService.kt` | Interface for high-level K8s operations |
-| `DefaultKubernetesService.kt` | Fabric8 implementation with lazy client |
+| `WorkspaceKubeconfig.kt` | The one place that resolves the workspace kubeconfig path |
 | `ManifestApplier.kt` | Server-side apply for typed K8s resources |
 | `KubernetesClientFactory.kt` | Client creation with SOCKS5 proxy config |
 | `KubernetesModule.kt` | Koin DI registration |
 | `KubernetesTypes.kt` | Data classes (KubernetesJob, KubernetesPod, KubernetesNode) |
 
-## KubernetesService Interface
+## Workspace binding
 
-```kotlin
-interface KubernetesService {
-    fun listJobs(namespace: String? = null): Result<List<KubernetesJob>>
-    fun listPods(namespace: String? = null): Result<List<KubernetesPod>>
-    fun getNodes(): Result<List<KubernetesNode>>
-    fun isReachable(): Result<Boolean>
-}
-```
-
-All methods return `Result<T>`. Namespace `null` means all namespaces.
+The K8s module is bound to the cluster workspace. `K8sService` (in `services/`) takes no host: every
+operation opens a client through `K8sClientProvider.createClient()`, which reads the kubeconfig that
+`WorkspaceKubeconfig` resolves against `Context.workingDirectory`. Nothing else builds the kubeconfig
+path; call `WorkspaceKubeconfig.file`, `exists` or `require`. The read queries (`listJobs`, `listPods`,
+`listPodsByLabel`, `getNodes`, `isReachable`) are `K8sReadOperations`, part of `K8sService`; they return
+`Result<T>`, and a `null` namespace means all namespaces.
 
 ## SOCKS5 Proxy Pattern
 
@@ -77,13 +74,10 @@ val kubernetesModule = module {
         // client-creation time (per-client, explicit; the global socksProxyHost is never set).
         ProxiedKubernetesClientFactory()
     }
-    factory<KubernetesService> { (kubeconfigPath: String) ->
-        DefaultKubernetesService(clientFactory = get(), kubeconfigPath = Paths.get(kubeconfigPath))
-    }
 }
 ```
 
-Both registered as **factory** scope — client holds state tied to proxy session and must be recreated per use.
+The factory is registered with **factory** scope. `K8sClientProvider` (a singleton) creates a new client per operation and the caller closes it.
 
 ## K8s Resource Location
 

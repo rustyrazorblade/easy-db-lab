@@ -62,7 +62,6 @@ class DefaultMetricsRegistryService(
                 val configMapName = "$CONFIG_MAP_PREFIX$kitName-$jobName"
                 k8sService
                     .createConfigMap(
-                        controlHost = controlHost,
                         namespace = Constants.K8s.NAMESPACE,
                         name = configMapName,
                         data =
@@ -96,7 +95,6 @@ class DefaultMetricsRegistryService(
         runCatching {
             k8sService
                 .deleteConfigMapsByLabels(
-                    controlHost = controlHost,
                     namespace = Constants.K8s.NAMESPACE,
                     labels =
                         mapOf(

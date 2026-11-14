@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -23,7 +22,6 @@ class DefaultK8sStorageOperations(
     private val eventBus: EventBus,
 ) : K8sStorageOperations {
     override fun scaleStatefulSet(
-        controlHost: ClusterHost,
         namespace: String,
         statefulSetName: String,
         replicas: Int,
@@ -31,7 +29,7 @@ class DefaultK8sStorageOperations(
         runCatching {
             log.info { "Scaling StatefulSet $statefulSetName in namespace $namespace to $replicas replicas" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .apps()
                     .statefulSets()
@@ -46,7 +44,6 @@ class DefaultK8sStorageOperations(
         }
 
     override fun createConfigMap(
-        controlHost: ClusterHost,
         namespace: String,
         name: String,
         data: Map<String, String>,
@@ -55,7 +52,7 @@ class DefaultK8sStorageOperations(
         runCatching {
             log.info { "Creating ConfigMap $name in namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val existing =
                     client
                         .configMaps()
@@ -103,14 +100,13 @@ class DefaultK8sStorageOperations(
         }
 
     override fun deleteConfigMap(
-        controlHost: ClusterHost,
         namespace: String,
         name: String,
     ): Result<Unit> =
         runCatching {
             log.info { "Deleting ConfigMap $name from namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .configMaps()
                     .inNamespace(namespace)
@@ -124,14 +120,13 @@ class DefaultK8sStorageOperations(
         }
 
     override fun deleteConfigMapsByLabels(
-        controlHost: ClusterHost,
         namespace: String,
         labels: Map<String, String>,
     ): Result<Unit> =
         runCatching {
             log.info { "Deleting ConfigMaps with labels $labels from namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val deleted =
                     client
                         .configMaps()
@@ -148,14 +143,11 @@ class DefaultK8sStorageOperations(
             }
         }
 
-    override fun createLocalPersistentVolumes(
-        controlHost: ClusterHost,
-        config: PersistentVolumeConfig,
-    ): Result<Unit> =
+    override fun createLocalPersistentVolumes(config: PersistentVolumeConfig): Result<Unit> =
         runCatching {
             log.info { "Creating ${config.count} Local PVs for ${config.dbName}" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 for (ordinal in 0 until config.count) {
                     val pvName = "${config.volumeClaimTemplateName}-${config.dbName}-$ordinal"
 
@@ -209,12 +201,9 @@ class DefaultK8sStorageOperations(
             }
         }
 
-    override fun deleteLocalPersistentVolumes(
-        controlHost: ClusterHost,
-        dbName: String,
-    ): Result<Unit> =
+    override fun deleteLocalPersistentVolumes(dbName: String): Result<Unit> =
         runCatching {
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val deleted =
                     client
                         .persistentVolumes()
@@ -266,11 +255,11 @@ class DefaultK8sStorageOperations(
         log.info { "PV $pvName claimRef UID cleared, PV should transition to Available for rebinding" }
     }
 
-    override fun ensureLocalStorageClass(controlHost: ClusterHost): Result<Unit> =
+    override fun ensureLocalStorageClass(): Result<Unit> =
         runCatching {
             log.info { "Ensuring local-storage StorageClass exists" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val existing =
                     client
                         .storage()
@@ -319,11 +308,11 @@ class DefaultK8sStorageOperations(
             }
         }
 
-    override fun ensureLocalStorageWfcClass(controlHost: ClusterHost): Result<Unit> =
+    override fun ensureLocalStorageWfcClass(): Result<Unit> =
         runCatching {
             log.info { "Ensuring ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS} StorageClass exists" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val existing =
                     client
                         .storage()

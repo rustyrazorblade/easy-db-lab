@@ -199,7 +199,6 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     /** Scaling, on containers: scaling to 0 stops the container gracefully. */
     private inner class ContainerWorkloads : BackendWorkloads {
         override fun scaleDown(
-            controlHost: ClusterHost,
             workload: String,
             timeout: Duration,
         ) {
@@ -211,10 +210,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     /** The collector does not run here: its stop only counts, and Tempo's senders are the test's pushes. */
     private val senders =
         object : TelemetrySenders {
-            override fun stop(
-                controlHost: ClusterHost,
-                timeout: Duration,
-            ) {
+            override fun stop(timeout: Duration) {
                 sendersStopped.incrementAndGet()
             }
         }

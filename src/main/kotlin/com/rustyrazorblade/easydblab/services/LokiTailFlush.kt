@@ -44,7 +44,7 @@ class LokiTailFlush(
 
         progress.begin(FlushStep.LOKI_SCALE_DOWN)
         progress.mark(Constants.K8s.LOKI_APP_LABEL, BackendState.SCALED_TO_ZERO)
-        workloads.scaleDown(controlHost, Constants.K8s.LOKI_APP_LABEL, timeouts.scaleDown)
+        workloads.scaleDown(Constants.K8s.LOKI_APP_LABEL, timeouts.scaleDown)
         return SignalReport.Logs
     }
 }

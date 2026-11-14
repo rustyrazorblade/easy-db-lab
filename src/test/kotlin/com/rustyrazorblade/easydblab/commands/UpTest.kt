@@ -80,9 +80,9 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         verify(mockClusterProvisioningService).provisionAll(any(), any(), any(), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("control0"), any())
-        verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
-        verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
+        verify(mockK8sService).labelNode(eq("control0"), any())
+        verify(mockK8sService).ensureLocalStorageClass()
+        verify(mockK8sService).ensureLocalStorageWfcClass()
     }
 
     /**
@@ -194,7 +194,7 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(outputHandler.errors).isEmpty()
-        verify(mockK8sService).waitForNodesRegistered(eq(testControlHost), eq(listOf("control0", "app0")), any())
+        verify(mockK8sService).waitForNodesRegistered(eq(listOf("control0", "app0")), any())
     }
 
     /**
@@ -468,18 +468,18 @@ class UpTest : UpTestFixture() {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("K3s cluster setup failed")
 
-        verify(mockK8sService, never()).labelNode(any(), any(), any())
+        verify(mockK8sService, never()).labelNode(any(), any())
     }
 
     @Test
     fun `up aborts when ensureLocalStorageClass fails`() {
-        whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.failure(RuntimeException("apply failed")))
+        whenever(mockK8sService.ensureLocalStorageClass()).thenReturn(Result.failure(RuntimeException("apply failed")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("apply failed")
 
-        verify(mockK8sService, never()).ensureLocalStorageWfcClass(any())
+        verify(mockK8sService, never()).ensureLocalStorageWfcClass()
         // Storage classes are set up before the observability stack, so aborting here means the
         // stack deploy is never reached.
         verify(mockObservabilityStackService, never()).deploy(any())
@@ -487,7 +487,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up aborts when ensureLocalStorageWfcClass fails`() {
-        whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.failure(RuntimeException("apply failed")))
+        whenever(mockK8sService.ensureLocalStorageWfcClass()).thenReturn(Result.failure(RuntimeException("apply failed")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
@@ -496,14 +496,14 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up aborts when labeling the control node fails`() {
-        whenever(mockK8sService.labelNode(eq(testControlHost), eq("control0"), any()))
+        whenever(mockK8sService.labelNode(eq("control0"), any()))
             .thenReturn(Result.failure(RuntimeException("k8s api unreachable")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("k8s api unreachable")
 
-        verify(mockK8sService, times(1)).labelNode(any(), any(), any())
+        verify(mockK8sService, times(1)).labelNode(any(), any())
     }
 
     /**
@@ -516,21 +516,21 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         val order = inOrder(mockK8sService)
-        order.verify(mockK8sService).waitForNodesRegistered(eq(testControlHost), eq(listOf("control0", "db0", "app0")), any())
-        order.verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
-        verify(mockK8sService, never()).labelNode(any(), eq("db0"), any())
+        order.verify(mockK8sService).waitForNodesRegistered(eq(listOf("control0", "db0", "app0")), any())
+        order.verify(mockK8sService).ensureLocalStorageClass()
+        verify(mockK8sService, never()).labelNode(eq("db0"), any())
     }
 
     @Test
     fun `up aborts when a node never registers with K3s`() {
-        whenever(mockK8sService.waitForNodesRegistered(any(), any(), any()))
+        whenever(mockK8sService.waitForNodesRegistered(any(), any()))
             .thenReturn(Result.failure(IllegalStateException("1 node(s) did not register: db0")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("db0")
 
-        verify(mockK8sService, never()).ensureLocalStorageClass(any())
+        verify(mockK8sService, never()).ensureLocalStorageClass()
     }
 
     /** A role made by an older version must carry the Session Manager policy before any node launches under it. */

@@ -222,7 +222,7 @@ Commands should delegate to these services:
 |---------|---------|
 | `CassandraService` | Cassandra lifecycle (start, stop, restart) |
 | `SidecarService` | Cassandra sidecar management |
-| `K8sService` | Kubernetes operations |
+| `K8sService` | Kubernetes operations on the workspace cluster (no host argument; includes the read queries `listJobs`, `listPods`, `listPodsByLabel`, `getNodes`, `isReachable`) |
 | `K3sService` | K3s cluster management |
 | `StressJobService` | Stress testing jobs on K8s |
 | `HostOperationsService` | Parallel operations across hosts (see below) |

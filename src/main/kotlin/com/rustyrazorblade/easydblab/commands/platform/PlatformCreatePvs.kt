@@ -49,9 +49,6 @@ class PlatformCreatePvs : PicoBaseCommand() {
 
     override fun execute() {
         val serverType = ServerType.from(nodeType)
-        val controlHost =
-            clusterState.getControlHost()
-                ?: error("No control node found. Is the cluster running?")
         val targetHosts = clusterState.hosts[serverType].orEmpty()
         check(targetHosts.isNotEmpty()) { "No $nodeType nodes found in cluster state." }
 
@@ -59,7 +56,6 @@ class PlatformCreatePvs : PicoBaseCommand() {
 
         k8sService
             .createLocalPersistentVolumes(
-                controlHost = controlHost,
                 config =
                     PersistentVolumeConfig(
                         dbName = kit,

@@ -1,12 +1,15 @@
-package com.rustyrazorblade.easydblab.kubernetes
+package com.rustyrazorblade.easydblab.services
+
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesNode
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 
 /**
- * High-level service interface for Kubernetes operations.
+ * Read-only queries against the workspace's Kubernetes cluster: jobs, pods, nodes and API reachability.
  *
- * Provides business-level operations for interacting with a Kubernetes cluster.
- * Implementations handle connection management and error handling.
+ * Part of [K8sService]. Each call opens a client for the workspace cluster, so a caller names no host.
  */
-interface KubernetesService {
+interface K8sReadOperations {
     /**
      * List jobs in the cluster.
      *

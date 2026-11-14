@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -42,14 +41,6 @@ class StressFields : PicoBaseCommand() {
     var stressArgs: List<String> = emptyList()
 
     override fun execute() {
-        // Get control node from cluster state
-        val controlHosts = clusterState.hosts[ServerType.Control]
-        if (controlHosts.isNullOrEmpty()) {
-            error("No control nodes found. Please ensure the environment is running.")
-        }
-        val controlNode = controlHosts.first()
-        log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
-
         // Build args: fields + any additional args
         val args = mutableListOf("fields")
         args.addAll(stressArgs)
@@ -58,7 +49,7 @@ class StressFields : PicoBaseCommand() {
 
         val output =
             stressJobService
-                .runCommand(controlNode, image, args)
+                .runCommand(image, args)
                 .getOrElse { e ->
                     error("Failed to run command: ${e.message}")
                 }

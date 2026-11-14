@@ -4,9 +4,9 @@ import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
-import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
@@ -27,7 +27,6 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
-import java.nio.file.Files
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -69,17 +68,15 @@ class KitWorkloadProbeIntegrationTest {
 
     private lateinit var client: KubernetesClient
     private lateinit var probe: KitWorkloadProbe
-    private lateinit var kubeService: DefaultKubernetesService
+    private lateinit var kubeService: K8sService
 
     private val controlHost = ClusterHost(publicIp = "", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a")
 
     @BeforeAll
     fun setup() {
         client = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
-        val kubeconfig = Files.createTempFile("kit-workload-probe", ".kubeconfig")
-        Files.writeString(kubeconfig, k3s.kubeConfigYaml)
         // The helm branch runs helm on the control node over SSH; no runtime here is helm-backed.
-        kubeService = DefaultKubernetesService(ProxiedKubernetesClientFactory(), kubeconfig)
+        kubeService = DefaultK8sService(WorkspaceK8s.provider(k3s.kubeConfigYaml), EventBus())
         probe = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ofSeconds(1), maxPolls = WAIT_SECONDS.toInt())
 
         client

@@ -17,7 +17,7 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
-import com.rustyrazorblade.easydblab.services.K3sService
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -46,7 +46,7 @@ class StatusCacheTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockEc2InstanceService: EC2InstanceService
     private lateinit var mockVpcService: VpcService
-    private lateinit var mockK3sService: K3sService
+    private lateinit var mockK8sService: K8sService
     private lateinit var mockEmrService: EMRService
     private lateinit var mockOpenSearchService: OpenSearchService
     private lateinit var mockStressJobService: StressJobService
@@ -102,7 +102,7 @@ class StatusCacheTest : BaseKoinTest() {
                 single { mockClusterStateManager }
                 single { mockEc2InstanceService }
                 single<VpcService> { mockVpcService }
-                factory<K3sService> { mockK3sService }
+                factory<K8sService> { mockK8sService }
                 single { mockEmrService }
                 single { mockOpenSearchService }
                 single<StressJobService> { mockStressJobService }
@@ -115,7 +115,7 @@ class StatusCacheTest : BaseKoinTest() {
         mockClusterStateManager = mock()
         mockEc2InstanceService = mock()
         mockVpcService = mock()
-        mockK3sService = mock()
+        mockK8sService = mock()
         mockEmrService = mock()
         mockOpenSearchService = mock()
         mockStressJobService = mock()
@@ -442,7 +442,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo observability names every backend on the control node`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
 
@@ -462,7 +462,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo lists a running kit's declared NodePort endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
@@ -477,7 +477,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `a stopped kit prints no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
@@ -490,7 +490,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo says why a running kit with an unreadable kit descriptor has no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("broken", "clickhouse")))
         installPackagedKit("clickhouse")
         File(context.workingDirectory, "broken").mkdirs()

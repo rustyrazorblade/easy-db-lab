@@ -281,7 +281,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `succeeds with valid db node-type and STORAGE_SIZE`() {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any()))
+            whenever(k8sService.createLocalPersistentVolumes(any()))
                 .thenReturn(Result.success(Unit))
 
             val result =
@@ -301,12 +301,12 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 )
 
             assertThat(result.isSuccess).isTrue()
-            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
         }
 
         @Test
         fun `if-set runs the step when the named variable is set`() {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+            whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
 
             val result =
                 execute(
@@ -315,12 +315,12 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 )
 
             assertThat(result.isSuccess).isTrue()
-            verify(k8sService).createLocalPersistentVolumes(any(), any())
+            verify(k8sService).createLocalPersistentVolumes(any())
         }
 
         @Test
         fun `storage-size sets the PV capacity instead of the STORAGE_SIZE variable`() {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+            whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
 
             val result =
                 execute(
@@ -330,19 +330,19 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(result.isSuccess).isTrue()
             val config = argumentCaptor<PersistentVolumeConfig>()
-            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            verify(k8sService).createLocalPersistentVolumes(config.capture())
             assertThat(config.firstValue.storageSize).isEqualTo("10Ti")
         }
 
         /** db and app nodes both carry ordinals; a PV must also require the pool its step names. */
         @Test
         fun `the PVs are pinned to the node pool the step names`() {
-            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+            whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
 
             execute(steps = listOf(InstallStep.PlatformPvs(nodeType = "app")), variables = mapOf("STORAGE_SIZE" to "1Gi"))
 
             val config = argumentCaptor<PersistentVolumeConfig>()
-            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            verify(k8sService).createLocalPersistentVolumes(config.capture())
             assertThat(config.firstValue.nodeType).isEqualTo("app")
         }
 
@@ -356,7 +356,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(result.isFailure).isTrue()
             assertThat(result.exceptionOrNull()?.message).contains("STORAGE_SIZE")
-            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
         }
     }
 

@@ -6,6 +6,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.KeyToPathBuilder
+import io.fabric8.kubernetes.api.model.Volume
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.VolumeProjectionBuilder
@@ -18,9 +19,9 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  *
  * The rendered tree is packed, in catalog order, into `grafana-dashboard-tree-<n>` ConfigMaps of at
  * most [Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES] each (one ConfigMap cannot hold the whole
- * tree under the API's 1 MiB object limit), and one projected volume mounts every file read-only at
- * its `<folder>/<file>.json` path under [GRAFANA_DASHBOARD_ROOT] in the Grafana container, where the
- * file provider sweeps it. The ConfigMaps are applied with the Deployment, so `ConfigHashAnnotator`
+ * tree under the API's 1 MiB object limit), and one projected volume per folder mounts its files
+ * read-only at `<folder>/<file>.json` under [GRAFANA_DASHBOARD_ROOT] in the Grafana container, where
+ * the file provider sweeps them. The ConfigMaps are applied with the Deployment, so `ConfigHashAnnotator`
  * hashes them and a dashboard change rolls Grafana.
  */
 object GrafanaDashboardConfigMaps {
@@ -85,38 +86,36 @@ object GrafanaDashboardConfigMaps {
             .withData<String, String>(files.mapKeys { (path, _) -> keyOf(path) })
             .build()
 
+    /**
+     * [deployment] with one projected volume per dashboard folder, mounted at that folder's path.
+     * A projected volume shows each top-level entry as a symlink into its `..data` directory, and
+     * Grafana's file provider does not descend into a symlinked directory, so one volume holding the
+     * folders as subdirectories would provision nothing; per folder, only the files are symlinks.
+     */
     private fun mount(
         deployment: Deployment,
         maps: List<Pair<String, Set<String>>>,
     ): Deployment {
         val pod = deployment.spec.template.spec
-        val sources =
-            maps.map { (name, paths) ->
-                VolumeProjectionBuilder()
-                    .withNewConfigMap()
-                    .withName(name)
-                    .withItems(paths.map { KeyToPathBuilder().withKey(keyOf(it)).withPath(it).build() })
-                    .endConfigMap()
-                    .build()
-            }
-        val volume =
-            VolumeBuilder()
-                .withName(VOLUME)
-                .withNewProjected()
-                .withSources(sources)
-                .endProjected()
-                .build()
+        val folders: Map<String, List<Pair<String, String>>> =
+            maps
+                .flatMap { (name, paths) -> paths.map { path -> Triple(path.substringBefore('/'), name, path) } }
+                .groupBy({ it.first }, { it.second to it.third })
+        val volumes: List<Pair<String, Volume>> =
+            folders.keys.mapIndexed { index, folder -> folder to folderVolume("$VOLUME-$index", folders.getValue(folder)) }
         val containers =
             pod.containers.map { container ->
                 when (container.name) {
                     GRAFANA_CONTAINER ->
                         ContainerBuilder(container)
-                            .addToVolumeMounts(
-                                VolumeMountBuilder()
-                                    .withName(VOLUME)
-                                    .withMountPath(GRAFANA_DASHBOARD_ROOT)
-                                    .withReadOnly(true)
-                                    .build(),
+                            .addAllToVolumeMounts(
+                                volumes.map { (folder, volume) ->
+                                    VolumeMountBuilder()
+                                        .withName(volume.name)
+                                        .withMountPath("$GRAFANA_DASHBOARD_ROOT/$folder")
+                                        .withReadOnly(true)
+                                        .build()
+                                },
                             ).build()
                     else -> container
                 }
@@ -126,10 +125,32 @@ object GrafanaDashboardConfigMaps {
             .editTemplate()
             .editSpec()
             .withContainers(containers)
-            .addToVolumes(volume)
+            .addAllToVolumes(volumes.map { it.second })
             .endSpec()
             .endTemplate()
             .endSpec()
+            .build()
+    }
+
+    /** A projected volume named [name] holding [files] (ConfigMap name to tree path) by file name. */
+    private fun folderVolume(
+        name: String,
+        files: List<Pair<String, String>>,
+    ): Volume {
+        val sources =
+            files.groupBy({ it.first }, { it.second }).map { (map, paths) ->
+                VolumeProjectionBuilder()
+                    .withNewConfigMap()
+                    .withName(map)
+                    .withItems(paths.map { KeyToPathBuilder().withKey(keyOf(it)).withPath(it.substringAfter('/')).build() })
+                    .endConfigMap()
+                    .build()
+            }
+        return VolumeBuilder()
+            .withName(name)
+            .withNewProjected()
+            .withSources(sources)
+            .endProjected()
             .build()
     }
 }

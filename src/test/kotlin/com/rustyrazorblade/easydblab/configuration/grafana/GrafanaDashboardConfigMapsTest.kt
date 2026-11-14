@@ -74,29 +74,41 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
         assertThat(maps.flatMap { it.data.values }).containsExactlyInAnyOrderElementsOf(tree.values)
     }
 
+    /**
+     * A projected volume makes each top-level entry a symlink into its `..data` directory, and
+     * Grafana's file provider does not follow a symlinked directory: a folder mounted as a subdirectory
+     * of one volume is never swept. So each folder is its own volume, mounted at the folder's path,
+     * which leaves only the files as symlinks inside a real directory.
+     */
     @Test
-    fun `Grafana's container sees every dashboard at its folder path under the tree root, read-only`() {
+    fun `Grafana's container sees every dashboard at its folder path under the tree root, one read-only mount per folder`() {
         val resources = GrafanaDashboardConfigMaps.mountInto(grafana, tree)
         val pod = grafanaPod(resources)
 
-        val mount =
+        val mounts =
             pod.containers
                 .single { it.name == "grafana" }
                 .volumeMounts
-                .single { it.mountPath == GRAFANA_DASHBOARD_ROOT }
-        assertThat(mount.readOnly).isTrue()
-        val volume = pod.volumes.single { it.name == mount.name }
+                .filter { it.mountPath.startsWith("$GRAFANA_DASHBOARD_ROOT/") }
+        assertThat(mounts.map { it.mountPath })
+            .containsExactlyInAnyOrderElementsOf(tree.keys.map { "$GRAFANA_DASHBOARD_ROOT/${it.substringBefore('/')}" }.distinct())
+        assertThat(mounts).allSatisfy { assertThat(it.readOnly).isTrue() }
         val keyToMap = dashboardMaps(resources).flatMap { map -> map.data.keys.map { it to map } }.toMap()
         val paths =
-            volume.projected.sources.flatMap { source ->
-                source.configMap.items.map { item ->
-                    assertThat(keyToMap.getValue(item.key).metadata.name).isEqualTo(source.configMap.name)
-                    item.path to keyToMap.getValue(item.key).data.getValue(item.key)
+            mounts.flatMap { mount ->
+                pod.volumes.single { it.name == mount.name }.projected.sources.flatMap { source ->
+                    source.configMap.items.map { item ->
+                        assertThat(item.path).describedAs("a file directly in its folder").doesNotContain("/")
+                        assertThat(keyToMap.getValue(item.key).metadata.name).isEqualTo(source.configMap.name)
+                        "${mount.mountPath.removePrefix("$GRAFANA_DASHBOARD_ROOT/")}/${item.path}" to
+                            keyToMap.getValue(item.key).data.getValue(item.key)
+                    }
                 }
             }
         assertThat(paths.toMap()).isEqualTo(tree)
+        val mounted = mounts.map { it.name }
         assertThat(pod.containers.filter { it.name != "grafana" }).allSatisfy { container ->
-            assertThat(container.volumeMounts.orEmpty().map { it.name }).doesNotContain(mount.name)
+            assertThat(container.volumeMounts.orEmpty().map { it.name }).doesNotContainAnyElementsOf(mounted)
         }
     }
 

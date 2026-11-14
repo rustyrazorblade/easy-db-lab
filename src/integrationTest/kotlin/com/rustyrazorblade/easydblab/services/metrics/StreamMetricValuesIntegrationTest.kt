@@ -49,7 +49,7 @@ class StreamMetricValuesIntegrationTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "stream-it", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "stream-it", versions = mutableMapOf(), s3Bucket = bucket))
                     }
                 }
                 single { TemplateService(get(), get()) }

@@ -34,7 +34,7 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
                 single {
                     mock<ClusterStateManager>().also {
                         whenever(it.load()).thenReturn(
-                            ClusterState(name = "test", versions = mutableMapOf(), initConfig = InitConfig(tenant = "acme")),
+                            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test", initConfig = InitConfig(tenant = "acme")),
                         )
                     }
                 }

@@ -102,7 +102,7 @@ class K8sServiceIntegrationTest {
 
         val mockClusterStateManager = mock<ClusterStateManager>()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf()),
+            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket"),
         )
         val testUser =
             User(

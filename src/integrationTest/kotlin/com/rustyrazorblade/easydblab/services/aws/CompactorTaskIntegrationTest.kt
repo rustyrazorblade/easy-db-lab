@@ -117,7 +117,7 @@ class CompactorTaskIntegrationTest {
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         val clusterStateManager =
             mock<ClusterStateManager>().also {
-                whenever(it.load()).thenReturn(ClusterState(name = "compactor-it", versions = mutableMapOf()))
+                whenever(it.load()).thenReturn(ClusterState(name = "compactor-it", versions = mutableMapOf(), s3Bucket = bucket))
             }
         val user =
             User(

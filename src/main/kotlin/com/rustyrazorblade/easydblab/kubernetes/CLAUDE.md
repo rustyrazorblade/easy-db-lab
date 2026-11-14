@@ -17,7 +17,7 @@ Command → SocksProxyService.ensureRunning(controlHost)
 | File | Purpose |
 |------|---------|
 | `KubernetesService.kt` | Interface for high-level K8s operations |
-| `DefaultKubernetesService.kt` | Fabric8 implementation with lazy client |
+| `DefaultKubernetesService.kt` | Fabric8 implementation; builds and closes a client per operation |
 | `ManifestApplier.kt` | Server-side apply for typed K8s resources |
 | `KubeApi.kt` | The cluster address: kubeconfig path + context; `KubeApi.loadConfig()` |
 | `KubeApiLocator.kt` | Seam that finds the `KubeApi`; `currentContextOf(path)` helper |
@@ -42,7 +42,7 @@ All methods return `Result<T>`. Namespace `null` means all namespaces.
 
 Every client is built from a `KubeApi(kubeconfig: Path, context: String)` through `KubeApi.loadConfig()`, the one place a Fabric8 `Config` is loaded: it checks that the kubeconfig holds the context (failing fast with the context, the path and the contexts it does hold) and loads it with `Config.fromKubeconfig(api.context, file)`. That keeps the file location on the config, so a relative certificate or exec-plugin path resolves against the kubeconfig's directory, and it never reads `Config.KUBERNETES_KUBECONFIG_FILE` or the `KUBECONFIG` env var. **`Config.autoConfigure` is forbidden.**
 
-No K8s service takes a `ClusterHost`. `services/K8sClientProvider.createClient()` asks its `KubeApiLocator` for the address: `services/WorkspaceKubeApiLocator` reads `<workspace>/kubeconfig` and the context pinned in `ClusterState.kubeContext`, falling back to the kubeconfig's `current-context`. `DefaultKubernetesService` takes the same `KubeApiLocator` and asks it for the address when its client is first used, so `kit status`, the kit workload probe and the server's pod listing target the pinned context too. The `metrics stream` stress-job lister (`services/metrics/Fabric8StressJobLister`) builds its per-route client from the same `KubeApiLocator` and `loadConfig()`. No other main code calls `currentContextOf`, and none calls `Config.fromKubeconfig` with kubeconfig text.
+No K8s service takes a `ClusterHost`. `services/K8sClientProvider.createClient()` asks its `KubeApiLocator` for the address: `services/WorkspaceKubeApiLocator` reads `<workspace>/kubeconfig` and the context pinned in `ClusterState.kubeContext`, falling back to the kubeconfig's `current-context`. `DefaultKubernetesService` takes the same `KubeApiLocator` and asks it for the address on every operation, building a client and closing it afterwards, so `kit status`, the kit workload probe and the server's pod listing target the pinned context too, and the long-running `server` status cache picks up a rewritten kubeconfig, a newly pinned context or a new SOCKS port on its next refresh. The `metrics stream` stress-job lister (`services/metrics/Fabric8StressJobLister`) builds its per-route client from the same `KubeApiLocator` and `loadConfig()`. No other main code calls `currentContextOf`, and none calls `Config.fromKubeconfig` with kubeconfig text.
 
 `up` records the context: `K3sService.downloadAndConfigureKubeconfig` returns the written kubeconfig's `current-context` (failing when it names none), `K3sClusterService` passes it back as `K3sSetupResult.kubeContext`, and `Up` sets it on its own `workingState` and saves that. The service never loads and saves `state.json` itself, so a later save of `up`'s in-memory state cannot erase the context.
 
@@ -92,7 +92,7 @@ val kubernetesModule = module {
 }
 ```
 
-Both registered as **factory** scope — client holds state tied to proxy session and must be recreated per use.
+Both registered as **factory** scope. `DefaultKubernetesService` holds no client: each operation resolves the `KubeApi` and reads the proxy port afresh, so even a service kept for a process's lifetime never uses a stale kubeconfig, context or proxy port.
 
 ## K8s Resource Location
 

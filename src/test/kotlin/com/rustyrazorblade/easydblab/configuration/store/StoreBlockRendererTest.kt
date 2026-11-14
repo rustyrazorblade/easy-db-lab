@@ -48,6 +48,16 @@ class StoreBlockRendererTest {
             .hasMessageContaining(StoreBlockRenderer.PLACEHOLDER)
     }
 
+    /** The block is spliced in place of a whole line, so a placeholder used as a value cannot take it. */
+    @Test
+    fun `a placeholder inline after a key is refused`() {
+        val config = "storage:\n  key: ${StoreBlockRenderer.PLACEHOLDER}\n"
+
+        assertThatThrownBy { renderer.render(config, javaClass) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("found 0")
+    }
+
     @Test
     fun `a config with the placeholder twice is refused`() {
         val config = "a:\n  ${StoreBlockRenderer.PLACEHOLDER}\nb:\n  ${StoreBlockRenderer.PLACEHOLDER}\n"

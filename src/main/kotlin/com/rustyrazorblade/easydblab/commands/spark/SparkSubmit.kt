@@ -158,6 +158,7 @@ class SparkSubmit : PicoBaseCommand() {
         // Upload using ObjectStore (handles retry logic and progress)
         val result = objectStore.uploadFile(localFile, jarS3Path, showProgress = true)
 
+        // EMR runs only on AWS and reads its jar from S3, so this names the S3 adapter directly.
         return S3Uri.uri(result.remotePath)
     }
 }

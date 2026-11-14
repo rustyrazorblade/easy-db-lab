@@ -1,3 +1,4 @@
+# Filled by TemplateService at build time: Pyroscope runs without -config.expand-env.
 backend: s3
 prefix: __PROFILES_STORE_PREFIX__
 s3:

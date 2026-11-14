@@ -55,7 +55,12 @@ This command:
 
 1. Sets the active Cassandra version on all nodes
 2. Downloads current configuration files locally
-3. Applies any existing `cassandra.patch.yaml`
+3. Applies any existing `cassandra.patch.yaml`, to every targeted host, as its last step
+4. Switches the JDK to the one the version declares (or the one you pass with `--java`)
+
+Step 3 overwrites per-host settings you applied earlier with `update-config --hosts`. Run
+`cassandra use` first, then tune individual nodes with `update-config`. `use` prints the hosts it
+re-applies the file to before it starts.
 
 It fails if the version is not installed on a targeted node rather than leaving
 the node pointed at something that isn't there. Install it first — see

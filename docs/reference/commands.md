@@ -346,6 +346,15 @@ Run `cassandra list` to see them.
 Fails if the version is not installed on a targeted node — install it first with
 `cassandra install`.
 
+`use` has two side effects beyond switching the version:
+
+- **It re-applies `cassandra.patch.yaml` to every targeted host as its last step.** Any per-host
+  settings you applied earlier with `update-config` are overwritten. Run `cassandra use` first and
+  `cassandra update-config --hosts ...` after it, never the other way round. `use` prints the hosts
+  it is about to re-apply the file to.
+- **It switches the JDK.** Each version declares its JDK; `--java` overrides it. On a cluster you
+  pinned to a JDK on purpose, pass `--java` with that JDK.
+
 ### cassandra build
 
 Build a Cassandra branch checkout on your own machine and publish it to the profile's S3 bucket,

@@ -234,6 +234,26 @@ sealed interface Event {
                 "Using version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}"
         }
 
+        /**
+         * `cassandra use` ends by re-applying [patchFile] to [hosts], which replaces any per-host
+         * settings applied with `update-config` since the last `use`, and it switches the JDK:
+         * to [javaVersion] when `--java` was given, else to the one the version declares.
+         */
+        @Serializable
+        @SerialName("Cassandra.UseSideEffects")
+        data class UseSideEffects(
+            val patchFile: String,
+            val hosts: List<String>,
+            val javaVersion: String? = null,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Warning: as its last step, use re-applies $patchFile to ${hosts.joinToString(", ")}. " +
+                    "That replaces per-host cassandra.yaml settings applied with update-config earlier; " +
+                    "run update-config --hosts after use, not before. " +
+                    "use also switches the JDK: " +
+                    (javaVersion?.let { "JDK $it (--java)" } ?: "the JDK the version declares") + "."
+        }
+
         @Serializable
         @SerialName("Cassandra.ConfigUpdateHint")
         data class ConfigUpdateHint(

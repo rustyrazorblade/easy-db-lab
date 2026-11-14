@@ -29,6 +29,20 @@ if mountpoint -q /mnt/db1 && [ ! -L /var/lib/rancher/k3s ]; then
     echo "K3s data relocated to NVMe"
 fi
 
+# Relocate container logs to NVMe storage to keep the root volume free. The kubelet writes pod
+# logs under /var/log/pods, and may have created that directory already; `ln -s` into an existing
+# directory would put the link inside it, so what is there moves first.
+if mountpoint -q /mnt/db1 && [ ! -L /var/log/pods ]; then
+    echo "Relocating container logs to NVMe at /mnt/db1/container-logs..."
+    mkdir -p /mnt/db1/container-logs
+    if [ -d /var/log/pods ]; then
+        cp -a /var/log/pods/. /mnt/db1/container-logs/
+        rm -rf /var/log/pods
+    fi
+    ln -s /mnt/db1/container-logs /var/log/pods
+    echo "Container logs relocated to NVMe"
+fi
+
 # Cilium chains the portmap CNI plugin for hostPort. With --flannel-backend=none, K3s leaves
 # containerd on its default CNI bin dir, /opt/cni/bin, where Cilium installs only cilium-cni.
 # Link K3s's bundled portmap (its stable data/cni dir, populated when K3s starts) there so every

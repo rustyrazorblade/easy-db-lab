@@ -660,7 +660,13 @@ Stress testing commands under `cassandra stress`.
 Start a stress job on Kubernetes.
 
 ```bash
-easy-db-lab cassandra stress start [options]
+easy-db-lab cassandra stress start [options] -- <cassandra-easy-stress arguments>
+```
+
+Everything after `--` is passed to `cassandra-easy-stress`, which runs on the cluster; the flags before `--` (`--name`, `--image`, `--tags`) belong to `easy-db-lab`. The `--` is required: `-d` and `--threads` are `cassandra-easy-stress` flags, and without it `easy-db-lab` rejects them as unknown options.
+
+```bash
+easy-db-lab cassandra stress start -- KeyValue -d 1h --threads 100
 ```
 
 **Aliases:** `run`

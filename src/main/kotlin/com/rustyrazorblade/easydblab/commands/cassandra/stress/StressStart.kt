@@ -21,15 +21,20 @@ import picocli.CommandLine.Parameters
  * to stress test a Cassandra cluster. The job runs on stress nodes and connects
  * to Cassandra nodes in the cluster.
  *
- * All arguments after the options are passed directly to cassandra-easy-stress.
- * Example: easy-db-lab stress start KeyValue -d 1h --threads 100
+ * Everything after `--` is passed directly to cassandra-easy-stress, whose own flags (`-d`,
+ * `--threads`) are not options of this command. Without the `--`, picocli rejects them.
+ * Example: easy-db-lab cassandra stress start -- KeyValue -d 1h --threads 100
  */
 @RequireProfileSetup
 @RequiresProxy
 @Command(
     name = "start",
     aliases = ["run"],
-    description = ["Start a cassandra-easy-stress job on K8s. Args are passed to cassandra-easy-stress."],
+    description = [
+        "Start a cassandra-easy-stress job on K8s.",
+        "Arguments after '--' go to cassandra-easy-stress on the cluster; see its own help for them.",
+        "Example: cassandra stress start -- KeyValue -d 1h --threads 100",
+    ],
 )
 class StressStart : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
@@ -54,7 +59,7 @@ class StressStart : PicoBaseCommand() {
     var tags: String? = null
 
     @Parameters(
-        description = ["Arguments passed directly to cassandra-easy-stress (e.g., KeyValue -d 1h --threads 100)"],
+        description = ["Arguments for cassandra-easy-stress, after '--' (e.g., -- KeyValue -d 1h --threads 100)"],
         arity = "0..*",
     )
     var stressArgs: List<String> = emptyList()

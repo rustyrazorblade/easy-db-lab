@@ -71,7 +71,7 @@ The system SHALL let an observability stage require a set of node capabilities. 
 
 ### Requirement: In-cluster producers send OTLP to the collector Service
 
-Every in-cluster producer SHALL send OTLP to the `otel-collector` Service by its `.svc` DNS name (`otel-collector.<namespace>.svc`) rather than to a node IP or the control node IP. This covers the Cassandra sidecar, the stress JVM agent, the stress sidecar, and every built-in kit template that sends OTLP. No built-in kit template or kit script SHALL refer to `HOST_IP:43` or `CONTROL_HOST_PRIVATE:43`. The kit shell library's gauge push, which runs on the operator's machine, SHALL push through the Kubernetes API server's Service proxy, using the workspace kubectl wrapper.
+Every in-cluster producer SHALL send OTLP to the `otel-collector` Service by its `.svc` DNS name (`otel-collector.<namespace>.svc`) rather than to a node IP or the control node IP. This covers the Cassandra sidecar, the stress JVM agent, the stress sidecar, and every built-in kit template that sends OTLP. No built-in kit template or kit script SHALL refer to `HOST_IP:43` or `CONTROL_HOST_PRIVATE:43`. The kit shell library's gauge push, which runs on the operator's machine, SHALL push through the Kubernetes API server's pod proxy to the running core collector pod on the control node, using the workspace kubectl wrapper, so every push of a gauge carries the same `host.name` (the control node's) and the gauge stays one series. It SHALL NOT go through the Service proxy, which picks a core pod on any node per request.
 
 #### Scenario: Kit pod uses the Service DNS name
 
@@ -91,8 +91,18 @@ Every in-cluster producer SHALL send OTLP to the `otel-collector` Service by its
 #### Scenario: Gauge push goes through the API server
 
 - **WHEN** a kit script calls the shared library's gauge push from the operator's machine
-- **THEN** the gauges are posted to the `otel-collector` Service through the API server's Service proxy, using the workspace kubectl wrapper
+- **THEN** the gauges are posted to the core collector pod on the control node through the API server's pod proxy, using the workspace kubectl wrapper
 - **AND** the gauges reach Mimir
+
+#### Scenario: Every gauge push lands on one node
+
+- **WHEN** a kit script pushes the same gauge many times while core pods run on several nodes
+- **THEN** every push goes to the control node's core pod, and the gauge has one `host_name` (the control node's)
+
+#### Scenario: An interrupted gauge push leaves nothing running
+
+- **WHEN** the kit script receives TERM or INT while a gauge push runs
+- **THEN** the push's `kubectl proxy` is stopped and its temporary file removed, and the caller's trap (or the default action) handles the signal
 
 ### Requirement: down stops both collectors before teardown
 

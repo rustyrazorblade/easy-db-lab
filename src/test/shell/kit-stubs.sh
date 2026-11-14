@@ -14,7 +14,16 @@
 #   log.<n>           what the n-th `kubectl logs -f` prints; logs-exit.<n> its exit status
 #   full-log          what `kubectl logs <pod>` (no -f) prints
 #   run-exit          the exit status of `kubectl run` (default 0)
-#   proxy-fail        present: `kubectl proxy` exits 1 without serving
+#   proxy-fail        present: `kubectl proxy` prints an error to stderr and exits 1 without serving
+#   proxy-hold        present: `kubectl proxy` keeps running after its banner, as the real one
+#                     does, and writes its PID to proxy.pid
+#   control-nodes     what `kubectl get nodes -l node-role.kubernetes.io/control-plane` prints
+#                     (absent: control0)
+#   core-pods         "<pod> <node>" lines, the Running core collector pods `kubectl get pods -l
+#                     app.kubernetes.io/name=otel-collector` filters by spec.nodeName (absent: one
+#                     pod per node, otel-collector-c0 on control0 and otel-collector-d0 on db0)
+#   curl-term         present: curl sends TERM to the shell that ran it, as a Ctrl-C or a kill
+#                     arriving during a push would
 #
 # and records:
 #
@@ -57,8 +66,33 @@ done
 case "$1" in
   get)
     case "$2" in
-      nodes) cat "${S}/app-nodes" 2>/dev/null; exit 0 ;;
+      nodes)
+        case " $* " in
+          *" node-role.kubernetes.io/control-plane "*)
+            if [ -f "${S}/control-nodes" ]; then cat "${S}/control-nodes"; else printf 'control0'; fi
+            exit 0
+            ;;
+        esac
+        cat "${S}/app-nodes" 2>/dev/null; exit 0
+        ;;
       pods)
+        case " $* " in
+          *" app.kubernetes.io/name=otel-collector "*)
+            node=""
+            for a in "$@"; do
+              case "${a}" in --field-selector=*spec.nodeName=*) node="${a##*spec.nodeName=}"; node="${node%%,*}" ;; esac
+            done
+            if [ -f "${S}/core-pods" ]; then core="$(cat "${S}/core-pods")"; else core="$(printf 'otel-collector-c0 control0\notel-collector-d0 db0')"; fi
+            names=""
+            while read -r name on; do
+              [ -n "${name}" ] || continue
+              [ -z "${node}" ] || [ "${on}" = "${node}" ] || continue
+              names="${names:+${names} }${name}"
+            done <<< "${core}"
+            printf '%s' "${names}"
+            exit 0
+            ;;
+        esac
         filter=""
         for a in "$@"; do
           case "${a}" in --field-selector=status.phase!=Succeeded,status.phase!=Failed) filter=yes ;; esac
@@ -106,6 +140,10 @@ case "$1" in
   proxy)
     [ -f "${S}/proxy-fail" ] && { echo "error: unable to listen" >&2; exit 1; }
     echo "Starting to serve on 127.0.0.1:18001"
+    if [ -f "${S}/proxy-hold" ]; then
+      echo "$$" > "${S}/proxy.pid"
+      exec /bin/sleep 60
+    fi
     exit 0
     ;;
   run)
@@ -144,6 +182,7 @@ n=$(( $(cat "${S}/curl.count" 2>/dev/null || echo 0) + 1 ))
 echo "${n}" > "${S}/curl.count"
 printf '%s\n' "$@" > "${S}/curl.${n}"
 [ -f "${S}/curl-out" ] && cat "${S}/curl-out"
+[ -f "${S}/curl-term" ] && kill -TERM "${PPID}"
 exit "$(cat "${S}/curl-exit" 2>/dev/null || echo 0)"
 EOF
   cat > "${dir}/date" <<'EOF'

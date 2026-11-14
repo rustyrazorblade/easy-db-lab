@@ -18,7 +18,8 @@
 #   wait -n, and no "${arr[@]}" on an array that can be empty (it fails under set -u before 4.4).
 # - It needs no jq.
 #
-# The functions read KIT_NAME and KUBECONFIG (through kubectl) from the environment. A function that fails prints why to stderr and exits the calling script.
+# The functions read KIT_NAME and KUBECONFIG (through kubectl) from the environment. A function
+# that fails prints why to stderr and exits the calling script.
 
 # How long a pod may stay Pending, with no image pull error, before the wait gives up.
 EDL_POD_START_TIMEOUT_SECONDS="${EDL_POD_START_TIMEOUT_SECONDS:-600}"
@@ -244,11 +245,20 @@ edl_wait_for_pod_exit() {
 # missing or not a number is sent as 0. A failed push never fails the calling script; the first one
 # prints a warning, and EDL_GAUGE_PUSH_WARNED keeps the rest quiet.
 #
-# The collector is reached through its Service by the API server's service proxy, on a
-# `kubectl proxy` that lives only for this push: no node listens for OTLP unless the host add-on
-# runs there, and `kubectl create --raw` cannot send the Content-Type the collector requires.
+# Every push goes to the core collector pod on the control node, through the API server's pod
+# proxy, on a `kubectl proxy` that lives only for this push: no node listens for OTLP unless the host
+# add-on runs there, and `kubectl create --raw` cannot send the Content-Type the collector requires.
+# It is one pod, not the Service: the API server's service proxy picks any core pod, and each stamps
+# host.name with its own node, so one gauge would split into a series per node. The control node's
+# pod stamps host.name=control0, as the control node's collector did before the core moved to the
+# pod network.
+#
+# A TERM or an INT during the push stops the proxy and removes its banner file, then reaches the
+# caller as if the push had not been running: the caller's trap runs, or the script ends by the
+# signal. The caller's INT and TERM traps are restored before the function returns.
 edl_push_gauges() {
-  local service="$1" now points="" sep="" value code=0 banner proxy_pid port="" tries=0
+  local service="$1" now points="" sep="" value failure="" banner="" proxy_pid="" port="" tries=0
+  local control pod saved_traps
   shift
   now="$(date +%s)000000000"
   while [ "$#" -ge 1 ]; do
@@ -258,29 +268,71 @@ edl_push_gauges() {
     sep=","
     if [ "$#" -ge 2 ]; then shift 2; else shift; fi
   done
-  banner="$(mktemp)"
-  kubectl proxy --port=0 --address=127.0.0.1 > "${banner}" 2>&1 &
-  proxy_pid=$!
-  while [ -z "${port}" ] && [ "${tries}" -lt "${EDL_PROXY_START_TRIES}" ]; do
-    port="$(sed -n 's/^Starting to serve on 127\.0\.0\.1:\([0-9][0-9]*\)$/\1/p' "${banner}")"
-    [ -n "${port}" ] || { tries=$((tries + 1)); sleep 0.1; }
-  done
-  if [ -n "${port}" ]; then
-    curl -sf --max-time 2 -X POST \
-      "http://127.0.0.1:${port}/api/v1/namespaces/default/services/otel-collector:otlp-http/proxy/v1/metrics" \
-      -H 'Content-Type: application/json' \
-      --data-binary "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"${service}\"}}]},\"scopeMetrics\":[{\"metrics\":[${points}]}]}]}" \
-      > /dev/null 2>&1 || code=$?
+  if ! control="$(kubectl get nodes -l node-role.kubernetes.io/control-plane -o 'jsonpath={.items[0].metadata.name}' 2> /dev/null)"; then
+    failure=": could not find the control node"
+  elif [ -z "${control}" ]; then
+    failure=": the cluster has no control node (node-role.kubernetes.io/control-plane)"
+  elif ! pod="$(kubectl get pods -n default -l app.kubernetes.io/name=otel-collector \
+    "--field-selector=status.phase=Running,spec.nodeName=${control}" -o 'jsonpath={.items[*].metadata.name}' 2> /dev/null)"; then
+    failure=": could not list the otel-collector pods on control node ${control}"
+  elif [ -z "${pod}" ]; then
+    failure=": no running otel-collector pod on control node ${control}"
   else
-    code="no kubectl proxy"
+    # During a rolling update the control node can run two core pods; both stamp control0.
+    pod="${pod%% *}"
+    saved_traps="$(trap -p INT TERM)"
+    trap 'edl_push_interrupted INT' INT
+    trap 'edl_push_interrupted TERM' TERM
+    banner="$(mktemp)"
+    kubectl proxy --port=0 --address=127.0.0.1 > "${banner}" 2>&1 &
+    proxy_pid=$!
+    while [ -z "${port}" ] && [ "${tries}" -lt "${EDL_PROXY_START_TRIES}" ]; do
+      port="$(sed -n 's/^Starting to serve on 127\.0\.0\.1:\([0-9][0-9]*\)$/\1/p' "${banner}")"
+      [ -n "${port}" ] || { tries=$((tries + 1)); sleep 0.1; }
+    done
+    if [ -n "${port}" ]; then
+      local code=0
+      curl -sf --max-time 2 -X POST \
+        "http://127.0.0.1:${port}/api/v1/namespaces/default/pods/${pod}:4318/proxy/v1/metrics" \
+        -H 'Content-Type: application/json' \
+        --data-binary "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"${service}\"}}]},\"scopeMetrics\":[{\"metrics\":[${points}]}]}]}" \
+        > /dev/null 2>&1 || code=$?
+      [ "${code}" -eq 0 ] || failure=" to collector pod ${pod} (curl exit ${code})"
+    else
+      failure=": kubectl proxy did not start: $(cat "${banner}" 2> /dev/null)"
+    fi
+    edl_push_cleanup
+    trap - INT TERM
+    eval "${saved_traps}"
   fi
-  kill "${proxy_pid}" 2> /dev/null || true
-  wait "${proxy_pid}" 2> /dev/null || true
-  rm -f "${banner}"
-  if [ "${code}" != 0 ] && [ -z "${EDL_GAUGE_PUSH_WARNED:-}" ]; then
+  if [ -n "${failure}" ] && [ -z "${EDL_GAUGE_PUSH_WARNED:-}" ]; then
     EDL_GAUGE_PUSH_WARNED=1
-    printf 'warning: could not push %s gauges to the otel-collector Service (curl exit %s); the dashboard will not show this run\n' \
-      "${service}" "${code}" >&2
+    printf 'warning: could not push %s gauges%s; the dashboard will not show this run\n' "${service}" "${failure}" >&2
   fi
   return 0
+}
+
+# Stops edl_push_gauges' kubectl proxy and removes its banner file. It reads the push's locals
+# (proxy_pid, banner), so it runs only inside edl_push_gauges; a second call does nothing.
+edl_push_cleanup() {
+  if [ -n "${proxy_pid}" ]; then
+    kill "${proxy_pid}" 2> /dev/null || true
+    wait "${proxy_pid}" 2> /dev/null || true
+    proxy_pid=""
+  fi
+  if [ -n "${banner}" ]; then
+    rm -f "${banner}"
+    banner=""
+  fi
+}
+
+# edl_push_gauges' trap for signal $1: cleans up, puts the caller's traps back and sends the signal
+# again to this shell, so the caller's own trap runs or, with none, the script ends by the signal.
+# $$ would name the parent of a subshell, and bash 3.2 has no BASHPID, so the shell's PID is read
+# as the parent of a child it execs.
+edl_push_interrupted() {
+  edl_push_cleanup
+  trap - INT TERM
+  eval "${saved_traps}"
+  kill -s "$1" "$(exec sh -c 'echo "${PPID}"')" || true
 }

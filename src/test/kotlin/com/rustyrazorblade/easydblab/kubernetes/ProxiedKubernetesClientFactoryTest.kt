@@ -103,7 +103,7 @@ class ProxiedKubernetesClientFactoryTest {
     }
 
     @Test
-    fun `a kubeconfig named by the JVM kubeconfig property or KUBECONFIG is ignored`() {
+    fun `a kubeconfig named by the JVM kubeconfig property is ignored`() {
         val elsewhere = File(tempDir, "elsewhere").apply { mkdirs() }
         val other = writeKubeconfig(twoContextKubeconfig.replace("first.example", "elsewhere.example"), elsewhere)
         System.setProperty(Config.KUBERNETES_KUBECONFIG_FILE, other.toString())
@@ -111,6 +111,28 @@ class ProxiedKubernetesClientFactoryTest {
         factory.createClient(KubeApi(writeKubeconfig(), "first-context")).use { client ->
             assertThat(client.configuration.masterUrl).startsWith("https://first.example:6443")
         }
+    }
+
+    @Test
+    fun `a kubeconfig named by the KUBECONFIG env var is ignored`() {
+        val elsewhere = File(tempDir, "elsewhere").apply { mkdirs() }
+        val other = writeKubeconfig(twoContextKubeconfig.replace("first.example", "elsewhere.example"), elsewhere)
+        val java = File(System.getProperty("java.home"), "bin/java").absolutePath
+        val process =
+            ProcessBuilder(
+                java,
+                "-cp",
+                System.getProperty("java.class.path"),
+                MasterUrlProbe::class.java.name,
+                writeKubeconfig().toString(),
+                "first-context",
+            ).redirectError(ProcessBuilder.Redirect.DISCARD)
+                .also { it.environment()["KUBECONFIG"] = other.toString() }
+                .start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+
+        assertThat(process.waitFor()).isZero()
+        assertThat(output).startsWith("https://first.example:6443")
     }
 
     @Test

@@ -476,15 +476,21 @@ class OtelManifestBuilder(
             .build()
 
     /**
-     * Never privileged and never able to escalate. Reading the kubelet's pod log files needs root
-     * (they are root-owned, mode 0640), so [PodLogSource.NodeFiles] runs as root with every
-     * capability dropped except the read override; [PodLogSource.None] is a restricted context.
+     * Never privileged, never able to escalate, and with a read-only root filesystem: the config
+     * writes nothing to disk (no file_storage, no persistent queue), so nothing needs a writable path.
+     *
+     * [PodLogSource.NodeFiles] runs as **UID 0 with `DAC_READ_SEARCH`** and every other capability
+     * dropped. The kubelet's pod log files are root-owned, mode 0640, and the override lets the
+     * collector read them (and any file it can reach) regardless of permissions. Its only host
+     * mount is `/var/log/pods`, read-only, so the override reaches nothing else on the node.
+     * [PodLogSource.None] is a restricted, non-root context.
      */
     private fun securityContext(podLogSource: PodLogSource): SecurityContext {
         val builder =
             SecurityContextBuilder()
                 .withPrivileged(false)
                 .withAllowPrivilegeEscalation(false)
+                .withReadOnlyRootFilesystem(true)
                 .withNewSeccompProfile()
                 .withType("RuntimeDefault")
                 .endSeccompProfile()

@@ -852,6 +852,18 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         }
     }
 
+    /** Root in NodeFiles mode reads the node's files; it must not be able to write its own image. */
+    @Test
+    fun `the core's root filesystem is read-only whichever way it reads pod logs`() {
+        for (source in listOf(PodLogSource.NodeFiles, PodLogSource.None)) {
+            val container =
+                coreDaemonSet(source)
+                    .spec.template.spec.containers
+                    .single()
+            assertThat(container.securityContext.readOnlyRootFilesystem).describedAs("$source").isTrue()
+        }
+    }
+
     @Test
     fun `without pod logs the core mounts no hostPath and runs as a restricted non-root user`() {
         val pod = coreDaemonSet(PodLogSource.None).spec.template.spec
@@ -952,7 +964,12 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
         assertThat(scalarAt(yaml, "receivers", "kubelet_stats", "endpoint")).isEqualTo("https://\${env:K8S_NODE_IP}:10250")
         assertThat(scalarAt(yaml, "receivers", "kubelet_stats", "auth_type")).isEqualTo("serviceAccount")
-        assertThat(scalarAt(yaml, "receivers", "kubelet_stats", "insecure_skip_verify")).isEqualTo("true")
+        // K3s signs each kubelet serving cert with its server CA, the CA in the service-account
+        // ca.crt, so the kubelet is verified, not trusted blind (CoreAndHostCollectorIntegrationTest).
+        assertThat(
+            scalarAt(yaml, "receivers", "kubelet_stats", "ca_file"),
+        ).isEqualTo("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+        assertThat(yaml).doesNotContain("insecure_skip_verify")
         assertThat(listAt(yaml, "service", "pipelines", "metrics/local", "receivers")).contains("kubelet_stats")
 
         val rules = builder.buildClusterRole().rules

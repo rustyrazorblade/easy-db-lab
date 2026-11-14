@@ -19,7 +19,9 @@ receivers:
     collection_interval: 15s
     auth_type: serviceAccount
     endpoint: https://${env:K8S_NODE_IP}:10250
-    insecure_skip_verify: true
+    # The kubelet is verified, not trusted blind: K3s signs each kubelet serving cert with its
+    # server CA, the CA the service account mounts, and puts the node IP in its SANs.
+    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
   prometheus:
     config:
       scrape_configs:

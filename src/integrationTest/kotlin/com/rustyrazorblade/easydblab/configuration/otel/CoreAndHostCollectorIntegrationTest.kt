@@ -51,7 +51,12 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
         const val NAME_LABEL = "app.kubernetes.io/name"
         const val SELF_TELEMETRY_PORT = 8888
         const val COLLECTOR_IMAGE = "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"
-        val ACCEPTED_FROM_OTLP = Regex("""otelcol_receiver_accepted_metric_points(_total)?\{[^}]*receiver="otlp"[^}]*}\s+([0-9.e+]+)""")
+        val ACCEPTED_FROM_OTLP = acceptedFrom("otlp")
+        val ACCEPTED_FROM_KUBELET = acceptedFrom("kubelet_stats")
+
+        /** The core's own counter of metric points its receiver [receiver] accepted. */
+        fun acceptedFrom(receiver: String) =
+            Regex("""otelcol_receiver_accepted_metric_points(_total)?\{[^}]*receiver="$receiver"[^}]*}\s+([0-9.e+]+)""")
     }
 
     private val state = ClusterState(name = CLUSTER, versions = mutableMapOf())
@@ -125,8 +130,13 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
             ?.status
             ?.numberReady
 
-    /** The OTLP metric points the core has accepted, read from its own telemetry on 8888. */
-    private fun acceptedOtlpPoints(client: KubernetesClient): Double {
+    private fun acceptedOtlpPoints(client: KubernetesClient) = acceptedPoints(client, ACCEPTED_FROM_OTLP)
+
+    /** The metric points the core has accepted from the receiver [counter] names, read from its own telemetry on 8888. */
+    private fun acceptedPoints(
+        client: KubernetesClient,
+        counter: Regex,
+    ): Double {
         val core =
             client
                 .pods()
@@ -143,16 +153,21 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
             .use { forward ->
                 val request = HttpRequest.newBuilder(URI("http://127.0.0.1:${forward.localPort}/metrics")).build()
                 val body = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString()).body()
-                ACCEPTED_FROM_OTLP.findAll(body).sumOf { it.groupValues[2].toDouble() }
+                counter.findAll(body).sumOf { it.groupValues[2].toDouble() }
             }
     }
 
-    private fun awaitAcceptedOtlpPoints(client: KubernetesClient): Double {
+    private fun awaitAcceptedOtlpPoints(client: KubernetesClient) = awaitAcceptedPoints(client, ACCEPTED_FROM_OTLP)
+
+    private fun awaitAcceptedPoints(
+        client: KubernetesClient,
+        counter: Regex,
+    ): Double {
         var accepted = 0.0
         repeat(ARRIVAL_ATTEMPTS) {
             if (accepted == 0.0) {
                 Thread.sleep(POLL_MILLIS)
-                accepted = acceptedOtlpPoints(client)
+                accepted = acceptedPoints(client, counter)
             }
         }
         return accepted
@@ -175,6 +190,11 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
                     .get()
             assertRestricted(running)
             assertThat(acceptedOtlpPoints(client)).describedAs("nothing sends OTLP before the add-on").isZero()
+            // kubelet_stats verifies the kubelet against the service-account CA: a cert that CA did
+            // not sign, or one without the node IP, fails every scrape and accepts nothing.
+            assertThat(awaitAcceptedPoints(client, ACCEPTED_FROM_KUBELET))
+                .describedAs("kubelet_stats verified the kubelet's cert and read its stats")
+                .isPositive()
 
             apply(client, OtelHostCollectorManifestBuilder(getKoin().get()).buildAllResources(CniMode.Flannel))
             awaitReady(client, Constants.OtelCollector.HOST_COLLECTOR_NAME)
@@ -194,6 +214,7 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
         assertThat(context.privileged == true).describedAs("privileged").isFalse()
         assertThat(context.runAsNonRoot == true).describedAs("runAsNonRoot").isTrue()
         assertThat(context.allowPrivilegeEscalation == true).describedAs("allowPrivilegeEscalation").isFalse()
+        assertThat(context.readOnlyRootFilesystem == true).describedAs("readOnlyRootFilesystem").isTrue()
         assertThat(context.capabilities.drop).containsExactly("ALL")
         assertThat(context.capabilities.add.orEmpty()).isEmpty()
     }

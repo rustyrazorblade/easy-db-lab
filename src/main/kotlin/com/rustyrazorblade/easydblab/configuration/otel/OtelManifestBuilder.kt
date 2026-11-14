@@ -1,18 +1,31 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
-import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
+import io.fabric8.kubernetes.api.model.Container
+import io.fabric8.kubernetes.api.model.ContainerBuilder
+import io.fabric8.kubernetes.api.model.ContainerPort
+import io.fabric8.kubernetes.api.model.ContainerPortBuilder
+import io.fabric8.kubernetes.api.model.EnvVar
+import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
+import io.fabric8.kubernetes.api.model.IntOrString
+import io.fabric8.kubernetes.api.model.PodSpec
+import io.fabric8.kubernetes.api.model.PodSpecBuilder
+import io.fabric8.kubernetes.api.model.Probe
+import io.fabric8.kubernetes.api.model.ProbeBuilder
+import io.fabric8.kubernetes.api.model.SecurityContext
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
+import io.fabric8.kubernetes.api.model.Volume
+import io.fabric8.kubernetes.api.model.VolumeBuilder
+import io.fabric8.kubernetes.api.model.VolumeMount
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
@@ -21,18 +34,20 @@ import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
- * Builds all OpenTelemetry Collector K8s resources as typed Fabric8 objects.
+ * Builds the core OpenTelemetry Collector's K8s resources as typed Fabric8 objects.
  *
- * Creates a DaemonSet that runs on all nodes with hostNetwork, collecting
- * host metrics, Prometheus scrapes (Beyla, ebpf_exporter, YACE, kube-state-metrics),
- * the Cilium agent/operator/Hubble scrapes when the cluster's CNI is Cilium,
- * plus dynamic per-workload scrape jobs from the metrics registry ConfigMaps,
- * file-based logs (system, Cassandra, ClickHouse), and OTLP.
- * Exports metrics to Mimir, logs to Loki and traces to Tempo, each with the cluster's tenant.
+ * The core is a DaemonSet on the pod network: no `hostNetwork`, no `hostPort`, no privilege. It is
+ * the only collector that exports to the backends, so it runs wherever pods can run. It owns the
+ * OTLP and Jaeger receivers behind the `otel-collector` Service (`internalTrafficPolicy: Local`, so a
+ * producer reaches its own node's core pod), every pod-discovery scrape, static kit NodePort jobs at
+ * the node IP, the `kubelet_stats` receiver, `k8s_attributes`, the span connectors and every
+ * exporter. Pod stdout/stderr is collected only with [PodLogSource.NodeFiles]. Everything that needs
+ * the host (host metrics and files, Beyla, ebpf_exporter and Cilium scrapes, the node's OTLP
+ * listener) is in the host add-on, [OtelHostCollectorManifestBuilder], which forwards to the core.
  *
- * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`,
- * `${env:TENANT}`), not `__KEY__` template substitution. `CLUSTER_NAME` and `TENANT` come from the
- * cluster-config ConfigMap.
+ * Config uses OTel runtime env expansion (`${env:K8S_NODE_NAME}`, `${env:K8S_NODE_IP}`,
+ * `${env:CLUSTER_NAME}`, `${env:TENANT}`), not `__KEY__` template substitution. `CLUSTER_NAME` and
+ * `TENANT` come from the cluster-config ConfigMap; the node name and IP from the downward API.
  *
  * @property templateService Used for loading config files from classpath resources
  */
@@ -43,9 +58,14 @@ class OtelManifestBuilder(
         private val log = KotlinLogging.logger {}
         private val NAMESPACE = Constants.K8s.NAMESPACE
         private const val APP_LABEL = Constants.K8s.OTEL_COLLECTOR_APP_LABEL
+        private const val NAME_LABEL = "app.kubernetes.io/name"
         private const val CONFIGMAP_NAME = "otel-collector-config"
         private const val CONFIG_DATA_KEY = "otel-collector-config.yaml"
-        private const val IMAGE = "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"
+        private const val CONFIG_PATH = "/etc/$CONFIG_DATA_KEY"
+        private const val POD_LOGS_RESOURCE = "otel-collector-pod-logs.yaml"
+        private const val POD_LOGS_PATH = "/var/log/pods"
+        private const val POD_LOGS_VOLUME = "pod-logs"
+        const val IMAGE = "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"
         private const val SERVICE_ACCOUNT_NAME = "otel-collector"
         private const val CLUSTER_ROLE_NAME = "otel-collector"
         private const val LIVENESS_INITIAL_DELAY = 10
@@ -53,18 +73,15 @@ class OtelManifestBuilder(
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
         private val WORKLOAD_METRICS_LABEL = Constants.K8s.WORKLOAD_METRICS_LABEL
-        private const val SCRAPE_INTERVAL = "15s"
         private const val YACE_SCRAPE_INTERVAL = "5s"
 
-        /** Volume carrying the node's root filesystem into the collector container. */
-        const val HOST_ROOT_VOLUME = "host-root"
-
         /**
-         * Where [HOST_ROOT_VOLUME] is mounted. Must match `root_path` in
-         * `otel-collector-config.yaml`, or the host_metrics scrapers describe the container instead
-         * of the node.
+         * The guard every log-derived metric's condition carries: the record's resource has no
+         * `source`. Every host file receiver of the host add-on, and Fluent Bit's journald lines,
+         * set `source`; Cassandra's OTLP logs do not. So a forwarded host log line is never counted
+         * as a Cassandra log record.
          */
-        const val HOST_ROOT_MOUNT_PATH = "/hostfs"
+        const val NOT_A_HOST_LOG = "resource.attributes[\"source\"] == nil"
 
         /** In-cluster export endpoints used in local mode: Mimir's remote write and Loki's OTLP base. */
         private val LOCAL_METRICS_ENDPOINT =
@@ -73,6 +90,16 @@ class OtelManifestBuilder(
             "http://${Constants.K8s.LOKI_APP_LABEL}.default.svc.cluster.local:${Constants.K8s.LOKI_HTTP_PORT}/otlp"
         private val LOCAL_TEMPO_ENDPOINT =
             "tempo.default.svc.cluster.local:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}"
+
+        /** The pod-log pipeline, rendered into `service.pipelines` only with [PodLogSource.NodeFiles]. */
+        private val POD_LOG_PIPELINE =
+            """
+            |    # Pod stdout and stderr from the kubelet's log files (only where HOST_PATH).
+            |    logs/containers:
+            |      receivers: [file_log/containers, file_log/clickhouse-containers]
+            |      processors: [k8s_attributes, transform/add_service, resource/cluster, batch]
+            |      exporters: [otlp_http/logs]
+            """.trimMargin()
     }
 
     /**
@@ -92,75 +119,75 @@ class OtelManifestBuilder(
             val data = cm.data ?: return@mapNotNull null
             val jobName = data["job-name"] ?: return@mapNotNull null
             val port = data["port"]?.toIntOrNull() ?: return@mapNotNull null
-            val path = data["path"] ?: "/metrics"
-            val username = data["username"] ?: ""
-            val podSelector = data["pod-selector"] ?: ""
             // Falls back to jobName for ConfigMaps written before the kit-name key was added
-            val kitName = data["kit-name"] ?: jobName
             WorkloadScrapeConfig(
-                kitName = kitName,
+                kitName = data["kit-name"] ?: jobName,
                 jobName = jobName,
                 port = port,
-                path = path,
-                username = username,
-                podSelector = podSelector,
+                path = data["path"] ?: "/metrics",
+                username = data["username"] ?: "",
+                podSelector = data["pod-selector"] ?: "",
             )
         }
     }
 
     /**
-     * Builds all OTel Collector K8s resources in apply order.
+     * Builds all core collector K8s resources in apply order.
      *
+     * @param capabilities What the environment provides; the `yace` job needs CloudWatch.
      * @param scrapeConfigs Dynamic per-workload scrape targets from the metrics registry.
-     *   Pass the result of [listWorkloadScrapeConfigs] to include currently-running workloads.
      * @param telemetryRedirect When non-null, the collector exports to this external stack's
      *   endpoints instead of the in-cluster backends.
-     * @param cni The cluster's pod-network datapath. Cilium adds the agent, operator, and Hubble
-     *   scrape jobs; Flannel renders none of them.
+     * @param podLogSource Whether the core tails pod log files from the node.
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet, Service
      */
     fun buildAllResources(
         capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
-        cni: CniMode = CniMode.Flannel,
+        podLogSource: PodLogSource = PodLogSource.NodeFiles,
     ): List<HasMetadata> =
         listOf(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
-            buildConfigMap(capabilities, scrapeConfigs, telemetryRedirect, cni),
-            buildDaemonSet(),
+            buildConfigMap(capabilities, scrapeConfigs, telemetryRedirect, podLogSource),
+            buildDaemonSet(podLogSource),
             buildService(),
         )
 
     /**
      * Builds the ServiceAccount for OTel Collector pods.
-     * Required by the k8s_attributes processor for K8s API access.
+     * Required by the k8s_attributes processor and the kubelet_stats receiver for K8s API access.
      */
     fun buildServiceAccount() =
         ServiceAccountBuilder()
             .withNewMetadata()
             .withName(SERVICE_ACCOUNT_NAME)
             .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .build()
 
     /**
-     * Builds the ClusterRole granting read access to pods and nodes.
-     * Required by the k8s_attributes processor to extract node labels as resource attributes.
+     * Builds the ClusterRole: read access to pods and nodes for k8s_attributes and pod discovery,
+     * and `nodes/stats` for the kubelet_stats receiver.
      */
     fun buildClusterRole() =
         ClusterRoleBuilder()
             .withNewMetadata()
             .withName(CLUSTER_ROLE_NAME)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .addNewRule()
             .withApiGroups("")
             .withResources("pods", "nodes")
             .withVerbs("get", "watch", "list")
+            .endRule()
+            .addNewRule()
+            .withApiGroups("")
+            .withResources("nodes/stats")
+            .withVerbs("get")
             .endRule()
             .build()
 
@@ -171,7 +198,7 @@ class OtelManifestBuilder(
         ClusterRoleBindingBuilder()
             .withNewMetadata()
             .withName(CLUSTER_ROLE_NAME)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .withNewRoleRef()
             .withApiGroup("rbac.authorization.k8s.io")
@@ -186,45 +213,67 @@ class OtelManifestBuilder(
             .build()
 
     /**
-     * Builds the OTel Collector ConfigMap, merging static infrastructure scrape jobs
-     * with dynamic per-workload scrape jobs from the metrics registry.
+     * Builds the core collector ConfigMap, merging the infrastructure scrape jobs with the dynamic
+     * per-workload scrape jobs from the metrics registry.
      *
+     * @param capabilities What the environment provides; the `yace` job needs CloudWatch.
      * @param scrapeConfigs Workload scrape targets to inject (from [listWorkloadScrapeConfigs])
      * @param telemetryRedirect When non-null, the three export endpoints resolve to this external
      *   stack; when null they resolve to the in-cluster service addresses (local mode, unchanged).
-     * @param cni The cluster's pod-network datapath; only Cilium renders the CNI scrape jobs.
-     * @param capabilities What the environment provides; the `yace` job needs CloudWatch.
+     * @param podLogSource [PodLogSource.NodeFiles] renders the pod-log receivers and pipeline;
+     *   [PodLogSource.None] renders neither.
      */
     fun buildConfigMap(
         capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
-        cni: CniMode = CniMode.Flannel,
+        podLogSource: PodLogSource = PodLogSource.NodeFiles,
     ) = ConfigMapBuilder()
         .withNewMetadata()
         .withName(CONFIGMAP_NAME)
         .withNamespace(NAMESPACE)
-        .addToLabels("app.kubernetes.io/name", APP_LABEL)
+        .addToLabels(NAME_LABEL, APP_LABEL)
         .endMetadata()
-        .addToData(
-            CONFIG_DATA_KEY,
-            templateService
-                .fromResource(
-                    OtelManifestBuilder::class.java,
-                    "otel-collector-config.yaml",
-                ).substitute(
-                    mapOf(
-                        "KIT_SCRAPE_JOBS" to renderScrapeJobs(buildDynamicScrapeJobs(scrapeConfigs)),
-                        "INFRA_SCRAPE_JOBS" to
-                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(capabilities, cni)),
-                        "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_METRICS_ENDPOINT),
-                        "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_LOGS_ENDPOINT),
-                        "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
-                    ),
-                ),
-        ).build()
+        .addToData(CONFIG_DATA_KEY, renderConfig(capabilities, scrapeConfigs, telemetryRedirect, podLogSource))
+        .build()
 
-    private fun buildDynamicScrapeJobs(configs: List<WorkloadScrapeConfig>): List<PrometheusScrapeJob> =
+    private fun renderConfig(
+        capabilities: NodeCapabilities,
+        scrapeConfigs: List<WorkloadScrapeConfig>,
+        telemetryRedirect: TelemetryRedirect?,
+        podLogSource: PodLogSource,
+    ): String {
+        val (podLogReceivers, podLogPipeline) =
+            when (podLogSource) {
+                PodLogSource.NodeFiles -> resource(POD_LOGS_RESOURCE).trimEnd() to POD_LOG_PIPELINE
+                PodLogSource.None -> "" to ""
+            }
+        return templateService
+            .fromResource(OtelManifestBuilder::class.java, CONFIG_DATA_KEY)
+            .substitute(
+                mapOf(
+                    "KIT_SCRAPE_JOBS" to PrometheusScrapeJob.render(buildKitScrapeJobs(scrapeConfigs)),
+                    "INFRA_SCRAPE_JOBS" to
+                        PrometheusScrapeJob.render(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(capabilities)),
+                    "POD_LOG_RECEIVERS" to podLogReceivers,
+                    "POD_LOG_PIPELINE" to podLogPipeline,
+                    "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_METRICS_ENDPOINT),
+                    "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_LOGS_ENDPOINT),
+                    "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
+                ),
+            )
+    }
+
+    /** A config fragment, read verbatim: it carries no placeholder of its own. */
+    private fun resource(name: String): String =
+        checkNotNull(OtelManifestBuilder::class.java.getResource(name)) { "missing collector resource $name" }
+            .readText()
+            .lines()
+            .filterNot { it.startsWith("#") }
+            .joinToString("\n")
+
+    /** One scrape job per running kit workload: pod discovery when it names pods, else its NodePort. */
+    fun buildKitScrapeJobs(configs: List<WorkloadScrapeConfig>): List<PrometheusScrapeJob> =
         configs.map { config ->
             if (config.podSelector.isNotBlank()) buildPodScrapeJob(config) else buildStaticScrapeJob(config)
         }
@@ -232,47 +281,33 @@ class OtelManifestBuilder(
     /**
      * The infrastructure scrape jobs that carry Prometheus meta-labels in their relabel rules and
      * so cannot live in the YAML template (a bare `__x__` there is a template placeholder):
-     * kube-state-metrics on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
+     * kube-state-metrics on every cluster, and YACE where the environment has CloudWatch. The CNI
+     * jobs scrape host-network endpoints and are the host add-on's
+     * ([OtelHostCollectorManifestBuilder.buildCniScrapeJobs]).
      */
-    fun buildInfraScrapeJobs(
-        capabilities: NodeCapabilities,
-        cni: CniMode,
-    ): List<PrometheusScrapeJob> =
-        listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni) + buildCloudWatchScrapeJobs(capabilities)
+    fun buildInfraScrapeJobs(capabilities: NodeCapabilities): List<PrometheusScrapeJob> =
+        listOf(buildKubeStateMetricsScrapeJob()) + buildCloudWatchScrapeJobs(capabilities)
 
     /**
      * The scrape jobs for the local telemetry backends' own metrics: Mimir, Loki, Tempo and the
      * Pyroscope server, so rejected writes, dropped samples and failed flushes are queryable.
      * Each is one pod on the control node, while the collector runs on every node, so a static
-     * `localhost` target would leave every other node's collector reporting the job down for the
-     * life of the cluster. Like kube-state-metrics, each is found by node-local pod discovery
-     * (label `app.kubernetes.io/name`, its metrics port), so only the collector on the pod's node
-     * scrapes it; `instance` is the pod name. A redirect cluster deploys neither, so it renders none
-     * of them.
+     * target would leave every other node's collector reporting the job down for the life of the
+     * cluster. Like kube-state-metrics, each is found by node-local pod discovery (label
+     * `app.kubernetes.io/name`, its metrics port), so only the collector on the pod's node scrapes
+     * it; `instance` is the pod name. A redirect cluster deploys neither, so it renders none of them.
      */
     fun buildLocalBackendScrapeJobs(telemetryRedirect: TelemetryRedirect?): List<PrometheusScrapeJob> =
         when (telemetryRedirect) {
             null ->
                 listOf(
-                    buildLocalBackendScrapeJob(Constants.K8s.MIMIR_APP_LABEL, Constants.K8s.MIMIR_HTTP_PORT),
-                    buildLocalBackendScrapeJob(Constants.K8s.LOKI_APP_LABEL, Constants.K8s.LOKI_HTTP_PORT),
-                    buildLocalBackendScrapeJob(Constants.K8s.TEMPO_APP_LABEL, Constants.K8s.TEMPO_PORT),
-                    buildLocalBackendScrapeJob(Constants.K8s.PYROSCOPE_APP_LABEL, Constants.K8s.PYROSCOPE_PORT),
-                )
+                    Constants.K8s.MIMIR_APP_LABEL to Constants.K8s.MIMIR_HTTP_PORT,
+                    Constants.K8s.LOKI_APP_LABEL to Constants.K8s.LOKI_HTTP_PORT,
+                    Constants.K8s.TEMPO_APP_LABEL to Constants.K8s.TEMPO_PORT,
+                    Constants.K8s.PYROSCOPE_APP_LABEL to Constants.K8s.PYROSCOPE_PORT,
+                ).map { (name, port) -> NodeScrapeJobs.nodeLocalPodJob(name, NAMESPACE, NAME_LABEL, name, port) }
             else -> emptyList()
         }
-
-    /** A local backend whose job name is also its pod's `app.kubernetes.io/name` label value. */
-    private fun buildLocalBackendScrapeJob(
-        name: String,
-        port: Int,
-    ) = buildNodeLocalPodScrapeJob(
-        jobName = name,
-        namespace = NAMESPACE,
-        podLabel = "app.kubernetes.io/name",
-        podLabelValue = name,
-        port = port,
-    )
 
     /**
      * kube-state-metrics runs as ONE pod on the control node, in the pod network. Every collector
@@ -281,34 +316,13 @@ class OtelManifestBuilder(
      * own node means exactly one collector scrapes it; `instance` is the pod name.
      */
     private fun buildKubeStateMetricsScrapeJob() =
-        buildNodeLocalPodScrapeJob(
+        NodeScrapeJobs.nodeLocalPodJob(
             jobName = Constants.KubeStateMetrics.NAME,
             namespace = NAMESPACE,
-            podLabel = "app.kubernetes.io/name",
+            podLabel = NAME_LABEL,
             podLabelValue = Constants.KubeStateMetrics.NAME,
             port = Constants.KubeStateMetrics.METRICS_PORT,
         )
-
-    /**
-     * The scrape jobs that exist only when the cluster's CNI is Cilium. Flannel has no agent,
-     * operator, or Hubble endpoint, so rendering these there would have every collector poll
-     * three ports nothing listens on for the life of the cluster.
-     *
-     * The agent and Hubble are per-node hostNetwork endpoints, scraped at `localhost` by the
-     * collector on the same node. The operator runs on exactly one node, so it is found by pod
-     * discovery in `kube-system` (label `io.cilium/app=operator`, its metrics port) and, like every
-     * pod-SD job here, only by the collector on that node.
-     */
-    fun buildCniScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> =
-        when (cni) {
-            CniMode.Flannel -> emptyList()
-            CniMode.Cilium ->
-                listOf(
-                    buildLocalhostScrapeJob("cilium-agent", Constants.Cilium.AGENT_METRICS_PORT),
-                    buildLocalhostScrapeJob("hubble", Constants.Cilium.HUBBLE_METRICS_PORT),
-                    buildCiliumOperatorScrapeJob(),
-                )
-        }
 
     /**
      * The scrape jobs for workloads that exist only where the environment has CloudWatch: YACE.
@@ -319,115 +333,25 @@ class OtelManifestBuilder(
     private fun buildCloudWatchScrapeJobs(capabilities: NodeCapabilities): List<PrometheusScrapeJob> =
         if (NodeCapability.CLOUDWATCH in capabilities) {
             listOf(
-                buildNodeLocalPodScrapeJob(
+                NodeScrapeJobs.nodeLocalPodJob(
                     jobName = "yace",
                     namespace = NAMESPACE,
-                    podLabel = "app.kubernetes.io/name",
+                    podLabel = NAME_LABEL,
                     podLabelValue = Constants.Yace.DEPLOYMENT_NAME,
                     port = Constants.Yace.PORT,
                     scrapeInterval = YACE_SCRAPE_INTERVAL,
                     scrapeTimeout = YACE_SCRAPE_INTERVAL,
-                    instance = "\${env:HOSTNAME}:${Constants.Yace.PORT}",
+                    instance = "${NodeScrapeJobs.NODE_NAME}:${Constants.Yace.PORT}",
                 ),
             )
         } else {
             emptyList()
         }
 
-    private fun buildLocalhostScrapeJob(
-        jobName: String,
-        port: Int,
-        scrapeInterval: String = SCRAPE_INTERVAL,
-        scrapeTimeout: String? = null,
-    ) = PrometheusScrapeJob(
-        jobName = jobName,
-        scrapeInterval = scrapeInterval,
-        scrapeTimeout = scrapeTimeout,
-        staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:$port"))),
-        metricsPath = "/metrics",
-        relabelConfigs =
-            listOf(
-                PrometheusRelabelConfig(targetLabel = "instance", replacement = "\${env:HOSTNAME}:$port"),
-                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
-            ),
-    )
-
-    private fun buildCiliumOperatorScrapeJob() =
-        buildNodeLocalPodScrapeJob(
-            jobName = "cilium-operator",
-            namespace = Constants.Cilium.NAMESPACE,
-            podLabel = Constants.Cilium.OPERATOR_POD_LABEL,
-            podLabelValue = Constants.Cilium.OPERATOR_POD_LABEL_VALUE,
-            port = Constants.Cilium.OPERATOR_METRICS_PORT,
-        )
-
     /**
-     * A pod-discovery job for a singleton pod selected by one label, scraped only by the collector
-     * on the pod's own node so one series set exists. Pod SD yields one target per declared
-     * container port, so the job keeps only [port] and then addresses the pod IP on it directly;
-     * `instance` is the pod name.
-     */
-    private fun buildNodeLocalPodScrapeJob(
-        jobName: String,
-        namespace: String,
-        podLabel: String,
-        podLabelValue: String,
-        port: Int,
-        scrapeInterval: String = SCRAPE_INTERVAL,
-        scrapeTimeout: String? = null,
-        instance: String? = null,
-    ) = PrometheusScrapeJob(
-        jobName = jobName,
-        scrapeInterval = scrapeInterval,
-        scrapeTimeout = scrapeTimeout,
-        kubernetesSdConfigs =
-            listOf(
-                PrometheusKubernetesSdConfig(
-                    role = "pod",
-                    namespaces = PrometheusSdNamespaces(names = listOf(namespace)),
-                ),
-            ),
-        metricsPath = "/metrics",
-        relabelConfigs =
-            listOf(
-                PrometheusRelabelConfig(
-                    sourceLabels = listOf(podLabelMetaKey(podLabel)),
-                    regex = podLabelValue,
-                    action = "keep",
-                ),
-                PrometheusRelabelConfig(
-                    sourceLabels = listOf("__meta_kubernetes_pod_node_name"),
-                    regex = "\${env:HOSTNAME}",
-                    action = "keep",
-                ),
-                PrometheusRelabelConfig(
-                    sourceLabels = listOf("__meta_kubernetes_pod_container_port_number"),
-                    regex = port.toString(),
-                    action = "keep",
-                ),
-                // OTel expands $$ to a literal $, leaving Prometheus its $1 capture group.
-                PrometheusRelabelConfig(
-                    sourceLabels = listOf("__meta_kubernetes_pod_ip"),
-                    targetLabel = "__address__",
-                    replacement = "\$\$1:$port",
-                ),
-                instanceRelabel(instance),
-                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
-            ),
-    )
-
-    /** `instance` is the pod name unless the job names a fixed value, such as `\${env:HOSTNAME}:port`. */
-    private fun instanceRelabel(instance: String?) =
-        when (instance) {
-            null -> PrometheusRelabelConfig(sourceLabels = listOf("__meta_kubernetes_pod_name"), targetLabel = "instance")
-            else -> PrometheusRelabelConfig(targetLabel = "instance", replacement = instance)
-        }
-
-    private fun renderScrapeJobs(jobs: List<PrometheusScrapeJob>): String = PrometheusScrapeJob.render(jobs)
-
-    /**
-     * Builds a static NodePort scrape job. Every collector on every node scrapes the same
-     * `localhost:<nodePort>` target, so `instance` is stamped with the collector's own hostname.
+     * Builds a static NodePort scrape job. The core is on the pod network, where `localhost` is the
+     * collector pod itself, so every collector scrapes its own node's IP on the port; `instance` is
+     * stamped with the node's name.
      */
     private fun buildStaticScrapeJob(config: WorkloadScrapeConfig) =
         PrometheusScrapeJob(
@@ -435,27 +359,27 @@ class OtelManifestBuilder(
             // - Same kit with multiple scrape targets (e.g. kafka-exporter and kafka-jmx)
             // - Multiple kit instances sharing the same jobName (e.g. postgres-duckdb and postgres-postgis)
             jobName = "${config.kitName}-${config.jobName}",
-            scrapeInterval = SCRAPE_INTERVAL,
-            staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:${config.port}"))),
+            scrapeInterval = NodeScrapeJobs.SCRAPE_INTERVAL,
+            staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("${NodeScrapeJobs.NODE_IP}:${config.port}"))),
             metricsPath = config.path,
             relabelConfigs =
                 listOf(
                     // Preserve the logical job name from kit.yaml as the `job` label so
                     // Prometheus queries like job="postgres" continue to work across instances.
                     PrometheusRelabelConfig(targetLabel = "job", replacement = config.jobName),
-                    PrometheusRelabelConfig(targetLabel = "instance", replacement = "\${env:HOSTNAME}:${config.port}"),
-                    PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+                    PrometheusRelabelConfig(targetLabel = "instance", replacement = "${NodeScrapeJobs.NODE_NAME}:${config.port}"),
+                    NodeScrapeJobs.clusterRelabel,
                 ),
-            basicAuth = if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null,
+            basicAuth = basicAuth(config),
         )
 
     /**
      * Builds a pod service-discovery scrape job. Each pod is scraped directly on its own IP, so
      * `instance` carries the pod name (e.g. `tidb-tikv-0`) — the stable per-store identity a shared
      * NodePort cannot provide. Discovery is filtered to pods matching [WorkloadScrapeConfig.podSelector]
-     * that are co-located on the scraping collector's node (`__meta_kubernetes_pod_node_name` == the
-     * collector's `HOSTNAME`). Node-local filtering is essential: without it, every collector in the
-     * DaemonSet would scrape every pod, producing duplicate series for the same `instance`.
+     * that are co-located on the scraping collector's node. Node-local filtering is essential:
+     * without it, every collector in the DaemonSet would scrape every pod, producing duplicate
+     * series for the same `instance`.
      */
     private fun buildPodScrapeJob(config: WorkloadScrapeConfig): PrometheusScrapeJob {
         val selectorRelabels =
@@ -465,264 +389,238 @@ class OtelManifestBuilder(
                 .filter { it.isNotEmpty() }
                 .map { pair ->
                     val (key, value) = pair.split("=", limit = 2).let { it[0].trim() to it.getOrElse(1) { "" }.trim() }
-                    PrometheusRelabelConfig(
-                        sourceLabels = listOf(podLabelMetaKey(key)),
-                        regex = value,
-                        action = "keep",
-                    )
+                    NodeScrapeJobs.keep(NodeScrapeJobs.podLabelMetaKey(key), value)
                 }
         return PrometheusScrapeJob(
             jobName = "${config.kitName}-${config.jobName}",
-            scrapeInterval = SCRAPE_INTERVAL,
-            kubernetesSdConfigs =
-                listOf(
-                    PrometheusKubernetesSdConfig(
-                        role = "pod",
-                        namespaces = PrometheusSdNamespaces(names = listOf(NAMESPACE)),
-                    ),
-                ),
+            scrapeInterval = NodeScrapeJobs.SCRAPE_INTERVAL,
+            kubernetesSdConfigs = listOf(NodeScrapeJobs.podDiscovery(NAMESPACE)),
             metricsPath = config.path,
             relabelConfigs =
                 selectorRelabels +
                     listOf(
                         // Only scrape pods on this collector's node — one TiKV pod per db node.
-                        PrometheusRelabelConfig(
-                            sourceLabels = listOf("__meta_kubernetes_pod_node_name"),
-                            regex = "\${env:HOSTNAME}",
-                            action = "keep",
-                        ),
+                        NodeScrapeJobs.onThisNode(),
                         // Target the pod IP directly on its container metrics port (not the NodePort).
-                        // OTel expands $$ to a literal $, leaving Prometheus its $1 capture group.
-                        PrometheusRelabelConfig(
-                            sourceLabels = listOf("__meta_kubernetes_pod_ip"),
-                            targetLabel = "__address__",
-                            replacement = "\$\$1:${config.port}",
-                        ),
+                        NodeScrapeJobs.podAddress(config.port),
                         // Per-pod identity: instance = pod name (the store), not the NodePort.
-                        PrometheusRelabelConfig(
-                            sourceLabels = listOf("__meta_kubernetes_pod_name"),
-                            targetLabel = "instance",
-                        ),
+                        PrometheusRelabelConfig(sourceLabels = listOf("__meta_kubernetes_pod_name"), targetLabel = "instance"),
                         PrometheusRelabelConfig(targetLabel = "job", replacement = config.jobName),
-                        PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+                        NodeScrapeJobs.clusterRelabel,
                     ),
-            basicAuth = if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null,
+            basicAuth = basicAuth(config),
         )
     }
 
-    /**
-     * Converts a K8s pod label key (e.g. `app.kubernetes.io/component`) into the Prometheus
-     * pod-discovery meta-label (`__meta_kubernetes_pod_label_app_kubernetes_io_component`).
-     * Prometheus sanitizes label names by replacing every non-alphanumeric character with `_`.
-     */
-    private fun podLabelMetaKey(key: String): String {
-        val sanitized = key.map { if (it.isLetterOrDigit()) it else '_' }.joinToString("")
-        return "__meta_kubernetes_pod_label_$sanitized"
-    }
+    private fun basicAuth(config: WorkloadScrapeConfig) =
+        if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null
 
     /**
-     * Builds the OTel Collector DaemonSet.
+     * Builds the core collector DaemonSet: on the pod network, unprivileged, on every node.
      *
-     * Runs on all nodes with hostNetwork, privileged mode.
-     * Mounts log directories as hostPath volumes for system, Cassandra,
-     * and K8s container log collection. `/mnt/db1/container-logs` is mounted so the
-     * collector can follow the `/var/log/pods` symlink when logs are on NVMe storage.
-     * ClickHouse logs via container stdout — no host path mount needed.
+     * It tolerates every taint, so the control node and any tainted node run a core pod, which the
+     * Service's `internalTrafficPolicy: Local` relies on. It rolls one node at a time with a surge
+     * pod (`maxSurge: 1, maxUnavailable: 0`), so a node is never left without a core pod. With
+     * [PodLogSource.NodeFiles] it mounts `/var/log/pods` read-only and runs as root to read the
+     * kubelet's files; with [PodLogSource.None] it mounts no hostPath and runs restricted.
      */
-    @Suppress("LongMethod")
-    fun buildDaemonSet() =
+    fun buildDaemonSet(podLogSource: PodLogSource = PodLogSource.NodeFiles) =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
             .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .withNewSpec()
             .withNewSelector()
-            .addToMatchLabels("app.kubernetes.io/name", APP_LABEL)
+            .addToMatchLabels(NAME_LABEL, APP_LABEL)
             .endSelector()
+            .withNewUpdateStrategy()
+            .withType("RollingUpdate")
+            .withNewRollingUpdate()
+            .withMaxSurge(IntOrString(1))
+            .withMaxUnavailable(IntOrString(0))
+            .endRollingUpdate()
+            .endUpdateStrategy()
             .withNewTemplate()
             .withNewMetadata()
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
-            .withNewSpec()
-            .withServiceAccountName(SERVICE_ACCOUNT_NAME)
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addNewToleration()
-            .withOperator("Exists")
-            .endToleration()
-            .addNewContainer()
-            .withName(APP_LABEL)
-            .withImage(IMAGE)
-            .withSecurityContext(
-                SecurityContextBuilder()
-                    .withPrivileged(true)
-                    .withRunAsUser(0L)
-                    .withRunAsGroup(0L)
-                    .build(),
-            ).withArgs("--config=/etc/otel-collector-config.yaml")
-            .addNewPort()
-            .withContainerPort(Constants.K8s.OTEL_GRPC_PORT)
-            .withHostPort(Constants.K8s.OTEL_GRPC_PORT)
-            .withProtocol("TCP")
-            .withName("otlp-grpc")
-            .endPort()
-            .addNewPort()
-            .withContainerPort(Constants.K8s.OTEL_HTTP_PORT)
-            .withHostPort(Constants.K8s.OTEL_HTTP_PORT)
-            .withProtocol("TCP")
-            .withName("otlp-http")
-            .endPort()
-            .addNewPort()
-            .withContainerPort(Constants.K8s.OTEL_HEALTH_PORT)
-            .withHostPort(Constants.K8s.OTEL_HEALTH_PORT)
-            .withProtocol("TCP")
-            .withName("health")
-            .endPort()
-            .addNewPort()
-            .withContainerPort(Constants.K8s.JAEGER_THRIFT_COMPACT_PORT)
-            .withHostPort(Constants.K8s.JAEGER_THRIFT_COMPACT_PORT)
-            .withProtocol("UDP")
-            .withName("jaeger-compact")
-            .endPort()
-            .addNewEnv()
-            .withName("HOSTNAME")
-            .withNewValueFrom()
-            .withNewFieldRef()
-            .withFieldPath("spec.nodeName")
-            .endFieldRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("CLUSTER_NAME")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("cluster_name")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("TENANT")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("tenant")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addToVolumeMounts(
-                VolumeMountBuilder()
-                    .withName("config")
-                    .withMountPath("/etc/otel-collector-config.yaml")
-                    .withSubPath(CONFIG_DATA_KEY)
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName("var-log")
-                    .withMountPath("/var/log")
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName("container-logs")
-                    .withMountPath("/mnt/db1/container-logs")
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName("cassandra-logs")
-                    .withMountPath("/mnt/db1/cassandra/logs")
-                    .withReadOnly(true)
-                    .build(),
-                // The host root, for the host_metrics receiver's root_path. Without it the
-                // filesystem scraper enumerates the container's own mounts and finds nothing worth
-                // reporting, which is why every filesystem panel was empty. Read-only: nothing here
-                // writes to the node.
-                VolumeMountBuilder()
-                    .withName(HOST_ROOT_VOLUME)
-                    .withMountPath(HOST_ROOT_MOUNT_PATH)
-                    .withReadOnly(true)
-                    .build(),
-            ).withNewLivenessProbe()
-            .withNewHttpGet()
-            .withPath("/")
-            .withNewPort(Constants.K8s.OTEL_HEALTH_PORT)
-            .endHttpGet()
-            .withInitialDelaySeconds(LIVENESS_INITIAL_DELAY)
-            .withPeriodSeconds(LIVENESS_PERIOD)
-            .endLivenessProbe()
-            .withNewReadinessProbe()
-            .withNewHttpGet()
-            .withPath("/")
-            .withNewPort(Constants.K8s.OTEL_HEALTH_PORT)
-            .endHttpGet()
-            .withInitialDelaySeconds(READINESS_INITIAL_DELAY)
-            .withPeriodSeconds(READINESS_PERIOD)
-            .endReadinessProbe()
-            .endContainer()
-            .addNewVolume()
-            .withName("config")
-            .withConfigMap(
-                ConfigMapVolumeSourceBuilder()
-                    .withName(CONFIGMAP_NAME)
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("var-log")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/var/log")
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("container-logs")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/mnt/db1/container-logs")
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName(HOST_ROOT_VOLUME)
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/")
-                    .withType("Directory")
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("cassandra-logs")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath("/mnt/db1/cassandra/logs")
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .endSpec()
+            .withSpec(buildPodSpec(podLogSource))
             .endTemplate()
             .endSpec()
             .build()
 
+    private fun buildPodSpec(podLogSource: PodLogSource): PodSpec =
+        PodSpecBuilder()
+            .withServiceAccountName(SERVICE_ACCOUNT_NAME)
+            .withHostNetwork(false)
+            .addNewToleration()
+            .withOperator("Exists")
+            .endToleration()
+            .withContainers(buildContainer(podLogSource))
+            .withVolumes(buildVolumes(podLogSource))
+            .build()
+
+    private fun buildContainer(podLogSource: PodLogSource): Container =
+        ContainerBuilder()
+            .withName(APP_LABEL)
+            .withImage(IMAGE)
+            .withSecurityContext(securityContext(podLogSource))
+            .withArgs("--config=$CONFIG_PATH")
+            .withPorts(containerPorts())
+            .withEnv(env())
+            .withVolumeMounts(volumeMounts(podLogSource))
+            .withLivenessProbe(healthProbe(LIVENESS_INITIAL_DELAY, LIVENESS_PERIOD))
+            .withReadinessProbe(healthProbe(READINESS_INITIAL_DELAY, READINESS_PERIOD))
+            .build()
+
     /**
-     * Builds a ClusterIP Service exposing the OTLP gRPC port (4317) for in-cluster access.
-     *
-     * Allows standard K8s pods (non-hostNetwork, e.g. TiDB Operator-managed pods) to push
-     * traces to `otel-collector.default.svc.cluster.local:4317` without knowing node IPs.
+     * Never privileged and never able to escalate. Reading the kubelet's pod log files needs root
+     * (they are root-owned, mode 0640), so [PodLogSource.NodeFiles] runs as root with every
+     * capability dropped except the read override; [PodLogSource.None] is a restricted context.
+     */
+    private fun securityContext(podLogSource: PodLogSource): SecurityContext {
+        val builder =
+            SecurityContextBuilder()
+                .withPrivileged(false)
+                .withAllowPrivilegeEscalation(false)
+                .withNewSeccompProfile()
+                .withType("RuntimeDefault")
+                .endSeccompProfile()
+        return when (podLogSource) {
+            PodLogSource.NodeFiles ->
+                builder
+                    .withRunAsUser(0L)
+                    .withRunAsGroup(0L)
+                    .withNewCapabilities()
+                    .withDrop("ALL")
+                    .withAdd("DAC_READ_SEARCH")
+                    .endCapabilities()
+                    .build()
+            PodLogSource.None ->
+                builder
+                    .withRunAsNonRoot(true)
+                    .withRunAsUser(Constants.OtelCollector.NON_ROOT_UID)
+                    .withRunAsGroup(Constants.OtelCollector.NON_ROOT_UID)
+                    .withNewCapabilities()
+                    .withDrop("ALL")
+                    .endCapabilities()
+                    .build()
+        }
+    }
+
+    /** Container ports only: the core is reached through its Service, never a host port. */
+    private fun containerPorts(): List<ContainerPort> =
+        listOf(
+            port(Constants.K8s.OTEL_GRPC_PORT, "TCP", "otlp-grpc"),
+            port(Constants.K8s.OTEL_HTTP_PORT, "TCP", "otlp-http"),
+            port(Constants.K8s.OTEL_HEALTH_PORT, "TCP", "health"),
+            port(Constants.K8s.JAEGER_THRIFT_COMPACT_PORT, "UDP", "jaeger-compact"),
+        )
+
+    private fun port(
+        number: Int,
+        protocol: String,
+        name: String,
+    ) = ContainerPortBuilder()
+        .withContainerPort(number)
+        .withProtocol(protocol)
+        .withName(name)
+        .build()
+
+    private fun env(): List<EnvVar> =
+        listOf(
+            fieldEnv("K8S_NODE_NAME", "spec.nodeName"),
+            fieldEnv("K8S_NODE_IP", "status.hostIP"),
+            clusterConfigEnv("CLUSTER_NAME", "cluster_name"),
+            clusterConfigEnv("TENANT", "tenant"),
+        )
+
+    private fun volumeMounts(podLogSource: PodLogSource): List<VolumeMount> =
+        listOfNotNull(
+            VolumeMountBuilder()
+                .withName("config")
+                .withMountPath(CONFIG_PATH)
+                .withSubPath(CONFIG_DATA_KEY)
+                .withReadOnly(true)
+                .build(),
+            when (podLogSource) {
+                PodLogSource.NodeFiles ->
+                    VolumeMountBuilder()
+                        .withName(POD_LOGS_VOLUME)
+                        .withMountPath(POD_LOGS_PATH)
+                        .withReadOnly(true)
+                        .build()
+                PodLogSource.None -> null
+            },
+        )
+
+    /**
+     * The config, and with [PodLogSource.NodeFiles] the kubelet's pod log directory. The kubelet
+     * resolves `/var/log/pods` itself, so a node whose pod logs live on NVMe through a symlink
+     * still mounts the real directory.
+     */
+    private fun buildVolumes(podLogSource: PodLogSource): List<Volume> =
+        listOfNotNull(
+            VolumeBuilder()
+                .withName("config")
+                .withNewConfigMap()
+                .withName(CONFIGMAP_NAME)
+                .endConfigMap()
+                .build(),
+            when (podLogSource) {
+                PodLogSource.NodeFiles ->
+                    VolumeBuilder()
+                        .withName(POD_LOGS_VOLUME)
+                        .withNewHostPath()
+                        .withPath(POD_LOGS_PATH)
+                        .withType("Directory")
+                        .endHostPath()
+                        .build()
+                PodLogSource.None -> null
+            },
+        )
+
+    private fun healthProbe(
+        initialDelay: Int,
+        period: Int,
+    ): Probe =
+        ProbeBuilder()
+            .withNewHttpGet()
+            .withPath("/")
+            .withNewPort(Constants.K8s.OTEL_HEALTH_PORT)
+            .endHttpGet()
+            .withInitialDelaySeconds(initialDelay)
+            .withPeriodSeconds(period)
+            .build()
+
+    /**
+     * Builds the `otel-collector` ClusterIP Service, the one OTLP endpoint for every in-cluster
+     * producer (`otel-collector.<ns>.svc`, see [OtelEndpoints]): OTLP gRPC 4317, OTLP HTTP 4318 and
+     * Jaeger compact 6831/UDP. `internalTrafficPolicy: Local` keeps each producer on its own node's
+     * core pod. It selects `app.kubernetes.io/name=otel-collector` only, which the host add-on's pods
+     * (`otel-collector-host`) do not carry.
      */
     fun buildService() =
         ServiceBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
             .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .withNewSpec()
             .withType("ClusterIP")
-            .addToSelector("app.kubernetes.io/name", APP_LABEL)
+            .withInternalTrafficPolicy("Local")
+            .addToSelector(NAME_LABEL, APP_LABEL)
             .addNewPort()
             .withName("otlp-grpc")
             .withPort(Constants.K8s.OTEL_GRPC_PORT)
+            .withProtocol("TCP")
+            .endPort()
+            .addNewPort()
+            .withName("otlp-http")
+            .withPort(Constants.K8s.OTEL_HTTP_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewPort()
@@ -733,3 +631,17 @@ class OtelManifestBuilder(
             .endSpec()
             .build()
 }
+
+/** An env var from the downward API's [fieldPath]. */
+internal fun fieldEnv(
+    name: String,
+    fieldPath: String,
+): EnvVar =
+    EnvVarBuilder()
+        .withName(name)
+        .withNewValueFrom()
+        .withNewFieldRef()
+        .withFieldPath(fieldPath)
+        .endFieldRef()
+        .endValueFrom()
+        .build()

@@ -1,0 +1,207 @@
+# The host add-on collector (otel-collector-host): what only a privileged, host-network pod can read.
+# It owns the node's OTLP listener on 4317 and 4318, so host processes that are not pods (the
+# Cassandra Java agent on an AMI node, the profiling reconcile script, Fluent Bit, EMR) keep their
+# endpoint, plus host metrics, host log files and the localhost scrapes of Beyla, ebpf_exporter and
+# Cilium. It exports nothing to a backend: every pipeline ends in otlp_grpc/core, the otel-collector
+# Service, which reaches the core pod on this node (internalTrafficPolicy: Local). Exporters,
+# tenant headers, connectors and the EMR host transforms stay in the core.
+#
+# No memory_limiter: it refuses and drops data under load, and the nodes have the memory.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  host_metrics:
+    collection_interval: 10s
+    # The collector is a container, so without this the scrapers describe the container rather than
+    # the node. filesystem in particular saw nothing at all and reported no series, which is why
+    # every filesystem panel was empty. A receiver-level setting, not a per-scraper one; the host
+    # root is bind-mounted read-only at /hostfs by OtelHostCollectorManifestBuilder.
+    root_path: /hostfs
+    scrapers:
+      # The per-core `cpu` attribute is opt-in on this scraper; dashboards break CPU time down by
+      # core, so it is requested explicitly.
+      cpu:
+        metrics:
+          system.cpu.time:
+            attributes: [cpu, state]
+      disk:
+      load:
+      filesystem:
+        # Virtual filesystems - overlay, tmpfs, devtmpfs, sysfs, proc, cgroup - are already absent:
+        # include_virtual_filesystems defaults to false, and the scraper passes that straight to
+        # gopsutil, which then lists only filesystems that are not `nodev` in /proc/filesystems.
+        #
+        # squashfs is the exception. It is device-backed, so it is not filtered by that default, and
+        # every snap on an Ubuntu host is a separate read-only squashfs mount at 100% full. Left in,
+        # they crowd out the real disks on any filesystem panel.
+        exclude_fs_types:
+          fs_types:
+            - squashfs
+          match_type: strict
+        # system.filesystem.utilization is an optional metric and is OFF by default - measured, not
+        # assumed. It is the ready-made 0-1 fraction the disk-usage panel wants; without it a panel
+        # has to derive the ratio from the used/free/reserved states itself.
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+      memory:
+      network:
+      paging:
+        # Same story: system.paging.utilization is optional and off by default.
+        metrics:
+          system.paging.utilization:
+            enabled: true
+      processes:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'beyla'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['localhost:9400']
+          relabel_configs:
+            - target_label: instance
+              replacement: '${env:K8S_NODE_NAME}:9400'
+            - target_label: cluster
+              replacement: '${env:CLUSTER_NAME}'
+        - job_name: 'ebpf-exporter'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['localhost:9435']
+          relabel_configs:
+            - target_label: instance
+              replacement: '${env:K8S_NODE_NAME}:9435'
+            - target_label: cluster
+              replacement: '${env:CLUSTER_NAME}'
+        # This collector's own telemetry, under its own job name so it never duplicates the core's
+        # otel-collector series.
+        - job_name: 'otel-collector-host'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['localhost:8888']
+          relabel_configs:
+            - target_label: instance
+              replacement: '${env:K8S_NODE_NAME}:8888'
+            - target_label: cluster
+              replacement: '${env:CLUSTER_NAME}'
+        # The Cilium agent, Hubble and operator jobs (Cilium clusters only), built by
+        # OtelHostCollectorManifestBuilder: their relabel rules name Prometheus meta labels, whose
+        # double-underscore form is the TemplateService placeholder syntax.
+__CNI_SCRAPE_JOBS__
+  file_log/system:
+    include:
+      - /var/log/**/*.log
+      - /var/log/messages
+      - /var/log/syslog
+    exclude:
+      - /var/log/**/*.gz
+      - /var/log/**/*.old
+      - /var/log/easydblab/tools/*.log
+      - /var/log/containers/**
+      - /var/log/pods/**
+    start_at: end
+    include_file_path: true
+    include_file_name: true
+    # On the resource, not the record: Loki indexes `source` only as a resource attribute.
+    resource:
+      source: system
+  file_log/tools:
+    include:
+      - /var/log/easydblab/tools/*.log
+    start_at: beginning
+    include_file_path: true
+    include_file_name: true
+    resource:
+      source: tool-runner
+  # The JVM GC log only. Cassandra's application logs (system.log, debug.log) reach the collector
+  # over OTLP from the OpenTelemetry Java agent (logs/otlp, service_name="cassandra"); tailing the
+  # files too stored every Cassandra line twice. The GC log is written by the JVM itself
+  # (-Xlog:gc in cassandra.in.sh), so the agent never sees it. -Xlog rotation keeps gc.log plus
+  # gc.log.0..9 (filecount=10); the rotated files are included so lines written just before a
+  # rotation are not lost, and the file fingerprint keeps a renamed file from being read twice.
+  # `source: cassandra-gc` keeps it apart from the OTLP Cassandra stream.
+  file_log/cassandra:
+    include:
+      - /mnt/db1/cassandra/logs/gc.log*
+    exclude:
+      - /mnt/db1/cassandra/logs/gc.log*.gz
+    start_at: end
+    include_file_path: true
+    include_file_name: true
+    resource:
+      source: cassandra-gc
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+  # host.name is the node's Kubernetes name (spec.nodeName), the same value the core stamps, so a
+  # host series and a pod series on one node share a host.name.
+  resource/host_name:
+    attributes:
+      - action: upsert
+        key: host.name
+        value: ${env:K8S_NODE_NAME}
+  # The node's role from its host name (owner decision): db<N> is db, app<N> is app, control<N> is
+  # control. Host metrics and host log files carry no pod, so nothing else can give them one. A
+  # node_role that is already set is left alone.
+  transform/node_role_from_host:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["node_role"], "db") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^db[0-9]+$")
+          - set(attributes["node_role"], "app") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^app[0-9]+$")
+          - set(attributes["node_role"], "control") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^control[0-9]+$")
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["node_role"], "db") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^db[0-9]+$")
+          - set(attributes["node_role"], "app") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^app[0-9]+$")
+          - set(attributes["node_role"], "control") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^control[0-9]+$")
+
+exporters:
+  # The core collector, through its Service. The core owns every backend exporter and the tenant.
+  otlp_grpc/core:
+    endpoint: ${env:OTEL_CORE_ENDPOINT}
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    # Host processes that dial the node (the Cassandra Java agent, profiling reconcile, Fluent Bit,
+    # EMR): passed through unchanged. The core applies the cluster label, the SDK drop and the EMR
+    # host handling, as it does for a pod's OTLP.
+    metrics/otlp:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_grpc/core]
+    logs/otlp:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_grpc/core]
+    traces/otlp:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_grpc/core]
+    # Host metrics and the localhost scrapes of Beyla, ebpf_exporter and Cilium.
+    metrics/local:
+      receivers: [host_metrics, prometheus]
+      processors: [resource/host_name, transform/node_role_from_host, batch]
+      exporters: [otlp_grpc/core]
+    # Host log files: system logs, tool-runner output and the Cassandra JVM GC log. Each sets
+    # `source` on the resource, which keeps the core's log counters from counting them.
+    logs/local:
+      receivers: [file_log/system, file_log/tools, file_log/cassandra]
+      processors: [resource/host_name, transform/node_role_from_host, batch]
+      exporters: [otlp_grpc/core]

@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -87,6 +88,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { EbpfExporterManifestBuilder() }
                 single { JournaldOtelManifestBuilder(get()) }
                 single { OtelManifestBuilder(get()) }
+                single { OtelHostCollectorManifestBuilder(get()) }
                 single { PyroscopeManifestBuilder(get()) }
                 single { TempoManifestBuilder(get()) }
                 single { MimirManifestBuilder(get()) }
@@ -101,6 +103,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 // User, and EventBus come from BaseKoinTest's core mocks via get().
                 single<ObservabilityStackService> {
                     DefaultObservabilityStackService(
+                        get(),
                         get(),
                         get(),
                         get(),

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.util.concurrent.Callable
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.FutureTask
@@ -79,40 +80,43 @@ enum class BackendState(
 }
 
 /**
- * Where one step of the save is: the step it runs and the state of the one workload it owns. Each
+ * Where one step of the save is: the step it runs and the state of the workloads it owns. Each
  * parallel step has its own, so no two threads write the same progress; `down` merges their
- * workload states once every step has finished.
+ * workload states once every step has finished. Most steps own one workload; stopping the
+ * telemetry senders owns both collectors.
  *
  * @param first the step the save starts in.
- * @property owns the workload this step may change, if any.
+ * @property owns the workloads this step may change, if any.
  */
 class FlushProgress(
     first: FlushStep,
-    private val owns: String? = null,
+    private val owns: Set<String>,
 ) {
+    /** A step that owns at most one workload. */
+    constructor(first: FlushStep, owned: String? = null) : this(first, setOfNotNull(owned))
+
     /** The step running now, or the one that failed. */
     @Volatile
     var step: FlushStep = first
         private set
 
-    @Volatile
-    private var state: BackendState = BackendState.RUNNING
+    private val states = ConcurrentHashMap<String, BackendState>(owns.associateWith { BackendState.RUNNING })
 
-    /** The owned workload's state, or nothing when this step owns no workload. */
-    val backends: Map<String, BackendState> get() = owns?.let { mapOf(it to state) }.orEmpty()
+    /** Each owned workload's state, or nothing when this step owns no workload. */
+    val backends: Map<String, BackendState> get() = owns.associateWith { states.getValue(it) }
 
     /** Starts [step]. */
     fun begin(step: FlushStep) {
         this.step = step
     }
 
-    /** Records that [workload], the one this step owns, is now in [state]. */
+    /** Records that [workload], one this step owns, is now in [state]. */
     fun mark(
         workload: String,
         state: BackendState,
     ) {
-        require(workload == owns) { "this step owns ${owns ?: "no workload"}, not $workload" }
-        this.state = state
+        require(workload in owns) { "this step owns ${owns.ifEmpty { setOf("no workload") }}, not $workload" }
+        states[workload] = state
     }
 }
 
@@ -294,7 +298,7 @@ class DefaultTeardownFlushService private constructor(
                 .onSuccess { tasks += SaveTask(TailSignal.LOGS, progress) { lokiFlush.flush(controlHost, clusterState, progress) } }
                 .onFailure { failed[TailSignal.LOGS] = it as FlushStepFailed }
         }
-        val sendersProgress = FlushProgress(FlushStep.SENDERS_STOP, Constants.K8s.OTEL_COLLECTOR_APP_LABEL).also(progresses::add)
+        val sendersProgress = FlushProgress(FlushStep.SENDERS_STOP, TelemetrySenders.COLLECTORS.toSet()).also(progresses::add)
         val sendersStop = attempt(sendersProgress) { stopSenders(sendersProgress) }
 
         if (TailSignal.METRICS in pending) {
@@ -351,10 +355,10 @@ class DefaultTeardownFlushService private constructor(
         eventBus.emit(Event.Grafana.AnnotationsMirrored(mirrored))
     }
 
-    /** Deletes the OTel collector and waits for its pods to go; succeeds when it is already gone. */
+    /** Deletes both OTel collectors and waits for their pods to go; succeeds when they are already gone. */
     private fun stopSenders(progress: FlushProgress) {
-        // Marked before the call: a stop that times out may still have deleted the DaemonSet.
-        progress.mark(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.DELETED)
+        // Marked before the call: a stop that times out may still have deleted the DaemonSets.
+        TelemetrySenders.COLLECTORS.forEach { progress.mark(it, BackendState.DELETED) }
         telemetrySenders.stop(timeouts.sendersStop)
         eventBus.emit(Event.Teardown.TelemetrySendersStopped)
     }

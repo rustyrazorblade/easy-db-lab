@@ -12,69 +12,17 @@ receivers:
     protocols:
       thrift_compact:
         endpoint: 0.0.0.0:6831
-  host_metrics:
-    collection_interval: 10s
-    # The collector is a container, so without this the scrapers describe the container rather than
-    # the node. filesystem in particular saw nothing at all and reported no series, which is why
-    # every filesystem panel was empty. A receiver-level setting, not a per-scraper one; the host
-    # root is bind-mounted read-only at /hostfs by OtelManifestBuilder.
-    root_path: /hostfs
-    scrapers:
-      # The per-core `cpu` attribute is opt-in on this scraper; dashboards break CPU time down by
-      # core, so it is requested explicitly.
-      cpu:
-        metrics:
-          system.cpu.time:
-            attributes: [cpu, state]
-      disk:
-      load:
-      filesystem:
-        # Virtual filesystems - overlay, tmpfs, devtmpfs, sysfs, proc, cgroup - are already absent:
-        # include_virtual_filesystems defaults to false, and the scraper passes that straight to
-        # gopsutil, which then lists only filesystems that are not `nodev` in /proc/filesystems.
-        #
-        # squashfs is the exception. It is device-backed, so it is not filtered by that default, and
-        # every snap on an Ubuntu host is a separate read-only squashfs mount at 100% full. Left in,
-        # they crowd out the real disks on any filesystem panel.
-        exclude_fs_types:
-          fs_types:
-            - squashfs
-          match_type: strict
-        # system.filesystem.utilization is an optional metric and is OFF by default - measured, not
-        # assumed. It is the ready-made 0-1 fraction the disk-usage panel wants; without it a panel
-        # has to derive the ratio from the used/free/reserved states itself.
-        metrics:
-          system.filesystem.utilization:
-            enabled: true
-      memory:
-      network:
-      paging:
-        # Same story: system.paging.utilization is optional and off by default.
-        metrics:
-          system.paging.utilization:
-            enabled: true
-      processes:
+  # The kubelet's per-node, per-pod and per-container resource figures, read from this node's own
+  # kubelet (RBAC nodes/stats). The core is on the pod network, so the node is reached at its IP.
+  # Runs on every environment: it adds k8s.* and container.* series and none collide with others.
+  kubelet_stats:
+    collection_interval: 15s
+    auth_type: serviceAccount
+    endpoint: https://${env:K8S_NODE_IP}:10250
+    insecure_skip_verify: true
   prometheus:
     config:
       scrape_configs:
-        - job_name: 'beyla'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['localhost:9400']
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:9400'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
-        - job_name: 'ebpf-exporter'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['localhost:9435']
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:9435'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
         # The collector's own telemetry: exporter send failures, queue sizes, refused points. Without
         # it a Tempo exporter failing every send looks exactly like a cluster with no traffic.
         - job_name: 'otel-collector'
@@ -83,109 +31,20 @@ receivers:
             - targets: ['localhost:8888']
           relabel_configs:
             - target_label: instance
-              replacement: '${env:HOSTNAME}:8888'
+              replacement: '${env:K8S_NODE_NAME}:8888'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
         # Built by OtelManifestBuilder: the Mimir, Loki, Tempo and Pyroscope server jobs (local mode
-        # only; a redirect cluster deploys none of them), the kube-state-metrics pod-discovery job (every cluster)
-        # and the Cilium agent/operator/Hubble jobs (Cilium clusters only). The pod-discovery jobs are rendered in
+        # only; a redirect cluster deploys none of them), the kube-state-metrics pod-discovery job
+        # (every cluster) and the YACE job (CloudWatch only). The pod-discovery jobs are rendered in
         # Kotlin rather than written here because their relabel rules name Prometheus meta labels,
         # whose double-underscore prefix and suffix is the template placeholder syntax of
         # TemplateService: written in this file they would derail every substitution after them.
+        # Host sources (Beyla, ebpf_exporter, Cilium, host metrics and host files) are in the host
+        # add-on, otel-host-collector-config.yaml, which forwards to this collector over OTLP.
 __INFRA_SCRAPE_JOBS__
 __KIT_SCRAPE_JOBS__
-  file_log/system:
-    include:
-      - /var/log/**/*.log
-      - /var/log/messages
-      - /var/log/syslog
-    exclude:
-      - /var/log/**/*.gz
-      - /var/log/**/*.old
-      - /var/log/easydblab/tools/*.log
-      - /var/log/containers/**
-      - /var/log/pods/**
-    start_at: end
-    include_file_path: true
-    include_file_name: true
-    # On the resource, not the record: Loki indexes `source` only as a resource attribute.
-    resource:
-      source: system
-  file_log/containers:
-    include:
-      - /var/log/pods/**/*.log
-    exclude:
-      - /var/log/pods/default_otel-collector-*/**
-      - /var/log/pods/default_fluent-bit-journald-*/**
-      - /var/log/pods/default_chi-clickhouse-*/**
-      - /var/log/pods/default_chk-clickhouse-keeper-*/**
-    start_at: end
-    include_file_path: true
-    include_file_name: false
-    operators:
-      - type: container
-        id: container_parser
-        on_error: send
-  file_log/clickhouse-containers:
-    include:
-      - /var/log/pods/default_chi-clickhouse-*/**/*.log
-      - /var/log/pods/default_chk-clickhouse-keeper-*/**/*.log
-    start_at: end
-    include_file_path: true
-    include_file_name: false
-    operators:
-      - type: container
-        id: container_parser
-        on_error: send
-      - type: regex_parser
-        id: extract_ch_parts
-        regex: '^.*?<(?P<ch_level>Debug|Information|Warning|Error|Fatal|Trace)>\s+(?P<ch_message>.+)$'
-        parse_from: body
-        parse_to: attributes
-        on_error: send
-      - type: severity_parser
-        id: parse_ch_severity
-        parse_from: attributes.ch_level
-        on_error: send
-        mapping:
-          debug: Debug
-          info: Information
-          warn: Warning
-          error: Error
-          fatal: Fatal
-          trace: Trace
-      - type: move
-        id: set_ch_body
-        from: attributes.ch_message
-        to: body
-        on_error: send
-  file_log/tools:
-    include:
-      - /var/log/easydblab/tools/*.log
-    start_at: beginning
-    include_file_path: true
-    include_file_name: true
-    resource:
-      source: tool-runner
-  # The JVM GC log only. Cassandra's application logs (system.log, debug.log) reach the collector
-  # over OTLP from the OpenTelemetry Java agent (logs/otlp, service_name="cassandra"); tailing the
-  # files too stored every Cassandra line twice. The GC log is written by the JVM itself
-  # (-Xlog:gc in cassandra.in.sh), so the agent never sees it. -Xlog rotation keeps gc.log plus
-  # gc.log.0..9 (filecount=10); the rotated files are included so lines written just before a
-  # rotation are not lost, and the file fingerprint keeps a renamed file from being read twice.
-  # `source: cassandra-gc` keeps it apart from the OTLP Cassandra stream.
-  file_log/cassandra:
-    include:
-      - /mnt/db1/cassandra/logs/gc.log*
-    exclude:
-      - /mnt/db1/cassandra/logs/gc.log*.gz
-    start_at: end
-    include_file_path: true
-    include_file_name: true
-    resource:
-      source: cassandra-gc
-  # NOTE: ClickHouse logs via container stdout/stderr (K8s pod),
-  # collected by file_log/containers. File-based receivers are not used.
+__POD_LOG_RECEIVERS__
 
 processors:
   batch:
@@ -266,19 +125,19 @@ processors:
         key: telemetry.sdk.name
       - action: delete
         key: telemetry.sdk.version
-  resource_detection:
-    detectors: [system]
-    system:
-      hostname_sources: ["os"]
-      resource_attributes:
-        host.name:
-          enabled: true
+  # host.name is this node's Kubernetes name (K8S_NODE_NAME, from spec.nodeName). The collector runs
+  # on the pod network, so the OS hostname a system detector would read is the collector pod's name.
+  resource/host_name:
+    attributes:
+      - action: upsert
+        key: host.name
+        value: ${env:K8S_NODE_NAME}
   # An EMR node's collector sends its own host.name (and node_role spark-master or spark-worker)
-  # over OTLP to this collector. resource_detection overwrites host.name with this node's, which is
+  # over OTLP to this collector. resource/host_name overwrites host.name with this node's, which is
   # right for a JVM in a pod (it reports the pod's name) and wrong for EMR: every Spark master and
   # worker arrived as host_name="control0", collided with the real control node, and made the
   # host-joined panels fail with "found duplicate series". metrics/otlp sets the EMR host aside
-  # before resource_detection and puts it back after.
+  # before resource/host_name and puts it back after.
   transform/keep_emr_host:
     # Fail fast: since the rename the transform processor ignores statement errors by default.
     error_mode: propagate
@@ -508,7 +367,7 @@ connectors:
         # severity_number, not severity_text: the text is inconsistent across libraries (Cassandra
         # logs WARN, the AxonOps agent logs WARNING) and would split one level into two series.
         conditions:
-          - severity_number >= SEVERITY_NUMBER_WARN
+          - severity_number >= SEVERITY_NUMBER_WARN and resource.attributes["source"] == nil
         attributes:
           - key: logger
             default_value: unknown
@@ -517,18 +376,18 @@ connectors:
       cassandra.log.gc_events:
         description: GCInspector log events, which carry pause detail the JVM metrics do not.
         conditions:
-          - IsMatch(instrumentation_scope.name, ".*GCInspector$")
+          - IsMatch(instrumentation_scope.name, ".*GCInspector$") and resource.attributes["source"] == nil
       cassandra.log.status_dumps:
         description: StatusLogger dumps, which Cassandra emits under pressure.
         conditions:
-          - IsMatch(instrumentation_scope.name, ".*StatusLogger$")
+          - IsMatch(instrumentation_scope.name, ".*StatusLogger$") and resource.attributes["source"] == nil
       cassandra.log.dropped_message_reports:
         description: MessagingMetrics drop reports - one per verb per 5s window in which anything dropped.
         # MessagingMetrics, verified against real lines. An earlier guess at MessagingService and
         # NoSpamLogger matched nothing at all, which is the failure this whole file keeps guarding
         # against: a wrong name here is silent, permanent and looks exactly like "nothing dropped".
         conditions:
-          - IsMatch(instrumentation_scope.name, ".*MessagingMetrics$")
+          - IsMatch(instrumentation_scope.name, ".*MessagingMetrics$") and resource.attributes["source"] == nil
 
   # Turns the figures parsed out of a log body into metrics whose VALUE is the number, not the
   # number of records. The count connector above cannot do this: it only ever emits how many
@@ -545,7 +404,7 @@ connectors:
         description: Duration of one GCInspector event. See gc_name - Cycles lines are concurrent work, not pauses.
         unit: s
         conditions:
-          - attributes["gc_event_ms"] != nil
+          - attributes["gc_event_ms"] != nil and resource.attributes["source"] == nil
         attributes:
           - key: gc_name
         histogram:
@@ -555,7 +414,7 @@ connectors:
         description: Wall time of one compaction, as CompactionTask reports it.
         unit: s
         conditions:
-          - attributes["compaction_ms"] != nil
+          - attributes["compaction_ms"] != nil and resource.attributes["source"] == nil
         histogram:
           value: Double(attributes["compaction_ms"]) / 1000
 
@@ -563,7 +422,7 @@ connectors:
         description: Compacted size as a fraction of the original. Exposed nowhere else.
         unit: "1"
         conditions:
-          - attributes["compaction_ratio_pct"] != nil
+          - attributes["compaction_ratio_pct"] != nil and resource.attributes["source"] == nil
         histogram:
           value: Double(attributes["compaction_ratio_pct"]) / 100
 
@@ -571,7 +430,7 @@ connectors:
         description: SSTables merged by one compaction.
         unit: "{sstable}"
         conditions:
-          - attributes["compaction_sstables"] != nil
+          - attributes["compaction_sstables"] != nil and resource.attributes["source"] == nil
         histogram:
           value: Double(attributes["compaction_sstables"])
 
@@ -582,7 +441,7 @@ connectors:
         description: Messages dropped inside this node, by verb.
         unit: "{message}"
         conditions:
-          - attributes["dropped_internal"] != nil
+          - attributes["dropped_internal"] != nil and resource.attributes["source"] == nil
         attributes:
           - key: dropped_type
         sum:
@@ -592,7 +451,7 @@ connectors:
         description: Messages dropped in transit from a peer, by verb.
         unit: "{message}"
         conditions:
-          - attributes["dropped_cross_node"] != nil
+          - attributes["dropped_cross_node"] != nil and resource.attributes["source"] == nil
         attributes:
           - key: dropped_type
         sum:
@@ -602,7 +461,7 @@ connectors:
         description: Mean latency of internally dropped messages over a 5s window, by verb.
         unit: s
         conditions:
-          - attributes["dropped_internal_ms"] != nil
+          - attributes["dropped_internal_ms"] != nil and resource.attributes["source"] == nil
         attributes:
           - key: dropped_type
         histogram:
@@ -612,7 +471,7 @@ connectors:
         description: Mean latency of cross-node dropped messages over a 5s window, by verb.
         unit: s
         conditions:
-          - attributes["dropped_cross_node_ms"] != nil
+          - attributes["dropped_cross_node_ms"] != nil and resource.attributes["source"] == nil
         attributes:
           - key: dropped_type
         histogram:
@@ -656,33 +515,32 @@ extensions:
 service:
   extensions: [health_check]
   pipelines:
-    # Local metrics — resource_detection stamps host.name, k8s_attributes adds the pod labels of
-    # scraped kit pods, and transform/node_role_from_host derives any node_role still unset from the host
+    # Metrics this collector scrapes itself: the kubelet's stats, pod-discovered backends and kits,
+    # and static kit NodePorts at the node IP. resource/host_name stamps this node's name,
+    # k8s_attributes adds the pod labels of scraped kit pods, and transform/node_role_from_host
+    # derives any node_role still unset from the host. Host metrics arrive from the host add-on over
+    # OTLP, in metrics/otlp.
     metrics/local:
-      receivers: [host_metrics, prometheus]
-      processors: [resource/cluster, resource_detection, k8s_attributes, transform/node_role_from_host, batch]
+      receivers: [kubelet_stats, prometheus]
+      processors: [resource/cluster, resource/host_name, k8s_attributes, transform/node_role_from_host, batch]
       exporters: [prometheus_remote_write]
-    # OTLP metrics — the Cassandra JVM agent, the stress sidecar, Spark nodes. resource/cluster
-    # stamps the cluster label to match local metrics; resource/drop_sdk_metadata removes the SDK's
-    # default resource, which would otherwise ride along as fifteen labels per series. The EMR
-    # nodes' host.name survives resource_detection through transform/keep_emr_host and
-    # transform/restore_emr_host.
+    # OTLP metrics — the Cassandra JVM agent, the stress sidecar, Spark nodes, and everything the
+    # host add-on forwards (host metrics, Beyla, ebpf_exporter, Cilium). resource/cluster stamps the
+    # cluster label to match local metrics; resource/drop_sdk_metadata removes the SDK's default
+    # resource, which would otherwise ride along as fifteen labels per series. The EMR nodes'
+    # host.name survives resource/host_name through transform/keep_emr_host and
+    # transform/restore_emr_host. The host add-on forwards to the core on its own node
+    # (internalTrafficPolicy: Local), so resource/host_name leaves its host.name unchanged.
     metrics/otlp:
       receivers: [otlp]
-      processors: [resource/cluster, transform/keep_emr_host, resource_detection, transform/restore_emr_host, resource/drop_sdk_metadata, batch]
+      processors: [resource/cluster, transform/keep_emr_host, resource/host_name, transform/restore_emr_host, resource/drop_sdk_metadata, batch]
       exporters: [prometheus_remote_write]
-    # Host log files: system logs, tool-runner output and the Cassandra JVM GC log. Cassandra's
-    # application logs are not here; they arrive once, over OTLP, in logs/otlp.
-    logs/local:
-      receivers: [file_log/system, file_log/tools, file_log/cassandra]
-      processors: [resource/cluster, resource_detection, transform/node_role_from_host, batch]
-      exporters: [otlp_http/logs]
-    logs/containers:
-      receivers: [file_log/containers, file_log/clickhouse-containers]
-      processors: [k8s_attributes, transform/add_service, resource/cluster, batch]
-      exporters: [otlp_http/logs]
-    # OTLP logs — the Cassandra JVM agent (the only path for Cassandra's application logs) and
-    # Fluent Bit's journald lines. resource/drop_sdk_metadata
+__POD_LOG_PIPELINE__
+    # OTLP logs — the Cassandra JVM agent (the only path for Cassandra's application logs), Fluent
+    # Bit's journald lines and the host add-on's host log files (system, tools, the Cassandra GC
+    # log). Each host file source sets `source` on the resource, and the count and signal_to_metrics
+    # connectors ignore any record that carries one, so a forwarded host line is never counted as a
+    # Cassandra log record. resource/drop_sdk_metadata
     # matters even more here than on metrics: process.command_line is kilobytes of argv on EVERY
     # record, so it would bloat every stored line and change on a `cassandra use`.
     # transform/source_to_resource lifts journald's `source` onto the resource so Loki indexes it.
@@ -719,10 +577,10 @@ service:
       exporters: [prometheus_remote_write]
     # The service_graph connector emits on an EMPTY resource: it keeps none of the spans'. Every
     # node runs this collector, and each counts the edges of the spans it receives (a database edge
-    # is complete from one client span, so no edge is split). Without resource_detection's host.name
+    # is complete from one client span, so no edge is split). Without resource/host_name
     # the db nodes' collectors wrote one series together, and Mimir read the jumps between writers
     # as counter resets. Dashboards sum by (client, server) across hosts.
     metrics/servicegraph:
       receivers: [service_graph]
-      processors: [resource/cluster, resource_detection, batch]
+      processors: [resource/cluster, resource/host_name, batch]
       exporters: [prometheus_remote_write]

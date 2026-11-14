@@ -21,6 +21,7 @@ import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -57,6 +58,7 @@ import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.reset
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -102,6 +104,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 single { EbpfExporterManifestBuilder() }
                 single { JournaldOtelManifestBuilder(get()) }
                 single { OtelManifestBuilder(get()) }
+                single { OtelHostCollectorManifestBuilder(get()) }
                 single { PyroscopeManifestBuilder(get()) }
                 single { TempoManifestBuilder(get()) }
                 single { MimirManifestBuilder(get()) }
@@ -174,6 +177,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 getKoin().get(),
                 getKoin().get(),
+                getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
                 DashboardInstallContextFactory(sharedStoreTenants()),
                 capabilitiesOf = { capabilities },
@@ -226,6 +230,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
                 Event.Grafana.StageSkipped("YACE", NodeCapability.CLOUDWATCH),
                 Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
             )
@@ -248,6 +255,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
             )
     }
 
@@ -285,6 +295,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
                 Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
             )
     }
@@ -325,6 +338,70 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 .flatMap { stage -> stage.requires.filter { it !in capabilities }.map { stage.label to it } }
         assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().map { it.stage to it.capability })
             .containsExactlyInAnyOrderElementsOf(reported)
+    }
+
+    @Test
+    fun `the host add-on and the Pyroscope agent are applied only where pods may be privileged`() {
+        service.deploy().getOrThrow()
+        assertThat(appliedKindNames()).contains("DaemonSet/otel-collector-host", "DaemonSet/pyroscope-ebpf")
+
+        reset(mockK8sService)
+        stubK8sSuccess()
+        capabilities = NodeCapabilities(setOf(NodeCapability.HOST_PATH, NodeCapability.CLOUDWATCH, NodeCapability.S3))
+        service.deploy().getOrThrow()
+
+        val applied = appliedKindNames()
+        assertThat(applied).doesNotContain("DaemonSet/otel-collector-host", "DaemonSet/pyroscope-ebpf")
+        // The Pyroscope server is not privileged, so it is still applied and awaited.
+        assertThat(applied).contains("Deployment/pyroscope", "DaemonSet/otel-collector")
+        val awaited = argumentCaptor<List<WorkloadRef>>()
+        verify(mockK8sService, atLeastOnce()).waitForRollouts(awaited.capture(), eq("default"), any())
+        assertThat(awaited.allValues.flatten()).contains(WorkloadRef(WorkloadKind.Deployment, "pyroscope"))
+        assertThat(awaited.allValues.flatten()).doesNotContain(
+            WorkloadRef(WorkloadKind.DaemonSet, "otel-collector-host"),
+            WorkloadRef(WorkloadKind.DaemonSet, "pyroscope-ebpf"),
+        )
+    }
+
+    @Test
+    fun `without hostPath volumes the core collector runs without pod logs and says so`() {
+        capabilities =
+            NodeCapabilities(setOf(NodeCapability.PRIVILEGED, NodeCapability.SYSTEMD_JOURNAL, NodeCapability.CLOUDWATCH, NodeCapability.S3))
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactly(Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH))
+        assertThat(appliedOtelConfig()).doesNotContain("file_log")
+        assertThat(appliedKindNames()).contains("DaemonSet/otel-collector")
+    }
+
+    /**
+     * On an in-place update the old core pods hold hostPorts 4317 and 4318 until their rollout ends,
+     * so the add-on, which binds those ports on the host, is applied only after the core has rolled.
+     */
+    @Test
+    fun `the host add-on is applied only after the core collector has rolled out`() {
+        val calls = mutableListOf<String>()
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenAnswer {
+            val resource = it.getArgument<HasMetadata>(0)
+            calls += "apply ${resource.kind}/${resource.metadata.name}"
+            Result.success(Unit)
+        }
+        whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenAnswer {
+            calls += "wait ${it.getArgument<List<WorkloadRef>>(0)}"
+            Result.success(Unit)
+        }
+
+        service.deploy().getOrThrow()
+
+        val core = calls.indexOf("apply DaemonSet/otel-collector")
+        val coreWait = calls.indexOf("wait [DaemonSet/otel-collector]")
+        val addOn = calls.indexOf("apply DaemonSet/otel-collector-host")
+        assertThat(core).isNotNegative()
+        assertThat(coreWait).isGreaterThan(core)
+        assertThat(addOn).isGreaterThan(coreWait)
     }
 
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */
@@ -375,6 +452,14 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         val configMap = captor.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "otel-collector-config" }
         return checkNotNull(configMap.data["otel-collector-config.yaml"])
+    }
+
+    /** The host add-on collector config YAML as it was applied to the cluster. */
+    private fun appliedHostConfig(): String {
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
+        val configMap = captor.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "otel-collector-host-config" }
+        return checkNotNull(configMap.data["otel-host-collector-config.yaml"])
     }
 
     /** Every applied resource as a "kind/name" string, in apply order. */
@@ -496,16 +581,17 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the collector config carries the Cilium scrape jobs only when the cluster state says Cilium`() {
+    fun `the host add-on config carries the Cilium scrape jobs only when the cluster state says Cilium`() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Cilium))
         service.deploy().getOrThrow()
-        assertThat(appliedOtelConfig()).contains("cilium-agent").contains("cilium-operator")
+        assertThat(appliedHostConfig()).contains("cilium-agent").contains("cilium-operator")
+        assertThat(appliedOtelConfig()).doesNotContain("cilium")
 
         reset(mockK8sService)
         stubK8sSuccess()
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Flannel))
         service.deploy().getOrThrow()
-        assertThat(appliedOtelConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
+        assertThat(appliedHostConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
     }
 
     @Test
@@ -517,12 +603,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val applied = appliedKindNames()
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockK8sService)
-        order.verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
+        order.verify(mockK8sService, times(2)).waitForRollouts(workloads.capture(), eq("default"), any())
         order.verify(mockK8sService).waitForPodsReady(any<Int>())
 
         // Grafana is applied by the dashboard service rather than a stage, so it is not among these.
         val expected = applied.filter { it.startsWith("Deployment/") || it.startsWith("DaemonSet/") }.distinct() + "Deployment/grafana"
-        assertThat(workloads.firstValue.map { it.toString() }).containsExactlyInAnyOrderElementsOf(expected)
+        assertThat(workloads.lastValue.map { it.toString() }).containsExactlyInAnyOrderElementsOf(expected)
         assertThat(expected).contains("DaemonSet/otel-collector", "Deployment/tempo", "Deployment/pyroscope")
     }
 
@@ -565,8 +651,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         service.deploy().getOrThrow()
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
-        verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
-        assertThat(workloads.firstValue).doesNotContain(WorkloadRef(WorkloadKind.Deployment, "grafana"))
+        verify(mockK8sService, atLeastOnce()).waitForRollouts(workloads.capture(), eq("default"), any())
+        assertThat(workloads.allValues.flatten()).doesNotContain(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }
 
     /**

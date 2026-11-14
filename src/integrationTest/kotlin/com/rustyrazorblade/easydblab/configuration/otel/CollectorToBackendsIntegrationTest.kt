@@ -137,11 +137,13 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
             .withExtraHost("mimir.default.svc.cluster.local", bridgeAddress(mimir))
             .withExtraHost("loki.default.svc.cluster.local", bridgeAddress(loki))
             .withCopyToContainer(Transferable.of(config), "/etc/otel-collector-config.yaml")
-            .withCopyToContainer(Transferable.of(""), "${OtelManifestBuilder.HOST_ROOT_MOUNT_PATH}/.keep")
             .withCopyToContainer(Transferable.of("placeholder"), "$SA_DIR/token")
             .withCopyToContainer(Transferable.of("default"), "$SA_DIR/namespace")
+            // kubelet_stats loads the in-cluster CA when it starts.
+            .withCopyToContainer(Transferable.of(ServiceAccountCa.pem()), "$SA_DIR/ca.crt")
             .withCreateContainerCmdModifier { it.withHostName(CONTROL_HOST) }
-            .withEnv("HOSTNAME", "node0")
+            .withEnv("K8S_NODE_NAME", CONTROL_HOST)
+            .withEnv("K8S_NODE_IP", "127.0.0.1")
             .withEnv("CLUSTER_NAME", CLUSTER)
             .withEnv("TENANT", TENANT)
             .withEnv("KUBERNETES_SERVICE_HOST", "127.0.0.1")

@@ -2,10 +2,11 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.PodLogSource
 import com.rustyrazorblade.easydblab.configuration.otel.WorkloadScrapeConfig
 import io.fabric8.kubernetes.api.model.HasMetadata
 
@@ -16,17 +17,18 @@ import io.fabric8.kubernetes.api.model.HasMetadata
  * and the kit-driven sync ([OtelSyncService]). They must stamp the same config hash on the
  * collector's pod template, or the next deploy after a kit start sees a "changed" collector and
  * rolls it for nothing. Both build it here, so every input to that hash — the export
- * destinations, the CNI, the runtime `cluster-config` — comes from the same place.
+ * destinations, the pod-log source, the runtime `cluster-config` — comes from the same place.
  */
 object CollectorResources {
     /**
      * Builds the collector's resources for [clusterState] with [scrapeConfigs], hashed against its
      * own ConfigMaps and the `cluster-config` data for [controlHost].
      *
-     * The export destinations and the CNI are read from the cluster's recorded init config. A
-     * cluster with no recorded CNI predates Cilium and runs Flannel.
+     * The export destinations are read from the cluster's recorded init config. The CNI scrape jobs
+     * are the host add-on's, so the core does not depend on the CNI.
      *
-     * [capabilities] decides which environment-bound scrape jobs exist (`yace` needs CloudWatch);
+     * [capabilities] decides which environment-bound scrape jobs exist (`yace` needs CloudWatch) and
+     * whether the core tails pod log files (`HOST_PATH`);
      * both callers derive it with `NodeCapabilities.from` and pass it in, so the deploy and the kit sync render the same config.
      */
     fun build(
@@ -43,9 +45,13 @@ object CollectorResources {
                 capabilities,
                 scrapeConfigs,
                 initConfig?.telemetryRedirect,
-                initConfig?.cni ?: CniMode.Flannel,
+                podLogSource(capabilities),
             ),
             mapOf(ClusterConfigData.NAME to ClusterConfigData.of(controlHost, clusterState, region)),
         )
     }
+
+    /** Pod log files are on the node, so the core reads them only where hostPath volumes exist. */
+    fun podLogSource(capabilities: NodeCapabilities): PodLogSource =
+        if (NodeCapability.HOST_PATH in capabilities) PodLogSource.NodeFiles else PodLogSource.None
 }

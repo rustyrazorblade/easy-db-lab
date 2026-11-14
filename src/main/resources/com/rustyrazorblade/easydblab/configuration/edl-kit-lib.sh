@@ -18,8 +18,7 @@
 #   wait -n, and no "${arr[@]}" on an array that can be empty (it fails under set -u before 4.4).
 # - It needs no jq.
 #
-# The functions read KIT_NAME, KUBECONFIG (through kubectl) and CONTROL_HOST_PRIVATE from the
-# environment. A function that fails prints why to stderr and exits the calling script.
+# The functions read KIT_NAME and KUBECONFIG (through kubectl) from the environment. A function that fails prints why to stderr and exits the calling script.
 
 # How long a pod may stay Pending, with no image pull error, before the wait gives up.
 EDL_POD_START_TIMEOUT_SECONDS="${EDL_POD_START_TIMEOUT_SECONDS:-600}"
@@ -27,6 +26,8 @@ EDL_POD_START_TIMEOUT_SECONDS="${EDL_POD_START_TIMEOUT_SECONDS:-600}"
 EDL_POLL_SECONDS="${EDL_POLL_SECONDS:-2}"
 # The most bytes edl_create_configmap puts in one ConfigMap; the API server rejects more than 1 MiB.
 EDL_CONFIGMAP_MAX_BYTES=1000000
+# Checks, 0.1s apart, for the gauge push's `kubectl proxy` to start serving.
+EDL_PROXY_START_TRIES="${EDL_PROXY_START_TRIES:-50}"
 
 # Prints the message to stderr and exits the calling script with status 1.
 edl_fail() {
@@ -238,13 +239,16 @@ edl_wait_for_pod_exit() {
   done
 }
 
-# Pushes gauges labelled kit=${KIT_NAME} to the collector on the control node as OTLP JSON, under
-# service name $1. Usage: edl_push_gauges <service-name> <name> <value> [<name> <value> ...]. A value
-# that is missing or not a number is sent as 0. A failed push never fails the calling script; the
-# first one prints a warning, and EDL_GAUGE_PUSH_WARNED keeps the rest quiet.
+# Pushes gauges labelled kit=${KIT_NAME} to the core OTel collector as OTLP JSON, under service name
+# $1. Usage: edl_push_gauges <service-name> <name> <value> [<name> <value> ...]. A value that is
+# missing or not a number is sent as 0. A failed push never fails the calling script; the first one
+# prints a warning, and EDL_GAUGE_PUSH_WARNED keeps the rest quiet.
+#
+# The collector is reached through its Service by the API server's service proxy, on a
+# `kubectl proxy` that lives only for this push: no node listens for OTLP unless the host add-on
+# runs there, and `kubectl create --raw` cannot send the Content-Type the collector requires.
 edl_push_gauges() {
-  local service="$1" now points="" sep="" value code=0
-  local url="http://${CONTROL_HOST_PRIVATE}:4318/v1/metrics"
+  local service="$1" now points="" sep="" value code=0 banner proxy_pid port="" tries=0
   shift
   now="$(date +%s)000000000"
   while [ "$#" -ge 1 ]; do
@@ -254,14 +258,29 @@ edl_push_gauges() {
     sep=","
     if [ "$#" -ge 2 ]; then shift 2; else shift; fi
   done
-  curl -sf --max-time 2 -X POST "${url}" \
-    -H 'Content-Type: application/json' \
-    --data-binary "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"${service}\"}}]},\"scopeMetrics\":[{\"metrics\":[${points}]}]}]}" \
-    > /dev/null 2>&1 || code=$?
-  if [ "${code}" -ne 0 ] && [ -z "${EDL_GAUGE_PUSH_WARNED:-}" ]; then
+  banner="$(mktemp)"
+  kubectl proxy --port=0 --address=127.0.0.1 > "${banner}" 2>&1 &
+  proxy_pid=$!
+  while [ -z "${port}" ] && [ "${tries}" -lt "${EDL_PROXY_START_TRIES}" ]; do
+    port="$(sed -n 's/^Starting to serve on 127\.0\.0\.1:\([0-9][0-9]*\)$/\1/p' "${banner}")"
+    [ -n "${port}" ] || { tries=$((tries + 1)); sleep 0.1; }
+  done
+  if [ -n "${port}" ]; then
+    curl -sf --max-time 2 -X POST \
+      "http://127.0.0.1:${port}/api/v1/namespaces/default/services/otel-collector:otlp-http/proxy/v1/metrics" \
+      -H 'Content-Type: application/json' \
+      --data-binary "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"${service}\"}}]},\"scopeMetrics\":[{\"metrics\":[${points}]}]}]}" \
+      > /dev/null 2>&1 || code=$?
+  else
+    code="no kubectl proxy"
+  fi
+  kill "${proxy_pid}" 2> /dev/null || true
+  wait "${proxy_pid}" 2> /dev/null || true
+  rm -f "${banner}"
+  if [ "${code}" != 0 ] && [ -z "${EDL_GAUGE_PUSH_WARNED:-}" ]; then
     EDL_GAUGE_PUSH_WARNED=1
-    printf 'warning: could not push %s gauges to %s (curl exit %s); the dashboard will not show this run\n' \
-      "${service}" "${url}" "${code}" >&2
+    printf 'warning: could not push %s gauges to the otel-collector Service (curl exit %s); the dashboard will not show this run\n' \
+      "${service}" "${code}" >&2
   fi
   return 0
 }

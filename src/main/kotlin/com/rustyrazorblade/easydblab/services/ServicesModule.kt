@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -109,6 +110,7 @@ val servicesModule =
         factoryOf(::GrafanaManifestBuilder)
         factoryOf(::JournaldOtelManifestBuilder)
         factoryOf(::OtelManifestBuilder)
+        factoryOf(::OtelHostCollectorManifestBuilder)
         factoryOf(::PyroscopeManifestBuilder)
         factoryOf(::RegistryManifestBuilder)
         factoryOf(::S3ManagerManifestBuilder)

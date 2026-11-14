@@ -14,6 +14,7 @@
 #   log.<n>           what the n-th `kubectl logs -f` prints; logs-exit.<n> its exit status
 #   full-log          what `kubectl logs <pod>` (no -f) prints
 #   run-exit          the exit status of `kubectl run` (default 0)
+#   proxy-fail        present: `kubectl proxy` exits 1 without serving
 #
 # and records:
 #
@@ -102,6 +103,11 @@ case "$1" in
     esac
     ;;
   describe) echo "Events: stub describe events for $3"; exit 0 ;;
+  proxy)
+    [ -f "${S}/proxy-fail" ] && { echo "error: unable to listen" >&2; exit 1; }
+    echo "Starting to serve on 127.0.0.1:18001"
+    exit 0
+    ;;
   run)
     n=$(next run)
     for a in "$@"; do case "${a}" in --overrides=*) printf '%s\n' "${a#--overrides=}" > "${S}/overrides.${n}" ;; esac; done

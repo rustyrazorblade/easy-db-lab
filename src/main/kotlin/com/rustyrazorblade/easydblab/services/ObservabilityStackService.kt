@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -17,6 +18,7 @@ import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -83,6 +85,7 @@ class DefaultObservabilityStackService(
     private val eventBus: EventBus,
     private val grafanaDeployService: GrafanaDeployService,
     private val otelManifestBuilder: OtelManifestBuilder,
+    private val otelHostCollectorManifestBuilder: OtelHostCollectorManifestBuilder,
     private val journaldOtelManifestBuilder: JournaldOtelManifestBuilder,
     private val ebpfExporterManifestBuilder: EbpfExporterManifestBuilder,
     private val mimirManifestBuilder: MimirManifestBuilder,
@@ -106,12 +109,13 @@ class DefaultObservabilityStackService(
      * One deploy stage: a human label and the resources it applies. A stage is applied only where
      * the environment provides every capability in [requires]; a stage that needs more than one
      * (e.g. journald needs a systemd journal *and* a privileged pod to read it) is skipped if any is
-     * absent.
+     * absent. Every workload in [rolledOutFirst] has finished rolling out before the stage is applied.
      */
     private data class Stage(
         val label: String,
         val resources: List<HasMetadata>,
         val requires: Set<NodeCapability> = emptySet(),
+        val rolledOutFirst: List<WorkloadRef> = emptyList(),
     )
 
     /**
@@ -156,7 +160,7 @@ class DefaultObservabilityStackService(
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
-            val stages = applyCapabilityGate(buildStages(telemetryRedirect), capabilities)
+            val stages = applyCapabilityGate(buildStages(telemetryRedirect, clusterState.initConfig?.cni ?: CniMode.Flannel), capabilities)
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
             // not, so prepare them only in local mode.
@@ -183,6 +187,7 @@ class DefaultObservabilityStackService(
             val appliedResources = hashedStages.flatMap { it.resources }
             configChangeReport.report(appliedResources, DEFAULT_NAMESPACE)
             for (stage in hashedStages) {
+                awaitRollouts(stage.rolledOutFirst)
                 applyStage(stage)
             }
 
@@ -220,20 +225,44 @@ class DefaultObservabilityStackService(
                 }
         }
 
+    /** Waits for [workloads] to finish rolling out, failing the deploy if they do not. */
+    private fun awaitRollouts(workloads: List<WorkloadRef>) {
+        if (workloads.isEmpty()) return
+        k8sService
+            .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+            .getOrElse { exception -> error("$workloads did not finish rolling out: ${exception.message}") }
+    }
+
     /**
      * The stages to apply after the collector. Collectors and supporting infra deploy in both modes;
      * the local telemetry backends are local-mode only.
+     *
+     * The host add-on comes first and waits for the core's rollout: on an in-place update the old
+     * core pods held hostPorts 4317 and 4318, which the add-on binds on the host. The Pyroscope eBPF
+     * agent is privileged and is its own stage, so an environment without privileged pods still
+     * runs, and waits on, the Pyroscope server.
      */
-    private fun buildStages(telemetryRedirect: TelemetryRedirect?): List<Stage> =
+    private fun buildStages(
+        telemetryRedirect: TelemetryRedirect?,
+        cni: CniMode,
+    ): List<Stage> =
         ObservabilityStage.declared(telemetryRedirect).map { stage ->
-            Stage(stage.label, resourcesOf(stage, telemetryRedirect), stage.requires)
+            Stage(stage.label, resourcesOf(stage, telemetryRedirect, cni), stage.requires, rolledOutFirstFor(stage))
+        }
+
+    private fun rolledOutFirstFor(stage: ObservabilityStage): List<WorkloadRef> =
+        when (stage) {
+            ObservabilityStage.OTEL_HOST_COLLECTOR -> listOf(WorkloadRef(WorkloadKind.DaemonSet, Constants.K8s.OTEL_COLLECTOR_APP_LABEL))
+            else -> emptyList()
         }
 
     private fun resourcesOf(
         stage: ObservabilityStage,
         telemetryRedirect: TelemetryRedirect?,
+        cni: CniMode,
     ): List<HasMetadata> =
         when (stage) {
+            ObservabilityStage.OTEL_HOST_COLLECTOR -> otelHostCollectorManifestBuilder.buildAllResources(cni)
             ObservabilityStage.KUBE_STATE_METRICS -> kubeStateMetricsManifestBuilder.buildAllResources()
             ObservabilityStage.FLUENT_BIT_JOURNALD -> journaldOtelManifestBuilder.buildAllResources()
             ObservabilityStage.EBPF_EXPORTER -> ebpfExporterManifestBuilder.buildAllResources()
@@ -244,13 +273,11 @@ class DefaultObservabilityStackService(
             ObservabilityStage.MIMIR -> mimirManifestBuilder.buildAllResources()
             ObservabilityStage.LOKI -> lokiManifestBuilder.buildAllResources()
             ObservabilityStage.TEMPO -> tempoManifestBuilder.buildAllResources()
-            ObservabilityStage.PYROSCOPE -> pyroscopeManifestBuilder.buildAllResources()
-            // Redirect: the eBPF agent still runs on every node, pointed at the external Pyroscope;
-            // the server does not exist here.
-            ObservabilityStage.PYROSCOPE_AGENT ->
-                pyroscopeManifestBuilder.buildAgentResources(
-                    checkNotNull(telemetryRedirect) { "The Pyroscope agent stage is declared only in redirect mode" },
-                )
+            ObservabilityStage.PYROSCOPE -> pyroscopeManifestBuilder.buildServerResources()
+            // Every node, in both modes; under a redirect it points at the external Pyroscope.
+            ObservabilityStage.PYROSCOPE_AGENT -> pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect)
+            // The core collector already left its pod-log receiver out (CollectorResources).
+            ObservabilityStage.POD_LOGS -> emptyList()
         }
 
     /**

@@ -276,7 +276,7 @@ test_gauges_are_pushed_as_otlp_json_labelled_with_the_kit() {
   start_test "gauge body"
   run_lib 'edl_push_gauges clickhouse-benchmark clickhouse_benchmark_qps 12.5 clickhouse_benchmark_errors abc clickhouse_benchmark_rows_per_second ""'
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
-  grep -Fqx 'http://10.0.0.5:4318/v1/metrics' "${STUB_STATE}/curl.1" || fail "not sent to the collector: $(cat "${STUB_STATE}/curl.1")"
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/services/otel-collector:otlp-http/proxy/v1/metrics' "${STUB_STATE}/curl.1" || fail "not sent to the core collector Service through the API proxy: $(cat "${STUB_STATE}/curl.1")"
   local gauges body
   gauges="$(pushed_gauges)"
   for expected in "clickhouse_benchmark_qps bench-ch 12.5" "clickhouse_benchmark_errors bench-ch 0" \
@@ -294,8 +294,19 @@ test_a_failed_push_returns_0() {
   run_lib 'edl_push_gauges sysbench sysbench_tps 1; edl_push_gauges sysbench sysbench_tps 2; echo after'
   [ "${rc}" -eq 0 ] || fail "exited ${rc}"
   [ "${out}" = after ] || fail "the script did not continue: ${out}"
-  [ "${err}" = "warning: could not push sysbench gauges to http://10.0.0.5:4318/v1/metrics (curl exit 7); the dashboard will not show this run" ] ||
+  [ "${err}" = "warning: could not push sysbench gauges to the otel-collector Service (curl exit 7); the dashboard will not show this run" ] ||
     fail "not one warning on stderr across two failed pushes: ${err}"
+}
+
+test_a_push_whose_proxy_never_serves_returns_0_without_curl() {
+  start_test "kubectl proxy fails"
+  touch "${STUB_STATE}/proxy-fail"
+  run_lib 'EDL_PROXY_START_TRIES=3; edl_push_gauges sysbench sysbench_tps 1; echo after'
+  [ "${rc}" -eq 0 ] || fail "exited ${rc}"
+  [ "${out}" = after ] || fail "the script did not continue: ${out}"
+  [ ! -e "${STUB_STATE}/curl.1" ] || fail "posted with no proxy: $(cat "${STUB_STATE}/curl.1")"
+  grep -Fq "could not push sysbench gauges to the otel-collector Service (curl exit no kubectl proxy)" <<< "${err}" ||
+    fail "no warning: ${err}"
 }
 
 test_sourcing_changes_no_option_and_defines_only_edl_names() {
@@ -345,6 +356,7 @@ test_a_failed_log_stream_does_not_end_a_pipefail_script
 test_exit_codes_are_reported
 test_gauges_are_pushed_as_otlp_json_labelled_with_the_kit
 test_a_failed_push_returns_0
+test_a_push_whose_proxy_never_serves_returns_0_without_curl
 test_sourcing_changes_no_option_and_defines_only_edl_names
 test_a_script_run_outside_easy_db_lab_says_so
 

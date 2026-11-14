@@ -7,19 +7,12 @@ import org.junit.jupiter.api.Test
 
 class ObservabilityStageTest {
     @Test
-    fun `local mode declares the in-cluster backends and redirect mode the Pyroscope agent instead`() {
+    fun `local mode declares the in-cluster backends, and both modes the Pyroscope agent`() {
         val local = ObservabilityStage.declared(null).map { it.label }
         val redirect = ObservabilityStage.declared(TelemetryRedirect.fromBaseHost("10.0.0.9")).map { it.label }
 
-        assertThat(local).contains("Mimir", "Loki", "Tempo", "Pyroscope").doesNotContain("Pyroscope Agent")
+        assertThat(local).contains("Mimir", "Loki", "Tempo", "Pyroscope", "Pyroscope Agent")
         assertThat(redirect).contains("Pyroscope Agent").doesNotContain("Mimir", "Loki", "Tempo", "Pyroscope")
-    }
-
-    @Test
-    fun `the redirect-mode Pyroscope agent needs a privileged pod`() {
-        val agent = ObservabilityStage.declared(TelemetryRedirect.fromBaseHost("10.0.0.9")).single { it.label == "Pyroscope Agent" }
-
-        assertThat(agent.requires).containsExactly(NodeCapability.PRIVILEGED)
     }
 
     @Test
@@ -28,11 +21,14 @@ class ObservabilityStageTest {
 
         assertThat(requires).containsExactlyInAnyOrderEntriesOf(
             mapOf(
+                "OTel Host Collector" to setOf(NodeCapability.PRIVILEGED),
                 "Fluent Bit Journald" to setOf(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.PRIVILEGED),
                 "ebpf_exporter" to setOf(NodeCapability.PRIVILEGED),
                 "S3 Manager" to setOf(NodeCapability.S3),
                 "Beyla" to setOf(NodeCapability.PRIVILEGED),
                 "YACE" to setOf(NodeCapability.CLOUDWATCH),
+                "Pyroscope Agent" to setOf(NodeCapability.PRIVILEGED),
+                "Pod logs" to setOf(NodeCapability.HOST_PATH),
             ),
         )
     }

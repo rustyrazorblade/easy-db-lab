@@ -63,8 +63,12 @@ class InMemoryObjectStore(
         val bytes = get(remotePath).bytes
         localPath.toAbsolutePath().parent?.let { Files.createDirectories(it) }
         val staged = Files.createTempFile(localPath.toAbsolutePath().parent, ".download", ".tmp")
-        Files.write(staged, bytes)
-        Files.move(staged, localPath, StandardCopyOption.REPLACE_EXISTING)
+        try {
+            Files.write(staged, bytes)
+            Files.move(staged, localPath, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            Files.deleteIfExists(staged)
+        }
         return ObjectStore.DownloadResult(localPath, bytes.size.toLong())
     }
 
@@ -163,5 +167,5 @@ class InMemoryObjectStore(
 
     override fun directoryExists(remotePath: ClusterStoragePath): Boolean = listFiles(remotePath, recursive = true).isNotEmpty()
 
-    override fun uriOf(path: ClusterStoragePath): String = "mem://$path"
+    override fun uriOf(path: ClusterStoragePath): String = "mem://${path.bucket}/${path.getKey()}"
 }

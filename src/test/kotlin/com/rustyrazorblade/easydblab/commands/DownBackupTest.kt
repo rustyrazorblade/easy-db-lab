@@ -229,6 +229,51 @@ class DownBackupTest : BaseKoinTest() {
             .contains("down --force")
     }
 
+    /**
+     * K3s never started, so no step reached the cluster. The report must not say a workload was
+     * deleted or stopped, nor that the save left anything stopped: it could not have observed that.
+     */
+    @Test
+    fun `steps that never reached the cluster are reported as such and name no workload as stopped`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        previewFindsResources()
+        val backends =
+            mapOf(
+                "loki" to BackendState.UNREACHED,
+                "mimir" to BackendState.UNREACHED,
+                "otel-collector" to BackendState.UNREACHED,
+            )
+        val failures =
+            mapOf(
+                TailSignal.METRICS to
+                    FlushStepFailed(
+                        FlushStep.MIMIR_SHUTDOWN,
+                        backends,
+                        java.net.SocketException("Malformed reply from SOCKS server"),
+                        unreached = true,
+                    ),
+                TailSignal.TRACES to
+                    FlushStepFailed(
+                        FlushStep.SENDERS_STOP,
+                        backends,
+                        java.io.FileNotFoundException("kubeconfig (No such file or directory)"),
+                        unreached = true,
+                    ),
+            )
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.failure(TailFlushFailed(failures, backends)))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(errorOutput())
+            .contains("could not reach the cluster")
+            .contains("Malformed reply from SOCKS server")
+            .contains("kubeconfig (No such file or directory)")
+            .contains("mimir: ${BackendState.UNREACHED.description}")
+            .doesNotContain("deleted", "scaled to 0", "left stopped", "Stopped by the save")
+    }
+
     @Test
     fun `a re-run reports the recorded signals as already saved and saves the rest`() {
         whenever(clusterStateManager.exists()).thenReturn(true)

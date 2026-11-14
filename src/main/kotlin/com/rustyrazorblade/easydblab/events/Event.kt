@@ -4453,18 +4453,28 @@ sealed interface Event {
              * @property signal the signal, as the operator reads it.
              * @property step the step it stopped in.
              * @property reason why it stopped.
+             * @property unreached true when the step never reached the cluster, so it changed nothing.
              */
             @Serializable
             data class SignalFailure(
                 val signal: String,
                 val step: String,
                 val reason: String,
+                val unreached: Boolean = false,
             )
 
             override fun toDisplayString(): String =
                 buildString {
                     appendLine("The pre-teardown save failed for ${failures.size} signal(s):")
-                    failures.forEach { appendLine("  ${it.signal}: '${it.step}' failed: ${it.reason}") }
+                    failures.forEach {
+                        appendLine(
+                            if (it.unreached) {
+                                "  ${it.signal}: '${it.step}' could not reach the cluster: ${it.reason}"
+                            } else {
+                                "  ${it.signal}: '${it.step}' failed: ${it.reason}"
+                            },
+                        )
+                    }
                     appendLine("down stopped: no infrastructure was removed, and nothing was started again.")
                     if (backends.isNotEmpty()) {
                         appendLine("Workloads: " + backends.entries.joinToString("; ") { (name, state) -> "$name: $state" })

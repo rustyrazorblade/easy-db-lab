@@ -218,6 +218,59 @@ class TeardownFlushServiceTest {
         assertThat(outcome.saved.keys).containsExactlyInAnyOrder(TailSignal.PROFILES, TailSignal.ANNOTATIONS)
     }
 
+    /**
+     * A cluster whose K3s never started: every step fails before it reaches anything. A step marks its
+     * workload before the call, because a timeout may still have changed it; a failure that never
+     * reached the cluster takes that mark back, so nothing is reported as stopped or deleted.
+     */
+    @Test
+    fun `steps that never reach the cluster report their workloads as unreached, not stopped`() {
+        sendersFailure = java.io.FileNotFoundException("kubeconfig (No such file or directory)")
+        val outcome =
+            service(
+                loki = throwing("loki", SignalReport.Logs, java.net.SocketException("Malformed reply from SOCKS server")),
+                mimir = throwing("mimir", SignalReport.Metrics, java.net.ConnectException("Connection refused")),
+            ).saveTail(control, state, setOf(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES))
+
+        assertThat(outcome.saved).isEmpty()
+        assertThat(outcome.failed.values).allMatch { it.unreached }
+        assertThat(outcome.backends)
+            .containsEntry("loki", BackendState.UNREACHED)
+            .containsEntry("mimir", BackendState.UNREACHED)
+            .containsEntry("otel-collector", BackendState.UNREACHED)
+        assertThat(outcome.failed.getValue(TailSignal.TRACES)).hasMessageContaining("kubeconfig (No such file or directory)")
+    }
+
+    /** A timeout means the request may have arrived, so the conservative state stays and the step is not "unreached". */
+    @Test
+    fun `a timeout keeps the state the step marked`() {
+        val outcome =
+            service(
+                mimir = throwing("mimir", SignalReport.Metrics, java.net.SocketTimeoutException("Read timed out")),
+            ).saveTail(control, state, setOf(TailSignal.METRICS))
+
+        assertThat(outcome.failed.getValue(TailSignal.METRICS).unreached).isFalse()
+        assertThat(outcome.backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
+    }
+
+    /** A step that already got an answer keeps what that answer showed when a later step cannot reach the cluster. */
+    @Test
+    fun `an earlier observed state survives a later step that cannot reach the cluster`() {
+        val loki =
+            SignalFlush { _, _, progress ->
+                progress.begin(FlushStep.LOKI_SHUTDOWN)
+                progress.mark("loki", BackendState.INGESTER_STOPPED)
+                progress.begin(FlushStep.LOKI_SCALE_DOWN)
+                progress.mark("loki", BackendState.SCALED_TO_ZERO)
+                throw java.net.ConnectException("Connection refused")
+            }
+
+        val outcome = service(loki = loki).saveTail(control, state, setOf(TailSignal.LOGS))
+
+        assertThat(outcome.failed.getValue(TailSignal.LOGS).unreached).isTrue()
+        assertThat(outcome.backends).containsEntry("loki", BackendState.INGESTER_STOPPED)
+    }
+
     /** A failure of any other type still fails only its signal: it never escapes and loses the others. */
     @Test
     fun `an unexpected exception fails only its signal`() {

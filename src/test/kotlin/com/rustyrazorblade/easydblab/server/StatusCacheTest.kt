@@ -14,11 +14,12 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
-import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -40,6 +41,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -47,7 +49,7 @@ class StatusCacheTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockEc2InstanceService: EC2InstanceService
     private lateinit var mockVpcService: VpcService
-    private lateinit var mockK3sService: K3sService
+    private lateinit var mockKubernetesService: KubernetesService
     private lateinit var mockEmrService: EMRService
     private lateinit var mockOpenSearchService: OpenSearchService
     private lateinit var mockStressJobService: StressJobService
@@ -103,7 +105,7 @@ class StatusCacheTest : BaseKoinTest() {
                 single { mockClusterStateManager }
                 single { mockEc2InstanceService }
                 single<VpcService> { mockVpcService }
-                factory<K3sService> { mockK3sService }
+                factory<KubernetesService> { mockKubernetesService }
                 single { mockEmrService }
                 single { mockOpenSearchService }
                 single<StressJobService> { mockStressJobService }
@@ -116,7 +118,7 @@ class StatusCacheTest : BaseKoinTest() {
         mockClusterStateManager = mock()
         mockEc2InstanceService = mock()
         mockVpcService = mock()
-        mockK3sService = mock()
+        mockKubernetesService = mock()
         mockEmrService = mock()
         mockOpenSearchService = mock()
         mockStressJobService = mock()
@@ -441,9 +443,44 @@ class StatusCacheTest : BaseKoinTest() {
     }
 
     @Test
+    fun `kubernetes pods are listed from the workspace kubeconfig without a control host`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockClusterStateManager.load())
+            .thenReturn(testClusterState.copy(hosts = testClusterState.hosts - ServerType.Control))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(
+            Result.success(
+                listOf(
+                    KubernetesPod(
+                        namespace = "default",
+                        name = "grafana-0",
+                        status = "Running",
+                        ready = "1/1",
+                        restarts = 0,
+                        age = Duration.ofMinutes(5),
+                    ),
+                ),
+            ),
+        )
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val pods = Json.parseToJsonElement(statusCache.getStatus("kubernetes")!!).jsonObject["pods"]!!.jsonArray
+
+        assertThat(pods.map { it.jsonObject["name"]?.jsonPrimitive?.content }).containsExactly("grafana-0")
+    }
+
+    @Test
+    fun `kubernetes is null when the workspace has no kubeconfig`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        assertThat(statusCache.getStatus("kubernetes")).isEqualTo("null")
+    }
+
+    @Test
     fun `accessInfo observability names every backend on the control node`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
 
@@ -463,7 +500,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo has an S3 Manager only where the environment has S3`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
 
         fun accessInfo(capabilities: NodeCapabilities): JsonObject {
             statusCache = StatusCache(refreshIntervalSeconds = 3600, capabilitiesOf = { capabilities })
@@ -478,7 +515,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo lists a running kit's declared NodePort endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
@@ -493,7 +530,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `a stopped kit prints no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
@@ -506,7 +543,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo says why a running kit with an unreadable kit descriptor has no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("broken", "clickhouse")))
         installPackagedKit("clickhouse")
         File(context.workingDirectory, "broken").mkdirs()

@@ -37,9 +37,8 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         if (controlHosts.isNullOrEmpty()) {
             error("No control nodes found. Please ensure the environment is running.")
         }
-        val controlNode = controlHosts.first()
 
-        observabilityStackService.deploy(controlNode).getOrElse { exception ->
+        observabilityStackService.deploy().getOrElse { exception ->
             error("Failed to deploy observability stack: ${exception.message}")
         }
     }

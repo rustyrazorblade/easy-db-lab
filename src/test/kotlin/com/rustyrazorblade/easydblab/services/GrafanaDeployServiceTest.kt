@@ -79,9 +79,9 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         val stateManager = mock<ClusterStateManager>()
         whenever(stateManager.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
         manifestBuilder = GrafanaManifestBuilder(TemplateService(stateManager, getKoin().get()))
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any()))
             .thenReturn(Result.success(mapOf(WorkloadRef(WorkloadKind.Deployment, "grafana") to "running-hash")))
     }
 
@@ -111,7 +111,6 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(
-            controlHost = eq(testControlHost),
             namespace = eq("default"),
             name = eq("grafana-datasources"),
             data = any(),
@@ -124,7 +123,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
 
         assertThat(result.isSuccess).isTrue()
-        verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
+        verify(mockK8sService).createConfigMap(any(), eq("grafana-datasources"), any(), any())
     }
 
     @Test
@@ -133,12 +132,12 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
         val order = inOrder(mockTreeUploader, mockK8sService)
         order.verify(mockTreeUploader).upload(eq(testControlHost), any())
-        order.verify(mockK8sService, times(3)).applyResource(any(), any())
+        order.verify(mockK8sService, times(3)).applyResource(any())
     }
 
     @Test
     fun `deploy fails when createDatasourcesConfigMap fails`() {
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
 
         val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
@@ -155,12 +154,12 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to upload Grafana dashboards").contains("sftp failed")
-        verify(mockK8sService, never()).applyResource(any(), any())
+        verify(mockK8sService, never()).applyResource(any())
     }
 
     @Test
     fun `deploy fails when applyResource fails`() {
-        whenever(mockK8sService.applyResource(any(), any()))
+        whenever(mockK8sService.applyResource(any()))
             .thenReturn(Result.failure(RuntimeException("Apply failed")))
 
         val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
@@ -183,7 +182,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         service.deploy(testControlHost, context("other"), "acct-bucket").getOrThrow()
 
         val deployments = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, times(9)).applyResource(any(), deployments.capture())
+        verify(mockK8sService, times(9)).applyResource(deployments.capture())
         val hashes =
             deployments.allValues.filterIsInstance<Deployment>().map {
                 it.spec.template.metadata.annotations[Constants.K8s.CONFIG_HASH_ANNOTATION]
@@ -221,7 +220,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         service().deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
 
         val applied = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, times(3)).applyResource(any(), applied.capture())
+        verify(mockK8sService, times(3)).applyResource(applied.capture())
         val proxy =
             applied.allValues
                 .filterIsInstance<Deployment>()

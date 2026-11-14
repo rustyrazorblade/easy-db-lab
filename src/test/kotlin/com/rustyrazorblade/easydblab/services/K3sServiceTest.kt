@@ -2,11 +2,10 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.kubernetes.parseKubeconfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
-import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -45,8 +44,7 @@ class K3sServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single<RemoteOperationsService> { mockRemoteOps }
-                single<ClusterStateManager> { mock() }
-                factory<K3sService> { DefaultK3sService(get(), get(), get()) }
+                factory<K3sService> { DefaultK3sService(get(), get()) }
             },
         )
 
@@ -446,7 +444,7 @@ class K3sServiceTest : BaseKoinTest() {
         assertThat(result.isSuccess).isTrue()
 
         val expectedServerUrl = Constants.K3s.DEFAULT_SERVER_URL.replace("127.0.0.1", host.private)
-        val writtenConfig = KubeConfigUtils.parseConfig(localPath.toFile())
+        val writtenConfig = parseKubeconfig(localPath)
         val writtenCluster = writtenConfig.clusters.first()
 
         assertThat(writtenCluster.cluster.server).isEqualTo(expectedServerUrl)
@@ -489,6 +487,40 @@ class K3sServiceTest : BaseKoinTest() {
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull())
             .hasMessageContaining("contains no clusters")
+            .hasMessageContaining(host.alias)
+    }
+
+    @Test
+    fun `downloadAndConfigureKubeconfig returns the kubeconfig's current-context`(
+        @TempDir kubeDir: Path,
+    ) {
+        val host = Host(public = "54.123.45.67", private = "10.0.1.42", alias = "control0", availabilityZone = "us-west-2a")
+        doAnswer { invocation ->
+            Files.writeString(invocation.getArgument<Path>(2), loopbackKubeconfigYaml.replace("default", "k3s-ctx"))
+            null
+        }.whenever(mockRemoteOps)
+            .download(eq(host), eq(Constants.K3s.REMOTE_KUBECONFIG), any())
+
+        val context = k3sService.downloadAndConfigureKubeconfig(host, kubeDir.resolve("kubeconfig")).getOrThrow()
+
+        assertThat(context).isEqualTo("k3s-ctx")
+    }
+
+    @Test
+    fun `downloadAndConfigureKubeconfig fails when the kubeconfig names no current-context`(
+        @TempDir kubeDir: Path,
+    ) {
+        val host = Host(public = "54.123.45.67", private = "10.0.1.42", alias = "control0", availabilityZone = "us-west-2a")
+        doAnswer { invocation ->
+            Files.writeString(invocation.getArgument<Path>(2), loopbackKubeconfigYaml.replace("current-context: default", ""))
+            null
+        }.whenever(mockRemoteOps)
+            .download(eq(host), eq(Constants.K3s.REMOTE_KUBECONFIG), any())
+
+        val result = k3sService.downloadAndConfigureKubeconfig(host, kubeDir.resolve("kubeconfig"))
+
+        assertThat(result.exceptionOrNull())
+            .hasMessageContaining("current-context")
             .hasMessageContaining(host.alias)
     }
 }

@@ -74,7 +74,6 @@ class DefaultGrafanaDeployService(
         tenants: TenantSet,
     ): Result<Unit> =
         k8sService.createConfigMap(
-            controlHost = controlHost,
             namespace = DEFAULT_NAMESPACE,
             name = DATASOURCES_CONFIGMAP_NAME,
             data = datasourcesData(tenants),
@@ -110,14 +109,14 @@ class DefaultGrafanaDeployService(
                 manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket))),
                 mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants)),
             )
-        runCatching { configChangeReport.report(controlHost, resources, DEFAULT_NAMESPACE) }
+        runCatching { configChangeReport.report(resources, DEFAULT_NAMESPACE) }
             .getOrElse { exception -> return Result.failure(exception) }
         eventBus.emit(Event.Grafana.ResourcesApplying(resources.size))
         for (resource in resources) {
             val kind = resource.kind
             val name = resource.metadata?.name ?: "unknown"
             eventBus.emit(Event.Grafana.ResourceApplying(kind, name))
-            k8sService.applyResource(controlHost, resource).getOrElse { exception ->
+            k8sService.applyResource(resource).getOrElse { exception ->
                 return Result.failure(
                     IllegalStateException("Failed to apply $kind/$name: ${exception.message}", exception),
                 )

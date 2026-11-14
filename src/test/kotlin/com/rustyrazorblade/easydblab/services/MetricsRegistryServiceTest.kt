@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
@@ -25,14 +24,6 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
     private lateinit var eventBus: EventBus
     private lateinit var service: MetricsRegistryService
 
-    private val controlHost =
-        ClusterHost(
-            publicIp = "1.2.3.4",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-        )
-
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
@@ -53,9 +44,9 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
         mockOtelSyncService = getKoin().get()
         eventBus = EventBus()
 
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.deleteConfigMapsByLabels(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockOtelSyncService.syncConfigMap(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.deleteConfigMapsByLabels(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockOtelSyncService.syncConfigMap()).thenReturn(Result.success(Unit))
 
         service = DefaultMetricsRegistryService(mockK8sService, mockOtelSyncService, eventBus)
     }
@@ -63,10 +54,9 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
     @Test
     fun `register creates ConfigMap with workload-metrics and kit labels`() {
         val target = KitMetrics.Scrape(port = 9363, path = "/metrics")
-        service.register(controlHost = controlHost, kitName = "clickhouse", targets = listOf(target))
+        service.register(kitName = "clickhouse", targets = listOf(target))
 
         verify(mockK8sService).createConfigMap(
-            controlHost = controlHost,
             namespace = "default",
             name = "easydblab-metrics-clickhouse-clickhouse",
             data =
@@ -87,10 +77,9 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
     @Test
     fun `register uses kitName-jobName as ConfigMap name when job is provided`() {
         val target = KitMetrics.Scrape(port = 20180, path = "/metrics", job = "tikv")
-        service.register(controlHost = controlHost, kitName = "tidb", targets = listOf(target))
+        service.register(kitName = "tidb", targets = listOf(target))
 
         verify(mockK8sService).createConfigMap(
-            controlHost = controlHost,
             namespace = "default",
             name = "easydblab-metrics-tidb-tikv",
             data =
@@ -117,10 +106,9 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
                 job = "tikv",
                 podSelector = "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb",
             )
-        service.register(controlHost = controlHost, kitName = "tidb", targets = listOf(target))
+        service.register(kitName = "tidb", targets = listOf(target))
 
         verify(mockK8sService).createConfigMap(
-            controlHost = controlHost,
             namespace = "default",
             name = "easydblab-metrics-tidb-tikv",
             data =
@@ -148,32 +136,28 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
                 KitMetrics.Scrape(port = 32379, path = "/metrics", job = "pd"),
                 KitMetrics.Scrape(port = 32234, path = "/metrics", job = "tiflash"),
             )
-        service.register(controlHost = controlHost, kitName = "tidb", targets = targets)
+        service.register(kitName = "tidb", targets = targets)
 
         val tidbLabels = mapOf(Constants.K8s.WORKLOAD_METRICS_LABEL to "true", Constants.K8s.KIT_LABEL to "tidb")
         verify(mockK8sService).createConfigMap(
-            controlHost = controlHost,
             namespace = "default",
             name = "easydblab-metrics-tidb-tidb-sql",
             data = mapOf("kit-name" to "tidb", "job-name" to "tidb-sql", "port" to "31080", "path" to "/metrics"),
             labels = tidbLabels,
         )
         verify(mockK8sService).createConfigMap(
-            controlHost = controlHost,
             namespace = "default",
             name = "easydblab-metrics-tidb-tikv",
             data = mapOf("kit-name" to "tidb", "job-name" to "tikv", "port" to "32180", "path" to "/metrics"),
             labels = tidbLabels,
         )
         verify(mockK8sService).createConfigMap(
-            controlHost = controlHost,
             namespace = "default",
             name = "easydblab-metrics-tidb-pd",
             data = mapOf("kit-name" to "tidb", "job-name" to "pd", "port" to "32379", "path" to "/metrics"),
             labels = tidbLabels,
         )
         verify(mockK8sService).createConfigMap(
-            controlHost = controlHost,
             namespace = "default",
             name = "easydblab-metrics-tidb-tiflash",
             data = mapOf("kit-name" to "tidb", "job-name" to "tiflash", "port" to "32234", "path" to "/metrics"),
@@ -198,7 +182,7 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
             listOf(
                 KitMetrics.Scrape(port = 9363, path = "/metrics"),
             )
-        service.register(controlHost = controlHost, kitName = "clickhouse", targets = targets)
+        service.register(kitName = "clickhouse", targets = targets)
 
         assertThat(events).anyMatch { it is Event.Kit.MetricsRegistered && it.kit == "clickhouse" && it.ports == listOf(9363) }
     }
@@ -206,17 +190,16 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
     @Test
     fun `register syncs OTel ConfigMap after registering`() {
         val target = KitMetrics.Scrape(port = 9363, path = "/metrics")
-        service.register(controlHost = controlHost, kitName = "clickhouse", targets = listOf(target))
+        service.register(kitName = "clickhouse", targets = listOf(target))
 
-        verify(mockOtelSyncService).syncConfigMap(controlHost)
+        verify(mockOtelSyncService).syncConfigMap()
     }
 
     @Test
     fun `deregister deletes ConfigMaps by label selector`() {
-        service.deregister(controlHost = controlHost, kitName = "clickhouse")
+        service.deregister(kitName = "clickhouse")
 
         verify(mockK8sService).deleteConfigMapsByLabels(
-            controlHost = controlHost,
             namespace = "default",
             labels =
                 mapOf(
@@ -239,40 +222,40 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
             },
         )
 
-        service.deregister(controlHost = controlHost, kitName = "clickhouse")
+        service.deregister(kitName = "clickhouse")
 
         assertThat(events).anyMatch { it is Event.Kit.MetricsDeregistered && it.kit == "clickhouse" }
     }
 
     @Test
     fun `deregister is a no-op when no ConfigMaps exist`() {
-        whenever(mockK8sService.deleteConfigMapsByLabels(any(), any(), any()))
+        whenever(mockK8sService.deleteConfigMapsByLabels(any(), any()))
             .thenReturn(Result.failure(RuntimeException("not found")))
 
-        val result = service.deregister(controlHost = controlHost, kitName = "nonexistent")
+        val result = service.deregister(kitName = "nonexistent")
 
         assertThat(result.isSuccess).isTrue()
-        verify(mockOtelSyncService).syncConfigMap(controlHost)
+        verify(mockOtelSyncService).syncConfigMap()
     }
 
     @Test
     fun `deregister syncs OTel ConfigMap after deregistering`() {
-        service.deregister(controlHost = controlHost, kitName = "clickhouse")
+        service.deregister(kitName = "clickhouse")
 
-        verify(mockOtelSyncService).syncConfigMap(controlHost)
+        verify(mockOtelSyncService).syncConfigMap()
     }
 
     @Test
     fun `register returns failure when ConfigMap creation fails`() {
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("K8s error")))
 
         val target = KitMetrics.Scrape(port = 9363, path = "/metrics")
-        val result = service.register(controlHost = controlHost, kitName = "clickhouse", targets = listOf(target))
+        val result = service.register(kitName = "clickhouse", targets = listOf(target))
 
         assertThat(result.isFailure).isTrue()
         // deregister() is called as cleanup on failure, which triggers a sync to remove any
         // partial ConfigMaps. One syncConfigMap call is expected from that cleanup path.
-        verify(mockOtelSyncService).syncConfigMap(controlHost)
+        verify(mockOtelSyncService).syncConfigMap()
     }
 }

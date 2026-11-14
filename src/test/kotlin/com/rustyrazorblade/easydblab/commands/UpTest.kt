@@ -69,11 +69,11 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         verify(mockClusterProvisioningService).provisionAll(any(), any(), any(), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("control0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("db0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
-        verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
-        verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
+        verify(mockK8sService).labelNode(eq("control0"), any())
+        verify(mockK8sService).labelNode(eq("db0"), any())
+        verify(mockK8sService).labelNode(eq("app0"), any())
+        verify(mockK8sService).ensureLocalStorageClass()
+        verify(mockK8sService).ensureLocalStorageWfcClass()
     }
 
     /** Every `up` re-applies the bucket policy's delete deny, then makes sure the compactor runs, once. */
@@ -169,8 +169,8 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(outputHandler.errors).isEmpty()
-        verify(mockK8sService, never()).labelNode(any(), eq("db0"), any())
-        verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
+        verify(mockK8sService, never()).labelNode(eq("db0"), any())
+        verify(mockK8sService).labelNode(eq("app0"), any())
     }
 
     @Test
@@ -250,7 +250,7 @@ class UpTest : UpTestFixture() {
     fun `up aborts when the observability stack deployment fails`() {
         // Bring-up drives ObservabilityStackService.deploy directly rather than nesting the
         // GrafanaUpdateConfig command, so a deploy failure must surface as an aborted `up`.
-        whenever(mockObservabilityStackService.deploy(any()))
+        whenever(mockObservabilityStackService.deploy())
             .thenReturn(Result.failure(RuntimeException("dashboard upload rejected")))
 
         assertThatThrownBy { newUp().execute() }
@@ -271,6 +271,19 @@ class UpTest : UpTestFixture() {
         verify(mockK3sClusterService, never()).setupCluster(any())
     }
 
+    /** The context is recorded on up's own state, so no later save of that state can erase it. */
+    @Test
+    fun `up records the kubeconfig's context in the cluster state it saves`() {
+        whenever(mockK3sClusterService.setupCluster(any()))
+            .thenReturn(K3sSetupResult(serverStarted = true, kubeContext = "k3s-ctx"))
+
+        newUp().execute()
+
+        val saved = argumentCaptor<ClusterState>()
+        verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+        assertThat(saved.lastValue.kubeContext).isEqualTo("k3s-ctx")
+    }
+
     @Test
     fun `up aborts when k3s cluster setup reports failure`() {
         whenever(mockK3sClusterService.setupCluster(any())).thenReturn(
@@ -281,26 +294,26 @@ class UpTest : UpTestFixture() {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("K3s cluster setup failed")
 
-        verify(mockK8sService, never()).labelNode(any(), any(), any())
+        verify(mockK8sService, never()).labelNode(any(), any())
     }
 
     @Test
     fun `up aborts when ensureLocalStorageClass fails`() {
-        whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.failure(RuntimeException("apply failed")))
+        whenever(mockK8sService.ensureLocalStorageClass()).thenReturn(Result.failure(RuntimeException("apply failed")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("apply failed")
 
-        verify(mockK8sService, never()).ensureLocalStorageWfcClass(any())
+        verify(mockK8sService, never()).ensureLocalStorageWfcClass()
         // Storage classes are set up before the observability stack, so aborting here means the
         // stack deploy is never reached.
-        verify(mockObservabilityStackService, never()).deploy(any())
+        verify(mockObservabilityStackService, never()).deploy()
     }
 
     @Test
     fun `up aborts when ensureLocalStorageWfcClass fails`() {
-        whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.failure(RuntimeException("apply failed")))
+        whenever(mockK8sService.ensureLocalStorageWfcClass()).thenReturn(Result.failure(RuntimeException("apply failed")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
@@ -309,20 +322,20 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up aborts when labeling the control node fails`() {
-        whenever(mockK8sService.labelNode(eq(testControlHost), eq("control0"), any()))
+        whenever(mockK8sService.labelNode(eq("control0"), any()))
             .thenReturn(Result.failure(RuntimeException("k8s api unreachable")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(RuntimeException::class.java)
             .hasMessageContaining("k8s api unreachable")
 
-        verify(mockK8sService, times(1)).labelNode(any(), any(), any())
+        verify(mockK8sService, times(1)).labelNode(any(), any())
         assertThat(outputHandler.messages).doesNotContain("Node labeling complete")
     }
 
     @Test
     fun `up aborts when labeling a db node fails and never emits NodeLabelingComplete`() {
-        whenever(mockK8sService.labelNode(eq(testControlHost), eq("db0"), any()))
+        whenever(mockK8sService.labelNode(eq("db0"), any()))
             .thenReturn(Result.failure(RuntimeException("db label failed")))
 
         assertThatThrownBy { newUp().execute() }
@@ -334,7 +347,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up aborts when labeling an app node fails after db labeling already succeeded`() {
-        whenever(mockK8sService.labelNode(eq(testControlHost), eq("app0"), any()))
+        whenever(mockK8sService.labelNode(eq("app0"), any()))
             .thenReturn(Result.failure(RuntimeException("app label failed")))
 
         assertThatThrownBy { newUp().execute() }

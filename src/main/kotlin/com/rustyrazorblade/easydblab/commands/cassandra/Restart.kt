@@ -41,10 +41,10 @@ class Restart : PicoBaseCommand() {
     }
 
     private fun restartSidecar() {
-        val controlHost = clusterState.getControlHost() ?: return
+        clusterState.getControlHost() ?: return
         eventBus.emit(Event.Cassandra.SidecarRestarting)
         sidecarService
-            .restart(controlHost)
+            .restart()
             .onSuccess {
                 eventBus.emit(Event.Cassandra.SidecarRestarted)
             }.onFailure { e ->

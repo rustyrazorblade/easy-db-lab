@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -20,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.time.Duration
@@ -48,7 +46,6 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         val HOLD: Duration = Duration.ofSeconds(5)
     }
 
-    private val controlHost = ClusterHost("1.2.3.4", "10.0.0.1", "control0", "us-west-2a", instanceId = "i-test")
     private lateinit var client: KubernetesClient
     private lateinit var senders: K8sTelemetrySenders
 
@@ -72,7 +69,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         client = SharedK3s.client()
         val clientProvider = mock<K8sClientProvider>()
         // Each stop closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
+        whenever(clientProvider.createClient()).thenAnswer { SharedK3s.client() }
         senders = K8sTelemetrySenders(clientProvider, NAMESPACE, pollInterval = Duration.ofMillis(POLL_MILLIS))
     }
 
@@ -142,7 +139,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
                 releaseCollectorPods()
             }.apply { start() }
 
-        senders.stop(controlHost, TIMEOUT)
+        senders.stop(TIMEOUT)
         val stoppedAt = System.nanoTime()
         releaser.join()
 
@@ -160,7 +157,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         ).isNull()
 
         // A re-run of down finds the collector already gone: the stop still succeeds.
-        senders.stop(controlHost, TIMEOUT)
+        senders.stop(TIMEOUT)
 
         assertThat(collectorPods()).isEmpty()
     }

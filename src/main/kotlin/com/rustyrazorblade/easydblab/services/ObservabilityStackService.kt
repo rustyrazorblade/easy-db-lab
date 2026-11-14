@@ -1,10 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
@@ -61,7 +61,7 @@ interface ObservabilityStackService {
      * @param controlNode the cluster's control node running K3s.
      * @return success once the stack is applied and the namespace reaches Ready; failure otherwise.
      */
-    fun deploy(controlNode: ClusterHost): Result<Unit>
+    fun deploy(): Result<Unit>
 }
 
 /**
@@ -128,16 +128,20 @@ class DefaultObservabilityStackService(
         return runnable
     }
 
-    override fun deploy(controlNode: ClusterHost): Result<Unit> =
+    override fun deploy(): Result<Unit> =
         runCatching {
             val clusterState = clusterStateManager.load()
+            val controlNode =
+                checkNotNull(clusterState.getControlHost()) {
+                    "No control node in cluster state; cannot deploy the observability stack."
+                }
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
             val capabilities = capabilitiesOf(clusterState)
 
-            val clusterConfig = createClusterConfigMap(controlNode, clusterState)
+            val clusterConfig = createClusterConfigMap(clusterState)
 
             val scrapeConfigs =
-                k8sClientProvider.createClient(controlNode).use { client ->
+                k8sClientProvider.createClient().use { client ->
                     otelManifestBuilder.listWorkloadScrapeConfigs(client)
                 }
 
@@ -156,10 +160,10 @@ class DefaultObservabilityStackService(
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
             // not, so prepare them only in local mode.
             if (telemetryRedirect == null) {
-                preparePyroscopeDirectory(controlNode)
-                prepareTempoDirectory(controlNode)
-                prepareMimirDirectory(controlNode)
-                prepareLokiDirectory(controlNode)
+                preparePyroscopeDirectory(controlNode.toHost())
+                prepareTempoDirectory(controlNode.toHost())
+                prepareMimirDirectory(controlNode.toHost())
+                prepareLokiDirectory(controlNode.toHost())
             }
 
             // Every ConfigMap this deploy knows the contents of, so a workload that reads one from
@@ -176,14 +180,14 @@ class DefaultObservabilityStackService(
             val hashedStages =
                 listOf(collector) + stages.map { it.copy(resources = ConfigHashAnnotator.annotate(it.resources, knownConfigMaps)) }
             val appliedResources = hashedStages.flatMap { it.resources }
-            configChangeReport.report(controlNode, appliedResources, DEFAULT_NAMESPACE)
+            configChangeReport.report(appliedResources, DEFAULT_NAMESPACE)
             for (stage in hashedStages) {
-                applyStage(stage, controlNode)
+                applyStage(stage)
             }
 
             if (telemetryRedirect == null) {
-                prepareGrafanaDirectory(controlNode)
-                uploadDashboards(controlNode, clusterState)
+                prepareGrafanaDirectory(controlNode.toHost())
+                uploadDashboards(clusterState)
             }
 
             // Grafana is applied by the Grafana deploy service, not a stage, and rolls on a datasource change.
@@ -199,7 +203,7 @@ class DefaultObservabilityStackService(
             // replacements may not exist yet, so a pod-readiness check alone reports the stack ready
             // with new pods at 0/1.
             k8sService
-                .waitForRollouts(controlNode, workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+                .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
                 .getOrElse { exception ->
                     error("Observability stack did not finish rolling out: ${exception.message}")
                 }
@@ -209,7 +213,7 @@ class DefaultObservabilityStackService(
             // never reports success while the observability stack is broken or still coming up.
             // Pods that ran to completion (a kit's Job pods share this namespace) are not awaited.
             k8sService
-                .waitForPodsReady(controlNode, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+                .waitForPodsReady(Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
                 .getOrElse { exception ->
                     error("Observability stack did not become ready: ${exception.message}")
                 }
@@ -244,10 +248,11 @@ class DefaultObservabilityStackService(
      * Deploys Grafana with a datasource for every tenant in the shared store, so each deploy picks up
      * new ones, and the dashboards with the install-time pass for this cluster.
      */
-    private fun uploadDashboards(
-        controlNode: ClusterHost,
-        clusterState: ClusterState,
-    ) {
+    private fun uploadDashboards(clusterState: ClusterState) {
+        val controlNode =
+            checkNotNull(clusterState.getControlHost()) {
+                "No control node in cluster state; cannot upload dashboards."
+            }
         grafanaDeployService
             .deploy(controlNode, installContextFactory.forCluster(clusterState, controlNode), ObservabilityStore.from(clusterState).bucket)
             .getOrElse { exception ->
@@ -255,13 +260,10 @@ class DefaultObservabilityStackService(
             }
     }
 
-    private fun applyStage(
-        stage: Stage,
-        controlNode: ClusterHost,
-    ) {
+    private fun applyStage(stage: Stage) {
         eventBus.emit(Event.Grafana.LabelResourcesApplying(stage.label))
         for (resource in stage.resources) {
-            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
+            k8sService.applyResource(resource).getOrElse { exception ->
                 error("Failed to apply ${stage.label} ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
             }
         }
@@ -283,10 +285,10 @@ class DefaultObservabilityStackService(
                 }
             }.distinct()
 
-    private fun preparePyroscopeDirectory(controlNode: ClusterHost) {
+    private fun preparePyroscopeDirectory(controlNode: Host) {
         eventBus.emit(Event.Grafana.PyroscopeDirectoryPreparing)
         remoteOps.executeRemotely(
-            controlNode.toHost(),
+            controlNode,
             "sudo mkdir -p /mnt/db1/pyroscope && " +
                 "sudo chown -R ${PyroscopeManifestBuilder.PYROSCOPE_UID}:${PyroscopeManifestBuilder.PYROSCOPE_UID} /mnt/db1/pyroscope",
         )
@@ -297,20 +299,20 @@ class DefaultObservabilityStackService(
      * were received but not yet cut into a block survive a pod restart. The image runs as
      * [TempoManifestBuilder.TEMPO_UID] and must own the directory.
      */
-    private fun prepareTempoDirectory(controlNode: ClusterHost) {
+    private fun prepareTempoDirectory(controlNode: Host) {
         eventBus.emit(Event.Grafana.TempoDirectoryPreparing)
         val path = TempoManifestBuilder.DATA_HOST_PATH
         val uid = TempoManifestBuilder.TEMPO_UID
-        remoteOps.executeRemotely(controlNode.toHost(), "sudo mkdir -p $path && sudo chown -R $uid:$uid $path")
+        remoteOps.executeRemotely(controlNode, "sudo mkdir -p $path && sudo chown -R $uid:$uid $path")
     }
 
     /**
      * Mimir keeps its TSDB — head, WAL and every local block — under
      * [MimirManifestBuilder.DATA_HOST_PATH]. The image runs as root, so only the directory is needed.
      */
-    private fun prepareMimirDirectory(controlNode: ClusterHost) {
+    private fun prepareMimirDirectory(controlNode: Host) {
         eventBus.emit(Event.Grafana.MimirDirectoryPreparing)
-        remoteOps.executeRemotely(controlNode.toHost(), "sudo mkdir -p ${MimirManifestBuilder.DATA_HOST_PATH}")
+        remoteOps.executeRemotely(controlNode, "sudo mkdir -p ${MimirManifestBuilder.DATA_HOST_PATH}")
     }
 
     /**
@@ -318,17 +320,17 @@ class DefaultObservabilityStackService(
      * [LokiManifestBuilder.DATA_HOST_PATH]. The image runs as [LokiManifestBuilder.LOKI_UID] and must
      * own the directory.
      */
-    private fun prepareLokiDirectory(controlNode: ClusterHost) {
+    private fun prepareLokiDirectory(controlNode: Host) {
         eventBus.emit(Event.Grafana.LokiDirectoryPreparing)
         val path = LokiManifestBuilder.DATA_HOST_PATH
         val uid = LokiManifestBuilder.LOKI_UID
-        remoteOps.executeRemotely(controlNode.toHost(), "sudo mkdir -p $path && sudo chown -R $uid:$uid $path")
+        remoteOps.executeRemotely(controlNode, "sudo mkdir -p $path && sudo chown -R $uid:$uid $path")
     }
 
-    private fun prepareGrafanaDirectory(controlNode: ClusterHost) {
+    private fun prepareGrafanaDirectory(controlNode: Host) {
         eventBus.emit(Event.Grafana.GrafanaDirectoryPreparing)
         remoteOps.executeRemotely(
-            controlNode.toHost(),
+            controlNode,
             "sudo mkdir -p ${GrafanaManifestBuilder.GRAFANA_DATA_PATH} && " +
                 "sudo chown -R ${GrafanaManifestBuilder.GRAFANA_UID}:${GrafanaManifestBuilder.GRAFANA_UID} ${GrafanaManifestBuilder.GRAFANA_DATA_PATH}",
         )
@@ -338,15 +340,15 @@ class DefaultObservabilityStackService(
      * Creates the cluster-config ConfigMap with runtime values needed by OTel and Tempo
      * ([ClusterConfigData]), returning its data.
      */
-    private fun createClusterConfigMap(
-        controlNode: ClusterHost,
-        clusterState: ClusterState,
-    ): Map<String, String> {
+    private fun createClusterConfigMap(clusterState: ClusterState): Map<String, String> {
+        val controlNode =
+            checkNotNull(clusterState.getControlHost()) {
+                "No control node in cluster state; cannot build the cluster-config ConfigMap."
+            }
         val configData = ClusterConfigData.of(controlNode, clusterState, user.region)
 
         k8sService
             .createConfigMap(
-                controlHost = controlNode,
                 namespace = DEFAULT_NAMESPACE,
                 name = ClusterConfigData.NAME,
                 data = configData,

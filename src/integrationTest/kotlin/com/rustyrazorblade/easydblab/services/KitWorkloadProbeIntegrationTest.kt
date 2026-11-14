@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
+import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
+import com.rustyrazorblade.easydblab.kubernetes.currentContextOf
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
@@ -76,7 +78,8 @@ class KitWorkloadProbeIntegrationTest {
         val kubeconfig = Files.createTempFile("kit-workload-probe", ".kubeconfig")
         Files.writeString(kubeconfig, k3s.kubeConfigYaml)
         // The helm branch runs helm on the control node over SSH; no runtime here is helm-backed.
-        kubeService = DefaultKubernetesService(ProxiedKubernetesClientFactory(), kubeconfig)
+        kubeService =
+            DefaultKubernetesService(ProxiedKubernetesClientFactory()) { KubeApi(kubeconfig, requireNotNull(currentContextOf(kubeconfig))) }
         probe = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ofSeconds(1), maxPolls = WAIT_SECONDS.toInt())
 
         client

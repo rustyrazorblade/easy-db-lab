@@ -65,10 +65,10 @@ class Stop : PicoBaseCommand() {
     }
 
     private fun stopSidecar() {
-        val controlHost = clusterState.getControlHost() ?: return
+        clusterState.getControlHost() ?: return
         eventBus.emit(Event.Cassandra.SidecarStopping)
         sidecarService
-            .undeploy(controlHost)
+            .undeploy()
             .onSuccess {
                 eventBus.emit(Event.Cassandra.SidecarStopped)
             }.onFailure { e ->

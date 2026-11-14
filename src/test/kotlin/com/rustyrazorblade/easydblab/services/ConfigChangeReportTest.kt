@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
@@ -36,8 +35,6 @@ class ConfigChangeReportTest : BaseKoinTest() {
     private lateinit var k8sService: K8sService
     private lateinit var pyroscope: PyroscopeManifestBuilder
 
-    private val controlHost =
-        ClusterHost(publicIp = "1.2.3.4", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a")
     private val pyroscopeRef = WorkloadRef(WorkloadKind.Deployment, "pyroscope")
 
     override fun additionalTestModules(): List<Module> =
@@ -94,7 +91,7 @@ class ConfigChangeReportTest : BaseKoinTest() {
         resources: List<HasMetadata>,
     ): List<Event.Grafana.WorkloadConfigCompared> {
         // An Answer bypasses Kotlin's Result unboxing: the JVM method returns the bare map.
-        whenever(k8sService.workloadConfigHashes(any(), any(), any())).thenAnswer { mapOf(pyroscopeRef to runningHash) }
+        whenever(k8sService.workloadConfigHashes(any(), any())).thenAnswer { mapOf(pyroscopeRef to runningHash) }
         val emitted = mutableListOf<Event.Grafana.WorkloadConfigCompared>()
         val eventBus = EventBus()
         eventBus.addListener(
@@ -106,7 +103,7 @@ class ConfigChangeReportTest : BaseKoinTest() {
                 override fun close() = Unit
             },
         )
-        ConfigChangeReport(k8sService, eventBus).report(controlHost, resources, "default")
+        ConfigChangeReport(k8sService, eventBus).report(resources, "default")
         return emitted
     }
 

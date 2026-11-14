@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
-import java.nio.file.Path
 
 /**
  * Factory interface for creating Kubernetes clients.
@@ -14,12 +13,16 @@ import java.nio.file.Path
  */
 interface KubernetesClientFactory {
     /**
-     * Create a Kubernetes client from a kubeconfig file.
+     * Create a Kubernetes client for the cluster named by [api].
      *
-     * @param kubeconfigPath Path to the kubeconfig file
+     * The kubeconfig is loaded by file path with an explicit context, so relative certificate and
+     * exec-plugin paths resolve against the kubeconfig's directory. The JVM-global `kubeconfig`
+     * property and `KUBECONFIG` environment variable are never read.
+     *
+     * @param api The kubeconfig path and the context to use
      * @return Configured KubernetesClient ready for API calls
      */
-    fun createClient(kubeconfigPath: Path): KubernetesClient
+    fun createClient(api: KubeApi): KubernetesClient
 }
 
 /**
@@ -34,9 +37,8 @@ interface KubernetesClientFactory {
  * stays direct.
  */
 class ProxiedKubernetesClientFactory : KubernetesClientFactory {
-    override fun createClient(kubeconfigPath: Path): KubernetesClient {
-        val kubeconfigContent = kubeconfigPath.toFile().readText()
-        val config = Config.fromKubeconfig(kubeconfigContent)
+    override fun createClient(api: KubeApi): KubernetesClient {
+        val config = api.loadConfig()
 
         System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
             config.httpsProxy = socksProxyUrl(port)

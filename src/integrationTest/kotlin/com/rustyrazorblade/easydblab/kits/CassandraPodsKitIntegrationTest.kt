@@ -4,7 +4,6 @@ import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -369,15 +368,13 @@ class CassandraPodsKitIntegrationTest {
 
     private fun createPersistentVolume() {
         val provider: K8sClientProvider = mock()
-        val controlHost = ClusterHost("127.0.0.1", "127.0.0.1", "control0", "az", "i-0")
-        whenever(provider.createClient(controlHost)).thenAnswer {
+        whenever(provider.createClient()).thenAnswer {
             KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
         }
         val ops = DefaultK8sStorageOperations(provider, mock<EventBus>())
-        ops.ensureLocalStorageWfcClass(controlHost).getOrThrow()
+        ops.ensureLocalStorageWfcClass().getOrThrow()
         ops
             .createLocalPersistentVolumes(
-                controlHost,
                 PersistentVolumeConfig(
                     dbName = "cassandra-pods",
                     localPath = PV_PATH,

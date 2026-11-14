@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.services.ImagePullSecretService
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.fabric8.kubernetes.api.model.SecretBuilder
@@ -58,7 +57,6 @@ class EcrPullSecretService(
      * @return the secret name to attach to the pod's `imagePullSecrets`, or "" when not applicable
      */
     override fun ensureFor(
-        controlHost: ClusterHost,
         image: String,
         namespace: String,
     ): String {
@@ -91,7 +89,7 @@ class EcrPullSecretService(
                 .addToData(".dockerconfigjson", Base64.getEncoder().encodeToString(dockerConfigJson.toByteArray()))
                 .build()
 
-        k8sService.applyResource(controlHost, secret).getOrThrow()
+        k8sService.applyResource(secret).getOrThrow()
         log.info { "ECR pull secret ready in namespace=$namespace" }
         return SECRET_NAME
     }

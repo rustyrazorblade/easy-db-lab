@@ -282,6 +282,11 @@ data class ClusterState(
     var runningKits: Set<String> = emptySet(),
     // The signals a pre-teardown save already put in S3, so a re-run of `down` skips them; cleared by `up`
     var tailFlush: TailFlushRecord? = null,
+    // The Kubernetes context pinned for this cluster, recorded by `up` from the kubeconfig's
+    // current-context. Every later command targets this context regardless of the user's current
+    // kubectl context; a workspace with no recorded context falls back to the kubeconfig's
+    // current-context.
+    var kubeContext: String? = null,
 ) {
     /**
      * Returns true when the db nodes are provisioned with Cassandra hosts.

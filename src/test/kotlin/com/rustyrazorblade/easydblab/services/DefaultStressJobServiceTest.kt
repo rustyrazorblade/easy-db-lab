@@ -79,7 +79,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         mockK8sService = getKoin().get()
         // The default stress image is public, so no pull secret is involved.
         mockEcrPullSecrets = mock()
-        whenever(mockEcrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
+        whenever(mockEcrPullSecrets.ensureFor(any(), any())).thenReturn("")
         val clusterStateManager: ClusterStateManager = getKoin().get()
         service =
             DefaultStressJobService(
@@ -661,7 +661,7 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                 )
             }
         val ecrPullSecrets: ImagePullSecretService = mock()
-        whenever(ecrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
+        whenever(ecrPullSecrets.ensureFor(any(), any())).thenReturn("")
         return DefaultStressJobService(
             k8sService = k8sService,
             clusterStateManager = getKoin().get(),
@@ -687,67 +687,67 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
 
     @BeforeEach
     fun stubJobCreation() {
-        whenever(k8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(k8sService.createJob(any(), any(), any<Job>())).thenReturn(Result.success("stress-wait"))
+        whenever(k8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.createJob(any(), any<Job>())).thenReturn(Result.success("stress-wait"))
     }
 
     @Test
     fun `returns the job name and reports the pod once it is Running`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(
             Result.success(emptyList()),
             Result.failure(IllegalStateException("connection reset")),
             Result.success(listOf(pod("Pending"))),
             Result.success(listOf(pod("Running"))),
         )
 
-        assertThat(service().startJob(controlHost, config).getOrThrow().jobName).isEqualTo("stress-wait")
+        assertThat(service().startJob(config).getOrThrow().jobName).isEqualTo("stress-wait")
         assertThat(events.filterIsInstance<Event.Stress.PodStatus>())
             .containsExactly(Event.Stress.PodStatus("stress-wait-abc", "Running"))
-        verify(k8sService, times(4)).getPodsForJob(any(), any(), any())
+        verify(k8sService, times(4)).getPodsForJob(any(), any())
     }
 
     @Test
     fun `returns the node the running pod was scheduled on as the host`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Running", nodeName = "app3"))))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Running", nodeName = "app3"))))
 
-        assertThat(service().startJob(controlHost, config).getOrThrow()).isEqualTo(StartedStressJob("stress-wait", "app3"))
+        assertThat(service().startJob(config).getOrThrow()).isEqualTo(StartedStressJob("stress-wait", "app3"))
     }
 
     @Test
     fun `a Succeeded pod also ends the wait`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Succeeded"))))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Succeeded"))))
 
-        assertThat(service().startJob(controlHost, config).getOrThrow().jobName).isEqualTo("stress-wait")
+        assertThat(service().startJob(config).getOrThrow().jobName).isEqualTo("stress-wait")
     }
 
     @Test
     fun `fails naming the job when no pod is ever created`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(emptyList()))
 
-        val result = service().startJob(controlHost, config)
+        val result = service().startJob(config)
 
         assertThat(result.exceptionOrNull()).hasMessage("No pods created yet for job stress-wait")
-        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any(), any())
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
     }
 
     @Test
     fun `fails naming the pod's phase when it never runs`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Pending"))))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Pending"))))
 
-        val result = service().startJob(controlHost, config)
+        val result = service().startJob(config)
 
         assertThat(result.exceptionOrNull()).hasMessage("Pod stress-wait-abc is Pending, waiting for Running")
-        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any(), any())
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
     }
 
     @Test
     fun `a Failed pod is polled again, and fails the wait when it stays Failed`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Failed"))))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Failed"))))
 
-        val result = service().startJob(controlHost, config)
+        val result = service().startJob(config)
 
         assertThat(result.exceptionOrNull()).hasMessage("Pod stress-wait-abc failed")
-        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any(), any())
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
     }
 
     private companion object {

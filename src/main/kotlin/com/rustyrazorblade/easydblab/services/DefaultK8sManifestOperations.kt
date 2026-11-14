@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
@@ -21,14 +20,11 @@ class DefaultK8sManifestOperations(
     private val clientProvider: K8sClientProvider,
     private val eventBus: EventBus,
 ) : K8sManifestOperations {
-    override fun applyManifests(
-        controlHost: ClusterHost,
-        manifestPath: Path,
-    ): Result<Unit> =
+    override fun applyManifests(manifestPath: Path): Result<Unit> =
         runCatching {
             log.info { "Applying K8s manifests from $manifestPath via SOCKS proxy" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 eventBus.emit(Event.K8s.ManifestsApplying)
 
                 val pathFile = manifestPath.toFile()
@@ -59,14 +55,11 @@ class DefaultK8sManifestOperations(
             }
         }
 
-    override fun applyManifestFromResources(
-        controlHost: ClusterHost,
-        resourcePath: String,
-    ): Result<Unit> =
+    override fun applyManifestFromResources(resourcePath: String): Result<Unit> =
         runCatching {
             log.info { "Applying K8s manifest from resources: $resourcePath" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val resourceStream =
                     this::class.java.getResourceAsStream("/com/rustyrazorblade/easydblab/commands/$resourcePath")
                         ?: error("Resource not found: $resourcePath")
@@ -93,29 +86,23 @@ class DefaultK8sManifestOperations(
             eventBus.emit(Event.K8s.ManifestApplied(resourcePath))
         }
 
-    override fun applyYaml(
-        controlHost: ClusterHost,
-        yamlContent: String,
-    ): Result<Unit> =
+    override fun applyYaml(yamlContent: String): Result<Unit> =
         runCatching {
             log.info { "Applying YAML content via SOCKS proxy" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 ManifestApplier.applyYaml(client, yamlContent)
                 log.info { "YAML content applied successfully" }
             }
         }
 
-    override fun applyResource(
-        controlHost: ClusterHost,
-        resource: HasMetadata,
-    ): Result<Unit> =
+    override fun applyResource(resource: HasMetadata): Result<Unit> =
         runCatching {
             val kind = resource.kind ?: "Unknown"
             val name = resource.metadata?.name ?: "unknown"
             log.info { "Applying $kind/$name via server-side apply" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 try {
                     client
                         .resource(resource)
@@ -152,14 +139,13 @@ class DefaultK8sManifestOperations(
     }
 
     override fun labelNode(
-        controlHost: ClusterHost,
         nodeName: String,
         labels: Map<String, String>,
     ): Result<Unit> =
         runCatching {
             log.info { "Labeling node $nodeName with labels: $labels" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 checkNotNull(client.nodes().withName(nodeName).get()) { "Node $nodeName not found" }
 
                 // A merge patch carries no resourceVersion. `edit()` patches the version it read, and

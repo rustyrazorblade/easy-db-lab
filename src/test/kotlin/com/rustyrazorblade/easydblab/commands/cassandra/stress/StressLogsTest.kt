@@ -119,9 +119,9 @@ class StressLogsTest : BaseKoinTest() {
             """.trimIndent()
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockStressJobService.getPodsForJob(any(), any()))
+        whenever(mockStressJobService.getPodsForJob(any()))
             .thenReturn(Result.success(testPods))
-        whenever(mockStressJobService.getPodLogs(any(), any(), isNull()))
+        whenever(mockStressJobService.getPodLogs(any(), isNull()))
             .thenReturn(Result.success(logOutput))
 
         val command = StressLogs()
@@ -132,11 +132,9 @@ class StressLogsTest : BaseKoinTest() {
 
         // Then - verify getPodsForJob and getPodLogs were called
         verify(mockStressJobService).getPodsForJob(
-            eq(testControlHost),
             eq("stress-test-1234567890"),
         )
         verify(mockStressJobService).getPodLogs(
-            eq(testControlHost),
             eq("stress-test-1234567890-abc12"),
             isNull(),
         )
@@ -168,9 +166,9 @@ class StressLogsTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockStressJobService.getPodsForJob(any(), any()))
+        whenever(mockStressJobService.getPodsForJob(any()))
             .thenReturn(Result.success(testPods))
-        whenever(mockStressJobService.getPodLogs(any(), any(), eq(100)))
+        whenever(mockStressJobService.getPodLogs(any(), eq(100)))
             .thenReturn(Result.success("Last 100 lines..."))
 
         val command = StressLogs()
@@ -182,7 +180,6 @@ class StressLogsTest : BaseKoinTest() {
 
         // Then
         verify(mockStressJobService).getPodLogs(
-            eq(testControlHost),
             eq("stress-test-1234567890-abc12"),
             eq(100),
         )
@@ -202,7 +199,7 @@ class StressLogsTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockStressJobService.getPodsForJob(any(), any()))
+        whenever(mockStressJobService.getPodsForJob(any()))
             .thenReturn(Result.success(emptyList()))
 
         val command = StressLogs()
@@ -228,7 +225,7 @@ class StressLogsTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockStressJobService.getPodsForJob(any(), any()))
+        whenever(mockStressJobService.getPodsForJob(any()))
             .thenReturn(Result.failure(RuntimeException("Failed to get pods")))
 
         val command = StressLogs()

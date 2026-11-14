@@ -4,7 +4,6 @@ import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -302,7 +301,6 @@ class LocalClusterToolingIntegrationTest {
         val context =
             StepExecutionContext(
                 kitName = "typed-steps",
-                controlHost = ClusterHost("203.0.113.1", "10.0.0.1", "control0", "us-west-2a"),
                 clusterState = ClusterState(name = "typed-steps", versions = mutableMapOf()),
                 variables = variables,
                 kitDir = kitDir,

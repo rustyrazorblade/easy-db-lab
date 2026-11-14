@@ -471,7 +471,7 @@ class Status(
 
         val jobs: List<KubernetesJob> =
             try {
-                stressJobService.listJobs(controlHost).getOrThrow()
+                stressJobService.listJobs().getOrThrow()
             } catch (
                 @Suppress("TooGenericExceptionCaught")
                 e: Exception,

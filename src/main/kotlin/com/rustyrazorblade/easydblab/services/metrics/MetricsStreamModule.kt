@@ -1,13 +1,12 @@
 package com.rustyrazorblade.easydblab.services.metrics
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.kubernetes.KubeApiLocator
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoutes
 import com.rustyrazorblade.easydblab.proxy.RecordedTunnelRoutes
 import com.rustyrazorblade.easydblab.proxy.TunnelProcessControl
 import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
-import io.fabric8.kubernetes.client.Config
 import org.koin.dsl.module
 import java.io.File
 
@@ -29,12 +28,11 @@ val metricsStreamModule =
         }
         factory {
             val clusterStateManager = get<ClusterStateManager>()
-            val kubeconfig = File(get<Context>().workingDirectory, Constants.K3s.LOCAL_KUBECONFIG)
             CycleQueries(
                 loadState = { clusterStateManager.takeIf { it.exists() }?.load() },
                 routes = get(),
                 httpClientFactory = get(),
-                stressJobs = StressJobWatcher(Fabric8StressJobLister { Config.fromKubeconfig(kubeconfig.readText()) }),
+                stressJobs = StressJobWatcher(Fabric8StressJobLister(get<KubeApiLocator>())),
             )
         }
         factory<SamplePublisher> { RedisSamplePublisher(get()) }

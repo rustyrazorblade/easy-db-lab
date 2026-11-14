@@ -20,7 +20,6 @@ class LokiTailFlushTest {
     private val workloads =
         object : BackendWorkloads {
             override fun scaleDown(
-                controlHost: ClusterHost,
                 workload: String,
                 timeout: Duration,
             ) {

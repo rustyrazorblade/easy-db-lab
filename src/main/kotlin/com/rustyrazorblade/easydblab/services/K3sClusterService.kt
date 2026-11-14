@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
  * @property nodeToken The node token for agent registration (null if server failed)
  * @property kubeconfigWritten Whether kubeconfig was successfully downloaded
  * @property kubeconfigBackedUp Whether kubeconfig was successfully backed up to S3
+ * @property kubeContext The written kubeconfig's context, which the caller records in its cluster
+ *   state (null when the kubeconfig was not written)
  * @property agentResults Results of agent setup per host alias
  * @property errors Map of error descriptions to exceptions
  */
@@ -24,6 +26,7 @@ data class K3sSetupResult(
     val nodeToken: String? = null,
     val kubeconfigWritten: Boolean = false,
     val kubeconfigBackedUp: Boolean = false,
+    val kubeContext: String? = null,
     val agentResults: Map<String, AgentSetupResult> = emptyMap(),
     val errors: Map<String, Exception> = emptyMap(),
 ) {
@@ -149,7 +152,7 @@ class DefaultK3sClusterService(
             retrieveNodeToken(controlHost, errors)
                 ?: return K3sSetupResult(serverStarted = true, errors = errors)
 
-        val (kubeconfigWritten, kubeconfigBackedUp) = downloadAndBackupKubeconfig(config, controlHost, errors)
+        val kubeconfig = downloadAndBackupKubeconfig(config, controlHost, errors)
 
         config.onServerReady?.let { callback ->
             log.info { "K3s server ready — running pre-agent hook (e.g. CNI install)" }
@@ -160,8 +163,9 @@ class DefaultK3sClusterService(
                     return K3sSetupResult(
                         serverStarted = true,
                         nodeToken = nodeToken,
-                        kubeconfigWritten = kubeconfigWritten,
-                        kubeconfigBackedUp = kubeconfigBackedUp,
+                        kubeconfigWritten = kubeconfig.written,
+                        kubeconfigBackedUp = kubeconfig.backedUp,
+                        kubeContext = kubeconfig.context,
                         errors = errors,
                     )
                 }
@@ -176,8 +180,9 @@ class DefaultK3sClusterService(
         return K3sSetupResult(
             serverStarted = true,
             nodeToken = nodeToken,
-            kubeconfigWritten = kubeconfigWritten,
-            kubeconfigBackedUp = kubeconfigBackedUp,
+            kubeconfigWritten = kubeconfig.written,
+            kubeconfigBackedUp = kubeconfig.backedUp,
+            kubeContext = kubeconfig.context,
             agentResults = agentResults,
             errors = errors,
         )
@@ -234,26 +239,29 @@ class DefaultK3sClusterService(
         config: K3sClusterConfig,
         controlHost: ClusterHost,
         errors: MutableMap<String, Exception>,
-    ): Pair<Boolean, Boolean> {
-        var kubeconfigWritten = false
-        var kubeconfigBackedUp = false
-        val kubeconfigResult =
-            k3sService.downloadAndConfigureKubeconfig(
-                controlHost.toHost(),
-                config.kubeconfigPath,
+    ): KubeconfigOutcome =
+        k3sService
+            .downloadAndConfigureKubeconfig(controlHost.toHost(), config.kubeconfigPath)
+            .fold(
+                onSuccess = { context ->
+                    eventBus.emit(Event.K3s.KubeconfigWritten(config.kubeconfigPath.fileName.toString()))
+                    eventBus.emit(Event.K3s.KubeconfigInstruction)
+                    KubeconfigOutcome(context = context, backedUp = backupKubeconfigToS3(config, errors))
+                },
+                onFailure = { error ->
+                    log.error(error) { "Failed to download kubeconfig from ${controlHost.alias}" }
+                    eventBus.emit(Event.K3s.KubeconfigFailed(error.message ?: "unknown error"))
+                    errors["Kubeconfig download"] = Exception(error.message, error)
+                    KubeconfigOutcome(context = null, backedUp = false)
+                },
             )
-        kubeconfigResult
-            .onFailure { error ->
-                log.error(error) { "Failed to download kubeconfig from ${controlHost.alias}" }
-                eventBus.emit(Event.K3s.KubeconfigFailed(error.message ?: "unknown error"))
-                errors["Kubeconfig download"] = Exception(error.message, error)
-            }.onSuccess {
-                kubeconfigWritten = true
-                eventBus.emit(Event.K3s.KubeconfigWritten(config.kubeconfigPath.fileName.toString()))
-                eventBus.emit(Event.K3s.KubeconfigInstruction)
-                kubeconfigBackedUp = backupKubeconfigToS3(config, errors)
-            }
-        return Pair(kubeconfigWritten, kubeconfigBackedUp)
+
+    /** What the kubeconfig step produced: its context when written (null when not), and whether S3 holds a copy. */
+    private data class KubeconfigOutcome(
+        val context: String?,
+        val backedUp: Boolean,
+    ) {
+        val written: Boolean get() = context != null
     }
 
     /**

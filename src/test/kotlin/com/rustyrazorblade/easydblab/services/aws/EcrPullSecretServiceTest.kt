@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.services.K8sService
 import io.fabric8.kubernetes.api.model.Secret
 import kotlinx.serialization.json.Json
@@ -10,7 +9,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -21,15 +19,6 @@ import software.amazon.awssdk.services.ecr.model.GetAuthorizationTokenResponse
 import java.util.Base64
 
 class EcrPullSecretServiceTest {
-    private val controlHost =
-        ClusterHost(
-            publicIp = "54.1.2.3",
-            privateIp = "10.0.1.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-control0",
-        )
-
     private val ecrImage = "102382809497.dkr.ecr.us-west-2.amazonaws.com/rustyrazorblade/cassandra-easy-stress:mybranch"
 
     @Test
@@ -53,23 +42,23 @@ class EcrPullSecretServiceTest {
         val ecr = mock<EcrClient>()
         val k8s = mock<K8sService>()
 
-        val name = EcrPullSecretService(k8s, ecr).ensureFor(controlHost, "ghcr.io/apache/x:latest", "default")
+        val name = EcrPullSecretService(k8s, ecr).ensureFor("ghcr.io/apache/x:latest", "default")
 
         assertThat(name).isEmpty()
         verify(ecr, never()).getAuthorizationToken()
-        verify(k8s, never()).applyResource(any(), any())
+        verify(k8s, never()).applyResource(any())
     }
 
     @Test
     fun `an ECR image yields a dockerconfigjson secret the pod can use`() {
         val k8s = mock<K8sService>()
-        whenever(k8s.applyResource(any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8s.applyResource(any())).thenReturn(Result.success(Unit))
         val captor = argumentCaptor<Secret>()
 
-        val name = EcrPullSecretService(k8s, ecrClientReturning("AWS:s3cr3t")).ensureFor(controlHost, ecrImage, "default")
+        val name = EcrPullSecretService(k8s, ecrClientReturning("AWS:s3cr3t")).ensureFor(ecrImage, "default")
 
         assertThat(name).isEqualTo(EcrPullSecretService.SECRET_NAME)
-        verify(k8s).applyResource(eq(controlHost), captor.capture())
+        verify(k8s).applyResource(captor.capture())
 
         val secret = captor.firstValue
         assertThat(secret.type).isEqualTo("kubernetes.io/dockerconfigjson")
@@ -91,12 +80,12 @@ class EcrPullSecretServiceTest {
     @Test
     fun `a password containing a colon survives intact`() {
         val k8s = mock<K8sService>()
-        whenever(k8s.applyResource(any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8s.applyResource(any())).thenReturn(Result.success(Unit))
         val captor = argumentCaptor<Secret>()
 
-        EcrPullSecretService(k8s, ecrClientReturning("AWS:pa:ss:word")).ensureFor(controlHost, ecrImage, "default")
+        EcrPullSecretService(k8s, ecrClientReturning("AWS:pa:ss:word")).ensureFor(ecrImage, "default")
 
-        verify(k8s).applyResource(any(), captor.capture())
+        verify(k8s).applyResource(captor.capture())
         val config =
             Json
                 .parseToJsonElement(String(Base64.getDecoder().decode(captor.firstValue.data[".dockerconfigjson"])))
@@ -111,12 +100,12 @@ class EcrPullSecretServiceTest {
     @Test
     fun `the secret is written to the namespace it was asked for`() {
         val k8s = mock<K8sService>()
-        whenever(k8s.applyResource(any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8s.applyResource(any())).thenReturn(Result.success(Unit))
         val captor = argumentCaptor<Secret>()
 
-        EcrPullSecretService(k8s, ecrClientReturning("AWS:x")).ensureFor(controlHost, ecrImage, "observability")
+        EcrPullSecretService(k8s, ecrClientReturning("AWS:x")).ensureFor(ecrImage, "observability")
 
-        verify(k8s).applyResource(any(), captor.capture())
+        verify(k8s).applyResource(captor.capture())
         assertThat(captor.firstValue.metadata.namespace).isEqualTo("observability")
     }
 

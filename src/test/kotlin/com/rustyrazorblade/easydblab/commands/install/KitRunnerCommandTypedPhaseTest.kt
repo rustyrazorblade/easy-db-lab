@@ -78,7 +78,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockMetricsRegistryService).register(any(), any(), any())
+        verify(mockMetricsRegistryService).register(any(), any())
     }
 
     /**
@@ -110,7 +110,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("postgres-duckdb", "start").call()
 
         val targets = argumentCaptor<List<KitMetrics.Scrape>>()
-        verify(mockMetricsRegistryService).register(any(), eq("postgres-duckdb"), targets.capture())
+        verify(mockMetricsRegistryService).register(eq("postgres-duckdb"), targets.capture())
         assertThat(targets.firstValue.associate { it.job to it.port }).isEqualTo(mapOf("static" to 30988, "pods" to 9187))
     }
 
@@ -138,7 +138,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("postgres-duckdb", "start").call()
 
         val targets = argumentCaptor<List<KitMetrics.Scrape>>()
-        verify(mockMetricsRegistryService).register(any(), any(), targets.capture())
+        verify(mockMetricsRegistryService).register(any(), targets.capture())
         assertThat(targets.firstValue.single().podSelector)
             .isEqualTo("cnpg.io/cluster=postgres-duckdb,cnpg.io/instanceRole=primary")
     }
@@ -170,7 +170,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("mydb", "start").call()
 
         val targets = argumentCaptor<List<KitMetrics.Scrape>>()
-        verify(mockMetricsRegistryService).register(any(), eq("mydb"), targets.capture())
+        verify(mockMetricsRegistryService).register(eq("mydb"), targets.capture())
         assertThat(targets.firstValue.single().podSelector).isEmpty()
     }
 
@@ -186,7 +186,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockMetricsRegistryService, never()).register(any(), any(), any())
+        verify(mockMetricsRegistryService, never()).register(any(), any())
     }
 
     @Test
@@ -201,7 +201,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "stop").call()
-        verify(mockMetricsRegistryService).deregister(any(), any())
+        verify(mockMetricsRegistryService).deregister(any())
     }
 
     @Test
@@ -459,7 +459,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
 
         assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
 
-        verify(mockMetricsRegistryService).deregister(any(), eq("mydb"))
+        verify(mockMetricsRegistryService).deregister(eq("mydb"))
         verify(mockClusterStateManager).removeRunningWorkload("mydb")
         verify(mockKitHookExecutor).firePostKitStop("mydb")
     }
@@ -478,7 +478,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
 
         assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
 
-        verify(mockMetricsRegistryService, never()).deregister(any(), any())
+        verify(mockMetricsRegistryService, never()).deregister(any())
         verify(mockClusterStateManager, never()).removeRunningWorkload(any())
     }
 

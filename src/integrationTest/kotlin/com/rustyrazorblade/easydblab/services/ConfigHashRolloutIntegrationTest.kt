@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -26,7 +27,6 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.time.Duration
@@ -78,13 +78,18 @@ class ConfigHashRolloutIntegrationTest {
         SharedK3s.createNamespace(TEMPLATE_NAMESPACE)
         client = SharedK3s.client()
         val clientProvider = mock<K8sClientProvider>()
-        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
+        whenever(clientProvider.createClient()).thenAnswer { SharedK3s.client() }
         manifests = DefaultK8sManifestOperations(clientProvider, EventBus())
         namespaces = DefaultK8sNamespaceOperations(clientProvider, EventBus())
 
         stateManager = mock()
         whenever(stateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "acct-bucket"),
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                s3Bucket = "acct-bucket",
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
+            ),
         )
         user =
             User(
@@ -114,7 +119,7 @@ class ConfigHashRolloutIntegrationTest {
         val known =
             mapOf("cluster-config" to clusterConfig) +
                 resources.filterIsInstance<ConfigMap>().associate { it.metadata.name to it.data.orEmpty() }
-        return ConfigHashAnnotator.annotate(resources, known).onEach { manifests.applyResource(controlHost, it).getOrThrow() }
+        return ConfigHashAnnotator.annotate(resources, known).onEach { manifests.applyResource(it).getOrThrow() }
     }
 
     private fun stack(tempoConfigEdit: (String) -> String = { it }): List<HasMetadata> {
@@ -227,8 +232,8 @@ class ConfigHashRolloutIntegrationTest {
                 resources.filterIsInstance<ConfigMap>().associate { it.metadata.name to it.data.orEmpty() }
         val hashed = ConfigHashAnnotator.annotate(resources, known)
         val emitted = mutableListOf<Event.Grafana.WorkloadConfigCompared>()
-        ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(controlHost, hashed, TEMPLATE_NAMESPACE)
-        hashed.forEach { manifests.applyResource(controlHost, it).getOrThrow() }
+        ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(hashed, TEMPLATE_NAMESPACE)
+        hashed.forEach { manifests.applyResource(it).getOrThrow() }
         return emitted
     }
 
@@ -298,7 +303,7 @@ class ConfigHashRolloutIntegrationTest {
         val tempo = WorkloadRef(WorkloadKind.Deployment, "tempo")
         val absent = WorkloadRef(WorkloadKind.DaemonSet, "not-deployed")
 
-        val running = namespaces.workloadConfigHashes(controlHost, listOf(tempo, absent), NAMESPACE).getOrThrow()
+        val running = namespaces.workloadConfigHashes(listOf(tempo, absent), NAMESPACE).getOrThrow()
 
         assertThat(tempoHash).isNotBlank()
         assertThat(running).containsEntry(tempo, tempoHash).containsEntry(absent, null)
@@ -311,10 +316,19 @@ class ConfigHashRolloutIntegrationTest {
      */
     private fun deployCollectorStage(): List<Event.Grafana.WorkloadConfigCompared> {
         val scrapeConfigs = otel.listWorkloadScrapeConfigs(client)
-        val resources = CollectorResources.build(otel, controlHost, stateManager.load(), user.region, scrapeConfigs, NodeCapabilities.AWS)
+        val state = stateManager.load()
+        val resources =
+            CollectorResources.build(
+                otel,
+                checkNotNull(state.getControlHost()),
+                state,
+                user.region,
+                scrapeConfigs,
+                NodeCapabilities.AWS,
+            )
         val emitted = mutableListOf<Event.Grafana.WorkloadConfigCompared>()
-        ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(controlHost, resources, Constants.K8s.NAMESPACE)
-        resources.forEach { manifests.applyResource(controlHost, it).getOrThrow() }
+        ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(resources, Constants.K8s.NAMESPACE)
+        resources.forEach { manifests.applyResource(it).getOrThrow() }
         return emitted
     }
 
@@ -352,7 +366,7 @@ class ConfigHashRolloutIntegrationTest {
             val deployedGeneration = collectorGeneration()
 
             client.resource(kitMetrics).create()
-            otelSync.syncConfigMap(controlHost).getOrThrow()
+            otelSync.syncConfigMap().getOrThrow()
             val syncedGeneration = collectorGeneration()
             assertThat(syncedGeneration).isGreaterThan(deployedGeneration)
 

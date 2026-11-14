@@ -254,6 +254,25 @@ sealed interface Event {
                     (javaVersion?.let { "JDK $it (--java)" } ?: "the JDK the version declares") + "."
         }
 
+        /**
+         * `cassandra use` switched [version] on [hosts], then [step] failed, so their configuration
+         * is not updated. The switch is not undone.
+         */
+        @Serializable
+        @SerialName("Cassandra.UseConfigNotApplied")
+        data class UseConfigNotApplied(
+            val version: String,
+            val step: String,
+            val hosts: List<String>,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $version is now the active version on ${hosts.joinToString(", ")}, but $step failed, " +
+                    "so their configuration was not updated. Fix the cause above, then run: " +
+                    "easy-db-lab cassandra update-config --hosts ${hosts.joinToString(",")}"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Cassandra.ConfigUpdateHint")
         data class ConfigUpdateHint(

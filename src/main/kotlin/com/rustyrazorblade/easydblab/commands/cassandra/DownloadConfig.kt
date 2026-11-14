@@ -56,6 +56,9 @@ class DownloadConfig : PicoBaseCommand() {
         host: Host,
         resolvedVersion: Version,
     ) {
+        require(resolvedVersion.versionString.isNotBlank()) {
+            "${host.alias} reports no active version (is /usr/local/cassandra/current set?)"
+        }
         logger.info {
             "Original version: $version.  Resolved version: ${resolvedVersion.versionString}. "
         }
@@ -73,17 +76,23 @@ class DownloadConfig : PicoBaseCommand() {
         } else {
             localDir.mkdirs()
 
-            remoteOps.downloadDirectory(
-                host,
-                remoteDir = "${resolvedVersion.path}/conf",
-                localDir = localDir,
-                excludeFilters =
-                    listOf(
-                        "cassandra*.yaml",
-                        "axonenv*",
-                        "cassandra-rackdc.properties",
-                    ),
-            )
+            runCatching {
+                remoteOps.downloadDirectory(
+                    host,
+                    remoteDir = "${resolvedVersion.path}/conf",
+                    localDir = localDir,
+                    excludeFilters =
+                        listOf(
+                            "cassandra*.yaml",
+                            "axonenv*",
+                            "cassandra-rackdc.properties",
+                        ),
+                )
+            }.onFailure {
+                // An empty directory left behind would pass for a finished download on the next run,
+                // and update-config would then upload nothing.
+                localDir.deleteRecursively()
+            }.getOrThrow()
         }
     }
 }

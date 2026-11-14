@@ -23,6 +23,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -120,6 +121,22 @@ class UpdateConfigTest : BaseKoinTest() {
         assertThatThrownBy { UpdateConfig().execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContainingAll("5.0.9-custom", "download-config --hosts db0")
+        verify(mockRemoteOps, never()).executeRemotely(any<Host>(), argThat { contains("patch-config") }, any(), any())
+    }
+
+    /** On a multi-host run no host is changed unless every targeted host's directory is there. */
+    @Test
+    fun `one host without a config directory stops the whole run before any host is patched`() {
+        val second = testCassandraHost.copy(alias = "db1", privateIp = "10.0.1.2", instanceId = "i-db1")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, second))),
+        )
+        whenever(mockRemoteOps.getRemoteVersion(eq(second.toHost()), any()))
+            .doReturn(Version("/usr/local/cassandra/5.0.9-custom"))
+
+        assertThatThrownBy { UpdateConfig().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContainingAll("5.0.9-custom", "db1", "download-config --hosts db1")
         verify(mockRemoteOps, never()).executeRemotely(any<Host>(), argThat { contains("patch-config") }, any(), any())
     }
 

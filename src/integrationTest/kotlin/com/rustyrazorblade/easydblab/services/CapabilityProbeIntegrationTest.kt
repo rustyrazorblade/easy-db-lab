@@ -28,15 +28,15 @@ class CapabilityProbeIntegrationTest {
         const val ENFORCE_LABEL = "pod-security.kubernetes.io/enforce"
     }
 
-    @TempDir
-    lateinit var directory: File
-
     private lateinit var client: KubernetesClient
     private lateinit var api: KubeApi
     private val probe = CapabilityProbeService(ProxiedKubernetesClientFactory())
 
+    /** Takes [directory] as a parameter: JUnit injects an instance `@TempDir` field only before each test, after this runs. */
     @BeforeAll
-    fun setup() {
+    fun setup(
+        @TempDir directory: File,
+    ) {
         client = SharedK3s.client()
         val kubeconfig = File(directory, "kubeconfig").apply { writeText(SharedK3s.kubeConfigYaml()) }
         api = KubeApi(kubeconfig.toPath(), KubeConfigUtils.parseConfig(kubeconfig).currentContext)

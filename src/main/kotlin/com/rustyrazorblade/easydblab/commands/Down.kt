@@ -324,10 +324,23 @@ class Down : PicoBaseCommand() {
     private fun executeTeardown(mode: TeardownMode): TeardownOutcome =
         when (mode) {
             is TeardownMode.CurrentCluster -> teardownCurrentCluster()
-            is TeardownMode.SpecificVpc -> teardownSpecificVpc(mode.vpcId, saveTail = false)
+            is TeardownMode.SpecificVpc ->
+                teardownSpecificVpc(mode.vpcId, saveTail = false, suppliedVpcCluster = suppliedVpcClusterFor(mode.vpcId))
             is TeardownMode.AllTagged -> teardownAllTagged()
             is TeardownMode.PackerInfrastructure -> teardownPackerInfrastructure()
         }
+
+    /**
+     * The workspace cluster's ID when [vpcId] is the VPC that cluster was given with `init --vpc`,
+     * otherwise null. `down <vpc-id>` for that VPC removes only that cluster's resources: the VPC
+     * is the user's, whichever way it is named.
+     */
+    private fun suppliedVpcClusterFor(vpcId: String): String? =
+        clusterStateManager
+            .takeIf { it.exists() }
+            ?.load()
+            ?.takeIf { it.vpcSupplied && it.vpcId == vpcId }
+            ?.clusterId
 
     /**
      * Unpublishes the SOCKS proxy port just before infrastructure is removed. The control node (and

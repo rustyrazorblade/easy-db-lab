@@ -102,6 +102,9 @@ class AwsInfrastructureServiceTest {
             verify(vpcService, never()).findInternetGatewayByVpc(any())
             verify(vpcService, never()).findRouteTablesInVpc(any())
             verify(vpcService, never()).findNatGatewaysInVpc(any())
+            // EMR clusters and OpenSearch domains are looked for in the cluster's own subnets only.
+            verify(emrService).findClustersInVpc(vpcId, listOf("subnet-b"))
+            verify(openSearchService).findDomainsInVpc(listOf("subnet-b"))
         }
 
         @Test

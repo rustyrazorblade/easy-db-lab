@@ -275,6 +275,15 @@ class EC2VpcServiceIntegrationTest {
         }
 
         @Test
+        fun `waiting for a subnet's interfaces returns at once when it has none, and for no subnets at all`() {
+            val vpcId = vpcService.createVpc("test-eni-wait-vpc", "10.22.0.0/16", emptyMap())
+            val subnet = vpcService.findOrCreateSubnet(vpcId, "eni-subnet", "10.22.0.0/24", emptyMap())
+
+            vpcService.waitForNetworkInterfacesClearedInSubnets(listOf(subnet), 1_000)
+            vpcService.waitForNetworkInterfacesClearedInSubnets(emptyList(), 1_000)
+        }
+
+        @Test
         fun `deleting the routes to a gateway leaves the route tables in place`() {
             val vpcId = vpcService.createVpc("test-route-vpc", "10.21.0.0/16", emptyMap())
             val subnet = vpcService.findOrCreateSubnet(vpcId, "route-subnet", "10.21.0.0/24", emptyMap())

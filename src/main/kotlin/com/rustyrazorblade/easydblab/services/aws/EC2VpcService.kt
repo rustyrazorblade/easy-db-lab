@@ -730,12 +730,15 @@ class EC2VpcService(
             }
         routeTables.forEach { rt ->
             rt.routes().filter { it.gatewayId() == igwId }.forEach { route ->
-                log.info { "Deleting route ${route.destinationCidrBlock()} to $igwId from ${rt.routeTableId()}" }
+                val destination = route.destinationCidrBlock() ?: route.destinationIpv6CidrBlock()
+                log.info { "Deleting route $destination to $igwId from ${rt.routeTableId()}" }
                 val deleteRequest =
                     DeleteRouteRequest
                         .builder()
                         .routeTableId(rt.routeTableId())
+                        // An IPv6 route has no IPv4 destination; the call needs the one it has.
                         .destinationCidrBlock(route.destinationCidrBlock())
+                        .destinationIpv6CidrBlock(route.destinationIpv6CidrBlock())
                         .build()
                 withAwsRetry("delete-route-to-igw") { ec2Client.deleteRoute(deleteRequest) }
             }

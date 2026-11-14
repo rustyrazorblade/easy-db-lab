@@ -110,7 +110,7 @@ internal abstract class ProcessSocksProxyServiceTestBase {
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
         portSelector = portSelector,
-        verifyAttempts = verifyAttempts,
+        verifyAttempts = { verifyAttempts },
         tunnelProcesses = tunnelProcesses,
         clock = clock,
         connectFailureHint = connectFailureHint,

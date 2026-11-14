@@ -70,6 +70,16 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the tunnel service is built before the profile exists, so profile setup can start`() {
+        getKoin().loadModules(
+            listOf(module { single<User> { error("User configuration file not found") } }),
+            allowOverride = true,
+        )
+
+        assertThat(getKoin().get<SocksProxyService>()).isNotNull()
+    }
+
+    @Test
     fun `a corrupt cluster state gives the stage without a hint`() {
         val message = stalledConnectMessage(SshTransport.Direct, open = false) { stateFile.writeText("{ not json") }
 

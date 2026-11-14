@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -96,7 +97,7 @@ class GrafanaDocumentsSidecars(
                 "--region",
                 documents.region,
                 "--host",
-                "s3.${documents.region}.amazonaws.com",
+                S3Backend(bucket = documents.bucket, region = documents.region).endpoint,
                 "--port",
                 "127.0.0.1:${Constants.Grafana.Documents.PROXY_PORT}",
             ).addNewPort()

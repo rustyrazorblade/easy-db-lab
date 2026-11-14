@@ -130,9 +130,10 @@ spec:
             # dashboard filters. NODE_NAME and POD_NAME must precede this variable.
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: "host.name=$(NODE_NAME),service.instance.id=$(POD_NAME),node_role=db,cassandra_build=@RESOLVED_BUILD@"
-            # Port 4318 is the collector's OTLP http/protobuf receiver, the agent's default protocol.
+            # The core collector Service on port 4318, its OTLP http/protobuf receiver and the
+            # agent's default protocol. The Service keeps the traffic on this pod's node.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://$(HOST_IP):4318"
+              value: "__OTEL_OTLP_HTTP_ENDPOINT__"
             - name: OTEL_METRIC_EXPORT_INTERVAL
               value: "5000"
           # Drain flushes memtables and stops accepting writes before SIGTERM, so stop then start

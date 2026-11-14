@@ -28,7 +28,7 @@ class MimirTailFlushTest {
 
     private fun flush(
         http: RecordingObservabilityHttp,
-        progress: FlushProgress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, "mimir"),
+        progress: FlushProgress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, setOf("mimir")),
     ) = MimirTailFlush(http, workloads).flush(control, state, progress)
 
     @Test
@@ -42,7 +42,7 @@ class MimirTailFlushTest {
 
     @Test
     fun `a failed shutdown stops the flush there, with Mimir's ingester stopped and not scaled`() {
-        val progress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, "mimir")
+        val progress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, setOf("mimir"))
 
         assertThatThrownBy { flush(RecordingObservabilityHttp(ObservabilityResponse(503, "ingester unavailable")), progress) }
             .hasMessageContaining("503")

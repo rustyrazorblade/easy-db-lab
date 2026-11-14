@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -18,6 +19,7 @@ import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -203,6 +205,19 @@ class K8sServiceIntegrationTest {
         assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
         assertDaemonSetExists("otel-collector")
         assertServiceExists("otel-collector")
+    }
+
+    @Test
+    @Order(22)
+    fun `should apply OTel host add-on resources`() {
+        val resources = OtelHostCollectorManifestBuilder(templateService).buildAllResources(CniMode.Cilium)
+        applyAndVerify(resources)
+
+        assertServiceAccountExists("otel-collector-host")
+        assertClusterRoleExists("otel-collector-host")
+        assertClusterRoleBindingExists("otel-collector-host")
+        assertConfigMapExists("otel-collector-host-config", "otel-host-collector-config.yaml")
+        assertDaemonSetExists("otel-collector-host")
     }
 
     @Test
@@ -818,6 +833,7 @@ class K8sServiceIntegrationTest {
     private fun collectAllResources(): List<HasMetadata> =
         JournaldOtelManifestBuilder(templateService).buildAllResources() +
             OtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS) +
+            OtelHostCollectorManifestBuilder(templateService).buildAllResources(CniMode.Cilium) +
             EbpfExporterManifestBuilder().buildAllResources() +
             MimirManifestBuilder(templateService).buildAllResources() +
             LokiManifestBuilder(templateService).buildAllResources() +

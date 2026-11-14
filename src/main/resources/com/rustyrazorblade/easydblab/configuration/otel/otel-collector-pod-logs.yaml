@@ -1,0 +1,52 @@
+# Pod stdout and stderr from the kubelet's log files, rendered into the core collector's receivers
+# only where the environment can mount /var/log/pods (HOST_PATH). OtelManifestBuilder substitutes
+# this file for __POD_LOG_RECEIVERS__; it is two-space indented to sit under `receivers:`.
+  file_log/containers:
+    include:
+      - /var/log/pods/**/*.log
+    exclude:
+      - /var/log/pods/default_otel-collector-*/**
+      - /var/log/pods/default_fluent-bit-journald-*/**
+      - /var/log/pods/default_chi-clickhouse-*/**
+      - /var/log/pods/default_chk-clickhouse-keeper-*/**
+    start_at: end
+    include_file_path: true
+    include_file_name: false
+    operators:
+      - type: container
+        id: container_parser
+        on_error: send
+  file_log/clickhouse-containers:
+    include:
+      - /var/log/pods/default_chi-clickhouse-*/**/*.log
+      - /var/log/pods/default_chk-clickhouse-keeper-*/**/*.log
+    start_at: end
+    include_file_path: true
+    include_file_name: false
+    operators:
+      - type: container
+        id: container_parser
+        on_error: send
+      - type: regex_parser
+        id: extract_ch_parts
+        regex: '^.*?<(?P<ch_level>Debug|Information|Warning|Error|Fatal|Trace)>\s+(?P<ch_message>.+)$'
+        parse_from: body
+        parse_to: attributes
+        on_error: send
+      - type: severity_parser
+        id: parse_ch_severity
+        parse_from: attributes.ch_level
+        on_error: send
+        mapping:
+          debug: Debug
+          info: Information
+          warn: Warning
+          error: Error
+          fatal: Fatal
+          trace: Trace
+      - type: move
+        id: set_ch_body
+        from: attributes.ch_message
+        to: body
+        on_error: send
+  # NOTE: ClickHouse logs via container stdout/stderr (K8s pod), collected by file_log/containers.

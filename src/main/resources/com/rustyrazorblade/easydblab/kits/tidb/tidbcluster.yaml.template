@@ -47,7 +47,7 @@ spec:
         type = "const"
         param = 1.0
       [opentracing.reporter]
-        local-agent-host-port = "otel-collector.default.svc.cluster.local:6831"
+        local-agent-host-port = "__OTEL_COLLECTOR_HOST__:6831"
     nodeSelector:
       type: app
 

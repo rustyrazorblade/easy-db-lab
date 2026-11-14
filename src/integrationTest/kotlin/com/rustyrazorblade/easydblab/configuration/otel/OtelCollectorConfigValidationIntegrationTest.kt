@@ -65,16 +65,19 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
         val clusterConfig = { configMap: io.fabric8.kubernetes.api.model.ConfigMap ->
             configMap.data.getValue("otel-collector-config.yaml")
         }
+        val hostConfig = { cni: CniMode ->
+            OtelHostCollectorManifestBuilder(getKoin().get()).buildConfigMap(cni).data.getValue("otel-host-collector-config.yaml")
+        }
         return when (variant) {
-            "cluster-flannel" -> clusterConfig(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), null, CniMode.Flannel))
-            "cluster-cilium-with-kits" ->
-                clusterConfig(
-                    builder.buildConfigMap(NodeCapabilities.AWS, listOf(kitJob, podJob), null, CniMode.Cilium),
-                )
-            "cluster-redirect" ->
-                clusterConfig(
-                    builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9"), CniMode.Cilium),
-                )
+            "core" -> clusterConfig(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), null, PodLogSource.NodeFiles))
+            "core-without-pod-logs" ->
+                clusterConfig(builder.buildConfigMap(NodeCapabilities.LOCAL_DOCKER, emptyList(), null, PodLogSource.None))
+            "core-with-kits" ->
+                clusterConfig(builder.buildConfigMap(NodeCapabilities.AWS, listOf(kitJob, podJob), null, PodLogSource.NodeFiles))
+            "core-redirect" ->
+                clusterConfig(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+            "host-flannel" -> hostConfig(CniMode.Flannel)
+            "host-cilium" -> hostConfig(CniMode.Cilium)
             "emr" ->
                 checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/configuration/emr/otel-collector-config.yaml"))
                     .readText()
@@ -84,24 +87,33 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
                 checkNotNull(
                     javaClass.getResource("/com/rustyrazorblade/easydblab/configuration/cassandra/otel-stress-sidecar-config.yaml"),
                 ).readText()
+                    .replace("__OTEL_CORE_GRPC_ENDPOINT__", "otel-collector.default.svc:4317")
             else -> error("unknown variant $variant")
         }
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["cluster-flannel", "cluster-cilium-with-kits", "cluster-redirect", "emr", "stress-sidecar"])
+    @ValueSource(
+        strings = [
+            "core", "core-without-pod-logs", "core-with-kits", "core-redirect", "host-flannel", "host-cilium", "emr", "stress-sidecar",
+        ],
+    )
     fun `the pinned collector accepts the rendered configuration`(variant: String) {
         val collector =
             GenericContainer("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
                 .withCopyToContainer(Transferable.of(rendered(variant)), "/cfg/config.yaml")
                 // host_metrics checks that its root_path exists.
-                .withCopyToContainer(Transferable.of(""), "${OtelManifestBuilder.HOST_ROOT_MOUNT_PATH}/.keep")
-                .withEnv("HOSTNAME", "node0")
+                .withCopyToContainer(Transferable.of(""), "${OtelHostCollectorManifestBuilder.HOST_ROOT_MOUNT_PATH}/.keep")
                 .withEnv("CLUSTER_NAME", "test-cluster")
                 .withEnv("TENANT", "acme")
                 .withEnv("STRESS_PROM_PORT", "9500")
                 .withEnv("K8S_NODE_NAME", "node0")
+                .withEnv("K8S_NODE_IP", "10.0.0.1")
+                .withEnv("OTEL_CORE_ENDPOINT", "otel-collector.default.svc:4317")
                 .withEnv("HOST_IP", "10.0.0.1")
+                // kubelet_stats loads the in-cluster CA when it starts, even under `validate`.
+                .withCopyToContainer(Transferable.of(ServiceAccountCa.pem()), "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+                .withCopyToContainer(Transferable.of("placeholder"), "/var/run/secrets/kubernetes.io/serviceaccount/token")
                 .withCommand("validate", "--config=/cfg/config.yaml")
                 .withStartupCheckStrategy(OneShotStartupCheckStrategy().withTimeout(Duration.ofMinutes(2)))
 

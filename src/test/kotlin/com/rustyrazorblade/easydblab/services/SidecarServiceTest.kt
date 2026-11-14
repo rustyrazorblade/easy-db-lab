@@ -169,4 +169,23 @@ class SidecarServiceTest : BaseKoinTest() {
                 .value
         assertThat(javaToolOptions).contains("-Dpyroscope.labels=hostname=\$(NODE_NAME),cluster=${testClusterState.clusterLabelName()} ")
     }
+
+    /** The sidecar is on the host network, but no collector listens on the node where `PRIVILEGED` is absent. */
+    @Test
+    fun `the sidecar exports OTLP to the core collector Service, not localhost`() {
+        val resources = argumentCaptor<HasMetadata>()
+
+        sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
+
+        verify(mockK8sService, times(2)).applyResource(resources.capture())
+        val endpoint =
+            resources.allValues
+                .filterIsInstance<DaemonSet>()
+                .single()
+                .spec.template.spec.containers
+                .flatMap { it.env }
+                .single { it.name == "OTEL_EXPORTER_OTLP_ENDPOINT" }
+                .value
+        assertThat(endpoint).isEqualTo("http://otel-collector.default.svc:4317")
+    }
 }

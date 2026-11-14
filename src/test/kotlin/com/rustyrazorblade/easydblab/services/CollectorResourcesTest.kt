@@ -5,9 +5,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -39,4 +41,23 @@ class CollectorResourcesTest : BaseKoinTest() {
         assertThat(config(NodeCapabilities.AWS)).contains("job_name: \"yace\"").contains("__meta_kubernetes_pod_node_name")
         assertThat(config(NodeCapabilities.LOCAL_DOCKER)).doesNotContain("yace").doesNotContain("5001")
     }
+
+    @Test
+    fun `pod logs are collected only where the environment grants hostPath volumes`() {
+        val withHostPath = NodeCapabilities(setOf(NodeCapability.HOST_PATH))
+        val withoutHostPath = NodeCapabilities(NodeCapability.entries.toSet() - NodeCapability.HOST_PATH)
+        assertThat(config(withHostPath)).contains("file_log/containers").contains("logs/containers:")
+        assertThat(config(withoutHostPath)).doesNotContain("file_log").doesNotContain("logs/containers")
+        assertThat(
+            daemonSet(withoutHostPath)
+                .spec.template.spec.volumes
+                .mapNotNull { it.hostPath },
+        ).isEmpty()
+    }
+
+    private fun daemonSet(capabilities: NodeCapabilities): DaemonSet =
+        CollectorResources
+            .build(OtelManifestBuilder(getKoin().get()), host, state, "us-west-2", emptyList(), capabilities)
+            .filterIsInstance<DaemonSet>()
+            .single()
 }

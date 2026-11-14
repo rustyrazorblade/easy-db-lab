@@ -258,12 +258,11 @@ class OtelSyncServiceTest : BaseKoinTest() {
     }
 
     /**
-     * A kit start/stop regenerates the whole ConfigMap. On a Cilium cluster that regeneration must
-     * keep the Cilium scrape jobs, or the first kit start would silently drop agent and operator
-     * metrics for the rest of the cluster's life.
+     * A kit start/stop regenerates the core collector only. The Cilium scrape jobs are the host
+     * add-on's, in its own ConfigMap, so a kit start can neither drop them nor roll the add-on.
      */
     @Test
-    fun `syncConfigMap keeps the Cilium scrape jobs when the cluster state says Cilium`() {
+    fun `syncConfigMap touches only the core collector, so the add-on keeps its Cilium jobs`() {
         val ciliumState =
             ClusterState(
                 name = "test",
@@ -275,9 +274,9 @@ class OtelSyncServiceTest : BaseKoinTest() {
         val applied = captureApplied()
 
         service.syncConfigMap()
-        val appliedConfigMap = applied.filterIsInstance<ConfigMap>().singleOrNull()
 
-        val yaml = checkNotNull(appliedConfigMap?.data?.get("otel-collector-config.yaml"))
-        assertThat(yaml).contains("cilium-agent").contains("cilium-operator")
+        assertThat(applied.map { it.metadata.name }).noneMatch { it.startsWith("otel-collector-host") }
+        val yaml = checkNotNull(applied.filterIsInstance<ConfigMap>().single().data["otel-collector-config.yaml"])
+        assertThat(yaml).doesNotContain("cilium-agent")
     }
 }

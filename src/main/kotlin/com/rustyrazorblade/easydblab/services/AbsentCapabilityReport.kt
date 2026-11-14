@@ -18,7 +18,7 @@ object AbsentCapabilityReport {
         if (absent.isEmpty()) return null
         val blocks =
             absent.joinToString("\n") { capability ->
-                val disabled = stages.filter { it.requires == capability }.map { it.label }
+                val disabled = stages.filter { capability in it.requires }.map { it.label }
                 val consequence =
                     when {
                         disabled.isEmpty() -> "no component needs it yet"

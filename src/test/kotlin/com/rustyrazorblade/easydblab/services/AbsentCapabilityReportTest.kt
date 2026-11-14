@@ -8,10 +8,10 @@ import org.junit.jupiter.api.Test
 class AbsentCapabilityReportTest {
     private val stages =
         listOf(
-            StageRequirement("Plain", null),
-            StageRequirement("Needs privilege A", NodeCapability.PRIVILEGED),
-            StageRequirement("Needs privilege B", NodeCapability.PRIVILEGED),
-            StageRequirement("Needs the journal", NodeCapability.SYSTEMD_JOURNAL),
+            StageRequirement("Plain"),
+            StageRequirement("Needs privilege A", setOf(NodeCapability.PRIVILEGED)),
+            StageRequirement("Needs privilege B", setOf(NodeCapability.PRIVILEGED)),
+            StageRequirement("Needs the journal", setOf(NodeCapability.SYSTEMD_JOURNAL)),
         )
 
     @Test

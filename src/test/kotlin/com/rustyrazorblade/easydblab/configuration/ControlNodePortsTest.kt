@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -10,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilde
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -39,6 +41,9 @@ class ControlNodePortsTest : BaseKoinTest() {
     private companion object {
         /** Ports the Pyroscope server opens without its config naming them: dskit's gRPC and gossip defaults. */
         val PYROSCOPE_IMPLICIT_PORTS = setOf(9095, 7946)
+
+        /** The port every OTel collector serves its own Prometheus telemetry on. */
+        const val COLLECTOR_SELF_TELEMETRY_PORT = 8888
     }
 
     override fun additionalTestModules(): List<Module> =
@@ -91,6 +96,7 @@ class ControlNodePortsTest : BaseKoinTest() {
         val resources =
             mimir + loki + tempo +
                 OtelManifestBuilder(templates).buildAllResources(NodeCapabilities.AWS) +
+                OtelHostCollectorManifestBuilder(templates).buildAllResources(CniMode.Cilium) +
                 JournaldOtelManifestBuilder(templates).buildAllResources() +
                 EbpfExporterManifestBuilder().buildAllResources() +
                 BeylaManifestBuilder(templates).buildAllResources() +
@@ -113,8 +119,12 @@ class ControlNodePortsTest : BaseKoinTest() {
                 merge("loki", configuredPorts(loki, LokiManifestBuilder.CONFIG_FILE), Set<Int>::plus)
                 merge("tempo", configuredPorts(tempo, "tempo.yaml"), Set<Int>::plus)
                 merge("pyroscope", PYROSCOPE_IMPLICIT_PORTS, Set<Int>::plus)
+                // The collector serves its own telemetry on 8888 without declaring a container port.
+                merge(Constants.OtelCollector.HOST_COLLECTOR_NAME, setOf(COLLECTOR_SELF_TELEMETRY_PORT), Set<Int>::plus)
             }
-        assertThat(ports.keys).contains("mimir", "loki", "tempo", "pyroscope", "otel-collector")
+        assertThat(ports.keys).contains("mimir", "loki", "tempo", "pyroscope", "otel-collector-host")
+        // The core collector is on the pod network, so it claims no port on the node.
+        assertThat(ports.keys).doesNotContain("otel-collector")
 
         val claims = ports.flatMap { (workload, set) -> set.map { it to workload } }.groupBy({ it.first }, { it.second })
         assertThat(claims.filterValues { it.size > 1 }).isEmpty()

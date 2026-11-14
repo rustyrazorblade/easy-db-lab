@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
@@ -199,14 +200,19 @@ class DefaultStressJobService(
     }
 
     /**
-     * Loads the OTel sidecar config from the classpath resource.
+     * Loads the OTel sidecar config from the classpath resource, exporting to the node's core
+     * collector Service.
      */
-    private fun loadSidecarConfig(): String =
+    internal fun loadSidecarConfig(): String =
         templateService
             .fromResource(
                 this::class.java,
                 "/com/rustyrazorblade/easydblab/configuration/cassandra/$SIDECAR_CONFIG_FILE_NAME",
-            ).substitute()
+            ).substitute(
+                // The node's core collector, through its Service: no collector listens on the node
+                // itself unless the host add-on runs there.
+                mapOf("OTEL_CORE_GRPC_ENDPOINT" to "${OtelEndpoints.serviceHost()}:${Constants.K8s.OTEL_GRPC_PORT}"),
+            )
 
     /**
      * Ensures the OTel sidecar ConfigMap exists in the stress namespace.
@@ -385,6 +391,9 @@ class DefaultStressJobService(
         // collector serves on 4318. Sent at 4317 - its gRPC port - every export fails with
         // "HttpExporter - Failed to export" and nothing says why.
         //
+        // The core collector's Service, not the control node: the Service keeps the traffic on
+        // this node's collector (internalTrafficPolicy: Local).
+        //
         // Resource attributes come from the same helper the sidecar uses, so a span and the stress
         // metrics from the same run carry the same job_name and tags and can be lined up. The
         // cluster label is NOT added here: the collector's traces pipeline stamps it with
@@ -420,7 +429,7 @@ class DefaultStressJobService(
                 "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",
                 "-Dotel.service.name=cassandra-easy-stress",
                 "-Dotel.resource.attributes=$otelResourceAttributes",
-                "-Dotel.exporter.otlp.endpoint=http://$controlNodeIp:${Constants.K8s.OTEL_HTTP_PORT}",
+                "-Dotel.exporter.otlp.endpoint=${OtelEndpoints.otlpHttpEndpoint()}",
                 "-Dotel.metric.export.interval=5s",
                 "-Dotel.logs.exporter=none",
                 "-Dotel.traces.sampler=parentbased_traceidratio",
@@ -484,14 +493,6 @@ class DefaultStressJobService(
                     .withNewValueFrom()
                     .withNewFieldRef()
                     .withFieldPath("spec.nodeName")
-                    .endFieldRef()
-                    .endValueFrom()
-                    .build(),
-                EnvVarBuilder()
-                    .withName("HOST_IP")
-                    .withNewValueFrom()
-                    .withNewFieldRef()
-                    .withFieldPath("status.hostIP")
                     .endFieldRef()
                     .endValueFrom()
                     .build(),

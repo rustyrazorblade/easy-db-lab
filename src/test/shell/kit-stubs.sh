@@ -14,6 +14,20 @@
 #   log.<n>           what the n-th `kubectl logs -f` prints; logs-exit.<n> its exit status
 #   full-log          what `kubectl logs <pod>` (no -f) prints
 #   run-exit          the exit status of `kubectl run` (default 0)
+#   proxy-fail        present: `kubectl proxy` prints an error to stderr and exits 1 without serving
+#   proxy-hold        present: `kubectl proxy` keeps running after its banner, as the real one
+#                     does, and writes its PID to proxy.pid
+#   control-nodes     what `kubectl get nodes -l node-role.kubernetes.io/control-plane` prints
+#                     (absent: control0)
+#   core-pods         "<pod> <node> [<deletionTimestamp>]" lines, the Running core collector pods
+#                     `kubectl get pods -l app.kubernetes.io/name=otel-collector` filters by
+#                     spec.nodeName and prints as "<name> <deletionTimestamp>" lines (absent: one
+#                     pod per node, otel-collector-c0 on control0 and otel-collector-d0 on db0)
+#   api-hang          a resource (nodes, pods): `kubectl get <it>` hangs as against a hung API server; with
+#                     --request-timeout it fails as the real one does when that deadline passes,
+#                     and with none it holds for 5 seconds and prints nothing
+#   curl-signal       a signal name (TERM, INT): curl sends it to the shell that ran it, as a kill
+#                     or a Ctrl-C arriving during a push would
 #
 # and records:
 #
@@ -53,11 +67,40 @@ while :; do
     *) break ;;
   esac
 done
+if [ "$1" = get ] && [ -f "${S}/api-hang" ] && [ "$2" = "$(cat "${S}/api-hang")" ]; then
+  case " $* " in
+    *" --request-timeout="*) echo "error: context deadline exceeded" >&2; exit 1 ;;
+    *) /bin/sleep 5; exit 0 ;;
+  esac
+fi
 case "$1" in
   get)
     case "$2" in
-      nodes) cat "${S}/app-nodes" 2>/dev/null; exit 0 ;;
+      nodes)
+        case " $* " in
+          *" node-role.kubernetes.io/control-plane "*)
+            if [ -f "${S}/control-nodes" ]; then cat "${S}/control-nodes"; else printf 'control0'; fi
+            exit 0
+            ;;
+        esac
+        cat "${S}/app-nodes" 2>/dev/null; exit 0
+        ;;
       pods)
+        case " $* " in
+          *" app.kubernetes.io/name=otel-collector "*)
+            node=""
+            for a in "$@"; do
+              case "${a}" in --field-selector=*spec.nodeName=*) node="${a##*spec.nodeName=}"; node="${node%%,*}" ;; esac
+            done
+            if [ -f "${S}/core-pods" ]; then core="$(cat "${S}/core-pods")"; else core="$(printf 'otel-collector-c0 control0\notel-collector-d0 db0')"; fi
+            while read -r name on deleting; do
+              [ -n "${name}" ] || continue
+              [ -z "${node}" ] || [ "${on}" = "${node}" ] || continue
+              printf '%s %s\n' "${name}" "${deleting:-}"
+            done <<< "${core}"
+            exit 0
+            ;;
+        esac
         filter=""
         for a in "$@"; do
           case "${a}" in --field-selector=status.phase!=Succeeded,status.phase!=Failed) filter=yes ;; esac
@@ -102,6 +145,15 @@ case "$1" in
     esac
     ;;
   describe) echo "Events: stub describe events for $3"; exit 0 ;;
+  proxy)
+    [ -f "${S}/proxy-fail" ] && { echo "error: unable to listen" >&2; exit 1; }
+    echo "Starting to serve on 127.0.0.1:18001"
+    if [ -f "${S}/proxy-hold" ]; then
+      echo "$$" > "${S}/proxy.pid"
+      exec /bin/sleep 60
+    fi
+    exit 0
+    ;;
   run)
     n=$(next run)
     for a in "$@"; do case "${a}" in --overrides=*) printf '%s\n' "${a#--overrides=}" > "${S}/overrides.${n}" ;; esac; done
@@ -138,6 +190,7 @@ n=$(( $(cat "${S}/curl.count" 2>/dev/null || echo 0) + 1 ))
 echo "${n}" > "${S}/curl.count"
 printf '%s\n' "$@" > "${S}/curl.${n}"
 [ -f "${S}/curl-out" ] && cat "${S}/curl-out"
+[ -f "${S}/curl-signal" ] && kill -s "$(cat "${S}/curl-signal")" "${PPID}"
 exit "$(cat "${S}/curl-exit" 2>/dev/null || echo 0)"
 EOF
   cat > "${dir}/date" <<'EOF'

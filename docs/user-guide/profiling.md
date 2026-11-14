@@ -163,7 +163,7 @@ A node whose configuration document cannot be read is marked `CONFIG` instead, n
 
 A node that has just started is marked `WAITING` instead, and reports `attached: no (waiting for the database to become ready)`. The reconciler will not attach to a database whose native transport is not yet listening, because async-profiler attaches with jattach, jattach signals `SIGQUIT`, and a process that has not installed a handler for that signal yet is killed by it — which is how attaching to a starting node used to kill it. This state clears itself on the first pass after the database is up, so it emits a typed `Profiling.AttachDeferred` event, which is **not** an error, and no `Profiling.AttachFailed`. If it does not clear, see `edl_jfr_attach_deferred_total` below.
 
-Shipping and attach problems are also visible without the CLI. The reconciler writes structured logfmt lines to journald, which Fluent Bit ships to Loki, and exports counters to the node's OTel collector, which forwards them to Mimir:
+Shipping and attach problems are also visible without the CLI. The reconciler writes structured logfmt lines to journald, which Fluent Bit ships to Loki, and exports counters to the node's OTLP listener (the host add-on collector), which forwards them through the core collector to Mimir:
 
 | Metric | Meaning |
 |---|---|

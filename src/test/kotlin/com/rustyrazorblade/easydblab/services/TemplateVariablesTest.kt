@@ -169,6 +169,17 @@ class TemplateVariablesTest : BaseKoinTest() {
     }
 
     @Test
+    fun `toMap resolves the collector endpoint variables to the service svc form`() {
+        val state = stateWith()
+        val map = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi").toMap()
+
+        // In-cluster producers dial the core collector Service, not a node IP.
+        assertThat(map["OTEL_COLLECTOR_HOST"]).isEqualTo("otel-collector.default.svc")
+        assertThat(map["OTEL_OTLP_HTTP_ENDPOINT"]).isEqualTo("http://otel-collector.default.svc:4318")
+        assertThat(map["OTEL_OTLP_GRPC_ENDPOINT"]).isEqualTo("http://otel-collector.default.svc:4317")
+    }
+
+    @Test
     fun `from sets storageClassWfc to the WFC constant`() {
         val state = stateWith()
         val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")

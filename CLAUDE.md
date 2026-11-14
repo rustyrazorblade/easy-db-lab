@@ -281,6 +281,8 @@ If I refer to Kubernetes configs or k8 configs, I am referring to these: `src/ma
 
 The cluster runs a full observability stack on the control node. When modifying any part of this stack, keep the related K8s manifests, Kotlin services, and user docs in sync.
 
+Each node runs two OTel collectors: the unprivileged core (`otel-collector`, reached through its node-local Service, the only exporter to the backends) and the privileged host add-on (`otel-collector-host`, gated on `PRIVILEGED`, which forwards host telemetry to the core). Pods send to the Service, never to a node IP, and `down` stops the add-on before the core.
+
 The full reference (CNI scrapes, collectors, backends, the `down` tail flush, the account compactor, tenants, Grafana services, dashboard deploy commands) is the `observability-stack` skill in `.claude/skills/observability-stack/`. Load it before changing or debugging the stack.
 
 **Always use the `dashboard-editor` agent for any dashboard change** — editing a panel query, fixing a wrong-looking graph, changing units, adding a panel or a dashboard. The agent enforces the full edit → deploy → read-back-from-Grafana sequence, and knows the metric traps (notably that CPU queries on `system_cpu_time_seconds_total` must not depend on its opt-in per-core label, whose absence made four dashboards render CPU at -190%). See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md).

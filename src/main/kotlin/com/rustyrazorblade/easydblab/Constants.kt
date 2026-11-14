@@ -716,6 +716,12 @@ object Constants {
         const val INSTALL_PATH = "/opt/otel/otelcol-contrib"
         const val CONFIG_PATH = "/opt/otel/config.yaml"
         const val SERVICE_NAME = "otel-collector"
+
+        /** The host add-on collector's DaemonSet name and `app.kubernetes.io/name` label. */
+        const val HOST_COLLECTOR_NAME = "otel-collector-host"
+
+        /** The non-root user the core runs as where it reads no pod logs (the image's own `otel` user). */
+        const val NON_ROOT_UID = 10001L
     }
 
     // Pyroscope Java Agent configuration (for EMR Spark JVMs)

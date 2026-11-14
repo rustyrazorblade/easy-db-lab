@@ -159,7 +159,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val envNames = sidecar.env.map { it.name }
         assertThat(envNames).containsExactly(
             "K8S_NODE_NAME",
-            "HOST_IP",
             "CLUSTER_NAME",
             "GOMEMLIMIT",
             "OTEL_RESOURCE_ATTRIBUTES",
@@ -168,9 +167,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
 
         val nodeNameEnv = sidecar.env.first { it.name == "K8S_NODE_NAME" }
         assertThat(nodeNameEnv.valueFrom.fieldRef.fieldPath).isEqualTo("spec.nodeName")
-
-        val hostIpEnv = sidecar.env.first { it.name == "HOST_IP" }
-        assertThat(hostIpEnv.valueFrom.fieldRef.fieldPath).isEqualTo("status.hostIP")
 
         // CLUSTER_NAME is injected directly from cluster state (issue #733) so the stress job no
         // longer depends on a `cluster-config` ConfigMap that may not exist yet.
@@ -325,16 +321,13 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
 
     @Test
     fun `sidecar otel config resource should include the resource_detection processor`() {
-        val templateService: TemplateService = getKoin().get()
-        val config =
-            templateService
-                .fromResource(
-                    DefaultStressJobService::class.java,
-                    "/com/rustyrazorblade/easydblab/configuration/cassandra/otel-stress-sidecar-config.yaml",
-                ).substitute()
+        val config = service.loadSidecarConfig()
         assertThat(config).contains("resource_detection")
         assertThat(config).contains("detectors: [env]")
         assertThat(config).contains("processors: [resource_detection, batch]")
+        // Exported to the node's core collector through its Service, not the node IP: in a
+        // restricted environment no collector listens on the node.
+        assertThat(config).contains("endpoint: otel-collector.default.svc:4317").doesNotContain("HOST_IP")
     }
 
     @Test
@@ -480,12 +473,17 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildJob should export OTLP to the collector's HTTP port, not its gRPC port`() {
+    fun `buildJob should export OTLP to the core collector Service's HTTP port, not its gRPC port`() {
         // The agent's default protocol is http/protobuf, served on 4318. Sent at 4317 — the gRPC
         // port — every export fails with "HttpExporter - Failed to export" and no span arrives.
         val javaToolOptions = javaToolOptionsOf(stressJobConfig())
 
-        assertThat(javaToolOptions).contains("-Dotel.exporter.otlp.endpoint=http://10.0.1.5:${Constants.K8s.OTEL_HTTP_PORT}")
+        // The Service keeps the traffic on the node (internalTrafficPolicy: Local); the control
+        // node's IP would send every stress node's telemetry to one collector.
+        assertThat(
+            javaToolOptions,
+        ).contains("-Dotel.exporter.otlp.endpoint=http://otel-collector.default.svc:${Constants.K8s.OTEL_HTTP_PORT}")
+        assertThat(javaToolOptions).doesNotContain("10.0.1.5:${Constants.K8s.OTEL_HTTP_PORT}")
         assertThat(javaToolOptions).doesNotContain("4317")
     }
 

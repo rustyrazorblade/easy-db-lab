@@ -217,12 +217,12 @@ easy-db-lab down [vpc-id] [options]
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
 
-**Save before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The save stops Loki, Mimir and the OTel collector, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops nothing. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. The save has two phases.
+**Save before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The save stops Loki, Mimir and both OTel collectors, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops nothing. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. The save has two phases.
 
 Phase A runs in order:
 
 1. Every Grafana annotation is mirrored to Loki. Loki accepts only entries from the last 8760 hours to 24 hours ahead; an annotation outside that window is skipped with a warning naming its id, and it stays in the annotations backup.
-2. The OTel collector is stopped: its DaemonSet is deleted and `down` waits until its pods are gone. The collector is the only sender to Tempo, and its shutdown sends its last batches to Loki, Mimir and Tempo while they still accept writes. If the collector is already gone, this step succeeds.
+2. The OTel collectors are stopped, in order: the host add-on (`otel-collector-host`), which forwards to the core, and then the core (`otel-collector`). Each DaemonSet is deleted and `down` waits until its pods are gone, both within one deadline. The core is the only sender to Tempo, and its shutdown sends its last batches to Loki, Mimir and Tempo while they still accept writes. A collector that is already gone counts as stopped.
 
 Phase B runs every step at the same time, so the save takes about as long as its slowest step:
 

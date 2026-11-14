@@ -277,15 +277,12 @@ class KitRunnerCommand(
 
     /**
      * Completes the command's phase after it succeeded: removes the kit directory after
-     * `uninstall`, and runs the post-phase actions, which need the control node.
+     * `uninstall`, and runs the post-phase actions. They reach the cluster through the K8s API, so
+     * they run on a cluster with no control node in its state too.
      */
     private fun completePhase(config: KitConfig) {
         if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
             kitDir.deleteRecursively()
-        }
-        clusterState.getControlHost() ?: run {
-            log.warn { "No control node found; skipping post-phase actions for $kitName" }
-            return
         }
         handlePostPhase(config)
     }

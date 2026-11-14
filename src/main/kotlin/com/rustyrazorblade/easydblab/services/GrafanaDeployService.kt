@@ -28,7 +28,7 @@ interface GrafanaDeployService {
      * @param tenants Every tenant in the shared store and the cluster's own; see [GrafanaDatasourceSet]
      */
     fun createDatasourcesConfigMap(
-        controlHost: ClusterHost,
+        controlHost: ClusterHost?,
         tenants: TenantSet,
     ): Result<Unit>
 
@@ -42,7 +42,7 @@ interface GrafanaDeployService {
      * @param hosting Where Grafana is placed and where its database lives, resolved from the environment
      */
     fun deploy(
-        controlHost: ClusterHost,
+        controlHost: ClusterHost?,
         context: DashboardInstallContext,
         bucket: String,
         hosting: ObservabilityHosting,
@@ -73,7 +73,7 @@ class DefaultGrafanaDeployService(
     }
 
     override fun createDatasourcesConfigMap(
-        controlHost: ClusterHost,
+        controlHost: ClusterHost?,
         tenants: TenantSet,
     ): Result<Unit> =
         k8sService.createConfigMap(
@@ -88,7 +88,7 @@ class DefaultGrafanaDeployService(
         mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.IN_CLUSTER).toYaml())
 
     override fun deploy(
-        controlHost: ClusterHost,
+        controlHost: ClusterHost?,
         context: DashboardInstallContext,
         bucket: String,
         hosting: ObservabilityHosting,
@@ -100,7 +100,13 @@ class DefaultGrafanaDeployService(
             )
         }
 
-        runCatching { treeUploader.upload(controlHost, context) }.getOrElse { exception ->
+        runCatching {
+            val treeHost =
+                checkNotNull(controlHost) {
+                    "The dashboard tree is copied over SSH into Grafana's directory on the control node, but the cluster state has no control node."
+                }
+            treeUploader.upload(treeHost, context)
+        }.getOrElse { exception ->
             return Result.failure(
                 IllegalStateException("Failed to upload Grafana dashboards: ${exception.message}", exception),
             )

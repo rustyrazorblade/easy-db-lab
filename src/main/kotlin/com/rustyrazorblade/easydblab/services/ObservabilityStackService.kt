@@ -62,6 +62,11 @@ interface ObservabilityStackService {
      * dashboards are skipped. Reading it from the state, not from the caller, is what keeps the
      * collector this deploy applies identical to the one a kit sync applies ([CollectorResources]).
      *
+     * The control node in the cluster state is needed only where the stack uses the node itself: the
+     * host-path state directories and dashboard tree, and the node IP the backends publish on under
+     * [com.rustyrazorblade.easydblab.configuration.Placement.CONTROL_NODE]. Off owned nodes the deploy
+     * needs no control node.
+     *
      * @return success once the stack is applied and the namespace reaches Ready; failure otherwise.
      */
     fun deploy(): Result<Unit>
@@ -139,16 +144,12 @@ class DefaultObservabilityStackService(
     override fun deploy(): Result<Unit> =
         runCatching {
             val clusterState = clusterStateManager.load()
-            val controlNode =
-                checkNotNull(clusterState.getControlHost()) {
-                    "No control node in cluster state; cannot deploy the observability stack."
-                }
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
             val environment = environmentOf(clusterState)
             val hosting = environment.hosting
 
-            val clusterConfig = createClusterConfigMap(controlNode, clusterState)
-            val collector = collectorStage(controlNode, clusterState, environment.capabilities)
+            val clusterConfig = createClusterConfigMap(clusterState, hosting)
+            val collector = collectorStage(clusterState, environment)
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
@@ -163,16 +164,16 @@ class DefaultObservabilityStackService(
             // not, so prepare them only in local mode, and only where state lives on the node.
             val onNodeState = telemetryRedirect == null && hosting.storage == BackendStorage.HostPath
             if (onNodeState) {
-                stateDirectories.prepareBackends(controlNode)
+                stateDirectories.prepareBackends(stateNode(clusterState))
             }
 
             val appliedResources = applyHashed(collector, stages, clusterConfig)
 
             if (onNodeState) {
-                stateDirectories.prepareGrafana(controlNode)
+                stateDirectories.prepareGrafana(stateNode(clusterState))
             }
             if (telemetryRedirect == null) {
-                uploadDashboards(controlNode, clusterState, hosting)
+                uploadDashboards(clusterState, hosting)
             }
 
             awaitStack(appliedWorkloads(appliedResources) + grafanaWorkloads(telemetryRedirect))
@@ -187,13 +188,21 @@ class DefaultObservabilityStackService(
     }
 
     /**
+     * The node whose host directories hold the backends' and Grafana's state; only host-path storage
+     * asks. The K8s API is reached through the workspace kubeconfig, so nothing else needs the node.
+     */
+    private fun stateNode(clusterState: ClusterState): ClusterHost =
+        checkNotNull(clusterState.getControlHost()) {
+            "The backends keep their state in host directories on the control node, but the cluster state has no control node."
+        }
+
+    /**
      * The collector stage. It arrives already hashed, by the same function the kit sync uses, so both
      * stamp it with the same config hash.
      */
     private fun collectorStage(
-        controlNode: ClusterHost,
         clusterState: ClusterState,
-        capabilities: NodeCapabilities,
+        environment: StackEnvironment,
     ): Stage {
         val scrapeConfigs =
             k8sClientProvider.createClient().use { client ->
@@ -201,7 +210,14 @@ class DefaultObservabilityStackService(
             }
         return Stage(
             "OTel Collector",
-            CollectorResources.build(otelManifestBuilder, controlNode, clusterState, user.region, scrapeConfigs, capabilities),
+            CollectorResources.build(
+                otelManifestBuilder,
+                environment.hosting,
+                clusterState,
+                user.region,
+                scrapeConfigs,
+                environment.capabilities,
+            ),
         )
     }
 
@@ -323,7 +339,7 @@ class DefaultObservabilityStackService(
             ObservabilityStage.TEMPO -> tempoManifestBuilder.buildAllResources(hosting)
             ObservabilityStage.PYROSCOPE -> pyroscopeManifestBuilder.buildServerResources(hosting)
             // Every node, in both modes; under a redirect it points at the external Pyroscope.
-            ObservabilityStage.PYROSCOPE_AGENT -> pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect)
+            ObservabilityStage.PYROSCOPE_AGENT -> pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect, hosting)
             // The core collector already left its pod-log receiver out (CollectorResources).
             ObservabilityStage.POD_LOGS -> emptyList()
         }
@@ -333,13 +349,13 @@ class DefaultObservabilityStackService(
      * new ones, and the dashboards with the install-time pass for this cluster.
      */
     private fun uploadDashboards(
-        controlNode: ClusterHost,
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
     ) {
         grafanaDeployService
             .deploy(
-                controlNode,
+                // Null on a cluster the operator brought; only the dashboard tree copy needs it.
+                clusterState.getControlHost(),
                 installContextFactory.forCluster(clusterState),
                 ObservabilityStore.from(clusterState).bucket,
                 hosting,
@@ -378,10 +394,10 @@ class DefaultObservabilityStackService(
      * ([ClusterConfigData]), returning its data.
      */
     private fun createClusterConfigMap(
-        controlNode: ClusterHost,
         clusterState: ClusterState,
+        hosting: ObservabilityHosting,
     ): Map<String, String> {
-        val configData = ClusterConfigData.of(controlNode, clusterState, user.region)
+        val configData = ClusterConfigData.of(clusterState, hosting, user.region)
 
         k8sService
             .createConfigMap(

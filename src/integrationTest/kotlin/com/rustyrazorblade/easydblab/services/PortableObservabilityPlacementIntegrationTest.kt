@@ -8,13 +8,12 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
@@ -23,8 +22,10 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilde
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -72,6 +73,7 @@ class PortableObservabilityPlacementIntegrationTest {
         private const val NAMESPACE = "default"
         private const val CONTROL_PLANE_LABEL = "node-role.kubernetes.io/control-plane"
         private const val TENANT = "default"
+        private const val COLLECTOR_CONFIG_MAP = "otel-collector-config"
 
         /** K3s's bundled provisioner, standing in for #1035's retained StorageClass. */
         private const val LOCAL_PATH_CLASS = "local-path"
@@ -112,6 +114,7 @@ class PortableObservabilityPlacementIntegrationTest {
 
     private lateinit var client: KubernetesClient
     private lateinit var templates: TemplateService
+    private lateinit var stateManager: ClusterStateManager
 
     private val bucket = "portable-placement-${UUID.randomUUID().toString().take(8)}"
     private val state =
@@ -119,12 +122,8 @@ class PortableObservabilityPlacementIntegrationTest {
             name = "portable",
             versions = mutableMapOf(),
             s3Bucket = bucket,
+            // A cluster the operator brought: no control node in its state.
             initConfig = InitConfig(region = SharedLocalStack.region(), tenant = TENANT),
-            hosts =
-                mapOf(
-                    ServerType.Control to
-                        listOf(ClusterHost(publicIp = "", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "a")),
-                ),
         )
 
     private val hosting =
@@ -150,7 +149,7 @@ class PortableObservabilityPlacementIntegrationTest {
                 .single()
         client.nodes().withName(node.metadata.name).edit { it.apply { metadata.labels.remove(CONTROL_PLANE_LABEL) } }
 
-        val stateManager = mock<ClusterStateManager>()
+        stateManager = mock<ClusterStateManager>()
         whenever(stateManager.load()).thenReturn(state)
         templates = TemplateService(stateManager, mock<User>())
 
@@ -170,7 +169,7 @@ class PortableObservabilityPlacementIntegrationTest {
                 .withName(ClusterConfigData.NAME)
                 .withNamespace(NAMESPACE)
                 .endMetadata()
-                .withData<String, String>(ClusterConfigData.of(state.getControlHost()!!, state, SharedLocalStack.region()))
+                .withData<String, String>(ClusterConfigData.of(state, hosting, SharedLocalStack.region()))
                 .build()
         val datasources =
             ConfigMapBuilder()
@@ -328,5 +327,56 @@ class PortableObservabilityPlacementIntegrationTest {
         val url = "${BackendUrls.IN_CLUSTER.logs}/ready"
         val status = inGrafana("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url)
         assertThat(status).describedAs("loki at $url after its pod was replaced").isEqualTo("200")
+    }
+
+    /**
+     * The kit-driven collector sync, run for real against this cluster. Its state has no control
+     * node, which off owned nodes is not a reason to fail: the client comes from the kubeconfig,
+     * the collector it applies reaches every
+     * backend by Service DNS.
+     */
+    @Test
+    @Order(4)
+    fun `the collector sync runs with no control node and applies a collector with no node IP`() {
+        assertThat(state.getControlHost()).isNull()
+        val clientProvider = mock<K8sClientProvider>()
+        whenever(clientProvider.createClient()).thenAnswer {
+            KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
+        }
+        val k8sService = DefaultK8sService(clientProvider, EventBus())
+        val user = User(email = "", region = SharedLocalStack.region(), keyName = "", awsProfile = "", awsAccessKey = "", awsSecret = "")
+
+        DefaultOtelSyncService(
+            clientProvider,
+            k8sService,
+            OtelManifestBuilder(templates),
+            stateManager,
+            user,
+            ConfigChangeReport(k8sService, EventBus()),
+            capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER },
+            hostingOf = { hosting },
+        ).syncConfigMap().getOrThrow()
+
+        val config =
+            client
+                .configMaps()
+                .inNamespace(NAMESPACE)
+                .withName(COLLECTOR_CONFIG_MAP)
+                .get()
+                .data
+                .values
+                .single()
+        assertThat(
+            config.replace("0.0.0.0:", ""),
+        ).describedAs("no endpoint at a node IP").doesNotContainPattern("""\b\d{1,3}(\.\d{1,3}){3}:\d+""")
+        assertThat(config).contains("mimir.default.svc.cluster.local", "loki.default.svc.cluster.local", "tempo.default.svc.cluster.local")
+        assertThat(
+            client
+                .apps()
+                .daemonSets()
+                .inNamespace(NAMESPACE)
+                .withName(Constants.OtelCollector.SERVICE_NAME)
+                .get(),
+        ).isNotNull()
     }
 }

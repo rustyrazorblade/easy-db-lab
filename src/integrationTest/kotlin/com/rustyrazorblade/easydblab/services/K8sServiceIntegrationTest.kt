@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -126,8 +127,24 @@ class K8sServiceIntegrationTest {
                 .endMetadata()
                 .addToData(
                     ClusterConfigData.of(
-                        ClusterHost(publicIp = "1.2.3.4", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a"),
-                        ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket"),
+                        ClusterState(
+                            name = "test",
+                            versions = mutableMapOf(),
+                            s3Bucket = "test-bucket",
+                            hosts =
+                                mapOf(
+                                    ServerType.Control to
+                                        listOf(
+                                            ClusterHost(
+                                                publicIp = "1.2.3.4",
+                                                privateIp = "10.0.0.1",
+                                                alias = "control0",
+                                                availabilityZone = "us-west-2a",
+                                            ),
+                                        ),
+                                ),
+                        ),
+                        ObservabilityHosting.AWS,
                         defaultRegion = "us-west-2",
                     ),
                 ).build()

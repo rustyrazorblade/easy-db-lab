@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
@@ -108,7 +109,7 @@ class StoreGoldenTest : BaseKoinTest() {
         templateService = getKoin().get()
     }
 
-    private val clusterConfig: Map<String, String> by lazy { ClusterConfigData.of(control, state, REGION) }
+    private val clusterConfig: Map<String, String> by lazy { ClusterConfigData.of(state, ObservabilityHosting.AWS, REGION) }
 
     /**
      * Reads the committed golden file. With `UPDATE_GOLDEN=true` in the environment it first rewrites the file from

@@ -12,7 +12,9 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -55,6 +57,7 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
@@ -92,6 +95,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             availabilityZone = "us-west-2a",
             instanceId = "i-test123",
         )
+
+    private val controlHosts = mapOf(ServerType.Control to listOf(controlNode))
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -144,7 +149,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
-                hosts = mapOf(ServerType.Control to listOf(controlNode)),
+                hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 // A data bucket distinct from the account bucket, so a mix-up between the two shows.
                 dataBucket = "easy-db-lab-data-test",
@@ -155,10 +160,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any<Int>())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
-        whenever(mockDashboardService.deploy(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
 
         service =
             DefaultObservabilityStackService(
@@ -444,7 +449,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         ClusterState(
             name = "test-cluster",
             versions = mutableMapOf(),
-            hosts = mapOf(ServerType.Control to listOf(controlNode)),
+            hosts = controlHosts,
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(region = "us-west-2", cni = cni),
         )
@@ -454,7 +459,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         ClusterState(
             name = "test-cluster",
             versions = mutableMapOf(),
-            hosts = mapOf(ServerType.Control to listOf(controlNode)),
+            hosts = controlHosts,
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(region = "us-west-2", telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
         )
@@ -465,7 +470,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any<Int>())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
     }
@@ -486,12 +491,15 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         return checkNotNull(configMap.data["otel-host-collector-config.yaml"])
     }
 
-    /** Every applied resource as a "kind/name" string, in apply order. */
-    private fun appliedKindNames(): List<String> {
+    /** Every applied resource, in apply order. */
+    private fun appliedResources(): List<HasMetadata> {
         val captor = argumentCaptor<HasMetadata>()
         verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
-        return captor.allValues.map { "${it.kind}/${it.metadata?.name}" }
+        return captor.allValues
     }
+
+    /** Every applied resource as a "kind/name" string, in apply order. */
+    private fun appliedKindNames(): List<String> = appliedResources().map { "${it.kind}/${it.metadata?.name}" }
 
     /** Every command passed to [RemoteOperationsService.executeRemotely]. */
     private fun remoteCommands(): List<String> {
@@ -514,7 +522,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
         // The documents front and its proxy read the account bucket, never the data bucket.
-        verify(mockDashboardService).deploy(any(), context.capture(), eq("easy-db-lab-test"), any())
+        verify(mockDashboardService).deploy(anyOrNull(), context.capture(), eq("easy-db-lab-test"), any())
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
 
@@ -565,6 +573,49 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(appliedKindNames()).contains("PersistentVolumeClaim/mimir-data", "PersistentVolumeClaim/pyroscope-data")
     }
 
+    /**
+     * A cluster the operator brought has no control node in its state. Off owned nodes nothing in the
+     * stack needs one: the K8s API comes from the kubeconfig, state lives on claims, and every
+     * in-cluster caller reaches the backends by Service DNS.
+     */
+    @Test
+    fun `off owned nodes the stack deploys with no control node and publishes no node IP`() {
+        hosting =
+            {
+                ObservabilityHosting(
+                    Placement.ANY_NODE,
+                    BackendStorage.RetainedClaim("retained", Quantity("50Gi")),
+                    StoreCredentials.InstanceRole,
+                )
+            }
+        val brought = mockClusterStateManager.load().copy(hosts = emptyMap())
+        whenever(mockClusterStateManager.load()).thenReturn(brought)
+
+        service.deploy().getOrThrow()
+
+        val data = argumentCaptor<Map<String, String>>()
+        verify(mockK8sService).createConfigMap(any(), eq("cluster-config"), data.capture(), any())
+        assertThat(data.firstValue).doesNotContainKey(ClusterConfigData.CONTROL_NODE_IP_KEY).containsKey("tenant")
+        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
+        val alloy =
+            appliedResources()
+                .filterIsInstance<DaemonSet>()
+                .single { it.metadata.name == "pyroscope-ebpf" }
+                .spec.template.spec.containers
+                .single { it.name == "alloy" }
+        assertThat(alloy.env.single { it.name == "PYROSCOPE_WRITE_URL" }.value).isEqualTo("http://pyroscope.default.svc:4040")
+        assertThat(appliedOtelConfig()).doesNotContain(controlNode.privateIp)
+    }
+
+    @Test
+    fun `on the AWS control node a state with no control node fails, naming the callers that need its IP`() {
+        val brought = mockClusterStateManager.load().copy(hosts = emptyMap())
+        whenever(mockClusterStateManager.load()).thenReturn(brought)
+
+        assertThat(service.deploy().exceptionOrNull()).hasMessageContaining("no control node").hasMessageContaining("redirected clusters")
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+    }
+
     @Test
     fun `cluster-config carries the traces prefix instead of the per-cluster prefix`() {
         service.deploy().getOrThrow()
@@ -591,14 +642,14 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(kindNames).contains("DaemonSet/pyroscope-ebpf")
 
         // No Grafana in redirect mode, so no dashboards uploaded.
-        verify(mockDashboardService, never()).deploy(any(), any(), any(), any())
+        verify(mockDashboardService, never()).deploy(anyOrNull(), any(), any(), any())
 
         // Neither on-node directory (Pyroscope server data, Grafana data) is prepared: the server
         // and Grafana do not exist here, so redirect makes no SSH calls at all.
         verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
 
         // Readiness is still gated on the applied collectors coming up.
-        verify(mockK8sService).waitForPodsReady(any<Int>())
+        verify(mockK8sService).waitForPodsReady(any())
     }
 
     @Test
@@ -620,9 +671,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", nodeLabels = labels),
-                hosts = mapOf(ServerType.Control to listOf(controlNode)),
             ),
         )
 
@@ -638,7 +689,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         placed.forEach { assertThat(it.spec.template.spec.nodeSelector).describedAs(it.metadata.name).containsAllEntriesOf(labels) }
 
         val hosting = argumentCaptor<ObservabilityHosting>()
-        verify(mockDashboardService).deploy(any(), any(), any(), hosting.capture())
+        verify(mockDashboardService).deploy(anyOrNull(), any(), any(), hosting.capture())
         assertThat(hosting.firstValue.placement.nodeSelector).containsAllEntriesOf(labels)
     }
 
@@ -652,9 +703,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", nodeLabels = mapOf("pool" to "observability")),
-                hosts = mapOf(ServerType.Control to listOf(controlNode)),
             ),
         )
         val emitted = collectEvents()
@@ -712,7 +763,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockDashboardService, mockK8sService)
-        order.verify(mockDashboardService).deploy(any(), any(), any(), any())
+        order.verify(mockDashboardService).deploy(anyOrNull(), any(), any(), any())
         order.verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).contains(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }
@@ -767,12 +818,14 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         reset(mockK8sService)
         stubK8sSuccess()
         val moved =
-            mockClusterStateManager.load().copy(
-                hosts =
-                    mapOf(
-                        ServerType.Control to listOf(controlNode.copy(privateIp = "10.0.1.99")),
-                    ),
-            )
+            mockClusterStateManager.load().let {
+                it.copy(
+                    hosts =
+                        mapOf(
+                            ServerType.Control to listOf(controlNode.copy(privateIp = "10.0.1.99")),
+                        ),
+                )
+            }
         whenever(mockClusterStateManager.load()).thenReturn(moved)
         service.deploy().getOrThrow()
 
@@ -816,7 +869,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val result = service.deploy()
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("Deployment/tempo: 0 of 1 updated replicas are available")
-        verify(mockK8sService, never()).waitForPodsReady(any<Int>())
+        verify(mockK8sService, never()).waitForPodsReady(any())
     }
 
     @Test
@@ -913,7 +966,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
-                hosts = mapOf(ServerType.Control to listOf(controlNode)),
+                hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", cni = cni, telemetryRedirect = redirect),
             )

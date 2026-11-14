@@ -63,10 +63,10 @@ class SidecarServiceTest : BaseKoinTest() {
         sidecarService = getKoin().get()
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
-        whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.deleteResourcesByLabel(any(), any(), any(), any()))
+        whenever(mockK8sService.applyResource(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.deleteResourcesByLabel(any(), any(), any()))
             .thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any()))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any()))
             .thenReturn(Result.success(Unit))
     }
 
@@ -76,12 +76,12 @@ class SidecarServiceTest : BaseKoinTest() {
 
         assertThat(result.isSuccess).isTrue()
         // ConfigMap + DaemonSet = 2 resources
-        verify(mockK8sService, times(2)).applyResource(any(), any())
+        verify(mockK8sService, times(2)).applyResource(any())
     }
 
     @Test
     fun `deploy returns failure when k8s apply fails`() {
-        whenever(mockK8sService.applyResource(any(), any()))
+        whenever(mockK8sService.applyResource(any()))
             .thenReturn(Result.failure(RuntimeException("K8s unreachable")))
 
         val result = sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest")
@@ -95,12 +95,12 @@ class SidecarServiceTest : BaseKoinTest() {
         val result = sidecarService.undeploy(testControlHost)
 
         assertThat(result.isSuccess).isTrue()
-        verify(mockK8sService).deleteResourcesByLabel(any(), any(), any(), any())
+        verify(mockK8sService).deleteResourcesByLabel(any(), any(), any())
     }
 
     @Test
     fun `undeploy returns failure when k8s delete fails`() {
-        whenever(mockK8sService.deleteResourcesByLabel(any(), any(), any(), any()))
+        whenever(mockK8sService.deleteResourcesByLabel(any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("Delete failed")))
 
         val result = sidecarService.undeploy(testControlHost)
@@ -114,12 +114,12 @@ class SidecarServiceTest : BaseKoinTest() {
         val result = sidecarService.restart(testControlHost)
 
         assertThat(result.isSuccess).isTrue()
-        verify(mockK8sService).rolloutRestartDaemonSet(any(), any(), any())
+        verify(mockK8sService).rolloutRestartDaemonSet(any(), any())
     }
 
     @Test
     fun `restart returns failure when k8s rollout fails`() {
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any()))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Rollout failed")))
 
         val result = sidecarService.restart(testControlHost)
@@ -138,7 +138,7 @@ class SidecarServiceTest : BaseKoinTest() {
 
         sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
 
-        verify(mockK8sService, times(2)).applyResource(any(), resources.capture())
+        verify(mockK8sService, times(2)).applyResource(resources.capture())
         val daemonSet = resources.allValues.filterIsInstance<DaemonSet>().single()
         val javaToolOptions =
             daemonSet.spec.template.spec.containers
@@ -155,7 +155,7 @@ class SidecarServiceTest : BaseKoinTest() {
 
         sidecarService.deploy(testControlHost, ecrImage).getOrThrow()
 
-        verify(mockK8sService, times(2)).applyResource(any(), resources.capture())
+        verify(mockK8sService, times(2)).applyResource(resources.capture())
         val podSpec =
             resources.allValues
                 .filterIsInstance<DaemonSet>()

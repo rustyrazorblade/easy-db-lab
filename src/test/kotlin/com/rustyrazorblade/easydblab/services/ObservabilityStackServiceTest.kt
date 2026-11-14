@@ -139,7 +139,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         mockClusterStateManager = getKoin().get()
 
         mockK8sClient = clientWithNoLabelledConfigMaps()
-        whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
+        whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
 
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
@@ -151,13 +151,13 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             ),
         )
 
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
         whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
 
         service =
@@ -228,19 +228,19 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     /** Re-arms the K8s mock for a second deploy in the same test, after a reset. */
     private fun stubK8sSuccess() {
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
     }
 
     /** The OTel collector config YAML as it was applied to the cluster. */
     private fun appliedOtelConfig(): String {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         val configMap = captor.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "otel-collector-config" }
         return checkNotNull(configMap.data["otel-collector-config.yaml"])
     }
@@ -248,7 +248,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     /** Every applied resource as a "kind/name" string, in apply order. */
     private fun appliedKindNames(): List<String> {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         return captor.allValues.map { "${it.kind}/${it.metadata?.name}" }
     }
 
@@ -320,7 +320,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         service.deploy(controlNode).getOrThrow()
 
         val data = argumentCaptor<Map<String, String>>()
-        verify(mockK8sService).createConfigMap(any(), any(), eq("cluster-config"), data.capture(), any())
+        verify(mockK8sService).createConfigMap(any(), eq("cluster-config"), data.capture(), any())
         assertThat(data.firstValue).containsEntry("traces_s3_prefix", "tempo")
         assertThat(data.firstValue).doesNotContainKey("cluster_s3_prefix")
     }
@@ -348,7 +348,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(remoteCommands()).allMatch { it.contains("/mnt/db1/compactor") || it.startsWith("test -f /mnt/db1/compactor") }
 
         // Readiness is still gated on the applied collectors coming up.
-        verify(mockK8sService).waitForPodsReady(any(), any())
+        verify(mockK8sService).waitForPodsReady(any())
     }
 
     @Test
@@ -400,7 +400,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             .verify(
                 mockRemoteOps,
             ).executeRemotely(any(), org.mockito.kotlin.argThat { contains("/mnt/db1/compactor/mimir") }, any(), any())
-        order.verify(mockK8sService).applyResource(any(), org.mockito.kotlin.argThat<HasMetadata> { metadata.name == "account-compactor" })
+        order.verify(mockK8sService).applyResource(org.mockito.kotlin.argThat<HasMetadata> { metadata.name == "account-compactor" })
     }
 
     @Test
@@ -415,7 +415,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     private fun compactorDeployment(): Deployment {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         return captor.allValues.filterIsInstance<Deployment>().last { it.metadata.name == "account-compactor" }
     }
 
@@ -457,8 +457,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS + Constants.Scale.ROLLOUT_PER_NODE_SECONDS.toInt() * 501
         val rolloutTimeout = argumentCaptor<Int>()
         val readyTimeout = argumentCaptor<Int>()
-        verify(mockK8sService).waitForRollouts(any(), any(), any(), rolloutTimeout.capture())
-        verify(mockK8sService).waitForPodsReady(any(), readyTimeout.capture())
+        verify(mockK8sService).waitForRollouts(any(), any(), rolloutTimeout.capture())
+        verify(mockK8sService).waitForPodsReady(readyTimeout.capture())
         assertThat(rolloutTimeout.firstValue).isEqualTo(expected)
         assertThat(readyTimeout.firstValue).isEqualTo(expected)
     }
@@ -472,8 +472,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val applied = appliedKindNames()
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockK8sService)
-        order.verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
-        order.verify(mockK8sService).waitForPodsReady(any(), any())
+        order.verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
+        order.verify(mockK8sService).waitForPodsReady(any())
 
         // Grafana is applied by the dashboard service rather than a stage, so it is not among these.
         val expected = applied.filter { it.startsWith("Deployment/") || it.startsWith("DaemonSet/") }.distinct() + "Deployment/grafana"
@@ -493,7 +493,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockDashboardService, mockK8sService)
         order.verify(mockDashboardService).deploy(any(), any(), any())
-        order.verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
+        order.verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).contains(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }
 
@@ -504,13 +504,13 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      */
     @Test
     fun `a failure to read the running configuration hashes fails the deploy before anything is applied`() {
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any()))
+        whenever(mockK8sService.workloadConfigHashes(any(), any()))
             .thenReturn(Result.failure(IllegalStateException("apiserver unreachable")))
 
         val result = service.deploy(controlNode)
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("apiserver unreachable")
-        verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
     }
 
     @Test
@@ -520,7 +520,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         service.deploy(controlNode).getOrThrow()
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
-        verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
+        verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).doesNotContain(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }
 
@@ -533,8 +533,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     fun `a deploy never force-restarts a workload`() {
         service.deploy(controlNode).getOrThrow()
 
-        verify(mockK8sService, never()).rolloutRestartDeployment(any(), any(), any())
-        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any(), any())
+        verify(mockK8sService, never()).rolloutRestartDeployment(any(), any())
+        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any())
     }
 
     @Test
@@ -570,7 +570,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     /** The config-hash annotation on the pod template of the applied workload named [name]. */
     private fun appliedTemplateHash(name: String): String? {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         val template =
             when (val workload = captor.allValues.single { it.metadata.name == name && it.kind in setOf("Deployment", "DaemonSet") }) {
                 is io.fabric8.kubernetes.api.model.apps.Deployment -> workload.spec.template
@@ -582,13 +582,13 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `a rollout that does not finish fails the deploy without reporting the stack ready`() {
-        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any()))
+        whenever(mockK8sService.waitForRollouts(any(), any(), any()))
             .thenReturn(Result.failure(IllegalStateException("Deployment/tempo: 0 of 1 updated replicas are available")))
 
         val result = service.deploy(controlNode)
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("Deployment/tempo: 0 of 1 updated replicas are available")
-        verify(mockK8sService, never()).waitForPodsReady(any(), any())
+        verify(mockK8sService, never()).waitForPodsReady(any())
     }
 
     @Test
@@ -606,7 +606,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 override fun close() = Unit
             },
         )
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("apiserver rejected the ConfigMap")))
 
         val result = service.deploy(controlNode)
@@ -616,7 +616,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(failure.reason).contains("apiserver rejected the ConfigMap")
         assertThat(failure.isError()).isTrue()
         // Nothing was applied: the abort happens before any manifest reaches the cluster.
-        verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
     }
 
     /**
@@ -631,8 +631,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         reset(mockK8sService)
         stubK8sSuccess()
         // An Answer bypasses Kotlin's Result unboxing: the JVM method returns the bare map.
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), eq("default"))).thenAnswer { invocation ->
-            invocation.getArgument<List<WorkloadRef>>(1).associateWith { if (it.name == "tempo") runningTempoHash else "stale" }
+        whenever(mockK8sService.workloadConfigHashes(any(), eq("default"))).thenAnswer { invocation ->
+            invocation.getArgument<List<WorkloadRef>>(0).associateWith { if (it.name == "tempo") runningTempoHash else "stale" }
         }
         val emitted = recordEvents()
 
@@ -648,7 +648,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `a workload not yet on the cluster reports its configuration as changed`() {
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
         val emitted = recordEvents()
 
         service.deploy(controlNode).getOrThrow()
@@ -659,7 +659,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     /** The config hash on the otel-collector DaemonSet among the resources applied so far. */
     private fun appliedCollectorHash(): String {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         return captor.allValues
             .filterIsInstance<DaemonSet>()
             .single { it.metadata.name == Constants.OtelCollector.SERVICE_NAME }

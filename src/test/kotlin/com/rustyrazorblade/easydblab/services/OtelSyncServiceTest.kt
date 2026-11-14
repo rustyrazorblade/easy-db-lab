@@ -81,9 +81,9 @@ class OtelSyncServiceTest : BaseKoinTest() {
         whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
 
-        whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
-        whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
+        whenever(mockK8sService.applyResource(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
 
         service =
             DefaultOtelSyncService(
@@ -100,7 +100,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
     fun `syncConfigMap creates K8s client for the given host`() {
         service.syncConfigMap(controlHost)
 
-        verify(mockK8sClientProvider).createClient(controlHost)
+        verify(mockK8sClientProvider).createClient()
     }
 
     @Test
@@ -115,8 +115,8 @@ class OtelSyncServiceTest : BaseKoinTest() {
     /** Every resource the sync applies, in order. */
     private fun captureApplied(): MutableList<HasMetadata> {
         val applied = mutableListOf<HasMetadata>()
-        whenever(mockK8sService.applyResource(any(), any())).thenAnswer { invocation ->
-            applied += invocation.getArgument<HasMetadata>(1)
+        whenever(mockK8sService.applyResource(any())).thenAnswer { invocation ->
+            applied += invocation.getArgument<HasMetadata>(0)
             Result.success(Unit)
         }
         return applied
@@ -169,7 +169,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
     fun `syncConfigMap does not force a rollout restart`() {
         service.syncConfigMap(controlHost)
 
-        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any(), any())
+        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any())
     }
 
     @Test
@@ -179,7 +179,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
         val collector = WorkloadRef(WorkloadKind.DaemonSet, Constants.OtelCollector.SERVICE_NAME)
         val runningHash = appliedConfigHash(applied)
         // An Answer bypasses Kotlin's Result unboxing: the JVM method returns the bare map.
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenAnswer { mapOf(collector to runningHash) }
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenAnswer { mapOf(collector to runningHash) }
         val events = recordEvents()
 
         service.syncConfigMap(controlHost)
@@ -194,7 +194,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
 
     @Test
     fun `syncConfigMap returns failure when applyResource fails`() {
-        whenever(mockK8sService.applyResource(any(), any()))
+        whenever(mockK8sService.applyResource(any()))
             .thenReturn(Result.failure(RuntimeException("K8s API error")))
 
         val result = service.syncConfigMap(controlHost)

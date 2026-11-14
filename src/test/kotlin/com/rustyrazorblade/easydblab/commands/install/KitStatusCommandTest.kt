@@ -7,8 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.services.HelmService
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitRuntime
@@ -32,14 +32,14 @@ import java.time.Duration
  */
 class KitStatusCommandTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
-    private val mockKubeService: KubernetesService = mock()
+    private val mockKubeService: K8sService = mock()
     private val mockHelmService: HelmService = mock()
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single<KubernetesService> { mockKubeService }
+                single<K8sService> { mockKubeService }
                 single<HelmService> { mockHelmService }
             },
         )

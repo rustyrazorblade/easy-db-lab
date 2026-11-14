@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -59,57 +58,42 @@ interface StressJobService {
     /**
      * Starts a stress job on the K8s cluster.
      *
-     * @param controlHost The control node running K3s
      * @param config The stress job configuration
      * @return Result containing the job name and the node its pod runs on, or failure
      */
-    fun startJob(
-        controlHost: ClusterHost,
-        config: StressJobConfig,
-    ): Result<StartedStressJob>
+    fun startJob(config: StressJobConfig): Result<StartedStressJob>
 
     /**
      * Stops and deletes a stress job.
      *
-     * @param controlHost The control node running K3s
      * @param jobName Name of the job to delete
      * @return Result indicating success or failure
      */
-    fun stopJob(
-        controlHost: ClusterHost,
-        jobName: String,
-    ): Result<Unit>
+    fun stopJob(jobName: String): Result<Unit>
 
     /**
      * Gets all stress jobs.
      *
-     * @param controlHost The control node running K3s
      * @return Result containing list of stress jobs
      */
-    fun listJobs(controlHost: ClusterHost): Result<List<KubernetesJob>>
+    fun listJobs(): Result<List<KubernetesJob>>
 
     /**
      * Gets pods for a specific job.
      *
-     * @param controlHost The control node running K3s
      * @param jobName Name of the job
      * @return Result containing list of pods
      */
-    fun getPodsForJob(
-        controlHost: ClusterHost,
-        jobName: String,
-    ): Result<List<KubernetesPod>>
+    fun getPodsForJob(jobName: String): Result<List<KubernetesPod>>
 
     /**
      * Gets logs from a pod.
      *
-     * @param controlHost The control node running K3s
      * @param podName Name of the pod
      * @param tailLines Optional number of lines from the end
      * @return Result containing log content
      */
     fun getPodLogs(
-        controlHost: ClusterHost,
         podName: String,
         tailLines: Int? = null,
     ): Result<String>
@@ -120,13 +104,11 @@ interface StressJobService {
      * This creates a Job that runs to completion and captures its output.
      * Used for commands like 'list', 'info', 'fields'.
      *
-     * @param controlHost The control node running K3s
      * @param image Container image for cassandra-easy-stress
      * @param args Arguments to pass to cassandra-easy-stress
      * @return Result containing the command output
      */
     fun runCommand(
-        controlHost: ClusterHost,
         image: String,
         args: List<String>,
     ): Result<String>
@@ -175,23 +157,20 @@ class DefaultStressJobService(
         private const val OTEL_AGENT_MOUNT_PATH = "/usr/local/otel"
     }
 
-    override fun startJob(
-        controlHost: ClusterHost,
-        config: StressJobConfig,
-    ): Result<StartedStressJob> =
+    override fun startJob(config: StressJobConfig): Result<StartedStressJob> =
         runCatching {
             log.info { "Starting stress job: ${config.jobName}" }
 
-            ensureSidecarConfigMap(controlHost)
+            ensureSidecarConfigMap()
 
             val job = buildJob(config)
 
             eventBus.emit(Event.Stress.JobStarting(config.jobName))
             k8sService
-                .createJob(controlHost, Constants.Stress.NAMESPACE, job)
+                .createJob(Constants.Stress.NAMESPACE, job)
                 .getOrThrow()
 
-            waitForPodRunning(controlHost, config.jobName)
+            waitForPodRunning(config.jobName)
         }
 
     /**
@@ -199,10 +178,7 @@ class DefaultStressJobService(
      * pod runs on. No pod yet, another phase, a Failed pod and a failed query are all polled again; if
      * the pod is not running within [POD_READY_MAX_ATTEMPTS] looks, fails with the last look's outcome.
      */
-    private fun waitForPodRunning(
-        controlHost: ClusterHost,
-        jobName: String,
-    ): StartedStressJob {
+    private fun waitForPodRunning(jobName: String): StartedStressJob {
         val pods =
             pollUntil(
                 operationName = "wait-for-stress-pod-$jobName",
@@ -210,7 +186,7 @@ class DefaultStressJobService(
                 interval = podReadyPollInterval,
                 done = { found -> found.firstOrNull()?.status in POD_RUNNING_PHASES },
             ) {
-                getPodsForJob(controlHost, jobName).getOrThrow().also { found ->
+                getPodsForJob(jobName).getOrThrow().also { found ->
                     found.firstOrNull()?.let { pod -> check(pod.status != "Failed") { "Pod ${pod.name} failed" } }
                 }
             }
@@ -233,10 +209,9 @@ class DefaultStressJobService(
     /**
      * Ensures the OTel sidecar ConfigMap exists in the stress namespace.
      */
-    private fun ensureSidecarConfigMap(controlHost: ClusterHost) {
+    private fun ensureSidecarConfigMap() {
         k8sService
             .createConfigMap(
-                controlHost = controlHost,
                 namespace = Constants.Stress.NAMESPACE,
                 name = SIDECAR_CONFIG_MAP_NAME,
                 data = mapOf(SIDECAR_CONFIG_FILE_NAME to loadSidecarConfig()),
@@ -257,42 +232,33 @@ class DefaultStressJobService(
         return allAttributes.entries.joinToString(",") { "${it.key}=${it.value}" }
     }
 
-    override fun stopJob(
-        controlHost: ClusterHost,
-        jobName: String,
-    ): Result<Unit> =
+    override fun stopJob(jobName: String): Result<Unit> =
         runCatching {
             log.info { "Stopping stress job: $jobName" }
 
             // Delete the job
             k8sService
-                .deleteJob(controlHost, Constants.Stress.NAMESPACE, jobName)
+                .deleteJob(Constants.Stress.NAMESPACE, jobName)
                 .getOrThrow()
 
             log.info { "Stopped stress job: $jobName" }
         }
 
-    override fun listJobs(controlHost: ClusterHost): Result<List<KubernetesJob>> =
+    override fun listJobs(): Result<List<KubernetesJob>> =
         k8sService.getJobsByLabel(
-            controlHost,
             Constants.Stress.NAMESPACE,
             Constants.Stress.LABEL_KEY,
             Constants.Stress.LABEL_VALUE,
         )
 
-    override fun getPodsForJob(
-        controlHost: ClusterHost,
-        jobName: String,
-    ): Result<List<KubernetesPod>> = k8sService.getPodsForJob(controlHost, Constants.Stress.NAMESPACE, jobName)
+    override fun getPodsForJob(jobName: String): Result<List<KubernetesPod>> = k8sService.getPodsForJob(Constants.Stress.NAMESPACE, jobName)
 
     override fun getPodLogs(
-        controlHost: ClusterHost,
         podName: String,
         tailLines: Int?,
-    ): Result<String> = k8sService.getPodLogs(controlHost, Constants.Stress.NAMESPACE, podName, tailLines)
+    ): Result<String> = k8sService.getPodLogs(Constants.Stress.NAMESPACE, podName, tailLines)
 
     override fun runCommand(
-        controlHost: ClusterHost,
         image: String,
         args: List<String>,
     ): Result<String> =
@@ -305,15 +271,15 @@ class DefaultStressJobService(
             val job = buildCommandJob(jobName, image, args)
 
             k8sService
-                .createJob(controlHost, Constants.Stress.NAMESPACE, job)
+                .createJob(Constants.Stress.NAMESPACE, job)
                 .getOrThrow()
 
             // Wait for job completion
-            val output = waitForJobAndGetLogs(controlHost, jobName)
+            val output = waitForJobAndGetLogs(jobName)
 
             // Clean up the job
             k8sService
-                .deleteJob(controlHost, Constants.Stress.NAMESPACE, jobName)
+                .deleteJob(Constants.Stress.NAMESPACE, jobName)
                 .onFailure { log.warn { "Failed to clean up command job: $jobName" } }
 
             output
@@ -322,10 +288,7 @@ class DefaultStressJobService(
     /**
      * Waits for a job to complete and returns its logs.
      */
-    private fun waitForJobAndGetLogs(
-        controlHost: ClusterHost,
-        jobName: String,
-    ): String {
+    private fun waitForJobAndGetLogs(jobName: String): String {
         val startTime = System.currentTimeMillis()
         val timeoutMs = JOB_COMPLETION_TIMEOUT_SECONDS * Constants.Time.MILLIS_PER_SECOND
 
@@ -333,7 +296,6 @@ class DefaultStressJobService(
             val jobs =
                 k8sService
                     .getJobsByLabel(
-                        controlHost,
                         Constants.Stress.NAMESPACE,
                         "job-name",
                         jobName,
@@ -344,13 +306,13 @@ class DefaultStressJobService(
                 // Get logs from the pod
                 val pods =
                     k8sService
-                        .getPodsForJob(controlHost, Constants.Stress.NAMESPACE, jobName)
+                        .getPodsForJob(Constants.Stress.NAMESPACE, jobName)
                         .getOrElse { emptyList() }
 
                 val pod = pods.firstOrNull()
                 if (pod != null) {
                     return k8sService
-                        .getPodLogs(controlHost, Constants.Stress.NAMESPACE, pod.name, null)
+                        .getPodLogs(Constants.Stress.NAMESPACE, pod.name, null)
                         .getOrElse { "" }
                 }
                 break

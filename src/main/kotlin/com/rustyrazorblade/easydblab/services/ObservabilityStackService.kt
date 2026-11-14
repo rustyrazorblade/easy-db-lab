@@ -110,7 +110,7 @@ class DefaultObservabilityStackService(
             val clusterConfig = createClusterConfigMap(controlNode, clusterState)
 
             val scrapeConfigs =
-                k8sClientProvider.createClient(controlNode).use { client ->
+                k8sClientProvider.createClient().use { client ->
                     otelManifestBuilder.listWorkloadScrapeConfigs(client)
                 }
 
@@ -153,7 +153,7 @@ class DefaultObservabilityStackService(
             val hashedStages =
                 listOf(collector) + stages.map { it.copy(resources = ConfigHashAnnotator.annotate(it.resources, knownConfigMaps)) }
             val appliedResources = hashedStages.flatMap { it.resources }
-            configChangeReport.report(controlNode, appliedResources, DEFAULT_NAMESPACE)
+            configChangeReport.report(appliedResources, DEFAULT_NAMESPACE)
             for (stage in hashedStages) {
                 applyStage(stage, controlNode)
             }
@@ -176,7 +176,7 @@ class DefaultObservabilityStackService(
             // replacements may not exist yet, so a pod-readiness check alone reports the stack ready
             // with new pods at 0/1.
             k8sService
-                .waitForRollouts(controlNode, workloads, DEFAULT_NAMESPACE, readyTimeoutSeconds(clusterState))
+                .waitForRollouts(workloads, DEFAULT_NAMESPACE, readyTimeoutSeconds(clusterState))
                 .getOrElse { exception ->
                     error("Observability stack did not finish rolling out: ${exception.message}")
                 }
@@ -186,7 +186,7 @@ class DefaultObservabilityStackService(
             // never reports success while the observability stack is broken or still coming up.
             // Pods that ran to completion (a kit's Job pods share this namespace) are not awaited.
             k8sService
-                .waitForPodsReady(controlNode, readyTimeoutSeconds(clusterState))
+                .waitForPodsReady(readyTimeoutSeconds(clusterState))
                 .getOrElse { exception ->
                     error("Observability stack did not become ready: ${exception.message}")
                 }
@@ -247,7 +247,7 @@ class DefaultObservabilityStackService(
     ) {
         eventBus.emit(Event.Grafana.LabelResourcesApplying(stage.label))
         for (resource in stage.resources) {
-            k8sService.applyResource(controlNode, resource).getOrElse { exception ->
+            k8sService.applyResource(resource).getOrElse { exception ->
                 error("Failed to apply ${stage.label} ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
             }
         }
@@ -332,7 +332,6 @@ class DefaultObservabilityStackService(
 
         k8sService
             .createConfigMap(
-                controlHost = controlNode,
                 namespace = DEFAULT_NAMESPACE,
                 name = ClusterConfigData.NAME,
                 data = configData,

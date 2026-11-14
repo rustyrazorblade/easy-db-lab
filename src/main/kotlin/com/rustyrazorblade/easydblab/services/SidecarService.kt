@@ -76,7 +76,7 @@ class DefaultSidecarService(
                     telemetryRedirect = state.initConfig?.telemetryRedirect,
                 )
             for (resource in resources) {
-                k8sService.applyResource(controlHost, resource).getOrThrow()
+                k8sService.applyResource(resource).getOrThrow()
             }
             log.info { "Sidecar DaemonSet deployed successfully" }
         }
@@ -86,7 +86,6 @@ class DefaultSidecarService(
             log.info { "Removing sidecar DaemonSet from K3s" }
             k8sService
                 .deleteResourcesByLabel(
-                    controlHost,
                     Constants.K8s.NAMESPACE,
                     APP_LABEL_KEY,
                     listOf(SidecarManifestBuilder.APP_LABEL),
@@ -98,7 +97,7 @@ class DefaultSidecarService(
         runCatching {
             log.info { "Rolling restart of sidecar DaemonSet" }
             k8sService
-                .rolloutRestartDaemonSet(controlHost, SidecarManifestBuilder.APP_LABEL, Constants.K8s.NAMESPACE)
+                .rolloutRestartDaemonSet(SidecarManifestBuilder.APP_LABEL, Constants.K8s.NAMESPACE)
                 .getOrThrow()
             log.info { "Sidecar DaemonSet rolling restart triggered" }
         }

@@ -1,15 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.mockito.kotlin.any
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.time.Duration
 
 /**
@@ -27,9 +25,8 @@ class NodeRegistrationWaitIntegrationTest {
 
     @BeforeAll
     fun setup() {
-        val clientProvider = mock<K8sClientProvider>()
         // Each operation closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         ops = DefaultK8sNamespaceOperations(clientProvider, EventBus(), podPollInterval = Duration.ofMillis(200))
         nodeName =
             SharedK3s.client().use { client ->
@@ -44,14 +41,14 @@ class NodeRegistrationWaitIntegrationTest {
 
     @Test
     fun `returns once every expected node is registered`() {
-        val result = ops.waitForNodesRegistered(controlHost, listOf(nodeName), Duration.ofSeconds(20))
+        val result = ops.waitForNodesRegistered(listOf(nodeName), Duration.ofSeconds(20))
 
         assertThat(result.isSuccess).isTrue()
     }
 
     @Test
     fun `fails naming only the nodes that never registered`() {
-        val result = ops.waitForNodesRegistered(controlHost, listOf(nodeName, "db999"), Duration.ofSeconds(2))
+        val result = ops.waitForNodesRegistered(listOf(nodeName, "db999"), Duration.ofSeconds(2))
 
         assertThat(result.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)
@@ -63,7 +60,7 @@ class NodeRegistrationWaitIntegrationTest {
     fun `names the first 20 nodes that never registered and counts the rest`() {
         val missing = (900 until 925).map { "db$it" }
 
-        val result = ops.waitForNodesRegistered(controlHost, missing, Duration.ofSeconds(1))
+        val result = ops.waitForNodesRegistered(missing, Duration.ofSeconds(1))
 
         assertThat(result.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)

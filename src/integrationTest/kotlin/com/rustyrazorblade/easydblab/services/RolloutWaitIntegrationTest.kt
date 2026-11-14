@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.PodSpec
@@ -15,8 +16,6 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.any
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.time.Duration
 
 /**
@@ -57,9 +56,8 @@ class RolloutWaitIntegrationTest {
     fun setup() {
         SharedK3s.createNamespace(NAMESPACE)
         client = SharedK3s.client()
-        val clientProvider = mock<K8sClientProvider>()
         // Each operation closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         ops = DefaultK8sNamespaceOperations(clientProvider, EventBus(), podPollInterval = Duration.ofMillis(500))
     }
 
@@ -153,7 +151,7 @@ class RolloutWaitIntegrationTest {
      * state appended, so a timeout says whether the pod was unscheduled, pulling, or unready.
      */
     private fun awaitRollout(ref: WorkloadRef) {
-        ops.waitForRollouts(controlHost, listOf(ref), NAMESPACE, TIMEOUT_SECONDS).getOrElse { e ->
+        ops.waitForRollouts(listOf(ref), NAMESPACE, TIMEOUT_SECONDS).getOrElse { e ->
             throw AssertionError("${e.message}\n${clusterDiagnostics(client, NAMESPACE)}", e)
         }
     }
@@ -167,7 +165,7 @@ class RolloutWaitIntegrationTest {
         val before = livePods(name).keys
         assertThat(before).hasSize(1)
 
-        ops.rolloutRestartDeployment(controlHost, name, NAMESPACE).getOrThrow()
+        ops.rolloutRestartDeployment(name, NAMESPACE).getOrThrow()
         awaitRollout(ref)
 
         val after = livePods(name)
@@ -185,7 +183,7 @@ class RolloutWaitIntegrationTest {
         val before = livePods(name).keys
         assertThat(before).hasSize(1)
 
-        ops.rolloutRestartDaemonSet(controlHost, name, NAMESPACE).getOrThrow()
+        ops.rolloutRestartDaemonSet(name, NAMESPACE).getOrThrow()
         awaitRollout(ref)
 
         val after = livePods(name)
@@ -201,7 +199,6 @@ class RolloutWaitIntegrationTest {
 
         val result =
             ops.waitForRollouts(
-                controlHost,
                 listOf(WorkloadRef(WorkloadKind.Deployment, name)),
                 NAMESPACE,
                 SHORT_TIMEOUT_SECONDS,

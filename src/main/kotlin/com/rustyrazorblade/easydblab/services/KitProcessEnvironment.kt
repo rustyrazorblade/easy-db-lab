@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import java.io.File
 
@@ -35,11 +36,7 @@ class KitProcessEnvironment(
         workspace: File,
         variables: Map<String, String>,
     ): ProcessBuilder {
-        val kubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG).absoluteFile
-        check(kubeconfig.isFile) {
-            "The workspace kubeconfig ${kubeconfig.path} does not exist, so a kit process cannot reach the cluster. " +
-                "Run this command from the cluster's workspace after 'easy-db-lab up'."
-        }
+        val kubeconfig = WorkspaceKubeconfig.require(workspace)
         installer.install(workspace)
         val environment = builder.environment()
         val inheritedPath = environment["PATH"]

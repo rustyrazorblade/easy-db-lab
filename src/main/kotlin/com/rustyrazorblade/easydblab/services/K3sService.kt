@@ -1,14 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import io.fabric8.kubernetes.client.utils.Serialization
@@ -78,40 +73,6 @@ interface K3sService : SystemDServiceManager {
         host: Host,
         localPath: Path,
     ): Result<Unit>
-
-    /**
-     * Lists Kubernetes jobs from the K3s cluster.
-     *
-     * This method handles the complete connection chain:
-     * 1. Establishes SOCKS proxy to the control node
-     * 2. Creates proxied Kubernetes client
-     * 3. Lists all jobs across namespaces
-     *
-     * @param controlHost The control node running K3s
-     * @param kubeconfigPath Local path to the kubeconfig file
-     * @return Result containing list of jobs or an error
-     */
-    fun listJobs(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesJob>>
-
-    /**
-     * Lists Kubernetes pods from the K3s cluster.
-     *
-     * This method handles the complete connection chain:
-     * 1. Establishes SOCKS proxy to the control node
-     * 2. Creates proxied Kubernetes client
-     * 3. Lists all pods across namespaces
-     *
-     * @param controlHost The control node running K3s
-     * @param kubeconfigPath Local path to the kubeconfig file
-     * @return Result containing list of pods or an error
-     */
-    fun listPods(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesPod>>
 }
 
 /**
@@ -234,30 +195,6 @@ class DefaultK3sService(
                 tempFile.delete()
             }
         }
-
-    override fun listJobs(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesJob>> =
-        runCatching {
-            kubernetesService(controlHost, kubeconfigPath).listJobs().getOrThrow()
-        }
-
-    override fun listPods(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesPod>> =
-        runCatching {
-            kubernetesService(controlHost, kubeconfigPath).listPods().getOrThrow()
-        }
-
-    private fun kubernetesService(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): DefaultKubernetesService {
-        val clientFactory = ProxiedKubernetesClientFactory()
-        return DefaultKubernetesService(clientFactory, kubeconfigPath)
-    }
 
     /**
      * Uploads a script from classpath resources to a remote host.

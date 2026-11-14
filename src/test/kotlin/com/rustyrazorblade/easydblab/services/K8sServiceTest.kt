@@ -2,16 +2,12 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.io.File
 
 /**
@@ -23,32 +19,18 @@ import java.io.File
  * [K8sServiceIntegrationTest].
  */
 class K8sServiceTest : BaseKoinTest() {
-    private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var k8sService: K8sService
-
-    private val testClusterHost =
-        ClusterHost(
-            publicIp = "54.123.45.67",
-            privateIp = "10.0.1.5",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-test123",
-        )
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single<ClusterStateManager> { mockClusterStateManager }
-                single { K8sClientProvider(get(), get()) }
+                single { K8sClientProvider(get(), ProxiedKubernetesClientFactory()) }
                 factory<K8sService> { DefaultK8sService(get(), get()) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
-        mockClusterStateManager = mock()
-        whenever(mockClusterStateManager.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
-
         k8sService = getKoin().get()
     }
 
@@ -57,7 +39,7 @@ class K8sServiceTest : BaseKoinTest() {
         writeWorkspaceKubeconfig()
         val nonExistentDir = tempDir.resolve("does-not-exist").toPath()
 
-        val result = k8sService.applyManifests(testClusterHost, nonExistentDir)
+        val result = k8sService.applyManifests(nonExistentDir)
 
         assertThat(result.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)
@@ -70,7 +52,7 @@ class K8sServiceTest : BaseKoinTest() {
         val manifestDir = createTestManifestDir()
         val expectedKubeconfig = File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG)
 
-        val result = k8sService.applyManifests(testClusterHost, manifestDir)
+        val result = k8sService.applyManifests(manifestDir)
 
         assertThat(result.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)

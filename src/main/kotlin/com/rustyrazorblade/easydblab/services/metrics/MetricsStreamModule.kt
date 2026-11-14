@@ -1,8 +1,8 @@
 package com.rustyrazorblade.easydblab.services.metrics
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoutes
 import com.rustyrazorblade.easydblab.proxy.RecordedTunnelRoutes
 import com.rustyrazorblade.easydblab.proxy.TunnelProcessControl
@@ -29,7 +29,7 @@ val metricsStreamModule =
         }
         factory {
             val clusterStateManager = get<ClusterStateManager>()
-            val kubeconfig = File(get<Context>().workingDirectory, Constants.K3s.LOCAL_KUBECONFIG)
+            val kubeconfig = WorkspaceKubeconfig.file(get<Context>().workingDirectory)
             CycleQueries(
                 loadState = { clusterStateManager.takeIf { it.exists() }?.load() },
                 routes = get(),

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.Pod
@@ -15,8 +16,6 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.any
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -56,9 +55,8 @@ class PodReadinessWaitIntegrationTest {
     fun setup() {
         SharedK3s.createNamespace(NAMESPACE)
         client = SharedK3s.client()
-        val clientProvider = mock<K8sClientProvider>()
         // Each operation closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         ops = DefaultK8sNamespaceOperations(clientProvider, EventBus(), podPollInterval = Duration.ofMillis(500))
     }
 
@@ -117,7 +115,7 @@ class PodReadinessWaitIntegrationTest {
     }
 
     private fun awaitNamespaceReady() {
-        ops.waitForPodsReady(controlHost, WAIT_TIMEOUT_SECONDS, NAMESPACE).getOrElse { e ->
+        ops.waitForPodsReady(WAIT_TIMEOUT_SECONDS, NAMESPACE).getOrElse { e ->
             throw AssertionError("${e.message}\n${clusterDiagnostics(client, NAMESPACE)}", e)
         }
     }
@@ -160,7 +158,7 @@ class PodReadinessWaitIntegrationTest {
             .waitUntilCondition(::isBackingOff, JOB_TIMEOUT_SECONDS, TimeUnit.SECONDS)
 
         val started = System.nanoTime()
-        val result = ops.waitForPodsReady(controlHost, LONG_WAIT_TIMEOUT_SECONDS, namespace)
+        val result = ops.waitForPodsReady(LONG_WAIT_TIMEOUT_SECONDS, namespace)
         val waited = Duration.ofNanos(System.nanoTime() - started)
 
         assertThat(result.exceptionOrNull())
@@ -197,7 +195,7 @@ class PodReadinessWaitIntegrationTest {
                 .build()
         client.resource(unschedulable).create()
 
-        val result = ops.waitForPodsReady(controlHost, PENDING_WAIT_TIMEOUT_SECONDS, namespace)
+        val result = ops.waitForPodsReady(PENDING_WAIT_TIMEOUT_SECONDS, namespace)
 
         assertThat(result.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)

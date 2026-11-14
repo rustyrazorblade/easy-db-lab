@@ -1,38 +1,33 @@
-package com.rustyrazorblade.easydblab.kubernetes
+package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesNode
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.nio.file.Path
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Default implementation of KubernetesService using the Fabric8 Kubernetes Client.
+ * Default implementation of [K8sReadOperations] using the Fabric8 Kubernetes Client.
  *
- * This service uses a lazy-initialized client that connects through a SOCKS proxy
- * for access to private K3s clusters.
- *
- * @property clientFactory Factory for creating Kubernetes clients
- * @property kubeconfigPath Path to the kubeconfig file
+ * @property clientProvider Opens a client for the workspace cluster; each query closes its client
  */
-class DefaultKubernetesService(
-    private val clientFactory: KubernetesClientFactory,
-    private val kubeconfigPath: Path,
-) : KubernetesService {
+class DefaultK8sReadOperations(
+    private val clientProvider: K8sClientProvider,
+) : K8sReadOperations {
     companion object {
         private val log = KotlinLogging.logger {}
     }
 
-    private val client: KubernetesClient by lazy {
-        clientFactory.createClient(kubeconfigPath)
-    }
+    private fun <T> withClient(block: (KubernetesClient) -> T): Result<T> = runCatching { clientProvider.createClient().use(block) }
 
     override fun listJobs(namespace: String?): Result<List<KubernetesJob>> =
-        runCatching {
+        withClient { client ->
             log.debug { "Listing jobs${namespace?.let { " in namespace $it" } ?: " across all namespaces"}" }
 
             val jobs =
@@ -58,7 +53,7 @@ class DefaultKubernetesService(
         }
 
     override fun listPods(namespace: String?): Result<List<KubernetesPod>> =
-        runCatching {
+        withClient { client ->
             log.debug { "Listing pods${namespace?.let { " in namespace $it" } ?: " across all namespaces"}" }
 
             val pods =
@@ -77,7 +72,7 @@ class DefaultKubernetesService(
         labelSelector: String,
         namespace: String,
     ): Result<List<KubernetesPod>> =
-        runCatching {
+        withClient { client ->
             log.debug { "Listing pods with selector '$labelSelector' in namespace $namespace" }
             client
                 .pods()
@@ -91,7 +86,7 @@ class DefaultKubernetesService(
         }
 
     override fun getNodes(): Result<List<KubernetesNode>> =
-        runCatching {
+        withClient { client ->
             log.debug { "Getting cluster nodes" }
 
             val nodes = client.nodes().list()
@@ -101,7 +96,7 @@ class DefaultKubernetesService(
         }
 
     override fun isReachable(): Result<Boolean> =
-        runCatching {
+        withClient { client ->
             log.debug { "Checking Kubernetes API reachability" }
 
             // Try to list namespaces - a lightweight call that works on any cluster

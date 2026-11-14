@@ -1,48 +1,39 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.io.File
-import java.nio.file.Path
 
 private val log = KotlinLogging.logger {}
 
 /**
- * Creates Kubernetes clients for K8s API access.
+ * Creates Kubernetes clients for the cluster of the current workspace.
+ *
+ * The kubeconfig is the workspace's, resolved by [WorkspaceKubeconfig] against
+ * [Context.workingDirectory], so the client reaches the workspace's cluster whatever directory the
+ * process started in.
  *
  * When the SOCKS5 proxy is active (started eagerly by [com.rustyrazorblade.easydblab.services.DefaultCommandExecutor]
  * before any command runs), the proxy port is published via the private
- * [com.rustyrazorblade.easydblab.Constants.Proxy.PORT_PROPERTY] and [ProxiedKubernetesClientFactory]
- * uses it to configure the HTTPS proxy. The global `socksProxyHost` is intentionally not set, so only
- * cluster traffic tunnels — AWS and other traffic stay direct.
+ * [com.rustyrazorblade.easydblab.Constants.Proxy.PORT_PROPERTY] and the production
+ * [com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory] uses it to configure the
+ * HTTPS proxy for this client only. The global `socksProxyHost` is intentionally not set, so only
+ * cluster traffic tunnels, and AWS and other traffic stay direct.
  *
  * When Tailscale is active, the proxy is not started (no port published) and the client connects
  * directly to the private IP without any proxy.
  */
 class K8sClientProvider(
-    private val clusterStateManager: ClusterStateManager,
     private val context: Context,
+    private val clientFactory: KubernetesClientFactory,
 ) {
-    fun createClient(controlHost: ClusterHost): KubernetesClient {
-        log.debug { "Creating K8s client for ${controlHost.alias} (${controlHost.privateIp})" }
-
-        // The kubeconfig belongs to the cluster workspace, not to wherever the process started.
-        val kubeconfigFile = File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).absoluteFile
-        check(kubeconfigFile.isFile) {
-            "kubeconfig not found at $kubeconfigFile. Run this from the cluster workspace, after 'up' has written it."
-        }
-        val kubeconfigPath: Path = kubeconfigFile.toPath()
-        log.debug { "Using kubeconfig=$kubeconfigPath tailscale=${clusterStateManager.load().isTailscaleEnabled()}" }
-
-        val clientFactory = ProxiedKubernetesClientFactory()
-        val client = clientFactory.createClient(kubeconfigPath)
+    fun createClient(): KubernetesClient {
+        val kubeconfigFile = WorkspaceKubeconfig.require(context.workingDirectory)
+        log.debug { "Creating K8s client from kubeconfig=$kubeconfigFile" }
+        val client = clientFactory.createClient(kubeconfigFile.toPath())
         log.debug { "K8s client created, master URL: ${client.configuration.masterUrl}" }
-
         return client
     }
 }

@@ -40,16 +40,16 @@ class DefaultOtelSyncService(
             log.debug { "Syncing OTel collector configuration" }
             val clusterState = clusterStateManager.load()
             val scrapeConfigs =
-                k8sClientProvider.createClient(controlHost).use { client ->
+                k8sClientProvider.createClient().use { client ->
                     otelManifestBuilder.listWorkloadScrapeConfigs(client)
                 }
             // The cluster's export destinations and CNI come from its recorded init config, so a
             // regenerated ConfigMap keeps a redirect cluster's external endpoints and a Cilium
             // cluster's Cilium scrape jobs.
             val resources = CollectorResources.build(otelManifestBuilder, controlHost, clusterState, user.region, scrapeConfigs)
-            configChangeReport.report(controlHost, resources, Constants.K8s.NAMESPACE)
+            configChangeReport.report(resources, Constants.K8s.NAMESPACE)
             for (resource in resources) {
-                k8sService.applyResource(controlHost = controlHost, resource = resource).getOrThrow()
+                k8sService.applyResource(resource = resource).getOrThrow()
             }
         }
 }

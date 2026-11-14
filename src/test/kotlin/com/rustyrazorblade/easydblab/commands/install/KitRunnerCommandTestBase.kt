@@ -12,11 +12,11 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultKitEndpointResolver
 import com.rustyrazorblade.easydblab.services.GrafanaClient
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
@@ -48,7 +48,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     protected val mockWorkloadStepExecutor: WorkloadStepExecutor = mock()
     protected val mockMetricsRegistryService: MetricsRegistryService = mock()
     protected val mockKitHookExecutor: KitHookExecutor = mock()
-    protected val mockKubeService: KubernetesService = mock()
+    protected val mockKubeService: K8sService = mock()
     protected val mockObjectStore: ObjectStore = mock()
 
     protected lateinit var workingDir: File

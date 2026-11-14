@@ -19,7 +19,6 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -104,7 +103,7 @@ class StressStartTest : BaseKoinTest() {
             ),
         )
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any())).thenReturn(Result.success(StartedStressJob("stress-kv-1", "app0")))
+        whenever(mockStressJobService.startJob(any())).thenReturn(Result.success(StartedStressJob("stress-kv-1", "app0")))
 
         StressStart().apply { stressArgs = listOf("KeyValue") }.execute()
 
@@ -113,26 +112,6 @@ class StressStartTest : BaseKoinTest() {
         assertThat(started.jobName).isNotBlank()
         assertThat(started.contactPoint).isEqualTo("10.0.1.6")
         assertThat(started.args).contains("KeyValue")
-    }
-
-    @Test
-    fun `execute should fail when no control nodes exist`() {
-        // Given - cluster state with no control nodes
-        val emptyState =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts = mutableMapOf(),
-            )
-
-        whenever(mockClusterStateManager.load()).thenReturn(emptyState)
-
-        val command = StressStart()
-
-        // When/Then
-        assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No control nodes found")
     }
 
     @Test
@@ -199,7 +178,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any()))
+        whenever(mockStressJobService.startJob(any()))
             .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
@@ -210,7 +189,6 @@ class StressStartTest : BaseKoinTest() {
 
         // Then - verify startJob was called with passthrough args
         verify(mockStressJobService).startJob(
-            controlHost = eq(testControlHost),
             config =
                 argThat { config ->
                     config.args.contains("run") &&
@@ -239,7 +217,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any()))
+        whenever(mockStressJobService.startJob(any()))
             .thenReturn(Result.failure(RuntimeException("Job creation failed")))
 
         val command = StressStart()
@@ -345,7 +323,7 @@ class StressStartTest : BaseKoinTest() {
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("whitespace")
 
-        verify(mockStressJobService, never()).startJob(any(), any())
+        verify(mockStressJobService, never()).startJob(any())
     }
 
     @Test
@@ -377,7 +355,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any()))
+        whenever(mockStressJobService.startJob(any()))
             .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
@@ -387,7 +365,6 @@ class StressStartTest : BaseKoinTest() {
         command.execute()
 
         verify(mockStressJobService).startJob(
-            controlHost = eq(testControlHost),
             config = argThat { config -> config.tags["env"] == "test" && config.tags["team"] == "qa" },
         )
     }
@@ -407,7 +384,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
-        whenever(mockStressJobService.startJob(any(), any()))
+        whenever(mockStressJobService.startJob(any()))
             .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
@@ -416,7 +393,6 @@ class StressStartTest : BaseKoinTest() {
         command.execute()
 
         verify(mockStressJobService).startJob(
-            controlHost = eq(testControlHost),
             config = argThat { config -> config.jobName == "keyvalue-1" && config.promPort == 9501 },
         )
     }
@@ -436,7 +412,7 @@ class StressStartTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(3)
-        whenever(mockStressJobService.startJob(any(), any()))
+        whenever(mockStressJobService.startJob(any()))
             .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
@@ -446,7 +422,6 @@ class StressStartTest : BaseKoinTest() {
         command.execute()
 
         verify(mockStressJobService).startJob(
-            controlHost = eq(testControlHost),
             config = argThat { config -> config.jobName == "my-test" && config.promPort == 9503 },
         )
     }

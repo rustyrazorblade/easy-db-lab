@@ -46,7 +46,6 @@ import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
-import org.koin.core.parameter.parametersOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 
@@ -95,7 +94,7 @@ val servicesModule =
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
-        singleOf(::K8sClientProvider)
+        single { K8sClientProvider(get(), get()) }
         factoryOf(::DefaultK8sService) bind K8sService::class bind K8sPodOperations::class
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
@@ -134,8 +133,7 @@ val servicesModule =
         factoryOf(::KitProcessEnvironment)
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
-        // Takes the workspace kubeconfig path, which the Fabric8-backed KubernetesService needs.
-        factory { (kubeconfigPath: String) -> KitWorkloadProbe(get { parametersOf(kubeconfigPath) }, get()) }
+        factory { KitWorkloadProbe(get(), get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factory { ConfigChangeReport(get<K8sService>(), get()) }

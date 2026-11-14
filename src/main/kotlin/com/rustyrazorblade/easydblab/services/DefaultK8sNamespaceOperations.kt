@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
@@ -30,22 +29,22 @@ class DefaultK8sNamespaceOperations(
     private val eventBus: EventBus,
     private val podPollInterval: Duration = Duration.ofMillis(POD_POLL_INTERVAL_MS),
 ) : K8sNamespaceOperations {
-    override fun getObservabilityStatus(controlHost: ClusterHost): Result<String> =
+    override fun getObservabilityStatus(): Result<String> =
         runCatching {
             log.debug { "Getting observability status via SOCKS proxy" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 formatPodStatus(client, Constants.K8s.NAMESPACE)
             }
         }
 
-    override fun deleteObservability(controlHost: ClusterHost): Result<Unit> =
+    override fun deleteObservability(): Result<Unit> =
         runCatching {
             log.debug { "Deleting observability namespace via SOCKS proxy" }
 
             eventBus.emit(Event.K8s.ObservabilityNamespaceDeleting)
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val namespace = client.namespaces().withName(Constants.K8s.NAMESPACE).get()
                 if (namespace != null) {
                     client.namespaces().withName(Constants.K8s.NAMESPACE).delete()
@@ -58,16 +57,13 @@ class DefaultK8sNamespaceOperations(
             eventBus.emit(Event.K8s.ObservabilityNamespaceDeleted)
         }
 
-    override fun waitForPodsReady(
-        controlHost: ClusterHost,
-        timeoutSeconds: Int,
-    ): Result<Unit> =
+    override fun waitForPodsReady(timeoutSeconds: Int): Result<Unit> =
         runCatching {
             log.debug { "Waiting for pods to be ready in ${Constants.K8s.NAMESPACE} namespace" }
 
             eventBus.emit(Event.K8s.ObservabilityPodsWaiting)
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 waitForPodsInNamespace(client, Constants.K8s.NAMESPACE, timeoutSeconds)
             }
 
@@ -75,7 +71,6 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun waitForPodsReady(
-        controlHost: ClusterHost,
         timeoutSeconds: Int,
         namespace: String,
     ): Result<Unit> =
@@ -84,7 +79,7 @@ class DefaultK8sNamespaceOperations(
 
             eventBus.emit(Event.K8s.PodsWaiting(namespace))
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 waitForPodsInNamespace(client, namespace, timeoutSeconds)
             }
 
@@ -92,14 +87,13 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun waitForNodesRegistered(
-        controlHost: ClusterHost,
         nodeNames: List<String>,
         timeout: Duration,
     ): Result<Unit> =
         runCatching {
             if (nodeNames.isEmpty()) return@runCatching
             eventBus.emit(Event.K8s.NodesRegistering(nodeNames.size))
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 // One list per poll for the whole cluster, not one GET per node; a deadline, not
                 // an attempt count, bounds the wait.
                 val missing =
@@ -132,28 +126,22 @@ class DefaultK8sNamespaceOperations(
             eventBus.emit(Event.K8s.NodesRegistered(nodeNames.size))
         }
 
-    override fun getNamespaceStatus(
-        controlHost: ClusterHost,
-        namespace: String,
-    ): Result<String> =
+    override fun getNamespaceStatus(namespace: String): Result<String> =
         runCatching {
             log.debug { "Getting status for namespace $namespace via SOCKS proxy" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 formatPodStatus(client, namespace)
             }
         }
 
-    override fun deleteNamespace(
-        controlHost: ClusterHost,
-        namespace: String,
-    ): Result<Unit> =
+    override fun deleteNamespace(namespace: String): Result<Unit> =
         runCatching {
             log.debug { "Deleting namespace $namespace via SOCKS proxy" }
 
             eventBus.emit(Event.K8s.NamespaceDeleting(namespace))
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val ns = client.namespaces().withName(namespace).get()
                 if (ns != null) {
                     client.namespaces().withName(namespace).delete()
@@ -167,7 +155,6 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun deleteResourcesByLabel(
-        controlHost: ClusterHost,
         namespace: String,
         labelKey: String,
         labelValues: List<String>,
@@ -177,7 +164,7 @@ class DefaultK8sNamespaceOperations(
 
             eventBus.emit(Event.K8s.ResourcesDeleting(labelKey))
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val labelSelector = "$labelKey in (${labelValues.joinToString(",")})"
                 log.debug { "Using label selector: $labelSelector" }
 
@@ -190,13 +177,12 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun rolloutRestartDeployment(
-        controlHost: ClusterHost,
         name: String,
         namespace: String,
     ): Result<Unit> =
         runCatching {
             log.info { "Rolling restart Deployment/$name in namespace $namespace" }
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .apps()
                     .deployments()
@@ -209,13 +195,12 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun rolloutRestartDaemonSet(
-        controlHost: ClusterHost,
         name: String,
         namespace: String,
     ): Result<Unit> =
         runCatching {
             log.info { "Rolling restart DaemonSet/$name in namespace $namespace" }
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .apps()
                     .daemonSets()
@@ -227,7 +212,6 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun waitForRollouts(
-        controlHost: ClusterHost,
         workloads: List<WorkloadRef>,
         namespace: String,
         timeoutSeconds: Int,
@@ -236,7 +220,7 @@ class DefaultK8sNamespaceOperations(
             if (workloads.isEmpty()) return@runCatching
             eventBus.emit(Event.K8s.RolloutsWaiting(workloads.map { it.toString() }))
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 // Poll until nothing is pending or the deadline passes. The deadline, not an
                 // attempt count, bounds the wait, so a slow API server cannot stretch it.
                 val pending =
@@ -256,12 +240,11 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun workloadConfigHashes(
-        controlHost: ClusterHost,
         workloads: List<WorkloadRef>,
         namespace: String,
     ): Result<Map<WorkloadRef, String?>> =
         runCatching {
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 workloads.associateWith { ref ->
                     val template =
                         when (ref.kind) {

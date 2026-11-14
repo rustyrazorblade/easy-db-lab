@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -30,14 +29,13 @@ class ConfigChangeReport(
      * @throws IllegalStateException if the running workloads cannot be read.
      */
     fun report(
-        controlHost: ClusterHost,
         resources: List<HasMetadata>,
         namespace: String,
     ) {
         val hashes = resources.mapNotNull { resource -> workloadRef(resource)?.let { it to templateHash(resource) } }.toMap()
         if (hashes.isEmpty()) return
         val running =
-            k8sService.workloadConfigHashes(controlHost, hashes.keys.toList(), namespace).getOrElse { exception ->
+            k8sService.workloadConfigHashes(hashes.keys.toList(), namespace).getOrElse { exception ->
                 error("Failed to read the running workloads' configuration hashes: ${exception.message}")
             }
         hashes.forEach { (ref, hash) ->

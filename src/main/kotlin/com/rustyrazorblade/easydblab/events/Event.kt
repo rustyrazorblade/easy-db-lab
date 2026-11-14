@@ -4158,12 +4158,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Status.StressJobsNoControlNode")
-        data object StressJobsNoControlNode : Status {
-            override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(no control node configured)"
-        }
-
-        @Serializable
         @SerialName("Status.StressJobsError")
         data class StressJobsError(
             val error: String,

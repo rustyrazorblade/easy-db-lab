@@ -9,10 +9,8 @@ import com.rustyrazorblade.easydblab.containers.PackerImage
 import com.rustyrazorblade.easydblab.events.RedisConfiguration
 import com.rustyrazorblade.easydblab.events.RedisEndpoint
 import com.rustyrazorblade.easydblab.events.RedisPublisher
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
-import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -91,16 +89,12 @@ class KoinModulesResolutionTest {
     private fun parametersFor(
         type: KClass<*>,
         koin: Koin,
-    ): ParametersHolder? {
-        val kubeconfig = File(tempDir, "kubeconfig").path
-        return when (type) {
+    ): ParametersHolder? =
+        when (type) {
             Docker::class -> parametersOf(koin.get<Context>())
             PackerImage::class -> parametersOf(koin.get<Docker> { parametersOf(koin.get<Context>()) })
-            KubernetesService::class -> parametersOf(kubeconfig)
-            KitWorkloadProbe::class -> parametersOf(kubeconfig)
             else -> null
         }
-    }
 
     @OptIn(KoinInternalApi::class)
     private fun productionDefinitions(): List<BeanDefinition<*>> =

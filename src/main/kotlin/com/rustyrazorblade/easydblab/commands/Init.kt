@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
 import com.rustyrazorblade.easydblab.commands.converters.PicoCniModeConverter
+import com.rustyrazorblade.easydblab.commands.converters.PicoPositionalClusterNameConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
@@ -201,6 +202,15 @@ class Init : PicoBaseCommand() {
         defaultValue = "test",
     )
     var name = "test"
+
+    /** Never holds a value: its converter throws, so `--name` fails at parse time naming the positional form. */
+    @Option(
+        names = ["--name"],
+        hidden = true,
+        converter = [PicoPositionalClusterNameConverter::class],
+        description = ["Not an option. The cluster name is positional: init <name>"],
+    )
+    var misplacedName: String? = null
 
     @Mixin
     var spark = SparkInitMixin()

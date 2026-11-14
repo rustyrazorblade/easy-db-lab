@@ -42,7 +42,7 @@ class Cleanup : PicoBaseCommand() {
     var nodeType: ServerType = ServerType.Cassandra
 
     override fun execute() {
-        require(kit.matches(Regex("^[a-zA-Z0-9][a-zA-Z0-9_-]*$"))) {
+        require(Constants.Kit.NAME_PATTERN.matches(kit)) {
             "Kit name must contain only letters, digits, hyphens, or underscores: $kit"
         }
 

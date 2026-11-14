@@ -59,8 +59,9 @@ class Fabric8PodForwarder(
 /**
  * The port-forward the single-endpoint CQL session dials: one Cassandra pod on one local port.
  *
- * The local port is picked once and kept. When the forward dies (a pod restart, a dropped
- * connection), the next [endpoint] reopens it on the same port, so the driver, which holds that
+ * The local port is picked once and kept. When the forward dies (it closed, or it recorded an error
+ * since it opened: Fabric8 keeps `isAlive` true after the pod is replaced), the next [endpoint]
+ * reopens it on the same port, so the driver, which holds that
  * address as its only node, reconnects on its own. A forward that cannot be opened fails naming the
  * namespace, the pod, the port and the Kubernetes error.
  *
@@ -80,18 +81,23 @@ class CassandraPodForward(
     /** The loopback address of a live forward to the pod, opening or reopening it as needed. */
     @Synchronized
     fun endpoint(): InetSocketAddress {
-        val live = forward?.takeIf { it.isAlive } ?: reopen()
+        val live = forward?.takeIf { it.isUsable } ?: reopen()
         return InetSocketAddress(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, live.localPort)
     }
 
     private fun reopen(): LocalPortForward {
-        forward?.closeQuietly()
+        forward?.let { dead ->
+            log.warn(dead.firstError) {
+                "Port-forward 127.0.0.1:$localPort to pod ${pod.namespace}/${pod.pod} stopped working; reopening it on the same port"
+            }
+            dead.closeQuietly()
+        }
         forward = null
         val opened =
             runCatching { forwarder.forward(pod, localPort) }
                 .getOrElse { throw failure(it) }
         if (opened.errorOccurred()) {
-            val error = (opened.clientThrowables + opened.serverThrowables).firstOrNull()
+            val error = opened.firstError
             opened.closeQuietly()
             throw failure(error ?: IllegalStateException("unknown error"))
         }

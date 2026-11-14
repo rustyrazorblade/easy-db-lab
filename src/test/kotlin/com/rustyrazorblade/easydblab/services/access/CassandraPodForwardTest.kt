@@ -11,7 +11,7 @@ import java.net.InetSocketAddress
 class CassandraPodForwardTest {
     private class FakeForward(
         private val port: Int,
-        val failure: Throwable? = null,
+        var failure: Throwable? = null,
     ) : LocalPortForward {
         var alive = true
 
@@ -71,6 +71,17 @@ class CassandraPodForwardTest {
 
         assertThat(again).isEqualTo(InetSocketAddress("127.0.0.1", 24001))
         assertThat(opened.map { it.second }).containsExactly(24001, 24001)
+    }
+
+    @Test
+    fun `a forward that stays alive but reported an error is rebuilt on the same local port`() {
+        forward.endpoint()
+        // Fabric8 keeps isAlive true after the pod is replaced; only the error shows it.
+        forwards.single().failure = IllegalStateException("pod \"cassandra-pods-0\" not found")
+
+        assertThat(forward.endpoint()).isEqualTo(InetSocketAddress("127.0.0.1", 24001))
+        assertThat(opened.map { it.second }).containsExactly(24001, 24001)
+        assertThat(forwards.first().alive).isFalse()
     }
 
     @Test

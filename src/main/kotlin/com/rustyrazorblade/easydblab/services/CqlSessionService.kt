@@ -142,7 +142,7 @@ class DefaultCqlSessionService(
 
     private fun getOrCreateSingleEndpointSession(): CqlSession {
         val target = openedSingleEndpoint ?: singleEndpoint().also { openedSingleEndpoint = it }
-        // Reopens a dead forward on the same port before the statement, so the cached session reconnects.
+        // Reopens a forward that closed or recorded an error on the same port before the statement, so the cached session reconnects.
         val endpoint = target.forward.endpoint()
         cachedSession?.let { session ->
             if (!session.isClosed && cachedDatacenter == target.datacenter) return session

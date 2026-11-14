@@ -54,6 +54,9 @@ enum class FlushStep(
     ;
 
     companion object {
+        /** The steps that write the local state file; they never touch the cluster. */
+        val RECORD_STEPS: Set<FlushStep> = setOf(RECORD_LOGS, RECORD_METRICS)
+
         /** The step that records [signal] in the cluster state once its flush succeeded. */
         fun recordOf(signal: TailSignal): FlushStep =
             when (signal) {
@@ -440,7 +443,9 @@ class DefaultTeardownFlushService private constructor(
         } catch (failure: ExecutionException) {
             val cause = failure.cause ?: failure
             if (cause is Error) throw cause
-            val unreached = ClusterReach.neverReached(cause)
+            // A record step writes the local state file, never the cluster: a missing file there is not
+            // a cluster that could not be reached.
+            val unreached = progress.step !in FlushStep.RECORD_STEPS && ClusterReach.neverReached(cause)
             if (unreached) progress.neverReached()
             Result.failure(FlushStepFailed(progress.step, progress.backends, cause, unreached))
         }

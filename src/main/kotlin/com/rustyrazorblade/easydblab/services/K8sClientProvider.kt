@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.File
 import java.nio.file.Path
 
 private val log = KotlinLogging.logger {}
@@ -24,11 +26,17 @@ private val log = KotlinLogging.logger {}
  */
 class K8sClientProvider(
     private val clusterStateManager: ClusterStateManager,
+    private val context: Context,
 ) {
     fun createClient(controlHost: ClusterHost): KubernetesClient {
         log.debug { "Creating K8s client for ${controlHost.alias} (${controlHost.privateIp})" }
 
-        val kubeconfigPath = Path.of(Constants.K3s.LOCAL_KUBECONFIG)
+        // The kubeconfig belongs to the cluster workspace, not to wherever the process started.
+        val kubeconfigFile = File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).absoluteFile
+        check(kubeconfigFile.isFile) {
+            "kubeconfig not found at $kubeconfigFile. Run this from the cluster workspace, after 'up' has written it."
+        }
+        val kubeconfigPath: Path = kubeconfigFile.toPath()
         log.debug { "Using kubeconfig=$kubeconfigPath tailscale=${clusterStateManager.load().isTailscaleEnabled()}" }
 
         val clientFactory = ProxiedKubernetesClientFactory()

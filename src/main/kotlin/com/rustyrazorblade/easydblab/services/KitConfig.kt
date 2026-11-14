@@ -233,7 +233,16 @@ data class KitCapability(
 data class KitCommandSpec(
     val description: String = "",
     val args: List<KitArgSpec> = emptyList(),
-)
+) {
+    init {
+        // The kit runner lays cluster-state variables over the environment, so a command arg
+        // with one of their names would be silently replaced by the cluster value.
+        val reserved = args.firstOrNull { it.variable in TemplateVariables.RESERVED_NAMES }
+        require(reserved == null) {
+            "Kit command arg '${reserved?.flag}' uses the variable ${reserved?.variable}, which the cluster defines; choose another name"
+        }
+    }
+}
 
 @Serializable
 data class KitConfig(
@@ -258,6 +267,14 @@ data class KitConfig(
     val capabilities: List<KitCapability> = emptyList(),
     val commands: Map<String, KitCommandSpec> = emptyMap(),
 ) {
+    init {
+        // resolved-args.env stores one KEY=VALUE per line, so a newline-joined value would corrupt it.
+        val repeatableInstallArg = args.firstOrNull { it.repeatable }
+        require(repeatableInstallArg == null) {
+            "Kit arg '${repeatableInstallArg?.flag}' is a top-level install arg and cannot be repeatable; declare it under commands"
+        }
+    }
+
     val kitRefArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.KIT_REF }
     val extensionArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.EXTENSION }
 
@@ -306,7 +323,7 @@ data class KitHooks(
 /**
  * One CLI option a kit declares, at install time ([KitConfig.args]) or for one command
  * ([KitCommandSpec.args]). Its value reaches the kit's scripts as the environment variable
- * [variable]; an arg the user leaves out that has no [default] reaches them as an empty string.
+ * [variable].
  *
  * A [ArgType.BOOLEAN] arg takes an optional value: a bare `--flag` means `true`, and
  * `--flag false` or `--flag=false` turns it off, so `--help` shows it as `--flag[=<value>]`.
@@ -314,6 +331,9 @@ data class KitHooks(
  * A [ArgType.KIT_REF] arg names another installed kit. [capability] and [endpoints] state what
  * that target must declare; `kit install` refuses a target that lacks either
  * ([com.rustyrazorblade.easydblab.commands.install.KitRefTargetValidator]).
+ *
+ * A [repeatable] string command arg takes its flag any number of times and holds every value
+ * in order, one per line.
  */
 @Serializable
 data class KitArgSpec(
@@ -326,7 +346,14 @@ data class KitArgSpec(
     val capability: String = "",
     /** Endpoint types a kit-ref target must declare, for example `[native, http]`. */
     val endpoints: List<KitEndpoint.EndpointType> = emptyList(),
+    val repeatable: Boolean = false,
 ) {
+    init {
+        require(!repeatable || type == ArgType.STRING) {
+            "Kit arg '$flag' is repeatable, but only a string arg can repeat (it is ${type.name.lowercase()})"
+        }
+    }
+
     /**
      * The value placeholder `--help` and `commands` show for this arg, from its variable name
      * (`NUM_RECORDS` becomes `<num-records>`). A boolean flag shows it as optional,

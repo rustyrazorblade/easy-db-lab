@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
+import com.rustyrazorblade.easydblab.kubernetes.imagePullFailure
 import io.fabric8.kubernetes.api.model.DeletionPropagation
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -177,6 +178,7 @@ class DefaultK8sJobOperations(
                         restarts = restarts,
                         age = age,
                         nodeName = pod.spec?.nodeName.orEmpty(),
+                        imagePullFailure = pod.imagePullFailure(),
                     )
                 }
             }

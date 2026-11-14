@@ -397,4 +397,11 @@ class TemplateVariablesTest : BaseKoinTest() {
         assertThat(script).contains("-Dpyroscope.tenant.id=\${TENANT}")
         assertThat(script).doesNotContain(":4040")
     }
+
+    @Test
+    fun `the reserved names are exactly the variables a kit receives from the cluster, plus BACKUP_NAME`() {
+        val defined = TemplateVariables.from(state = stateWith(), kitName = "trino", storageSize = "1Gi").toMap().keys
+
+        assertThat(TemplateVariables.RESERVED_NAMES).isEqualTo(defined + "BACKUP_NAME")
+    }
 }

@@ -12,10 +12,14 @@ class CassandraPodTargetTest {
     @TempDir
     lateinit var workspace: File
 
-    private fun installKit(resolvedArgs: String) {
+    private fun installKit(
+        resolvedArgs: String,
+        kitYaml: String? = null,
+    ) {
         File(workspace, CassandraPodTarget.KIT).apply {
             mkdirs()
             File(this, Constants.Kit.RESOLVED_ARGS_FILE).writeText(resolvedArgs)
+            kitYaml?.let { File(this, Constants.Kit.CONFIG_FILE).writeText(it) }
         }
     }
 
@@ -27,6 +31,23 @@ class CassandraPodTargetTest {
 
         assertThat(target.pod).isEqualTo(PodTarget("default", "cassandra-pods-0", Constants.Kit.CassandraPods.CQL_NODE_PORT))
         assertThat(target.datacenter).isEqualTo("east")
+    }
+
+    @Test
+    fun `the pod is in the namespace the installed kit's runtime declares`() {
+        installKit(
+            "CASSANDRA_VERSION=5.0\n",
+            kitYaml =
+                """
+                name: cassandra-pods
+                runtime:
+                  type: pods
+                  selector: "easydblab/kit=cassandra-pods"
+                  namespace: databases
+                """.trimIndent(),
+        )
+
+        assertThat(CassandraPodTarget.inWorkspace(workspace).pod.namespace).isEqualTo("databases")
     }
 
     @Test

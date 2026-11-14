@@ -21,24 +21,41 @@ class ExposureServiceAccess(
 ) : ServiceAccess {
     private val log = KotlinLogging.logger {}
     private var chosen: Pair<Exposure, ServiceAccess>? = null
+    private var closed = false
 
     /**
      * Opens [target] on the implementation the exposure selects. Only the selection is locked: an
      * open can wait on the cluster (a port-forward resolving its pod), and the implementations
      * guard their own state, so one slow open never holds up another caller's.
+     *
+     * The exposure can change between selecting an implementation and opening on it, and the next
+     * selection then closes that implementation. A closed implementation refuses the open with
+     * [ServiceAccessClosedException], and the open is made again on the implementation selected
+     * now; it fails only when this access itself was closed.
      */
-    override fun open(target: ServiceTarget): ServiceEndpoint =
-        synchronized(this) { selected() }.open(target).also { endpoint ->
-            log.debug { "Reaching ${target.namespace}/${target.service}:${target.servicePort} at $endpoint" }
+    override fun open(target: ServiceTarget): ServiceEndpoint {
+        while (true) {
+            val access = synchronized(this) { selected() }
+            try {
+                return access.open(target).also { endpoint ->
+                    log.debug { "Reaching ${target.namespace}/${target.service}:${target.servicePort} at $endpoint" }
+                }
+            } catch (e: ServiceAccessClosedException) {
+                if (synchronized(this) { closed }) throw e
+                log.debug { "${access::class.simpleName} was closed under an open of ${target.service}; opening again" }
+            }
         }
+    }
 
     @Synchronized
     override fun close() {
+        closed = true
         chosen?.second?.close()
         chosen = null
     }
 
     private fun selected(): ServiceAccess {
+        if (closed) throw ServiceAccessClosedException("The service access was closed")
         val recorded = exposure()
         chosen?.let { (held, access) ->
             if (held == recorded) return access

@@ -54,3 +54,11 @@ fun interface ServiceAccess : AutoCloseable {
 
     override fun close() = Unit
 }
+
+/**
+ * An [open][ServiceAccess.open] on a [ServiceAccess] that was already closed. [ExposureServiceAccess]
+ * takes it to mean the exposure changed under the open, and opens again on the new implementation.
+ */
+class ServiceAccessClosedException(
+    message: String,
+) : IllegalStateException(message)

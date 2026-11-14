@@ -17,22 +17,18 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
-import org.mockito.kotlin.verify
 
 /**
  * Integration tests for [DefaultGrafanaAnnotationBackupService].
  *
  * The service is driven against a [MockWebServer] standing in for Grafana's `GET /api/annotations`,
- * with a captured [ObjectStore] to assert what is uploaded and where. The tests pin the account-level
+ * with an [InMemoryObjectStore] read back to assert what is stored and where. The tests pin the account-level
  * destination (outside any cluster prefix), the reported URI and count, and the fail-fast behavior
  * when no S3 bucket is configured.
  */
 class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
     private lateinit var mockWebServer: MockWebServer
-    private lateinit var objectStore: ObjectStore
+    private lateinit var objectStore: InMemoryObjectStore
     private lateinit var service: DefaultGrafanaAnnotationBackupService
 
     private val controlHost =
@@ -54,11 +50,15 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
         )
 
+    /** Every key stored in the account bucket, wherever the service put it. */
+    private fun storedKeys(): List<String> =
+        objectStore.listFiles(ClusterStoragePath.root("acct-bucket"), recursive = true).map { it.path.getKey() }
+
     @BeforeEach
     fun setup() {
         mockWebServer = MockWebServer()
         mockWebServer.start()
-        objectStore = mock()
+        objectStore = InMemoryObjectStore()
 
         val interceptor =
             Interceptor { chain ->
@@ -91,15 +91,12 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
 
         val result = service.backup(controlHost, clusterState("acct-bucket")).getOrThrow()
 
-        val contentCaptor = argumentCaptor<String>()
-        val pathCaptor = argumentCaptor<ClusterStoragePath>()
-        verify(objectStore).uploadContent(contentCaptor.capture(), pathCaptor.capture())
-
-        // The exact JSON Grafana returned is uploaded verbatim.
-        assertThat(contentCaptor.firstValue).isEqualTo(annotationsJson)
-        // The tenant's annotations directory, named by time and cluster.
-        assertThat(pathCaptor.firstValue.getKey())
-            .matches("grafana/annotations/acme/\\d{8}-\\d{6}_perf-test-c0ffee\\.json")
+        // One object, in the tenant's annotations directory, named by time and cluster.
+        val stored = storedKeys()
+        assertThat(stored).singleElement().asString().matches("grafana/annotations/acme/\\d{8}-\\d{6}_perf-test-c0ffee\\.json")
+        // The reported path is where it was stored, and it holds the exact JSON Grafana returned.
+        assertThat(result.s3Path.getKey()).isEqualTo(stored.single())
+        assertThat(objectStore.readContent(result.s3Path)).isEqualTo(annotationsJson)
         assertThat(result.annotationCount).isEqualTo(2)
         assertThat(S3Uri.uri(result.s3Path)).startsWith("s3://acct-bucket/grafana/annotations/acme/")
 
@@ -143,7 +140,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("truncated")
         // Nothing is uploaded, so a truncated capture is never persisted as if it were complete.
-        verify(objectStore, never()).uploadContent(org.mockito.kotlin.any(), org.mockito.kotlin.any())
+        assertThat(storedKeys()).isEmpty()
     }
 
     @Test
@@ -154,6 +151,6 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
         assertThat(result.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Run 'easy-db-lab up' first")
-        verify(objectStore, never()).uploadContent(org.mockito.kotlin.any(), org.mockito.kotlin.any())
+        assertThat(storedKeys()).isEmpty()
     }
 }

@@ -33,7 +33,7 @@ fun interface PodForwarder {
  * [PodForwarder] over Fabric8, bound to the IPv4 loopback only. The client is built on the first
  * forward and closed by [close].
  *
- * @param newClient builds the cluster's Kubernetes client from the recorded kubeconfig
+ * @param newClient builds the cluster's Kubernetes client from the recorded kubeconfig and pinned context
  */
 class Fabric8PodForwarder(
     newClient: () -> KubernetesClient,

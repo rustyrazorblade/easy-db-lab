@@ -37,7 +37,7 @@
 
 ## 6. Architecture rule
 
-- [ ] 6.1 Remove `GrafanaClient`, `ObservabilityHttp`, `RoutedObservabilityHttp` from the #1089 ArchUnit allow-list; confirm the stale-entry check passes
+- [x] 6.1 Remove `GrafanaClient`, `ObservabilityHttp`, `RoutedObservabilityHttp` from the #1089 ArchUnit allow-list; confirm the stale-entry check passes
 
 ## 7. Verification and docs
 

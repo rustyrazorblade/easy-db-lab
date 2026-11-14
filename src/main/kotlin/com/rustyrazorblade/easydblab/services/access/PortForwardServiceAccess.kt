@@ -45,7 +45,7 @@ fun servicePortFor(
  * is mapped to the Service port behind it ([servicePortFor]). The client is built on the first
  * forward and closed by [close].
  *
- * @param newClient builds the cluster's Kubernetes client from the recorded kubeconfig
+ * @param newClient builds the cluster's Kubernetes client from the recorded kubeconfig and pinned context
  */
 class Fabric8ServiceForwarder(
     newClient: () -> KubernetesClient,

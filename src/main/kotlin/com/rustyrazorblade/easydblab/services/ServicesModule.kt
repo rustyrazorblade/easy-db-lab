@@ -25,7 +25,6 @@ import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubeApiLocator
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.network.SocketTcpReachabilityProbe
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.AWS
@@ -47,7 +46,6 @@ import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
-import java.io.File
 import java.nio.file.Path
 
 /**
@@ -97,15 +95,14 @@ val servicesModule =
         singleOf(::DefaultCqlSessionFactory) bind CqlSessionFactory::class
         single<CqlSessionService> {
             val workspace = get<Context>().workingDirectory
-            val clientFactory = get<KubernetesClientFactory>()
+            val clients = get<K8sClientProvider>()
             DefaultCqlSessionService(get(), get(), get(), get()) {
                 val target = CassandraPodTarget.inWorkspace(workspace)
-                val kubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG).toPath()
                 SingleEndpointCql(
                     forward =
                         CassandraPodForward(
                             pod = target.pod,
-                            forwarder = Fabric8PodForwarder { clientFactory.createClient(kubeconfig) },
+                            forwarder = Fabric8PodForwarder(clients::createClient),
                             localPorts = LoopbackPortSelector()::select,
                         ),
                     datacenter = target.datacenter,

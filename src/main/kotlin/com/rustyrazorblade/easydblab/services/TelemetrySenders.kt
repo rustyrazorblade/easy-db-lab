@@ -28,10 +28,16 @@ interface TelemetrySenders {
 
     /**
      * Deletes each collector's DaemonSet in [COLLECTORS] order, waiting until its pods are gone
-     * before the next, all within [timeout]. A collector that is already gone (or never deployed,
-     * as the add-on is where pods may not be privileged) counts as stopped.
+     * before the next, all within one [timeout] that starts with the call. A collector that is
+     * already gone (or never deployed, as the add-on is where pods may not be privileged) counts as
+     * stopped. A collector whose pods outlive the deadline fails the stop, naming it, and no later
+     * collector is deleted. [onDeleting] is called with each collector's name just before its
+     * delete, so a caller knows which collectors a failed stop left untouched.
      */
-    fun stop(timeout: Duration)
+    fun stop(
+        timeout: Duration,
+        onDeleting: (String) -> Unit = {},
+    )
 }
 
 /**
@@ -49,10 +55,15 @@ class K8sTelemetrySenders(
         const val NAME_LABEL = "app.kubernetes.io/name"
     }
 
-    override fun stop(timeout: Duration) =
-        clientProvider.createClient().use { client ->
+    override fun stop(
+        timeout: Duration,
+        onDeleting: (String) -> Unit,
+    ) = clientProvider.createClient().use { client ->
         val deadline = Instant.now().plus(timeout)
-        TelemetrySenders.COLLECTORS.forEach { stopOne(client, it, deadline, timeout) }
+        TelemetrySenders.COLLECTORS.forEach { name ->
+            onDeleting(name)
+            stopOne(client, name, deadline, timeout)
+        }
     }
 
     /** Deletes [name]'s DaemonSet and waits, until [deadline], for its pods to go. */

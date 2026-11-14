@@ -17,6 +17,7 @@ import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.dsl.base.PatchContext
 import io.fabric8.kubernetes.client.dsl.base.PatchType
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -50,6 +51,15 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         const val FINALIZER = "easydblab.com/test-hold"
         val TIMEOUT: Duration = Duration.ofSeconds(90)
         val HOLD: Duration = Duration.ofSeconds(5)
+
+        /** A deadline short enough to run out in the test. */
+        val SHORT_TIMEOUT: Duration = Duration.ofSeconds(8)
+
+        /** Most of [SHORT_TIMEOUT], so a second, fresh deadline would end well past [SLACK]. */
+        val ADD_ON_HOLD: Duration = Duration.ofSeconds(6)
+
+        /** A poll, the delete and the API calls after the deadline; well under [ADD_ON_HOLD]. */
+        val SLACK: Duration = Duration.ofSeconds(4)
     }
 
     private lateinit var client: KubernetesClient
@@ -228,5 +238,59 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
             assertThat(daemonSet(name)).describedAs(name).isNull()
             assertThat(collectorPods(name)).describedAs(name).isEmpty()
         }
+    }
+
+    /**
+     * An add-on pod that never goes runs the deadline out: the stop fails at the deadline, names
+     * the add-on, and leaves the core running, so its last batches are not lost with nowhere to go.
+     */
+    @Test
+    fun `an add-on that outlives the deadline fails the stop at the deadline, and the core is not deleted`() {
+        deployCollector()
+        deployHostCollector()
+        holdCollectorPods(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+        val deleting = CopyOnWriteArrayList<String>()
+
+        val started = System.nanoTime()
+        assertThatThrownBy { senders.stop(SHORT_TIMEOUT) { deleting += it } }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+            .hasMessageNotContaining("${Constants.K8s.OTEL_COLLECTOR_APP_LABEL} still")
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+
+        assertThat(elapsed).isBetween(SHORT_TIMEOUT, SHORT_TIMEOUT.plus(SLACK))
+        assertThat(deleting).containsExactly(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+        assertThat(daemonSet(Constants.K8s.OTEL_COLLECTOR_APP_LABEL)).describedAs("the core's DaemonSet").isNotNull()
+        assertThat(collectorPods()).describedAs("the core's pods").isNotEmpty().allMatch { it.metadata.deletionTimestamp == null }
+    }
+
+    /**
+     * The deadline is shared: the time the add-on's wait took is not given back to the core. An
+     * add-on released after most of the deadline, and a core that never goes, fail the stop at the
+     * one deadline, naming the core, not a fresh timeout after the add-on's wait.
+     */
+    @Test
+    fun `the core's wait gets only what the add-on left of the one deadline`() {
+        deployCollector()
+        deployHostCollector()
+        holdCollectorPods(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+        holdCollectorPods()
+        val releaser =
+            Thread {
+                Thread.sleep(ADD_ON_HOLD.toMillis())
+                releaseCollectorPods(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+            }.apply { start() }
+
+        val started = System.nanoTime()
+        assertThatThrownBy { senders.stop(SHORT_TIMEOUT) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("${Constants.K8s.OTEL_COLLECTOR_APP_LABEL} still")
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+        releaser.join()
+
+        // A fresh deadline for the core would end at ADD_ON_HOLD + SHORT_TIMEOUT, past this bound.
+        assertThat(elapsed).isBetween(SHORT_TIMEOUT, SHORT_TIMEOUT.plus(SLACK))
+        assertThat(daemonSet(Constants.OtelCollector.HOST_COLLECTOR_NAME)).isNull()
+        assertThat(collectorPods(Constants.OtelCollector.HOST_COLLECTOR_NAME)).isEmpty()
     }
 }

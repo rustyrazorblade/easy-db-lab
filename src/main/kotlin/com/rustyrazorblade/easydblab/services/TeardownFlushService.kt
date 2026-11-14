@@ -357,9 +357,9 @@ class DefaultTeardownFlushService private constructor(
 
     /** Deletes both OTel collectors and waits for their pods to go; succeeds when they are already gone. */
     private fun stopSenders(progress: FlushProgress) {
-        // Marked before the call: a stop that times out may still have deleted the DaemonSets.
-        TelemetrySenders.COLLECTORS.forEach { progress.mark(it, BackendState.DELETED) }
-        telemetrySenders.stop(timeouts.sendersStop)
+        // Each is marked just before its own delete: a stop that times out on one has still deleted
+        // it, and has not touched the collectors after it, which keep running.
+        telemetrySenders.stop(timeouts.sendersStop) { progress.mark(it, BackendState.DELETED) }
         eventBus.emit(Event.Teardown.TelemetrySendersStopped)
     }
 

@@ -72,6 +72,9 @@ class TeardownFlushServiceTest {
     private var mirrorFailure: Throwable? = null
     private var sendersFailure: Throwable? = null
 
+    /** The collector whose stop fails after its delete, as one whose pods outlive the deadline. */
+    private var collectorThatDoesNotDrain: String? = null
+
     private val mirror =
         object : AnnotationMirror by RecordingAnnotationMirror() {
             override fun syncAll(controlHost: ClusterHost): Result<Int> {
@@ -82,9 +85,18 @@ class TeardownFlushServiceTest {
 
     private val senders =
         object : TelemetrySenders {
-            override fun stop(timeout: Duration) {
+            override fun stop(
+                timeout: Duration,
+                onDeleting: (String) -> Unit,
+            ) {
                 order += "senders stop"
                 sendersFailure?.let { throw it }
+                // As K8sTelemetrySenders does: each collector in order, announced just before its
+                // delete, and a collector that does not drain ends the stop there.
+                for (name in TelemetrySenders.COLLECTORS) {
+                    onDeleting(name)
+                    if (name == collectorThatDoesNotDrain) error("$name still has 1 pod(s)")
+                }
             }
         }
 
@@ -318,6 +330,31 @@ class TeardownFlushServiceTest {
 
         assertThat(outcome.failed.getValue(TailSignal.TRACES).step).isEqualTo(FlushStep.SENDERS_STOP)
         assertThat(order).doesNotContain("tempo start").contains("loki start", "mimir start")
+    }
+
+    /**
+     * The add-on is stopped first; when its pods do not go, the core is never deleted, so the
+     * report must say the core still runs rather than that both were deleted.
+     */
+    @Test
+    fun `an add-on that does not drain reports the core still running`() {
+        collectorThatDoesNotDrain = Constants.OtelCollector.HOST_COLLECTOR_NAME
+
+        val outcome = service().saveTail(control, state, all)
+
+        assertThat(outcome.failed.getValue(TailSignal.TRACES).step).isEqualTo(FlushStep.SENDERS_STOP)
+        assertThat(outcome.backends)
+            .containsEntry(Constants.OtelCollector.HOST_COLLECTOR_NAME, BackendState.DELETED)
+            .containsEntry(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.RUNNING)
+    }
+
+    @Test
+    fun `a stop that fails before any delete reports every collector still running`() {
+        sendersFailure = KubernetesClientException("connection refused")
+
+        val outcome = service().saveTail(control, state, all)
+
+        assertThat(outcome.backends).containsAllEntriesOf(TelemetrySenders.COLLECTORS.associateWith { BackendState.RUNNING })
     }
 
     @Test

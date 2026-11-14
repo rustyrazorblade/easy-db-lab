@@ -1,14 +1,17 @@
 package com.rustyrazorblade.easydblab.services.access
 
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import io.fabric8.kubernetes.client.LocalPortForward
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.EnumSource
+import java.net.InetAddress
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** The seam a command gets is the one its cluster's recorded exposure names. */
 class ExposureServiceAccessTest {
@@ -110,6 +113,93 @@ class ExposureServiceAccessTest {
         } finally {
             releaseFirst.countDown()
             executor.shutdownNow()
+        }
+    }
+
+    /**
+     * Caller A selects the port-forward access and is held between selecting it and opening on it.
+     * The exposure changes and caller B's open closes that access. A's open then lands on a closed
+     * access, which refuses it, and A opens on the access the exposure now selects. Nothing is left
+     * open on the access that was closed.
+     */
+    @Test
+    fun `an open whose access was closed under it by an exposure change opens on the new access`() {
+        val selectedForA = CountDownLatch(1)
+        val resumeA = CountDownLatch(1)
+        var recorded = Exposure.PortForward
+        val forwardAccess = PortForwardServiceAccess({ _, port -> NeverFailingForward(port) }) { 21001 }
+        val access =
+            ExposureServiceAccess(
+                exposure = { recorded },
+                implementations =
+                    mapOf(
+                        Exposure.PortForward to { holdingFirstOpen(forwardAccess, selectedForA, resumeA) },
+                        Exposure.Direct to { Named("direct").also { built.add(it) } },
+                    ),
+            )
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val a = executor.submit<ServiceEndpoint> { access.open(ClusterServices.LOKI) }
+            assertThat(selectedForA.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+
+            recorded = Exposure.Direct
+            assertThat(access.open(ClusterServices.MIMIR).host).isEqualTo("direct")
+            resumeA.countDown()
+
+            assertThat(a.get(WAIT_SECONDS, TimeUnit.SECONDS).host).isEqualTo("direct")
+            assertThat(opened).isEmpty()
+        } finally {
+            resumeA.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    private val opened = mutableListOf<Int>()
+
+    /** A forward that stays usable, recording that it was opened until it is closed. */
+    private inner class NeverFailingForward(
+        private val port: Int,
+    ) : LocalPortForward {
+        init {
+            opened.add(port)
+        }
+
+        override fun getLocalAddress(): InetAddress = InetAddress.getLoopbackAddress()
+
+        override fun getLocalPort(): Int = port
+
+        override fun isAlive(): Boolean = true
+
+        override fun errorOccurred(): Boolean = false
+
+        override fun getClientThrowables(): Collection<Throwable> = emptyList()
+
+        override fun getServerThrowables(): Collection<Throwable> = emptyList()
+
+        override fun close() {
+            opened.remove(port)
+        }
+    }
+
+    /** [inner], whose first open signals [selected] and then waits for [resume] before going on. */
+    private fun holdingFirstOpen(
+        inner: ServiceAccess,
+        selected: CountDownLatch,
+        resume: CountDownLatch,
+    ): ServiceAccess {
+        val first =
+            java.util.concurrent.atomic
+                .AtomicBoolean(true)
+        return object : ServiceAccess {
+            override fun open(target: ServiceTarget): ServiceEndpoint {
+                if (first.getAndSet(false)) {
+                    selected.countDown()
+                    resume.await(HOLD_SECONDS, TimeUnit.SECONDS)
+                }
+                return inner.open(target)
+            }
+
+            override fun close() = inner.close()
         }
     }
 

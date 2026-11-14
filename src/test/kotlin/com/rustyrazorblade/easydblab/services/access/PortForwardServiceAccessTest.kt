@@ -6,6 +6,9 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.net.BindException
 import java.net.InetAddress
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * The forwarder stands in at the Kubernetes boundary: it records each forward it is asked for and
@@ -162,5 +165,45 @@ class PortForwardServiceAccessTest {
         access.close()
 
         assertThat(forwards).allMatch { it.closed }
+    }
+
+    @Test
+    fun `a closed access refuses to open, so no forward outlives it`() {
+        access.close()
+
+        assertThatThrownBy { access.open(ClusterServices.LOKI) }.isInstanceOf(ServiceAccessClosedException::class.java)
+        assertThat(opened).isEmpty()
+    }
+
+    @Test
+    fun `a close that comes while an open is in flight closes the forward that open made`() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val slow =
+            PortForwardServiceAccess({ _, localPort ->
+                entered.countDown()
+                release.await(HOLD_SECONDS, TimeUnit.SECONDS)
+                FakeForward(localPort).also { forwards.add(it) }
+            }) { ports.removeFirst() }
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val opening = executor.submit<ServiceEndpoint> { slow.open(ClusterServices.LOKI) }
+            assertThat(entered.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+            val closing = executor.submit { slow.close() }
+
+            release.countDown()
+            opening.get(WAIT_SECONDS, TimeUnit.SECONDS)
+            closing.get(WAIT_SECONDS, TimeUnit.SECONDS)
+
+            assertThat(forwards.single().closed).isTrue()
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    private companion object {
+        const val WAIT_SECONDS = 5L
+        const val HOLD_SECONDS = 30L
     }
 }

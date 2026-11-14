@@ -88,6 +88,9 @@ class Fabric8ServiceForwarder(
  * whose port another process bound after it was chosen is retried once on a fresh port. A forward
  * that cannot be opened, or reports an error at once, fails naming the namespace, the Service, the port
  * and the Kubernetes error. [close] closes every forward, and is registered to run when the CLI exits.
+ * [open] and [close] hold one lock, so a close waits for an open in flight and closes the forward it
+ * made. An access once closed stays closed: every later [open] throws
+ * [ServiceAccessClosedException], so no forward or Kubernetes client is opened that nothing would close.
  *
  * @param forwarder opens one forward
  * @param localPorts a free loopback port for each new forward
@@ -98,9 +101,15 @@ class PortForwardServiceAccess(
 ) : ServiceAccess {
     private val log = KotlinLogging.logger {}
     private val forwards = mutableMapOf<ServiceTarget, LocalPortForward>()
+    private var closed = false
 
     @Synchronized
     override fun open(target: ServiceTarget): ServiceEndpoint {
+        if (closed) {
+            throw ServiceAccessClosedException(
+                "The port-forward access was closed; ${target.namespace}/${target.service} is not forwarded",
+            )
+        }
         check(target.service.isNotBlank()) {
             "No Service is known for port ${target.nodePort}: no manifest of the kit declares it as a NodePort. " +
                 "Name the Service in the endpoint's kit.yaml entry with `service:` (and `service-port:`)"
@@ -154,6 +163,7 @@ class PortForwardServiceAccess(
 
     @Synchronized
     override fun close() {
+        closed = true
         forwards.values.forEach { it.closeQuietly() }
         forwards.clear()
         forwarder.close()

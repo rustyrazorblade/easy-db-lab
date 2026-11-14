@@ -188,4 +188,42 @@ class CompactorTaskDefinitionTest {
         assertThat(definition.configHash()).isEqualTo(hash)
         assertThat(CompactorTaskDefinition.hashOf(request)).isNotEqualTo(hash)
     }
+
+    private fun storePrefixes(definition: CompactorTaskDefinition): List<Map<String, String>> =
+        definition
+            .request()
+            .containerDefinitions()
+            .filter { it.name() != CompactorTaskDefinition.CONFIG_CONTAINER }
+            .map { container ->
+                container
+                    .environment()
+                    .associate { it.name() to it.value() }
+                    .filterKeys { it.endsWith("_STORE_PREFIX") }
+            }
+
+    @Test
+    fun `with no store prefix every compactor reads the roots at the top of the bucket`() {
+        assertThat(storePrefixes(definition)).isNotEmpty.allSatisfy { env ->
+            assertThat(env).containsExactlyInAnyOrderEntriesOf(
+                mapOf("METRICS_STORE_PREFIX" to "mimir", "LOGS_STORE_PREFIX" to "loki", "TRACES_STORE_PREFIX" to "tempo"),
+            )
+        }
+    }
+
+    /** The task role may compact only under the prefix it was built for; the task must read those same roots. */
+    @Test
+    fun `with a store prefix every compactor reads the roots under it, as its task role allows`() {
+        val prefixed = definition.copy(storePrefix = "team-a")
+
+        assertThat(storePrefixes(prefixed)).isNotEmpty.allSatisfy { env ->
+            assertThat(env).containsExactlyInAnyOrderEntriesOf(
+                mapOf(
+                    "METRICS_STORE_PREFIX" to "team-a/mimir",
+                    "LOGS_STORE_PREFIX" to "team-a/loki",
+                    "TRACES_STORE_PREFIX" to "team-a/tempo",
+                ),
+            )
+        }
+        assertThat(prefixed.configHash()).isNotEqualTo(definition.configHash())
+    }
 }

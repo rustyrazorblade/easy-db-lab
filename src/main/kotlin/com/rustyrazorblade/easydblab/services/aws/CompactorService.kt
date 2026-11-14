@@ -87,7 +87,8 @@ class DefaultCompactorService(
         val roles = iam.ensure(storePrefix)
         val vpc = network.ensure(region)
         regionalClients.logs(region).use { ensureLogGroup(it) }
-        val definition = CompactorTaskDefinition(bucket, region, roles.taskRoleArn, roles.executionRoleArn)
+        val definition =
+            CompactorTaskDefinition(bucket, region, roles.taskRoleArn, roles.executionRoleArn, storePrefix = storePrefix)
         regionalClients.ecs(region).use { ecs ->
             withEcsAccess(region) { ensureService(ecs, region, definition, vpc) }
         }

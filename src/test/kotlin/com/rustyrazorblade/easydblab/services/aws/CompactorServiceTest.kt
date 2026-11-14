@@ -159,6 +159,31 @@ class CompactorServiceTest {
         assertThat(events).contains(Event.Compactor.Started("eu-west-1", registered))
     }
 
+    /** The role is scoped to the store prefix, so the task must read the roots under that same prefix. */
+    @Test
+    fun `the registered task reads the roots under the store prefix its task role was built for`() {
+        serviceIs()
+
+        service.ensureRunning(bucket, "team-a")
+
+        val requests = argumentCaptor<RegisterTaskDefinitionRequest>()
+        verify(ecs).registerTaskDefinition(requests.capture())
+        val prefixes =
+            requests.firstValue
+                .containerDefinitions()
+                .filter { it.name() == CompactorTaskDefinition.MIMIR_CONTAINER }
+                .flatMap { it.environment() }
+                .filter { it.name().endsWith("_STORE_PREFIX") }
+                .associate { it.name() to it.value() }
+        assertThat(prefixes).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "METRICS_STORE_PREFIX" to "team-a/mimir",
+                "LOGS_STORE_PREFIX" to "team-a/loki",
+                "TRACES_STORE_PREFIX" to "team-a/tempo",
+            ),
+        )
+    }
+
     /** In a fresh account ECS cannot assume the roles IAM has just created for a few seconds. */
     @Test
     fun `a service create that ECS refuses while the new roles propagate is retried`() {

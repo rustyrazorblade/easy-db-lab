@@ -29,7 +29,8 @@ fun KubeApi.loadConfig(): Config {
     val contexts = KubeConfigUtils.parseConfig(file).contexts.orEmpty()
     require(contexts.any { it.name == context }) {
         "Context '$context' not found in kubeconfig ${file.absolutePath}. " +
-            "Available contexts: ${contexts.joinToString(", ") { it.name }}"
+            "Available contexts: ${contexts.joinToString(", ") { it.name }}. " +
+            "Re-run `up` to rewrite the kubeconfig and re-pin the context."
     }
     return Config.fromKubeconfig(context, file)
 }

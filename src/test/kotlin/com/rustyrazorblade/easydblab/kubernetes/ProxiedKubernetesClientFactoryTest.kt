@@ -92,7 +92,7 @@ class ProxiedKubernetesClientFactoryTest {
     }
 
     @Test
-    fun `a context the kubeconfig does not hold fails naming the context and the path`() {
+    fun `a context the kubeconfig does not hold fails naming the context, the path and the recovery`() {
         val path = writeKubeconfig()
 
         assertThatThrownBy { factory.createClient(KubeApi(path, "missing-context")) }
@@ -100,6 +100,7 @@ class ProxiedKubernetesClientFactoryTest {
             .hasMessageContaining("missing-context")
             .hasMessageContaining(path.toFile().absolutePath)
             .hasMessageContaining("first-context")
+            .hasMessageContaining("Re-run `up`")
     }
 
     @Test

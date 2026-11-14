@@ -41,7 +41,7 @@
 
 ## 7. Verification and docs
 
-- [ ] 7.1 Integration test (K3s TestContainer, `src/integrationTest/`): port-forward opens bound to `127.0.0.1`, a missing Service fails naming it, the forward closes with the command
-- [ ] 7.2 AC1 before/after test: AWS formatted URLs and output unchanged
+- [x] 7.1 Integration test (K3s TestContainer, `src/integrationTest/`): port-forward opens bound to `127.0.0.1`, a missing Service fails naming it, the forward closes with the command
+- [x] 7.2 AC1 before/after test: AWS formatted URLs and output unchanged
 - [ ] 7.3 `./gradlew test`, `./gradlew integrationTest`, `ktlintCheck`, `detekt` (JDK 21, no new suppressions) pass
-- [ ] 7.4 Update `kubernetes/CLAUDE.md` (service-access seam), `docs/reference/ports.md` / `docs/user-guide/monitoring.md` (port-forward reach on your-cluster), root `CLAUDE.md` seam note
+- [x] 7.4 Update `kubernetes/CLAUDE.md` (service-access seam), `docs/reference/ports.md` / `docs/user-guide/monitoring.md` (port-forward reach on your-cluster), root `CLAUDE.md` seam note

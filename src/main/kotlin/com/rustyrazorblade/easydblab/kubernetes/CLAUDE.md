@@ -63,6 +63,38 @@ config.connectionTimeout = 30000  // Increased for SOCKS proxy
 config.requestTimeout = 60000
 ```
 
+
+## Service Access Seam (`services/access/`)
+
+Every CLI client that reads a cluster Service (Mimir, Loki, Tempo, Pyroscope, Grafana, a kit's JDBC
+endpoint) asks `ServiceAccess.open(ServiceTarget)` for the endpoint it dials. No client builds a node
+address or reads a proxy port from a JVM property. `ServiceTarget` names the namespace, Service,
+Service port, node role and NodePort; `ClusterServices` holds the observability targets.
+`ExposureServiceAccess` (Koin `serviceAccessModule`, registered with `ResourceManager`) picks the
+implementation from `ClusterState.exposure`:
+
+- `Socks` (the default, AWS): `SocksServiceAccess` returns `ServiceEndpoint.ViaSocks` for the node's
+  private IP and NodePort with the tunnel's current port. HTTP clients apply it with
+  `OkHttpClient.forEndpoint` (per-client `Proxy`); JDBC goes through `SocksTcpBridge`.
+- `Direct` (Tailscale): `DirectServiceAccess` returns `ServiceEndpoint.Plain` for the node address,
+  with no proxy.
+- `PortForward` (a cluster easy-db-lab does not own): `PortForwardServiceAccess` checks the Service
+  exists, then opens a Fabric8 port-forward bound to `127.0.0.1` on a `LoopbackPortSelector` port
+  (20000-29999). A kit's NodePort is mapped to the Service port behind it (`servicePortFor`). It holds
+  one forward per target, reopens a dead one, fails naming namespace/Service/port and the Kubernetes
+  error, and closes every forward when the CLI exits.
+
+CQL on a port-forward cluster does not use the seam's Service forward. It uses
+`CassandraPodForward`, which forwards one `cassandra-pods` StatefulSet pod on a fixed local port.
+`CqlSessionFactory.createSingleEndpointSession` uses that port as the only contact point, with
+`SingleEndpointDistanceEvaluator` (every other node IGNORED) and the token map off.
+
+`status` cannot keep a forward open after it exits, so on a port-forward cluster `StatusAddresses`
+prints each Service's DNS name and the `bin/kubectl port-forward` command that reaches it. A kit
+endpoint names its NodePort, so `KitServicePorts` reads the Service manifests rendered into the kit's
+workspace directory and maps each NodePort to its Service port (clickhouse:
+`svc/clickhouse-nodeport 30123:8123`, address `...svc.cluster.local:8123`). A port no rendered
+manifest maps (a Helm kit's Service) is shown as it is.
 ## ManifestApplier
 
 Applies K8s manifests using Fabric8's typed server-side apply (not generic resources).

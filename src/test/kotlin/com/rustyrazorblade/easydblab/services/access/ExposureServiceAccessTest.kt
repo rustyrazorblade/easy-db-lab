@@ -5,9 +5,21 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.EnumSource
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** The seam a command gets is the one its cluster's recorded exposure names. */
 class ExposureServiceAccessTest {
+    private companion object {
+        const val WAIT_SECONDS = 5L
+
+        // The slow open holds far longer than the second caller waits, so a lock held across it shows.
+        const val HOLD_SECONDS = 30L
+        const val SECOND_WAIT_SECONDS = 2L
+    }
+
     private class Named(
         val name: String,
     ) : ServiceAccess {
@@ -65,6 +77,40 @@ class ExposureServiceAccessTest {
         assertThat(built.map { it.name }).containsExactly("socks", "port-forward")
         assertThat(built.first().closed).isTrue()
         assertThat(built.last().closed).isFalse()
+    }
+
+    @Test
+    fun `a slow open does not hold up another caller's open`() {
+        val firstEntered = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val slow =
+            object : ServiceAccess {
+                override fun open(target: ServiceTarget): ServiceEndpoint {
+                    if (target == ClusterServices.LOKI) {
+                        firstEntered.countDown()
+                        releaseFirst.await(HOLD_SECONDS, TimeUnit.SECONDS)
+                    }
+                    return ServiceEndpoint.Plain("slow", target.servicePort)
+                }
+
+                override fun close() = Unit
+            }
+        val access = ExposureServiceAccess({ Exposure.PortForward }, mapOf(Exposure.PortForward to { slow }))
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val first = executor.submit<ServiceEndpoint> { access.open(ClusterServices.LOKI) }
+            assertThat(firstEntered.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+
+            // The first open is still inside the implementation; a second one must not wait for it.
+            val second = CompletableFuture.supplyAsync { access.open(ClusterServices.MIMIR) }
+
+            assertThat(second.get(SECOND_WAIT_SECONDS, TimeUnit.SECONDS).port).isEqualTo(ClusterServices.MIMIR.servicePort)
+            releaseFirst.countDown()
+            assertThat(first.get(WAIT_SECONDS, TimeUnit.SECONDS).port).isEqualTo(ClusterServices.LOKI.servicePort)
+        } finally {
+            releaseFirst.countDown()
+            executor.shutdownNow()
+        }
     }
 
     @Test

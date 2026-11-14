@@ -54,6 +54,7 @@ class StoreGoldenTest : BaseKoinTest() {
         const val REGION = "us-west-2"
         const val TENANT = "acme"
         const val ACCOUNT_ID = "123456789012"
+
         /** The golden files, under the project directory Gradle passes in, not the JVM's working directory. */
         val GOLDEN_DIR =
             File(

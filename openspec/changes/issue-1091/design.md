@@ -33,6 +33,7 @@ Serve the documents web server same-origin through the grafana Service on a seco
 - **Rejected: a second forwarded port** — two forwards for one UI; the Text-panel iframe URL would still have to be environment-specific.
 - **Rejected: keep the host port, gate documents off AWS by capability** — leaves the feature AWS-only, against "one set of manifests".
 - The sigv4 proxy uses the default credential chain; its credentials are #1061's concern, not this change.
+- **Open (found while implementing, 2026-11-13): B contradicts itself as written.** A second Service port is a different origin. A relative `/reports/...` URL resolves against the page's origin, which is Grafana's own port (3000 behind the forward), not the documents port (3080). A single `127.0.0.1` forward also carries one Service port, not two. To be same-origin, `/reports/` has to be served on Grafana's own port. One way is a reverse proxy in the Grafana pod that serves Grafana's Service port, sends `/reports/` to the documents nginx and everything else to Grafana. Another is the documents nginx fronting Grafana. The owner has to pick one before 5.1 and 5.2 can be built. They also wait on #1090's grafana Service, which is not on main yet (PR #1110, draft). Until then the documents web server keeps host port 3080 on AWS (decision D), and the iframe does not load off AWS.
 
 ### C — Grafana Service ownership and sequencing (settled)
 

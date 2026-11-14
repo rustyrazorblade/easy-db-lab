@@ -11,6 +11,10 @@ import com.rustyrazorblade.easydblab.Constants
  *   The capability is absent; [Refused.note] says why.
  * - [Unexpected]: anything else (a missing namespace, a server error, an unrelated bad request). The
  *   probe cannot attribute it to the tested field, so it fails rather than guess.
+ *
+ * [classify] assumes the restricted baseline Pod was admitted in the same namespace. Only then does a
+ * 403 mean admission refused the tested field, rather than the caller lacking permission to create
+ * Pods at all, so treating 403 as [Refused] is safe only for a capability Pod, never the baseline.
  */
 sealed interface ProbeRejection {
     /** The capability is absent; [note] carries the API server's reason. */

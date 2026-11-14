@@ -8,8 +8,8 @@ import io.fabric8.kubernetes.api.model.PodBuilder
  * The Pods the capability probe submits with `dryRun=All` to learn what a namespace admits.
  *
  * The [baseline] Pod meets Pod Security "restricted", so any namespace that admits a Pod at all
- * admits it. Each of the [probes] changes exactly one field of it, so a rejection is attributable to
- * that field and therefore to one capability. They are Pods, never a workload controller: Pod
+ * admits it. Each of the [probes] changes only the fields its capability needs (one, except privileged,
+ * which must also lift `allowPrivilegeEscalation`), so a rejection is attributable to one capability. They are Pods, never a workload controller: Pod
  * Security enforce applies to Pods, and a dry-run DaemonSet would pass with only a warning.
  */
 object CapabilityProbePods {

@@ -30,7 +30,7 @@
 - [x] 4.1 `ClusterConfigData.of` publishes the `store_*` keys of design D5, from `StoreBackend` and `ObservabilityStore`. Update its test.
 - [x] 4.2 Rename the `clusterConfigEnv` keys and env names in the Loki, Mimir and Tempo builders, the `${...}` names in the fragments and configs, the compactor task env, and Pyroscope's build-time names. The S3 fragments take the endpoint from `${STORE_ENDPOINT}`.
 - [x] 4.3 The golden tests of task 0 pass unchanged. A search of `src/main` and `docs/` finds no `aws_region`, `s3_bucket` or `*_s3_prefix` `cluster-config` key.
-  - The compactor task-definition golden was recaptured: only its env names changed (`S3_BUCKET`, `AWS_REGION` and `*_S3_PREFIX` became `STORE_BUCKET`, `STORE_REGION`, `STORE_ENDPOINT` and `*_STORE_PREFIX`); every other line is unchanged. The other goldens pass unchanged. The search is `StoreKeyNamesTest`.
+  - Every golden file is the task-0 capture. The compactor task's env names that D5 renamed (`S3_BUCKET`, `AWS_REGION` and `*_S3_PREFIX` became `STORE_BUCKET`, `STORE_REGION` and `*_STORE_PREFIX`) are mapped back to their old names in `StoreGoldenTest` before the compare, and the added `STORE_ENDPOINT` is checked for the region's S3 endpoint; the requirement and its scenario say so. The search is `StoreKeyNamesTest`.
 
 ## 5. Store prefix and the delete guards
 

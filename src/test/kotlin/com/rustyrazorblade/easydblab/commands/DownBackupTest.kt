@@ -566,4 +566,23 @@ class DownBackupTest : BaseKoinTest() {
             .doesNotContain("Saving annotations, logs, metrics and traces")
         assertThat(errorOutput()).isEmpty()
     }
+
+    @Test
+    fun `a cluster in a user-supplied VPC tears down by its own cluster tag and never as a whole VPC`() {
+        val supplied = upClusterState().apply { vpcSupplied = true }
+        val owned = DiscoveredResources(vpcId = "vpc-123", instanceIds = listOf("i-control"), ownsVpc = false)
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(supplied)
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(saved)
+        whenever(teardownService.teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(true)))
+            .thenReturn(TeardownResult.success(owned))
+        whenever(teardownService.teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(false)))
+            .thenReturn(TeardownResult.success(owned))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(0)
+        verify(teardownService).teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(false))
+        verify(teardownService, never()).teardownVpc(any(), any())
+    }
 }

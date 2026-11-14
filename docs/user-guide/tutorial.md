@@ -36,7 +36,7 @@ same setting, **the namespaced option wins**, regardless of order.
 | `--ebs.throughput` | EBS throughput (gp3 only) | 0 |
 | `--until` | When instances can be deleted | tomorrow |
 | `--tag` | Custom tags (key=value, repeatable) | - |
-| `--vpc` | Use existing VPC ID | - |
+| `--vpc` | Use an existing VPC ID. The VPC is yours: `down` removes only the instances, subnets, security group, internet gateway and default route this cluster created in it (found by the cluster's `ClusterId` tag), and never deletes the VPC or anything else in it | - |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
 

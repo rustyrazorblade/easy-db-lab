@@ -142,7 +142,7 @@ determined fails at `init`, before any instance is created.
 | `--ami` | Override AMI ID | (auto-detected) |
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
-| `--vpc` | Use existing VPC ID | - |
+| `--vpc` | Use an existing VPC ID. The VPC is yours: `down` removes only the instances, subnets, security group, internet gateway and default route this cluster created in it (found by the cluster's `ClusterId` tag), and never deletes the VPC or anything else in it | - |
 | `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/25` or larger (it is split into eight equal subnets, `/19` each for a `/16`), name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |

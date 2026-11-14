@@ -365,6 +365,7 @@ class Init : PicoBaseCommand() {
         if (vpc != null) {
             eventBus.emit(Event.Setup.ExistingVpc(vpc))
             clusterState.vpcId = vpc
+            clusterState.vpcSupplied = true
             clusterStateManager.save(clusterState)
         }
 

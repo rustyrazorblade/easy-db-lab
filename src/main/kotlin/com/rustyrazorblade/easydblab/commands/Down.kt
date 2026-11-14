@@ -368,7 +368,9 @@ class Down : PicoBaseCommand() {
             return nothingToTearDown(TeardownResult.Companion.failure("No VPC ID in cluster state"))
         }
 
-        return teardownSpecificVpc(currentVpcId, saveTail = true)
+        // A VPC from `init --vpc` is the user's: remove only this cluster's own tagged resources, never the VPC.
+        val suppliedVpcCluster = clusterState.clusterId.takeIf { clusterState.vpcSupplied }
+        return teardownSpecificVpc(currentVpcId, saveTail = true, suppliedVpcCluster = suppliedVpcCluster)
     }
 
     /**
@@ -389,12 +391,13 @@ class Down : PicoBaseCommand() {
     private fun teardownSpecificVpc(
         targetVpcId: String,
         saveTail: Boolean,
+        suppliedVpcCluster: String? = null,
     ): TeardownOutcome {
         eventBus.emit(Event.Teardown.PreparingVpc(targetVpcId))
 
         val stop =
             previewAndConfirm(
-                preview = teardownService.teardownVpc(targetVpcId, dryRun = true),
+                preview = teardown(targetVpcId, suppliedVpcCluster, dryRun = true),
                 noneFound = Event.Teardown.NoResourcesFound,
                 summarize = { it.first().summary() },
                 beforeDryRunCheck = { if (saveTail && force) reportForceSkipsTail() },
@@ -404,8 +407,22 @@ class Down : PicoBaseCommand() {
         if (saveTail && !force && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
 
         beforeRemovingInfrastructure()
-        return TeardownOutcome.Finished(teardownService.teardownVpc(targetVpcId, dryRun = false))
+        return TeardownOutcome.Finished(teardown(targetVpcId, suppliedVpcCluster, dryRun = false))
     }
+
+    /**
+     * Tears down the whole VPC, or, when [suppliedVpcCluster] names a cluster, only that cluster's
+     * own resources inside the user-supplied VPC.
+     */
+    private fun teardown(
+        vpcId: String,
+        suppliedVpcCluster: String?,
+        dryRun: Boolean,
+    ): TeardownResult =
+        when (suppliedVpcCluster) {
+            null -> teardownService.teardownVpc(vpcId, dryRun)
+            else -> teardownService.teardownClusterInSuppliedVpc(vpcId, suppliedVpcCluster, dryRun)
+        }
 
     /**
      * Tears down all VPCs tagged with easy_cass_lab.

@@ -248,4 +248,48 @@ class EC2VpcServiceIntegrationTest {
             assertThat(existingCidrs).doesNotContain(selected.value)
         }
     }
+
+    @Nested
+    inner class ClusterScopedDiscovery {
+        @Test
+        fun `finds only the resources tagged with the cluster, not the user's or another cluster's`() {
+            val vpcId = vpcService.createVpc("test-shared-vpc", "10.20.0.0/16", emptyMap())
+            val mine = mapOf("ClusterId" to "cluster-mine")
+            val other = mapOf("ClusterId" to "cluster-other")
+            val mySubnet = vpcService.findOrCreateSubnet(vpcId, "mine-subnet", "10.20.0.0/24", mine)
+            vpcService.findOrCreateSubnet(vpcId, "other-subnet", "10.20.1.0/24", other)
+            vpcService.findOrCreateSubnet(vpcId, "user-subnet", "10.20.2.0/24", emptyMap())
+            val mySg = vpcService.findOrCreateSecurityGroup(vpcId, "mine-sg", "mine", mine)
+            vpcService.findOrCreateSecurityGroup(vpcId, "user-sg", "user", emptyMap())
+            val myIgw = vpcService.findOrCreateInternetGateway(vpcId, "mine-igw", mine)
+
+            val found = vpcService.findClusterResourcesInVpc(vpcId, "cluster-mine")
+
+            assertThat(found.subnetIds).containsExactly(mySubnet)
+            assertThat(found.securityGroupIds).containsExactly(mySg)
+            assertThat(found.internetGatewayId).isEqualTo(myIgw)
+            // The main route table carries the cluster's tag after `up` but belongs to the VPC.
+            vpcService.ensureRouteTable(vpcId, mySubnet, myIgw, mine)
+            assertThat(vpcService.findClusterResourcesInVpc(vpcId, "cluster-mine").routeTableIds).isEmpty()
+            assertThat(vpcService.findClusterResourcesInVpc(vpcId, "no-such-cluster").subnetIds).isEmpty()
+        }
+
+        @Test
+        fun `deleting the routes to a gateway leaves the route tables in place`() {
+            val vpcId = vpcService.createVpc("test-route-vpc", "10.21.0.0/16", emptyMap())
+            val subnet = vpcService.findOrCreateSubnet(vpcId, "route-subnet", "10.21.0.0/24", emptyMap())
+            val igw = vpcService.findOrCreateInternetGateway(vpcId, "route-igw", emptyMap())
+            vpcService.ensureRouteTable(vpcId, subnet, igw)
+
+            fun routeTables() = ec2Client.describeRouteTables { it.filters({ f -> f.name("vpc-id").values(vpcId) }) }.routeTables()
+
+            fun routesToIgw() = routeTables().flatMap { it.routes() }.filter { it.gatewayId() == igw }
+            assertThat(routesToIgw()).hasSize(1)
+
+            vpcService.deleteRoutesToInternetGateway(vpcId, igw)
+
+            assertThat(routesToIgw()).isEmpty()
+            assertThat(routeTables()).isNotEmpty()
+        }
+    }
 }

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
@@ -37,12 +38,14 @@ interface GrafanaDeployService {
      *
      * @param controlHost The control node running K3s
      * @param context The cluster the dashboards are installed on; its tenants make the datasources
-     * @param bucket The account bucket, which the documents sidecars read from in its own region
+     * @param bucket The account bucket, which the documents front and its signing proxy read from in its own region
+     * @param hosting Where Grafana is placed and where its database lives, resolved from the environment
      */
     fun deploy(
         controlHost: ClusterHost,
         context: DashboardInstallContext,
         bucket: String,
+        hosting: ObservabilityHosting,
     ): Result<Unit>
 }
 
@@ -83,12 +86,13 @@ class DefaultGrafanaDeployService(
 
     /** The contents of the `grafana-datasources` ConfigMap for [tenants]. */
     private fun datasourcesData(tenants: TenantSet): Map<String, String> =
-        mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.CONTROL_NODE).toYaml())
+        mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.IN_CLUSTER).toYaml())
 
     override fun deploy(
         controlHost: ClusterHost,
         context: DashboardInstallContext,
         bucket: String,
+        hosting: ObservabilityHosting,
     ): Result<Unit> {
         eventBus.emit(Event.Grafana.DatasourcesCreating)
         createDatasourcesConfigMap(controlHost, context.tenants).getOrElse { exception ->
@@ -107,7 +111,7 @@ class DefaultGrafanaDeployService(
         // it in: a datasource change then rolls Grafana.
         val resources =
             ConfigHashAnnotator.annotate(
-                manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket))),
+                manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket)), hosting),
                 mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants)),
             )
         runCatching { configChangeReport.report(controlHost, resources, DEFAULT_NAMESPACE) }

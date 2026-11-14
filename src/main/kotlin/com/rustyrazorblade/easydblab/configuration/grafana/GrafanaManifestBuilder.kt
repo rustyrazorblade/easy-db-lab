@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -9,7 +11,6 @@ import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVar
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.PodSecurityContextBuilder
 import io.fabric8.kubernetes.api.model.Volume
 import io.fabric8.kubernetes.api.model.VolumeBuilder
@@ -27,16 +28,17 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * it. Nothing built here varies with how many dashboards or folders exist; the home dashboard is
  * a fixed path in that tree ([Constants.Grafana.HOME_DASHBOARD_PATH]).
  *
- * The pod also runs the test documents' signing proxy and read-only web server
- * ([GrafanaDocumentsSidecars]), and Grafana runs with `disable_sanitize_html` so a Text panel can
- * hold the documents iframe.
+ * Grafana listens on loopback only, on [Constants.Grafana.INTERNAL_PORT]. An nginx front in the pod
+ * holds Grafana's client port and serves the test documents under `/reports/` beside it
+ * ([GrafanaFront]), so the dashboards' documents iframe is same-origin. Grafana runs with
+ * `disable_sanitize_html` so a Text panel can hold that iframe.
  *
  * @property templateService Used for reading the cluster name for Grafana branding
  */
 class GrafanaManifestBuilder(
     private val templateService: TemplateService,
 ) {
-    private val documentsSidecars = GrafanaDocumentsSidecars(templateService)
+    private val front = GrafanaFront(templateService)
 
     companion object {
         /** The Grafana Deployment's name, which the deploy waits on to finish rolling out. */
@@ -47,13 +49,14 @@ class GrafanaManifestBuilder(
         /** The Grafana image the cluster deploys; tests run the same one. */
         const val GRAFANA_IMAGE = "grafana/grafana:13.2.2"
         private const val IMAGE_RENDERER_IMAGE = "grafana/grafana-image-renderer:v5.12.4"
-        private const val GRAFANA_PORT = 3000
         private const val IMAGE_RENDERER_PORT = 8081
         private const val PROVISIONING_CONFIGMAP_NAME = "grafana-dashboards-config"
         private const val DATASOURCES_VOLUME = "datasources"
         private const val DASHBOARDS_CONFIG_VOLUME = "dashboards-config"
         private const val DATA_VOLUME = "data"
         const val GRAFANA_DATA_PATH = "/mnt/db1/grafana"
+
+        private val STATE = StateVolume(APP_LABEL, DATA_VOLUME, GRAFANA_DATA_PATH, owner = GRAFANA_UID.toLong())
 
         /**
          * Where the dashboard tree lives on the control node. It is [GRAFANA_DASHBOARD_ROOT] seen
@@ -109,10 +112,21 @@ class GrafanaManifestBuilder(
      *
      * The cluster name for Grafana branding is read from TemplateService context variables.
      *
-     * @param documents The bucket and region the documents sidecars read from
+     * @param documents The bucket and region the documents front and its signing proxy read from
+     * @param hosting Where the Deployment is placed and keeps its database and dashboard tree
      * @return Fabric8 Deployment object
      */
-    fun buildDeployment(documents: DocumentsBucket): Deployment {
+    fun buildDeployment(
+        documents: DocumentsBucket,
+        hosting: ObservabilityHosting,
+    ): Deployment = hostedResources(documents, hosting).filterIsInstance<Deployment>().single()
+
+    private fun hostedResources(
+        documents: DocumentsBucket,
+        hosting: ObservabilityHosting,
+    ): List<HasMetadata> = hosting.host(buildPodTemplate(documents), STATE, isBackend = false)
+
+    private fun buildPodTemplate(documents: DocumentsBucket): Deployment {
         val clusterName = templateService.buildContextVariables()["CLUSTER_NAME"] ?: "cluster"
 
         return DeploymentBuilder()
@@ -135,22 +149,14 @@ class GrafanaManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
             .withSecurityContext(
                 PodSecurityContextBuilder()
                     .withFsGroup(FS_GROUP)
                     .withRunAsUser(RUN_AS_USER)
                     .build(),
             ).withContainers(
-                listOf(buildGrafanaContainer(clusterName), buildImageRendererContainer()) + documentsSidecars.containers(documents),
-            ).withVolumes(buildVolumes() + documentsSidecars.volume())
+                listOf(buildGrafanaContainer(clusterName), buildImageRendererContainer()) + front.containers(documents),
+            ).withVolumes(buildVolumes() + front.volume())
             .endSpec()
             .endTemplate()
             .endSpec()
@@ -161,40 +167,44 @@ class GrafanaManifestBuilder(
      * Builds all Grafana K8s resources: the provisioning ConfigMap, the documents web server's
      * ConfigMap and the Deployment.
      *
-     * @param documents The bucket and region the documents sidecars read from
+     * @param documents The bucket and region the documents front and its signing proxy read from
+     * @param hosting Where the Deployment is placed and keeps its database and dashboard tree
      * @return List of all Grafana K8s resources in apply order
      */
-    fun buildAllResources(documents: DocumentsBucket): List<HasMetadata> =
-        listOf(buildDashboardProvisioningConfigMap(), documentsSidecars.configMap(documents), buildDeployment(documents))
+    fun buildAllResources(
+        documents: DocumentsBucket,
+        hosting: ObservabilityHosting,
+    ): List<HasMetadata> = listOf(buildDashboardProvisioningConfigMap(), front.configMap(documents)) + hostedResources(documents, hosting)
 
     private fun buildGrafanaContainer(clusterName: String): Container =
         ContainerBuilder()
             .withName("grafana")
             .withImage(GRAFANA_IMAGE)
-            .addNewPort()
-            .withContainerPort(GRAFANA_PORT)
-            .withHostPort(GRAFANA_PORT)
-            .withProtocol("TCP")
-            .endPort()
+            // No container port: Grafana listens on loopback only, and the front holds its client port.
             .withEnv(buildEnvVars(clusterName))
             .withVolumeMounts(buildVolumeMounts())
             .withNewLivenessProbe()
-            .withNewHttpGet()
-            .withPath("/api/health")
-            .withNewPort(GRAFANA_PORT)
-            .endHttpGet()
+            .withNewExec()
+            .withCommand(healthCheck())
+            .endExec()
             .withInitialDelaySeconds(LIVENESS_INITIAL_DELAY)
             .withPeriodSeconds(LIVENESS_PERIOD)
             .endLivenessProbe()
             .withNewReadinessProbe()
-            .withNewHttpGet()
-            .withPath("/api/health")
-            .withNewPort(GRAFANA_PORT)
-            .endHttpGet()
+            .withNewExec()
+            .withCommand(healthCheck())
+            .endExec()
             .withInitialDelaySeconds(READINESS_INITIAL_DELAY)
             .withPeriodSeconds(READINESS_PERIOD)
             .endReadinessProbe()
             .build()
+
+    /**
+     * Grafana's health, asked from inside its container: the kubelet dials the pod IP, which a
+     * loopback listener does not answer, so an HTTP probe would never reach it.
+     */
+    private fun healthCheck(): List<String> =
+        listOf("wget", "-q", "-O", "/dev/null", "http://127.0.0.1:${Constants.Grafana.INTERNAL_PORT}${GrafanaFront.HEALTH_PATH}")
 
     private fun buildImageRendererContainer(): Container =
         ContainerBuilder()
@@ -239,14 +249,7 @@ class GrafanaManifestBuilder(
                 .withName(PROVISIONING_CONFIGMAP_NAME)
                 .endConfigMap()
                 .build(),
-            VolumeBuilder()
-                .withName(DATA_VOLUME)
-                .withHostPath(
-                    HostPathVolumeSourceBuilder()
-                        .withPath(GRAFANA_DATA_PATH)
-                        .withType("DirectoryOrCreate")
-                        .build(),
-                ).build(),
+            VolumeBuilder().withName(STATE.volumeName).build(),
         )
 
     private fun buildEnvVars(clusterName: String): List<EnvVar> =
@@ -267,7 +270,10 @@ class GrafanaManifestBuilder(
                 "$GRAFANA_DASHBOARD_ROOT/${Constants.Grafana.HOME_DASHBOARD_PATH}",
             ),
             envVar("GF_RENDERING_SERVER_URL", "http://localhost:$IMAGE_RENDERER_PORT/render"),
-            envVar("GF_RENDERING_CALLBACK_URL", "http://localhost:$GRAFANA_PORT/"),
+            envVar("GF_RENDERING_CALLBACK_URL", "http://127.0.0.1:${Constants.Grafana.INTERNAL_PORT}/"),
+            // Grafana listens on loopback only; the front holds its client port.
+            envVar("GF_SERVER_HTTP_ADDR", "127.0.0.1"),
+            envVar("GF_SERVER_HTTP_PORT", Constants.Grafana.INTERNAL_PORT.toString()),
             envVar("GF_RENDERING_RENDERER_TOKEN", RENDERER_TOKEN),
             // The Tests and comparison dashboards show a test's documents in an iframe in a Text panel.
             envVar(Constants.Grafana.DISABLE_SANITIZE_HTML_ENV, "true"),

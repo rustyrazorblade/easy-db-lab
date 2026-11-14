@@ -206,7 +206,9 @@ class DefaultK8sNamespaceOperations(
                         done = { it.isEmpty() },
                     ) { pendingRollouts(client, namespace, workloads) }
                 check(pending.isEmpty()) {
-                    "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: ${pending.joinToString("; ")}"
+                    val pods = pendingPodStates(client, namespace, workloads)
+                    "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: ${pending.joinToString("; ")}" +
+                        pods.joinToString("") { "\n  $it" }
                 }
             }
 
@@ -245,6 +247,55 @@ class DefaultK8sNamespaceOperations(
                     template?.metadata?.annotations?.get(Constants.K8s.CONFIG_HASH_ANNOTATION)
                 }
             }
+        }
+
+    /**
+     * The state of each pod of [workloads] that is not Ready, as `pod <name>: <state>`, so a timed-out
+     * rollout says why: a pod the scheduler cannot place (a node selector no node matches) carries
+     * its `PodScheduled=False` reason, a pulling or crashing pod its container states.
+     */
+    private fun pendingPodStates(
+        client: KubernetesClient,
+        namespace: String,
+        workloads: List<WorkloadRef>,
+    ): List<String> =
+        workloads.flatMap { ref ->
+            val selector =
+                when (ref.kind) {
+                    WorkloadKind.Deployment ->
+                        client
+                            .apps()
+                            .deployments()
+                            .inNamespace(namespace)
+                            .withName(ref.name)
+                            .get()
+                            ?.spec
+                            ?.selector
+                            ?.matchLabels
+                    WorkloadKind.DaemonSet ->
+                        client
+                            .apps()
+                            .daemonSets()
+                            .inNamespace(namespace)
+                            .withName(ref.name)
+                            .get()
+                            ?.spec
+                            ?.selector
+                            ?.matchLabels
+                }
+            if (selector.isNullOrEmpty()) return@flatMap emptyList()
+            client
+                .pods()
+                .inNamespace(namespace)
+                .withLabels(selector)
+                .list()
+                .items
+                .filterNot { pod ->
+                    pod.status
+                        ?.conditions
+                        .orEmpty()
+                        .any { it.type == "Ready" && it.status == "True" }
+                }.map { pod -> "pod ${pod.metadata?.name}: ${describePodState(pod)}" }
         }
 
     /** What each unfinished workload is waiting on; empty once every rollout is complete. */

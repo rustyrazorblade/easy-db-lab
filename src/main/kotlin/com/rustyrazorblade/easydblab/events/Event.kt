@@ -2513,6 +2513,25 @@ sealed interface Event {
         }
 
         /**
+         * Where this deploy places the backends, Grafana and kube-state-metrics: the node selector
+         * (the environment's, with the `init --node-label` labels merged in) and the tolerations, each
+         * as `key:operator:effect`. Emitted before anything is applied, so a selector no node matches
+         * is visible before the rollout wait reports the Pending pods.
+         */
+        @Serializable
+        @SerialName("Grafana.PlacementResolved")
+        data class PlacementResolved(
+            val nodeSelector: Map<String, String>,
+            val tolerations: List<String>,
+        ) : Grafana {
+            override fun toDisplayString(): String {
+                val selector = nodeSelector.entries.joinToString(", ") { "${it.key}=${it.value}" }.ifEmpty { "any node" }
+                val tolerated = tolerations.joinToString(", ").ifEmpty { "none" }
+                return "Placing observability backends on: $selector (tolerations: $tolerated)"
+            }
+        }
+
+        /**
          * Whether [workload]'s configuration hash differs from the one running on the cluster. A
          * changed workload (or one not yet deployed) is rolled by the apply; an unchanged one is left
          * running.

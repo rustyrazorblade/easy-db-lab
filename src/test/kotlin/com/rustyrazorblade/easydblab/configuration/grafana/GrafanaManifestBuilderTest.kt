@@ -1,9 +1,17 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim
+import io.fabric8.kubernetes.api.model.Quantity
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -51,7 +59,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     private fun grafanaContainer() =
         builder
-            .buildDeployment(documents)
+            .buildDeployment(documents, ObservabilityHosting.AWS)
             .spec.template.spec.containers
             .first { it.name == "grafana" }
 
@@ -75,27 +83,26 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildAllResources is the provisioning ConfigMap, the documents web server ConfigMap and the Deployment`() {
+    fun `buildAllResources is the provisioning ConfigMap, the front's ConfigMap and the Deployment`() {
         // Dashboards reach Grafana as files on the hostPath, not as K8s objects, so nothing here
         // may vary with the catalog's contents.
-        val names = builder.buildAllResources(documents).map { it.metadata.name }
+        val names = builder.buildAllResources(documents, ObservabilityHosting.AWS).map { it.metadata.name }
 
-        assertThat(names).containsExactly("grafana-dashboards-config", "grafana-documents-web", "grafana")
+        assertThat(names).containsExactly("grafana-dashboards-config", GrafanaFront.CONFIGMAP_NAME, "grafana")
     }
 
     @Test
-    fun `buildDeployment rendering env vars reference correct ports`() {
-        val deployment = builder.buildDeployment(documents)
+    fun `the renderer is reached on its port and calls Grafana back on Grafana's loopback port`() {
+        val deployment = builder.buildDeployment(documents, ObservabilityHosting.AWS)
         val containers = deployment.spec.template.spec.containers
         val grafanaContainer = containers.first { it.name == "grafana" }
         val rendererContainer = containers.first { it.name == "grafana-image-renderer" }
 
         val rendererPort = rendererContainer.ports.first().containerPort
-        val grafanaPort = grafanaContainer.ports.first().containerPort
         val envMap = grafanaContainer.env.associate { it.name to it.value }
 
         assertThat(envMap["GF_RENDERING_SERVER_URL"]).contains(":$rendererPort/")
-        assertThat(envMap["GF_RENDERING_CALLBACK_URL"]).contains(":$grafanaPort/")
+        assertThat(envMap["GF_RENDERING_CALLBACK_URL"]).isEqualTo("http://127.0.0.1:${Constants.Grafana.INTERNAL_PORT}/")
     }
 
     @Test
@@ -118,7 +125,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildDeployment mounts the data hostPath that holds the dashboard tree and nothing per dashboard`() {
-        val deployment = builder.buildDeployment(documents)
+        val deployment = builder.buildDeployment(documents, ObservabilityHosting.AWS)
         val volumes = deployment.spec.template.spec.volumes
         val mounts = grafanaContainer().volumeMounts
 
@@ -126,7 +133,9 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         assertThat(data.hostPath.path).isEqualTo(GrafanaManifestBuilder.GRAFANA_DATA_PATH)
         assertThat(mounts.first { it.name == "data" }.mountPath).isEqualTo("/var/lib/grafana")
 
-        assertThat(volumes.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data", "documents-web-config")
+        assertThat(
+            volumes.map { it.name },
+        ).containsExactlyInAnyOrder("datasources", "dashboards-config", "data", GrafanaFront.CONFIG_VOLUME)
         assertThat(mounts.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data")
     }
 
@@ -139,13 +148,69 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the pod runs the documents proxy and web server beside Grafana and the renderer`() {
+    fun `the pod runs the front and the documents proxy beside Grafana and the renderer, Grafana first for kubectl logs`() {
         val containers =
             builder
-                .buildDeployment(documents)
+                .buildDeployment(documents, ObservabilityHosting.AWS)
                 .spec.template.spec.containers
 
         assertThat(containers.map { it.name })
-            .containsExactly("grafana", "grafana-image-renderer", "documents-sigv4-proxy", "documents-web")
+            .containsExactly("grafana", "grafana-image-renderer", GrafanaFront.PROXY_CONTAINER, GrafanaFront.FRONT_CONTAINER)
+    }
+
+    @Test
+    fun `Grafana listens on loopback only, on its internal port, behind the front`() {
+        val grafana = grafanaContainer()
+        val env = grafana.env.associate { it.name to it.value }
+
+        assertThat(env).containsEntry("GF_SERVER_HTTP_ADDR", "127.0.0.1")
+        assertThat(env).containsEntry("GF_SERVER_HTTP_PORT", Constants.Grafana.INTERNAL_PORT.toString())
+        // No container port: nothing outside the pod reaches Grafana but through the front.
+        assertThat(grafana.ports.orEmpty()).isEmpty()
+    }
+
+    @Test
+    fun `Grafana's probes reach it inside the pod, since the kubelet cannot reach a loopback listener`() {
+        val grafana = grafanaContainer()
+
+        for (probe in listOf(grafana.livenessProbe, grafana.readinessProbe)) {
+            assertThat(probe.httpGet).isNull()
+            assertThat(probe.exec.command.joinToString(" "))
+                .contains("http://127.0.0.1:${Constants.Grafana.INTERNAL_PORT}/api/health")
+        }
+    }
+
+    @Test
+    fun `the front's Grafana client port is the pod's only published port`() {
+        val published =
+            builder
+                .buildDeployment(documents, ObservabilityHosting.AWS)
+                .spec.template.spec.containers
+                .flatMap { it.ports.orEmpty() }
+                .mapNotNull { it.hostPort }
+
+        assertThat(published).containsExactly(Constants.K8s.GRAFANA_PORT)
+    }
+
+    @Test
+    fun `off owned nodes the applied Deployment carries no control-node selector, no host path and the grafana-data claim`() {
+        val claimed =
+            ObservabilityHosting(
+                Placement.ANY_NODE,
+                BackendStorage.RetainedClaim("retained-class", Quantity("10Gi")),
+                StoreCredentials.InstanceRole,
+            )
+
+        val resources = builder.buildAllResources(documents, claimed)
+        val pod =
+            resources
+                .filterIsInstance<Deployment>()
+                .single()
+                .spec.template.spec
+
+        assertThat(pod.nodeSelector.orEmpty()).isEmpty()
+        assertThat(pod.volumes.mapNotNull { it.hostPath }).isEmpty()
+        assertThat(pod.volumes.mapNotNull { it.persistentVolumeClaim?.claimName }).containsExactly("grafana-data")
+        assertThat(resources.filterIsInstance<PersistentVolumeClaim>().map { it.metadata.name }).containsExactly("grafana-data")
     }
 }

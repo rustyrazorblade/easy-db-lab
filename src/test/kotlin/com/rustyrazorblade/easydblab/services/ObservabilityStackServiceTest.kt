@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -10,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -34,7 +36,9 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
@@ -149,7 +153,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
-        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any(), any())).thenReturn(Result.success(Unit))
 
         service =
             DefaultObservabilityStackService(
@@ -174,12 +178,15 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
                 DashboardInstallContextFactory(sharedStoreTenants()),
-                capabilitiesOf = { capabilities },
+                environmentOf = { state -> StackEnvironment(capabilities, hosting(state)) },
             )
     }
 
     /** The capabilities the service under test sees; AWS unless a test declares otherwise. */
     private var capabilities: NodeCapabilities = NodeCapabilities.AWS
+
+    /** The hosting the service under test resolves; the production resolution unless a test overrides it. */
+    private var hosting: (ClusterState) -> ObservabilityHosting = ObservabilityHosting::from
 
     private fun collectEvents(): MutableList<Event> {
         val emitted = mutableListOf<Event>()
@@ -350,11 +357,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
-        // The documents sidecars read the account bucket, never the data bucket.
-        verify(mockDashboardService).deploy(any(), context.capture(), eq("easy-db-lab-test"))
+        // The documents front and its proxy read the account bucket, never the data bucket.
+        verify(mockDashboardService).deploy(any(), context.capture(), eq("easy-db-lab-test"), any())
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
-        assertThat(context.firstValue.documentsUrl).isEqualTo("http://${controlNode.privateIp}:${Constants.Grafana.Documents.WEB_PORT}")
 
         // Both on-node data directories are prepared over SSH.
         val commands = remoteCommands()
@@ -394,6 +400,16 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `with retained claims no backend or Grafana directory is prepared on a node`() {
+        hosting = { ObservabilityHosting.AWS.copy(storage = BackendStorage.RetainedClaim("retained", Quantity("50Gi"))) }
+
+        service.deploy(controlNode).getOrThrow()
+
+        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
+        assertThat(appliedKindNames()).contains("PersistentVolumeClaim/mimir-data", "PersistentVolumeClaim/pyroscope-data")
+    }
+
+    @Test
     fun `cluster-config carries the traces prefix instead of the per-cluster prefix`() {
         service.deploy(controlNode).getOrThrow()
 
@@ -419,7 +435,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(kindNames).contains("DaemonSet/pyroscope-ebpf")
 
         // No Grafana in redirect mode, so no dashboards uploaded.
-        verify(mockDashboardService, never()).deploy(any(), any(), any())
+        verify(mockDashboardService, never()).deploy(any(), any(), any(), any())
 
         // Neither on-node directory (Pyroscope server data, Grafana data) is prepared: the server
         // and Grafana do not exist here, so redirect makes no SSH calls at all.
@@ -439,6 +455,60 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(redirectState())
         service.deploy(controlNode).getOrThrow()
         assertThat(appliedKindNames()).contains("Deployment/kube-state-metrics", "Service/kube-state-metrics")
+    }
+
+    @Test
+    fun `the node labels recorded at init place every backend, kube-state-metrics and Grafana`() {
+        val labels = mapOf("pool" to "observability")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
+                initConfig = InitConfig(region = "us-west-2", nodeLabels = labels),
+            ),
+        )
+
+        service.deploy(controlNode).getOrThrow()
+
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        val placed =
+            captor.allValues
+                .filterIsInstance<Deployment>()
+                .filter { it.metadata.name in setOf("mimir", "loki", "tempo", "pyroscope", "kube-state-metrics") }
+        assertThat(placed.map { it.metadata.name }).containsExactlyInAnyOrder("mimir", "loki", "tempo", "pyroscope", "kube-state-metrics")
+        placed.forEach { assertThat(it.spec.template.spec.nodeSelector).describedAs(it.metadata.name).containsAllEntriesOf(labels) }
+
+        val hosting = argumentCaptor<ObservabilityHosting>()
+        verify(mockDashboardService).deploy(any(), any(), any(), hosting.capture())
+        assertThat(hosting.firstValue.placement.nodeSelector).containsAllEntriesOf(labels)
+    }
+
+    /**
+     * An `init --node-label` no node carries leaves every backend Pending; the operator can only see
+     * why if the deploy says which selector it placed them with, before the rollout wait times out.
+     */
+    @Test
+    fun `the deploy reports the placement it resolved, node labels merged, before it applies anything`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
+                initConfig = InitConfig(region = "us-west-2", nodeLabels = mapOf("pool" to "observability")),
+            ),
+        )
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        val resolved = emitted.filterIsInstance<Event.Grafana.PlacementResolved>().single()
+        assertThat(resolved.nodeSelector)
+            .containsEntry("pool", "observability")
+            .containsEntry("node-role.kubernetes.io/control-plane", "true")
+        assertThat(resolved.tolerations).containsExactly("node-role.kubernetes.io/control-plane:Exists:NoSchedule")
+        assertThat(emitted.indexOf(resolved)).isLessThan(emitted.indexOfFirst { it is Event.Grafana.LabelResourcesApplying })
     }
 
     @Test
@@ -483,7 +553,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockDashboardService, mockK8sService)
-        order.verify(mockDashboardService).deploy(any(), any(), any())
+        order.verify(mockDashboardService).deploy(any(), any(), any(), any())
         order.verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).contains(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }

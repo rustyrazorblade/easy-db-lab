@@ -59,7 +59,7 @@ class LogQlCompatibilityIntegrationTest : BaseKoinTest() {
     private fun traceToLogs(): String {
         val query =
             GrafanaDatasourceSet
-                .build(TenantSet.of("acme"), BackendUrls.CONTROL_NODE)
+                .build(TenantSet.of("acme"), BackendUrls.IN_CLUSTER)
                 .datasources
                 .filter { it.uid == Constants.Grafana.DatasourceUid.TEMPO }
                 .firstNotNullOf { it.jsonData?.tracesToLogsV2?.query }

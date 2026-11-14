@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test
 class DashboardDatasourceTest {
     private val provisioned =
         GrafanaDatasourceSet
-            .build(TenantSet.of("t"), BackendUrls.CONTROL_NODE)
+            .build(TenantSet.of("t"), BackendUrls.IN_CLUSTER)
             .datasources
             .mapNotNull { it.uid }
             .toSet()

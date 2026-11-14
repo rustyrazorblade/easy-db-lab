@@ -226,6 +226,17 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `execute records the observability node labels given with --node-label`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--clean", "--node-label", "pool=observability,disk=ssd")
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.nodeLabels == mapOf("pool" to "observability", "disk" to "ssd") },
+            )
+        }
+
+        @Test
         fun `execute stores null cidr when --cidr is omitted`() {
             val command = Init()
             command.clean = true

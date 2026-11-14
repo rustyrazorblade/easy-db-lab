@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -16,16 +15,11 @@ import kotlinx.serialization.json.put
  *
  * @property cluster The cluster's `cluster` label, `<name>-<id>`
  * @property tenants Every tenant in the shared store, and the cluster's own as [TenantSet.home]
- * @property documentsUrl Base URL of the documents web server, as the browser reaches it
  */
 data class DashboardInstallContext(
     val cluster: String,
     val tenants: TenantSet,
-    val documentsUrl: String,
 )
-
-/** The base URL of the documents web server on [controlHost], as the browser reaches it. */
-fun documentsUrl(controlHost: ClusterHost): String = "http://${controlHost.privateIp}:${Constants.Grafana.Documents.WEB_PORT}"
 
 /**
  * The one install-time pass every dashboard goes through on its way to Grafana, whichever path
@@ -39,7 +33,9 @@ fun documentsUrl(controlHost: ClusterHost): String = "http://${controlHost.priva
  * - `cluster`, `baseline_cluster` and `candidate_cluster` default to the current cluster, as a
  *   one-element list when the variable is multi-select;
  * - `doc_tenant` offers every tenant and defaults to the cluster's own;
- * - [DOCUMENTS_URL_PLACEHOLDER] in any string becomes the documents web server's URL.
+ * - [DOCUMENTS_URL_PLACEHOLDER] in any string is removed: the documents are served under `/reports/` on
+ *   Grafana's own port, so an iframe `src` of `__DOCUMENTS_URL__/reports/...` becomes a relative,
+ *   same-origin path that loads over whatever connection reaches Grafana.
  *
  * It sets only those values. No query, variable query or panel changes, and a dashboard with none
  * of these variables comes out equal to what went in.
@@ -47,6 +43,9 @@ fun documentsUrl(controlHost: ClusterHost): String = "http://${controlHost.priva
 object DashboardDefaults {
     /** Placeholder a dashboard carries where the documents web server's base URL belongs. */
     const val DOCUMENTS_URL_PLACEHOLDER = "__DOCUMENTS_URL__"
+
+    /** What the placeholder becomes: no scheme and no host, so the iframe stays on Grafana's origin. */
+    private const val SAME_ORIGIN = ""
 
     /** The variables that select a cluster and default to the current one. */
     val CLUSTER_VARIABLES = setOf("cluster", "baseline_cluster", "candidate_cluster")
@@ -68,7 +67,7 @@ object DashboardDefaults {
         context: DashboardInstallContext,
     ): JsonObject {
         val withVariables = mapVariables(dashboard) { variable -> defaulted(variable, context) }
-        return replacePlaceholder(withVariables, context.documentsUrl) as JsonObject
+        return replacePlaceholder(withVariables, SAME_ORIGIN) as JsonObject
     }
 
     private fun mapVariables(

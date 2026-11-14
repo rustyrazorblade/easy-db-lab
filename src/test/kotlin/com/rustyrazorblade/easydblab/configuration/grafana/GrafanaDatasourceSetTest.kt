@@ -17,7 +17,7 @@ class GrafanaDatasourceSetTest {
 
     private fun yaml(
         set: TenantSet = tenants,
-        urls: BackendUrls = BackendUrls.CONTROL_NODE,
+        urls: BackendUrls = BackendUrls.IN_CLUSTER,
     ) = GrafanaDatasourceSet.build(set, urls).toYaml()
 
     /** Every provisioned datasource, by UID, as Grafana reads it from the rendered YAML. */
@@ -98,13 +98,13 @@ class GrafanaDatasourceSetTest {
     @Test
     fun `the same tenants with other backend URLs differ only in their URLs`() {
         val other = BackendUrls("http://m:1/prometheus", "http://l:2", "http://t:3", "http://p:4")
-        val control = GrafanaDatasourceSet.build(tenants, BackendUrls.CONTROL_NODE).datasources
+        val control = GrafanaDatasourceSet.build(tenants, BackendUrls.IN_CLUSTER).datasources
         val compose = GrafanaDatasourceSet.build(tenants, other).datasources
 
         assertThat(compose.map { it.copy(url = null) }).isEqualTo(control.map { it.copy(url = null) })
         assertThat(compose.map { it.url }.toSet()).containsExactlyInAnyOrder(other.metrics, other.logs, other.traces, other.profiles)
-        assertThat(control.single { it.uid == "mimir" }.url).isEqualTo("http://localhost:9009/prometheus")
-        assertThat(control.single { it.uid == "loki" }.url).isEqualTo("http://localhost:3100")
+        assertThat(control.single { it.uid == "mimir" }.url).isEqualTo("http://mimir.default.svc:9009/prometheus")
+        assertThat(control.single { it.uid == "loki" }.url).isEqualTo("http://loki.default.svc:3100")
     }
 
     @Test

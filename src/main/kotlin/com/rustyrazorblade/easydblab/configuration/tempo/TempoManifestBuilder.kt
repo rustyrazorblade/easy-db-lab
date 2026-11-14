@@ -1,13 +1,15 @@
 package com.rustyrazorblade.easydblab.configuration.tempo
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
@@ -34,6 +36,8 @@ class TempoManifestBuilder(
         /** Tempo's data directory on the control node: both write-ahead logs live under it. */
         const val DATA_HOST_PATH = "/mnt/db1/tempo"
 
+        private val STATE = StateVolume(APP_LABEL, "wal", DATA_HOST_PATH, owner = TEMPO_UID)
+
         /** The user the Tempo image runs as; [DATA_HOST_PATH] must be owned by it. */
         const val TEMPO_UID = 10001L
 
@@ -54,14 +58,15 @@ class TempoManifestBuilder(
     /**
      * Builds all Tempo K8s resources in apply order.
      *
-     * @return List of: ConfigMap, Service, Deployment
+     * @param hosting where the Deployment is placed and keeps its state.
+     * @return List of: ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
-    fun buildAllResources(): List<HasMetadata> =
-        listOf(
-            buildConfigMap(),
-            buildService(),
-            buildDeployment(),
-        )
+    fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
+        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE)
+
+    /** The Tempo Deployment as [hosting] runs it. */
+    fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
+        hosting.host(buildPodTemplate(), STATE).filterIsInstance<Deployment>().single()
 
     /**
      * Builds the Tempo ConfigMap containing tempo.yaml.
@@ -117,14 +122,14 @@ class TempoManifestBuilder(
             .build()
 
     /**
-     * Builds the Tempo Deployment.
-     *
-     * Runs on control plane with hostNetwork. Uses env vars from cluster-config
+     * Builds the Tempo Deployment before it is hosted. [ObservabilityHosting] places it and sets
+     * where its WAL volume lives; its query and OTLP ports are published on the node, which the
+     * hosting keeps only on a node easy-db-lab owns. Uses env vars from cluster-config
      * ConfigMap for S3 bucket and AWS region, with `-config.expand-env=true` to
      * enable Tempo's runtime env expansion in the config file.
      */
     @Suppress("LongMethod")
-    fun buildDeployment() =
+    private fun buildPodTemplate(): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
@@ -145,14 +150,6 @@ class TempoManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
             .addNewContainer()
             .withName(APP_LABEL)
             .withImage(IMAGE)
@@ -253,13 +250,8 @@ class TempoManifestBuilder(
                     .build(),
             ).endVolume()
             .addNewVolume()
-            .withName("wal")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath(DATA_HOST_PATH)
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
+            .withName(STATE.volumeName)
+            .endVolume()
             .endSpec()
             .endTemplate()
             .endSpec()

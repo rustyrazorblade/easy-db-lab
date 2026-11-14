@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -329,7 +330,7 @@ class K8sServiceIntegrationTest {
 
         // Apply all resources including Deployment. Dashboards are files on the hostPath, not
         // K8s objects, so nothing per dashboard is expected here.
-        applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2")))
+        applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS))
         assertDeploymentExists("grafana")
     }
 
@@ -710,7 +711,7 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(42)
-    fun `all deployments should use Recreate strategy for hostNetwork compatibility`() {
+    fun `all deployments should use Recreate strategy so a pod never runs beside its replacement`() {
         val allResources = collectAllResources()
         val violations = mutableListOf<String>()
 
@@ -720,7 +721,7 @@ class K8sServiceIntegrationTest {
                 if (strategy != "Recreate") {
                     violations.add(
                         "Deployment/${resource.metadata?.name} has strategy '$strategy' " +
-                            "(must be 'Recreate' for hostNetwork port binding)",
+                            "(must be 'Recreate': a published host port or a ReadWriteOnce claim admits one pod)",
                     )
                 }
             }
@@ -839,7 +840,7 @@ class K8sServiceIntegrationTest {
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
             KubeStateMetricsManifestBuilder().buildAllResources() +
-            GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"))
+            GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS)
 
     private fun waitForPvcBound(
         pvcName: String,

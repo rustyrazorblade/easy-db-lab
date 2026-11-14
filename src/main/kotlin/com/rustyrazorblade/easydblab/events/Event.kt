@@ -4336,6 +4336,35 @@ sealed interface Event {
             override fun toDisplayString(): String = "Stopped SOCKS5 proxy (PID: $pid)"
         }
 
+        /**
+         * `down` could not disable the request metrics of the cluster's data bucket [bucket]; [reason]
+         * is the AWS error. The bucket and its objects are untouched and teardown goes on.
+         */
+        @Serializable
+        @SerialName("Teardown.DataBucketMetricsDisableFailed")
+        data class DataBucketMetricsDisableFailed(
+            val bucket: String,
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Error: could not disable S3 request metrics on data bucket $bucket: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `down --all` could not list the data buckets, so none was considered for deletion;
+         * [reason] is the AWS error.
+         */
+        @Serializable
+        @SerialName("Teardown.DataBucketDiscoveryFailed")
+        data class DataBucketDiscoveryFailed(
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Error: could not list the data buckets: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         /** `down` asked, then forced, the tunnel process [pid] to end, and it still runs. Its PID stays recorded. */
         @Serializable
         @SerialName("Teardown.Socks5ProxyStopFailed")
@@ -4352,6 +4381,20 @@ sealed interface Event {
         @SerialName("Teardown.ClusterStateMarkedDown")
         data object ClusterStateMarkedDown : Teardown {
             override fun toDisplayString(): String = "Cluster state updated: infrastructure marked as DOWN"
+        }
+
+        /**
+         * `down` removed the infrastructure but could not read or write the cluster state file, so it
+         * still shows the cluster as up; [reason] is the error. Teardown itself succeeded.
+         */
+        @Serializable
+        @SerialName("Teardown.ClusterStateUpdateFailed")
+        data class ClusterStateUpdateFailed(
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Error: could not mark the cluster state as DOWN: $reason"
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable

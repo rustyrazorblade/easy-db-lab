@@ -54,7 +54,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Provision.*` — Cluster provisioning orchestration, including the pre-launch capacity checks: `LaunchCapacityVerified`, and the errors `VcpuQuotaInsufficient`, `NetworkInterfaceQuotaInsufficient`, `SubnetAddressesInsufficient` (each with needed, available and shortBy), `InstanceTypeNotOffered`, `TooManyAvailabilityZones` and `LaunchDryRunRefused` (AWS's code and message); `VcpuQuotaNotChecked` names a type whose family has its own quota
 - `Event.Command.*` — Command execution and general command output
 - `Event.Status.*` — Cluster status display sections
-- `Event.Teardown.*` — Cluster teardown lifecycle, including `DryRunPreview` (the resources `down --dry-run` would delete) and `DryRunDeviceRemovalPreview` (the tailnet device it would remove when the VPC is already gone)
+- `Event.Teardown.*` — Cluster teardown lifecycle, including `DryRunPreview` (the resources `down --dry-run` would delete) and `DryRunDeviceRemovalPreview` (the tailnet device it would remove when the VPC is already gone), and the errors `DataBucketMetricsDisableFailed` (bucket and AWS reason; the data-bucket request-metric teardown failed) and `DataBucketDiscoveryFailed` (reason; `down --all` could not list data buckets). `ClusterStateUpdateFailed` (reason; `down` removed the infrastructure but could not read or write state.json). A bucket whose delete throws is reported as `S3.DataBucketKept`
 - `Event.Ami.*` — AMI pruning, listing, validation
 - `Event.Docker.*` — Container lifecycle operations
 - `Event.Logs.*` — Log queries (`logs query`)

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
@@ -24,7 +23,6 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 class AnnotationMirrorTest {
-    private val control = ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a")
     private val stateManager =
         mock<ClusterStateManager>().also {
             whenever(it.load()).thenReturn(ClusterState(name = "lab", clusterId = "c1", versions = mutableMapOf()))

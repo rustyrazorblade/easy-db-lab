@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -32,9 +31,6 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
     private val sameSecond = Clock.fixed(Instant.parse("2026-09-24T13:04:05Z"), ZoneOffset.UTC)
     private lateinit var grafana: MockWebServer
     private lateinit var service: DefaultGrafanaAnnotationBackupService
-
-    private val controlHost =
-        ClusterHost(publicIp = "127.0.0.1", privateIp = "10.0.1.1", alias = "control0", availabilityZone = "us-west-2a")
 
     private val clusterState =
         ClusterState(

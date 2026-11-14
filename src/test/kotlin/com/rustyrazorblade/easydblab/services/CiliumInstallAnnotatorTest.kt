@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -23,14 +22,6 @@ import java.time.ZoneOffset
  * the install events happen, not when Grafana finally receives them.
  */
 class CiliumInstallAnnotatorTest {
-    private val controlHost =
-        ClusterHost(
-            publicIp = "54.1.2.3",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-        )
-
     /** A clock that advances by [step] on every read, so consecutive records get distinct times. */
     private class SteppingClock(
         private var now: Instant,

@@ -19,5 +19,4 @@ fun interface KubeApiLocator {
  * Used as the fallback when the workspace has recorded no context. Reads the file with Fabric8's
  * typed parser rather than diving into untyped YAML.
  */
-fun currentContextOf(kubeconfig: Path): String? =
-    parseKubeconfig(kubeconfig).currentContext?.takeIf { it.isNotBlank() }
+fun currentContextOf(kubeconfig: Path): String? = parseKubeconfig(kubeconfig).currentContext?.takeIf { it.isNotBlank() }

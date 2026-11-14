@@ -41,7 +41,13 @@ class KubeconfigFileTest {
             .hasMessageContaining(file.absolutePath)
         val cause = thrown.cause
         assertThat(cause).isNotNull()
-        assertThat(thrown.message).contains(cause?.message.orEmpty().lines().first())
+        assertThat(thrown.message).contains(
+            cause
+                ?.message
+                .orEmpty()
+                .lines()
+                .first(),
+        )
     }
 
     @Test

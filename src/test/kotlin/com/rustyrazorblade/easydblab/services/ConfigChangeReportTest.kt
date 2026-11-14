@@ -57,7 +57,7 @@ class ConfigChangeReportTest : BaseKoinTest() {
     }
 
     private fun hashed(resources: List<HasMetadata>): List<HasMetadata> =
-        ConfigHashAnnotator.annotate(resources, mapOf(ClusterConfigData.NAME to mapOf("s3_bucket" to "acct")))
+        ConfigHashAnnotator.annotate(resources, mapOf(ClusterConfigData.NAME to mapOf("store_bucket" to "acct")))
 
     private fun hashOf(resources: List<HasMetadata>): String =
         resources

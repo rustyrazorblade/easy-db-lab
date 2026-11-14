@@ -55,11 +55,11 @@ class ConfigHashAnnotatorTest {
             .withName("tempo")
             .withImage(image)
             .addNewEnv()
-            .withName("S3_BUCKET")
+            .withName("STORE_BUCKET")
             .withNewValueFrom()
             .withNewConfigMapKeyRef()
             .withName(envConfigMap)
-            .withKey("s3_bucket")
+            .withKey("store_bucket")
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
@@ -104,7 +104,7 @@ class ConfigHashAnnotatorTest {
             .endSpec()
             .build()
 
-    private val clusterConfig = mapOf("cluster-config" to mapOf("s3_bucket" to "acct"))
+    private val clusterConfig = mapOf("cluster-config" to mapOf("store_bucket" to "acct"))
 
     private fun hashOf(
         resources: List<HasMetadata>,
@@ -148,8 +148,8 @@ class ConfigHashAnnotatorTest {
     fun `a change to a ConfigMap read through env, built elsewhere, changes the hash`() {
         val resources = listOf(configMap("tempo-config", "tempo.yaml" to "a"), deployment("tempo-config"))
 
-        val before = hashOf(resources, "tempo", mapOf("cluster-config" to mapOf("s3_bucket" to "one")))
-        val after = hashOf(resources, "tempo", mapOf("cluster-config" to mapOf("s3_bucket" to "two")))
+        val before = hashOf(resources, "tempo", mapOf("cluster-config" to mapOf("store_bucket" to "one")))
+        val after = hashOf(resources, "tempo", mapOf("cluster-config" to mapOf("store_bucket" to "two")))
 
         assertThat(after).isNotEqualTo(before)
     }

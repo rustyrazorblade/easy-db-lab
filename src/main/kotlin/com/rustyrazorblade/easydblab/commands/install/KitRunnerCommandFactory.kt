@@ -6,8 +6,8 @@ import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.access.KitEndpointServices
 import com.rustyrazorblade.easydblab.services.installConfigYaml
-import com.rustyrazorblade.easydblab.services.sql.KitService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import picocli.CommandLine
 import picocli.CommandLine.Model.CommandSpec
@@ -45,7 +45,7 @@ class KitRunnerCommandFactory {
         }
         groupCL.addSubcommand("status", buildStatusCommand(kitName, kitDir, installConfig))
 
-        buildCapabilityCommands(kitName, installConfig).forEach { (name, cmdLine) ->
+        buildCapabilityCommands(kitName, kitDir, installConfig).forEach { (name, cmdLine) ->
             if (name !in groupCL.subcommands.keys) {
                 groupCL.addSubcommand(name, cmdLine)
             }
@@ -65,11 +65,12 @@ class KitRunnerCommandFactory {
      */
     private fun buildCapabilityCommands(
         kitName: String,
+        kitDir: File,
         kitConfig: KitConfig,
     ): List<Pair<String, CommandLine>> =
         kitConfig.capabilities.mapNotNull { cap ->
             when (cap.type) {
-                "sql" -> buildSqlCapabilityCommand(kitName, kitConfig, cap)
+                "sql" -> buildSqlCapabilityCommand(kitName, kitDir, kitConfig, cap)
                 else -> {
                     log.debug { "Kit '$kitName': unknown capability type '${cap.type}', skipping" }
                     null
@@ -79,6 +80,7 @@ class KitRunnerCommandFactory {
 
     private fun buildSqlCapabilityCommand(
         kitName: String,
+        kitDir: File,
         kitConfig: KitConfig,
         cap: KitCapability,
     ): Pair<String, CommandLine>? {
@@ -91,7 +93,7 @@ class KitRunnerCommandFactory {
         val command =
             KitSqlCommand(
                 kitName = kitName,
-                service = KitService.of(kitName, kitConfig.runtime),
+                service = KitEndpointServices.read(kitDir, kitConfig).of(jdbcEndpoint),
                 endpoint = jdbcEndpoint,
                 user = cap.user,
                 driverClass = cap.driverClass,

@@ -98,6 +98,10 @@ class PortForwardServiceAccess(
 
     @Synchronized
     override fun open(target: ServiceTarget): ServiceEndpoint {
+        check(target.service.isNotBlank()) {
+            "No Service is known for port ${target.nodePort}: no manifest of the kit declares it as a NodePort. " +
+                "Name the Service in the endpoint's kit.yaml entry with `service:` (and `service-port:`)"
+        }
         val forward =
             forwards[target]?.takeIf { it.isUsable } ?: run {
                 forwards.remove(target)?.let { replace(target, it) }

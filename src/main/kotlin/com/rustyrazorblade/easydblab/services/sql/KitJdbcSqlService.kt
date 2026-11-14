@@ -1,10 +1,10 @@
 package com.rustyrazorblade.easydblab.services.sql
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.SocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.proxy.defaultSocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.services.KitEndpoint
-import com.rustyrazorblade.easydblab.services.KitRuntime
 import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import com.rustyrazorblade.easydblab.services.access.ServiceEndpoint
 import com.rustyrazorblade.easydblab.services.access.ServiceTarget
@@ -13,48 +13,31 @@ import java.sql.Connection
 import java.util.Properties
 
 /**
- * The Kubernetes Service a kit publishes its endpoints on, which a port-forward targets.
+ * The Kubernetes Service a kit endpoint is published on, which a port-forward targets. Resolved
+ * from the kit's own files by [com.rustyrazorblade.easydblab.services.access.KitEndpointServices].
  *
- * @property namespace the kit's namespace
+ * @property namespace the Service's namespace
  * @property name the Service's name
+ * @property port the Service port behind the endpoint, or null when no file of the kit declares it
  */
 data class KitService(
     val namespace: String,
     val name: String,
-) {
-    companion object {
-        /**
-         * The Service of a kit: a Helm kit's is named for its release; every other kit publishes its
-         * client ports on its `<kit>-nodeport` Service (see `docs/development/kits.md`).
-         */
-        fun of(
-            kitName: String,
-            runtime: KitRuntime?,
-        ): KitService =
-            KitService(
-                namespace = runtime?.namespace ?: DEFAULT_NAMESPACE,
-                name =
-                    runtime
-                        ?.takeIf { it.type == KitRuntime.RuntimeType.HELM }
-                        ?.release
-                        ?.ifBlank { null } ?: "$kitName$NODEPORT_SUFFIX",
-            )
-
-        private const val DEFAULT_NAMESPACE = "default"
-        private const val NODEPORT_SUFFIX = "-nodeport"
-    }
-}
+    val port: Int? = null,
+)
 
 /**
  * Executes SQL statements against a kit's JDBC endpoint.
  *
- * Asks the service-access seam for the kit's [service] on the endpoint's node role and port, then
+ * Asks the service-access seam for the kit's [service] on the endpoint's node role and port (a
+ * port-forward takes the Service port, or the endpoint's port when the kit does not declare one,
+ * which the forward maps from a NodePort on the live Service), then
  * builds the connection URL via [KitEndpoint.formatUrl]. JDBC drivers take no per-connection proxy,
  * so a SOCKS endpoint is dialed through a loopback [com.rustyrazorblade.easydblab.proxy.SocksTcpBridge];
  * any other endpoint is dialed as it is. No JVM-global proxy property is read.
  *
  * @property access the service-access seam
- * @property service the kit's Service
+ * @property service the Service the endpoint is published on, or null when the kit declares none (only a port-forward needs it)
  * @property endpoint JDBC endpoint declared in kit.yaml.
  * @property user JDBC username (from the sql capability config); omitted from properties if blank.
  * @property connectionFactory Injectable for testing; defaults to [defaultJdbcConnectionFactory].
@@ -62,7 +45,7 @@ data class KitService(
  */
 class KitJdbcSqlService(
     private val access: ServiceAccess,
-    private val service: KitService,
+    private val service: KitService?,
     private val endpoint: KitEndpoint,
     private val user: String,
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
@@ -79,7 +62,13 @@ class KitJdbcSqlService(
     fun execute(sql: String): Result<SqlQueryResult> =
         runCatching {
             val target =
-                ServiceTarget(service.namespace, service.name, endpoint.port, ServerType.from(endpoint.nodeType), endpoint.port)
+                ServiceTarget(
+                    service?.namespace ?: Constants.K8s.NAMESPACE,
+                    service?.name.orEmpty(),
+                    service?.port ?: endpoint.port,
+                    ServerType.from(endpoint.nodeType),
+                    endpoint.port,
+                )
             val props =
                 Properties().apply {
                     if (user.isNotBlank()) setProperty("user", user)

@@ -44,6 +44,15 @@ sealed class KitMetrics {
     data object HelmNative : KitMetrics()
 }
 
+/**
+ * A client endpoint a kit declares: a [port] (its NodePort, or a port reached in-cluster) on every
+ * node of [nodeType].
+ *
+ * [service] names the Kubernetes Service the endpoint is published on, and [servicePort] that
+ * Service's port, for a Service no manifest of the kit declares (a Helm chart's or an operator's,
+ * such as Strimzi's). An endpoint on a Service the kit's own manifests declare leaves both unset:
+ * the Service is found by its NodePort ([com.rustyrazorblade.easydblab.services.access.KitEndpointServices]).
+ */
 @Serializable
 data class KitEndpoint(
     val name: String,
@@ -54,6 +63,9 @@ data class KitEndpoint(
     val scheme: String = "",
     val path: String = "",
     val database: String = "",
+    val service: String = "",
+    @SerialName("service-port")
+    val servicePort: Int? = null,
 ) {
     @Serializable
     enum class EndpointType {

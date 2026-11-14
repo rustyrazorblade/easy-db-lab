@@ -44,7 +44,7 @@ import java.io.File
 )
 class KitSqlCommand(
     private val kitName: String,
-    private val service: KitService,
+    private val service: KitService?,
     private val endpoint: KitEndpoint,
     private val user: String,
     private val driverClass: String = "",

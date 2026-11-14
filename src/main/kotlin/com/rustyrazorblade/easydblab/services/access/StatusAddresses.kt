@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
-import com.rustyrazorblade.easydblab.services.KitRuntime
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import com.rustyrazorblade.easydblab.services.sql.KitService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -60,8 +59,8 @@ data class ObservabilityAddresses(
  * `bin/kubectl port-forward` command (through the workspace wrapper) the operator runs to reach it.
  *
  * A kit endpoint names its NodePort, which neither a Service DNS name nor a Service port-forward
- * takes, so an installed kit's NodePorts are mapped to the Service ports its rendered manifests
- * declare ([KitServicePorts]).
+ * takes, so each endpoint of an installed kit is shown on the Service its own files declare, at
+ * the Service port behind the NodePort ([KitEndpointServices]).
  *
  * @param state the cluster state
  */
@@ -92,22 +91,23 @@ class StatusAddresses(
         )
 
     /**
-     * The addresses of a kit [endpoint]: one per host of its node type, or its Service on a
-     * port-forward cluster, at the Service port [servicePort] gives for the endpoint's NodePort.
+     * The addresses of a kit [endpoint]: one per host of its node type, or on a port-forward
+     * cluster the [service] it is published on, with the forward command when its port is known.
      */
     fun kitEndpoint(
-        kitName: String,
-        runtime: KitRuntime?,
         endpoint: KitEndpoint,
-        servicePort: (KitService, Int) -> Int? = { _, port -> port },
+        service: KitService?,
     ): List<StatusAddress> {
         if (!forwarded) {
             return KitEndpointAddresses.resolve(listOf(endpoint), state.hosts).map { StatusAddress(it.address) }
         }
-        val service = KitService.of(kitName, runtime)
+        if (service == null) {
+            log.debug { "No file of the kit declares the Service of endpoint '${endpoint.name}' (port ${endpoint.port})" }
+            return listOf(StatusAddress(UNKNOWN_SERVICE))
+        }
         val port =
-            servicePort(service, endpoint.port) ?: run {
-                log.debug { "No manifest of kit '$kitName' maps NodePort ${endpoint.port} of ${service.namespace}/${service.name}" }
+            service.port ?: run {
+                log.debug { "No file of the kit declares the port of ${service.namespace}/${service.name} behind ${endpoint.port}" }
                 return listOf(StatusAddress("${dnsName(service.namespace, service.name)} $UNKNOWN_SERVICE_PORT"))
             }
         return listOf(forwardedAddress(service.namespace, service.name, endpoint.port, port) { host, p -> endpoint.formatUrl(host, p) })
@@ -124,9 +124,9 @@ class StatusAddresses(
         }.onFailure { e ->
             log.warn(e) { "Cannot read ${Constants.Kit.CONFIG_FILE} of kit '${kitDir.name}'; its endpoints are not shown" }
         }.map { config ->
-            val ports = if (forwarded) KitServicePorts.read(kitDir) else KitServicePorts(emptyMap())
+            val services = if (forwarded) KitEndpointServices.read(kitDir, config) else null
             config.endpoints.flatMap { endpoint ->
-                kitEndpoint(kitDir.name, config.runtime, endpoint, ports::servicePort).map { ShownEndpoint(endpoint, it) }
+                kitEndpoint(endpoint, services?.of(endpoint)).map { ShownEndpoint(endpoint, it) }
             }
         }
 
@@ -152,5 +152,6 @@ class StatusAddresses(
     private companion object {
         const val MIMIR_PROMETHEUS_PATH = "/prometheus"
         const val UNKNOWN_SERVICE_PORT = "(Service port unknown)"
+        const val UNKNOWN_SERVICE = "(Service unknown)"
     }
 }

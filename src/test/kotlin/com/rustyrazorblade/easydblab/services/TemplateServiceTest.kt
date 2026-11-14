@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -80,6 +81,23 @@ class TemplateServiceTest : BaseKoinTest() {
                 initConfig = InitConfig(region = region, name = clusterName, tenant = tenant),
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)
+    }
+
+    /** The builders pick each config's object-store block from this backend. */
+    @Test
+    fun `the store backend is the cluster's account bucket in the cluster's region`() {
+        setupClusterState(bucketName = "easy-db-lab-x", region = "eu-west-1")
+
+        assertThat(createService().storeBackend()).isEqualTo(S3Backend(bucket = "easy-db-lab-x", region = "eu-west-1"))
+    }
+
+    @Test
+    fun `the store backend falls back to the profile's region when the cluster records none`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "easy-db-lab-x"),
+        )
+
+        assertThat(createService().storeBackend()).isEqualTo(S3Backend(bucket = "easy-db-lab-x", region = "us-west-2"))
     }
 
     @Test

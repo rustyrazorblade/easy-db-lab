@@ -150,11 +150,8 @@ data class CompactorTaskDefinition(
                 else -> value.toString()
             }
 
-        /**
-         * Every configuration file the task writes, by file name, each with the object-store block
-         * [storeBlocks] places. The account compactor stores on S3 today; #1035 passes its store's.
-         */
-        fun configFiles(storeBlocks: StoreBlockRenderer = StoreBlockRenderer.S3): Map<String, String> =
+        /** Every configuration file the task writes, by file name, each with the object-store block [storeBlocks] places. */
+        fun configFiles(storeBlocks: StoreBlockRenderer): Map<String, String> =
             mapOf(
                 MimirManifestBuilder.CONFIG_FILE to
                     storeBlocks.renderResource(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
@@ -164,20 +161,32 @@ data class CompactorTaskDefinition(
             )
     }
 
+    /** The store the compactor reads and writes: the account bucket, under [storePrefix], in its region. */
+    private fun store(): StoreBackend = S3Backend(bucket = bucket, prefix = storePrefix, region = region)
+
+    /** Every configuration file the task writes, with the object-store block of its [store]. */
+    fun configFiles(): Map<String, String> = configFiles(StoreBlockRenderer.of(store()))
+
+    /** Where [store] is reached: the variables only its own fragments read. */
+    private fun locationOf(store: StoreBackend): Map<String, String> =
+        when (store) {
+            is S3Backend -> mapOf("STORE_REGION" to store.region, "STORE_ENDPOINT" to store.endpoint)
+        }
+
     /** What the containers read from their environment; the configuration files expand it. */
     private fun storageEnv(): List<KeyValuePair> {
-        val store = S3Backend(bucket = bucket, prefix = storePrefix, region = region)
+        val store = store()
         val layout = ObservabilityStore(bucket, tenant = COMPACTOR_IDENTITY, storePrefix = storePrefix)
-        return mapOf(
-            "STORE_BUCKET" to store.bucket,
-            "STORE_REGION" to store.region,
-            "STORE_ENDPOINT" to store.endpoint,
-            "METRICS_STORE_PREFIX" to layout.metricsPrefix(),
-            "LOGS_STORE_PREFIX" to layout.logsPrefix(),
-            "TRACES_STORE_PREFIX" to layout.tracesPrefix(),
-            // loki.yaml names its ingester after these; the compactor runs no ingester.
-            "TENANT" to COMPACTOR_IDENTITY,
-            "CLUSTER_NAME" to COMPACTOR_IDENTITY,
+        return (
+            mapOf("STORE_BUCKET" to store.bucket) + locationOf(store) +
+                mapOf(
+                    "METRICS_STORE_PREFIX" to layout.metricsPrefix(),
+                    "LOGS_STORE_PREFIX" to layout.logsPrefix(),
+                    "TRACES_STORE_PREFIX" to layout.tracesPrefix(),
+                    // loki.yaml names its ingester after these; the compactor runs no ingester.
+                    "TENANT" to COMPACTOR_IDENTITY,
+                    "CLUSTER_NAME" to COMPACTOR_IDENTITY,
+                )
         ).map { (name, value) ->
             KeyValuePair
                 .builder()

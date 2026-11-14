@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import org.apache.commons.text.StringSubstitutor
 import java.io.File
 
@@ -32,7 +33,7 @@ class TemplateService(
      */
     fun buildContextVariables(): Map<String, String> {
         val state = clusterStateManager.load()
-        val region = state.initConfig?.region ?: user.region
+        val region = regionOf(state)
         val controlHost = state.getControlHost()
         val backend = StoreBackend.from(state, region)
         val store = ObservabilityStore(backend.bucket, state.tenant(), backend.prefix)
@@ -49,6 +50,17 @@ class TemplateService(
             "TENANT" to store.tenant,
         ) + storeLocation(backend)
     }
+
+    /**
+     * The store the cluster writes to, in its region (the profile's when the cluster records none).
+     * The backend builders pick each config's object-store block from it ([StoreBlockRenderer.of]).
+     */
+    fun storeBackend(): StoreBackend {
+        val state = clusterStateManager.load()
+        return StoreBackend.from(state, regionOf(state))
+    }
+
+    private fun regionOf(state: ClusterState): String = state.initConfig?.region ?: user.region
 
     /** Where the store is reached, for the build-time store fragments (Pyroscope's): only its S3 fragment reads these. */
     private fun storeLocation(backend: StoreBackend): Map<String, String> =

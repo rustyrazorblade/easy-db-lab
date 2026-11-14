@@ -57,10 +57,11 @@ class StoreBlockRenderer(
         fun of(backend: StoreBackend): StoreBlockRenderer = StoreBlockRenderer(StoreBlockSource.of(backend))
 
         /**
-         * The S3 renderer. Every cluster stores on S3 today, so builders default to it; #1035 passes
-         * the renderer of the cluster's [StoreBackend] instead.
+         * The renderer for the store [backend] returns, asked each time a config is rendered: a
+         * builder is created before the cluster has state, so it cannot resolve its store then.
          */
-        val S3: StoreBlockRenderer = StoreBlockRenderer(StoreBlockSource.named("s3"))
+        fun of(backend: () -> StoreBackend): StoreBlockRenderer =
+            StoreBlockRenderer { anchor -> StoreBlockSource.of(backend()).fragment(anchor) }
     }
 
     /** The classpath resource [name] beside [anchor], with its object-store block placed. */

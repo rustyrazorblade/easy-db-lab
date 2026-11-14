@@ -134,6 +134,13 @@ object Constants {
         const val MAX_PORT = 65535
         const val SSH_PORT = 22
 
+        /**
+         * The IPv4 loopback address every local listener of the CLI binds and every client of one
+         * dials: the SOCKS tunnel and the Kubernetes port-forwards. Never `localhost`, which can
+         * resolve to `::1`, where another process can hold the same port.
+         */
+        const val LOOPBACK_ADDRESS = "127.0.0.1"
+
         /** EC2 IP protocol name for ICMP security group rules. */
         const val ICMP_PROTOCOL = "icmp"
 
@@ -478,6 +485,13 @@ object Constants {
     // K8s observability configuration
     object K8s {
         const val NAMESPACE = "default"
+
+        /**
+         * How many times a Service port-forward is opened, each on a freshly chosen loopback port,
+         * when the port it was given was bound by another process after it was chosen: the first
+         * attempt and one retry.
+         */
+        const val PORT_FORWARD_BIND_ATTEMPTS = 2
         const val MANIFEST_DIR = "k8s"
         const val LOCAL_STORAGE_CLASS = "local-storage"
         const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
@@ -1141,7 +1155,7 @@ object Constants {
          * listened on `::1` keeps running with only that address bound when another process holds
          * 127.0.0.1 on the port, and a client of `localhost` could then reach that other process.
          */
-        const val TUNNEL_LISTEN_ADDRESS = "127.0.0.1"
+        const val TUNNEL_LISTEN_ADDRESS = Network.LOOPBACK_ADDRESS
 
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the

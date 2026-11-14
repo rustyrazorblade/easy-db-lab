@@ -11,12 +11,15 @@ import java.net.InetAddress
  * Opens one Kubernetes port-forward to a Service on a local port. The Kubernetes boundary of
  * [PortForwardServiceAccess], so its reuse and failure decisions are tested without a cluster.
  */
-fun interface ServiceForwarder {
+fun interface ServiceForwarder : AutoCloseable {
     /** Forwards `127.0.0.1:`[localPort] to [target]'s Service port; throws when it cannot. */
     fun forward(
         target: ServiceTarget,
         localPort: Int,
     ): LocalPortForward
+
+    /** Releases what the forwarder holds, such as its Kubernetes client; nothing by default. */
+    override fun close() = Unit
 }
 
 /**
@@ -49,8 +52,7 @@ fun servicePortFor(
  */
 class Fabric8ServiceForwarder(
     newClient: () -> KubernetesClient,
-) : ServiceForwarder,
-    AutoCloseable {
+) : ServiceForwarder {
     private val client = lazy(newClient)
 
     override fun forward(
@@ -65,7 +67,7 @@ class Fabric8ServiceForwarder(
         val existing = checkNotNull(service.get()) { "Service ${target.namespace}/${target.service} does not exist" }
         return service.portForward(
             servicePortFor(existing, target.servicePort),
-            InetAddress.getByName(Constants.Proxy.TUNNEL_LISTEN_ADDRESS),
+            InetAddress.getByName(Constants.Network.LOOPBACK_ADDRESS),
             localPort,
         )
     }
@@ -83,6 +85,7 @@ class Fabric8ServiceForwarder(
  * (a long-running server or REPL can outlive one) is closed and reopened on the next [open], which
  * resolves the Service's pod again. Dead means closed, or with an error recorded since it opened:
  * Fabric8 keeps `isAlive` true after the pod a Service forward resolved is replaced. A forward
+ * whose port another process bound after it was chosen is retried once on a fresh port. A forward
  * that cannot be opened, or reports an error at once, fails naming the namespace, the Service, the port
  * and the Kubernetes error. [close] closes every forward, and is registered to run when the CLI exits.
  *
@@ -107,7 +110,7 @@ class PortForwardServiceAccess(
                 forwards.remove(target)?.let { replace(target, it) }
                 openForward(target).also { forwards[target] = it }
             }
-        return ServiceEndpoint.Plain(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, forward.localPort)
+        return ServiceEndpoint.Plain(LOOPBACK, forward.localPort)
     }
 
     /** Closes a held forward that can no longer carry connections, saying why it is replaced. */
@@ -116,21 +119,28 @@ class PortForwardServiceAccess(
         dead: LocalPortForward,
     ) {
         log.warn(dead.firstError) {
-            "Port-forward 127.0.0.1:${dead.localPort} to ${target.namespace}/${target.service} stopped working; reopening it"
+            "Port-forward $LOOPBACK:${dead.localPort} to ${target.namespace}/${target.service} stopped working; reopening it"
         }
         dead.closeQuietly()
     }
 
+    /**
+     * Opens a verified forward on a fresh loopback port. Another process can bind the port between
+     * [localPorts] choosing it and the forward binding it, so a bind failure is retried once on a new
+     * port; any other failure is the cluster's answer and fails at once. `executeCallable`, because a
+     * forwarder may throw the checked `BindException` itself, which a plain decorator never retries.
+     */
     private fun openForward(target: ServiceTarget): LocalPortForward {
+        val retry = portForwardBindRetry("port-forward-${target.namespace}-${target.service}")
         val forward =
-            runCatching { forwarder.forward(target, localPorts()) }
-                .getOrElse { throw forwardFailure(target, it) }
-        if (forward.errorOccurred()) {
-            val error = forward.firstError
-            forward.closeQuietly()
-            throw forwardFailure(target, error ?: IllegalStateException("unknown error"))
+            try {
+                retry.executeCallable { openVerified({ forwarder.forward(target, localPorts()) }) }
+            } catch (e: Exception) {
+                throw forwardFailure(target, e)
+            }
+        log.debug {
+            "Forwarding $LOOPBACK:${forward.localPort} to ${target.namespace}/${target.service}:${target.servicePort}"
         }
-        log.debug { "Forwarding 127.0.0.1:${forward.localPort} to ${target.namespace}/${target.service}:${target.servicePort}" }
         return forward
     }
 
@@ -146,10 +156,10 @@ class PortForwardServiceAccess(
     override fun close() {
         forwards.values.forEach { it.closeQuietly() }
         forwards.clear()
-        (forwarder as? AutoCloseable)?.close()
+        forwarder.close()
     }
 
-    private fun LocalPortForward.closeQuietly() {
-        runCatching { close() }.onFailure { log.debug(it) { "Closing a port-forward failed" } }
+    private companion object {
+        const val LOOPBACK = Constants.Network.LOOPBACK_ADDRESS
     }
 }

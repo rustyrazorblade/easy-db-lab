@@ -49,9 +49,14 @@ class UseCassandraTest : BaseKoinTest() {
 
     // No-op CommandExecutor — skips DownloadConfig and UpdateConfig sub-commands.
     // Used to isolate version state mutation from file I/O side effects.
+    private val chained = mutableListOf<PicoCommand>()
+    private var chainedExitCode = 0
     private val noopCommandExecutor =
         object : CommandExecutor {
-            override fun <T : PicoCommand> execute(commandFactory: () -> T): Int = 0
+            override fun <T : PicoCommand> execute(commandFactory: () -> T): Int {
+                chained += commandFactory()
+                return chainedExitCode
+            }
 
             override fun <T : PicoCommand> schedule(commandFactory: () -> T) {}
         }
@@ -128,5 +133,36 @@ class UseCassandraTest : BaseKoinTest() {
         command.execute()
 
         assertThat(testClusterState.versions).containsEntry("db0", "5.0")
+    }
+
+    /**
+     * `use` ends by re-applying cassandra.patch.yaml to every targeted host, which discards any
+     * per-host update-config done before it. The operator is told, with the hosts, before it happens.
+     */
+    @Test
+    fun `use warns which hosts get cassandra patch yaml re-applied and that the JDK switches`() {
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.execute()
+
+        val output = outputHandler.messages.joinToString("\n")
+        assertThat(output)
+            .contains("cassandra.patch.yaml", "db0", "replaces per-host", "update-config", "JDK")
+    }
+
+    @Test
+    fun `the warning names only the targeted hosts and the JDK override`() {
+        val second = testCassandraHost.copy(alias = "db1", privateIp = "10.0.1.2", instanceId = "i-db1")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, second))),
+        )
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.hosts.hostList = "db1"
+        command.javaVersion = "17"
+        command.execute()
+
+        val warning = outputHandler.messages.single { it.contains("re-applies") }
+        assertThat(warning).contains("db1", "JDK 17").doesNotContain("db0")
     }
 }

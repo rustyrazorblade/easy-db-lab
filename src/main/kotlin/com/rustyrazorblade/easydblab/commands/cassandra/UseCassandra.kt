@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.annotation.JsonIgnore
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -57,6 +58,14 @@ class UseCassandra : PicoBaseCommand() {
         val cassandraHosts = state.getHosts(ServerType.Cassandra)
         eventBus.emit(
             Event.Cassandra.UsingVersion(version, cassandraHosts.size, hosts.hostList),
+        )
+
+        eventBus.emit(
+            Event.Cassandra.UseSideEffects(
+                patchFile = Constants.ConfigPaths.CASSANDRA_PATCH_FILE,
+                hosts = hostOperationsService.filteredHosts(state.hosts, ServerType.Cassandra, hosts.hostList).map { it.alias },
+                javaVersion = javaVersion.ifBlank { null },
+            ),
         )
 
         hostOperationsService.withHosts(state.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->

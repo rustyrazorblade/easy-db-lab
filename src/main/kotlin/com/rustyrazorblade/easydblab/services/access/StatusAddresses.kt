@@ -59,12 +59,14 @@ data class ObservabilityAddresses(
  * so on a port-forward cluster each one is shown by its Service DNS name with the
  * `bin/kubectl port-forward` command (through the workspace wrapper) the operator runs to reach it.
  *
+ * A kit endpoint names its NodePort, which neither a Service DNS name nor a Service port-forward
+ * takes, so an installed kit's NodePorts are mapped to the Service ports its rendered manifests
+ * declare ([KitServicePorts]).
+ *
  * @param state the cluster state
- * @param servicePort the Service port behind a kit's NodePort; a kit endpoint names its NodePort
  */
 class StatusAddresses(
     private val state: ClusterState,
-    private val servicePort: (KitService, Int) -> Int = { _, port -> port },
 ) {
     private val log = KotlinLogging.logger {}
     private val forwarded = state.exposure == Exposure.PortForward
@@ -89,11 +91,15 @@ class StatusAddresses(
             pyroscope = service(ClusterServices.PYROSCOPE),
         )
 
-    /** The addresses of a kit [endpoint]: one per host of its node type, or its Service on a port-forward cluster. */
+    /**
+     * The addresses of a kit [endpoint]: one per host of its node type, or its Service on a
+     * port-forward cluster, at the Service port [servicePort] gives for the endpoint's NodePort.
+     */
     fun kitEndpoint(
         kitName: String,
         runtime: KitRuntime?,
         endpoint: KitEndpoint,
+        servicePort: (KitService, Int) -> Int = { _, port -> port },
     ): List<StatusAddress> {
         if (!forwarded) {
             return KitEndpointAddresses.resolve(listOf(endpoint), state.hosts).map { StatusAddress(it.address) }
@@ -114,8 +120,10 @@ class StatusAddresses(
         }.onFailure { e ->
             log.warn(e) { "Cannot read ${Constants.Kit.CONFIG_FILE} of kit '${kitDir.name}'; its endpoints are not shown" }
         }.map { config ->
+            val ports = if (forwarded) KitServicePorts.read(kitDir) else null
             config.endpoints.flatMap { endpoint ->
-                kitEndpoint(kitDir.name, config.runtime, endpoint).map { ShownEndpoint(endpoint, it) }
+                kitEndpoint(kitDir.name, config.runtime, endpoint) { service, port -> ports?.servicePort(service, port) ?: port }
+                    .map { ShownEndpoint(endpoint, it) }
             }
         }
 

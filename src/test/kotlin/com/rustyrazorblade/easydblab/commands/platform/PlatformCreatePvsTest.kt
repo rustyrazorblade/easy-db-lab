@@ -12,12 +12,15 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 
 class PlatformCreatePvsTest : BaseKoinTest() {
@@ -156,5 +159,21 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("Invalid node-type")
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["../escape", "a/b", "-lead", "has space", ""])
+    fun `rejects a kit name that is not a plain identifier before touching the cluster`(name: String) {
+        val command =
+            PlatformCreatePvs().apply {
+                kit = name
+                size = "50Gi"
+                nodeType = "db"
+            }
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("--kit")
+        verifyNoInteractions(mockK8sService)
     }
 }

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab
 
-import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart
 import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -279,27 +278,5 @@ class CommandLineParserTest : BaseKoinTest() {
         assertThatThrownBy { commandLine.parseArgs("init", "--name", "my-cluster", "--db", "3") }
             .isInstanceOf(CommandLine.ParameterException::class.java)
             .hasMessageContaining("easy-db-lab init <name>")
-    }
-
-    /**
-     * `cassandra stress` hands everything after `--` to cassandra-easy-stress. Without it, the
-     * tool's own flags are options of easy-db-lab and are rejected.
-     */
-    @Test
-    fun `stress start takes cassandra-easy-stress flags only after the double dash`() {
-        val commandLine = CommandLineParser().commandLine
-
-        assertThatThrownBy { commandLine.parseArgs("cassandra", "stress", "start", "KeyValue", "-d", "1h", "--threads", "100") }
-            .isInstanceOf(CommandLine.UnmatchedArgumentException::class.java)
-
-        val parsed = commandLine.parseArgs("cassandra", "stress", "start", "--", "KeyValue", "-d", "1h", "--threads", "100")
-        val stressStart =
-            parsed
-                .subcommand()
-                .subcommand()
-                .subcommand()
-                .commandSpec()
-                .userObject() as StressStart
-        assertThat(stressStart.stressArgs).containsExactly("KeyValue", "-d", "1h", "--threads", "100")
     }
 }

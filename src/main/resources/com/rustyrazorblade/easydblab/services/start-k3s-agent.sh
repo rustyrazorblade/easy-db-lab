@@ -58,6 +58,7 @@ if mountpoint -q /mnt/db1; then
 kubelet-arg:
   - "eviction-hard=memory.available<100Mi,nodefs.inodesFree<5%,nodefs.available<0%,imagefs.available<0%"
 EOF
+    echo "Kubelet disk eviction signals set to 0% in /etc/rancher/k3s/config.yaml.d/10-kubelet-eviction.yaml"
 fi
 
 # Cilium chains the portmap CNI plugin for hostPort. With --flannel-backend=none, K3s leaves

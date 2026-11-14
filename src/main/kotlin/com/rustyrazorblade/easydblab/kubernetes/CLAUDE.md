@@ -21,7 +21,7 @@ Command → SocksProxyService.ensureRunning(controlHost)
 | `ManifestApplier.kt` | Server-side apply for typed K8s resources |
 | `KubeApi.kt` | The cluster address: kubeconfig path + context; `KubeApi.loadConfig()` |
 | `KubeApiLocator.kt` | Seam that finds the `KubeApi`; `currentContextOf(path)` helper |
-| `KubeconfigFile.kt` | `parseKubeconfig(path)`: the only caller of Fabric8's internal `KubeConfigUtils` |
+| `KubeconfigFile.kt` | `parseKubeconfig(path)`: the only caller of Fabric8's internal `KubeConfigUtils`; an unparseable file fails naming its path and the parse cause |
 | `KubernetesClientFactory.kt` | Client creation with SOCKS5 proxy config |
 | `KubernetesModule.kt` | Koin DI registration |
 | `KubernetesTypes.kt` | Data classes (KubernetesJob, KubernetesPod, KubernetesNode) |

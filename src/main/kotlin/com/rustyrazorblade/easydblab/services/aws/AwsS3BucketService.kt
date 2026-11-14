@@ -49,7 +49,7 @@ class AwsS3BucketService(
         eventBus.emit(Event.Setup.S3BucketCreating)
         val bucketName = "easy-db-lab-${UUID.randomUUID()}"
         aws.createS3Bucket(bucketName)
-        aws.putS3BucketPolicy(bucketName, StoreBackend.NO_PREFIX)
+        aws.putS3BucketPolicy(bucketName)
         aws.tagS3Bucket(
             bucketName,
             mapOf(
@@ -73,10 +73,7 @@ class AwsS3BucketService(
     /**
      * Applies an S3 bucket policy granting access to all easy-db-lab IAM roles.
      */
-    fun putBucketPolicy(
-        bucketName: String,
-        storePrefix: String,
-    ) = aws.putS3BucketPolicy(bucketName, storePrefix)
+    fun putBucketPolicy(bucketName: String) = aws.putS3BucketPolicy(bucketName)
 
     /**
      * Applies tags to an existing S3 bucket.
@@ -136,7 +133,7 @@ class AwsS3BucketService(
     ): DataBucketConfig {
         eventBus.emit(Event.S3.DataBucketCreating(bucketName))
         createBucket(bucketName)
-        putBucketPolicy(bucketName, StoreBackend.NO_PREFIX)
+        putBucketPolicy(bucketName)
         tagBucket(
             bucketName,
             mapOf(

@@ -29,9 +29,8 @@ class AccountBucketSetup(
     fun prepare(state: ClusterState) {
         configureBuckets(state)
         val bucket = requireBucket(state)
-        val storePrefix = StoreBackend.prefixOf(state)
-        reapplyPolicies(bucket, storePrefix)
-        compactorService.ensureRunning(bucket, storePrefix)
+        reapplyPolicies(bucket)
+        compactorService.ensureRunning(bucket, StoreBackend.prefixOf(state))
     }
 
     /**
@@ -51,7 +50,7 @@ class AccountBucketSetup(
 
         // Configure account-level bucket
         eventBus.emit(Event.S3.BucketUsing(accountBucket))
-        s3BucketService.putBucketPolicy(accountBucket, StoreBackend.prefixOf(state))
+        s3BucketService.putBucketPolicy(accountBucket)
         state.s3Bucket = accountBucket
         eventBus.emit(Event.S3.BucketConfigured(accountBucket, state.clusterPrefix()))
 
@@ -87,13 +86,10 @@ class AccountBucketSetup(
      * permissions and delete denies. Both are idempotent: PutRolePolicy and PutBucketPolicy leave
      * the same end state however often they run.
      */
-    private fun reapplyPolicies(
-        bucket: String,
-        storePrefix: String,
-    ) {
+    private fun reapplyPolicies(bucket: String) {
         eventBus.emit(Event.Provision.IamUpdating)
-        awsResourceSetup.reapplyInstanceRolePolicies(storePrefix)
-        s3BucketService.putBucketPolicy(bucket, storePrefix)
+        awsResourceSetup.reapplyInstanceRolePolicies()
+        s3BucketService.putBucketPolicy(bucket)
         log.debug { "Instance role and bucket policies re-applied successfully" }
     }
 }

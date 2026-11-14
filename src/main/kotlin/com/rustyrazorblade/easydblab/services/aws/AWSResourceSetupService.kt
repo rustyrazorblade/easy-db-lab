@@ -71,7 +71,7 @@ class AWSResourceSetupService(
      * Re-applies the instance role's inline policies, so `up` always launches instances under the
      * current permissions, the latest S3 delete denies included. Idempotent.
      */
-    fun reapplyInstanceRolePolicies(storePrefix: String) = instanceRolePolicies.apply(Constants.AWS.Roles.EC2_INSTANCE_ROLE, storePrefix)
+    fun reapplyInstanceRolePolicies() = instanceRolePolicies.apply(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
 
     /**
      * Ensures all AWS IAM resources are set up before any command runs.
@@ -130,7 +130,7 @@ class AWSResourceSetupService(
     private fun addMissingInstanceRolePolicies(roleName: String) {
         val missing = instanceRolePolicies.missing(roleName)
         if (missing.isEmpty()) return
-        instanceRolePolicies.apply(roleName, StoreBackend.NO_PREFIX)
+        instanceRolePolicies.apply(roleName)
         eventBus.emit(Event.AwsSetup.InstanceRolePoliciesAdded(roleName, missing))
     }
 
@@ -165,7 +165,7 @@ class AWSResourceSetupService(
         try {
             // EC2 role (for Cassandra, Stress, Control nodes) with wildcard S3 policy
             aws.createRoleWithS3Policy(roleName)
-            instanceRolePolicies.apply(roleName, StoreBackend.NO_PREFIX)
+            instanceRolePolicies.apply(roleName)
             eventBus.emit(Event.AwsSetup.Ec2RoleReady(roleName))
 
             // EMR Service role

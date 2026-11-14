@@ -475,7 +475,7 @@ class SetupProfile : PicoBaseCommand() {
 
             val awsClient = createAwsClient(credentials, regionObj)
             awsClient.createS3Bucket(bucketName)
-            awsClient.putS3BucketPolicy(bucketName, StoreBackend.NO_PREFIX)
+            awsClient.putS3BucketPolicy(bucketName)
             awsClient.tagS3Bucket(
                 bucketName,
                 mapOf(

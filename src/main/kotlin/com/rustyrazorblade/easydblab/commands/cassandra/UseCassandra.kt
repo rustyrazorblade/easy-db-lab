@@ -56,15 +56,18 @@ class UseCassandra : PicoBaseCommand() {
             exitProcess(1)
         }
 
-        val cassandraHosts = state.getHosts(ServerType.Cassandra)
+        val targeted = hostOperationsService.filteredHosts(state.hosts, ServerType.Cassandra, hosts.hostList)
+        require(targeted.isNotEmpty()) {
+            "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'"
+        }
         eventBus.emit(
-            Event.Cassandra.UsingVersion(version, cassandraHosts.size, hosts.hostList),
+            Event.Cassandra.UsingVersion(version, targeted.size, hosts.hostList),
         )
 
         eventBus.emit(
             Event.Cassandra.UseSideEffects(
                 patchFile = Constants.ConfigPaths.CASSANDRA_PATCH_FILE,
-                hosts = hostOperationsService.filteredHosts(state.hosts, ServerType.Cassandra, hosts.hostList).map { it.alias },
+                hosts = targeted.map { it.alias },
                 javaVersion = javaVersion.ifBlank { null },
             ),
         )
@@ -84,13 +87,15 @@ class UseCassandra : PicoBaseCommand() {
         // version it now runs, and on a mixed-version cluster that is not the first host's version.
         // The executor reports a failed step as an exit code, never as an exception, so a step that
         // failed is checked here. The symlink switch above has already happened.
-        val configured =
-            commandExecutor.execute { DownloadConfig().apply { this.hosts = this@UseCassandra.hosts } } == 0 &&
-                commandExecutor.execute { UpdateConfig().apply { this.hosts = this@UseCassandra.hosts } } == 0
-        if (!configured) {
-            throw CommandFailedException(
-                "Version $version is active on the targeted hosts, but their configuration was not updated; see the error above.",
-            )
+        val failedStep =
+            when {
+                commandExecutor.execute { DownloadConfig().apply { this.hosts = this@UseCassandra.hosts } } != 0 -> "download-config"
+                commandExecutor.execute { UpdateConfig().apply { this.hosts = this@UseCassandra.hosts } } != 0 -> "update-config"
+                else -> null
+            }
+        if (failedStep != null) {
+            eventBus.emit(Event.Cassandra.UseConfigNotApplied(version, failedStep, targeted.map { it.alias }))
+            throw CommandFailedException("cassandra use: $failedStep failed after the version switch")
         }
 
         eventBus.emit(Event.Cassandra.ConfigUpdateHint(version))

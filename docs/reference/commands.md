@@ -106,6 +106,9 @@ Initialize a directory for easy-db-lab.
 easy-db-lab init [cluster-name] [options]
 ```
 
+The cluster name is the positional argument. `--name` is not an option: `init --name my-cluster`
+fails at parse time and names the form `init my-cluster`.
+
 Use a new, empty directory as the workspace, for example under `clusters/`. `init` fails, and
 writes nothing, in a directory that already has a `bin/` file or directory: easy-db-lab writes its
 tool wrappers into the workspace's `bin/`. This also keeps a source checkout from being used as a

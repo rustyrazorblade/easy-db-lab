@@ -107,6 +107,7 @@ class DownloadConfigTest : BaseKoinTest() {
         DownloadConfig().apply { hosts.hostList = "db1" }.execute()
 
         val localDir = File(context.workingDirectory, "5.0.9-custom")
+        verify(remoteOps, times(1)).downloadDirectory(any(), any(), any(), any(), any())
         verify(remoteOps).downloadDirectory(
             eq(secondCassandraHost.toHost()),
             eq("/usr/local/cassandra/5.0.9-custom/conf"),
@@ -165,5 +166,15 @@ class DownloadConfigTest : BaseKoinTest() {
         DownloadConfig().execute()
 
         verify(remoteOps, times(1)).downloadDirectory(any(), any(), any(), any(), any())
+    }
+
+    /** A failed download must not leave an empty directory that the next run takes for a finished one. */
+    @Test
+    fun `a failed download leaves no directory behind`() {
+        whenever(remoteOps.downloadDirectory(any(), any(), any(), any(), any())).thenThrow(IllegalStateException("ssh dropped"))
+
+        assertThatThrownBy { DownloadConfig().execute() }.hasMessageContaining("ssh dropped")
+
+        assertThat(File(context.workingDirectory, "5.0")).doesNotExist()
     }
 }

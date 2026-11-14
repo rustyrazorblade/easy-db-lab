@@ -94,11 +94,4 @@ class ListVersions : PicoBaseCommand() {
             nodes,
         )
     }
-
-    /** The single-listing form: [installed] is the whole cluster's answer. */
-    internal fun buildVersionList(
-        installed: List<String>,
-        declared: List<CassandraVersion>,
-        builds: List<String> = emptyList(),
-    ): Event.Cassandra.VersionList = buildVersionList(mapOf("node" to installed), emptyMap(), declared, builds)
 }

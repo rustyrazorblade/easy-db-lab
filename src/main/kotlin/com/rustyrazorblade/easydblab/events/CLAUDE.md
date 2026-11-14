@@ -34,7 +34,7 @@ The console and, when `EASY_DB_LAB_REDIS_URL` is set, Redis are the only destina
 
 Events are organized by domain as sealed sub-interfaces of `Event`:
 
-- `Event.Cassandra.*` — Database lifecycle (start, stop, restart)
+- `Event.Cassandra.*` — Database lifecycle (start, stop, restart). `VersionList` (from `cassandra list`) carries `partial` (version to the nodes that have it), `unreachable` (node to error) and `nodes`; it is an error event when any node is unreachable. `UseSideEffects` (before `cassandra use` starts: the hosts `cassandra.patch.yaml` is re-applied to, and the `--java` override) and `UseConfigNotApplied` (an error: the version switched but the config download or update failed)
 - `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
 - `Event.K3s.*` — K3s cluster management
 - `Event.Cilium.*` — Cilium CNI operations

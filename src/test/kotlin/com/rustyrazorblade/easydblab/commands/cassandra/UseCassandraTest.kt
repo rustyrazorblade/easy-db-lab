@@ -52,12 +52,13 @@ class UseCassandraTest : BaseKoinTest() {
     // No-op CommandExecutor — skips DownloadConfig and UpdateConfig sub-commands.
     // Used to isolate version state mutation from file I/O side effects.
     private val chained = mutableListOf<PicoCommand>()
-    private var chainedExitCode = 0
+    private val chainedExitCodes = mutableMapOf<Class<*>, Int>()
     private val noopCommandExecutor =
         object : CommandExecutor {
             override fun <T : PicoCommand> execute(commandFactory: () -> T): Int {
-                chained += commandFactory()
-                return chainedExitCode
+                val command = commandFactory()
+                chained += command
+                return chainedExitCodes[command.javaClass] ?: 0
             }
 
             override fun <T : PicoCommand> schedule(commandFactory: () -> T) {}
@@ -119,6 +120,21 @@ class UseCassandraTest : BaseKoinTest() {
         assertThat(output).doesNotContain("HostsMixin", "Host(", "i-db0")
     }
 
+    /** It said "on 3 hosts" for `--hosts=db2`: the count was the cluster's, not the targeted hosts'. */
+    @Test
+    fun `the announcement counts the targeted hosts, not the cluster`() {
+        val second = testCassandraHost.copy(alias = "db1", privateIp = "10.0.1.2", instanceId = "i-db1")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, second))),
+        )
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.hosts.hostList = "db1"
+        command.execute()
+
+        assertThat(outputHandler.messages.joinToString("\n")).contains("Using version 4.1 on 1 hosts, filter: db1")
+    }
+
     @Test
     fun `without a host filter the announcement says all hosts`() {
         val command = UseCassandra()
@@ -157,13 +173,39 @@ class UseCassandraTest : BaseKoinTest() {
 
     /** A chained command that fails used to be ignored, so `use` printed the failure and exited 0. */
     @Test
-    fun `use fails when the config download or update it chains to fails`() {
-        chainedExitCode = 1
+    fun `a failed config download fails use, skips the update and says which step failed`() {
+        chainedExitCodes[DownloadConfig::class.java] = 1
 
         val command = UseCassandra()
         command.version = "4.1"
 
         assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+        assertThat(chained.filterIsInstance<UpdateConfig>()).isEmpty()
+        assertThat(outputHandler.errors.joinToString("\n") { it.first })
+            .contains("4.1", "download-config failed", "update-config --hosts db0")
+    }
+
+    @Test
+    fun `a failed config update fails use and says which step failed`() {
+        chainedExitCodes[UpdateConfig::class.java] = 1
+
+        val command = UseCassandra()
+        command.version = "4.1"
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+        assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("update-config failed")
+    }
+
+    @Test
+    fun `a host filter that matches no node fails before anything is switched`() {
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.hosts.hostList = "db9"
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("db9")
+        assertThat(chained).isEmpty()
     }
 
     /**
@@ -178,7 +220,7 @@ class UseCassandraTest : BaseKoinTest() {
 
         val output = outputHandler.messages.joinToString("\n")
         assertThat(output)
-            .contains("cassandra.patch.yaml", "db0", "replaces per-host", "update-config", "JDK")
+            .contains("cassandra.patch.yaml", "db0", "replaces per-host", "update-config", "the JDK the version declares")
     }
 
     @Test

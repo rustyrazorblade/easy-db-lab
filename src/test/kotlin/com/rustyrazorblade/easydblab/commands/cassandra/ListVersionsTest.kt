@@ -26,6 +26,13 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
+/** One node's listing as the whole cluster's answer, through the real per-node [ListVersions.buildVersionList]. */
+private fun ListVersions.buildVersionList(
+    installed: List<String>,
+    declared: List<CassandraVersion>,
+    builds: List<String> = emptyList(),
+) = buildVersionList(mapOf("node" to installed), emptyMap(), declared, builds)
+
 class ListVersionsTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockCatalog: CassandraBuildCatalog
@@ -222,7 +229,24 @@ class ListVersionsTest : BaseKoinTest() {
             .thenThrow(IllegalStateException("connection refused"))
 
         assertThatThrownBy { ListVersions().execute() }.isInstanceOf(CommandFailedException::class.java)
-        assertThat(outputHandler.messages.joinToString("\n") + outputHandler.errors.joinToString { it.first })
-            .contains("db1", "connection refused")
+        // The report is an error event (stderr), naming the node and its error; the versions it could list are in it too.
+        assertThat(outputHandler.errors.joinToString("\n") { it.first })
+            .contains("db1: could not list versions: connection refused", "5.0")
+    }
+
+    /** A node that could not be listed is not a node the version is "missing" from. */
+    @Test
+    fun `an unreachable node is left out of the nodes a partial version is missing from`() {
+        val event =
+            ListVersions().buildVersionList(
+                perHost = mapOf("db0" to listOf("5.0"), "db1" to listOf("5.0", "5.0.9-custom")),
+                unreachable = mapOf("db2" to "timed out"),
+                declared = emptyList(),
+                nodes = listOf("db0", "db1", "db2"),
+            )
+
+        assertThat(event.toDisplayString())
+            .contains("5.0.9-custom (installed on db1 only, not on db0)")
+            .contains("db2: could not list versions: timed out")
     }
 }

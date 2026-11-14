@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.databind.node.ObjectNode
+import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -45,19 +46,33 @@ class UpdateConfig : PicoBaseCommand() {
     @Option(names = ["--restart", "-r"], description = ["Restart cassandra after patching"])
     var restart = false
 
+    /**
+     * Each targeted host's version, after checking that the config directory of every one of them is
+     * in the workspace. Every host is checked before any is changed: a missing directory used to
+     * surface only after the patch had been applied, as a bare "Local directory does not exist", and
+     * on a multi-host run it left the hosts before it patched and the rest not.
+     */
+    private fun versionsWithLocalConfig(): Map<String, Version> {
+        val versions =
+            hostOperationsService
+                .filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
+                .associate { it.alias to remoteOps.getRemoteVersion(it.toHost(), version) }
+        val missing = versions.filterValues { !File(context.workingDirectory, it.versionString).isDirectory }
+        check(missing.isEmpty()) {
+            "No local config directory for " +
+                missing.entries.joinToString("; ") { (alias, v) -> "${v.versionString}, the version $alias runs" } +
+                ". Create it with: easy-db-lab cassandra download-config --hosts ${missing.keys.joinToString(",")}"
+        }
+        return versions
+    }
+
     override fun execute() {
+        val versions = versionsWithLocalConfig()
+
         // upload the patch file
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
-
-            // Each host runs its own version, and its config directory is that version's. Check before
-            // anything is changed on the host: a missing directory used to surface only after the
-            // patch had already been applied, as a bare "Local directory does not exist".
-            val resolvedVersion = remoteOps.getRemoteVersion(it, version)
-            check(File(context.workingDirectory, resolvedVersion.versionString).isDirectory) {
-                "No local config directory for ${resolvedVersion.versionString}, the version ${it.alias} runs. " +
-                    "Create it with: easy-db-lab cassandra download-config --hosts ${it.alias}"
-            }
+            val resolvedVersion = versions.getValue(it.alias)
 
             eventBus.emit(Event.Cassandra.ConfigFileUploading(file, it.alias))
 

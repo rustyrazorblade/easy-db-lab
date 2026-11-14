@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -20,6 +21,14 @@ class InMemoryObjectStoreTest {
     lateinit var tempDir: Path
 
     private fun keys(files: List<ObjectStore.FileInfo>) = files.map { it.path.getKey() }
+
+    /** The listing cases `S3ObjectStore` also runs against LocalStack. */
+    @Nested
+    inner class Listing : ObjectStoreListingContract() {
+        override val store = InMemoryObjectStore()
+
+        override fun freshRoot(): ClusterStoragePath = root.resolve("contract")
+    }
 
     @Test
     fun `content round-trips`() {

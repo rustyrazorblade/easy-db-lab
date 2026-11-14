@@ -121,7 +121,9 @@ class SetupProfile : PicoBaseCommand() {
         var attempt = 0
         while (attempt < MAX_CREDENTIAL_RETRIES) {
             attempt++
-            val credentials = collectCoreCredentials(existingConfig)
+            // A saved AWS profile is used on the first attempt only. When it failed validation, the
+            // retry asks for the profile again instead of trying the same one.
+            val credentials = collectCoreCredentials(if (attempt == 1) existingConfig else existingConfig - "awsProfile")
             val regionObj = Region.of(credentials.region)
 
             try {

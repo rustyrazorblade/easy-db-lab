@@ -18,11 +18,24 @@ The workflow SHALL be reached as `easy-db-lab profile setup`. The former top-lev
 - **WHEN** they run `easy-db-lab profile setup`
 - **THEN** they are prompted for AWS profile or credentials, region, and key pair selection.
 
+#### Scenario: A profile that does not exist yet is created
+
+- **GIVEN** a profile name with no profile directory (`EASY_DB_LAB_PROFILE=<new>`)
+- **WHEN** the user runs `easy-db-lab profile setup`
+- **THEN** it prompts and completes, without a "User configuration file not found" error.
+
 #### Scenario: Existing profile reviewed on re-run
 
-- **GIVEN** a completed profile
+- **GIVEN** a completed profile: it can authenticate and holds a key pair and an S3 bucket
 - **WHEN** the user runs `easy-db-lab profile setup` again
 - **THEN** existing settings are available for review and modification.
+
+#### Scenario: Incomplete profile finishes setup
+
+- **GIVEN** a profile that can authenticate but has a blank key pair or a blank S3 bucket
+- **WHEN** the user runs `easy-db-lab profile setup`
+- **THEN** the full setup runs: it keeps the values the profile holds, asks only for what is missing (an AWS profile name the profile already holds is not asked again), and creates the missing key pair, IAM roles, bucket and Packer VPC
+- **AND** the saved profile holds the new `keyName` and `s3Bucket`.
 
 #### Scenario: Former top-level names no longer resolve
 

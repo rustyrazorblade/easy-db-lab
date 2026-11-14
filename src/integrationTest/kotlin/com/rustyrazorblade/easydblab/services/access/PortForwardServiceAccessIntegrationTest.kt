@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services.access
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.LoopbackPortSelector
+import com.rustyrazorblade.easydblab.proxy.ProxiedHttpClientFactory
+import com.rustyrazorblade.easydblab.services.DefaultObservabilityHttp
 import io.fabric8.kubernetes.api.model.IntOrString
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
@@ -39,6 +41,7 @@ class PortForwardServiceAccessIntegrationTest {
         private const val NODE_PORT = 30880
         private const val BODY = "forwarded"
         private const val READY_TIMEOUT_SECONDS = 120L
+        private const val STALE_READ_SECONDS = 10L
         private const val CONNECT_TIMEOUT_MS = 2_000
         private const val CLOSE_ATTEMPTS = 50
         private val CLOSE_POLL = Duration.ofMillis(100)
@@ -61,18 +64,23 @@ class PortForwardServiceAccessIntegrationTest {
     fun setup() {
         SharedK3s.createNamespace(NAMESPACE)
         client = SharedK3s.client()
-        val labels = mapOf("app" to SERVICE)
+        createWebPod(SERVICE)
+        createService(SERVICE, nodePort = NODE_PORT)
+    }
+
+    /** A busybox httpd pod labelled `app=`[name] that serves [BODY], once it is ready. */
+    private fun createWebPod(name: String) {
         client
             .resource(
                 PodBuilder()
                     .withNewMetadata()
-                    .withName(SERVICE)
+                    .withName(name)
                     .withNamespace(NAMESPACE)
-                    .withLabels<String, String>(labels)
+                    .withLabels<String, String>(mapOf("app" to name))
                     .endMetadata()
                     .withNewSpec()
                     .addNewContainer()
-                    .withName(SERVICE)
+                    .withName(name)
                     .withImage(SharedK3s.BUSYBOX_IMAGE)
                     // Preloaded into K3s; never pulling makes a missing preload fail fast, not flake.
                     .withImagePullPolicy("Never")
@@ -88,28 +96,35 @@ class PortForwardServiceAccessIntegrationTest {
                     .build(),
             ).create()
         client
+            .pods()
+            .inNamespace(NAMESPACE)
+            .withName(name)
+            .waitUntilReady(READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    }
+
+    /** A Service [name] selecting `app=`[name] on [HTTP_PORT]; a NodePort Service when [nodePort] is given. */
+    private fun createService(
+        name: String,
+        nodePort: Int? = null,
+    ) {
+        client
             .resource(
                 ServiceBuilder()
                     .withNewMetadata()
-                    .withName(SERVICE)
+                    .withName(name)
                     .withNamespace(NAMESPACE)
                     .endMetadata()
                     .withNewSpec()
-                    .withType("NodePort")
-                    .withSelector<String, String>(labels)
+                    .withType(if (nodePort == null) "ClusterIP" else "NodePort")
+                    .withSelector<String, String>(mapOf("app" to name))
                     .addNewPort()
                     .withPort(HTTP_PORT)
                     .withTargetPort(IntOrString(HTTP_PORT))
-                    .withNodePort(NODE_PORT)
+                    .withNodePort(nodePort)
                     .endPort()
                     .endSpec()
                     .build(),
             ).create()
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withName(SERVICE)
-            .waitUntilReady(READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
     }
 
     @AfterAll
@@ -199,6 +214,33 @@ class PortForwardServiceAccessIntegrationTest {
                 assertThat(endpoint.port).isEqualTo(fresh)
                 assertThat(get(endpoint.port)).isEqualTo(BODY)
             }
+        }
+    }
+
+    /**
+     * A long-running reader (the server, a REPL) holds a forward to a pod that is then replaced. At
+     * most one request through the stale forward fails: the forward records the error, so the request
+     * after it reopens the forward onto the new pod and succeeds.
+     */
+    @Test
+    fun `after its pod is replaced, one request through the stale forward fails and the next one works`() {
+        val replaced = "replaced"
+        val replacedTarget = target.copy(service = replaced)
+        createWebPod(replaced)
+        createService(replaced)
+        newAccess().use { access ->
+            val http = DefaultObservabilityHttp(access, { "acme" }, ProxiedHttpClientFactory())
+            assertThat(http.get(replacedTarget, "/").body.trim()).isEqualTo(BODY)
+
+            val pod = client.pods().inNamespace(NAMESPACE).withName(replaced)
+            pod.withGracePeriod(0).delete()
+            pod.waitUntilCondition({ it == null }, READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            createWebPod(replaced)
+
+            // The forward may already have recorded the closed stream, and reopen before this request;
+            // if it has not, this one request fails and records it. Either way it never hangs.
+            runCatching { http.get(replacedTarget, "/", Duration.ofSeconds(STALE_READ_SECONDS)) }
+            assertThat(http.get(replacedTarget, "/").body.trim()).isEqualTo(BODY)
         }
     }
 

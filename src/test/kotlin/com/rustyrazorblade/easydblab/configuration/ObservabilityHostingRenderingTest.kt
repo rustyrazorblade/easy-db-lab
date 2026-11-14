@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
@@ -96,15 +97,28 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
 
     @Test
     fun `on AWS the ports callers outside the pod network use stay published on the node`() {
+        // Mimir and Loki push and read, Tempo's query and OTLP receivers, Pyroscope ingest, Grafana and
+        // its documents web server (a sidecar, not the first container): a redirected cluster, a
+        // node-side agent and the CLI over the SOCKS tunnel reach these on the control node's private IP.
+        val expected =
+            mapOf(
+                "/mnt/db1/mimir" to listOf(Constants.K8s.MIMIR_HTTP_PORT),
+                "/mnt/db1/loki" to listOf(Constants.K8s.LOKI_HTTP_PORT),
+                "/mnt/db1/tempo" to
+                    listOf(Constants.K8s.TEMPO_PORT, Constants.K8s.TEMPO_OTLP_GRPC_PORT, Constants.K8s.TEMPO_OTLP_HTTP_PORT),
+                "/mnt/db1/pyroscope" to listOf(PyroscopeManifestBuilder.SERVER_PORT),
+                GRAFANA to listOf(Constants.K8s.GRAFANA_PORT, Constants.Grafana.Documents.WEB_PORT),
+            )
+
         val published =
-            backends(ObservabilityHosting.AWS).values.flatMap { resources ->
+            backends(ObservabilityHosting.AWS).mapValues { (_, resources) ->
                 pod(resources).containers.flatMap { it.ports.orEmpty() }.mapNotNull { it.hostPort }
             }
 
-        // Mimir and Loki push and read, Tempo's query and OTLP receivers, Pyroscope ingest and Grafana:
-        // a redirected cluster, a node-side agent and the CLI over the SOCKS tunnel reach these on the
-        // control node's private IP.
-        assertThat(published).contains(9009, 3100, 3200, 4320, 4040, 3000)
+        assertThat(published.keys).containsExactlyInAnyOrderElementsOf(expected.keys)
+        expected.forEach { (hostPath, ports) ->
+            assertThat(published.getValue(hostPath)).describedAs(hostPath).containsExactlyInAnyOrderElementsOf(ports)
+        }
     }
 
     @Test

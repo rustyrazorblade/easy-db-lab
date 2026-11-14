@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.services.aws.CompactorTaskDefinition
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -53,7 +54,12 @@ class StoreGoldenTest : BaseKoinTest() {
         const val REGION = "us-west-2"
         const val TENANT = "acme"
         const val ACCOUNT_ID = "123456789012"
-        const val GOLDEN_DIR = "src/test/resources/com/rustyrazorblade/easydblab/golden/store"
+        /** The golden files, under the project directory Gradle passes in, not the JVM's working directory. */
+        val GOLDEN_DIR =
+            File(
+                checkNotNull(System.getProperty("easydblab.projectDir")) { "easydblab.projectDir is not set; run the test through Gradle" },
+                "src/test/resources/com/rustyrazorblade/easydblab/golden/store",
+            )
 
         /**
          * The compactor env names design D5 renamed, new name to the name in the task-0 capture. The
@@ -106,14 +112,14 @@ class StoreGoldenTest : BaseKoinTest() {
     /**
      * Reads the committed golden file. With `UPDATE_GOLDEN=true` in the environment it first rewrites the file from
      * [actual]; that is the only way a golden changes, so a missing file fails rather than being
-     * captured silently.
+     * captured silently. A rewrite in CI is refused ([GoldenUpdate]).
      */
     private fun goldenOrCapture(
         name: String,
         actual: String,
     ): String {
         val file = File(GOLDEN_DIR, name)
-        if (System.getenv("UPDATE_GOLDEN") == "true") {
+        if (GoldenUpdate.requested(System.getenv())) {
             file.parentFile.mkdirs()
             file.writeText(actual)
         }
@@ -127,6 +133,24 @@ class StoreGoldenTest : BaseKoinTest() {
     ) {
         assertThat(actual).isEqualTo(goldenOrCapture(name, actual))
     }
+
+    /**
+     * [assertGolden] for a backend config as its pod reads it, every variable expanded. A `${` left in it is a
+     * variable no env supplied, which the golden would otherwise capture as if it were intended.
+     */
+    private fun assertExpandedGolden(
+        name: String,
+        actual: String,
+    ) {
+        assertThat(actual).describedAs("unexpanded variable in $name").doesNotContain("\${")
+        assertGolden(name, actual)
+    }
+
+    /** [assertGolden] for a policy document, pretty-printed so a change shows as a readable diff. */
+    private fun assertPolicyGolden(
+        name: String,
+        policy: String,
+    ) = assertGolden(name, prettyJson.encodeToString(JsonElement.serializer(), Json.parseToJsonElement(policy)))
 
     /**
      * The values a backend pod sees: every env var of [deployment]'s containers that reads the
@@ -149,28 +173,28 @@ class StoreGoldenTest : BaseKoinTest() {
     fun `mimir config expands to the golden file`() {
         val builder = MimirManifestBuilder(templateService)
         val config = builder.buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
-        assertGolden("mimir.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
+        assertExpandedGolden("mimir.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
     }
 
     @Test
     fun `loki config expands to the golden file`() {
         val builder = LokiManifestBuilder(templateService)
         val config = builder.buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
-        assertGolden("loki.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
+        assertExpandedGolden("loki.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
     }
 
     @Test
     fun `tempo config expands to the golden file`() {
         val builder = TempoManifestBuilder(templateService)
         val config = builder.buildConfigMap().data.getValue("tempo.yaml")
-        assertGolden("tempo.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
+        assertExpandedGolden("tempo.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
     }
 
     @Test
     fun `pyroscope config renders to the golden file`() {
         val builder = PyroscopeManifestBuilder(templateService)
         val config = builder.buildServerConfigMap().data.getValue("config.yaml")
-        assertGolden("pyroscope.yaml", config)
+        assertExpandedGolden("pyroscope.yaml", config)
     }
 
     @Test
@@ -190,17 +214,17 @@ class StoreGoldenTest : BaseKoinTest() {
 
     @Test
     fun `instance role policy renders to the golden file`() {
-        assertGolden("instance-role-policy.json", AWSPolicy.Inline.S3AccessWildcard(ACCOUNT_ID).toJson())
+        assertPolicyGolden("instance-role-policy.json", AWSPolicy.Inline.S3AccessWildcard(ACCOUNT_ID).toJson())
     }
 
     @Test
     fun `bucket policy renders to the golden file`() {
-        assertGolden("bucket-policy.json", AWSPolicy.Inline.S3BucketPolicy(ACCOUNT_ID, BUCKET).toJson())
+        assertPolicyGolden("bucket-policy.json", AWSPolicy.Inline.S3BucketPolicy(ACCOUNT_ID, BUCKET).toJson())
     }
 
     @Test
     fun `compactor task role policy renders to the golden file`() {
-        assertGolden("compactor-task-policy.json", AWSPolicy.Inline.CompactorTaskAccess(storePrefix = "").toJson())
+        assertPolicyGolden("compactor-task-policy.json", AWSPolicy.Inline.CompactorTaskAccess(storePrefix = "").toJson())
     }
 
     /**

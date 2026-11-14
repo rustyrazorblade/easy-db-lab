@@ -4,6 +4,7 @@ import io.fabric8.kubernetes.client.LocalPortForward
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.net.BindException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 
@@ -93,6 +94,26 @@ class CassandraPodForwardTest {
             .hasMessageContaining("30942")
             .hasMessageContaining("not found")
         assertThat(forwards.single().alive).isFalse()
+    }
+
+    @Test
+    fun `a fixed port another process holds fails naming the port and the process, not retrying elsewhere`() {
+        val tried = mutableListOf<Int>()
+        val taken =
+            CassandraPodForward(
+                pod = pod,
+                forwarder = { _, localPort ->
+                    tried += localPort
+                    throw IllegalStateException("Unable to port forward", BindException("Address already in use"))
+                },
+                localPorts = { ports.removeFirst() },
+            )
+
+        assertThatThrownBy { taken.endpoint() }
+            .hasMessageContaining("127.0.0.1:24001")
+            .hasMessageContaining("another process")
+            .hasRootCauseInstanceOf(BindException::class.java)
+        assertThat(tried).containsExactly(24001)
     }
 
     @Test

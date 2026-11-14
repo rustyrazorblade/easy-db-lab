@@ -183,6 +183,25 @@ class PortForwardServiceAccessIntegrationTest {
         }
     }
 
+    /**
+     * The race the bind retry exists for: another process binds the chosen port before the forward
+     * does. Fabric8's real bind failure (an `IllegalStateException` over a `BindException`) must be
+     * recognised, so the forward moves to the next port and still carries traffic.
+     */
+    @Test
+    fun `a port another process holds is given up for a fresh one, and the forward works`() {
+        ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { holder ->
+            val fresh = TEST_PORTS.random()
+            val picks = ArrayDeque(listOf(holder.localPort, fresh))
+            PortForwardServiceAccess(Fabric8ServiceForwarder(SharedK3s::client)) { picks.removeFirst() }.use { access ->
+                val endpoint = access.open(target) as ServiceEndpoint.Plain
+
+                assertThat(endpoint.port).isEqualTo(fresh)
+                assertThat(get(endpoint.port)).isEqualTo(BODY)
+            }
+        }
+    }
+
     @Test
     fun `closing the seam closes its forwards`() {
         val access = newAccess()

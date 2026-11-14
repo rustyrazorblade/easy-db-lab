@@ -21,12 +21,15 @@ data class PodTarget(
 )
 
 /** Opens one Kubernetes port-forward to a pod on a local port: the Kubernetes boundary of [CassandraPodForward]. */
-fun interface PodForwarder {
+fun interface PodForwarder : AutoCloseable {
     /** Forwards `127.0.0.1:`[localPort] to [target]; throws when it cannot. */
     fun forward(
         target: PodTarget,
         localPort: Int,
     ): LocalPortForward
+
+    /** Releases what the forwarder holds, such as its Kubernetes client; nothing by default. */
+    override fun close() = Unit
 }
 
 /**
@@ -37,8 +40,7 @@ fun interface PodForwarder {
  */
 class Fabric8PodForwarder(
     newClient: () -> KubernetesClient,
-) : PodForwarder,
-    AutoCloseable {
+) : PodForwarder {
     private val client = lazy(newClient)
 
     override fun forward(
@@ -49,7 +51,7 @@ class Fabric8PodForwarder(
             .pods()
             .inNamespace(target.namespace)
             .withName(target.pod)
-            .portForward(target.port, InetAddress.getByName(Constants.Proxy.TUNNEL_LISTEN_ADDRESS), localPort)
+            .portForward(target.port, InetAddress.getByName(Constants.Network.LOOPBACK_ADDRESS), localPort)
 
     override fun close() {
         if (client.isInitialized()) client.value.close()
@@ -63,7 +65,8 @@ class Fabric8PodForwarder(
  * since it opened: Fabric8 keeps `isAlive` true after the pod is replaced), the next [endpoint]
  * reopens it on the same port, so the driver, which holds that
  * address as its only node, reconnects on its own. A forward that cannot be opened fails naming the
- * namespace, the pod, the port and the Kubernetes error.
+ * namespace, the pod, the port and the Kubernetes error; one whose local port another process holds
+ * fails naming that port, and is not moved to another one the driver would not know.
  *
  * @param pod the pod to forward to
  * @param forwarder opens one forward
@@ -82,41 +85,46 @@ class CassandraPodForward(
     @Synchronized
     fun endpoint(): InetSocketAddress {
         val live = forward?.takeIf { it.isUsable } ?: reopen()
-        return InetSocketAddress(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, live.localPort)
+        return InetSocketAddress(LOOPBACK, live.localPort)
     }
 
     private fun reopen(): LocalPortForward {
         forward?.let { dead ->
             log.warn(dead.firstError) {
-                "Port-forward 127.0.0.1:$localPort to pod ${pod.namespace}/${pod.pod} stopped working; reopening it on the same port"
+                "Port-forward $LOOPBACK:$localPort to pod ${pod.namespace}/${pod.pod} stopped working; reopening it on the same port"
             }
             dead.closeQuietly()
         }
         forward = null
-        val opened =
-            runCatching { forwarder.forward(pod, localPort) }
-                .getOrElse { throw failure(it) }
-        if (opened.errorOccurred()) {
-            val error = opened.firstError
-            opened.closeQuietly()
-            throw failure(error ?: IllegalStateException("unknown error"))
-        }
-        log.debug { "Forwarding 127.0.0.1:$localPort to pod ${pod.namespace}/${pod.pod}:${pod.port}" }
+        val opened = openVerified({ forwarder.forward(pod, localPort) }, ::failure)
+        log.debug { "Forwarding $LOOPBACK:$localPort to pod ${pod.namespace}/${pod.pod}:${pod.port}" }
         forward = opened
         return opened
     }
 
-    private fun failure(cause: Throwable) =
-        IllegalStateException("Cannot port-forward to pod ${pod.namespace}/${pod.pod} port ${pod.port}: ${cause.message}", cause)
+    /**
+     * The failure of a forward to the pod. The driver knows only this one local port, so a port
+     * another process holds is not retried elsewhere: the failure names the port and says so.
+     */
+    private fun failure(cause: Throwable): IllegalStateException {
+        val target = "pod ${pod.namespace}/${pod.pod} port ${pod.port}"
+        val message =
+            if (cause.isBindFailure) {
+                "Cannot port-forward $LOOPBACK:$localPort to $target: another process holds $LOOPBACK:$localPort"
+            } else {
+                "Cannot port-forward to $target: ${cause.message}"
+            }
+        return IllegalStateException(message, cause)
+    }
 
     @Synchronized
     override fun close() {
         forward?.closeQuietly()
         forward = null
-        (forwarder as? AutoCloseable)?.close()
+        forwarder.close()
     }
 
-    private fun LocalPortForward.closeQuietly() {
-        runCatching { close() }.onFailure { log.debug(it) { "Closing a port-forward failed" } }
+    private companion object {
+        const val LOOPBACK = Constants.Network.LOOPBACK_ADDRESS
     }
 }

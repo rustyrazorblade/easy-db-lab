@@ -4,6 +4,7 @@ import io.fabric8.kubernetes.client.LocalPortForward
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.net.BindException
 import java.net.InetAddress
 
 /**
@@ -105,6 +106,41 @@ class PortForwardServiceAccessTest {
             .hasMessageContaining("default/loki")
             .hasMessageContaining("3100")
             .hasMessageContaining("not found")
+    }
+
+    @Test
+    fun `a port another process bound after it was picked is retried once on a fresh port`() {
+        val tried = mutableListOf<Int>()
+        val racing =
+            PortForwardServiceAccess({ _, localPort ->
+                tried += localPort
+                // Fabric8 wraps the bind's IOException in an IllegalStateException.
+                if (tried.size == 1) throw IllegalStateException("Unable to port forward", BindException("Address already in use"))
+                FakeForward(localPort)
+            }) { ports.removeFirst() }
+
+        assertThat(racing.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
+        assertThat(tried).containsExactly(21001, 21002)
+    }
+
+    @Test
+    fun `a bind that fails again on the fresh port fails, and other errors are not retried`() {
+        val tried = mutableListOf<Int>()
+        val alwaysTaken =
+            PortForwardServiceAccess({ _, localPort ->
+                tried += localPort
+                throw IllegalStateException("Unable to port forward", BindException("Address already in use"))
+            }) { ports.removeFirst() }
+
+        assertThatThrownBy { alwaysTaken.open(ClusterServices.LOKI) }
+            .hasMessageContaining("default/loki")
+            .hasRootCauseInstanceOf(BindException::class.java)
+        assertThat(tried).containsExactly(21001, 21002)
+
+        // A failure that is not a bind takes no fresh port: the one port left is the one it used.
+        val forbidden = PortForwardServiceAccess({ _, _ -> throw IllegalStateException("forbidden") }) { ports.removeFirst() }
+        assertThatThrownBy { forbidden.open(ClusterServices.LOKI) }.hasMessageContaining("forbidden")
+        assertThat(ports).isEmpty()
     }
 
     @Test

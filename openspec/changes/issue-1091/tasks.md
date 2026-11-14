@@ -15,10 +15,10 @@
 
 ## 4. Service DNS for in-cluster callers
 
-- [ ] 4.1 Test first: Grafana datasources built for a cluster use each backend's Service DNS URL (`<svc>.<namespace>.svc:<port>`), not `localhost`.
-- [ ] 4.2 Change `GrafanaDatasourceSet`/`GrafanaDeployService` backend base URLs to Service DNS.
-- [ ] 4.3 Test first: the rendered OTel collector config exports to the backends by Service DNS, not `localhost`.
-- [ ] 4.4 Change the collector's backend exporter endpoints (`OtelManifestBuilder` `LOCAL_*`) to Service DNS. Coordinate: collector Service name `otel-collector` (#1092).
+- [x] 4.1 Test first: Grafana datasources built for a cluster use each backend's Service DNS URL (`<svc>.<namespace>.svc:<port>`), not `localhost`.
+- [x] 4.2 Change `GrafanaDatasourceSet`/`GrafanaDeployService` backend base URLs to Service DNS.
+- [x] 4.3 Test first: the rendered OTel collector config exports to the backends by Service DNS, not `localhost`.
+- [x] 4.4 Change the collector's backend exporter endpoints (`OtelManifestBuilder` `LOCAL_*`) to Service DNS. Coordinate: collector Service name `otel-collector` (#1092).
 
 ## 5. Grafana documents same-origin
 

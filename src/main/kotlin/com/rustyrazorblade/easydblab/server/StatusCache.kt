@@ -240,7 +240,7 @@ class StatusCache(
             spark = buildSparkInfo(state),
             opensearch = buildOpenSearchInfo(state),
             s3 = buildS3Info(state),
-            kubernetes = buildKubernetesInfo(state),
+            kubernetes = buildKubernetesInfo(),
             stressJobs = buildStressInfo(state),
             cassandraVersion = buildCassandraVersionInfo(state, instanceStates),
             accessInfo = buildAccessInfo(state),
@@ -395,8 +395,7 @@ class StatusCache(
         )
     }
 
-    private fun buildKubernetesInfo(state: ClusterState): KubernetesInfo? {
-        state.getControlHost() ?: return null
+    private fun buildKubernetesInfo(): KubernetesInfo? {
         val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
         if (!File(kubeconfigPath).exists()) return null
 
@@ -425,7 +424,8 @@ class StatusCache(
     }
 
     private fun buildStressInfo(state: ClusterState): StressInfo? {
-        state.getControlHost() ?: return null
+        // Stress jobs run only on a cluster easy-db-lab provisioned, which always has a control node.
+        if (state.getControlHost() == null) return null
         return runCatching {
             stressJobService
                 .listJobs()

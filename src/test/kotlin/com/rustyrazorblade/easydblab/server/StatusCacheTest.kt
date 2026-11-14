@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
@@ -40,6 +41,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -438,6 +440,41 @@ class StatusCacheTest : BaseKoinTest() {
         assertThat(paths["logs"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/loki")
         assertThat(paths["annotations"]?.jsonPrimitive?.content)
             .isEqualTo("s3://test-bucket-abc/grafana/annotations/default")
+    }
+
+    @Test
+    fun `kubernetes pods are listed from the workspace kubeconfig without a control host`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockClusterStateManager.load())
+            .thenReturn(testClusterState.copy(hosts = testClusterState.hosts - ServerType.Control))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(
+            Result.success(
+                listOf(
+                    KubernetesPod(
+                        namespace = "default",
+                        name = "grafana-0",
+                        status = "Running",
+                        ready = "1/1",
+                        restarts = 0,
+                        age = Duration.ofMinutes(5),
+                    ),
+                ),
+            ),
+        )
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val pods = Json.parseToJsonElement(statusCache.getStatus("kubernetes")!!).jsonObject["pods"]!!.jsonArray
+
+        assertThat(pods.map { it.jsonObject["name"]?.jsonPrimitive?.content }).containsExactly("grafana-0")
+    }
+
+    @Test
+    fun `kubernetes is null when the workspace has no kubeconfig`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        assertThat(statusCache.getStatus("kubernetes")).isEqualTo("null")
     }
 
     @Test

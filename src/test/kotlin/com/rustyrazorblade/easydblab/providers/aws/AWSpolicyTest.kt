@@ -8,6 +8,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
@@ -244,6 +245,40 @@ class AWSpolicyTest {
                 "arn:aws:s3:::easy-db-lab-*/team-a/tempo/*",
             )
             assertThat(statements.flatMap { it.values("Resource") }).noneMatch { it.contains("grafana") || it.contains("pyroscope") }
+        }
+
+        /** Whatever prefix passes validation, the compactor's allow stays off grafana/, reports/ and pyroscope/. */
+        @Test
+        fun `the compactor policy from any accepted prefix reaches nothing under the uncompacted roots`() {
+            val accepted = listOf("", "team-a", "a/b", "grafana-x", "reports.v2", "pyroscope_old")
+            // Keys a prefix could add under the uncompacted roots. `<root>/mimir/x` is left out: the
+            // bucket wildcard `easy-db-lab-*` spans `/`, so `easy-db-lab-*/mimir/*` reaches it with
+            // any prefix and without one, as it did before store prefixes existed.
+            val forbidden =
+                listOf("grafana", "reports", "pyroscope").flatMap { root ->
+                    listOf("$root/x", "$root/annotations/acme/b.json", "$root/acme/lab-1/index.html")
+                }
+
+            accepted.forEach { storePrefix ->
+                val resources =
+                    statements(AWSPolicy.Inline.CompactorTaskAccess(storePrefix).toJson())
+                        .single { "s3:DeleteObject" in it.values("Action") }
+                        .values("Resource")
+                val keys = forbidden + forbidden.map { "${storePrefix.trim('/')}/$it" }
+                keys.forEach { key ->
+                    assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", key))
+                        .describedAs("prefix '$storePrefix' reaches $key")
+                        .isFalse()
+                }
+            }
+        }
+
+        @Test
+        fun `the compactor policy refuses a prefix that could widen it`() {
+            listOf("*", "..", "grafana", "pyroscope/x", "a/mimir").forEach { storePrefix ->
+                assertThatThrownBy { AWSPolicy.Inline.CompactorTaskAccess(storePrefix).toJson() }
+                    .isInstanceOf(IllegalArgumentException::class.java)
+            }
         }
 
         @Test

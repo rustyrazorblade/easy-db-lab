@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
+import com.rustyrazorblade.easydblab.configuration.store.StorePrefix
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -19,12 +20,17 @@ import java.time.format.DateTimeFormatter
  * @property bucket The account-level bucket.
  * @property tenant The cluster's observability tenant.
  * @property storePrefix The store prefix every root sits under ([StoreBackend.prefix]); empty for none.
+ *   Checked with [StorePrefix.requireValid].
  */
 data class ObservabilityStore(
     val bucket: String,
     val tenant: String,
     val storePrefix: String = StoreBackend.NO_PREFIX,
 ) {
+    init {
+        StorePrefix.requireValid(storePrefix)
+    }
+
     companion object {
         /**
          * The store of the given cluster: its account bucket, its tenant and its store prefix.

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.store.StorePrefix
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.toJson
 
 /**
@@ -395,13 +396,14 @@ sealed class AWSPolicy {
              * roots, followed by the same roots under the prefix when it is not empty. Only the
              * compactor's allow uses it. It names one prefix, so it never grants a root under a
              * prefix other than the caller's. Denies use [underAnyPrefix] instead, because a deny
-             * must not depend on who put it last.
+             * must not depend on who put it last. The prefix is checked first ([StorePrefix]), so no
+             * wildcard, `..` or root segment can widen the allow.
              */
             fun storeRoots(
                 storePrefix: String,
                 roots: List<String>,
             ): List<String> {
-                val prefix = storePrefix.trim('/')
+                val prefix = StorePrefix.requireValid(storePrefix).trim('/')
                 return if (prefix.isEmpty()) roots else roots + roots.map { "$prefix/$it" }
             }
         }

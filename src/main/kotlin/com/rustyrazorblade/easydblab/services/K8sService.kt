@@ -49,6 +49,9 @@ interface K8sManifestOperations {
         nodeName: String,
         labels: Map<String, String>,
     ): Result<Unit>
+
+    /** The names of the nodes that carry every one of [labels]; every node when [labels] is empty. */
+    fun nodesMatching(labels: Map<String, String>): Result<List<String>>
 }
 
 /**

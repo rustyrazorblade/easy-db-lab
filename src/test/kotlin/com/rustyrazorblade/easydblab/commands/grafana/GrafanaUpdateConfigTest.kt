@@ -159,6 +159,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             .thenReturn(Result.success(Unit))
         // Nothing is running yet: every workload reports its configuration as changed.
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("control0")))
     }
 
     @Test

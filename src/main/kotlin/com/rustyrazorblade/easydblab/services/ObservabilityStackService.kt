@@ -141,6 +141,7 @@ class DefaultObservabilityStackService(
 
     private val stateDirectories = OnNodeStateDirectories(remoteOps, eventBus)
     private val retainedClaimCheck = RetainedClaimCheck(k8sService)
+    private val placementCheck = PlacementCheck(k8sService)
 
     override fun deploy(): Result<Unit> =
         runCatching {
@@ -150,6 +151,8 @@ class DefaultObservabilityStackService(
             val hosting = environment.hosting
             // Before anything is applied: a claim on a class that deletes its volume would lose the state.
             retainedClaimCheck.require(hosting.storage)
+            // A selector no node matches would leave every backend Pending until the rollout wait times out.
+            placementCheck.require(hosting.placement)
 
             val clusterConfig = createClusterConfigMap(clusterState, hosting)
             val collector = collectorStage(clusterState, environment)

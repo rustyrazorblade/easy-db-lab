@@ -2,7 +2,7 @@
 
 ### Requirement: Observability backends and Grafana run on the pod network behind ClusterIP Services
 
-Mimir, Loki, Tempo, Pyroscope and Grafana SHALL run as ordinary pod-network workloads behind ClusterIP Services, with no `hostNetwork`. Their placement SHALL come from a resolved `Placement` value — a node selector, tolerations, and a host-network flag — derived once from the recorded environment, never from testing an environment name. On AWS the resolved placement SHALL keep today's control-node selector and its matching toleration; where the environment declares no such node the selector and tolerations SHALL be empty. An `init` user node label SHALL merge into the selector. The same manifests SHALL be used on every environment.
+Mimir, Loki, Tempo, Pyroscope and Grafana SHALL run as ordinary pod-network workloads behind ClusterIP Services, with no `hostNetwork`. Their placement SHALL come from a resolved `Placement` value — a node selector, tolerations, and whether host ports are published — derived once from the recorded environment, never from testing an environment name. On AWS the resolved placement SHALL keep today's control-node selector and its matching toleration; where the environment declares no such node the selector and tolerations SHALL be empty. An `init` user node label SHALL merge into the selector. The same manifests SHALL be used on every environment.
 
 On an environment that owns its nodes (AWS), each of these workloads SHALL also publish its client ports on the node as container `hostPort`s, with no `hostNetwork`. Callers outside the pod network reach those ports at the control node's private IP: redirected clusters, node-side agents, and the CLI and the teardown flush until #1090. The ports are Mimir 9009, Loki 3100, Tempo 3200, 4320 and 4321, Pyroscope 4040 and Grafana 3000, which the nginx front in the Grafana pod holds. These host ports are temporary: a follow-up moves each node-IP caller to Service DNS or a NodePort and removes them. Where the environment does not own its nodes, no workload SHALL declare a host port.
 
@@ -21,6 +21,11 @@ Each backend's local state SHALL be stored on a `hostPath` where the environment
 - **WHEN** the five workloads are rendered
 - **THEN** each carries the `node-role.kubernetes.io/control-plane=true` selector and its matching toleration
 - **AND** each mounts its state from the `/mnt/db1/<backend>` host path, exactly as today
+
+#### Scenario: A node label no node carries is refused
+- **GIVEN** an `init --node-label` that no node carries together with the environment's own selector
+- **WHEN** the observability stack deploys
+- **THEN** it fails before applying anything, naming the merged selector and that the label must already be on a node
 
 #### Scenario: On AWS the client ports stay published on the control node
 - **GIVEN** an AWS environment

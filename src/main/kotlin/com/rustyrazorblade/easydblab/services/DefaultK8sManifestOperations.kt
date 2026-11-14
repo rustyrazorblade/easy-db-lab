@@ -161,4 +161,16 @@ class DefaultK8sManifestOperations(
                 log.info { "Labeled node $nodeName" }
             }
         }
+
+    override fun nodesMatching(labels: Map<String, String>): Result<List<String>> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                client
+                    .nodes()
+                    .withLabels(labels)
+                    .list()
+                    .items
+                    .map { it.metadata.name }
+            }
+        }
 }

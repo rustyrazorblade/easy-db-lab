@@ -159,6 +159,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.storageClassReclaimPolicy(any())).thenReturn(Result.success("Retain"))
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("control0")))
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
@@ -474,6 +475,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("control0")))
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
     }
 
@@ -721,6 +723,32 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val hosting = argumentCaptor<ObservabilityHosting>()
         verify(mockDashboardService).deploy(anyOrNull(), any(), any(), hosting.capture())
         assertThat(hosting.firstValue.placement.nodeSelector).containsAllEntriesOf(labels)
+    }
+
+    @Test
+    fun `a node selector no node matches fails the deploy before anything is applied`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts = controlHosts,
+                s3Bucket = "easy-db-lab-test",
+                initConfig = InitConfig(region = "us-west-2", nodeLabels = mapOf("pool" to "observability")),
+            ),
+        )
+        val selector = argumentCaptor<Map<String, String>>()
+        whenever(mockK8sService.nodesMatching(selector.capture())).thenReturn(Result.success(emptyList()))
+
+        assertThatThrownBy { service.deploy().getOrThrow() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("pool=observability")
+            .hasMessageContaining("--node-label")
+
+        assertThat(
+            selector.firstValue,
+        ).containsEntry("pool", "observability").containsEntry("node-role.kubernetes.io/control-plane", "true")
+        verify(mockK8sService, never()).createConfigMap(any(), any(), any(), any())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
     }
 
     /**

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.io.IOException
 
 /** [KitProcessEnvironment] is the one launch seam every kit process goes through. */
 internal class KitProcessEnvironmentTest {
@@ -129,14 +130,15 @@ internal class KitProcessEnvironmentTest {
     }
 
     @Test
-    fun `an unreadable state json does not stop the launch, and EDL_NODE_SSH reads as AWS`() {
-        File(workspace, CLUSTER_STATE).writeText("{ not json")
+    fun `an unreadable state json fails the launch naming the state file`() {
+        val stateFile = File(workspace, CLUSTER_STATE).apply { writeText("{ not json") }
         val builder = ProcessBuilder("true")
 
-        environment.applyTo(builder, workspace, emptyMap())
-
-        assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("true")
-        assertThat(builder.environment()["KUBECONFIG"]).isEqualTo(kubeconfig.absolutePath)
+        assertThatThrownBy { environment.applyTo(builder, workspace, emptyMap()) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(stateFile.absolutePath)
+            .hasCauseInstanceOf(IOException::class.java)
+        assertThat(builder.environment()).doesNotContainKey(Constants.Kit.NODE_SSH_ENV)
     }
 
     private fun recordCapabilities(capabilities: Set<NodeCapability>) {

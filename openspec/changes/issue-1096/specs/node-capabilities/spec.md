@@ -140,6 +140,12 @@ The `cluster-config` ConfigMap SHALL carry a `capabilities` key: the serial name
 - **WHEN** a kit process starts
 - **THEN** it sees `EDL_NODE_SSH=true`
 
+#### Scenario: Unreadable state fails the kit launch
+
+- **GIVEN** a workspace whose `state.json` exists but cannot be read or parsed
+- **WHEN** a kit process is about to start
+- **THEN** the launch fails with a message naming the state file, and no kit process starts
+
 ### Requirement: status lists the capabilities
 
 `status` SHALL list every capability: present, or absent with its reason.

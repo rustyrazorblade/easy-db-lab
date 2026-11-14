@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
-import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 
 /**
@@ -29,8 +28,8 @@ import java.io.File
  *   no set (or has no `state.json`) reads as AWS, so `true`. A kit skips its node checks over SSH on
  *   `false`, and never guesses from a failed `ssh`.
  *
- * A `state.json` that cannot be read also reads as AWS. Only `EDL_NODE_SSH` depends on the state, so a
- * damaged file must not stop every kit launch; the commands that need the state report it.
+ * A `state.json` that exists but cannot be read fails the launch, naming the file: guessing AWS would
+ * hand a local or bring-your-own cluster's kit `EDL_NODE_SSH=true` and send it to nodes it cannot reach.
  *
  * @param installer writes the wrappers into the workspace
  * @param clusterStateManager reads the workspace cluster state, for the recorded capability set
@@ -39,8 +38,6 @@ class KitProcessEnvironment(
     private val installer: ToolWrapperInstaller,
     private val clusterStateManager: ClusterStateManager,
 ) {
-    private val log = KotlinLogging.logger {}
-
     /**
      * Applies the kit process environment to [builder] for [workspace], on top of [variables].
      *
@@ -69,15 +66,14 @@ class KitProcessEnvironment(
         return builder
     }
 
-    /** The capabilities the workspace records; AWS when it has no cluster state or cannot read it. */
+    /**
+     * The capabilities the workspace records; AWS when it has no cluster state.
+     *
+     * @throws IllegalStateException naming the state file when it exists but cannot be read
+     */
     private fun recordedCapabilities(): NodeCapabilities =
         when {
-            clusterStateManager.exists() ->
-                runCatching { NodeCapabilities.from(clusterStateManager.load()) }
-                    .getOrElse { e ->
-                        log.warn(e) { "Cannot read the cluster state; EDL_NODE_SSH reads as AWS" }
-                        NodeCapabilities.AWS
-                    }
+            clusterStateManager.exists() -> NodeCapabilities.from(clusterStateManager.load())
             else -> NodeCapabilities.AWS
         }
 }

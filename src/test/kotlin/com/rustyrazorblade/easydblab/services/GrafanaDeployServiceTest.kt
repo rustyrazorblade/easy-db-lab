@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
@@ -121,7 +122,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
     @Test
     fun `deploy builds and applies all resources`() {
-        val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
+        val result = service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
@@ -129,7 +130,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
     @Test
     fun `deploy puts the tree on the control node before the Grafana resources are applied`() {
-        service().deploy(testControlHost, context("acme"), "acct-bucket")
+        service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
 
         val order = inOrder(mockTreeUploader, mockK8sService)
         order.verify(mockTreeUploader).upload(eq(testControlHost), any())
@@ -141,7 +142,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
 
-        val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
+        val result = service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to create Grafana datasources ConfigMap")
@@ -151,7 +152,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
     fun `deploy fails without touching K8s resources when the tree upload fails`() {
         whenever(mockTreeUploader.upload(any(), any())).doThrow(IllegalStateException("sftp failed"))
 
-        val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
+        val result = service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to upload Grafana dashboards").contains("sftp failed")
@@ -163,7 +164,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Apply failed")))
 
-        val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
+        val result = service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to apply")
@@ -178,9 +179,9 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
     fun `a datasource change rolls Grafana through its config hash`() {
         val service = service()
 
-        service.deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
-        service.deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
-        service.deploy(testControlHost, context("other"), "acct-bucket").getOrThrow()
+        service.deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
+        service.deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
+        service.deploy(testControlHost, context("other"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
 
         val deployments = argumentCaptor<HasMetadata>()
         verify(mockK8sService, times(9)).applyResource(any(), deployments.capture())
@@ -206,7 +207,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
             },
         )
 
-        service().deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
+        service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
 
         assertThat(emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>())
             .containsExactly(Event.Grafana.WorkloadConfigCompared("Deployment/grafana", changed = true))
@@ -218,7 +219,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
      */
     @Test
     fun `the applied Grafana pod reads the account bucket in the bucket's own region`() {
-        service().deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
+        service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
 
         val applied = argumentCaptor<HasMetadata>()
         verify(mockK8sService, times(3)).applyResource(any(), applied.capture())

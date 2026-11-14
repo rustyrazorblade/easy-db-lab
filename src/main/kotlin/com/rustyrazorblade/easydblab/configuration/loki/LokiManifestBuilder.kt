@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.loki
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.services.ClusterConfigData
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -8,7 +10,6 @@ import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
@@ -50,6 +51,8 @@ class LokiManifestBuilder(
         /** Loki's data directory on the control node: WAL, index head, index cache, compactor. */
         const val DATA_HOST_PATH = "/mnt/db1/loki"
 
+        private val STATE = StateVolume(APP_LABEL, "data", DATA_HOST_PATH)
+
         /** The user the Loki image runs as; [DATA_HOST_PATH] must be owned by it. */
         const val LOKI_UID = 10001L
 
@@ -65,14 +68,15 @@ class LokiManifestBuilder(
     /**
      * Builds all Loki K8s resources in apply order.
      *
-     * @return ConfigMap, Service, Deployment
+     * @param hosting where the Deployment is placed and keeps its state.
+     * @return ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
-    fun buildAllResources(): List<HasMetadata> =
-        listOf(
-            buildConfigMap(),
-            buildService(),
-            buildDeployment(),
-        )
+    fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
+        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE)
+
+    /** The Loki Deployment as [hosting] runs it. */
+    fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
+        hosting.host(buildPodTemplate(), STATE).filterIsInstance<Deployment>().single()
 
     /** The ConfigMap holding `loki.yaml`. */
     fun buildConfigMap(): ConfigMap =
@@ -114,14 +118,16 @@ class LokiManifestBuilder(
             .build()
 
     /**
-     * The Loki Deployment: one replica on the control node, host network, `Recreate` so two
-     * processes never share the WAL, and no resource limits.
+     * The Loki Deployment before it is hosted: one replica, `Recreate` so two processes never share
+     * the WAL, and no resource limits. [ObservabilityHosting] places it and sets where its state
+     * volume lives. Its HTTP port is published on the node, which the hosting keeps only on a node
+     * easy-db-lab owns.
      *
      * Liveness only checks that the HTTP server answers: readiness waits for the WAL replay, which
      * can outlast any liveness budget after a restart.
      */
     @Suppress("LongMethod")
-    fun buildDeployment(): Deployment =
+    private fun buildPodTemplate(): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
@@ -142,15 +148,7 @@ class LokiManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
             .withTerminationGracePeriodSeconds(TERMINATION_GRACE_SECONDS)
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
             .addNewContainer()
             .withName(APP_LABEL)
             .withImage(IMAGE)
@@ -166,6 +164,7 @@ class LokiManifestBuilder(
             ).addNewPort()
             .withName("http")
             .withContainerPort(Constants.K8s.LOKI_HTTP_PORT)
+            .withHostPort(Constants.K8s.LOKI_HTTP_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewPort()
@@ -203,13 +202,8 @@ class LokiManifestBuilder(
             .withConfigMap(ConfigMapVolumeSourceBuilder().withName(CONFIGMAP_NAME).build())
             .endVolume()
             .addNewVolume()
-            .withName("data")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath(DATA_HOST_PATH)
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
+            .withName(STATE.volumeName)
+            .endVolume()
             .endSpec()
             .endTemplate()
             .endSpec()

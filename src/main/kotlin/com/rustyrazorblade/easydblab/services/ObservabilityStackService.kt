@@ -1,12 +1,14 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
@@ -68,9 +70,9 @@ interface ObservabilityStackService {
  * Default implementation that applies the stack over the K8s API and configures on-node
  * directories over SSH.
  *
- * @property capabilitiesOf derives what the environment provides from cluster state. It is a test
- *   seam so a unit test can run a non-AWS environment; production takes the default. The four such
- *   seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
+ * @property environmentOf derives what the environment provides and how the stack is hosted on it
+ *   from cluster state. It is a test seam so a unit test can run a non-AWS environment; production
+ *   takes the default. The four capability seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
  *   [com.rustyrazorblade.easydblab.server.StatusCache]) are consolidated by #1040 into one provider.
  */
 @Suppress("LongParameterList")
@@ -96,7 +98,7 @@ class DefaultObservabilityStackService(
     private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
     private val configChangeReport: ConfigChangeReport,
     private val installContextFactory: DashboardInstallContextFactory,
-    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
+    private val environmentOf: (ClusterState) -> StackEnvironment = StackEnvironment::from,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
@@ -132,7 +134,8 @@ class DefaultObservabilityStackService(
         runCatching {
             val clusterState = clusterStateManager.load()
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
-            val capabilities = capabilitiesOf(clusterState)
+            val environment = environmentOf(clusterState)
+            val capabilities = environment.capabilities
 
             val clusterConfig = createClusterConfigMap(controlNode, clusterState)
 
@@ -151,11 +154,13 @@ class DefaultObservabilityStackService(
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
-            val stages = applyCapabilityGate(buildStages(telemetryRedirect), capabilities)
+            val hosting = environment.hosting
+            val stages = applyCapabilityGate(buildStages(telemetryRedirect, hosting), capabilities)
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
-            // not, so prepare them only in local mode.
-            if (telemetryRedirect == null) {
+            // not, so prepare them only in local mode, and only where state lives on the node.
+            val onNodeState = telemetryRedirect == null && hosting.storage == BackendStorage.HostPath
+            if (onNodeState) {
                 preparePyroscopeDirectory(controlNode)
                 prepareTempoDirectory(controlNode)
                 prepareMimirDirectory(controlNode)
@@ -181,9 +186,11 @@ class DefaultObservabilityStackService(
                 applyStage(stage, controlNode)
             }
 
-            if (telemetryRedirect == null) {
+            if (onNodeState) {
                 prepareGrafanaDirectory(controlNode)
-                uploadDashboards(controlNode, clusterState)
+            }
+            if (telemetryRedirect == null) {
+                uploadDashboards(controlNode, clusterState, hosting)
             }
 
             // Grafana is applied by the Grafana deploy service, not a stage, and rolls on a datasource change.
@@ -219,9 +226,12 @@ class DefaultObservabilityStackService(
      * The stages to apply after the collector. Collectors and supporting infra deploy in both modes;
      * the local telemetry backends are local-mode only.
      */
-    private fun buildStages(telemetryRedirect: TelemetryRedirect?): List<Stage> =
+    private fun buildStages(
+        telemetryRedirect: TelemetryRedirect?,
+        hosting: ObservabilityHosting,
+    ): List<Stage> =
         buildList {
-            add(Stage("kube-state-metrics", kubeStateMetricsManifestBuilder.buildAllResources()))
+            add(Stage("kube-state-metrics", kubeStateMetricsManifestBuilder.buildAllResources(hosting.placement)))
             add(Stage("Fluent Bit Journald", journaldOtelManifestBuilder.buildAllResources(), NodeCapability.SYSTEMD_JOURNAL))
             add(Stage("ebpf_exporter", ebpfExporterManifestBuilder.buildAllResources()))
             add(Stage("Registry", registryManifestBuilder.buildAllResources()))
@@ -229,10 +239,10 @@ class DefaultObservabilityStackService(
             add(Stage("Beyla", beylaManifestBuilder.buildAllResources()))
             add(Stage("YACE", yaceManifestBuilder.buildAllResources(), NodeCapability.CLOUDWATCH))
             if (telemetryRedirect == null) {
-                add(Stage("Mimir", mimirManifestBuilder.buildAllResources()))
-                add(Stage("Loki", lokiManifestBuilder.buildAllResources()))
-                add(Stage("Tempo", tempoManifestBuilder.buildAllResources()))
-                add(Stage("Pyroscope", pyroscopeManifestBuilder.buildAllResources()))
+                add(Stage("Mimir", mimirManifestBuilder.buildAllResources(hosting)))
+                add(Stage("Loki", lokiManifestBuilder.buildAllResources(hosting)))
+                add(Stage("Tempo", tempoManifestBuilder.buildAllResources(hosting)))
+                add(Stage("Pyroscope", pyroscopeManifestBuilder.buildAllResources(hosting = hosting)))
             } else {
                 // Redirect: the eBPF agent still runs on every node, pointed at the external
                 // Pyroscope; the server does not exist here.
@@ -247,10 +257,15 @@ class DefaultObservabilityStackService(
     private fun uploadDashboards(
         controlNode: ClusterHost,
         clusterState: ClusterState,
+        hosting: ObservabilityHosting,
     ) {
         grafanaDeployService
-            .deploy(controlNode, installContextFactory.forCluster(clusterState, controlNode), ObservabilityStore.from(clusterState).bucket)
-            .getOrElse { exception ->
+            .deploy(
+                controlNode,
+                installContextFactory.forCluster(clusterState, controlNode),
+                ObservabilityStore.from(clusterState).bucket,
+                hosting,
+            ).getOrElse { exception ->
                 error("Failed to upload dashboards: ${exception.message}")
             }
     }
@@ -360,5 +375,23 @@ class DefaultObservabilityStackService(
                 error("Failed to create cluster-config ConfigMap: ${exception.message}")
             }
         return configData
+    }
+}
+
+/**
+ * What one stack deploy needs to know about the environment it deploys into: the capabilities that
+ * gate stages and the hosting the backends and Grafana are placed with. One value, resolved once
+ * per deploy from cluster state, so the two never come from different readings of it.
+ *
+ * @property capabilities what the environment's nodes and account provide.
+ * @property hosting where the backends and Grafana run and keep their state.
+ */
+data class StackEnvironment(
+    val capabilities: NodeCapabilities,
+    val hosting: ObservabilityHosting,
+) {
+    companion object {
+        /** The environment [state] records. */
+        fun from(state: ClusterState): StackEnvironment = StackEnvironment(NodeCapabilities.from(state), ObservabilityHosting.from(state))
     }
 }

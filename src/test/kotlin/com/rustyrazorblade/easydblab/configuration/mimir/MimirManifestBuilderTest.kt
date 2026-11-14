@@ -254,11 +254,11 @@ class MimirManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the pod runs on the control node's network, with time to flush and no resource limits`() {
+    fun `on AWS the pod runs on the control node in the pod network, with time to flush and no resource limits`() {
         val pod = pod()
         val container = pod.containers[0]
 
-        assertThat(pod.hostNetwork).isTrue()
+        assertThat(pod.hostNetwork ?: false).isFalse()
         assertThat(pod.nodeSelector).containsEntry("node-role.kubernetes.io/control-plane", "true")
         assertThat(pod.terminationGracePeriodSeconds).isEqualTo(600L)
         assertThat(container.resources?.limits.orEmpty()).isEmpty()

@@ -34,7 +34,9 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
 
     @BeforeEach
     fun setup() {
-        whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+        whenever(
+            getKoin().get<ClusterStateManager>().load(),
+        ).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
         builder = OtelHostCollectorManifestBuilder(getKoin().get())
     }
 

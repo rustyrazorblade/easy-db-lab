@@ -18,7 +18,10 @@ import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 class InstanceRolePolicies(
     private val aws: AWS,
 ) {
-    /** Puts every inline policy in the set onto [roleName]. */
+    /**
+     * Puts every inline policy in the set onto [roleName]. The S3 delete deny is prefix-independent:
+     * it covers the denied roots under any store prefix.
+     */
     fun apply(roleName: String) {
         aws.attachS3Policy(roleName)
         putInlinePolicy(roleName, Constants.AWS.InlinePolicies.SESSION_MANAGER, AWSPolicy.Inline.SessionManagerInstance.toJson())

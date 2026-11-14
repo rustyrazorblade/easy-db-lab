@@ -42,6 +42,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts = mutableMapOf(),
             ),
         )

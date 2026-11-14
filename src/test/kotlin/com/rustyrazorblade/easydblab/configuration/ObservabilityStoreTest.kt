@@ -33,7 +33,7 @@ class ObservabilityStoreTest {
     fun `the annotations root carries the tenant`() {
         val store = ObservabilityStore.from(state)
 
-        assertThat(store.annotationsRoot().toString()).isEqualTo("s3://acct-bucket/grafana/annotations/acme")
+        assertThat(store.annotationsRoot().toString()).isEqualTo("acct-bucket/grafana/annotations/acme")
     }
 
     @Test
@@ -84,5 +84,30 @@ class ObservabilityStoreTest {
         val name = SnapshotName.firstFree(state, at) { it in taken }
 
         assertThat(name.toString()).isEqualTo("20260924-130407_${state.clusterLabelName()}")
+    }
+
+    @Test
+    fun `every root moves under a store prefix`() {
+        val store = ObservabilityStore("acct-bucket", "acme", storePrefix = "team-a")
+        val cluster = state.clusterLabelName()
+
+        assertThat(store.metricsPrefix()).isEqualTo("team-a/mimir")
+        assertThat(store.logsPrefix()).isEqualTo("team-a/loki")
+        assertThat(store.tracesPrefix()).isEqualTo("team-a/tempo")
+        assertThat(store.profilesPrefix()).isEqualTo("team-a/pyroscope")
+        assertThat(store.tenantMetricsRoot().getKey()).isEqualTo("team-a/mimir/acme")
+        assertThat(store.logsRoot().getKey()).isEqualTo("team-a/loki")
+        assertThat(store.tracesRoot().getKey()).isEqualTo("team-a/tempo")
+        assertThat(store.profilesRoot().getKey()).isEqualTo("team-a/pyroscope")
+        assertThat(store.annotationsRoot().getKey()).startsWith("team-a/grafana/")
+        assertThat(store.documentsRoot(cluster).getKey()).startsWith("team-a/reports/")
+    }
+
+    @Test
+    fun `an empty store prefix keeps every root at the top of the bucket`() {
+        val store = ObservabilityStore.from(state)
+
+        assertThat(store.tracesRoot().getKey()).isEqualTo("tempo")
+        assertThat(store.tenantMetricsRoot().getKey()).isEqualTo("mimir/acme")
     }
 }

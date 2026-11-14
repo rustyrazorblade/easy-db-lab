@@ -117,7 +117,7 @@ class CompactorTaskIntegrationTest {
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         val clusterStateManager =
             mock<ClusterStateManager>().also {
-                whenever(it.load()).thenReturn(ClusterState(name = "compactor-it", versions = mutableMapOf()))
+                whenever(it.load()).thenReturn(ClusterState(name = "compactor-it", versions = mutableMapOf(), s3Bucket = bucket))
             }
         val user =
             User(
@@ -147,7 +147,7 @@ class CompactorTaskIntegrationTest {
     /** The task's configuration files, pointed at LocalStack at [s3Host]. */
     private fun configFiles(s3Host: String): Map<String, String> {
         val local = "host.testcontainers.internal:${SharedLocalStack.hostPort()}"
-        return CompactorTaskDefinition.configFiles().mapValues { (file, content) ->
+        return definition.configFiles().mapValues { (file, content) ->
             when (file) {
                 MimirManifestBuilder.CONFIG_FILE -> ObservabilityBackends.mimirConfig(content)
                 LokiManifestBuilder.CONFIG_FILE -> ObservabilityBackends.lokiConfig(content)

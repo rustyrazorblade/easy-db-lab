@@ -1,15 +1,16 @@
 package com.rustyrazorblade.easydblab.commands.report
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
 import com.rustyrazorblade.easydblab.services.documents.DocumentsRejectedException
@@ -20,12 +21,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.any
-import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
-import org.mockito.kotlin.times
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
@@ -33,10 +29,10 @@ import java.io.File
  * Tests for `report upload`: the name rule stops the whole upload, and a cluster that is down (no
  * hosts, infrastructure DOWN) still takes documents, because only the state file and S3 are needed.
  *
- * S3 is faked at the [ObjectStore] boundary; the key layout and the index are the real code's.
+ * Storage is an in-memory [ObjectStore]; the key layout and the index are the real code's.
  */
 class ReportUploadTest : BaseKoinTest() {
-    private val objectStore = mock<ObjectStore>()
+    private val objectStore = InMemoryObjectStore()
     private val stateManager = mock<ClusterStateManager>()
     private val events = mutableListOf<Event>()
 
@@ -54,6 +50,7 @@ class ReportUploadTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { stateManager }
+                single<ObjectStore> { objectStore }
                 single<TestDocumentService> { DefaultTestDocumentService(objectStore) }
             },
         )
@@ -91,7 +88,7 @@ class ReportUploadTest : BaseKoinTest() {
                     },
                 ).containsExactly("my notes.md", "graph.png")
             })
-        verify(objectStore, never()).uploadFile(any(), any(), any())
+        assertThat(objectStore.listFiles(ClusterStoragePath.root("acct"), recursive = true)).isEmpty()
     }
 
     @Test
@@ -100,14 +97,17 @@ class ReportUploadTest : BaseKoinTest() {
 
         command(results).execute()
 
-        val keys = argumentCaptor<ClusterS3Path>()
-        verify(objectStore, times(3)).uploadFile(any(), keys.capture(), any())
-        assertThat(keys.allValues.map { it.getKey() })
-            .containsExactly("reports/acme/lab-abc/results.md", "reports/acme/lab-abc/results.html", "reports/acme/lab-abc/index.html")
+        val stored = objectStore.listFiles(ClusterStoragePath.root("acct"), recursive = true).map { it.path.getKey() }
+        assertThat(stored)
+            .containsExactlyInAnyOrder(
+                "reports/acme/lab-abc/results.md",
+                "reports/acme/lab-abc/results.html",
+                "reports/acme/lab-abc/index.html",
+            )
         val uploaded = events.filterIsInstance<Event.Report.DocumentsUploaded>().single()
         assertThat(
             uploaded.documents,
-        ).containsExactly(Event.Report.StoredDocument("results.md", "s3://acct/reports/acme/lab-abc/results.md"))
-        assertThat(uploaded.indexUri).isEqualTo("s3://acct/reports/acme/lab-abc/index.html")
+        ).containsExactly(Event.Report.StoredDocument("results.md", "mem://acct/reports/acme/lab-abc/results.md"))
+        assertThat(uploaded.indexUri).isEqualTo("mem://acct/reports/acme/lab-abc/index.html")
     }
 }

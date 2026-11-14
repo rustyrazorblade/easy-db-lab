@@ -106,11 +106,13 @@ class CompactorTaskDefinitionTest {
         assertThat(compactors.values).allSatisfy { container ->
             assertThat(container.dependsOn().single().containerName()).isEqualTo(CompactorTaskDefinition.CONFIG_CONTAINER)
             assertThat(container.environment().associate { it.name() to it.value() })
-                .containsEntry("S3_BUCKET", "easy-db-lab-acct")
-                .containsEntry("AWS_REGION", "eu-west-1")
-                .containsEntry("METRICS_S3_PREFIX", "mimir")
-                .containsEntry("LOGS_S3_PREFIX", "loki")
-                .containsEntry("TRACES_S3_PREFIX", "tempo")
+                .containsEntry("STORE_BUCKET", "easy-db-lab-acct")
+                .containsEntry("STORE_REGION", "eu-west-1")
+                .containsEntry("STORE_ENDPOINT", "s3.eu-west-1.amazonaws.com")
+                .containsEntry("METRICS_STORE_PREFIX", "mimir")
+                .containsEntry("LOGS_STORE_PREFIX", "loki")
+                .containsEntry("TRACES_STORE_PREFIX", "tempo")
+                .doesNotContainKeys("S3_BUCKET", "AWS_REGION", "METRICS_S3_PREFIX", "LOGS_S3_PREFIX", "TRACES_S3_PREFIX")
             assertThat(container.logConfiguration().logDriver()).isEqualTo(LogDriver.AWSLOGS)
             assertThat(container.logConfiguration().options()).containsEntry("awslogs-group", "/easy-db-lab/compactor")
         }
@@ -148,7 +150,7 @@ class CompactorTaskDefinitionTest {
 
         assertThat(data.readOnly() == true).describedAs("read-only").isFalse()
         assertThat(request.volumes().map { it.name() }).contains(data.sourceVolume())
-        assertThat(CompactorTaskDefinition.configFiles().getValue("mimir.yaml")).contains("filepath: /data/")
+        assertThat(definition.configFiles().getValue("mimir.yaml")).contains("filepath: /data/")
     }
 
     /** A stopped service reuses the latest revision only when nothing the task runs with changed. */
@@ -185,5 +187,43 @@ class CompactorTaskDefinitionTest {
         }
         assertThat(definition.configHash()).isEqualTo(hash)
         assertThat(CompactorTaskDefinition.hashOf(request)).isNotEqualTo(hash)
+    }
+
+    private fun storePrefixes(definition: CompactorTaskDefinition): List<Map<String, String>> =
+        definition
+            .request()
+            .containerDefinitions()
+            .filter { it.name() != CompactorTaskDefinition.CONFIG_CONTAINER }
+            .map { container ->
+                container
+                    .environment()
+                    .associate { it.name() to it.value() }
+                    .filterKeys { it.endsWith("_STORE_PREFIX") }
+            }
+
+    @Test
+    fun `with no store prefix every compactor reads the roots at the top of the bucket`() {
+        assertThat(storePrefixes(definition)).isNotEmpty.allSatisfy { env ->
+            assertThat(env).containsExactlyInAnyOrderEntriesOf(
+                mapOf("METRICS_STORE_PREFIX" to "mimir", "LOGS_STORE_PREFIX" to "loki", "TRACES_STORE_PREFIX" to "tempo"),
+            )
+        }
+    }
+
+    /** The task role may compact only under the prefix it was built for; the task must read those same roots. */
+    @Test
+    fun `with a store prefix every compactor reads the roots under it, as its task role allows`() {
+        val prefixed = definition.copy(storePrefix = "team-a")
+
+        assertThat(storePrefixes(prefixed)).isNotEmpty.allSatisfy { env ->
+            assertThat(env).containsExactlyInAnyOrderEntriesOf(
+                mapOf(
+                    "METRICS_STORE_PREFIX" to "team-a/mimir",
+                    "LOGS_STORE_PREFIX" to "team-a/loki",
+                    "TRACES_STORE_PREFIX" to "team-a/tempo",
+                ),
+            )
+        }
+        assertThat(prefixed.configHash()).isNotEqualTo(definition.configHash())
     }
 }

@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -200,13 +200,13 @@ data class RestoreResult(
  *
  * @property localPath The relative path from the working directory
  * @property isDirectory True if this target is a directory, false if it's a file
- * @property s3PathProvider Lambda that returns the S3 path for this target given a root ClusterS3Path
+ * @property s3PathProvider Lambda that returns the S3 path for this target given a root ClusterStoragePath
  * @property displayName Human-readable name for logging and user output
  */
 enum class BackupTarget(
     val localPath: String,
     val isDirectory: Boolean,
-    val s3PathProvider: (ClusterS3Path) -> ClusterS3Path,
+    val s3PathProvider: (ClusterStoragePath) -> ClusterStoragePath,
     val displayName: String,
 ) {
     STATE_JSON("state.json", false, { it.stateJson() }, "Cluster state"),
@@ -249,7 +249,7 @@ class DefaultClusterBackupService(
     ): Result<BackupResult> =
         runCatching {
             validateS3Bucket(clusterState)
-            val s3Root = ClusterS3Path.from(clusterState)
+            val s3Root = ClusterStoragePath.from(clusterState)
             val successfulTargets = mutableSetOf<BackupTarget>()
             var filesBackedUp = 0
 
@@ -274,7 +274,7 @@ class DefaultClusterBackupService(
                     objectStore.uploadFile(localFile, s3Path, showProgress = true)
                     filesBackedUp++
                 }
-                eventBus.emit(Event.Backup.ConfigBackedUp(target.displayName, s3Path.toUri()))
+                eventBus.emit(Event.Backup.ConfigBackedUp(target.displayName, objectStore.uriOf(s3Path)))
                 successfulTargets.add(target)
             }
 
@@ -287,7 +287,7 @@ class DefaultClusterBackupService(
     ): Result<RestoreResult> =
         runCatching {
             validateS3Bucket(clusterState)
-            val s3Root = ClusterS3Path.from(clusterState)
+            val s3Root = ClusterStoragePath.from(clusterState)
             val successfulTargets = mutableSetOf<BackupTarget>()
             var filesRestored = 0
 
@@ -315,7 +315,7 @@ class DefaultClusterBackupService(
                     objectStore.downloadFile(s3Path, localPath, showProgress = true)
                     filesRestored++
                 }
-                eventBus.emit(Event.Backup.ConfigRestored(target.displayName, s3Path.toUri()))
+                eventBus.emit(Event.Backup.ConfigRestored(target.displayName, objectStore.uriOf(s3Path)))
                 successfulTargets.add(target)
             }
 
@@ -334,12 +334,12 @@ class DefaultClusterBackupService(
                 "Kubeconfig file does not exist at: $localPath"
             }
 
-            val s3Path = ClusterS3Path.from(clusterState).kubeconfig()
+            val s3Path = ClusterStoragePath.from(clusterState).kubeconfig()
 
-            log.info { "Backing up kubeconfig to S3: ${s3Path.toUri()}" }
+            log.info { "Backing up kubeconfig to S3: ${objectStore.uriOf(s3Path)}" }
             objectStore.uploadFile(localFile, s3Path, showProgress = true)
 
-            eventBus.emit(Event.Backup.KubeconfigBackedUp(s3Path.toUri()))
+            eventBus.emit(Event.Backup.KubeconfigBackedUp(objectStore.uriOf(s3Path)))
         }
 
     override fun restoreKubeconfig(
@@ -349,16 +349,16 @@ class DefaultClusterBackupService(
         runCatching {
             validateS3Bucket(clusterState)
 
-            val s3Path = ClusterS3Path.from(clusterState).kubeconfig()
+            val s3Path = ClusterStoragePath.from(clusterState).kubeconfig()
 
             require(objectStore.fileExists(s3Path)) {
-                "Kubeconfig does not exist in S3 at: ${s3Path.toUri()}"
+                "Kubeconfig does not exist in S3 at: ${objectStore.uriOf(s3Path)}"
             }
 
-            log.info { "Restoring kubeconfig from S3: ${s3Path.toUri()}" }
+            log.info { "Restoring kubeconfig from S3: ${objectStore.uriOf(s3Path)}" }
             objectStore.downloadFile(s3Path, localPath, showProgress = true)
 
-            eventBus.emit(Event.Backup.KubeconfigRestored(s3Path.toUri()))
+            eventBus.emit(Event.Backup.KubeconfigRestored(objectStore.uriOf(s3Path)))
         }
 
     override fun backupK8sManifests(
@@ -373,12 +373,12 @@ class DefaultClusterBackupService(
                 "K8s manifests directory does not exist at: $localDir"
             }
 
-            val s3Path = ClusterS3Path.from(clusterState).k8s()
+            val s3Path = ClusterStoragePath.from(clusterState).k8s()
 
-            log.info { "Backing up k8s manifests to S3: ${s3Path.toUri()}" }
+            log.info { "Backing up k8s manifests to S3: ${objectStore.uriOf(s3Path)}" }
             objectStore.uploadDirectory(localDir, s3Path, showProgress = true)
 
-            eventBus.emit(Event.Backup.K8sManifestsBackedUp(s3Path.toUri()))
+            eventBus.emit(Event.Backup.K8sManifestsBackedUp(objectStore.uriOf(s3Path)))
         }
 
     override fun restoreK8sManifests(
@@ -388,16 +388,16 @@ class DefaultClusterBackupService(
         runCatching {
             validateS3Bucket(clusterState)
 
-            val s3Path = ClusterS3Path.from(clusterState).k8s()
+            val s3Path = ClusterStoragePath.from(clusterState).k8s()
 
             require(objectStore.directoryExists(s3Path)) {
-                "K8s manifests do not exist in S3 at: ${s3Path.toUri()}"
+                "K8s manifests do not exist in S3 at: ${objectStore.uriOf(s3Path)}"
             }
 
-            log.info { "Restoring k8s manifests from S3: ${s3Path.toUri()}" }
+            log.info { "Restoring k8s manifests from S3: ${objectStore.uriOf(s3Path)}" }
             objectStore.downloadDirectory(s3Path, localDir, showProgress = true)
 
-            eventBus.emit(Event.Backup.K8sManifestsRestored(s3Path.toUri()))
+            eventBus.emit(Event.Backup.K8sManifestsRestored(objectStore.uriOf(s3Path)))
         }
 
     override fun kubeconfigExistsInS3(clusterState: ClusterState): Boolean {
@@ -406,7 +406,7 @@ class DefaultClusterBackupService(
             return false
         }
 
-        val s3Path = ClusterS3Path.from(clusterState).kubeconfig()
+        val s3Path = ClusterStoragePath.from(clusterState).kubeconfig()
         return objectStore.fileExists(s3Path)
     }
 
@@ -416,7 +416,7 @@ class DefaultClusterBackupService(
             return false
         }
 
-        val s3Path = ClusterS3Path.from(clusterState).k8s()
+        val s3Path = ClusterStoragePath.from(clusterState).k8s()
         return objectStore.directoryExists(s3Path)
     }
 
@@ -432,12 +432,12 @@ class DefaultClusterBackupService(
                 "Cassandra patch file does not exist at: $localPath"
             }
 
-            val s3Path = ClusterS3Path.from(clusterState).cassandraPatch()
+            val s3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
 
-            log.info { "Backing up cassandra.patch.yaml to S3: ${s3Path.toUri()}" }
+            log.info { "Backing up cassandra.patch.yaml to S3: ${objectStore.uriOf(s3Path)}" }
             objectStore.uploadFile(localFile, s3Path, showProgress = true)
 
-            eventBus.emit(Event.Backup.CassandraPatchBackedUp(s3Path.toUri()))
+            eventBus.emit(Event.Backup.CassandraPatchBackedUp(objectStore.uriOf(s3Path)))
         }
 
     override fun restoreCassandraPatch(
@@ -447,16 +447,16 @@ class DefaultClusterBackupService(
         runCatching {
             validateS3Bucket(clusterState)
 
-            val s3Path = ClusterS3Path.from(clusterState).cassandraPatch()
+            val s3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
 
             require(objectStore.fileExists(s3Path)) {
-                "Cassandra patch does not exist in S3 at: ${s3Path.toUri()}"
+                "Cassandra patch does not exist in S3 at: ${objectStore.uriOf(s3Path)}"
             }
 
-            log.info { "Restoring cassandra.patch.yaml from S3: ${s3Path.toUri()}" }
+            log.info { "Restoring cassandra.patch.yaml from S3: ${objectStore.uriOf(s3Path)}" }
             objectStore.downloadFile(s3Path, localPath, showProgress = true)
 
-            eventBus.emit(Event.Backup.CassandraPatchRestored(s3Path.toUri()))
+            eventBus.emit(Event.Backup.CassandraPatchRestored(objectStore.uriOf(s3Path)))
         }
 
     override fun cassandraPatchExistsInS3(clusterState: ClusterState): Boolean {
@@ -465,7 +465,7 @@ class DefaultClusterBackupService(
             return false
         }
 
-        val s3Path = ClusterS3Path.from(clusterState).cassandraPatch()
+        val s3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
         return objectStore.fileExists(s3Path)
     }
 
@@ -484,7 +484,7 @@ class DefaultClusterBackupService(
 
             val currentHashes = computeAllBackupHashes(workingDirectory)
             val storedHashes = clusterState.backupHashes
-            val s3Root = ClusterS3Path.from(clusterState)
+            val s3Root = ClusterStoragePath.from(clusterState)
 
             val updatedHashes = mutableMapOf<String, String>()
             var filesUploaded = 0
@@ -515,7 +515,7 @@ class DefaultClusterBackupService(
         currentHashes: Map<BackupTarget, String?>,
         storedHashes: Map<String, String>,
         workingDirectory: String,
-        s3Root: ClusterS3Path,
+        s3Root: ClusterStoragePath,
     ): BackupTargetResult {
         val currentHash = currentHashes[target]
         if (currentHash == null) {
@@ -538,7 +538,7 @@ class DefaultClusterBackupService(
     private fun uploadTarget(
         workingDirectory: String,
         target: BackupTarget,
-        s3Root: ClusterS3Path,
+        s3Root: ClusterStoragePath,
     ) {
         val localPath = File(workingDirectory, target.localPath).toPath()
         val s3Path = target.s3PathProvider(s3Root)

@@ -1,0 +1,4 @@
+# A test-only object-store block. It names no S3 bucket, endpoint or URI.
+backend: stub
+stub:
+  marker: stub-block

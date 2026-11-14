@@ -1,8 +1,12 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.store.S3Backend
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import software.amazon.awssdk.core.SdkPojo
 import software.amazon.awssdk.services.ecs.model.CPUArchitecture
@@ -26,7 +30,7 @@ import java.util.Base64
 
 /**
  * Builds the account compactor's ECS task definition: a pure function of the bucket, its region,
- * the two roles and the log group.
+ * the two roles, the store prefix and the log group.
  *
  * One Fargate task runs every compactor of the shared store, each in its own container on its own
  * ports: Mimir's compactor, Loki's compactor, and Tempo's backend-scheduler and backend-worker (Tempo
@@ -43,6 +47,8 @@ import java.util.Base64
  * @property region the account bucket's region.
  * @property taskRoleArn the role the containers run as (`EasyDBLabCompactorTaskRole`).
  * @property executionRoleArn the role ECS pulls images and ships logs with.
+ * @property storePrefix the store prefix the compacted roots sit under: the one the task role
+ *   ([CompactorIam]) was built for, so the task reads exactly the roots its role may compact.
  * @property logGroup the CloudWatch Logs group every container logs to.
  */
 data class CompactorTaskDefinition(
@@ -50,6 +56,7 @@ data class CompactorTaskDefinition(
     val region: String,
     val taskRoleArn: String,
     val executionRoleArn: String,
+    val storePrefix: String = StoreBackend.NO_PREFIX,
     val logGroup: String = Constants.Compactor.LOG_GROUP,
 ) {
     companion object {
@@ -64,6 +71,9 @@ data class CompactorTaskDefinition(
             listOf(CONFIG_CONTAINER, MIMIR_CONTAINER, LOKI_CONTAINER, TEMPO_SCHEDULER_CONTAINER, TEMPO_WORKER_CONTAINER)
 
         const val TEMPO_BACKEND_FILE = "tempo-backend.yaml"
+
+        /** The tenant and cluster name the compactor runs as; it reads every tenant and names no cluster. */
+        private const val COMPACTOR_IDENTITY = "compactor"
         private const val CONFIG_DIR = "/config"
         private const val CONFIG_VOLUME = "config"
 
@@ -105,15 +115,6 @@ data class CompactorTaskDefinition(
                 "-compactor.retention-enabled=false",
             )
 
-        /** Reads a configuration file from the classpath, next to [anchor]. */
-        fun resource(
-            anchor: Class<*>,
-            name: String,
-        ): String =
-            checkNotNull(anchor.getResourceAsStream(name)) { "Missing classpath resource $name next to ${anchor.simpleName}" }
-                .bufferedReader()
-                .use { it.readText() }
-
         /** The `awslogs-stream-prefix` of [container]; awslogs names its stream `<prefix>/<container>/<task id>`. */
         fun logStreamPrefix(container: String): String = container
 
@@ -149,26 +150,43 @@ data class CompactorTaskDefinition(
                 else -> value.toString()
             }
 
-        /** Every configuration file the task writes, by file name. */
-        fun configFiles(): Map<String, String> =
+        /** Every configuration file the task writes, by file name, each with the object-store block [storeBlocks] places. */
+        fun configFiles(storeBlocks: StoreBlockRenderer): Map<String, String> =
             mapOf(
-                MimirManifestBuilder.CONFIG_FILE to resource(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
-                LokiManifestBuilder.CONFIG_FILE to resource(LokiManifestBuilder::class.java, LokiManifestBuilder.CONFIG_FILE),
-                TEMPO_BACKEND_FILE to resource(CompactorTaskDefinition::class.java, TEMPO_BACKEND_FILE),
+                MimirManifestBuilder.CONFIG_FILE to
+                    storeBlocks.renderResource(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
+                LokiManifestBuilder.CONFIG_FILE to
+                    storeBlocks.renderResource(LokiManifestBuilder::class.java, LokiManifestBuilder.CONFIG_FILE),
+                TEMPO_BACKEND_FILE to storeBlocks.renderResource(CompactorTaskDefinition::class.java, TEMPO_BACKEND_FILE),
             )
     }
 
+    /** The store the compactor reads and writes: the account bucket, under [storePrefix], in its region. */
+    private fun store(): StoreBackend = S3Backend(bucket = bucket, prefix = storePrefix, region = region)
+
+    /** Every configuration file the task writes, with the object-store block of its [store]. */
+    fun configFiles(): Map<String, String> = configFiles(StoreBlockRenderer.of(store()))
+
+    /** Where [store] is reached: the variables only its own fragments read. */
+    private fun locationOf(store: StoreBackend): Map<String, String> =
+        when (store) {
+            is S3Backend -> mapOf("STORE_REGION" to store.region, "STORE_ENDPOINT" to store.endpoint)
+        }
+
     /** What the containers read from their environment; the configuration files expand it. */
-    private fun storageEnv(): List<KeyValuePair> =
-        mapOf(
-            "S3_BUCKET" to bucket,
-            "AWS_REGION" to region,
-            "METRICS_S3_PREFIX" to Constants.Observability.METRICS_ROOT,
-            "LOGS_S3_PREFIX" to Constants.Observability.LOGS_ROOT,
-            "TRACES_S3_PREFIX" to Constants.Observability.TRACES_ROOT,
-            // loki.yaml names its ingester after these; the compactor runs no ingester.
-            "TENANT" to "compactor",
-            "CLUSTER_NAME" to "compactor",
+    private fun storageEnv(): List<KeyValuePair> {
+        val store = store()
+        val layout = ObservabilityStore(bucket, tenant = COMPACTOR_IDENTITY, storePrefix = storePrefix)
+        return (
+            mapOf("STORE_BUCKET" to store.bucket) + locationOf(store) +
+                mapOf(
+                    "METRICS_STORE_PREFIX" to layout.metricsPrefix(),
+                    "LOGS_STORE_PREFIX" to layout.logsPrefix(),
+                    "TRACES_STORE_PREFIX" to layout.tracesPrefix(),
+                    // loki.yaml names its ingester after these; the compactor runs no ingester.
+                    "TENANT" to COMPACTOR_IDENTITY,
+                    "CLUSTER_NAME" to COMPACTOR_IDENTITY,
+                )
         ).map { (name, value) ->
             KeyValuePair
                 .builder()
@@ -176,6 +194,7 @@ data class CompactorTaskDefinition(
                 .value(value)
                 .build()
         }
+    }
 
     private fun logs(container: String): LogConfiguration =
         LogConfiguration

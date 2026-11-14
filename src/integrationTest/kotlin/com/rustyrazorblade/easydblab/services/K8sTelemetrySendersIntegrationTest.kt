@@ -75,7 +75,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
                     mock<ClusterStateManager>().also {
                         whenever(
                             it.load(),
-                        ).thenReturn(ClusterState(name = "senders-it", versions = mutableMapOf()))
+                        ).thenReturn(ClusterState(name = "senders-it", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
                     }
                 }
                 single { TemplateService(get(), get()) }

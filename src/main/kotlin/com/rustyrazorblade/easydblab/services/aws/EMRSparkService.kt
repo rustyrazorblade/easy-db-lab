@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -189,7 +189,7 @@ class EMRSparkService(
         if (awaitFinalStderr(stepId, stderrPath, stepDetails?.endTime)) {
             downloadAndDisplayLogs(clusterId, stepId, s3Bucket, emrLogsPath)
         } else {
-            eventBus.emit(Event.Emr.StepStderrNotFinal(stepId, stderrPath.toUri(), finalStderrMaxWait().seconds))
+            eventBus.emit(Event.Emr.StepStderrNotFinal(stepId, S3Uri.uri(stderrPath), finalStderrMaxWait().seconds))
         }
 
         val errorMessage = "Job failed: ${currentStatus.failureDetails ?: "Unknown reason"}"
@@ -204,7 +204,7 @@ class EMRSparkService(
      */
     private fun awaitFinalStderr(
         stepId: String,
-        stderrPath: ClusterS3Path,
+        stderrPath: ClusterStoragePath,
         stepEnd: Instant?,
     ): Boolean {
         eventBus.emit(Event.Emr.StepStderrWaiting(stepId, finalStderrMaxWait().seconds))
@@ -224,7 +224,7 @@ class EMRSparkService(
         clusterId: String,
         stepId: String,
         logType: SparkService.LogType,
-    ): ClusterS3Path =
+    ): ClusterStoragePath =
         clusterStateManager
             .load()
             .s3Path()
@@ -520,7 +520,7 @@ class EMRSparkService(
             val localGzFile = localLogsDir.resolve(logType.filename)
             val localLogFile = localLogsDir.resolve(logType.filename.removeSuffix(".gz"))
 
-            eventBus.emit(Event.Emr.SparkLogDownloadStart(logPath.toUri()))
+            eventBus.emit(Event.Emr.SparkLogDownloadStart(S3Uri.uri(logPath)))
             eventBus.emit(Event.Emr.SparkLogDownloadSaveTo(localLogFile.toString()))
 
             // Download with retry (logs may not be immediately available)
@@ -542,7 +542,7 @@ class EMRSparkService(
         runCatching {
             val stderrPath = stepLogPath(clusterId, stepId, SparkService.LogType.STDERR)
             if (objectStore.getFileInfo(stderrPath) == null) {
-                SparkService.StepStderr.NotUploaded(stderrPath.toUri())
+                SparkService.StepStderr.NotUploaded(S3Uri.uri(stderrPath))
             } else {
                 SparkService.StepStderr.Available(getStepLogs(clusterId, stepId, SparkService.LogType.STDERR).getOrThrow())
             }
@@ -558,7 +558,7 @@ class EMRSparkService(
             val localLogsDir = logsDir.resolve("emr").resolve(stepId)
             Files.createDirectories(localLogsDir)
 
-            eventBus.emit(Event.Emr.EmrLogsDownloading(emrLogsPath.toUri()))
+            eventBus.emit(Event.Emr.EmrLogsDownloading(S3Uri.uri(emrLogsPath)))
             eventBus.emit(Event.Emr.EmrLogsSaveTo(localLogsDir.toString()))
 
             objectStore.downloadDirectory(emrLogsPath, localLogsDir, showProgress = true)
@@ -589,7 +589,7 @@ class EMRSparkService(
         }
 
     private fun downloadLogFiles(
-        s3Path: ClusterS3Path,
+        s3Path: ClusterStoragePath,
         clusterId: String,
         stepId: String,
         localLogsDir: Path,

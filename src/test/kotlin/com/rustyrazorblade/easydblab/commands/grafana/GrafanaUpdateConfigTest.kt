@@ -24,9 +24,9 @@ import com.rustyrazorblade.easydblab.services.ConfigChangeReport
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
 import com.rustyrazorblade.easydblab.services.GrafanaDeployService
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
-import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TenantDirectory
@@ -124,7 +124,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                         get(),
                         get(),
                         get(),
-                        DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())),
+                        DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore())),
                     )
                 }
             },

@@ -1,0 +1,8 @@
+backend: s3
+wal:
+  path: /var/tempo/wal
+s3:
+  bucket: ${STORE_BUCKET}
+  endpoint: ${STORE_ENDPOINT}
+  region: ${STORE_REGION}
+  prefix: ${TRACES_STORE_PREFIX}

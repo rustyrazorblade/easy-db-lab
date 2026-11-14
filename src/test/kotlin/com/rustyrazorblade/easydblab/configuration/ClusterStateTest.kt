@@ -785,7 +785,7 @@ class ClusterStateTest {
     }
 
     @Test
-    fun `s3Path extension function should create ClusterS3Path`() {
+    fun `s3Path extension function should create ClusterStoragePath`() {
         val state =
             ClusterState(
                 name = "test-cluster",
@@ -797,7 +797,7 @@ class ClusterStateTest {
         val s3Path = state.s3Path()
 
         assertThat(s3Path.bucket).isEqualTo("easy-db-lab-test-abc12345")
-        assertThat(s3Path.toString()).isEqualTo("s3://easy-db-lab-test-abc12345/clusters/test-cluster-test-id")
+        assertThat(s3Path.toString()).isEqualTo("easy-db-lab-test-abc12345/clusters/test-cluster-test-id")
     }
 
     @Test

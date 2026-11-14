@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
@@ -13,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.core.exception.SdkException
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -501,11 +503,10 @@ class AwsInfrastructureService(
      * @param resources The discovered resources to delete
      * @return TeardownResult with information about the operation
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun executeVpcTeardown(resources: DiscoveredResources): TeardownResult {
         val errors = mutableListOf<String>()
 
-        try {
+        guarded {
             eventBus.emit(
                 Event.Infra.VpcTeardownStarting(
                     vpcId = resources.vpcId,
@@ -531,9 +532,7 @@ class AwsInfrastructureService(
             deleteSubnets(resources, errors)
             deleteInternetGateway(resources, errors)
             if (resources.ownsVpc) deleteVpc(resources, errors)
-        } catch (e: Exception) {
-            errors.add(logError("Unexpected error during teardown", e))
-        }
+        }.onFailure { errors.add(logError("Unexpected error during teardown", it)) }
 
         return if (errors.isEmpty()) {
             TeardownResult.success(resources)
@@ -588,19 +587,15 @@ class AwsInfrastructureService(
         return Phase1Result(errors = allErrors, hasFatalFailure = hasFatalFailure)
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun terminateEmrClusters(resources: DiscoveredResources): TeardownStepResult {
         if (resources.emrClusterIds.isEmpty()) return TeardownStepResult.success()
-        return try {
+        return guarded {
             emrService.terminateClusters(resources.emrClusterIds)
             emrService.waitForClustersTerminated(resources.emrClusterIds)
             TeardownStepResult.success()
-        } catch (e: Exception) {
-            TeardownStepResult.failure(logError("Failed to terminate EMR clusters", e))
-        }
+        }.getOrElse { TeardownStepResult.failure(logError("Failed to terminate EMR clusters", it)) }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteOpenSearchDomains(resources: DiscoveredResources): TeardownStepResult {
         if (resources.openSearchDomainNames.isEmpty()) return TeardownStepResult.success()
 
@@ -610,22 +605,18 @@ class AwsInfrastructureService(
         val domainsToWait = mutableListOf<String>()
 
         resources.openSearchDomainNames.forEach { domainName ->
-            try {
+            guarded {
                 openSearchService.deleteDomain(domainName)
                 domainsToWait.add(domainName)
-            } catch (e: Exception) {
-                errors.add(logError("Failed to delete OpenSearch domain $domainName", e))
-            }
+            }.onFailure { errors.add(logError("Failed to delete OpenSearch domain $domainName", it)) }
         }
 
         // Wait for all domains to be fully deleted before proceeding
         // OpenSearch domains have ENIs in the VPC that block security group/subnet deletion
         var allDeleted = true
         domainsToWait.forEach { domainName ->
-            try {
-                openSearchService.waitForDomainDeleted(domainName)
-            } catch (e: Exception) {
-                errors.add(logError("Timeout waiting for OpenSearch domain $domainName to delete", e))
+            guarded { openSearchService.waitForDomainDeleted(domainName) }.onFailure {
+                errors.add(logError("Timeout waiting for OpenSearch domain $domainName to delete", it))
                 eventBus.emit(Event.Infra.OpenSearchDomainStillDeleting(domainName))
                 allDeleted = false
             }
@@ -634,55 +625,49 @@ class AwsInfrastructureService(
         return TeardownStepResult(success = allDeleted, errors = errors)
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun terminateEc2Instances(resources: DiscoveredResources): TeardownStepResult {
         if (resources.instanceIds.isEmpty()) return TeardownStepResult.success()
-        return try {
+        return guarded {
             vpcService.terminateInstances(resources.instanceIds)
             vpcService.waitForInstancesTerminated(resources.instanceIds)
             TeardownStepResult.success()
-        } catch (e: Exception) {
-            TeardownStepResult.failure(logError("Failed to terminate instances", e))
-        }
+        }.getOrElse { TeardownStepResult.failure(logError("Failed to terminate instances", it)) }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteNatGateways(resources: DiscoveredResources): TeardownStepResult {
         if (resources.natGatewayIds.isEmpty()) return TeardownStepResult.success()
-        return try {
+        return guarded {
             resources.natGatewayIds.forEach { vpcService.deleteNatGateway(it) }
             vpcService.waitForNatGatewaysDeleted(resources.natGatewayIds)
             TeardownStepResult.success()
-        } catch (e: Exception) {
+        }.getOrElse {
             // NAT gateway failure is non-fatal
-            TeardownStepResult(success = true, errors = listOf(logError("Failed to delete NAT gateways", e)))
+            TeardownStepResult(success = true, errors = listOf(logError("Failed to delete NAT gateways", it)))
         }
     }
 
     // ==================== Phase 2: ENI Wait ====================
 
-    @Suppress("TooGenericExceptionCaught")
     private fun waitForEniCleanup(
         resources: DiscoveredResources,
         errors: MutableList<String>,
     ) {
-        try {
+        guarded {
             if (resources.ownsVpc) {
                 vpcService.waitForNetworkInterfacesCleared(resources.vpcId)
             } else {
                 // Other clusters' interfaces share the VPC; only this cluster's subnets must drain.
                 vpcService.waitForNetworkInterfacesClearedInSubnets(resources.subnetIds)
             }
-        } catch (e: Exception) {
+        }.onFailure {
             // ENI timeout is non-fatal — teardown continues, errors recorded
-            errors.add(logError("Timeout waiting for network interfaces to clear in VPC ${resources.vpcId}", e))
+            errors.add(logError("Timeout waiting for network interfaces to clear in VPC ${resources.vpcId}", it))
             eventBus.emit(Event.Infra.NetworkInterfacesStillActive)
         }
     }
 
     // ==================== Phase 3: Sequential VPC Cleanup ====================
 
-    @Suppress("TooGenericExceptionCaught")
     private fun revokeAllSecurityGroupRules(
         resources: DiscoveredResources,
         errors: MutableList<String>,
@@ -692,89 +677,83 @@ class AwsInfrastructureService(
         eventBus.emit(Event.Infra.SecurityGroupRulesRevoking(resources.securityGroupIds.size))
 
         resources.securityGroupIds.forEach { sgId ->
-            try {
+            guarded {
                 vpcService.revokeSecurityGroupRules(sgId)
-            } catch (e: Exception) {
-                errors.add(logError("Failed to revoke rules from security group $sgId", e))
-            }
+            }.onFailure { errors.add(logError("Failed to revoke rules from security group $sgId", it)) }
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteSecurityGroups(
         resources: DiscoveredResources,
         errors: MutableList<String>,
     ) {
         resources.securityGroupIds.forEach { sgId ->
-            try {
-                vpcService.deleteSecurityGroup(sgId)
-            } catch (e: Exception) {
-                errors.add(logError("Failed to delete security group $sgId", e))
-            }
+            guarded { vpcService.deleteSecurityGroup(sgId) }.onFailure { errors.add(logError("Failed to delete security group $sgId", it)) }
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteRouteTables(
         resources: DiscoveredResources,
         errors: MutableList<String>,
     ) {
         resources.routeTableIds.forEach { rtId ->
-            try {
-                vpcService.deleteRouteTable(rtId)
-            } catch (e: Exception) {
-                errors.add(logError("Failed to delete route table $rtId", e))
-            }
+            guarded { vpcService.deleteRouteTable(rtId) }.onFailure { errors.add(logError("Failed to delete route table $rtId", it)) }
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteSubnets(
         resources: DiscoveredResources,
         errors: MutableList<String>,
     ) {
         resources.subnetIds.forEach { subnetId ->
-            try {
-                vpcService.deleteSubnet(subnetId)
-            } catch (e: Exception) {
-                errors.add(logError("Failed to delete subnet $subnetId", e))
-            }
+            guarded { vpcService.deleteSubnet(subnetId) }.onFailure { errors.add(logError("Failed to delete subnet $subnetId", it)) }
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteInternetGateway(
         resources: DiscoveredResources,
         errors: MutableList<String>,
     ) {
         resources.internetGatewayId?.let { igwId ->
-            try {
+            guarded {
                 // A kept VPC keeps its main route table, which still routes to this gateway.
                 if (!resources.ownsVpc) vpcService.deleteRoutesToInternetGateway(resources.vpcId, igwId)
                 vpcService.detachInternetGateway(igwId, resources.vpcId)
                 vpcService.deleteInternetGateway(igwId)
-            } catch (e: Exception) {
-                errors.add(logError("Failed to delete internet gateway $igwId", e))
-            }
+            }.onFailure { errors.add(logError("Failed to delete internet gateway $igwId", it)) }
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteVpc(
         resources: DiscoveredResources,
         errors: MutableList<String>,
     ) {
-        try {
+        guarded {
             vpcService.deleteVpc(resources.vpcId)
             eventBus.emit(Event.Infra.VpcDeleted(resources.vpcId))
-        } catch (e: Exception) {
-            errors.add(logError("Failed to delete VPC ${resources.vpcId}", e))
-        }
+        }.onFailure { errors.add(logError("Failed to delete VPC ${resources.vpcId}", it)) }
     }
+
+    /**
+     * Runs one teardown step and turns the failures a step can really throw into a failed [Result]:
+     * an AWS SDK error ([SdkException]), a poll that ran out of time ([AwsTimeoutException]) and a
+     * waiter that gave up through `error()` ([IllegalStateException]).  Anything else is a defect
+     * and propagates.
+     */
+    private inline fun <T> guarded(step: () -> T): Result<T> =
+        try {
+            Result.success(step())
+        } catch (e: SdkException) {
+            Result.failure(e)
+        } catch (e: AwsTimeoutException) {
+            Result.failure(e)
+        } catch (e: IllegalStateException) {
+            Result.failure(e)
+        }
 
     private fun logError(
         message: String,
-        e: Exception,
+        e: Throwable,
     ): String {
         val error = "$message: ${e.message}"
         log.error(e) { error }

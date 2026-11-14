@@ -17,8 +17,11 @@ import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.Mockito.mockingDetails
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
@@ -826,5 +829,59 @@ class EMRSparkServiceTest : BaseKoinTest() {
         verify(mockObjectStore, never()).downloadFile(any(), any(), any())
         assertThat(events.filterIsInstance<Event.Emr.StepStderrNotFinal>().single().s3Uri)
             .isEqualTo(stderrPath().toUri())
+    }
+
+    /**
+     * Makes the first cluster-state read after the failed step's details were fetched throw
+     * [failure]; that read is the Loki query's.  Every other read returns the state.
+     */
+    private fun failStateReadAfterStepDetailsFetched(failure: Exception) {
+        var thrown = false
+        whenever(mockClusterStateManager.load()).thenAnswer {
+            val stepDetailsFetched = mockingDetails(mockEmrClient).invocations.count { it.method.name == "describeStep" } >= 2
+            if (stepDetailsFetched && !thrown) {
+                thrown = true
+                throw failure
+            }
+            defaultClusterState
+        }
+    }
+
+    /**
+     * After a failed step the Loki query reads the cluster state again.  A state file that
+     * cannot be read or is invalid must not hide the step's own failure; any other exception is a
+     * defect and must surface.
+     */
+    @ParameterizedTest
+    @MethodSource("unreadableStateFailures")
+    fun `a cluster state that cannot be read for the Loki query still reports the failed job`(failure: Exception) {
+        failStepEndingAt(stepEnd)
+        whenever(mockObjectStore.getFileInfo(stderrPath())).thenReturn(stderrUploadedAt("2026-09-28T14:13:48Z"))
+        failStateReadAfterStepDetailsFetched(failure)
+        val events = recordEvents()
+
+        val result = sparkService.waitForJobCompletion(testClusterId, testStepId)
+
+        assertThat(result.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("Job failed")
+        assertThat(events).contains(Event.Emr.SparkLogQueryFailed)
+    }
+
+    @Test
+    fun `an unrelated exception while reading the cluster state for the Loki query is not swallowed`() {
+        failStepEndingAt(stepEnd)
+        failStateReadAfterStepDetailsFetched(IllegalArgumentException("a defect"))
+
+        val result = sparkService.waitForJobCompletion(testClusterId, testStepId)
+
+        assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    companion object {
+        @JvmStatic
+        fun unreadableStateFailures(): List<Exception> =
+            listOf(
+                java.io.FileNotFoundException("state.json"),
+                IllegalStateException("Invalid cluster name"),
+            )
     }
 }

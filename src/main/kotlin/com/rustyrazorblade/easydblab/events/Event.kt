@@ -5917,6 +5917,25 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * A kit could not be loaded at startup and was skipped: [file] is its `kit.yaml` (or the
+         * built-in resource path) and [error] is what failed. Every other command still works, and
+         * only a command that needs [kit] fails.
+         */
+        @Serializable
+        @SerialName("Kit.LoadFailed")
+        data class LoadFailed(
+            val kit: String,
+            val file: String,
+            val error: String,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Warning: skipping kit '$kit': cannot load $file: $error. " +
+                    "Fix or remove it; 'easy-db-lab kit source list' shows the registered kit sources."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Kit.RequirementNotMet")
         data class RequirementNotMet(

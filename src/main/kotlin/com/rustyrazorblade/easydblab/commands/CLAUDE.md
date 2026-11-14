@@ -146,6 +146,7 @@ hand-code Kotlin classes for these:
 `registerDynamicInstallSubcommands()` scans all available `kit.yaml` files (classpath + profile
 dir) and registers a `kit install <kit>` subcommand for each via `KitInstallCommandFactory`.
 Flags, defaults, and collision detection are declared in `kit.yaml` — no Kotlin needed.
+A kit whose `kit.yaml` cannot be loaded (invalid YAML, a duplicate option) is skipped with an `Event.Kit.LoadFailed` warning that names the kit and the file, so one bad kit source never stops the CLI; `kit source list` and `kit source remove` keep working and can remove it.
 
 To add a new installable kit: create `src/main/resources/.../kits/<name>/kit.yaml` and
 template files (including `bin/start.sh.template`, `bin/stop.sh.template`). No code changes needed.

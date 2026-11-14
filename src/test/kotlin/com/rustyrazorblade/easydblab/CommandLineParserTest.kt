@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart
 import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService
@@ -189,6 +191,84 @@ class CommandLineParserTest : BaseKoinTest() {
                     .flatMap { undescribed(it) }
 
         assertThat(undescribed(CommandLineParser().commandLine)).isEmpty()
+    }
+
+    /**
+     * A kit whose kit.yaml defines one option twice made picocli throw while the command tree was
+     * built, so every command failed, `kit source remove` included. One bad kit must cost only that
+     * kit.
+     */
+    @Test
+    fun `a kit with a duplicate option is skipped with a warning and the other commands still load`() {
+        writeProfileKit(
+            "dup-kit",
+            """
+            name: dup-kit
+            args:
+              - flag: --example-option
+                variable: EXAMPLE_ONE
+                type: string
+                description: first
+              - flag: --example-option
+                variable: EXAMPLE_TWO
+                type: string
+                description: second
+            """.trimIndent(),
+        )
+        writeProfileKit(
+            "good-kit",
+            """
+            name: good-kit
+            args:
+              - flag: --example-option
+                variable: EXAMPLE
+                type: string
+                description: fine
+            """.trimIndent(),
+        )
+
+        val commandLine = CommandLineParser().commandLine
+
+        val kitGroup = commandLine.subcommands.getValue("kit")
+        val installed =
+            kitGroup.subcommands
+                .getValue("install")
+                .subcommands.keys
+        assertThat(installed).contains("good-kit").doesNotContain("dup-kit")
+        assertThat(
+            kitGroup.subcommands
+                .getValue("source")
+                .subcommands.keys,
+        ).contains("list", "remove")
+
+        val warnings = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        assertThat(warnings.errors.map { it.first }.joinToString("\n"))
+            .contains("dup-kit", "kit.yaml", "--example-option")
+    }
+
+    @Test
+    fun `a kit with an unparseable kit yaml is skipped with a warning naming the file`() {
+        writeProfileKit("broken-kit", "name: [unterminated\n")
+
+        val commandLine = CommandLineParser().commandLine
+
+        val installed =
+            commandLine.subcommands
+                .getValue("kit")
+                .subcommands
+                .getValue("install")
+                .subcommands.keys
+        assertThat(installed).doesNotContain("broken-kit")
+        val warnings = getKoin().get<OutputHandler>() as BufferedOutputHandler
+        assertThat(warnings.errors.map { it.first }.joinToString("\n")).contains("broken-kit", "kit.yaml")
+    }
+
+    private fun writeProfileKit(
+        name: String,
+        kitYaml: String,
+    ) {
+        val dir = File(File(context.profileDir, "kits"), name).apply { mkdirs() }
+        File(dir, Constants.Kit.CONFIG_FILE).writeText(kitYaml)
     }
 
     /** The cluster name is positional. `--name` used to be rejected with only "Unknown option". */

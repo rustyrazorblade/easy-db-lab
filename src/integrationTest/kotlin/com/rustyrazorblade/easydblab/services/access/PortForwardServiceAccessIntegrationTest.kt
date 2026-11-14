@@ -17,6 +17,7 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
 import java.util.concurrent.TimeUnit
@@ -135,14 +136,26 @@ class PortForwardServiceAccessIntegrationTest {
             assertThat(endpoint.host).isEqualTo("127.0.0.1")
             assertThat(endpoint.port).isIn(TEST_PORTS)
             assertThat(get(endpoint.port)).isEqualTo(BODY)
-            val external =
-                NetworkInterface
-                    .networkInterfaces()
-                    .toList()
-                    .filter { it.isUp && !it.isLoopback }
-                    .flatMap { it.inetAddresses.toList() }
-                    .first { it is Inet4Address }
-            assertThat(accepts(external, endpoint.port)).isFalse()
+            assertThat(accepts(externalProbeAddress(), endpoint.port)).isFalse()
+        }
+    }
+
+    /**
+     * A non-loopback IPv4 address of this machine that refuses a port nothing listens on, so a refusal
+     * there shows what is bound. A VPN tunnel interface (a corporate VPN's `utun`) can accept every
+     * connection whatever is listening, which would make any port look reachable.
+     */
+    private fun externalProbeAddress(): InetAddress {
+        val unused = ServerSocket(0, 0, InetAddress.getLoopbackAddress()).use { it.localPort }
+        val candidates =
+            NetworkInterface
+                .networkInterfaces()
+                .toList()
+                .filter { it.isUp && !it.isLoopback }
+                .flatMap { it.inetAddresses.toList() }
+                .filterIsInstance<Inet4Address>()
+        return checkNotNull(candidates.firstOrNull { !accepts(it, unused) }) {
+            "No non-loopback IPv4 address refuses an unused port ($candidates); cannot check the loopback-only bind"
         }
     }
 

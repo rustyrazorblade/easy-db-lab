@@ -255,6 +255,9 @@ data class ClusterState(
     var hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
     // VPC ID for the cluster - the core resource that contains all infrastructure
     var vpcId: String? = null,
+    // True when the VPC came from `init --vpc`: it belongs to the user, so `down` never deletes it
+    // and removes only the resources this cluster created in it.
+    var vpcSupplied: Boolean = false,
     // EMR cluster state for Spark jobs
     var emrCluster: EMRClusterState? = null,
     // OpenSearch domain state

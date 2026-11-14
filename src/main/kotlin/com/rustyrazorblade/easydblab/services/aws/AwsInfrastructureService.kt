@@ -378,6 +378,44 @@ class AwsInfrastructureService(
     }
 
     /**
+     * Tears down one cluster inside a VPC the user supplied with `init --vpc`.
+     *
+     * The VPC is the user's, and other clusters or the user's own resources may share it, so
+     * discovery is by the cluster's `ClusterId` tag, never by VPC membership, and the VPC itself
+     * is never deleted. EMR clusters and OpenSearch domains are found through the cluster's own
+     * subnets only.
+     *
+     * @param vpcId The user-supplied VPC
+     * @param clusterId The `ClusterId` tag value of the cluster being torn down
+     * @param dryRun If true, only discover and report resources without deleting
+     */
+    fun teardownClusterInSuppliedVpc(
+        vpcId: VpcId,
+        clusterId: String,
+        dryRun: Boolean = false,
+    ): TeardownResult {
+        log.info { "Starting teardown of cluster $clusterId in supplied VPC: $vpcId (dryRun=$dryRun)" }
+        eventBus.emit(Event.Infra.ResourceDiscovering(vpcId))
+
+        val owned = vpcService.findClusterResourcesInVpc(vpcId, clusterId)
+        val resources =
+            DiscoveredResources(
+                vpcId = vpcId,
+                vpcName = vpcService.getVpcName(vpcId),
+                instanceIds = owned.instanceIds,
+                emrClusterIds = emrService.findClustersInVpc(vpcId, owned.subnetIds),
+                openSearchDomainNames = openSearchService.findDomainsInVpc(owned.subnetIds),
+                securityGroupIds = owned.securityGroupIds,
+                subnetIds = owned.subnetIds,
+                internetGatewayId = owned.internetGatewayId,
+                routeTableIds = owned.routeTableIds,
+                ownsVpc = false,
+            )
+
+        return if (dryRun) TeardownResult.success(resources) else executeVpcTeardown(resources)
+    }
+
+    /**
      * Tears down all VPCs tagged with easy_cass_lab.
      *
      * @param dryRun If true, only discover and report resources without deleting
@@ -492,7 +530,7 @@ class AwsInfrastructureService(
             deleteRouteTables(resources, errors)
             deleteSubnets(resources, errors)
             deleteInternetGateway(resources, errors)
-            deleteVpc(resources, errors)
+            if (resources.ownsVpc) deleteVpc(resources, errors)
         } catch (e: Exception) {
             errors.add(logError("Unexpected error during teardown", e))
         }
@@ -629,7 +667,12 @@ class AwsInfrastructureService(
         errors: MutableList<String>,
     ) {
         try {
-            vpcService.waitForNetworkInterfacesCleared(resources.vpcId)
+            if (resources.ownsVpc) {
+                vpcService.waitForNetworkInterfacesCleared(resources.vpcId)
+            } else {
+                // Other clusters' interfaces share the VPC; only this cluster's subnets must drain.
+                vpcService.waitForNetworkInterfacesClearedInSubnets(resources.subnetIds)
+            }
         } catch (e: Exception) {
             // ENI timeout is non-fatal — teardown continues, errors recorded
             errors.add(logError("Timeout waiting for network interfaces to clear in VPC ${resources.vpcId}", e))
@@ -706,6 +749,8 @@ class AwsInfrastructureService(
     ) {
         resources.internetGatewayId?.let { igwId ->
             try {
+                // A kept VPC keeps its main route table, which still routes to this gateway.
+                if (!resources.ownsVpc) vpcService.deleteRoutesToInternetGateway(resources.vpcId, igwId)
                 vpcService.detachInternetGateway(igwId, resources.vpcId)
                 vpcService.deleteInternetGateway(igwId)
             } catch (e: Exception) {

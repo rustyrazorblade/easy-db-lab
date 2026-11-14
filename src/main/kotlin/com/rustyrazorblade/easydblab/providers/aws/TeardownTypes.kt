@@ -17,6 +17,11 @@ data class DiscoveredResources(
     val internetGatewayId: InternetGatewayId? = null,
     val natGatewayIds: List<NatGatewayId> = emptyList(),
     val routeTableIds: List<RouteTableId> = emptyList(),
+    /**
+     * False when the VPC was supplied with `init --vpc`: it belongs to the user, so teardown removes
+     * only the resources listed here and never the VPC itself.
+     */
+    val ownsVpc: Boolean = true,
 ) {
     /**
      * Returns true if this VPC is the packer infrastructure VPC.
@@ -40,7 +45,8 @@ data class DiscoveredResources(
      */
     fun summary(): String {
         val parts = mutableListOf<String>()
-        parts.add("VPC: $vpcId" + (vpcName?.let { " ($it)" } ?: ""))
+        val kept = if (ownsVpc) "" else " (supplied with --vpc, kept)"
+        parts.add("VPC: $vpcId" + (vpcName?.let { " ($it)" } ?: "") + kept)
         if (instanceIds.isNotEmpty()) parts.add("  EC2 Instances: ${instanceIds.size}")
         if (emrClusterIds.isNotEmpty()) parts.add("  EMR Clusters: ${emrClusterIds.size}")
         if (openSearchDomainNames.isNotEmpty()) parts.add("  OpenSearch Domains: ${openSearchDomainNames.size}")

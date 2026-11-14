@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.providers.aws.ClusterVpcResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
 import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRule
@@ -48,6 +49,104 @@ class AwsInfrastructureServiceTest {
                 openSearchService = openSearchService,
                 eventBus = eventBus,
             )
+    }
+
+    /**
+     * A VPC supplied with `init --vpc` belongs to the user and may hold other clusters. Teardown
+     * removes only what carries this cluster's ClusterId tag and never the VPC.
+     */
+    @Nested
+    inner class TeardownClusterInSuppliedVpc {
+        private val vpcId = "vpc-supplied"
+        private val clusterId = "cluster-b"
+
+        private fun clusterOwned(igw: String? = "igw-b") =
+            ClusterVpcResources(
+                instanceIds = listOf("i-b1", "i-b2"),
+                subnetIds = listOf("subnet-b"),
+                securityGroupIds = listOf("sg-b"),
+                internetGatewayId = igw,
+                routeTableIds = listOf("rtb-b"),
+            )
+
+        @BeforeEach
+        fun stubDiscovery() {
+            whenever(vpcService.getVpcName(vpcId)).thenReturn("user-vpc")
+            whenever(vpcService.findClusterResourcesInVpc(vpcId, clusterId)).thenReturn(clusterOwned())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
+        }
+
+        @Test
+        fun `removes only the cluster's tagged resources and never deletes the VPC`() {
+            val result = service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            assertThat(result.success).isTrue()
+            verify(vpcService).terminateInstances(listOf("i-b1", "i-b2"))
+            verify(vpcService).revokeSecurityGroupRules("sg-b")
+            verify(vpcService).deleteSecurityGroup("sg-b")
+            verify(vpcService).deleteRouteTable("rtb-b")
+            verify(vpcService).deleteSubnet("subnet-b")
+            verify(vpcService).detachInternetGateway("igw-b", vpcId)
+            verify(vpcService).deleteInternetGateway("igw-b")
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @Test
+        fun `discovers by cluster tag, never by VPC membership`() {
+            service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            verify(vpcService, never()).findInstancesInVpc(any())
+            verify(vpcService, never()).findSubnetsInVpc(any())
+            verify(vpcService, never()).findSecurityGroupsInVpc(any())
+            verify(vpcService, never()).findInternetGatewayByVpc(any())
+            verify(vpcService, never()).findRouteTablesInVpc(any())
+            verify(vpcService, never()).findNatGatewaysInVpc(any())
+        }
+
+        @Test
+        fun `waits only for the cluster's own subnets to drain and removes the route to its gateway`() {
+            service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            verify(vpcService).waitForNetworkInterfacesClearedInSubnets(eq(listOf("subnet-b")), any())
+            verify(vpcService, never()).waitForNetworkInterfacesCleared(any(), any())
+            verify(vpcService).deleteRoutesToInternetGateway(vpcId, "igw-b")
+        }
+
+        @Test
+        fun `a failed subnet delete is reported and the VPC is still kept`() {
+            whenever(vpcService.deleteSubnet("subnet-b")).thenThrow(RuntimeException("DependencyViolation"))
+
+            val result = service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            assertThat(result.success).isFalse()
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @Test
+        fun `dry run lists the cluster's resources, deletes nothing and says the VPC is kept`() {
+            val result = service.teardownClusterInSuppliedVpc(vpcId, clusterId, dryRun = true)
+
+            assertThat(result.success).isTrue()
+            val previewed = result.resourcesDeleted.single()
+            assertThat(previewed.ownsVpc).isFalse()
+            assertThat(previewed.instanceIds).containsExactly("i-b1", "i-b2")
+            assertThat(previewed.summary()).contains("kept")
+            verify(vpcService, never()).terminateInstances(any())
+            verify(vpcService, never()).deleteSubnet(any())
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @Test
+        fun `a cluster with nothing left in the VPC succeeds without touching it`() {
+            whenever(vpcService.findClusterResourcesInVpc(vpcId, clusterId)).thenReturn(ClusterVpcResources())
+
+            val result = service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            assertThat(result.success).isTrue()
+            verify(vpcService, never()).deleteVpc(any())
+            verify(vpcService, never()).deleteRoutesToInternetGateway(any(), any())
+        }
     }
 
     @Nested

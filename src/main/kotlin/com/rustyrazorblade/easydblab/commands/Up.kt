@@ -276,8 +276,9 @@ class Up(
         if (existingVpcId != null) {
             // Validate existing VPC still exists
             val vpcName = vpcService.getVpcName(existingVpcId) ?: vpcNotFound(existingVpcId)
-            // Backfill bucket tag on VPCs created before this tag was added
-            val bucket = workingState.s3Bucket
+            // Backfill bucket tag on VPCs created before this tag was added. A VPC supplied with
+            // --vpc is the user's, so its tags are never edited.
+            val bucket = workingState.s3Bucket.takeUnless { workingState.vpcSupplied }
             if (bucket != null) {
                 val vpcTags = vpcService.getVpcTags(existingVpcId)
                 if (vpcTags[Constants.Vpc.BUCKET_TAG_KEY] == null) {

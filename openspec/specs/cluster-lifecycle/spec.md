@@ -102,6 +102,14 @@ Rules for both phases:
 - **WHEN** the user tears it down with confirmation
 - **THEN** all AWS resources (EC2, NAT gateways, security groups, route tables, subnets, internet gateways, VPC) are terminated.
 
+#### Scenario: Teardown keeps a VPC supplied with --vpc
+
+- **GIVEN** a cluster initialized with `init --vpc <id>`, in a VPC that also holds the user's own resources and other clusters' resources
+- **WHEN** `down` runs
+- **THEN** only the resources that carry this cluster's `ClusterId` tag are removed: its instances, subnets, security group and internet gateway, and the default route to that gateway in the VPC's route tables
+- **AND** the VPC and every untagged or differently tagged resource in it are left as they are
+- **AND** the dry-run preview names the VPC as kept
+
 #### Scenario: Teardown sets no expiry rule
 
 - **GIVEN** a running cluster with a data bucket

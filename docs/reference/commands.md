@@ -155,8 +155,29 @@ determined fails at `init`, before any instance is created.
 | `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
+| `--capability` | Override one node capability, as `<name>=true` or `<name>=false`; repeatable. Names: `systemd-journal`, `cloudwatch`, `s3`, `privileged`, `host-network`, `host-path`, `node-ssh`. An unknown name, a value other than `true`/`false`, or one name given both values fails `init` before anything is written. See [Node capabilities](#node-capabilities) | (the environment's declared set) |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
+
+#### Node capabilities
+
+A capability is something the cluster's environment provides and a component can depend on: a
+systemd journal on the nodes (`systemd-journal`), CloudWatch (`cloudwatch`), an S3 bucket (`s3`),
+a namespace that admits privileged pods (`privileged`), pods on the host network (`host-network`)
+or hostPath volumes (`host-path`), and SSH to the nodes (`node-ssh`). An AWS cluster has all of
+them. `init` records the effective set in `state.json`: the declared set with every `--capability`
+override applied. `up` skips each component whose capability is absent and says so.
+
+When a capability is absent, `init` prints it, the reason, and the components it disables:
+
+```text
+Absent capabilities:
+  privileged: this cluster's namespace does not admit privileged pods
+    no component needs it yet
+```
+
+The set is published as the `capabilities` key of the `cluster-config` ConfigMap, kit processes
+get `EDL_NODE_SSH` from `node-ssh`, and `status` lists every capability.
 
 ### up
 
@@ -315,6 +336,9 @@ easy-db-lab status
 ```
 
 The `=== KITS ===` section lists every installed kit, marking the running ones with `✓`. Under each running kit it prints the endpoints that the kit's `kit.yaml` declares: the NodePorts on each host of the endpoint's node type. A stopped kit shows no endpoints.  If a running kit's `kit.yaml` cannot be read, the kit shows `(endpoints unavailable: cannot read kit.yaml)` instead of its endpoints.
+
+The `=== CAPABILITIES ===` section lists every [node capability](#node-capabilities) the workspace
+records, as `present` or `absent: <reason>`.
 
 `status` is the one command that degrades instead of failing outright when the SOCKS proxy
 tunnel can't be established. It still reports EC2, VPC, security groups, Spark/EMR, OpenSearch,

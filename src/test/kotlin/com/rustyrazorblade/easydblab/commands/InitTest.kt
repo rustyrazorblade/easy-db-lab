@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -272,6 +273,84 @@ class InitTest : BaseKoinTest() {
 
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("easy-db-lab up")
+        }
+    }
+
+    /** `init` records the effective capability set and reports what an absent capability disables. */
+    @Nested
+    inner class Capabilities {
+        private val stdout = java.io.ByteArrayOutputStream()
+        private val originalOut = System.out
+
+        @BeforeEach
+        fun captureStdout() {
+            System.setOut(java.io.PrintStream(stdout))
+        }
+
+        @AfterEach
+        fun restoreStdout() {
+            System.setOut(originalOut)
+        }
+
+        @Test
+        fun `the capability option offers and documents every capability's serial name`() {
+            val commandLine = picocli.CommandLine(Init())
+            val option = commandLine.commandSpec.findOption(Constants.Capabilities.OVERRIDE_OPTION)
+            val names = NodeCapability.entries.map { it.serialName }
+
+            assertThat(option.completionCandidates()).containsExactlyElementsOf(names)
+            assertThat(commandLine.usageMessage.replace(Regex("\\s+"), " ")).contains(names.joinToString(", "))
+        }
+
+        @Test
+        fun `without overrides the declared AWS set is recorded and nothing is reported absent`() {
+            Init().apply { clean = true }.execute()
+
+            verify(mockClusterStateManager).save(argThat { capabilities == NodeCapability.entries.toSet() })
+            assertThat(stdout.toString()).doesNotContain("Absent capabilities")
+        }
+
+        @Test
+        fun `an override to false removes the capability from the recorded set and reports it`() {
+            Init()
+                .apply {
+                    clean = true
+                    capabilityOverrides = listOf("privileged=false")
+                }.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { capabilities == NodeCapability.entries.toSet() - NodeCapability.PRIVILEGED },
+            )
+            assertThat(stdout.toString())
+                .contains("Absent capabilities:", "privileged: ${NodeCapability.PRIVILEGED.absentReason}")
+        }
+
+        @Test
+        fun `an unknown capability fails before any state is written`() {
+            val command =
+                Init().apply {
+                    clean = true
+                    capabilityOverrides = listOf("gpu=true")
+                }
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("'gpu'")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
+        fun `conflicting overrides fail before any state is written`() {
+            val command =
+                Init().apply {
+                    clean = true
+                    capabilityOverrides = listOf("privileged=true", "privileged=false")
+                }
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("privileged")
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 

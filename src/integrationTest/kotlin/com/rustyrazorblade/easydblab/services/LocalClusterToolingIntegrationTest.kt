@@ -2,9 +2,13 @@ package com.rustyrazorblade.easydblab.services
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.di.configurationModule
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -141,7 +145,11 @@ class LocalClusterToolingIntegrationTest {
         assertSocksPropertiesUnset()
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText(k3s.kubeConfigYaml)
         ProxyEnvFile(workspace).recordDirect(true)
-        tooling = LocalClusterTooling(workspace, KitProcessEnvironment(ToolWrapperInstaller()))
+        tooling =
+            LocalClusterTooling(
+                workspace,
+                KitProcessEnvironment(ToolWrapperInstaller(), ClusterStateManager(File(workspace, CLUSTER_STATE))),
+            )
         client = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
     }
 
@@ -260,7 +268,7 @@ class LocalClusterToolingIntegrationTest {
                 )
             val remoteOps =
                 mock<RemoteOperationsService>(defaultAnswer = Answer<Any> { throw AssertionError("SSH used: ${it.method.name}") })
-            val app = koinApplication { modules(servicesModule, localToolingModule(remoteOps)) }
+            val app = koinApplication { modules(servicesModule, configurationModule, localToolingModule(remoteOps)) }
             try {
                 val events = recordEvents(app.koin.get())
                 val phase = { name: String, steps: List<InstallStep> -> runPhase(app.koin.get(), name, steps, kitDir, variables) }
@@ -288,6 +296,7 @@ class LocalClusterToolingIntegrationTest {
             single<K8sService> { mock() }
             single { EventBus() }
             single { ToolWrapperInstaller() }
+            single { Context.forCli(File(workspace, "user"), workspace) }
         }
 
     /** Runs [steps] as phase [name] of the fixture kit; a failed step throws its own exception, with the tool's stderr. */

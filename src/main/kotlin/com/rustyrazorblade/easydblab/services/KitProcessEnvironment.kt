@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import java.io.File
 
@@ -18,14 +21,22 @@ import java.io.File
  *   nothing;
  * - `EDL_KIT_LIB` set to the absolute path of the shared kit shell library in `<workspace>/bin`,
  *   which kit scripts source;
- * - `EDL_NODE_SSH` set to `true` when the workspace has an `sshConfig`, so the workspace `ssh` wrapper
- *   can reach the nodes, and `false` otherwise (a local or bring-your-own Kubernetes cluster). A kit
- *   skips its node checks over SSH on `false`, and never guesses from a failed `ssh`.
+ * - `EDL_NODE_SSH` set to `true` when the cluster has the `NODE_SSH` capability, so the workspace `ssh`
+ *   wrapper can reach the nodes, and `false` otherwise (a local or bring-your-own Kubernetes cluster).
+ *   It is read from the capability set the workspace records, never from whether an `sshConfig`
+ *   exists: an override `node-ssh=false` gives `false` even where one does. A workspace that records
+ *   no set (or has no `state.json`) reads as AWS, so `true`. A kit skips its node checks over SSH on
+ *   `false`, and never guesses from a failed `ssh`.
+ *
+ * A `state.json` that exists but cannot be read fails the launch, naming the file: guessing AWS would
+ * hand a local or bring-your-own cluster's kit `EDL_NODE_SSH=true` and send it to nodes it cannot reach.
  *
  * @param installer writes the wrappers into the workspace
+ * @param clusterStateManager reads the workspace cluster state, for the recorded capability set
  */
 class KitProcessEnvironment(
     private val installer: ToolWrapperInstaller,
+    private val clusterStateManager: ClusterStateManager,
 ) {
     /**
      * Applies the kit process environment to [builder] for [workspace], on top of [variables].
@@ -50,9 +61,19 @@ class KitProcessEnvironment(
         environment["KUBECONFIG"] = kubeconfig.path
         val bin = File(workspace, Constants.ToolWrappers.DIRECTORY).absoluteFile
         environment[Constants.Kit.LIBRARY_ENV] = File(bin, Constants.ToolWrappers.KIT_LIBRARY).path
-        environment[Constants.Kit.NODE_SSH_ENV] =
-            File(workspace, DefaultClusterConfigurationService.SSH_CONFIG_FILE).isFile.toString()
+        environment[Constants.Kit.NODE_SSH_ENV] = (NodeCapability.NODE_SSH in recordedCapabilities()).toString()
         environment["PATH"] = listOfNotNull(bin.path, inheritedPath).joinToString(File.pathSeparator)
         return builder
     }
+
+    /**
+     * The capabilities the workspace records; AWS when it has no cluster state.
+     *
+     * @throws IllegalStateException naming the state file when it exists but cannot be read
+     */
+    private fun recordedCapabilities(): NodeCapabilities =
+        when {
+            clusterStateManager.exists() -> NodeCapabilities.from(clusterStateManager.load())
+            else -> NodeCapabilities.AWS
+        }
 }

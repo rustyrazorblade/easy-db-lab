@@ -13,11 +13,13 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -49,7 +51,7 @@ class KitInstallCommandTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { TemplateService(get(), get()) }
                 single<InstallTemplateResolver> { mockResolver }
-                single { WorkloadStepExecutor(mock(), mock(), mock(), get(), get()) }
+                single { WorkloadStepExecutor(mock(), mock(), mock(), get(), get(), KitProcessEnvironment(ToolWrapperInstaller(), get())) }
             },
         )
 

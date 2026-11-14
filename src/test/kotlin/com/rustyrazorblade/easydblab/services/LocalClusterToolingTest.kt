@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.PackagedExecutable
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -33,7 +35,11 @@ internal class LocalClusterToolingTest {
     @BeforeEach
     fun setup() {
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
-        kitEnvironment = KitProcessEnvironment(ToolWrapperInstaller(wrapper = PackagedExecutable(STAND_IN_WRAPPER)))
+        kitEnvironment =
+            KitProcessEnvironment(
+                ToolWrapperInstaller(wrapper = PackagedExecutable(STAND_IN_WRAPPER)),
+                ClusterStateManager(File(workspace, CLUSTER_STATE)),
+            )
         tooling = LocalClusterTooling(workspace, kitEnvironment)
     }
 

@@ -153,11 +153,18 @@ object Constants {
     // HTTP Status Codes
     object HttpStatus {
         const val OK = 200
+        const val CREATED = 201
         const val NO_CONTENT = 204
         const val MULTIPLE_CHOICES = 300
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
+
+        /** What the Kubernetes API server answers a create of an object that already exists with. */
+        const val CONFLICT = 409
+
+        /** What Pod Security admission and Pod validation reject a Pod with. */
+        const val UNPROCESSABLE_ENTITY = 422
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599
         const val CLIENT_ERROR_THRESHOLD = 500 // Errors >= 500 are server errors
@@ -581,8 +588,7 @@ object Constants {
 
         /**
          * The variable that tells every kit process whether the environment reaches its nodes over SSH:
-         * `true` or `false`. Today it is `true` when the workspace has an `sshConfig`; a `NODE_SSH`
-         * capability (issue #1096) can feed it later.
+         * `true` or `false`, from the recorded `NODE_SSH` capability (see `KitProcessEnvironment`).
          */
         const val NODE_SSH_ENV = "EDL_NODE_SSH"
 
@@ -602,6 +608,42 @@ object Constants {
             /** Image whose `/javaagent.jar` the init container copies; its tag is the build's agent version. */
             const val AGENT_IMAGE_REPOSITORY = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java"
         }
+    }
+
+    // Node capabilities: `init --capability` overrides and the admission probe (CapabilityProbeService)
+    object Capabilities {
+        /** The `init` option that overrides one capability, `--capability <name>=<bool>`. */
+        const val OVERRIDE_OPTION = "--capability"
+
+        /** Separates a capability's name from its value in an override. */
+        const val OVERRIDE_SEPARATOR = "="
+
+        /** The `cluster-config` key that lists the present capabilities. */
+        const val CLUSTER_CONFIG_KEY = "capabilities"
+
+        /** Separates the capability names in [CLUSTER_CONFIG_KEY]. */
+        const val CLUSTER_CONFIG_SEPARATOR = ","
+
+        /** The image of every dry-run probe Pod. Never pulled: a dry-run creates nothing. */
+        const val PROBE_IMAGE = "registry.k8s.io/pause:3.10"
+
+        /** The name prefix of the dry-run probe Pods. */
+        const val PROBE_POD_PREFIX = "edl-capability-probe"
+
+        /** The host directory the hostPath probe Pod mounts, read-only. */
+        const val PROBE_HOST_PATH = "/var/log"
+
+        /** The non-root user the restricted baseline probe Pod runs as. */
+        const val PROBE_RUN_AS_USER = 65532L
+
+        /** How long the probe waits for a namespace it created to get its default ServiceAccount. */
+        const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
+
+        /** The seccomp profile type Pod Security "restricted" requires of the probe Pods. */
+        const val PROBE_SECCOMP_PROFILE = "RuntimeDefault"
+
+        /** The Linux capabilities the restricted probe Pods drop: all of them. */
+        const val PROBE_DROPPED_CAPABILITIES = "ALL"
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

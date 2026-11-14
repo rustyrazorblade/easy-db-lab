@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -76,6 +77,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 kubectlService = kubectlService,
                 remoteOps = get(),
                 eventBus = get<EventBus>(),
+                kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), get()),
             )
         workspace.mkdirs()
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
@@ -140,6 +142,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 kubectlService = kubectlService,
                 remoteOps = remoteOps,
                 eventBus = get<EventBus>(),
+                kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), get()),
             )
 
         val result =

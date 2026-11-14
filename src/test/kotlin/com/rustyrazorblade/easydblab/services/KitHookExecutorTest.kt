@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -82,6 +83,7 @@ class KitHookExecutorTest : BaseKoinTest() {
                 context = get(),
                 clusterStateManager = mockClusterStateManager,
                 eventBus = eventBus,
+                kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), mockClusterStateManager),
                 maxAttempts = 1,
                 backoffBaseMs = 0L,
             )
@@ -395,6 +397,7 @@ class KitHookExecutorTest : BaseKoinTest() {
             context = get(),
             clusterStateManager = mockClusterStateManager,
             eventBus = eventBus,
+            kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), mockClusterStateManager),
             maxAttempts = 3,
             backoffBaseMs = 0L,
             startProcess = startProcess,

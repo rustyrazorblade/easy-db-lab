@@ -287,6 +287,9 @@ data class ClusterState(
     // kubectl context; a workspace with no recorded context falls back to the kubeconfig's
     // current-context.
     var kubeContext: String? = null,
+    // The effective capability set `init` recorded (declared or probed, plus overrides). Null in a
+    // state written before capabilities were recorded, which reads as AWS (NodeCapabilities.from).
+    var capabilities: Set<NodeCapability>? = null,
 ) {
     /**
      * Returns true when the db nodes are provisioned with Cassandra hosts.

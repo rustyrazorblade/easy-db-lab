@@ -224,24 +224,32 @@ class DefaultObservabilityStackService(
      * the local telemetry backends are local-mode only.
      */
     private fun buildStages(telemetryRedirect: TelemetryRedirect?): List<Stage> =
-        buildList {
-            add(Stage("kube-state-metrics", kubeStateMetricsManifestBuilder.buildAllResources()))
-            add(Stage("Fluent Bit Journald", journaldOtelManifestBuilder.buildAllResources(), NodeCapability.SYSTEMD_JOURNAL))
-            add(Stage("ebpf_exporter", ebpfExporterManifestBuilder.buildAllResources()))
-            add(Stage("Registry", registryManifestBuilder.buildAllResources()))
-            add(Stage("S3 Manager", s3ManagerManifestBuilder.buildAllResources(), NodeCapability.S3))
-            add(Stage("Beyla", beylaManifestBuilder.buildAllResources()))
-            add(Stage("YACE", yaceManifestBuilder.buildAllResources(), NodeCapability.CLOUDWATCH))
-            if (telemetryRedirect == null) {
-                add(Stage("Mimir", mimirManifestBuilder.buildAllResources()))
-                add(Stage("Loki", lokiManifestBuilder.buildAllResources()))
-                add(Stage("Tempo", tempoManifestBuilder.buildAllResources()))
-                add(Stage("Pyroscope", pyroscopeManifestBuilder.buildAllResources()))
-            } else {
-                // Redirect: the eBPF agent still runs on every node, pointed at the external
-                // Pyroscope; the server does not exist here.
-                add(Stage("Pyroscope Agent", pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect)))
-            }
+        ObservabilityStage.declared(telemetryRedirect).map { stage ->
+            Stage(stage.label, resourcesOf(stage, telemetryRedirect), stage.requires)
+        }
+
+    private fun resourcesOf(
+        stage: ObservabilityStage,
+        telemetryRedirect: TelemetryRedirect?,
+    ): List<HasMetadata> =
+        when (stage) {
+            ObservabilityStage.KUBE_STATE_METRICS -> kubeStateMetricsManifestBuilder.buildAllResources()
+            ObservabilityStage.FLUENT_BIT_JOURNALD -> journaldOtelManifestBuilder.buildAllResources()
+            ObservabilityStage.EBPF_EXPORTER -> ebpfExporterManifestBuilder.buildAllResources()
+            ObservabilityStage.REGISTRY -> registryManifestBuilder.buildAllResources()
+            ObservabilityStage.S3_MANAGER -> s3ManagerManifestBuilder.buildAllResources()
+            ObservabilityStage.BEYLA -> beylaManifestBuilder.buildAllResources()
+            ObservabilityStage.YACE -> yaceManifestBuilder.buildAllResources()
+            ObservabilityStage.MIMIR -> mimirManifestBuilder.buildAllResources()
+            ObservabilityStage.LOKI -> lokiManifestBuilder.buildAllResources()
+            ObservabilityStage.TEMPO -> tempoManifestBuilder.buildAllResources()
+            ObservabilityStage.PYROSCOPE -> pyroscopeManifestBuilder.buildAllResources()
+            // Redirect: the eBPF agent still runs on every node, pointed at the external Pyroscope;
+            // the server does not exist here.
+            ObservabilityStage.PYROSCOPE_AGENT ->
+                pyroscopeManifestBuilder.buildAgentResources(
+                    checkNotNull(telemetryRedirect) { "The Pyroscope agent stage is declared only in redirect mode" },
+                )
         }
 
     /**

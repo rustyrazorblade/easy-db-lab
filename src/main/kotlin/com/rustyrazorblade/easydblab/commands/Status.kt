@@ -137,6 +137,7 @@ class Status(
         renderProxyDependentSection("Stress jobs") { displayStressJobsSection() }
         displayObservabilitySection()
         if (NodeCapability.S3 in capabilitiesOf(clusterState)) displayS3ManagerSection()
+        displayCapabilitiesSection()
         displayCassandraVersionSection()
 
         // A degraded report is still an unsuccessful command: fail after rendering so a script
@@ -551,6 +552,22 @@ Observability:
 S3 Manager:
   Web UI: http://$ip:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/""",
         )
+    }
+
+    /**
+     * Every capability in enum order: present, or absent with the reason the workloads needing it
+     * are skipped. Read from the recorded set, so it shows what `up` will gate on.
+     */
+    private fun displayCapabilitiesSection() {
+        val capabilities = capabilitiesOf(clusterState)
+        val lines =
+            NodeCapability.entries.joinToString("\n") { capability ->
+                when (capability) {
+                    in capabilities -> "  ${capability.serialName}: present"
+                    else -> "  ${capability.serialName}: absent: ${capability.absentReason}"
+                }
+            }
+        println("\n=== CAPABILITIES ===\n$lines")
     }
 
     /**

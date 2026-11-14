@@ -22,9 +22,13 @@ class ExposureServiceAccess(
     private val log = KotlinLogging.logger {}
     private var chosen: Pair<Exposure, ServiceAccess>? = null
 
-    @Synchronized
+    /**
+     * Opens [target] on the implementation the exposure selects. Only the selection is locked: an
+     * open can wait on the cluster (a port-forward resolving its pod), and the implementations
+     * guard their own state, so one slow open never holds up another caller's.
+     */
     override fun open(target: ServiceTarget): ServiceEndpoint =
-        selected().open(target).also { endpoint ->
+        synchronized(this) { selected() }.open(target).also { endpoint ->
             log.debug { "Reaching ${target.namespace}/${target.service}:${target.servicePort} at $endpoint" }
         }
 

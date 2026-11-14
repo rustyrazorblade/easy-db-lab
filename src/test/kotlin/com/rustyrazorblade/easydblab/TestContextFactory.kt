@@ -39,10 +39,16 @@ object TestContextFactory {
                 axonOpsKey = "",
             )
 
+        // An install directory whose packaged cassandra_versions.yaml declares nothing, so a test
+        // that does not care about declared versions sees none.
+        val appHome = Files.createDirectories(testTempDirectory.resolve("app/packer/cassandra"))
+        Files.writeString(appHome.resolve("cassandra_versions.yaml"), "[]\n")
+
         val context =
             Context(
                 easyDbLabUserDirectory = testTempDirectory.toFile(),
                 workingDirectory = workingDirectory ?: testTempDirectory.toFile(),
+                appHome = testTempDirectory.resolve("app").toString(),
             )
 
         // userConfigFile is accessed through the profileDir

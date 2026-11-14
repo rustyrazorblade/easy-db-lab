@@ -84,6 +84,7 @@ object TestModules {
             ContextFactory(
                 baseDirectory = testContext.easyDbLabUserDirectory,
                 workingDirectory = testContext.workingDirectory,
+                appHome = testContext.appHome,
             )
         return module {
             // Provide ContextFactory for tests that need it

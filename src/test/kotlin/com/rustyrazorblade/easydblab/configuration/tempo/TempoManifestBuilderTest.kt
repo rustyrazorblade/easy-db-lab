@@ -33,7 +33,9 @@ class TempoManifestBuilderTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        whenever(
+                            it.load(),
+                        ).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -76,17 +78,17 @@ class TempoManifestBuilderTest : BaseKoinTest() {
     fun `traces are stored under the traces root of the account bucket`() {
         val yaml = config()
 
-        assertThat(scalarAt(yaml, "storage", "trace", "s3", "bucket")).isEqualTo("\${S3_BUCKET}")
-        assertThat(scalarAt(yaml, "storage", "trace", "s3", "prefix")).isEqualTo("\${TRACES_S3_PREFIX}")
+        assertThat(scalarAt(yaml, "storage", "trace", "s3", "bucket")).isEqualTo("\${STORE_BUCKET}")
+        assertThat(scalarAt(yaml, "storage", "trace", "s3", "prefix")).isEqualTo("\${TRACES_STORE_PREFIX}")
 
         val env =
             builder
                 .buildDeployment()
                 .spec.template.spec.containers[0]
                 .env
-        val prefix = env.single { it.name == "TRACES_S3_PREFIX" }
+        val prefix = env.single { it.name == "TRACES_STORE_PREFIX" }
         assertThat(prefix.valueFrom.configMapKeyRef.name).isEqualTo("cluster-config")
-        assertThat(prefix.valueFrom.configMapKeyRef.key).isEqualTo("traces_s3_prefix")
+        assertThat(prefix.valueFrom.configMapKeyRef.key).isEqualTo("traces_store_prefix")
         assertThat(env.map { it.name }).doesNotContain("CLUSTER_S3_PREFIX")
     }
 

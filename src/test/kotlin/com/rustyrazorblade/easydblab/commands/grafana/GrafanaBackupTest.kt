@@ -2,9 +2,9 @@ package com.rustyrazorblade.easydblab.commands.grafana
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.AnnotationMirror
 import com.rustyrazorblade.easydblab.services.GrafanaAnnotationBackupResult
@@ -38,7 +38,7 @@ class GrafanaBackupTest : BaseKoinTest() {
                 clusterState: ClusterState,
             ): Result<GrafanaAnnotationBackupResult> {
                 steps.add("backup")
-                return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root("acct").resolve("x.json"), 3))
+                return Result.success(GrafanaAnnotationBackupResult(ClusterStoragePath.root("acct").resolve("x.json"), 3))
             }
         }
 

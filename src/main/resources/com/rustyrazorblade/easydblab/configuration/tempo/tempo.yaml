@@ -72,14 +72,7 @@ metrics_generator:
 
 storage:
   trace:
-    backend: s3
-    wal:
-      path: /var/tempo/wal
-    s3:
-      bucket: ${S3_BUCKET}
-      endpoint: s3.${AWS_REGION}.amazonaws.com
-      region: ${AWS_REGION}
-      prefix: ${TRACES_S3_PREFIX}
+    __OBJECT_STORE_BLOCK__
 
 overrides:
   defaults:

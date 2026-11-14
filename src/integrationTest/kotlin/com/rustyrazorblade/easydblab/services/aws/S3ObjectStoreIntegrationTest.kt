@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -59,7 +59,7 @@ class S3ObjectStoreIntegrationTest {
         ) {
             val testFile = tempDir.resolve("upload-test.txt").toFile()
             testFile.writeText("hello world")
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("upload/upload-test.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("upload/upload-test.txt")
 
             val result = objectStore.uploadFile(testFile, s3Path, showProgress = false)
 
@@ -71,7 +71,7 @@ class S3ObjectStoreIntegrationTest {
         @Test
         fun `should throw when file does not exist`() {
             val nonexistent = File("/nonexistent/file.txt")
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("upload/nonexistent.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("upload/nonexistent.txt")
 
             assertThatThrownBy {
                 objectStore.uploadFile(nonexistent, s3Path)
@@ -89,7 +89,7 @@ class S3ObjectStoreIntegrationTest {
             // Upload first
             val sourceFile = tempDir.resolve("source.txt").toFile()
             sourceFile.writeText("download content")
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("download/source.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("download/source.txt")
             objectStore.uploadFile(sourceFile, s3Path, showProgress = false)
 
             // Download
@@ -111,7 +111,7 @@ class S3ObjectStoreIntegrationTest {
         ) {
             val sourceFile = tempDir.resolve("current.txt").toFile()
             sourceFile.writeText("current content, uploaded after the local copy was saved")
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("download/replaced.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("download/replaced.txt")
             objectStore.uploadFile(sourceFile, s3Path, showProgress = false)
             val downloadPath = tempDir.resolve("replaced.txt")
             downloadPath.toFile().writeText("stale")
@@ -132,7 +132,7 @@ class S3ObjectStoreIntegrationTest {
         ) {
             val testFile = tempDir.resolve("exists.txt").toFile()
             testFile.writeText("exists")
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("exists/exists.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("exists/exists.txt")
             objectStore.uploadFile(testFile, s3Path, showProgress = false)
 
             assertThat(objectStore.fileExists(s3Path)).isTrue()
@@ -140,7 +140,7 @@ class S3ObjectStoreIntegrationTest {
 
         @Test
         fun `should return false when file does not exist`() {
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("exists/nonexistent.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("exists/nonexistent.txt")
 
             assertThat(objectStore.fileExists(s3Path)).isFalse()
         }
@@ -154,16 +154,16 @@ class S3ObjectStoreIntegrationTest {
         ) {
             val testFile = tempDir.resolve("app.jar").toFile()
             testFile.writeText("fake jar content")
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("spark/app.jar")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("spark/app.jar")
             objectStore.uploadFile(testFile, s3Path, showProgress = false)
 
-            val parsed = ClusterS3Path.fromUri("s3://$TEST_BUCKET/spark/app.jar")
+            val parsed = S3Uri.parse("s3://$TEST_BUCKET/spark/app.jar")
             assertThat(objectStore.fileExists(parsed)).isTrue()
         }
 
         @Test
         fun `should return false for non-existent jar via fromUri`() {
-            val parsed = ClusterS3Path.fromUri("s3://$TEST_BUCKET/spark/nonexistent.jar")
+            val parsed = S3Uri.parse("s3://$TEST_BUCKET/spark/nonexistent.jar")
             assertThat(objectStore.fileExists(parsed)).isFalse()
         }
     }
@@ -176,7 +176,7 @@ class S3ObjectStoreIntegrationTest {
         ) {
             val testFile = tempDir.resolve("info.txt").toFile()
             testFile.writeText("file info content")
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("info/info.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("info/info.txt")
             objectStore.uploadFile(testFile, s3Path, showProgress = false)
 
             val fileInfo = objectStore.getFileInfo(s3Path)
@@ -190,7 +190,7 @@ class S3ObjectStoreIntegrationTest {
 
         @Test
         fun `should return null when file does not exist`() {
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("info/nonexistent.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("info/nonexistent.txt")
 
             assertThat(objectStore.getFileInfo(s3Path)).isNull()
         }
@@ -206,7 +206,7 @@ class S3ObjectStoreIntegrationTest {
             file1.writeText("content1")
             val file2 = tempDir.resolve("list2.txt").toFile()
             file2.writeText("content two")
-            val prefix = ClusterS3Path.root(TEST_BUCKET).resolve("listfiles")
+            val prefix = ClusterStoragePath.root(TEST_BUCKET).resolve("listfiles")
             objectStore.uploadFile(file1, prefix.resolve("list1.txt"), showProgress = false)
             objectStore.uploadFile(file2, prefix.resolve("list2.txt"), showProgress = false)
 
@@ -222,7 +222,7 @@ class S3ObjectStoreIntegrationTest {
 
         @Test
         fun `should return empty list when no files exist`() {
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("listfiles-empty")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("listfiles-empty")
 
             assertThat(objectStore.listFiles(s3Path)).isEmpty()
         }
@@ -233,7 +233,7 @@ class S3ObjectStoreIntegrationTest {
         ) {
             val file1 = tempDir.resolve("data.txt").toFile()
             file1.writeText("content")
-            val prefix = ClusterS3Path.root(TEST_BUCKET).resolve("nonrecursive")
+            val prefix = ClusterStoragePath.root(TEST_BUCKET).resolve("nonrecursive")
             objectStore.uploadFile(file1, prefix.resolve("backup-a").resolve("data.txt"), showProgress = false)
             objectStore.uploadFile(file1, prefix.resolve("backup-b").resolve("data.txt"), showProgress = false)
 
@@ -252,7 +252,7 @@ class S3ObjectStoreIntegrationTest {
         ) {
             val testFile = tempDir.resolve("delete.txt").toFile()
             testFile.writeText("to delete")
-            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("delete/delete.txt")
+            val s3Path = ClusterStoragePath.root(TEST_BUCKET).resolve("delete/delete.txt")
             objectStore.uploadFile(testFile, s3Path, showProgress = false)
             assertThat(objectStore.fileExists(s3Path)).isTrue()
 
@@ -277,7 +277,7 @@ class S3ObjectStoreIntegrationTest {
             subDir.mkdirs()
             File(subDir, "c.txt").writeText("file c in subdir")
 
-            val remotePath = ClusterS3Path.root(TEST_BUCKET).resolve("dir-test")
+            val remotePath = ClusterStoragePath.root(TEST_BUCKET).resolve("dir-test")
 
             // Upload directory
             val uploadResult = objectStore.uploadDirectory(uploadDir.toPath(), remotePath, showProgress = false)
@@ -299,7 +299,7 @@ class S3ObjectStoreIntegrationTest {
         ) {
             val testFile = tempDir.resolve("dircheck.txt").toFile()
             testFile.writeText("exists")
-            val prefix = ClusterS3Path.root(TEST_BUCKET).resolve("direxists")
+            val prefix = ClusterStoragePath.root(TEST_BUCKET).resolve("direxists")
             objectStore.uploadFile(testFile, prefix.resolve("dircheck.txt"), showProgress = false)
 
             assertThat(objectStore.directoryExists(prefix)).isTrue()
@@ -307,7 +307,7 @@ class S3ObjectStoreIntegrationTest {
 
         @Test
         fun `directoryExists should return false when no files under prefix`() {
-            val prefix = ClusterS3Path.root(TEST_BUCKET).resolve("direxists-empty")
+            val prefix = ClusterStoragePath.root(TEST_BUCKET).resolve("direxists-empty")
 
             assertThat(objectStore.directoryExists(prefix)).isFalse()
         }

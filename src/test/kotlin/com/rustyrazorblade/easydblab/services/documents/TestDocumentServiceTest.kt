@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.documents
 
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import org.assertj.core.api.Assertions.assertThat
@@ -38,7 +38,7 @@ class TestDocumentServiceTest {
 
     @Test
     fun `a failed upload names the file that failed and the documents already stored`() {
-        whenever(objectStore.uploadFile(any(), argThat<ClusterS3Path> { getKey().endsWith("/b.md") }, any()))
+        whenever(objectStore.uploadFile(any(), argThat<ClusterStoragePath> { getKey().endsWith("/b.md") }, any()))
             .thenThrow(IllegalStateException("S3 refused the write"))
         val files = listOf("a.md", "b.md", "c.md").map { name -> File(dir, name).also { it.writeText(name) } }
 

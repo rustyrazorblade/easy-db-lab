@@ -4,9 +4,12 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -24,7 +27,7 @@ import java.io.File
 
 class SparkSubmitTest : BaseKoinTest() {
     private lateinit var mockSparkService: SparkService
-    private lateinit var mockObjectStore: ObjectStore
+    private val objectStore = InMemoryObjectStore()
     private lateinit var mockClusterStateManager: ClusterStateManager
 
     override fun additionalTestModules(): List<Module> =
@@ -37,12 +40,8 @@ class SparkSubmitTest : BaseKoinTest() {
                     }
                 }
 
-                // Mock ObjectStore
-                single {
-                    mock<ObjectStore>().also {
-                        mockObjectStore = it
-                    }
-                }
+                // Real in-memory storage: every test here only needs somewhere to keep the jar.
+                single<ObjectStore> { objectStore }
 
                 // Mock ClusterStateManager
                 single {
@@ -75,8 +74,8 @@ class SparkSubmitTest : BaseKoinTest() {
         val s3Path = state.s3Path()
         val jarPath = s3Path.spark().resolve("test-app.jar")
 
-        // Verify the full URI follows per-environment bucket format with cluster prefix
-        assertThat(jarPath.toString()).isEqualTo("s3://$testBucket/clusters/test-cluster-test-id/spark/test-app.jar")
+        // Verify the location follows per-environment bucket format with cluster prefix
+        assertThat(S3Uri.uri(jarPath)).isEqualTo("s3://$testBucket/clusters/test-cluster-test-id/spark/test-app.jar")
 
         // Verify the key (for S3 SDK) follows the correct format
         assertThat(jarPath.getKey()).isEqualTo("clusters/test-cluster-test-id/spark/test-app.jar")
@@ -88,7 +87,6 @@ class SparkSubmitTest : BaseKoinTest() {
     // Helper to initialize mocks by triggering Koin injection
     private fun initMocks() {
         get<SparkService>()
-        get<ObjectStore>()
         get<ClusterStateManager>()
     }
 
@@ -122,7 +120,7 @@ class SparkSubmitTest : BaseKoinTest() {
 
         // Set up mocks
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
-        whenever(mockObjectStore.fileExists(any())).thenReturn(true)
+        objectStore.uploadContent("jar", S3Uri.parse("s3://test-bucket/jars/app.jar"))
         whenever(mockSparkService.submitJob(any()))
             .thenReturn(Result.success("s-STEPID"))
 
@@ -130,7 +128,7 @@ class SparkSubmitTest : BaseKoinTest() {
         command.execute()
 
         // Then - should not upload since it's already an S3 path
-        verify(mockObjectStore, never()).uploadFile(any(), any(), any())
+        assertThat(objectStore.listFiles(S3Uri.parse("s3://test-bucket"))).hasSize(1)
         verify(mockSparkService).submitJob(
             argThat { req ->
                 req.clusterId == testClusterId &&
@@ -157,7 +155,6 @@ class SparkSubmitTest : BaseKoinTest() {
         command.mainClass = "com.example.Main"
 
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
-        whenever(mockObjectStore.fileExists(any())).thenReturn(false)
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalArgumentException::class.java)
@@ -173,7 +170,9 @@ class SparkSubmitTest : BaseKoinTest() {
         @TempDir tempDir: File,
     ) {
         // Given - set up cluster state and local JAR
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test-12345678")
+        val state =
+            ClusterState(name = "test-cluster", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test-12345678")
+                .also { it.dataBucket = "easy-db-lab-data-12345678" }
 
         val localJar = File(tempDir, "app.jar")
         localJar.writeText("test jar content")
@@ -194,25 +193,22 @@ class SparkSubmitTest : BaseKoinTest() {
         command.jarPath = localJar.absolutePath
         command.mainClass = "com.example.Main"
 
-        // Set up mocks - need to capture the S3 path from upload
-        val expectedS3Path = state.s3Path().spark().resolve("app.jar")
+        val expectedS3Path = ClusterStoragePath.root(state.dataBucket).resolve("spark").resolve("app.jar")
 
         whenever(mockClusterStateManager.load()).thenReturn(state)
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
-        whenever(mockObjectStore.uploadFile(any(), any(), any()))
-            .thenReturn(ObjectStore.UploadResult(expectedS3Path, localJar.length()))
         whenever(mockSparkService.submitJob(any()))
             .thenReturn(Result.success("s-STEPID"))
 
         // When
         command.execute()
 
-        // Then - should upload since it's a local path
-        verify(mockObjectStore).uploadFile(any(), any(), any())
+        // Then - the local jar is uploaded, and EMR is handed its s3:// location
+        assertThat(objectStore.readContent(expectedS3Path)).isEqualTo("test jar content")
         verify(mockSparkService).submitJob(
             argThat { req ->
                 req.clusterId == testClusterId &&
-                    req.jarPath == expectedS3Path.toString() &&
+                    req.jarPath == S3Uri.uri(expectedS3Path) &&
                     req.mainClass == "com.example.Main"
             },
         )
@@ -254,7 +250,7 @@ class SparkSubmitTest : BaseKoinTest() {
         command.mainClass = "com.example.Main"
 
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(validClusterInfo))
-        whenever(mockObjectStore.fileExists(any())).thenReturn(true)
+        objectStore.uploadContent("jar", S3Uri.parse("s3://test-bucket/jars/app.jar"))
         whenever(mockSparkService.submitJob(any()))
             .thenReturn(Result.failure(RuntimeException("EMR API error")))
 

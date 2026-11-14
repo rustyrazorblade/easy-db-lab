@@ -1,0 +1,60 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "s3:ListAllMyBuckets",
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "s3:*",
+            "Resource": [
+                "arn:aws:s3:::easy-db-lab-*",
+                "arn:aws:s3:::easy-db-lab-*/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:*",
+                "logs:*",
+                "ec2:*",
+                "iam:ListAccountAliases",
+                "tag:GetResources",
+                "oam:ListSinks",
+                "oam:ListAttachedLinks",
+                "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecr:BatchCheckLayerAvailability",
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage"
+            ],
+            "Resource": "arn:aws:ecr:*:123456789012:repository/*"
+        },
+        {
+            "Effect": "Deny",
+            "Action": [
+                "s3:DeleteObject",
+                "s3:DeleteObjectVersion"
+            ],
+            "Resource": [
+                "arn:aws:s3:::easy-db-lab-*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/grafana/*",
+                "arn:aws:s3:::easy-db-lab-*/reports/*",
+                "arn:aws:s3:::easy-db-lab-*/*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/*/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/*/grafana/*",
+                "arn:aws:s3:::easy-db-lab-*/*/reports/*"
+            ]
+        }
+    ]
+}

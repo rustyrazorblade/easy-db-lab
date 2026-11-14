@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -29,7 +30,7 @@ class AccountBucketSetup(
         configureBuckets(state)
         val bucket = requireBucket(state)
         reapplyPolicies(bucket)
-        compactorService.ensureRunning(bucket)
+        compactorService.ensureRunning(bucket, StoreBackend.prefixOf(state))
     }
 
     /**

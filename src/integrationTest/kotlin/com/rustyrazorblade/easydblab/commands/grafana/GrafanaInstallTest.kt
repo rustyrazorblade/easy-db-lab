@@ -2,16 +2,16 @@ package com.rustyrazorblade.easydblab.commands.grafana
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultGrafanaClient
 import com.rustyrazorblade.easydblab.services.GrafanaClient
-import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.TenantDirectory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -28,8 +28,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.any
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -81,9 +79,8 @@ class GrafanaInstallTest : BaseKoinTest() {
                     )
                 }
                 single {
-                    val objectStore = mock<ObjectStore>()
-                    whenever(objectStore.listFiles(any(), eq(false), any()))
-                        .thenReturn(listOf(ObjectStore.FileInfo(ClusterS3Path.fromKey("acct-bucket", "mimir/acme/"), 0, "")))
+                    val objectStore = InMemoryObjectStore()
+                    objectStore.uploadContent("x", ClusterStoragePath.fromKey("acct-bucket", "mimir/acme/meta.json"))
                     DashboardInstallContextFactory(TenantDirectory(objectStore))
                 }
             },

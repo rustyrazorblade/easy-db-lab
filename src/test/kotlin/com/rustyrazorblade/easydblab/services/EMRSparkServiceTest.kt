@@ -3,9 +3,9 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -21,9 +22,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -44,8 +43,14 @@ import software.amazon.awssdk.services.emr.model.StepState
 import software.amazon.awssdk.services.emr.model.StepStateChangeReason
 import software.amazon.awssdk.services.emr.model.StepStatus
 import software.amazon.awssdk.services.emr.model.StepTimeline
+import java.io.File
+import java.nio.file.Files
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.util.zip.GZIPOutputStream
 
 /**
  * Test suite for EMRSparkService following TDD principles.
@@ -55,7 +60,6 @@ import java.time.Instant
  */
 class EMRSparkServiceTest : BaseKoinTest() {
     private lateinit var mockEmrClient: EmrClient
-    private lateinit var mockObjectStore: ObjectStore
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockLokiQueryService: LokiQueryService
     private lateinit var sparkService: SparkService
@@ -85,7 +89,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single<EmrClient> { mockEmrClient }
-                single<ObjectStore> { mockObjectStore }
+                single<ObjectStore> { emr }
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<LokiQueryService> { mockLokiQueryService }
                 // Zero delays so job-polling tests do not sit through the production poll interval
@@ -130,7 +134,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setupMocks() {
         mockEmrClient = mock()
-        mockObjectStore = mock()
         mockClusterStateManager = mock()
         mockLokiQueryService = mock()
         whenever(mockClusterStateManager.load()).thenReturn(defaultClusterState)
@@ -745,7 +748,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
     private val stepEnd = Instant.parse("2026-09-28T14:08:52Z")
 
     private fun stderrPath() =
-        ClusterS3Path
+        ClusterStoragePath
             .from(defaultClusterState)
             .emrLogs()
             .resolve(testClusterId)
@@ -753,7 +756,71 @@ class EMRSparkServiceTest : BaseKoinTest() {
             .resolve(testStepId)
             .resolve("stderr.gz")
 
-    private fun stderrUploadedAt(time: String) = ObjectStore.FileInfo(stderrPath(), size = 1, lastModified = time)
+    private val beforeStepEnd = Instant.parse("2026-09-28T14:08:45Z")
+    private val afterStepEnd = Instant.parse("2026-09-28T14:13:48Z")
+
+    /** A clock the in-memory store stamps uploads with; each upload sets it to EMR's upload time. */
+    private class SetClock(
+        var now: Instant = Instant.EPOCH,
+    ) : Clock() {
+        override fun instant(): Instant = now
+
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = this
+    }
+
+    /**
+     * EMR's log uploader over the real in-memory store: it uploads a step's gzipped stderr, and can
+     * upload a newer copy when the service looks at the object for the [n]th time, as EMR does a few
+     * minutes after the step ends. Every call the service makes reaches the real store.
+     */
+    private inner class EmrLogUploader(
+        private val clock: SetClock = SetClock(),
+        private val store: InMemoryObjectStore = InMemoryObjectStore(clock),
+    ) : ObjectStore by store {
+        var stderrLooks = 0
+            private set
+        private var pending: Triple<Int, String, Instant>? = null
+
+        fun uploadStderr(
+            content: String,
+            at: Instant,
+        ) {
+            clock.now = at
+            val gz = File(tempDir, "upload-${at.epochSecond}.gz")
+            GZIPOutputStream(gz.outputStream()).use { it.write(content.toByteArray()) }
+            store.uploadFile(gz, stderrPath(), showProgress = false)
+        }
+
+        fun uploadStderrOnLook(
+            n: Int,
+            content: String,
+            at: Instant,
+        ) {
+            pending = Triple(n, content, at)
+        }
+
+        override fun getFileInfo(remotePath: ClusterStoragePath): ObjectStore.FileInfo? {
+            if (remotePath == stderrPath()) {
+                stderrLooks++
+                pending?.takeIf { it.first == stderrLooks }?.let { (_, content, at) -> uploadStderr(content, at) }
+            }
+            return store.getFileInfo(remotePath)
+        }
+    }
+
+    private val emr by lazy { EmrLogUploader() }
+
+    /** The stderr the service saved locally for the step, or null when it downloaded none. */
+    private fun downloadedStderr(): String? =
+        tempDir
+            .toPath()
+            .resolve(testClusterId)
+            .resolve(testStepId)
+            .resolve("stderr")
+            .takeIf { Files.exists(it) }
+            ?.let { Files.readString(it) }
 
     private fun failStepEndingAt(end: Instant) {
         val status =
@@ -800,31 +867,28 @@ class EMRSparkServiceTest : BaseKoinTest() {
     @Test
     fun `a failed step's logs are downloaded once EMR uploads a stderr newer than the step's end`() {
         failStepEndingAt(stepEnd)
-        whenever(mockObjectStore.getFileInfo(stderrPath())).thenReturn(
-            stderrUploadedAt("2026-09-28T14:08:45Z"),
-            stderrUploadedAt("2026-09-28T14:08:45Z"),
-            stderrUploadedAt("2026-09-28T14:13:48Z"),
-        )
+        emr.uploadStderr("stale: driver still running", at = beforeStepEnd)
+        emr.uploadStderrOnLook(3, "final: java.lang.IllegalStateException: boom", at = afterStepEnd)
 
         val result = sparkService.waitForJobCompletion(testClusterId, testStepId)
 
         assertThat(result.isFailure).isTrue()
-        verify(mockObjectStore, times(3)).getFileInfo(stderrPath())
-        verify(mockObjectStore).downloadFile(eq(stderrPath()), any(), any())
+        assertThat(emr.stderrLooks).isEqualTo(3)
+        assertThat(downloadedStderr()).isEqualTo("final: java.lang.IllegalStateException: boom")
     }
 
     @Test
     fun `a failed step whose final stderr never arrives names the S3 path instead of printing the stale copy`() {
         failStepEndingAt(stepEnd)
-        whenever(mockObjectStore.getFileInfo(stderrPath())).thenReturn(stderrUploadedAt("2026-09-28T14:08:45Z"))
+        emr.uploadStderr("stale: driver still running", at = beforeStepEnd)
         val events = recordEvents()
 
         val result = sparkService.waitForJobCompletion(testClusterId, testStepId)
 
         assertThat(result.isFailure).isTrue()
-        verify(mockObjectStore, times(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS)).getFileInfo(stderrPath())
-        verify(mockObjectStore, never()).downloadFile(any(), any(), any())
+        assertThat(emr.stderrLooks).isEqualTo(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS)
+        assertThat(downloadedStderr()).isNull()
         assertThat(events.filterIsInstance<Event.Emr.StepStderrNotFinal>().single().s3Uri)
-            .isEqualTo(stderrPath().toUri())
+            .isEqualTo(S3Uri.uri(stderrPath()))
     }
 }

@@ -43,7 +43,9 @@ class ConfigChangeReportTest : BaseKoinTest() {
                 single { mock<K8sService>().also { k8sService = it } }
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        whenever(
+                            it.load(),
+                        ).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -57,7 +59,7 @@ class ConfigChangeReportTest : BaseKoinTest() {
     }
 
     private fun hashed(resources: List<HasMetadata>): List<HasMetadata> =
-        ConfigHashAnnotator.annotate(resources, mapOf(ClusterConfigData.NAME to mapOf("s3_bucket" to "acct")))
+        ConfigHashAnnotator.annotate(resources, mapOf(ClusterConfigData.NAME to mapOf("store_bucket" to "acct")))
 
     private fun hashOf(resources: List<HasMetadata>): String =
         resources

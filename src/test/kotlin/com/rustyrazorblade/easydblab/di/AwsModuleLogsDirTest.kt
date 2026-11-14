@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
@@ -36,7 +37,7 @@ internal class AwsModuleLogsDirTest : BaseKoinTest() {
                         )
                     }
                 }
-                single<ObjectStore> { mock() }
+                single<ObjectStore> { InMemoryObjectStore() }
                 single<LokiQueryService> { mock() }
             },
         )

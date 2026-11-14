@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -15,7 +14,7 @@ class StepStderrReadinessTest {
     private val stepEnd = Instant.parse("2026-09-28T14:08:52Z")
 
     private fun uploadedAt(time: String) =
-        ObjectStore.FileInfo(ClusterS3Path.fromUri("s3://bucket/spark/emr-logs/j-1/steps/s-1/stderr.gz"), size = 1, lastModified = time)
+        ObjectStore.FileInfo(S3Uri.parse("s3://bucket/spark/emr-logs/j-1/steps/s-1/stderr.gz"), size = 1, lastModified = time)
 
     @Test
     fun `a copy uploaded before the step ended is not final`() {

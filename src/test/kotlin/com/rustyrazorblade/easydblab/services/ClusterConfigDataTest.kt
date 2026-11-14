@@ -38,9 +38,9 @@ class ClusterConfigDataTest {
         val data = ClusterConfigData.of(control, state, "us-west-2")
 
         assertThat(data)
-            .containsEntry("metrics_s3_prefix", "mimir")
-            .containsEntry("logs_s3_prefix", "loki")
-            .containsEntry("traces_s3_prefix", "tempo")
+            .containsEntry("metrics_store_prefix", "mimir")
+            .containsEntry("logs_store_prefix", "loki")
+            .containsEntry("traces_store_prefix", "tempo")
             .containsEntry("cluster_name", "lab-abc123")
     }
 
@@ -76,5 +76,17 @@ class ClusterConfigDataTest {
         val data = ClusterConfigData.of(control, state, "us-west-2")
 
         assertThat(data).containsEntry("capabilities", NodeCapability.entries.joinToString(",") { it.serialName })
+    }
+
+    @Test
+    fun `publishes the store in neutral keys, with the S3 endpoint of the cluster's region`() {
+        val data = ClusterConfigData.of(control, state, "us-west-2")
+
+        assertThat(data)
+            .containsEntry("store_bucket", "acct-bucket")
+            .containsEntry("store_prefix", "")
+            .containsEntry("store_region", "us-east-1")
+            .containsEntry("store_endpoint", "s3.us-east-1.amazonaws.com")
+            .doesNotContainKeys("aws_region", "s3_bucket", "metrics_s3_prefix", "logs_s3_prefix", "traces_s3_prefix")
     }
 }

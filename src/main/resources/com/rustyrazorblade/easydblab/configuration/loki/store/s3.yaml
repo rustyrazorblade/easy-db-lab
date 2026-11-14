@@ -1,0 +1,4 @@
+s3:
+  bucketnames: ${STORE_BUCKET}
+  endpoint: ${STORE_ENDPOINT}
+  region: ${STORE_REGION}

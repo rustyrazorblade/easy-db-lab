@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CassandraBuildManifest
 import com.rustyrazorblade.easydblab.configuration.CassandraVersion
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -29,7 +29,7 @@ class CassandraBuildCatalog(
     fun publish(
         manifest: CassandraBuildManifest,
         tarball: File,
-    ): ClusterS3Path {
+    ): ClusterStoragePath {
         val dir = buildDir(manifest.name)
 
         // The tarball goes up first. A manifest with no tarball beside it would list a build that
@@ -76,13 +76,16 @@ class CassandraBuildCatalog(
             url = tarballUri(manifest),
         )
 
-    fun tarballUri(manifest: CassandraBuildManifest): String = buildDir(manifest.name).resolve(manifest.tarball).toUri()
+    fun tarballUri(manifest: CassandraBuildManifest): String = uriOf(buildDir(manifest.name).resolve(manifest.tarball))
 
-    private fun buildDir(name: String): ClusterS3Path = root().resolve(name)
+    /** [path] as the store spells it: the form nodes install a build from, and the one shown to the user. */
+    fun uriOf(path: ClusterStoragePath): String = objectStore.uriOf(path)
+
+    private fun buildDir(name: String): ClusterStoragePath = root().resolve(name)
 
     /**
      * Ensures the account bucket exists before handing back its builds prefix, so `cassandra build`
      * works on a profile that has never provisioned a cluster.
      */
-    private fun root(): ClusterS3Path = ClusterS3Path.cassandraBuildsRoot(bucketService.ensureAccountBucket(userConfig))
+    private fun root(): ClusterStoragePath = ClusterStoragePath.cassandraBuildsRoot(bucketService.ensureAccountBucket(userConfig))
 }

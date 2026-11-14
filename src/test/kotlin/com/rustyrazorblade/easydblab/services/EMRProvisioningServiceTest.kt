@@ -34,7 +34,7 @@ import software.amazon.awssdk.services.emr.model.InstanceGroupType
  */
 internal class EMRProvisioningServiceTest {
     private lateinit var mockEmrService: EMRService
-    private lateinit var mockObjectStore: ObjectStore
+    private lateinit var objectStore: InMemoryObjectStore
     private lateinit var eventBus: EventBus
     private lateinit var capturedEvents: MutableList<Event>
     private lateinit var service: DefaultEMRProvisioningService
@@ -53,7 +53,7 @@ internal class EMRProvisioningServiceTest {
     @BeforeEach
     fun setUp() {
         mockEmrService = mock()
-        mockObjectStore = mock()
+        objectStore = InMemoryObjectStore()
         capturedEvents = mutableListOf()
         eventBus = EventBus()
         eventBus.addListener(
@@ -70,6 +70,7 @@ internal class EMRProvisioningServiceTest {
             ClusterState(
                 name = "test",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             ),
         )
@@ -86,7 +87,7 @@ internal class EMRProvisioningServiceTest {
         service =
             DefaultEMRProvisioningService(
                 mockEmrService,
-                mockObjectStore,
+                objectStore,
                 templateService,
                 eventBus,
             )
@@ -264,9 +265,7 @@ internal class EMRProvisioningServiceTest {
             ),
         )
 
-        val scriptCaptor = argumentCaptor<String>()
-        verify(mockObjectStore).uploadContent(scriptCaptor.capture(), any())
-        val script = scriptCaptor.firstValue
+        val script = uploadedBootstrapScript(clusterState)
 
         // TemplateService must resolve the control node IP into the embedded collector config...
         assertThat(script).contains("endpoint: 10.0.1.5:4317")
@@ -290,6 +289,7 @@ internal class EMRProvisioningServiceTest {
     @Test
     fun `the EMR collector tails the YARN container, step and bootstrap-action logs into its logs pipeline`() {
         setupEmrMocks("j-LOGS", "myenv-spark")
+        val clusterState = createTestClusterState(clusterId = "test-id")
         service.provisionEmrCluster(
             EmrClusterProvisioningConfig(
                 clusterName = "myenv",
@@ -299,13 +299,11 @@ internal class EMRProvisioningServiceTest {
                 subnetId = "subnet-123",
                 securityGroupId = "sg-456",
                 keyName = "my-key",
-                clusterState = createTestClusterState(clusterId = "test-id"),
+                clusterState = clusterState,
                 tags = emptyMap(),
             ),
         )
-        val scriptCaptor = argumentCaptor<String>()
-        verify(mockObjectStore).uploadContent(scriptCaptor.capture(), any())
-        val script = scriptCaptor.firstValue
+        val script = uploadedBootstrapScript(clusterState)
         val config = script.substringAfter("<< 'CONFIGEOF'\n").substringBefore("\nCONFIGEOF")
 
         assertThat(YamlTestSupport.listAt(config, "receivers", "file_log/emr", "include")).containsExactlyInAnyOrder(
@@ -548,6 +546,10 @@ internal class EMRProvisioningServiceTest {
         assertThat(debugEvents.first().emrLogsPath)
             .isEqualTo("s3://easy-db-lab-test-bucket/clusters/test-cluster-test-id/spark/emr-logs")
     }
+
+    /** The bootstrap script the service stored for [clusterState], read back from the store. */
+    private fun uploadedBootstrapScript(clusterState: ClusterState): String =
+        objectStore.readContent(clusterState.s3Path().spark().resolve("bootstrap-otel.sh"))
 
     private fun createTestClusterState(
         name: String = "test-cluster",

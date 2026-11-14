@@ -424,5 +424,5 @@ data class ClusterState(
      * Returns the S3 path abstraction for this cluster's account bucket.
      * @throws IllegalStateException if s3Bucket is not configured
      */
-    fun s3Path(): ClusterS3Path = ClusterS3Path.from(this)
+    fun s3Path(): ClusterStoragePath = ClusterStoragePath.from(this)
 }

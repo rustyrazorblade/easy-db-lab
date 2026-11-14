@@ -33,7 +33,9 @@ class LokiManifestBuilderTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        whenever(
+                            it.load(),
+                        ).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -73,12 +75,12 @@ class LokiManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `chunks and index land under the logs prefix, read from cluster-config`() {
-        assertThat(scalarAt(config(), "storage_config", "object_prefix")).isEqualTo("\${LOGS_S3_PREFIX}")
+        assertThat(scalarAt(config(), "storage_config", "object_prefix")).isEqualTo("\${LOGS_STORE_PREFIX}")
 
         val env = pod().containers[0].env
-        val prefix = env.single { it.name == "LOGS_S3_PREFIX" }.valueFrom.configMapKeyRef
+        val prefix = env.single { it.name == "LOGS_STORE_PREFIX" }.valueFrom.configMapKeyRef
         assertThat(prefix.name).isEqualTo("cluster-config")
-        assertThat(prefix.key).isEqualTo("logs_s3_prefix")
+        assertThat(prefix.key).isEqualTo("logs_store_prefix")
         assertThat(pod().containers[0].args).contains("-config.expand-env=true")
     }
 

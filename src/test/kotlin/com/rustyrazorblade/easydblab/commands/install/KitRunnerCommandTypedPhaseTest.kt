@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.KitMetrics
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -14,6 +15,7 @@ import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -225,7 +227,8 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
 
     @Test
     fun `a failure to list the tenants names every skipped dashboard and the cause`() {
-        whenever(mockObjectStore.listFiles(any(), any(), any())).thenThrow(IllegalStateException("S3 Access Denied"))
+        objectStore =
+            mock<ObjectStore>().also { whenever(it.listFiles(any(), any(), any())).thenThrow(IllegalStateException("S3 Access Denied")) }
         val kitDir = File(workingDir, "mydb").also { it.mkdirs() }
         File(kitDir, "overview.json").writeText("{}")
         File(kitDir, "queries.json").writeText("{}")

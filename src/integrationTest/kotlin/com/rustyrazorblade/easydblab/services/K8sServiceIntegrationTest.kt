@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -101,7 +102,7 @@ class K8sServiceIntegrationTest {
 
         val mockClusterStateManager = mock<ClusterStateManager>()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf()),
+            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket"),
         )
         val testUser =
             User(
@@ -120,12 +121,13 @@ class K8sServiceIntegrationTest {
                 .withName("cluster-config")
                 .withNamespace(DEFAULT_NAMESPACE)
                 .endMetadata()
-                .addToData("control_node_ip", "10.0.0.1")
-                .addToData("aws_region", "us-west-2")
-                .addToData("s3_bucket", "test-bucket")
-                .addToData("traces_s3_prefix", "tempo")
-                .addToData("cluster_name", "test")
-                .build()
+                .addToData(
+                    ClusterConfigData.of(
+                        ClusterHost(publicIp = "1.2.3.4", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a"),
+                        ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket"),
+                        defaultRegion = "us-west-2",
+                    ),
+                ).build()
         client.resource(clusterConfig).forceConflicts().serverSideApply()
 
         val datasources =

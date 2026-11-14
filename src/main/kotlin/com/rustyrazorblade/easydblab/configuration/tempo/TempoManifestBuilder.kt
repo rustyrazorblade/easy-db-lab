@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.tempo
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -16,14 +18,16 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * Creates a Deployment on the control plane with S3 backend for trace storage, under
  * `tempo` in the account bucket. Tempo runs native multi-tenancy and never deletes a
  * block. Its write-ahead logs live on a hostPath under [DATA_HOST_PATH], so a pod restart keeps
- * received spans. Config uses Tempo runtime env expansion (`${S3_BUCKET}`, `${AWS_REGION}`,
- * `${TRACES_S3_PREFIX}`), not `__KEY__` template substitution. Env vars are injected from the
+ * received spans. Config uses Tempo runtime env expansion (`${STORE_BUCKET}`, `${STORE_ENDPOINT}`,
+ * `${TRACES_STORE_PREFIX}`), not `__KEY__` template substitution. Env vars are injected from the
  * cluster-config ConfigMap.
  *
  * @property templateService Used for loading config files from classpath resources
+ * @property storeBlocks Places the object-store block of the cluster's store ([TemplateService.storeBackend]) into the config.
  */
 class TempoManifestBuilder(
     private val templateService: TemplateService,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
         private const val NAMESPACE = "default"
@@ -76,10 +80,8 @@ class TempoManifestBuilder(
             .addToData(
                 "tempo.yaml",
                 templateService
-                    .fromResource(
-                        TempoManifestBuilder::class.java,
-                        "tempo.yaml",
-                    ).substitute(),
+                    .fromString(storeBlocks.renderResource(TempoManifestBuilder::class.java, "tempo.yaml"))
+                    .substitute(),
             ).build()
 
     /**
@@ -159,43 +161,13 @@ class TempoManifestBuilder(
             .withArgs(
                 "-config.file=/etc/tempo/tempo.yaml",
                 "-config.expand-env=true",
-            ).addNewEnv()
-            .withName("AWS_REGION")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("aws_region")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("S3_BUCKET")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("s3_bucket")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("TRACES_S3_PREFIX")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("traces_s3_prefix")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("CLUSTER_NAME")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("cluster_name")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewPort()
+            ).withEnv(
+                clusterConfigEnv("STORE_BUCKET", "store_bucket"),
+                clusterConfigEnv("STORE_REGION", "store_region"),
+                clusterConfigEnv("STORE_ENDPOINT", "store_endpoint"),
+                clusterConfigEnv("TRACES_STORE_PREFIX", "traces_store_prefix"),
+                clusterConfigEnv("CLUSTER_NAME", "cluster_name"),
+            ).addNewPort()
             .withContainerPort(Constants.K8s.TEMPO_PORT)
             .withHostPort(Constants.K8s.TEMPO_PORT)
             .withProtocol("TCP")

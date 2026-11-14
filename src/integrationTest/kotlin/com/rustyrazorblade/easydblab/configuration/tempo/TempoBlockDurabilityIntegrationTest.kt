@@ -111,8 +111,8 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
     /** The cluster's rendered tempo.yaml, pointed at LocalStack. */
     private fun testConfig(): String {
         val rendered = TempoManifestBuilder(getKoin().get()).buildConfigMap().data.getValue("tempo.yaml")
-        val endpointLine = "      endpoint: s3.\${AWS_REGION}.amazonaws.com"
-        check(rendered.contains(endpointLine)) { "rendered config no longer names the regional S3 endpoint" }
+        val endpointLine = "      endpoint: \${STORE_ENDPOINT}"
+        check(rendered.contains(endpointLine)) { "rendered config no longer names the store endpoint" }
         return rendered
             .replace(
                 endpointLine,
@@ -137,9 +137,9 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
                     cmd.withUser("root")
                     cmd.hostConfig?.withBinds(Bind(volume, Volume(WAL_MOUNT)))
                 }.withCopyToContainer(Transferable.of(config), "/etc/tempo/tempo.yaml")
-                .withEnv("S3_BUCKET", bucket)
-                .withEnv("AWS_REGION", SharedLocalStack.region())
-                .withEnv("TRACES_S3_PREFIX", tracesPrefix)
+                .withEnv("STORE_BUCKET", bucket)
+                .withEnv("STORE_REGION", SharedLocalStack.region())
+                .withEnv("TRACES_STORE_PREFIX", tracesPrefix)
                 .withEnv("CLUSTER_NAME", state.clusterLabelName())
                 .withCommand("-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true")
                 .withExposedPorts(Constants.K8s.TEMPO_PORT, OTLP_HTTP_PORT)

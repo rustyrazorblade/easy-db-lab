@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.mimir
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.services.ClusterConfigData
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -32,9 +33,11 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * storage prefix come from the cluster-config ConfigMap ([ClusterConfigData]) as env vars.
  *
  * @property templateService Loads the config file from the classpath.
+ * @property storeBlocks Places the object-store block of the cluster's store ([TemplateService.storeBackend]) into the config.
  */
 class MimirManifestBuilder(
     private val templateService: TemplateService,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
         private const val NAMESPACE = Constants.K8s.NAMESPACE
@@ -114,7 +117,7 @@ class MimirManifestBuilder(
             .endMetadata()
             .addToData(
                 CONFIG_FILE,
-                templateService.fromResource(MimirManifestBuilder::class.java, CONFIG_FILE).substitute(),
+                templateService.fromString(storeBlocks.renderResource(MimirManifestBuilder::class.java, CONFIG_FILE)).substitute(),
             ).build()
 
     /** The ClusterIP Service over Mimir's HTTP and gRPC ports. */
@@ -188,9 +191,10 @@ class MimirManifestBuilder(
                 "-config.file=$CONFIG_MOUNT_PATH/$CONFIG_FILE",
                 "-config.expand-env=true",
             ).withEnv(
-                clusterConfigEnv("AWS_REGION", "aws_region"),
-                clusterConfigEnv("S3_BUCKET", "s3_bucket"),
-                clusterConfigEnv("METRICS_S3_PREFIX", "metrics_s3_prefix"),
+                clusterConfigEnv("STORE_BUCKET", "store_bucket"),
+                clusterConfigEnv("STORE_REGION", "store_region"),
+                clusterConfigEnv("STORE_ENDPOINT", "store_endpoint"),
+                clusterConfigEnv("METRICS_STORE_PREFIX", "metrics_store_prefix"),
             ).addNewPort()
             .withName("http")
             .withContainerPort(Constants.K8s.MIMIR_HTTP_PORT)

@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
@@ -92,6 +93,11 @@ class AWSpolicyTest {
                 "arn:aws:s3:::easy-db-lab-*/tempo/*",
                 "arn:aws:s3:::easy-db-lab-*/grafana/*",
                 "arn:aws:s3:::easy-db-lab-*/reports/*",
+                "arn:aws:s3:::easy-db-lab-*/*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/*/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/*/grafana/*",
+                "arn:aws:s3:::easy-db-lab-*/*/reports/*",
             )
             assertThat(values("Resource")).noneMatch { it.contains("pyroscope") }
             // Only deletes are denied: the cluster still reads the documents and the owner uploads them.
@@ -118,13 +124,20 @@ class AWSpolicyTest {
         /** Every cluster-side principal the bucket policy grants is denied deletes under the compacted roots. */
         @Test
         fun `S3BucketPolicy denies the cluster roles every delete under the compacted roots`() {
-            val deny = statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket").toJson()).single { it.effect() == "Deny" }
+            val deny =
+                statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket").toJson()).single {
+                    it.effect() ==
+                        "Deny"
+                }
 
             assertThat(deny.values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
             assertThat(deny.values("Resource")).containsExactlyInAnyOrder(
                 "arn:aws:s3:::test-bucket/mimir/*",
                 "arn:aws:s3:::test-bucket/loki/*",
                 "arn:aws:s3:::test-bucket/tempo/*",
+                "arn:aws:s3:::test-bucket/*/mimir/*",
+                "arn:aws:s3:::test-bucket/*/loki/*",
+                "arn:aws:s3:::test-bucket/*/tempo/*",
             )
             assertThat(deny.getValue("Principal").jsonObject.values("AWS")).containsExactlyInAnyOrder(
                 "arn:aws:iam::123456789012:role/EasyDBLabEC2Role",
@@ -136,7 +149,7 @@ class AWSpolicyTest {
         /** Only the compacted roots: the compactor's task role has no access to grafana/ or pyroscope/. */
         @Test
         fun `the compactor task role deletes only under mimir, loki and tempo`() {
-            val statements = statements(AWSPolicy.Inline.CompactorTaskAccess.toJson())
+            val statements = statements(AWSPolicy.Inline.CompactorTaskAccess("").toJson())
             val objects = statements.single { "s3:DeleteObject" in it.values("Action") }
 
             assertThat(objects.values("Resource")).containsExactlyInAnyOrder(
@@ -146,6 +159,106 @@ class AWSpolicyTest {
             )
             assertThat(statements.flatMap { it.values("Resource") }).noneMatch { it.contains("grafana") || it.contains("pyroscope") }
             assertThat(statements).allMatch { it.effect() == "Allow" }
+        }
+    }
+
+    /**
+     * The denies take no prefix: each is put whole, so whoever puts one last (`up` on any prefix, or
+     * `profile setup`) puts the same deny. It must therefore cover every root under any prefix, so a
+     * cluster on one prefix never drops the guard a cluster on another prefix, or on none, relies on.
+     */
+    @Nested
+    inner class StorePrefix {
+        private val prefix = "team-a"
+
+        private fun instanceDeny() = statements(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson()).single { it.effect() == "Deny" }
+
+        private fun bucketDeny() =
+            statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "easy-db-lab-test").toJson()).single {
+                it.effect() == "Deny"
+            }
+
+        @Test
+        fun `the instance role deny covers every denied root under any prefix`() {
+            val resources = instanceDeny().values("Resource")
+
+            listOf("mimir", "loki", "tempo", "grafana", "reports").forEach { root ->
+                listOf("$root/x", "team-a/$root/x", "team-b/nested/$root/x").forEach { key ->
+                    assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", key)).describedAs(key).isTrue()
+                }
+            }
+            assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", "pyroscope/x")).isFalse()
+            assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", "team-a/pyroscope/x")).isFalse()
+            assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", "clusters/lab-1/state.json")).isFalse()
+        }
+
+        @Test
+        fun `the bucket policy deny covers every compacted root under any prefix`() {
+            val resources = bucketDeny().values("Resource")
+
+            listOf("mimir", "loki", "tempo").forEach { root ->
+                listOf("$root/x", "team-a/$root/x", "team-b/nested/$root/x").forEach { key ->
+                    assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-test", key)).describedAs(key).isTrue()
+                }
+            }
+            listOf("grafana/x", "reports/x", "pyroscope/x", "team-a/grafana/x").forEach { key ->
+                assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-test", key)).describedAs(key).isFalse()
+            }
+        }
+
+        @Test
+        fun `the compactor task role reaches the prefixed compacted roots and nothing else`() {
+            val statements = statements(AWSPolicy.Inline.CompactorTaskAccess(prefix).toJson())
+            val objects = statements.single { "s3:DeleteObject" in it.values("Action") }
+
+            assertThat(objects.values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::easy-db-lab-*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/tempo/*",
+            )
+            assertThat(statements.flatMap { it.values("Resource") }).noneMatch { it.contains("grafana") || it.contains("pyroscope") }
+        }
+
+        /** Whatever prefix passes validation, the compactor's allow stays off grafana/, reports/ and pyroscope/. */
+        @Test
+        fun `the compactor policy from any accepted prefix reaches nothing under the uncompacted roots`() {
+            val accepted = listOf("", "team-a", "a/b", "grafana-x", "reports.v2", "pyroscope_old")
+            // Keys a prefix could add under the uncompacted roots. `<root>/mimir/x` is left out: the
+            // bucket wildcard `easy-db-lab-*` spans `/`, so `easy-db-lab-*/mimir/*` reaches it with
+            // any prefix and without one, as it did before store prefixes existed.
+            val forbidden =
+                listOf("grafana", "reports", "pyroscope").flatMap { root ->
+                    listOf("$root/x", "$root/annotations/acme/b.json", "$root/acme/lab-1/index.html")
+                }
+
+            accepted.forEach { storePrefix ->
+                val resources =
+                    statements(AWSPolicy.Inline.CompactorTaskAccess(storePrefix).toJson())
+                        .single { "s3:DeleteObject" in it.values("Action") }
+                        .values("Resource")
+                val keys = forbidden + forbidden.map { "${storePrefix.trim('/')}/$it" }
+                keys.forEach { key ->
+                    assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-acct", key))
+                        .describedAs("prefix '$storePrefix' reaches $key")
+                        .isFalse()
+                }
+            }
+        }
+
+        @Test
+        fun `the compactor policy refuses a prefix that could widen it`() {
+            listOf("*", "..", "grafana", "pyroscope/x", "a/mimir").forEach { storePrefix ->
+                assertThatThrownBy { AWSPolicy.Inline.CompactorTaskAccess(storePrefix).toJson() }
+                    .isInstanceOf(IllegalArgumentException::class.java)
+            }
+        }
+
+        @Test
+        fun `slashes around the prefix are not doubled`() {
+            assertThat(AWSPolicy.Inline.storeRoots("/team-a/", listOf("mimir"))).containsExactly("mimir", "team-a/mimir")
         }
     }
 

@@ -34,9 +34,13 @@ private val log = KotlinLogging.logger {}
 interface CompactorService {
     /**
      * Makes sure the service runs: creates it when missing, starts it at 1 task when stopped, and
-     * leaves a running service as it is. Does not wait for the task to run.
+     * leaves a running service as it is. Does not wait for the task to run. The task role may
+     * compact the roots under [storePrefix] as well as the unprefixed ones.
      */
-    fun ensureRunning(bucket: String)
+    fun ensureRunning(
+        bucket: String,
+        storePrefix: String,
+    )
 
     /** Sets the service's desired count to 0. Does nothing but report it when there is no service. */
     fun stop(bucket: String)
@@ -75,12 +79,16 @@ class DefaultCompactorService(
         const val MAXIMUM_PERCENT = 100
     }
 
-    override fun ensureRunning(bucket: String) {
+    override fun ensureRunning(
+        bucket: String,
+        storePrefix: String,
+    ) {
         val region = bucketRegion(bucket)
-        val roles = iam.ensure()
+        val roles = iam.ensure(storePrefix)
         val vpc = network.ensure(region)
         regionalClients.logs(region).use { ensureLogGroup(it) }
-        val definition = CompactorTaskDefinition(bucket, region, roles.taskRoleArn, roles.executionRoleArn)
+        val definition =
+            CompactorTaskDefinition(bucket, region, roles.taskRoleArn, roles.executionRoleArn, storePrefix = storePrefix)
         regionalClients.ecs(region).use { ecs ->
             withEcsAccess(region) { ensureService(ecs, region, definition, vpc) }
         }

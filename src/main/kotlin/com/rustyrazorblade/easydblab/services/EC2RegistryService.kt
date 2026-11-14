@@ -60,7 +60,7 @@ class EC2RegistryService(
 
         log.info { "Generated TLS certificate on ${controlHost.alias}" }
         eventBus.emit(Event.Registry.CertUploaded)
-        log.info { "Uploaded certificate to s3://$s3Bucket/$s3Path" }
+        log.info { "Uploaded certificate to $s3Bucket/$s3Path" }
     }
 
     /**

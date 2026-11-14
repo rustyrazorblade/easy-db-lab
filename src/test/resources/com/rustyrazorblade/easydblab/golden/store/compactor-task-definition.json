@@ -1,0 +1,160 @@
+{
+    "family": "easy-db-lab-compactor",
+    "cpu": "2048",
+    "memory": "8192",
+    "networkMode": "awsvpc",
+    "taskRoleArn": "arn:aws:iam::123456789012:role/EasyDBLabCompactorTaskRole",
+    "executionRoleArn": "arn:aws:iam::123456789012:role/EasyDBLabCompactorExecutionRole",
+    "containers": [
+        {
+            "name": "config",
+            "image": "busybox:1.37.0",
+            "essential": false,
+            "command": [
+                "sh",
+                "-c",
+                "echo \"$CONFIG_0\" | base64 -d > /config/mimir.yaml && echo \"$CONFIG_1\" | base64 -d > /config/loki.yaml && echo \"$CONFIG_2\" | base64 -d > /config/tempo-backend.yaml"
+            ],
+            "environment": {
+                "writtenConfigs": {
+                    "loki.yaml": "# Loki on the control node: a single binary (target: all) with its compactor idle (issue 967, D5).\n#\n# `target: all` is the only way one process both writes and reads the S3 index: a target list that\n# names the ingester makes the index shipper write-only. `all` includes the compactor, so compaction\n# is pushed ten years out, retention is off, and deletion is disabled (the delete API is not served: it answers 404).\n# Nothing in this process compacts or deletes a chunk or an index file.\n#\n# Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets\n# them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion\n# reads comments too, and a malformed one stops the process from starting.\ntarget: all\n\n# Native multi-tenancy: every write and query carries the tenant in X-Scope-OrgID.\nauth_enabled: true\n\nserver:\n  http_listen_port: 3100\n  grpc_listen_port: 9098\n  log_level: info\n\ncommon:\n  # /loki is a hostPath on the control node: the WAL, the index head and the uploader's name\n  # survive a pod restart.\n  path_prefix: /loki\n  replication_factor: 1\n  ring:\n    kvstore:\n      store: inmemory\n    instance_addr: 127.0.0.1\n  storage:\n    s3:\n      bucketnames: easy-db-lab-test\n      endpoint: s3.us-west-2.amazonaws.com\n      region: us-west-2\n\nstorage_config:\n  # Chunks land under <prefix>/<tenant>/ and index tables under <prefix>/index/.\n  object_prefix: loki\n  tsdb_shipper:\n    active_index_directory: /loki/tsdb-index\n    cache_location: /loki/tsdb-cache\n    # Read side: re-list the index in S3 every minute, so other clusters' uploads become readable\n    # soon after they land. The index itself uploads on Loki's fixed 15-minute rotation.\n    resync_interval: 1m\n\n# A permanent contract of the shared store: every cluster, past and future, must read the same\n# periods. New periods may only be appended, never edited or removed.\nschema_config:\n  configs:\n    - from: \"2026-01-01\"\n      store: tsdb\n      object_store: s3\n      schema: v13\n      index:\n        prefix: index_\n        period: 24h\n\ningester:\n  wal:\n    enabled: true\n    dir: /loki/wal\n    # A graceful stop flushes every chunk in memory to S3.\n    flush_on_shutdown: true\n  # Flush a chunk once it spans an hour, so a stream that keeps writing reaches S3 within about an hour.\n  # This also sets the per-stream out-of-order window to 30 minutes (half this age): a line more\n  # than 30 minutes older than its stream's newest line is rejected. The window is wide so that a\n  # slow Loki restart does not drop logs. The annotation mirror is not affected: each annotation is\n  # a stream of its own.\n  max_chunk_age: 1h\n  lifecycler:\n    # The ingester's name is part of every index file it uploads, so each file names its tenant and\n    # cluster, and two clusters in one tenant never write the same file.\n    id: compactor.compactor\n\nquerier:\n  # One query may name several tenants as `a|b`.\n  multi_tenant_queries_enabled: true\n\ncompactor:\n  working_directory: /loki/compactor\n  # The compactor waits one full interval before its first run: ten years is never.\n  compaction_interval: 87600h\n  retention_enabled: false\n\nlimits_config:\n  # Retention and deletion are off. The IAM deny on loki/ backs this up.\n  retention_period: 0s\n  deletion_mode: disabled\n  # Accept a year-old line (a backdated annotation, a replayed log) and a day into the future.\n  reject_old_samples: true\n  reject_old_samples_max_age: 8760h\n  creation_grace_period: 24h\n  # Every OTLP resource attribute but these four stays structured metadata. `source` is moved onto\n  # the resource by the collector so it can be a label.\n  otlp_config:\n    resource_attributes:\n      attributes_config:\n        - action: index_label\n          attributes:\n            - cluster\n            - host.name\n            - node_role\n            - source\n  # The defaults are sized for shared SaaS tenants; past them Loki answers a push with a 4xx and\n  # the collector drops the batch. They are set far above what a test cluster sends.\n  ingestion_rate_mb: 64\n  ingestion_burst_size_mb: 128\n  per_stream_rate_limit: 32MB\n  per_stream_rate_limit_burst: 64MB\n  max_global_streams_per_user: 0\n  max_label_names_per_series: 30\n  max_label_value_length: 16384\n  max_query_series: 100000\n  max_entries_limit_per_query: 100000\n  max_query_length: 0\n",
+                    "mimir.yaml": "# Mimir on the control node: it writes to the shared store and reads the whole of it (issue 970).\n#\n# The ingester ships every block to S3 about a minute after cutting it and keeps local blocks for 15\n# minutes. The store-gateway answers every query from S3 as well, for every tenant in the account\n# bucket, so other clusters' and past runs' metrics are readable here. It finds blocks through each\n# tenant's bucket index, which only the account compactor writes. No compactor runs in this process,\n# so nothing here can compact, expire, clean up or delete a block, a bucket index, or a tenant.\n#\n# Queries are not sharded, and readers stop opening a block the compactor merged away soon after its\n# deletion mark (issue 988): on this one process both made dashboard loads several times faster.\n# The store-gateway's index, chunks and metadata and the query-frontend's results are cached in the\n# memcached sidecar on 127.0.0.1:11211, and S3 connections stay open for reuse (issue 988).\n#\n# Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets\n# them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion\n# reads comments too, and a malformed one stops the process from starting.\ntarget: distributor,ingester,querier,query-frontend,query-scheduler,store-gateway\n\n# Native multi-tenancy: every write and query carries the tenant in X-Scope-OrgID. Tenant federation\n# lets one query name several tenants as `a|b`; each series then carries __tenant_id__.\nmultitenancy_enabled: true\ntenant_federation:\n  enabled: true\n\nserver:\n  http_listen_port: 9009\n  grpc_listen_port: 9097\n  log_level: info\n\n# Mimir writes a small activity log for crash diagnosis; keep it on the data volume rather than\n# the image's working directory.\nactivity_tracker:\n  filepath: /data/metrics-activity.log\n\nblocks_storage:\n  backend: s3\n  # The metrics root, mimir, at the top level of the account bucket. Mimir makes one directory per\n  # tenant under it.\n  storage_prefix: mimir\n  s3:\n    bucket_name: easy-db-lab-test\n    endpoint: s3.us-west-2.amazonaws.com\n    region: us-west-2\n    # Keep S3 connections open and reuse them: with the defaults 23% of Mimir's CPU went to new TLS\n    # handshakes with S3 (issue 988). 0 is no limit on idle connections in total.\n    http:\n      idle_conn_timeout: 10m\n      max_idle_connections: 0\n      max_idle_connections_per_host: 1000\n  tsdb:\n    # The head, its WAL and every local block live on the control node's disk (a hostPath), so a\n    # pod restart replays the WAL and keeps the blocks.\n    dir: /data/tsdb\n    # One-minute blocks, so a sample reaches S3 in about 2 minutes and other clusters can read it.\n    # The ingester cuts a range once a sample later than 1.5 ranges past its start arrives, checked\n    # every head_compaction_interval, and the shipper uploads every ship_interval. A 1m range is\n    # experimental and hidden in Mimir 3.2.1, which does not validate it.\n    block_ranges_period: [1m]\n    head_compaction_interval: 15s\n    ship_interval: 15s\n    # A head with no writes for 2 minutes is compacted, so the last partial block still ships.\n    head_compaction_idle_timeout: 2m\n    # Local blocks stay for 15 minutes; older ones are read from S3 through the store-gateway. At 2h\n    # the ingester kept 366 one-minute blocks and a 1h query opened about 160 of them; at 15m it keeps\n    # about 46, its share of Mimir CPU fell from 36% to 10%, and a two-user System Overview load at 1h\n    # from 14.7 s to 10.6 s, with no sample lost (issue 988). Mimir requires this to exceed the block\n    # range and querier.query_store_after, and it must outlast the store-gateway finding a shipped\n    # block (15s ship + 1m bucket index + 1m sync). It removes only local copies already in S3.\n    retention_period: 15m\n    # A graceful stop compacts the head into a block and ships it.\n    flush_blocks_on_shutdown: true\n  bucket_store:\n    # The store-gateway's index headers, on the control node's disk.\n    sync_dir: /data/tsdb-sync\n    # New blocks and tenants appear in queries within a minute of the compactor's index update.\n    sync_interval: 1m\n    ignore_blocks_within: 0\n    # Stop reading a block the compactor merged away soon after its deletion mark, rather than for\n    # up to an hour. With the compactor's 10-minute first level this cut the tiny blocks per read\n    # from ~180 to ~46 (issue 988). They only choose what queries read; the compactor owns deletion.\n    ignore_deletion_mark_delay: 10m\n    ignore_deletion_mark_while_querying_delay: 5m\n    # The store-gateway caches what it reads from S3 in the memcached sidecar, so a dashboard refresh\n    # reads index headers, chunks and bucket metadata from memory instead of S3 again (issue 988).\n    index_cache:\n      backend: memcached\n      memcached:\n        addresses: 127.0.0.1:11211\n    chunks_cache:\n      backend: memcached\n      memcached:\n        addresses: 127.0.0.1:11211\n    metadata_cache:\n      backend: memcached\n      memcached:\n        addresses: 127.0.0.1:11211\n      # Entries that change as new data lands are cached for 30s, under the 1m sync. At the 5m default\n      # for the bucket index the store-gateway saw new blocks only every 5 minutes, the querier's\n      # consistency check failed for them (105 of 2,186 checks on qa971f), and dashboards answered 400\n      # and 422. The tenant list (15m default) hid a tenant another cluster had just started, the\n      # tenant's block list (5m) hid its new blocks, and a meta.json looked up just before its upload\n      # stayed missing for 5m. Immutable objects (meta.json content, block index attributes, chunks\n      # lists) keep their defaults.\n      bucket_index_content_ttl: 30s\n      tenants_list_ttl: 30s\n      tenant_blocks_list_ttl: 30s\n      metafile_doesnt_exist_ttl: 30s\n    bucket_index:\n      # About 10 years: a stopped compactor leaves the index stale, and that must never fail a query.\n      # A tenant with no bucket index returns no stored data rather than an error.\n      max_stale_period: 87600h\n\n# Every ring is in this one process: in memory, one replica.\nquerier:\n  # Every query reads the store as well as the ingester, however recent.\n  query_store_after: 0\n  ring:\n    kvstore:\n      store: inmemory\n    instance_addr: 127.0.0.1\n\ningester:\n  ring:\n    kvstore:\n      store: inmemory\n    replication_factor: 1\n    instance_addr: 127.0.0.1\n    final_sleep: 0s\n    min_ready_duration: 0s\n\nstore_gateway:\n  sharding_ring:\n    kvstore:\n      store: inmemory\n    replication_factor: 1\n    instance_addr: 127.0.0.1\n\ndistributor:\n  ring:\n    kvstore:\n      store: inmemory\n    instance_addr: 127.0.0.1\n  ha_tracker:\n    kvstore:\n      store: inmemory\n\n# Mimir starts its gossip listener even though no ring uses it. The pod shares the control node's\n# network, where Pyroscope already holds the default 7946, so it listens on loopback on its own port.\nmemberlist:\n  bind_addr: [127.0.0.1]\n  bind_port: 7947\n\nfrontend:\n  # The query-scheduler runs in this process.\n  scheduler_address: 127.0.0.1:9097\n  # Query results are cached in the memcached sidecar, so a refresh reuses the parts of a range it\n  # already answered (issue 988). The query engine's range vector splitting cache stays off: Mimir\n  # 3.2.1 refuses to start with it.\n  cache_results: true\n  results_cache:\n    backend: memcached\n    memcached:\n      addresses: 127.0.0.1:11211\n\nfrontend_worker:\n  scheduler_address: 127.0.0.1:9097\n\nquery_scheduler:\n  # The query-frontend splits each query by day (query sharding is off), and queues up to 14 parts of it\n  # at once (max_query_parallelism). The heaviest dashboard sends about 150 queries in one load, so\n  # a load can queue about 2100 parts, which the 8 querier workers drain slowly. Past this limit the\n  # scheduler answers 429 and the panel fails. The default of 100 fails most of such a dashboard;\n  # 5000 holds two full loads at once.\n  max_outstanding_requests_per_tenant: 5000\n\nlimits:\n  # Cached query results expire after 1h: at the 7-day default a result cached while the compactor lagged kept its gap for days.\n  results_cache_ttl: 1h\n  # 0 = every query goes to the ingester, however far back.\n  query_ingesters_within: 0\n  # No query sharding. On one Mimir process it split each query into ~20 parts; turning it off cut\n  # Mimir CPU per System Overview load at 1h from 238 s to 66 s (issue 988).\n  query_sharding_total_shards: 0\n  # The defaults are sized for shared SaaS tenants. Past them Mimir answers the collector's remote\n  # write with a 4xx and the batch is dropped, not retried, so they are set far above what a test\n  # cluster sends.\n  ingestion_rate: 10000000\n  ingestion_burst_size: 20000000\n  max_global_series_per_user: 0\n  max_global_series_per_metric: 0\n  max_global_metadata_per_user: 0\n  max_global_metadata_per_metric: 0\n  max_global_exemplars_per_user: 100000\n  max_label_names_per_series: 100\n  max_label_name_length: 1024\n  max_label_value_length: 16384\n  max_fetched_chunks_per_query: 0\n  max_fetched_series_per_query: 0\n  max_fetched_chunk_bytes_per_query: 0\n  # Scrapes and OTLP pushes from several nodes arrive slightly out of order.\n  out_of_order_time_window: 10m\n",
+                    "tempo-backend.yaml": "# Tempo 3.0.3's backend-scheduler and backend-worker in the account compactor (issue 970).\n#\n# Tempo 3 runs one target per process, so the task runs this file twice: once as the scheduler\n# (-target=backend-scheduler) and once as the worker (-target=backend-worker, with its own ports).\n# The worker compacts every tenant's blocks under the traces root of the account bucket.\n#\n# Compaction is on; retention and every other deletion path are off. Tempo has no \"retention off\"\n# once compaction runs, and a zero block retention makes every block eligible for deletion at once,\n# so an unreachable retention (100 years) is the off switch. Do not add a per-tenant retention\n# override.\n#\n# Dollar-brace values are read from the environment (-config.expand-env=true); the task definition\n# sets them. Never write a dollar-brace in a comment here: the expansion reads comments too.\nmultitenancy_enabled: true\n\nserver:\n  http_listen_port: 3200\n  grpc_listen_port: 9096\n\n# The scheduler and the worker are separate processes in one task, so each gossips on its own port.\nmemberlist:\n  bind_addr: [127.0.0.1]\n  bind_port: 7948\n\nbackend_scheduler:\n  local_work_path: /var/tempo/scheduler\n  provider:\n    retention:\n      # Retention jobs are scheduled at most once every 10 years; the worker's block retention\n      # makes each one a no-op anyway.\n      interval: 87600h\n\nbackend_worker:\n  backend_scheduler_addr: 127.0.0.1:9096\n  ring:\n    kvstore:\n      store: inmemory\n    instance_addr: 127.0.0.1\n  compaction:\n    block_retention: 876000h\n\nstorage:\n  trace:\n    backend: s3\n    # Never delete a tenant directory, even one that holds no block.\n    empty_tenant_deletion_enabled: false\n    wal:\n      path: /var/tempo/wal\n    s3:\n      bucket: easy-db-lab-test\n      endpoint: s3.us-west-2.amazonaws.com\n      region: us-west-2\n      prefix: tempo\n\noverrides:\n  defaults:\n    global:\n      # 0 = no per-trace size limit, so compaction never drops spans of a large trace.\n      max_bytes_per_trace: 0\n"
+                }
+            },
+            "mountPoints": [
+                {
+                    "sourceVolume": "config",
+                    "containerPath": "/config",
+                    "readOnly": false
+                }
+            ]
+        },
+        {
+            "name": "mimir-compactor",
+            "image": "grafana/mimir:3.2.1",
+            "essential": true,
+            "command": [
+                "-config.file=/config/mimir.yaml",
+                "-config.expand-env=true",
+                "-target=compactor",
+                "-compactor.cleanup-interval=1m",
+                "-compactor.partial-block-deletion-delay=0",
+                "-compactor.blocks-retention-period=0",
+                "-compactor.block-ranges=10m,2h,12h,24h",
+                "-compactor.compaction-interval=5m",
+                "-compactor.first-level-compaction-wait-period=2m",
+                "-compactor.data-dir=/data/compactor",
+                "-compactor.ring.store=inmemory",
+                "-compactor.ring.instance-addr=127.0.0.1"
+            ],
+            "environment": {
+                "AWS_REGION": "us-west-2",
+                "CLUSTER_NAME": "compactor",
+                "LOGS_S3_PREFIX": "loki",
+                "METRICS_S3_PREFIX": "mimir",
+                "S3_BUCKET": "easy-db-lab-test",
+                "TENANT": "compactor",
+                "TRACES_S3_PREFIX": "tempo"
+            },
+            "mountPoints": [
+                {
+                    "sourceVolume": "config",
+                    "containerPath": "/config",
+                    "readOnly": true
+                },
+                {
+                    "sourceVolume": "mimir-data",
+                    "containerPath": "/data",
+                    "readOnly": false
+                }
+            ]
+        },
+        {
+            "name": "loki-compactor",
+            "image": "grafana/loki:3.7.8",
+            "essential": true,
+            "user": "0",
+            "command": [
+                "-config.file=/config/loki.yaml",
+                "-config.expand-env=true",
+                "-target=compactor",
+                "-compactor.compaction-interval=10m",
+                "-compactor.retention-enabled=false"
+            ],
+            "environment": {
+                "AWS_REGION": "us-west-2",
+                "CLUSTER_NAME": "compactor",
+                "LOGS_S3_PREFIX": "loki",
+                "METRICS_S3_PREFIX": "mimir",
+                "S3_BUCKET": "easy-db-lab-test",
+                "TENANT": "compactor",
+                "TRACES_S3_PREFIX": "tempo"
+            },
+            "mountPoints": [
+                {
+                    "sourceVolume": "config",
+                    "containerPath": "/config",
+                    "readOnly": true
+                }
+            ]
+        },
+        {
+            "name": "tempo-backend-scheduler",
+            "image": "grafana/tempo:3.0.3",
+            "essential": true,
+            "user": "0",
+            "command": [
+                "-config.file=/config/tempo-backend.yaml",
+                "-config.expand-env=true",
+                "-target=backend-scheduler"
+            ],
+            "environment": {
+                "AWS_REGION": "us-west-2",
+                "CLUSTER_NAME": "compactor",
+                "LOGS_S3_PREFIX": "loki",
+                "METRICS_S3_PREFIX": "mimir",
+                "S3_BUCKET": "easy-db-lab-test",
+                "TENANT": "compactor",
+                "TRACES_S3_PREFIX": "tempo"
+            },
+            "mountPoints": [
+                {
+                    "sourceVolume": "config",
+                    "containerPath": "/config",
+                    "readOnly": true
+                }
+            ]
+        },
+        {
+            "name": "tempo-backend-worker",
+            "image": "grafana/tempo:3.0.3",
+            "essential": true,
+            "user": "0",
+            "command": [
+                "-config.file=/config/tempo-backend.yaml",
+                "-config.expand-env=true",
+                "-target=backend-worker",
+                "-server.http-listen-port=3201",
+                "-server.grpc-listen-port=9095",
+                "-memberlist.bind-port=7949"
+            ],
+            "environment": {
+                "AWS_REGION": "us-west-2",
+                "CLUSTER_NAME": "compactor",
+                "LOGS_S3_PREFIX": "loki",
+                "METRICS_S3_PREFIX": "mimir",
+                "S3_BUCKET": "easy-db-lab-test",
+                "TENANT": "compactor",
+                "TRACES_S3_PREFIX": "tempo"
+            },
+            "mountPoints": [
+                {
+                    "sourceVolume": "config",
+                    "containerPath": "/config",
+                    "readOnly": true
+                }
+            ]
+        }
+    ]
+}

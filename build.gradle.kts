@@ -385,6 +385,10 @@ tasks.named<Test>("test") {
         .withPropertyName("clickhouseBenchmarkUserGuide")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 
+    // StoreGoldenTest reads and rewrites its golden files under the project, wherever Gradle
+    // runs the test JVM from.
+    systemProperty("easydblab.projectDir", projectDir.absolutePath)
+
     // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
     inputs
         .file("bin/easy-db-lab")

@@ -9,9 +9,9 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.PrometheusRemoteWrite
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
@@ -222,7 +222,9 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
                 clusterState: ClusterState,
             ): Result<GrafanaAnnotationBackupResult> {
                 annotationBackups.incrementAndGet()
-                return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root(bucket).resolve("grafana/annotations/a.json"), 0))
+                return Result.success(
+                    GrafanaAnnotationBackupResult(ClusterStoragePath.root(bucket).resolve("grafana/annotations/a.json"), 0),
+                )
             }
         }
 

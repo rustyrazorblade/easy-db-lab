@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
@@ -47,7 +48,7 @@ class TenantDirectoryIntegrationTest {
 
     @Test
     fun `the tenant directories under mimir are the tenants, with the home tenant added`() {
-        val tenants = TenantDirectory(S3ObjectStore(s3, EventBus())).list(BUCKET, home = "lab")
+        val tenants = TenantDirectory(S3ObjectStore(s3, EventBus())).list(ObservabilityStore(BUCKET, "lab"))
 
         assertThat(tenants).isEqualTo(TenantSet("lab", listOf("acme", "lab", "zeta")))
     }

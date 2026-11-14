@@ -90,7 +90,7 @@ class PodLogsWithoutJournalIntegrationTest : BaseKoinTest() {
             """.trimIndent()
     }
 
-    private val state = ClusterState(name = CLUSTER, versions = mutableMapOf())
+    private val state = ClusterState(name = CLUSTER, versions = mutableMapOf(), s3Bucket = "easy-db-lab-test")
     private var k3s: K3sContainer? = null
 
     override fun additionalTestModules(): List<Module> =

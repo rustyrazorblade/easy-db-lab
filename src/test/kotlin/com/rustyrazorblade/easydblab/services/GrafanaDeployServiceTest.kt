@@ -77,7 +77,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         mockK8sService = getKoin().get()
         mockTreeUploader = getKoin().get()
         val stateManager = mock<ClusterStateManager>()
-        whenever(stateManager.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+        whenever(stateManager.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
         manifestBuilder = GrafanaManifestBuilder(TemplateService(stateManager, getKoin().get()))
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any())).thenReturn(Result.success(Unit))

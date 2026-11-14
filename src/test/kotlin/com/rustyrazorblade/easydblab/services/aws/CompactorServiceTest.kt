@@ -64,7 +64,7 @@ class CompactorServiceTest {
     private val service =
         DefaultCompactorService(
             s3 = s3,
-            iam = mock<CompactorIam>().also { whenever(it.ensure()).thenReturn(CompactorRoles("arn:task", "arn:exec")) },
+            iam = mock<CompactorIam>().also { whenever(it.ensure(any())).thenReturn(CompactorRoles("arn:task", "arn:exec")) },
             network =
                 mock<CompactorNetwork>().also {
                     whenever(it.ensure(any())).thenReturn(VpcInfrastructure("vpc-c", listOf("subnet-c"), "sg-c", "igw-c"))
@@ -145,7 +145,7 @@ class CompactorServiceTest {
     fun `a missing service is created with one task that never overlaps another, in the bucket's region`() {
         serviceIs()
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         val created = argumentCaptor<CreateServiceRequest>()
         verify(ecs).createService(created.capture())
@@ -159,6 +159,31 @@ class CompactorServiceTest {
         assertThat(events).contains(Event.Compactor.Started("eu-west-1", registered))
     }
 
+    /** The role is scoped to the store prefix, so the task must read the roots under that same prefix. */
+    @Test
+    fun `the registered task reads the roots under the store prefix its task role was built for`() {
+        serviceIs()
+
+        service.ensureRunning(bucket, "team-a")
+
+        val requests = argumentCaptor<RegisterTaskDefinitionRequest>()
+        verify(ecs).registerTaskDefinition(requests.capture())
+        val prefixes =
+            requests.firstValue
+                .containerDefinitions()
+                .filter { it.name() == CompactorTaskDefinition.MIMIR_CONTAINER }
+                .flatMap { it.environment() }
+                .filter { it.name().endsWith("_STORE_PREFIX") }
+                .associate { it.name() to it.value() }
+        assertThat(prefixes).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "METRICS_STORE_PREFIX" to "team-a/mimir",
+                "LOGS_STORE_PREFIX" to "team-a/loki",
+                "TRACES_STORE_PREFIX" to "team-a/tempo",
+            ),
+        )
+    }
+
     /** In a fresh account ECS cannot assume the roles IAM has just created for a few seconds. */
     @Test
     fun `a service create that ECS refuses while the new roles propagate is retried`() {
@@ -167,7 +192,7 @@ class CompactorServiceTest {
             .thenThrow(InvalidParameterException.builder().message("Unable to assume the service linked role.").build())
             .thenReturn(CreateServiceResponse.builder().build())
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         verify(ecs, times(2)).createService(any<CreateServiceRequest>())
         assertThat(events).contains(Event.Compactor.Started("eu-west-1", registered))
@@ -179,7 +204,7 @@ class CompactorServiceTest {
         ecsRegion = "us-east-1"
         serviceIs()
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         assertThat(events).contains(Event.Compactor.Started("us-east-1", registered))
     }
@@ -188,7 +213,7 @@ class CompactorServiceTest {
     fun `an inactive service is created again`() {
         serviceIs(service(desired = 0, status = "INACTIVE"))
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         verify(ecs).createService(any<CreateServiceRequest>())
     }
@@ -211,7 +236,7 @@ class CompactorServiceTest {
                 ).build(),
         )
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         val updated = argumentCaptor<UpdateServiceRequest>()
         verify(ecs).updateService(updated.capture())
@@ -236,7 +261,7 @@ class CompactorServiceTest {
                 ).build(),
         )
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         val updated = argumentCaptor<UpdateServiceRequest>()
         verify(ecs).updateService(updated.capture())
@@ -247,7 +272,7 @@ class CompactorServiceTest {
     fun `a running service is left as it is`() {
         serviceIs(service(desired = 1, running = 1))
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         verify(ecs, never()).updateService(any<UpdateServiceRequest>())
         verify(ecs, never()).createService(any<CreateServiceRequest>())
@@ -269,7 +294,7 @@ class CompactorServiceTest {
                 .build(),
         )
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         verify(ecs, never()).updateService(any<UpdateServiceRequest>())
         verify(ecs, never()).createService(any<CreateServiceRequest>())
@@ -286,7 +311,7 @@ class CompactorServiceTest {
         serviceIs(service(desired = 1, running = 0, pending = 0))
         stoppedTasksAre()
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         verify(ecs, never()).updateService(any<UpdateServiceRequest>())
         verify(ecs, never()).createService(any<CreateServiceRequest>())
@@ -299,7 +324,7 @@ class CompactorServiceTest {
     fun `a started service whose task is still pending is reported as starting, not as an error, and left as it is`() {
         serviceIs(service(desired = 1, running = 0, pending = 1))
 
-        service.ensureRunning(bucket)
+        service.ensureRunning(bucket, "")
 
         verify(ecs, never()).updateService(any<UpdateServiceRequest>())
         verify(ecs, never()).createService(any<CreateServiceRequest>())
@@ -326,7 +351,7 @@ class CompactorServiceTest {
         whenever(ecs.describeServices(any<DescribeServicesRequest>())).thenThrow(ecsError("AccessDeniedException"))
 
         listOf<() -> Unit>(
-            { service.ensureRunning(bucket) },
+            { service.ensureRunning(bucket, "") },
             { service.stop(bucket) },
             { service.status(bucket) },
         ).forEach { call ->

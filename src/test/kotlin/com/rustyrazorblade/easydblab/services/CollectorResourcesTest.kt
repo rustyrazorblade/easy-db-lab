@@ -26,7 +26,7 @@ class CollectorResourcesTest : BaseKoinTest() {
         )
 
     private val host = ClusterHost("1.2.3.4", "10.0.0.1", "control0", "us-west-2a")
-    private val state = ClusterState(name = "test", versions = mutableMapOf())
+    private val state = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test")
 
     private fun config(capabilities: NodeCapabilities): String {
         val resources: List<HasMetadata> =

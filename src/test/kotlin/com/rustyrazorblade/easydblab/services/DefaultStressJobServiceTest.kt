@@ -48,6 +48,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                             ClusterState(
                                 name = "test-cluster",
                                 versions = mutableMapOf(),
+                                s3Bucket = "easy-db-lab-test",
                                 infrastructure =
                                     InfrastructureState(
                                         vpcId = "vpc-test",
@@ -561,6 +562,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
                 hosts =
                     mapOf(
@@ -637,6 +639,7 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                             ClusterState(
                                 name = "test-cluster",
                                 versions = mutableMapOf(),
+                                s3Bucket = "easy-db-lab-test",
                                 infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
                                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
                             ),

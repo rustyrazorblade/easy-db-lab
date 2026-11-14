@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.report
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -28,13 +29,14 @@ class ReportUpload : PicoBaseCommand() {
     var files: List<File> = emptyList()
 
     private val documentService: TestDocumentService by inject()
+    private val objectStore: ObjectStore by inject()
 
     override fun execute() {
         val uploaded = documentService.upload(clusterState, files)
         eventBus.emit(
             Event.Report.DocumentsUploaded(
-                documents = uploaded.documents.map { (name, path) -> Event.Report.StoredDocument(name, path.toUri()) },
-                indexUri = uploaded.index.toUri(),
+                documents = uploaded.documents.map { (name, path) -> Event.Report.StoredDocument(name, objectStore.uriOf(path)) },
+                indexUri = objectStore.uriOf(uploaded.index),
             ),
         )
     }

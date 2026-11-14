@@ -3,9 +3,9 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -294,13 +294,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */
     private fun sharedStoreTenants(): TenantDirectory {
-        val objectStore = mock<ObjectStore>()
-        whenever(objectStore.listFiles(any(), eq(false), any())).thenReturn(
-            listOf(
-                "mimir/acme/",
-                "mimir/__mimir_cluster/",
-            ).map { ObjectStore.FileInfo(ClusterS3Path.fromKey("easy-db-lab-test", it), 0, "") },
-        )
+        val objectStore = InMemoryObjectStore()
+        listOf("mimir/acme", "mimir/__mimir_cluster").forEach {
+            objectStore.uploadContent("x", ClusterStoragePath.fromKey("easy-db-lab-test", "$it/meta.json"))
+        }
         return TenantDirectory(objectStore)
     }
 
@@ -418,7 +415,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val data = argumentCaptor<Map<String, String>>()
         verify(mockK8sService).createConfigMap(any(), eq("cluster-config"), data.capture(), any())
-        assertThat(data.firstValue).containsEntry("traces_s3_prefix", "tempo")
+        assertThat(data.firstValue).containsEntry("traces_store_prefix", "tempo")
         assertThat(data.firstValue).doesNotContainKey("cluster_s3_prefix")
     }
 

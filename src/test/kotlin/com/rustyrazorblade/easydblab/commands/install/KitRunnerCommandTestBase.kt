@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultKitEndpointResolver
 import com.rustyrazorblade.easydblab.services.GrafanaClient
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
@@ -49,7 +50,9 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     protected val mockMetricsRegistryService: MetricsRegistryService = mock()
     protected val mockKitHookExecutor: KitHookExecutor = mock()
     protected val mockKubeService: KubernetesService = mock()
-    protected val mockObjectStore: ObjectStore = mock()
+
+    /** The tenant listing reads this store; a test that drives a store failure replaces it before running the command. */
+    protected var objectStore: ObjectStore = InMemoryObjectStore()
 
     protected lateinit var workingDir: File
 
@@ -89,7 +92,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<GrafanaClient> { mockGrafanaClient }
-                single { DashboardInstallContextFactory(TenantDirectory(mockObjectStore)) }
+                single { DashboardInstallContextFactory(TenantDirectory(objectStore)) }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }

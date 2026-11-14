@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.assertj.core.api.Assertions.assertThat
@@ -48,7 +48,7 @@ class EMRSparkServiceStepLogsIntegrationTest {
                 logsDir = logsDir,
             )
         val stderrPath =
-            ClusterS3Path
+            ClusterStoragePath
                 .from(clusterState)
                 .emrLogs()
                 .resolve(clusterId)

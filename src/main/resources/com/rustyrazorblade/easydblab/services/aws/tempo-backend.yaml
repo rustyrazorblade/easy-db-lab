@@ -41,16 +41,7 @@ backend_worker:
 
 storage:
   trace:
-    backend: s3
-    # Never delete a tenant directory, even one that holds no block.
-    empty_tenant_deletion_enabled: false
-    wal:
-      path: /var/tempo/wal
-    s3:
-      bucket: ${S3_BUCKET}
-      endpoint: s3.${AWS_REGION}.amazonaws.com
-      region: ${AWS_REGION}
-      prefix: ${TRACES_S3_PREFIX}
+    __OBJECT_STORE_BLOCK__
 
 overrides:
   defaults:

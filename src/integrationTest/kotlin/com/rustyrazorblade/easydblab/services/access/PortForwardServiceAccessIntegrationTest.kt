@@ -7,6 +7,8 @@ import io.fabric8.kubernetes.api.model.IntOrString
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
@@ -20,6 +22,7 @@ import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,6 +40,8 @@ class PortForwardServiceAccessIntegrationTest {
         private const val BODY = "forwarded"
         private const val READY_TIMEOUT_SECONDS = 120L
         private const val CONNECT_TIMEOUT_MS = 2_000
+        private const val CLOSE_ATTEMPTS = 50
+        private val CLOSE_POLL = Duration.ofMillis(100)
 
         // The real-tunnel tests' range, so a run never collides with a live tunnel on the machine.
         private val TEST_PORTS = 10_000..19_999
@@ -186,6 +191,23 @@ class PortForwardServiceAccessIntegrationTest {
 
         access.close()
 
-        assertThat(accepts(InetAddress.getByName("127.0.0.1"), endpoint.port)).isFalse()
+        assertThat(acceptsAfterClose(endpoint.port)).isFalse()
+    }
+
+    /**
+     * Whether `127.0.0.1:`[port] still accepts once it has had up to five seconds to stop. On Linux, a
+     * connect made the moment Fabric8 closes its listening channel, while its accept thread is still
+     * blocked in `accept()`, can land on the closing listener; the port refuses within milliseconds.
+     */
+    private fun acceptsAfterClose(port: Int): Boolean {
+        val loopback = InetAddress.getByName("127.0.0.1")
+        val config =
+            RetryConfig
+                .custom<Boolean>()
+                .maxAttempts(CLOSE_ATTEMPTS)
+                .waitDuration(CLOSE_POLL)
+                .retryOnResult { it }
+                .build()
+        return Retry.of("forward closed", config).executeSupplier { accepts(loopback, port) }
     }
 }

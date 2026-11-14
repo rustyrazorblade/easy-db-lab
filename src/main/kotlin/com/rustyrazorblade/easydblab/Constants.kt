@@ -598,6 +598,9 @@ object Constants {
         const val STOP_WAIT_MAX_POLLS = 150
 
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
+
+        /** A kit name is a directory name under the workspace: letters, digits, `-` and `_`, never leading with a dash. */
+        val NAME_PATTERN = Regex("^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

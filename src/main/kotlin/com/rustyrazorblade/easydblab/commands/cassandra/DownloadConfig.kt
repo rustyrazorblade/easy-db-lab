@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.HostOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
@@ -20,6 +22,8 @@ import picocli.CommandLine.Option
     description = ["Download JVM and YAML config files"],
 )
 class DownloadConfig : PicoBaseCommand() {
+    private val hostOperationsService: HostOperationsService by inject()
+
     @Mixin
     var hosts = HostsMixin()
 
@@ -31,10 +35,12 @@ class DownloadConfig : PicoBaseCommand() {
     }
 
     override fun execute() {
-        val cassandraHosts = clusterState.getHosts(ServerType.Cassandra)
-
-        // Currently using first host - consider adding --host option for specific node selection
-        val host = cassandraHosts.first()
+        // The first targeted host: every host when --hosts is blank, so that stays the first host.
+        val targeted = hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
+        require(targeted.isNotEmpty()) {
+            "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'"
+        }
+        val host = targeted.first().toHost()
         val resolvedVersion = remoteOps.getRemoteVersion(host, version)
 
         logger.info {

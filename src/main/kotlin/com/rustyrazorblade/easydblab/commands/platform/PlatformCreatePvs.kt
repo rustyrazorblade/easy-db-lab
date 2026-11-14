@@ -48,6 +48,9 @@ class PlatformCreatePvs : PicoBaseCommand() {
     var pvcTemplateName: String = "data"
 
     override fun execute() {
+        require(Constants.Kit.NAME_PATTERN.matches(kit)) {
+            "Invalid --kit '$kit': use letters, digits, hyphens or underscores, and start with a letter or digit"
+        }
         val serverType = ServerType.from(nodeType)
         val targetHosts = clusterState.hosts[serverType].orEmpty()
         check(targetHosts.isNotEmpty()) { "No $nodeType nodes found in cluster state." }

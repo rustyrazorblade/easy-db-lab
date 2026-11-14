@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import java.time.Clock
 
 /**
@@ -65,15 +64,14 @@ class CiliumInstallAnnotator(
      * holds but Loki does not is mirrored by the next [AnnotationMirror.syncAll] (`grafana backup`,
      * `down`).
      *
-     * @param controlHost The control node running Grafana.
      * @return The annotations posted, in order; empty when nothing was pending.
      */
-    fun post(controlHost: ClusterHost): Result<List<PostedAnnotation>> =
+    fun post(): Result<List<PostedAnnotation>> =
         runCatching {
             val posted = mutableListOf<PostedAnnotation>()
             while (_pending.isNotEmpty()) {
                 val request = _pending.first()
-                val response = grafanaClient.createAnnotation(controlHost, request)
+                val response = grafanaClient.createAnnotation(request)
                 _pending.removeAt(0)
                 annotationMirror.push(request.toMirrored(response.id)).getOrThrow()
                 posted += PostedAnnotation(request, response)

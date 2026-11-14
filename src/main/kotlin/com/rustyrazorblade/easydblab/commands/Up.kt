@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.proxy.reachedBySocksTunnel
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
@@ -634,7 +635,9 @@ class Up(
     }
 
     /**
-     * Starts the SOCKS5 proxy to the control node when Tailscale is not active.
+     * Starts the SOCKS5 proxy to the control node when the cluster is reached through it: a
+     * [com.rustyrazorblade.easydblab.configuration.Exposure.Socks] cluster without Tailscale. A
+     * Direct or PortForward cluster never gets a tunnel.
      *
      * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
      * Both are started at the same point so that subsequent K3s setup, kubectl, and
@@ -646,7 +649,7 @@ class Up(
      * tunnel it just started "already running".
      */
     private fun startProxyIfNeeded() {
-        if (workingState.isTailscaleEnabled()) return
+        if (!workingState.reachedBySocksTunnel()) return
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
         log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
         val proxy = socksProxyService.ensureRunning(controlHost)
@@ -825,7 +828,7 @@ class Up(
         // Grafana exists only now, and only in local mode: post the Cilium install markers that
         // were recorded on the server-ready hook. A redirect cluster has no local Grafana to mark.
         if (workingState.initConfig?.telemetryRedirect == null) {
-            postCiliumInstallAnnotations(controlHosts.first())
+            postCiliumInstallAnnotations()
         }
     }
 
@@ -833,9 +836,9 @@ class Up(
      * Posts the Cilium install window annotations recorded during K3s bring-up. A failure here is
      * reported, not fatal: the cluster is up and only the dashboard marker is missing.
      */
-    private fun postCiliumInstallAnnotations(controlHost: ClusterHost) {
+    private fun postCiliumInstallAnnotations() {
         ciliumInstallAnnotator
-            .post(controlHost)
+            .post()
             .onSuccess { posted ->
                 posted.forEach { (request, response) ->
                     eventBus.emit(

@@ -231,9 +231,9 @@ class UpCiliumTest : UpTestFixture() {
             stackDeployed = true
             Result.success(Unit)
         }
-        whenever(mockGrafanaClient.createAnnotation(any(), any())).thenAnswer { invocation ->
+        whenever(mockGrafanaClient.createAnnotation(any())).thenAnswer { invocation ->
             if (!stackDeployed) annotationsPostedBeforeStack = true
-            val request = invocation.getArgument<GrafanaAnnotationRequest>(1)
+            val request = invocation.getArgument<GrafanaAnnotationRequest>(0)
             GrafanaAnnotationResponse(id = request.time)
         }
 
@@ -241,7 +241,7 @@ class UpCiliumTest : UpTestFixture() {
 
         assertThat(annotationsPostedBeforeStack).isFalse()
         val requestCaptor = argumentCaptor<GrafanaAnnotationRequest>()
-        verify(mockGrafanaClient, times(2)).createAnnotation(any(), requestCaptor.capture())
+        verify(mockGrafanaClient, times(2)).createAnnotation(requestCaptor.capture())
         assertThat(requestCaptor.allValues.map { it.text })
             .containsExactly(CiliumInstallAnnotator.STARTED_TEXT, CiliumInstallAnnotator.FINISHED_TEXT)
         assertThat(requestCaptor.allValues).allSatisfy { assertThat(it.tags).contains("cilium") }
@@ -259,14 +259,14 @@ class UpCiliumTest : UpTestFixture() {
 
         newUp().execute()
 
-        verify(mockGrafanaClient, never()).createAnnotation(any(), any())
+        verify(mockGrafanaClient, never()).createAnnotation(any())
     }
 
     @Test
     fun `up never calls the Grafana annotation API on a Flannel cluster`() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
-        verify(mockGrafanaClient, never()).createAnnotation(any(), any())
+        verify(mockGrafanaClient, never()).createAnnotation(any())
     }
 
     @Test
@@ -274,7 +274,7 @@ class UpCiliumTest : UpTestFixture() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
         ciliumInstallRecordsAnnotations()
         setupClusterInvokingServerReadyHook()
-        whenever(mockGrafanaClient.createAnnotation(any(), any()))
+        whenever(mockGrafanaClient.createAnnotation(any()))
             .thenThrow(IllegalStateException("Grafana annotation API at http://10.0.0.1:3000/api/annotations returned 502"))
 
         val emitted = mutableListOf<Event>()

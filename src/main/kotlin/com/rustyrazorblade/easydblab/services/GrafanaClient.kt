@@ -1,9 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
+import com.rustyrazorblade.easydblab.services.access.baseUrl
+import com.rustyrazorblade.easydblab.services.access.forEndpoint
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -33,12 +37,11 @@ interface GrafanaClient : GrafanaAnnotationSource {
      */
     fun installDashboard(
         dashboard: JsonObject,
-        controlHost: ClusterHost,
         folderName: String,
     ): Result<Unit>
 
     /**
-     * Creates a Grafana annotation via `POST /api/annotations` on the control node.
+     * Creates a Grafana annotation via `POST /api/annotations`.
      *
      * It throws (it does NOT return a failure Result) on a non-2xx response or an unreachable
      * endpoint, with a message naming the Grafana annotation endpoint, so `grafana annotate` fails
@@ -47,29 +50,31 @@ interface GrafanaClient : GrafanaAnnotationSource {
      * @return The Grafana response carrying the created annotation id.
      * @throws IllegalStateException on a non-2xx response or an unreachable endpoint.
      */
-    fun createAnnotation(
-        controlHost: ClusterHost,
-        annotation: GrafanaAnnotationRequest,
-    ): GrafanaAnnotationResponse
+    fun createAnnotation(annotation: GrafanaAnnotationRequest): GrafanaAnnotationResponse
 
     /**
-     * Fetches all Grafana annotations via `GET /api/annotations` on the control node.
+     * Fetches all Grafana annotations via `GET /api/annotations`.
      *
      * Requests an explicit high `limit` ([Constants.Grafana.ANNOTATION_FETCH_LIMIT]) so the response
      * is not silently capped at Grafana's default of 100, and returns the body verbatim so the
      * backup preserves exactly what Grafana returns. It throws on a non-2xx response, an unreachable
      * endpoint, or a response that fills the requested limit (a possible truncation).
      */
-    override fun fetchAnnotations(controlHost: ClusterHost): String
+    override fun fetchAnnotations(): String
 }
 
 /**
- * Default [GrafanaClient] over the injected [OkHttpClient], which routes through the SOCKS tunnel
- * when one is active: Grafana listens on the control node's private IP.
+ * Default [GrafanaClient]: each call opens Grafana through the service-access seam and sends its
+ * requests on a client carrying the route that endpoint names, so it never keeps a tunnel port.
+ *
+ * @property eventBus reports an installed dashboard
+ * @property access opens the Grafana Service
+ * @property httpClientFactory the base HTTP client the route is applied to
  */
 class DefaultGrafanaClient(
     private val eventBus: EventBus,
-    private val okHttpClient: OkHttpClient,
+    private val access: ServiceAccess,
+    private val httpClientFactory: HttpClientFactory,
 ) : GrafanaClient {
     companion object {
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
@@ -85,13 +90,24 @@ class DefaultGrafanaClient(
             }
     }
 
+    /** Grafana's base URL and the client that reaches it, opened through the seam for one call. */
+    private class Connection(
+        val baseUrl: String,
+        val client: OkHttpClient,
+    )
+
+    private fun connect(): Connection {
+        val endpoint = access.open(ClusterServices.GRAFANA)
+        return Connection(endpoint.baseUrl(), httpClientFactory.createClient().forEndpoint(endpoint))
+    }
+
     override fun installDashboard(
         dashboard: JsonObject,
-        controlHost: ClusterHost,
         folderName: String,
     ): Result<Unit> =
         runCatching {
-            val folderUid = findOrCreateFolder(controlHost, folderName)
+            val grafana = connect()
+            val folderUid = findOrCreateFolder(grafana, folderName)
             val title = dashboard["title"]?.jsonPrimitive?.contentOrNull ?: "(unknown)"
             val payload =
                 buildJsonObject {
@@ -102,10 +118,10 @@ class DefaultGrafanaClient(
             val request =
                 Request
                     .Builder()
-                    .url("${baseUrl(controlHost)}/api/dashboards/db")
+                    .url("${grafana.baseUrl}/api/dashboards/db")
                     .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
                     .build()
-            okHttpClient.newCall(request).execute().use { response ->
+            grafana.client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     error("Grafana API returned ${response.code}: ${response.body.string()}")
                 }
@@ -113,11 +129,9 @@ class DefaultGrafanaClient(
             eventBus.emit(Event.Grafana.DashboardInstalled(title = title))
         }
 
-    override fun createAnnotation(
-        controlHost: ClusterHost,
-        annotation: GrafanaAnnotationRequest,
-    ): GrafanaAnnotationResponse {
-        val endpoint = annotationsEndpoint(controlHost)
+    override fun createAnnotation(annotation: GrafanaAnnotationRequest): GrafanaAnnotationResponse {
+        val grafana = connect()
+        val endpoint = annotationsEndpoint(grafana)
         val body = annotationJson.encodeToString(annotation).toRequestBody(JSON_MEDIA_TYPE)
         val request =
             Request
@@ -127,7 +141,7 @@ class DefaultGrafanaClient(
                 .build()
         val bodyStr =
             try {
-                okHttpClient.newCall(request).execute().use { response ->
+                grafana.client.newCall(request).execute().use { response ->
                     val responseBody = response.body.string()
                     if (!response.isSuccessful) {
                         error("Grafana annotation API at $endpoint returned ${response.code}: $responseBody")
@@ -140,8 +154,9 @@ class DefaultGrafanaClient(
         return annotationJson.decodeFromString<GrafanaAnnotationResponse>(bodyStr)
     }
 
-    override fun fetchAnnotations(controlHost: ClusterHost): String {
-        val endpoint = annotationsEndpoint(controlHost)
+    override fun fetchAnnotations(): String {
+        val grafana = connect()
+        val endpoint = annotationsEndpoint(grafana)
         // Grafana defaults the annotations limit to 100 and offers no pagination cursor, so a request
         // without an explicit limit would capture at most 100 annotations. Ask for a high explicit
         // limit so the backup captures every annotation on a normal cluster.
@@ -159,7 +174,7 @@ class DefaultGrafanaClient(
                 .build()
         val responseBody =
             try {
-                okHttpClient.newCall(request).execute().use { response ->
+                grafana.client.newCall(request).execute().use { response ->
                     val body = response.body.string()
                     if (!response.isSuccessful) {
                         error("Grafana annotation API at $endpoint returned ${response.code}: $body")
@@ -183,23 +198,20 @@ class DefaultGrafanaClient(
         return responseBody
     }
 
-    private fun baseUrl(controlHost: ClusterHost): String = "http://${controlHost.privateIp}:${Constants.K8s.GRAFANA_PORT}"
-
-    private fun annotationsEndpoint(controlHost: ClusterHost): String = "${baseUrl(controlHost)}/api/annotations"
+    private fun annotationsEndpoint(grafana: Connection): String = "${grafana.baseUrl}/api/annotations"
 
     private fun findOrCreateFolder(
-        controlHost: ClusterHost,
+        grafana: Connection,
         name: String,
     ): String {
-        val baseUrl = baseUrl(controlHost)
         val listRequest =
             Request
                 .Builder()
-                .url("$baseUrl/api/folders")
+                .url("${grafana.baseUrl}/api/folders")
                 .get()
                 .build()
         val folders =
-            okHttpClient.newCall(listRequest).execute().use { response ->
+            grafana.client.newCall(listRequest).execute().use { response ->
                 if (!response.isSuccessful) error("Failed to list Grafana folders: ${response.code}")
                 Json.parseToJsonElement(response.body.string()).jsonArray
             }
@@ -213,10 +225,10 @@ class DefaultGrafanaClient(
         val createRequest =
             Request
                 .Builder()
-                .url("$baseUrl/api/folders")
+                .url("${grafana.baseUrl}/api/folders")
                 .post(Json.encodeToString(createPayload).toRequestBody(JSON_MEDIA_TYPE))
                 .build()
-        return okHttpClient.newCall(createRequest).execute().use { response ->
+        return grafana.client.newCall(createRequest).execute().use { response ->
             if (!response.isSuccessful) error("Failed to create Grafana folder '$name': ${response.code}")
             Json
                 .parseToJsonElement(response.body.string())

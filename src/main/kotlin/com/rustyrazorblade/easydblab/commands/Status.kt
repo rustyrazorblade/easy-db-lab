@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
+import com.rustyrazorblade.easydblab.services.access.StatusAddresses
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -454,10 +455,10 @@ class Status(
             val running = kitDir.name in runningKits
             println("  ${if (running) "✓" else "○"} ${kitDir.name}")
             if (running) {
-                KitEndpointAddresses
-                    .resolveInstalled(kitDir, clusterState.hosts)
-                    .onSuccess { resolved ->
-                        resolved.forEach { println("  " + KitEndpointAddresses.toEndpointAddress(it).displayLine()) }
+                StatusAddresses(clusterState)
+                    .installedKit(kitDir)
+                    .onSuccess { shown ->
+                        shown.forEach { println("  " + it.displayLines()) }
                     }.onFailure { println("    (endpoints unavailable: ${KitEndpointAddresses.UNREADABLE_DESCRIPTOR})") }
             }
         }
@@ -521,18 +522,18 @@ class Status(
             return
         }
 
-        val ip = controlHost.privateIp
-        println(
-            """
-
-Observability:
-  Grafana:         http://$ip:${Constants.K8s.GRAFANA_PORT}
-  Mimir:           http://$ip:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus
-  Loki:            http://$ip:${Constants.K8s.LOKI_HTTP_PORT}
-  Tempo:           http://$ip:${Constants.K8s.TEMPO_PORT}
-  Pyroscope:       http://$ip:${Constants.K8s.PYROSCOPE_PORT}
-""",
-        )
+        val access = StatusAddresses(clusterState).observability()
+        val lines =
+            listOf(
+                "Grafana" to access.grafana,
+                "Mimir" to access.mimir,
+                "Loki" to access.loki,
+                "Tempo" to access.tempo,
+                "Pyroscope" to access.pyroscope,
+            ).joinToString("\n") { (name, shown) ->
+                "  %-16s %s".format("$name:", shown.address) + (shown.hint?.let { "\n  %-16s run: %s".format("", it) } ?: "")
+            }
+        println("\n\nObservability:\n$lines\n")
     }
 
     /**

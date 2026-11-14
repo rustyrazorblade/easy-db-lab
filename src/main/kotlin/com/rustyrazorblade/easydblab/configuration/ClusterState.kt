@@ -62,6 +62,38 @@ enum class CniMode {
 }
 
 /**
+ * How the CLI reaches a cluster Service from the operator's machine — the cluster contract's
+ * `exposure`. The service-access seam picks its implementation from it.
+ *
+ * [Socks] dials the node's private address through the per-client SOCKS tunnel (AWS, the default);
+ * [Direct] dials it with no proxy (Tailscale, or the `direct` network mode); [PortForward] opens a
+ * Kubernetes port-forward bound to `127.0.0.1` (a cluster easy-db-lab does not own). A saved state
+ * that records none predates the field and is read as [Socks].
+ */
+enum class Exposure {
+    Socks,
+    Direct,
+    PortForward,
+    ;
+
+    companion object {
+        /**
+         * The exposure `init` records: [Direct] when Tailscale or the `direct` network mode reaches
+         * the nodes' private addresses, otherwise [Socks]. [PortForward] is recorded only by
+         * `init --kubeconfig`.
+         */
+        fun atInit(
+            tailscaleActive: Boolean,
+            directNetwork: Boolean,
+        ): Exposure =
+            when {
+                tailscaleActive || directNetwork -> Direct
+                else -> Socks
+            }
+    }
+}
+
+/**
  * EMR cluster state tracking for Spark jobs
  */
 data class EMRClusterState(
@@ -290,6 +322,8 @@ data class ClusterState(
     // The effective capability set `init` recorded (declared or probed, plus overrides). Null in a
     // state written before capabilities were recorded, which reads as AWS (NodeCapabilities.from).
     var capabilities: Set<NodeCapability>? = null,
+    // How the CLI reaches cluster Services; a state that records none predates the field and reads as Socks
+    var exposure: Exposure = Exposure.Socks,
 ) {
     /**
      * Returns true when the db nodes are provisioned with Cassandra hosts.

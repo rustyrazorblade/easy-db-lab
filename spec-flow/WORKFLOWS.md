@@ -58,7 +58,7 @@ commit. Each earns its slot for a reason specific to this repo:
 - **`security-reviewer`** — self-gating; returns empty on a diff with no security surface.
   It earns its slot because this repo holds AWS credentials, opens SSH sessions, and runs
   a SOCKS proxy whose global-property misuse caused a real incident. Never set the
-  `socksProxyHost` / `socksProxyPort` JVM properties; see `Socks5ProxySelector` and
+  `socksProxyHost` / `socksProxyPort` JVM properties; see `OkHttpClient.forEndpoint` and
   the `SOCKS Proxy` requirement in the networking spec.
 
 - **`test-rigor-reviewer`** — this repo bans mock-echo tests outright: a test that only

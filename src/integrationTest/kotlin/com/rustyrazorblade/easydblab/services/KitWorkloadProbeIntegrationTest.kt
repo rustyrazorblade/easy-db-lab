@@ -53,6 +53,7 @@ class KitWorkloadProbeIntegrationTest {
         private const val IMPATIENT_POLLS = 3
         private const val NAMESPACE = "default"
         private const val POD_IMAGE = "registry.k8s.io/pause:3.9"
+        private val FINISHED_PHASES = setOf("Succeeded", "Failed")
 
         @Container
         @JvmStatic
@@ -201,10 +202,22 @@ class KitWorkloadProbeIntegrationTest {
             .waitUntilCondition({ it?.metadata?.deletionTimestamp != null }, WAIT_SECONDS, TimeUnit.SECONDS)
     }
 
+    /**
+     * The finalizer holds the deleted pod, but the kubelet still stops its container and moves it to
+     * a finished phase. The probe runs only once the pod is there, the state CI caught it in, so the
+     * test sees that state on every run instead of only when the kubelet is quick.
+     */
     @Test
     fun `waiting for a stopped kit counts a pod still terminating, and ends once it is gone`() {
         createPod("draining-0", mapOf("easydblab/kit" to "draining"), finalizers = listOf("easydblab.test/hold"))
+        val draining =
+            client
+                .pods()
+                .inNamespace("default")
+                .withName("draining-0")
+        draining.waitUntilCondition({ it?.status?.phase == "Running" }, WAIT_SECONDS, TimeUnit.SECONDS)
         deletePod("draining-0")
+        draining.waitUntilCondition({ it?.status?.phase in FINISHED_PHASES }, WAIT_SECONDS, TimeUnit.SECONDS)
         val impatient = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ZERO, maxPolls = IMPATIENT_POLLS)
 
         assertThat(impatient.awaitGone("draining", podsRuntime("draining")).getOrThrow())

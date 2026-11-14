@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.ContainerObservabilityHttp
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -58,7 +57,6 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
     private val bucket = "annotations-it-${UUID.randomUUID().toString().take(8)}"
     private val volume = "loki-annot-${UUID.randomUUID().toString().take(8)}"
     private val containers = mutableListOf<GenericContainer<*>>()
-    private val control = ClusterHost("127.0.0.1", "10.0.0.1", "control0", "us-west-2a")
     private lateinit var loki: GenericContainer<*>
     private lateinit var grafana: GenericContainer<*>
     private lateinit var mirror: DefaultAnnotationMirror
@@ -127,10 +125,7 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
                 )
             }
         val eventBus = getKoin().get<EventBus>()
-        return DefaultGrafanaClient(
-            eventBus = eventBus,
-            okHttpClient = OkHttpClient.Builder().addInterceptor(redirect).build(),
-        )
+        return fixedGrafanaClient(eventBus = eventBus, client = OkHttpClient.Builder().addInterceptor(redirect).build())
     }
 
     /**
@@ -228,7 +223,7 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
             )
         assertThat(created.statusCode()).describedAs(created.body()).isEqualTo(200)
 
-        assertThat(mirror.syncAll(control).getOrThrow()).isEqualTo(1)
+        assertThat(mirror.syncAll().getOrThrow()).isEqualTo(1)
 
         val (labels, line) = mirrored(expected = 1).single()
         assertThat(line).isEqualTo("made in the UI")

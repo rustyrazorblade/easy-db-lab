@@ -63,6 +63,45 @@ config.connectionTimeout = 30000  // Increased for SOCKS proxy
 config.requestTimeout = 60000
 ```
 
+
+## Service Access Seam (`services/access/`)
+
+Every CLI client that reads a cluster Service (Mimir, Loki, Tempo, Pyroscope, Grafana, a kit's JDBC
+endpoint) asks `ServiceAccess.open(ServiceTarget)` for the endpoint it dials. No client builds a node
+address or reads a proxy port from a JVM property. `ServiceTarget` names the namespace, Service,
+Service port, node role and NodePort; `ClusterServices` holds the observability targets.
+`ExposureServiceAccess` (Koin `serviceAccessModule`, registered with `ResourceManager`) picks the
+implementation from `ClusterState.exposure`, read again on every `open`: it keeps the implementation
+while the exposure is unchanged, and closes it and builds the new one when a later `init` (in a REPL
+or server) recorded another:
+
+- `Socks` (the default, AWS): `SocksServiceAccess` returns `ServiceEndpoint.ViaSocks` for the node's
+  private IP and NodePort with the tunnel's current port. HTTP clients apply it with
+  `OkHttpClient.forEndpoint` (per-client `Proxy`); JDBC goes through `SocksTcpBridge`.
+- `Direct` (Tailscale): `DirectServiceAccess` returns `ServiceEndpoint.Plain` for the node address,
+  with no proxy.
+- `PortForward` (a cluster easy-db-lab does not own): `PortForwardServiceAccess` checks the Service
+  exists, then opens a Fabric8 port-forward bound to `127.0.0.1` on a `LoopbackPortSelector` port
+  (20000-29999). A kit's NodePort is mapped to the Service port behind it (`servicePortFor`). It holds
+  one forward per target, reopens a dead one (closed, or `errorOccurred()`: Fabric8 keeps `isAlive`
+  true after the pod a Service forward resolved is replaced, so `isAlive` alone is not enough), fails naming namespace/Service/port and the Kubernetes
+  error, and closes every forward when the CLI exits.
+
+CQL on a port-forward cluster does not use the seam's Service forward. It uses
+`CassandraPodForward`, which forwards one `cassandra-pods` StatefulSet pod on a fixed local port.
+`CqlSessionFactory.createSingleEndpointSession` uses that port as the only contact point, with
+`SingleEndpointDistanceEvaluator` (every other node IGNORED) and the token map off.
+
+`status` cannot keep a forward open after it exits, so on a port-forward cluster `StatusAddresses`
+prints each Service's DNS name and the `bin/kubectl port-forward` command that reaches it. A kit
+endpoint names its NodePort, so `KitEndpointServices` resolves the Service it is published on from
+the kit's own files, never from its name: the Service named on the endpoint's `kit.yaml` entry
+(`service:`/`service-port:`, for a chart's or an operator's Service: presto, trino, kafka), else the
+Service a manifest rendered into the kit's workspace directory declares with that NodePort, at the
+Service port behind it (clickhouse: `svc/clickhouse-nodeport 30123:8123`, address
+`...svc.cluster.local:8123`), else a Helm kit's release at an unknown port. `status` prints an
+endpoint with no known Service or port without a forward command; `<kit> sql` on a port-forward
+cluster fails naming the `service:` field. `KitEndpointServiceTest` resolves every packaged kit.
 ## ManifestApplier
 
 Applies K8s manifests using Fabric8's typed server-side apply (not generic resources).

@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.CapabilityOverrides
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -19,6 +20,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ObservabilityStage
@@ -475,6 +477,7 @@ class Init : PicoBaseCommand() {
     }
 
     private fun createClusterState(capabilities: NodeCapabilities): ClusterState {
+        val tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale
         val state =
             ClusterState(
                 name = name,
@@ -487,8 +490,13 @@ class Init : PicoBaseCommand() {
                         appArch = deriveArch(resolvedAppInstanceType),
                         controlArch = deriveArch(DEFAULT_CONTROL_INSTANCE_TYPE),
                     ),
-                tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
+                tailscaleActive = tailscaleActive,
                 capabilities = capabilities.present().toSet(),
+                exposure =
+                    Exposure.atInit(
+                        tailscaleActive = tailscaleActive,
+                        directNetwork = ProxyEnvFile(context.workingDirectory).read().direct,
+                    ),
             )
         clusterStateManager.save(state)
         return state

@@ -80,7 +80,7 @@ class TeardownFlushServiceTest {
 
     private val mirror =
         object : AnnotationMirror by RecordingAnnotationMirror() {
-            override fun syncAll(controlHost: ClusterHost): Result<Int> {
+            override fun syncAll(): Result<Int> {
                 order += "mirror"
                 return mirrorFailure?.let { Result.failure(it) } ?: Result.success(3)
             }
@@ -110,10 +110,7 @@ class TeardownFlushServiceTest {
 
     private val backups =
         object : GrafanaAnnotationBackupService {
-            override fun backup(
-                controlHost: ClusterHost,
-                clusterState: ClusterState,
-            ): Result<GrafanaAnnotationBackupResult> {
+            override fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult> {
                 order += "annotations backup"
                 return Result.success(
                     GrafanaAnnotationBackupResult(ClusterStoragePath.root("acct").resolve("grafana/annotations/x.json"), 2),
@@ -283,10 +280,8 @@ class TeardownFlushServiceTest {
     fun `a failed annotations backup fails only annotations`() {
         val failingBackups =
             object : GrafanaAnnotationBackupService {
-                override fun backup(
-                    controlHost: ClusterHost,
-                    clusterState: ClusterState,
-                ): Result<GrafanaAnnotationBackupResult> = Result.failure(RuntimeException("S3 refused the upload"))
+                override fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult> =
+                    Result.failure(RuntimeException("S3 refused the upload"))
             }
 
         val outcome =

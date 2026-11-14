@@ -126,6 +126,22 @@ class KitWorkloadProbeTest {
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-1")))
     }
 
+    /**
+     * The kubelet moves a deleted pod to Failed or Succeeded once its containers stop, while a
+     * finalizer still holds the object. Its name is still taken, so it is still terminating: it
+     * blocks `start` and holds the stop wait until the object is gone.
+     */
+    @Test
+    fun `a terminating pod already in a finished phase still counts, for start and for the stop wait`() {
+        whenever(kubeService.listPodsByLabel(any(), any()))
+            .thenReturn(Result.success(listOf(pod("run-1", "Failed").copy(terminating = true))))
+        val impatient = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 1)
+        val present = WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-1"))
+
+        assertThat(probe.find("sysbench-tidb", runPods).getOrThrow()).isEqualTo(present)
+        assertThat(impatient.awaitGone("sysbench-tidb", runPods).getOrThrow()).isEqualTo(present)
+    }
+
     @Test
     fun `a pending pod is part of the running workload`() {
         whenever(kubeService.listPodsByLabel(any(), any())).thenReturn(Result.success(listOf(pod("run-1", "Pending"))))

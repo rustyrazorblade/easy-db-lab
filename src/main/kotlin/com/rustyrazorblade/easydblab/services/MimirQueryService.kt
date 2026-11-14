@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -63,7 +64,7 @@ class DefaultMimirQueryService(
         runCatching {
             log.debug { "PromQL query: $promql" }
             val encoded = URLEncoder.encode(promql, StandardCharsets.UTF_8)
-            val response = http.get(Constants.K8s.MIMIR_HTTP_PORT, "$QUERY_PATH?query=$encoded")
+            val response = http.get(ClusterServices.MIMIR, "$QUERY_PATH?query=$encoded")
             check(response.code == Constants.HttpStatus.OK) {
                 "Mimir query failed with status ${response.code}: ${response.body}"
             }

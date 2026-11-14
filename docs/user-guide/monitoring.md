@@ -2,7 +2,7 @@
 
 ## Grafana Dashboards
 
-Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node.
+Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node. On a port-forward cluster, run the `bin/kubectl port-forward` command `status` prints for Grafana, then open `http://127.0.0.1:3000` (see [Port Reference](../reference/ports.md#reaching-services-on-a-port-forward-cluster)).
 
 ### Cluster Identification
 

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 
 /**
  * Flushes Mimir before teardown and waits for the flush to finish.
@@ -32,7 +33,7 @@ class MimirTailFlush(
         progress.begin(FlushStep.MIMIR_SHUTDOWN)
         // Marked before the call: a shutdown that times out may still have stopped the ingester.
         progress.mark(Constants.K8s.MIMIR_APP_LABEL, BackendState.INGESTER_STOPPED)
-        val shutdown = http.post(Constants.K8s.MIMIR_HTTP_PORT, "/ingester/shutdown", timeout = timeouts.shutdown)
+        val shutdown = http.post(ClusterServices.MIMIR, "/ingester/shutdown", timeout = timeouts.shutdown)
         check(shutdown.code in Constants.HttpStatus.OK until Constants.HttpStatus.MULTIPLE_CHOICES) {
             "Mimir's ingester shutdown failed (status ${shutdown.code}): ${shutdown.body}"
         }

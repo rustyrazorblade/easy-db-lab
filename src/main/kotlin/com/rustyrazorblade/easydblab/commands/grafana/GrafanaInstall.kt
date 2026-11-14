@@ -50,7 +50,7 @@ class GrafanaInstall : PicoBaseCommand() {
                 installContextFactory.forCluster(clusterState, controlHost),
             )
         grafanaClient
-            .installDashboard(dashboard = dashboard, controlHost = controlHost, folderName = folderName)
+            .installDashboard(dashboard = dashboard, folderName = folderName)
             .getOrThrow()
     }
 }

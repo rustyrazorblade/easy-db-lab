@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject

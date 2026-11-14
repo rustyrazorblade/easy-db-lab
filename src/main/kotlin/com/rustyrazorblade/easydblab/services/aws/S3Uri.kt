@@ -22,6 +22,10 @@ object S3Uri {
     /**
      * The location an `s3://bucket/key` URI names.
      *
+     * The path it returns has no store prefix ([ClusterStoragePath.fromKey]): the whole key, any
+     * store prefix in it included, is its key segments, so the path names exactly the object the
+     * URI names.
+     *
      * @throws IllegalArgumentException if [uri] does not start with `s3://` or names no bucket.
      */
     fun parse(uri: String): ClusterStoragePath {

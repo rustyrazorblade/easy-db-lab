@@ -95,14 +95,35 @@ class GrafanaFrontTest : BaseKoinTest() {
         assertThat(config).contains(
             "listen ${Constants.K8s.GRAFANA_PORT};",
             "location /reports/ {",
-            "proxy_pass http://127.0.0.1:${Constants.Grafana.Documents.PROXY_PORT}/acct-bucket/reports/;",
+            "server 127.0.0.1:${Constants.Grafana.Documents.PROXY_PORT};",
+            "proxy_pass http://documents_proxy/acct-bucket/reports/;",
             "set \$args \"\";",
-            "proxy_pass http://127.0.0.1:${Constants.Grafana.INTERNAL_PORT};",
+            "server 127.0.0.1:${Constants.Grafana.INTERNAL_PORT};",
+            "proxy_pass http://grafana;",
         )
         // A variable in proxy_pass would send the decoded path unescaped: an encoded line break would split the request.
         assertThat(config.lines().filter { "proxy_pass" in it }).noneMatch { "\$" in it }
         assertThat(config).doesNotContain("__")
     }
+
+    @Test
+    fun `both upstreams keep idle connections, and only Grafana Live waits an hour on an idle one`() {
+        val config = front.config(documents)
+        val blocks = locationBlocks(config)
+
+        assertThat(config.lines().map { it.trim() }.filter { it.startsWith("keepalive ") }).hasSize(2)
+        assertThat(blocks.filterValues { "proxy_read_timeout 3600s;" in it }.keys).containsExactly("/api/live/")
+        assertThat(blocks.getValue("/api/live/")).contains("proxy_set_header Upgrade \$http_upgrade;")
+        // A kept-alive upstream connection needs the client's Connection header cleared, except on the websocket.
+        assertThat(blocks.getValue("/")).contains("proxy_set_header Connection \"\";").doesNotContain("Upgrade")
+        assertThat(blocks.getValue("/reports/")).contains("proxy_set_header Connection \"\";")
+    }
+
+    /** Each `location <path> {` block's body in [config], keyed by its path. */
+    private fun locationBlocks(config: String): Map<String, String> =
+        Regex("""location (\S+) \{(.*?)\n        }""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(config)
+            .associate { it.groupValues[1] to it.groupValues[2] }
 
     @Test
     fun `a change to the front's configuration changes the Grafana pod's config hash`() {

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.store
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 class StoreBackendTest {
@@ -26,5 +27,20 @@ class StoreBackendTest {
 
         assertThat(backend.region).isEqualTo("eu-west-1")
         assertThat(backend.endpoint).isEqualTo("s3.eu-west-1.amazonaws.com")
+    }
+
+    /** A blank bucket would render configs that write nowhere; `up` is what sets the bucket. */
+    @Test
+    fun `a cluster with no account bucket yet fails and says to run up`() {
+        assertThatThrownBy { StoreBackend.from(state.copy(s3Bucket = null), defaultRegion = "eu-west-1") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("lab")
+            .hasMessageContaining("easy-db-lab up")
+    }
+
+    /** The prefix does not depend on the bucket, so it can be read before `up` sets one. */
+    @Test
+    fun `the prefix of a cluster with no account bucket yet is no prefix`() {
+        assertThat(StoreBackend.prefixOf(state.copy(s3Bucket = null))).isEqualTo(StoreBackend.NO_PREFIX)
     }
 }

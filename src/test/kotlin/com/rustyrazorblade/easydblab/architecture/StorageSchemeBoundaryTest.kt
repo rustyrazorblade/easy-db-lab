@@ -21,7 +21,7 @@ class StorageSchemeBoundaryTest {
     private val exemptions =
         mapOf(
             // Design D3: the S3 case of the neutral store model holds the AWS endpoint as its default.
-            "configuration/store/StoreBackend.kt" to "val endpoint: String = \"s3.\$region.amazonaws.com\",",
+            "configuration/store/StoreBackend.kt" to "endpoint: String = \"s3.\$region.amazonaws.com\",",
             // Help text naming the form `spark submit` accepts; S3Uri parses it.
             "commands/spark/SparkSubmit.kt" to "description = [\"Path to JAR file (local path or s3://bucket/key)\"],",
         )

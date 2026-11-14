@@ -264,7 +264,11 @@ class OtelManifestBuilder(
             )
     }
 
-    /** A config fragment, read verbatim: it carries no placeholder of its own. */
+    /**
+     * A config fragment as it is spliced into the collector config: its content unchanged except that
+     * every line starting with `#` in column 0 (the file's header comment) is dropped. Indented
+     * comments are kept. It carries no placeholder of its own.
+     */
     private fun resource(name: String): String =
         checkNotNull(OtelManifestBuilder::class.java.getResource(name)) { "missing collector resource $name" }
             .readText()

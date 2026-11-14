@@ -22,14 +22,12 @@ class PlacementTest {
             assertThat(it.operator).isEqualTo("Exists")
             assertThat(it.effect).isEqualTo("NoSchedule")
         })
-        assertThat(placement.hostNetwork).isFalse()
     }
 
     @Test
     fun `an environment that declares no control node carries no selector or toleration`() {
         assertThat(Placement.ANY_NODE.nodeSelector).isEmpty()
         assertThat(Placement.ANY_NODE.tolerations).isEmpty()
-        assertThat(Placement.ANY_NODE.hostNetwork).isFalse()
     }
 
     @Test

@@ -13,13 +13,11 @@ import io.fabric8.kubernetes.api.model.TolerationBuilder
  * resolves once. The builders apply it instead of naming the control plane themselves, so the same
  * manifests run on a cluster easy-db-lab built and on one it did not.
  *
- * Every workload it places is on the pod network ([hostNetwork] is always false here) and is reached
- * in the cluster by its Service DNS name.
+ * Every workload it places is on the pod network and is reached in the cluster by its Service DNS
+ * name.
  *
  * @property nodeSelector the labels a node must carry.
  * @property tolerations the taints the pods tolerate.
- * @property hostNetwork whether the pods share the node's network; false for every workload placed
- *   with this type.
  * @property publishOnNode whether each container port that declares a `hostPort` keeps it, so a
  *   caller outside the pod network (a node-side agent, or the CLI over the SOCKS tunnel) still
  *   reaches the workload on its node's private IP. Only an environment that owns its nodes does.
@@ -27,22 +25,21 @@ import io.fabric8.kubernetes.api.model.TolerationBuilder
 data class Placement(
     val nodeSelector: Map<String, String>,
     val tolerations: List<Toleration>,
-    val hostNetwork: Boolean = false,
     val publishOnNode: Boolean = false,
 ) {
     /** This placement with [labels] added to its node selector. */
     fun withNodeLabels(labels: Map<String, String>): Placement = copy(nodeSelector = nodeSelector + labels)
 
     /**
-     * [pod] placed here: its selector, tolerations and network replaced by this placement's, and its
-     * host ports dropped unless [publishOnNode].
+     * [pod] placed here: its selector and tolerations replaced by this placement's, moved onto the pod
+     * network, and its host ports dropped unless [publishOnNode].
      */
     fun applyTo(pod: PodSpec): PodSpec =
         PodSpecBuilder(pod)
             .withNodeSelector<String, String>(nodeSelector)
             .withTolerations(tolerations)
-            .withHostNetwork(hostNetwork)
-            .withDnsPolicy(if (hostNetwork) "ClusterFirstWithHostNet" else "ClusterFirst")
+            .withHostNetwork(false)
+            .withDnsPolicy("ClusterFirst")
             .withContainers(pod.containers.map { ContainerBuilder(it).withPorts(placePorts(it.ports.orEmpty())).build() })
             .build()
 

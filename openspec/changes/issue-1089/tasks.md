@@ -28,6 +28,6 @@
 
 ## 5. Verification and docs
 
-- [ ] 5.1 `K8sServiceIntegrationTest` (K3s TestContainer) passes, showing AWS-path client behaviour is unchanged
-- [ ] 5.2 `./gradlew test`, `./gradlew integrationTest`, `ktlintCheck` and `detekt` pass (detekt on JDK 21, no new suppressions)
+- [x] 5.1 `K8sServiceIntegrationTest` (K3s TestContainer) passes, showing AWS-path client behaviour is unchanged
+- [x] 5.2 `./gradlew test`, `./gradlew integrationTest`, `ktlintCheck` and `detekt` pass (detekt on JDK 21, no new suppressions)
 - [x] 5.3 Update `kubernetes/CLAUDE.md` (client creation through `KubeApi`, load by path with explicit context, never `autoConfigure`) and the root `CLAUDE.md` references to `K8sClientProvider`

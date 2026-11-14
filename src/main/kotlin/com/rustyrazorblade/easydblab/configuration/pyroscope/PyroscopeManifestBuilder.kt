@@ -89,11 +89,11 @@ class PyroscopeManifestBuilder(
      * so the observability stack deploys these only in local mode.
      */
     fun buildServerResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
-        listOf(buildServerConfigMap(), buildServerService()) + hosting.host(buildServerPodTemplate(), STATE)
+        listOf(buildServerConfigMap(), buildServerService()) + hosting.host(buildServerPodTemplate(), STATE, isBackend = true)
 
     /** The Pyroscope server Deployment as [hosting] runs it. */
     fun buildServerDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
-        hosting.host(buildServerPodTemplate(), STATE).filterIsInstance<Deployment>().single()
+        hosting.host(buildServerPodTemplate(), STATE, isBackend = true).filterIsInstance<Deployment>().single()
 
     /**
      * Builds the Grafana Alloy eBPF agent resources (RBAC, ConfigMap, DaemonSet).

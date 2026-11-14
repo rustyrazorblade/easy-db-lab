@@ -75,11 +75,11 @@ class LokiManifestBuilder(
      * @return ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
     fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
-        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE)
+        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE, isBackend = true)
 
     /** The Loki Deployment as [hosting] runs it. */
     fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
-        hosting.host(buildPodTemplate(), STATE).filterIsInstance<Deployment>().single()
+        hosting.host(buildPodTemplate(), STATE, isBackend = true).filterIsInstance<Deployment>().single()
 
     /** The ConfigMap holding `loki.yaml`. */
     fun buildConfigMap(): ConfigMap =

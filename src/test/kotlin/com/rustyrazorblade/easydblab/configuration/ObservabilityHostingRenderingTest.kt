@@ -15,7 +15,9 @@ import io.fabric8.kubernetes.api.model.PersistentVolumeClaim
 import io.fabric8.kubernetes.api.model.PodSpec
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.Deployment
+import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -221,5 +223,73 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
 
             assertThat(withEnvFrom.map { it.name }).describedAs(hostPath).containsExactly(pod.containers.first().name)
         }
+    }
+
+    @Test
+    fun `a state volume the pod does not declare is refused rather than left on its old source`() {
+        val deployment =
+            DeploymentBuilder()
+                .withNewMetadata()
+                .withName("mimir")
+                .withNamespace("default")
+                .endMetadata()
+                .withNewSpec()
+                .withNewTemplate()
+                .withNewSpec()
+                .addNewContainer()
+                .withName("mimir")
+                .endContainer()
+                .addNewVolume()
+                .withName("data")
+                .withNewEmptyDir()
+                .endEmptyDir()
+                .endVolume()
+                .endSpec()
+                .endTemplate()
+                .endSpec()
+                .build()
+
+        assertThatThrownBy {
+            ObservabilityHosting.AWS.host(deployment, StateVolume("mimir", "storage", "/mnt/db1/mimir"), isBackend = true)
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("storage")
+            .hasMessageContaining("mimir")
+    }
+
+    @Test
+    fun `the store-credentials Secret goes to the container named for the workload, not whichever is first`() {
+        val deployment =
+            DeploymentBuilder()
+                .withNewMetadata()
+                .withName("loki")
+                .withNamespace("default")
+                .endMetadata()
+                .withNewSpec()
+                .withNewTemplate()
+                .withNewSpec()
+                .addNewContainer()
+                .withName("sidecar")
+                .endContainer()
+                .addNewContainer()
+                .withName("loki")
+                .endContainer()
+                .addNewVolume()
+                .withName("data")
+                .withNewEmptyDir()
+                .endEmptyDir()
+                .endVolume()
+                .endSpec()
+                .endTemplate()
+                .endSpec()
+                .build()
+        val withSecret = ObservabilityHosting.AWS.copy(credentials = StoreCredentials.FromSecret("store-credentials"))
+
+        val pod = pod(withSecret.host(deployment, StateVolume("loki", "data", "/mnt/db1/loki"), isBackend = true))
+
+        val withEnvFrom =
+            pod.containers.filter { container ->
+                container.envFrom.orEmpty().any { it.secretRef?.name == "store-credentials" }
+            }
+        assertThat(withEnvFrom.map { it.name }).containsExactly("loki")
     }
 }

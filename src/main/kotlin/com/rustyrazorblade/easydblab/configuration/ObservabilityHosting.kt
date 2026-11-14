@@ -88,13 +88,24 @@ data class ObservabilityHosting(
     /**
      * [deployment] hosted here: placed by [placement], its [state] volume on [storage], preceded by
      * the claim that volume needs, if any. The backends ([isBackend]) also run as the namespace's
-     * default service account and get the store-credentials Secret in their first container.
+     * default service account and get the store-credentials Secret in the container named for
+     * [StateVolume.workload].
+     *
+     * @throws IllegalArgumentException when the pod declares no volume named [StateVolume.volumeName],
+     *   which would otherwise leave the state on whatever the pod declared.
      */
     fun host(
         deployment: Deployment,
         state: StateVolume,
-        isBackend: Boolean = true,
+        isBackend: Boolean,
     ): List<HasMetadata> {
+        val declared =
+            deployment.spec.template.spec.volumes
+                .orEmpty()
+                .map { it.name }
+        require(state.volumeName in declared) {
+            "${state.workload} declares no volume named ${state.volumeName} for its state; it declares $declared."
+        }
         val claim = claimFor(state, deployment.metadata.namespace)
         val placed = placement.applyTo(deployment.spec.template.spec)
         val pod = if (claim != null) ownedBy(placed, state.owner) else placed
@@ -109,7 +120,7 @@ data class ObservabilityHosting(
                 .endTemplate()
                 .endSpec()
                 .build()
-        return listOfNotNull(claim, if (isBackend) withBackendIdentity(hosted) else hosted)
+        return listOfNotNull(claim, if (isBackend) withBackendIdentity(hosted, state.workload) else hosted)
     }
 
     /** [pod] with [owner] as its `fsGroup`, keeping the rest of its security context. */
@@ -167,15 +178,22 @@ data class ObservabilityHosting(
                     .build()
         }
 
-    private fun withBackendIdentity(deployment: Deployment): Deployment {
+    /** [deployment] as the default service account, the store Secret in the container named [workload]. */
+    private fun withBackendIdentity(
+        deployment: Deployment,
+        workload: String,
+    ): Deployment {
         val pod = deployment.spec.template.spec
         val containers =
             when (credentials) {
                 StoreCredentials.InstanceRole -> pod.containers
-                is StoreCredentials.FromSecret ->
-                    pod.containers.mapIndexed { index, container ->
-                        when (index) {
-                            0 ->
+                is StoreCredentials.FromSecret -> {
+                    require(pod.containers.any { it.name == workload }) {
+                        "$workload has no container named $workload to give the store credentials to."
+                    }
+                    pod.containers.map { container ->
+                        when (container.name) {
+                            workload ->
                                 ContainerBuilder(container)
                                     .addToEnvFrom(
                                         EnvFromSourceBuilder()
@@ -187,6 +205,7 @@ data class ObservabilityHosting(
                             else -> container
                         }
                     }
+                }
             }
         return DeploymentBuilder(deployment)
             .editSpec()

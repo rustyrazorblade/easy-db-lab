@@ -66,11 +66,11 @@ class TempoManifestBuilder(
      * @return List of: ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
     fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
-        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE)
+        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE, isBackend = true)
 
     /** The Tempo Deployment as [hosting] runs it. */
     fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
-        hosting.host(buildPodTemplate(), STATE).filterIsInstance<Deployment>().single()
+        hosting.host(buildPodTemplate(), STATE, isBackend = true).filterIsInstance<Deployment>().single()
 
     /**
      * Builds the Tempo ConfigMap containing tempo.yaml.

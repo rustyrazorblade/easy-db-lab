@@ -50,6 +50,8 @@ class CqlSessionServiceTest : BaseKoinTest() {
             tailscaleActive = tailscaleActive,
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Cassandra to listOf(testHost)),
+            // As init records it: a Tailscale cluster is a Direct one.
+            exposure = Exposure.atInit(tailscaleActive = tailscaleActive, directNetwork = false),
         )
 
     override fun additionalTestModules(): List<Module> =
@@ -96,6 +98,26 @@ class CqlSessionServiceTest : BaseKoinTest() {
 
         verify(mockSocksProxy, never()).ensureRunning(any())
         verify(mockSessionFactory).createDirectSession(any(), any())
+        verify(mockSessionFactory, never()).createSession(any(), any(), any())
+    }
+
+    @Test
+    fun `a Direct cluster gets a direct session with no SOCKS port, even without Tailscale`() {
+        whenever(mockClusterStateManager.load())
+            .thenReturn(stateWith(tailscaleActive = false).apply { exposure = Exposure.Direct })
+
+        val service =
+            DefaultCqlSessionService(
+                socksProxyService = mockSocksProxy,
+                clusterStateManager = mockClusterStateManager,
+                sessionFactory = mockSessionFactory,
+                resourceManager = mockResourceManager,
+            )
+
+        service.execute("SELECT now() FROM system.local")
+
+        verify(mockSocksProxy, never()).getLocalPort()
+        verify(mockSessionFactory).createDirectSession(listOf("10.0.1.5"), "us-west-2")
         verify(mockSessionFactory, never()).createSession(any(), any(), any())
     }
 

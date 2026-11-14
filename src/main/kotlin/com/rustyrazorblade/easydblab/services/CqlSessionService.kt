@@ -46,8 +46,9 @@ class SingleEndpointCql(
  *
  * On a cluster reached by port-forward ([Exposure.PortForward]) the session talks to one Cassandra
  * pod through [singleEndpoint]'s forward, which is checked before every statement and reopened on the
- * same port when it has died, so the session keeps its only node. Otherwise it connects directly when
- * Tailscale is active and through the SOCKS proxy to every node when it is not, as on AWS.
+ * same port when it has died, so the session keeps its only node. Otherwise it follows the recorded
+ * exposure: [Exposure.Direct] connects to every node with no proxy, [Exposure.Socks] goes through the
+ * SOCKS tunnel, as on AWS.
  *
  * The session is cached for reuse in REPL/Server mode.
  * Registers with [ResourceManager] when session is created for centralized cleanup.
@@ -119,13 +120,17 @@ class DefaultCqlSessionService(
         val contactPoints = cassandraHosts.map { it.privateIp }
 
         val session =
-            if (clusterState.isTailscaleEnabled()) {
-                log.info { "Creating new CqlSession via direct connection (Tailscale active)" }
-                sessionFactory.createDirectSession(contactPoints, datacenter)
-            } else {
-                val proxyPort = socksProxyService.getLocalPort()
-                log.info { "Creating new CqlSession through SOCKS proxy on port $proxyPort" }
-                sessionFactory.createSession(contactPoints, datacenter, proxyPort)
+            when (clusterState.exposure) {
+                Exposure.Direct -> {
+                    log.info { "Creating new CqlSession via direct connection" }
+                    sessionFactory.createDirectSession(contactPoints, datacenter)
+                }
+                Exposure.Socks -> {
+                    val proxyPort = socksProxyService.getLocalPort()
+                    log.info { "Creating new CqlSession through SOCKS proxy on port $proxyPort" }
+                    sessionFactory.createSession(contactPoints, datacenter, proxyPort)
+                }
+                Exposure.PortForward -> error("A port-forwarded cluster uses the single-endpoint session")
             }
 
         cachedSession = session

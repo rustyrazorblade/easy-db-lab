@@ -1,5 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -8,6 +12,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.slf4j.LoggerFactory
 import java.io.File
 
 /**
@@ -81,5 +86,41 @@ class WorkspaceKubeApiLocatorTest {
     fun `a missing kubeconfig names the workspace path`() {
         assertThatThrownBy { locator(recorded = "pinned").locate() }
             .hasMessageContaining(kubeconfig.absolutePath)
+    }
+
+    @Test
+    fun `falling back to the kubeconfig's current-context logs the context and the kubeconfig`() {
+        writeKubeconfig(currentContext = "default")
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        val logger = LoggerFactory.getLogger(WorkspaceKubeApiLocator::class.java) as Logger
+        logger.addAppender(appender)
+        try {
+            locator(recorded = null).locate()
+        } finally {
+            logger.detachAppender(appender)
+        }
+
+        assertThat(appender.list)
+            .anySatisfy { event ->
+                assertThat(event.level.isGreaterOrEqual(Level.INFO)).isTrue()
+                assertThat(event.formattedMessage)
+                    .contains("'default'")
+                    .contains(kubeconfig.absolutePath)
+            }
+    }
+
+    @Test
+    fun `a recorded context logs no fallback`() {
+        writeKubeconfig(currentContext = "default")
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        val logger = LoggerFactory.getLogger(WorkspaceKubeApiLocator::class.java) as Logger
+        logger.addAppender(appender)
+        try {
+            locator(recorded = "pinned").locate()
+        } finally {
+            logger.detachAppender(appender)
+        }
+
+        assertThat(appender.list).noneMatch { it.level.isGreaterOrEqual(Level.INFO) }
     }
 }

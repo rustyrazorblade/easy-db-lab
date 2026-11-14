@@ -161,6 +161,13 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
         }
     }
 
+    /** The core reads container logs from the pod log files; the system receiver must not read them again. */
+    @Test
+    fun `the system file receiver skips container and pod logs`() {
+        assertThat(listAt(config(), "receivers", "file_log/system", "exclude"))
+            .contains("/var/log/containers/**", "/var/log/pods/**")
+    }
+
     /** Cassandra's application logs arrive over OTLP; the file receiver tails only the JVM GC log. */
     @Test
     fun `the Cassandra file receiver tails only the JVM GC log, under its own source`() {

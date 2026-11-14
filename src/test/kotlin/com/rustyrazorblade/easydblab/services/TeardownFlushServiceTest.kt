@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import io.fabric8.kubernetes.client.KubernetesClientException
 import kotlinx.serialization.SerializationException
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -141,7 +142,7 @@ class TeardownFlushServiceTest {
         assertThat(outcome.backends)
             .containsEntry("loki", BackendState.SCALED_TO_ZERO)
             .containsEntry("mimir", BackendState.SCALED_TO_ZERO)
-            .containsEntry("otel-collector", BackendState.DELETED)
+            .containsAllEntriesOf(TelemetrySenders.COLLECTORS.associateWith { BackendState.DELETED })
         assertThat(events).contains(
             Event.Teardown.TelemetrySendersStopped,
             Event.Teardown.LokiFlushed,
@@ -343,5 +344,25 @@ class TeardownFlushServiceTest {
         assertThat(outcome.failed.getValue(TailSignal.LOGS).step).isEqualTo(FlushStep.RECORD_LOGS)
         assertThat(outcome.failed.getValue(TailSignal.METRICS).step).isEqualTo(FlushStep.RECORD_METRICS)
         assertThat(outcome.saved.keys).contains(TailSignal.TRACES, TailSignal.ANNOTATIONS)
+    }
+
+    /** `down` prints each owned workload's state on failure, so every owner is reported on its own. */
+    @Test
+    fun `a step with several workloads reports each one and rejects a workload it does not own`() {
+        val progress = FlushProgress(FlushStep.SENDERS_STOP, setOf("otel-collector", "otel-collector-host"))
+        assertThat(progress.backends).containsOnly(
+            entry("otel-collector", BackendState.RUNNING),
+            entry("otel-collector-host", BackendState.RUNNING),
+        )
+
+        progress.mark("otel-collector-host", BackendState.DELETED)
+
+        assertThat(progress.backends).containsOnly(
+            entry("otel-collector", BackendState.RUNNING),
+            entry("otel-collector-host", BackendState.DELETED),
+        )
+        assertThatThrownBy { progress.mark("loki", BackendState.DELETED) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("loki")
     }
 }

@@ -80,7 +80,9 @@ class Fabric8ServiceForwarder(
  * bound to `127.0.0.1` on a port from [localPorts] (the loopback range, 20000-29999).
  *
  * One forward is held per Service and reused for the rest of the command; a forward that has died
- * (a long-running server or REPL can outlive one) is closed and reopened on the next [open]. A forward
+ * (a long-running server or REPL can outlive one) is closed and reopened on the next [open], which
+ * resolves the Service's pod again. Dead means closed, or with an error recorded since it opened:
+ * Fabric8 keeps `isAlive` true after the pod a Service forward resolved is replaced. A forward
  * that cannot be opened, or reports an error at once, fails naming the namespace, the Service, the port
  * and the Kubernetes error. [close] closes every forward, and is registered to run when the CLI exits.
  *
@@ -97,11 +99,22 @@ class PortForwardServiceAccess(
     @Synchronized
     override fun open(target: ServiceTarget): ServiceEndpoint {
         val forward =
-            forwards[target]?.takeIf { it.isAlive } ?: run {
-                forwards.remove(target)?.closeQuietly()
+            forwards[target]?.takeIf { it.isUsable } ?: run {
+                forwards.remove(target)?.let { replace(target, it) }
                 openForward(target).also { forwards[target] = it }
             }
         return ServiceEndpoint.Plain(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, forward.localPort)
+    }
+
+    /** Closes a held forward that can no longer carry connections, saying why it is replaced. */
+    private fun replace(
+        target: ServiceTarget,
+        dead: LocalPortForward,
+    ) {
+        log.warn(dead.firstError) {
+            "Port-forward 127.0.0.1:${dead.localPort} to ${target.namespace}/${target.service} stopped working; reopening it"
+        }
+        dead.closeQuietly()
     }
 
     private fun openForward(target: ServiceTarget): LocalPortForward {
@@ -109,9 +122,9 @@ class PortForwardServiceAccess(
             runCatching { forwarder.forward(target, localPorts()) }
                 .getOrElse { throw forwardFailure(target, it) }
         if (forward.errorOccurred()) {
-            val errors = forward.clientThrowables + forward.serverThrowables
+            val error = forward.firstError
             forward.closeQuietly()
-            throw forwardFailure(target, errors.firstOrNull() ?: IllegalStateException("unknown error"))
+            throw forwardFailure(target, error ?: IllegalStateException("unknown error"))
         }
         log.debug { "Forwarding 127.0.0.1:${forward.localPort} to ${target.namespace}/${target.service}:${target.servicePort}" }
         return forward

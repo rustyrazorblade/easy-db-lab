@@ -585,4 +585,43 @@ class DownBackupTest : BaseKoinTest() {
         verify(teardownService).teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(false))
         verify(teardownService, never()).teardownVpc(any(), any())
     }
+
+    @Test
+    fun `naming the supplied VPC on the command line still removes only the cluster's own resources`() {
+        val supplied = upClusterState().apply { vpcSupplied = true }
+        val owned = DiscoveredResources(vpcId = "vpc-123", instanceIds = listOf("i-control"), ownsVpc = false)
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(supplied)
+        whenever(teardownService.teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), any()))
+            .thenReturn(TeardownResult.success(owned))
+
+        val exitCode =
+            Down()
+                .apply {
+                    vpcId = "vpc-123"
+                    autoApprove = true
+                }.call()
+
+        assertThat(exitCode).isEqualTo(0)
+        verify(teardownService).teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(false))
+        verify(teardownService, never()).teardownVpc(any(), any())
+    }
+
+    @Test
+    fun `naming a VPC that is not the workspace's supplied VPC tears down that whole VPC`() {
+        val supplied = upClusterState().apply { vpcSupplied = true }
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(supplied)
+        whenever(teardownService.teardownVpc(eq("vpc-other"), any()))
+            .thenReturn(TeardownResult.success(DiscoveredResources(vpcId = "vpc-other", instanceIds = listOf("i-1"))))
+
+        Down()
+            .apply {
+                vpcId = "vpc-other"
+                autoApprove = true
+            }.call()
+
+        verify(teardownService, never()).teardownClusterInSuppliedVpc(any(), any(), any())
+        verify(teardownService).teardownVpc(eq("vpc-other"), eq(false))
+    }
 }

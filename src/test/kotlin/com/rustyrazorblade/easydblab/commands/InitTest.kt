@@ -567,6 +567,21 @@ class InitTest : BaseKoinTest() {
                 argThat { vpcId == "vpc-existing123" },
             )
         }
+
+        @Test
+        fun `a VPC given with --vpc is recorded as the user's, and a VPC that up creates is not`() {
+            val supplied =
+                Init().apply {
+                    clean = true
+                    existingVpcId = "vpc-existing123"
+                }
+            supplied.execute()
+            verify(mockClusterStateManager, atLeastOnce()).save(argThat { vpcId == "vpc-existing123" && vpcSupplied })
+
+            val own = Init().apply { clean = true }
+            own.execute()
+            verify(mockClusterStateManager, atLeastOnce()).save(argThat { vpcId == null && !vpcSupplied })
+        }
     }
 
     @Nested

@@ -132,6 +132,31 @@ class UpVpcCidrTest : UpTestFixture() {
     }
 
     @Test
+    fun `a VPC supplied with --vpc keeps its tags, while the cluster's own VPC gets the bucket tag backfilled`() {
+        val bucket = "acct-bucket"
+        listOf(true to false, false to true).forEach { (supplied, expectBackfill) ->
+            resetMocksForRun()
+            val state =
+                happyState(cidr = "10.42.0.0/16").apply {
+                    vpcId = "vpc-existing"
+                    vpcSupplied = supplied
+                    s3Bucket = bucket
+                }
+            whenever(mockClusterStateManager.load()).thenReturn(state)
+            whenever(mockVpcService.getVpcName("vpc-existing")).thenReturn("a-vpc")
+            whenever(mockVpcService.getVpcTags("vpc-existing")).thenReturn(emptyMap())
+
+            newUp(seed = 7).execute()
+
+            if (expectBackfill) {
+                verify(mockVpcService).addTagsToVpc("vpc-existing", mapOf(Constants.Vpc.BUCKET_TAG_KEY to state.s3Bucket.orEmpty()))
+            } else {
+                verify(mockVpcService, never()).addTagsToVpc(any(), any())
+            }
+        }
+    }
+
+    @Test
     fun `an explicit CIDR is used as-is and a failed creation is not retried`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cidr = "172.16.0.0/16"))
         whenever(mockVpcService.createVpc(any(), any(), any())).thenThrow(vpcCreateFailure())

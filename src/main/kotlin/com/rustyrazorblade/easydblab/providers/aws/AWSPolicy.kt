@@ -167,7 +167,8 @@ sealed class AWSPolicy {
          * Also includes s3:ListAllMyBuckets for S3Manager web UI, and denies deleting observability
          * data (metrics, logs, traces, annotations). `up` re-applies it every time.
          *
-         * @param storePrefix The cluster's store prefix; a non-empty one adds its roots to the deny.
+         * @param storePrefix The cluster's store prefix. The deny does not depend on it: it covers the
+         *   denied roots at the top of every easy-db-lab bucket and under any prefix ([underAnyPrefix]).
          */
         data class S3AccessWildcard(
             val accountId: String,
@@ -239,7 +240,7 @@ sealed class AWSPolicy {
                     action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
                     resource =
                         IamPolicyResource.multiple(
-                            storeRoots(storePrefix, DELETE_DENIED_ROOTS).map { "arn:aws:s3:::easy-db-lab-*/$it/*" },
+                            underAnyPrefix(DELETE_DENIED_ROOTS).map { "arn:aws:s3:::easy-db-lab-*/$it/*" },
                         ),
                 )
         }
@@ -318,7 +319,8 @@ sealed class AWSPolicy {
          *
          * @param accountId The AWS account ID for constructing role ARNs
          * @param bucketName The S3 bucket name to apply the policy to
-         * @param storePrefix The store prefix; a non-empty one adds its compacted roots to the deny
+         * @param storePrefix The store prefix. The deny does not depend on it: it covers the compacted
+         *   roots at the top of the bucket and under any prefix ([underAnyPrefix])
          */
         data class S3BucketPolicy(
             val accountId: String,
@@ -347,7 +349,7 @@ sealed class AWSPolicy {
                                 action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
                                 resource =
                                     IamPolicyResource.multiple(
-                                        storeRoots(storePrefix, COMPACTED_ROOTS).map { "arn:aws:s3:::$bucketName/$it/*" },
+                                        underAnyPrefix(COMPACTED_ROOTS).map { "arn:aws:s3:::$bucketName/$it/*" },
                                     ),
                             ),
                         ),
@@ -375,10 +377,25 @@ sealed class AWSPolicy {
                 COMPACTED_ROOTS + listOf(Constants.Observability.GRAFANA_ROOT, Constants.Observability.REPORTS_ROOT)
 
             /**
-             * The [roots] a policy covers under the store prefix [storePrefix]: always the unprefixed
-             * roots, followed by the same roots under the prefix when it is not empty. A policy built
-             * from it can only gain paths from a prefix, never lose one, so an account-wide deny
-             * keeps the guard of every cluster on another prefix or on none.
+             * The [roots] a deny covers: each root at the top of the bucket, then each root under
+             * any store prefix (`*` spans `/` in an IAM resource, so a nested prefix is covered too).
+             *
+             * A deny is put whole, so the last `up`, `profile setup` or role re-apply replaces the
+             * one before it. A deny built from the caller's own prefix would drop the guard of every
+             * cluster on another prefix. This list names no prefix, so every caller puts the same
+             * deny.
+             */
+            fun underAnyPrefix(roots: List<String>): List<String> = roots + roots.map { "$ANY_PREFIX/$it" }
+
+            /** An IAM wildcard standing for any store prefix in front of a root. */
+            private const val ANY_PREFIX = "*"
+
+            /**
+             * The [roots] an allow covers under the store prefix [storePrefix]: the unprefixed
+             * roots, followed by the same roots under the prefix when it is not empty. Only the
+             * compactor's allow uses it. It names one prefix, so it never grants a root under a
+             * prefix other than the caller's. Denies use [underAnyPrefix] instead, because a deny
+             * must not depend on who put it last.
              */
             fun storeRoots(
                 storePrefix: String,

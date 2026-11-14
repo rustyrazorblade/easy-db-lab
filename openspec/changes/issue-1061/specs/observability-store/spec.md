@@ -81,7 +81,7 @@ No code, configuration or document SHALL name the former `observability` or `obs
 
 ### Requirement: The cluster cannot delete observability objects
 
-The EC2 instance role of every cluster SHALL carry an explicit deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/`, `tempo/`, `grafana/` and `reports/` in the account bucket.  The account bucket policy SHALL carry one Deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/` and `tempo/` for every principal it grants access to: the EC2 instance role, the EMR service role and the EMR EC2 role.  When the store prefix is not empty, each of these denies SHALL also cover the same roots under the store prefix; a store prefix SHALL only add denied paths and SHALL never remove one.  With an empty store prefix, the instance-role policy and the bucket policy SHALL be byte-identical to the documents in use before the store prefix existed.  `up` SHALL re-apply both every time.  The `pyroscope/` root SHALL be excluded, because Pyroscope v2 compaction runs in the cluster and removes the segments it merged.  Only the account compactor's task role SHALL delete under `mimir/`, `loki/` and `tempo/`, with or without a store prefix.  Deletes made by the owner from a workstation SHALL NOT be affected, so `report upload` can still replace a document.
+The EC2 instance role of every cluster SHALL carry an explicit deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/`, `tempo/`, `grafana/` and `reports/` in the account bucket.  The account bucket policy SHALL carry one Deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/` and `tempo/` for every principal it grants access to: the EC2 instance role, the EMR service role and the EMR EC2 role.  Each of these denies SHALL also cover the same roots under any store prefix, and SHALL NOT depend on the store prefix of the caller that puts it: every path that puts the instance-role policy or the bucket policy (`up`, `profile setup`, account bucket creation, IAM setup) SHALL put the same deny, so no cluster loses its guard to another one's `up`.  Apart from the deny resources under any prefix, the instance-role policy and the bucket policy SHALL be byte-identical to the documents in use before the store prefix existed.  `up` SHALL re-apply both every time.  The `pyroscope/` root SHALL be excluded, because Pyroscope v2 compaction runs in the cluster and removes the segments it merged.  Only the account compactor's task role SHALL delete under `mimir/`, `loki/` and `tempo/`, with or without a store prefix.  Deletes made by the owner from a workstation SHALL NOT be affected, so `report upload` can still replace a document.
 
 #### Scenario: A backend delete is denied
 - **WHEN** any process on a cluster tries to delete an object under `mimir/`, `loki/`, `tempo/` or `grafana/`
@@ -107,12 +107,20 @@ The EC2 instance role of every cluster SHALL carry an explicit deny of `s3:Delet
 - **WHEN** `up` runs
 - **THEN** the instance role and the bucket policy hold the deny
 
-#### Scenario: An empty prefix leaves the policies unchanged
+#### Scenario: An empty prefix changes the policies only by the denies under any prefix
 - **WHEN** the instance-role policy and the bucket policy are built with an empty store prefix
-- **THEN** each is byte-identical to its golden file captured before the change
+- **THEN** each matches its golden file, which differs from the capture before the change only by the deny resources `<bucket>/*/<root>/*`
 
-#### Scenario: A store prefix adds denied paths and keeps the old ones
-- **WHEN** the instance-role policy and the bucket policy are built with the store prefix `team-a`
-- **THEN** each deny covers every root it covered before
-- **AND** it also covers the same roots under `team-a/`
+#### Scenario: The deny does not depend on the prefix
+- **WHEN** the instance-role policy and the bucket policy are built with an empty store prefix, with `team-a` and with `team-b/nested`
+- **THEN** each deny is the same in all three
+- **AND** the deny built with an empty prefix covers every denied root at the top of the bucket and under `team-a/` and `team-b/nested/`
 - **AND** no Allow statement covers more than it did with an empty prefix, apart from the compactor task role's prefixed compacted roots
+
+#### Scenario: Another cluster's up keeps the guard
+- **WHEN** a cluster on the store prefix `team-a` runs `up`, and then `profile setup` or a cluster on no prefix puts the policies again
+- **THEN** the cluster roles still cannot delete under `team-a/mimir/`, `team-a/loki/`, `team-a/tempo/`, `team-a/grafana/` or `team-a/reports/`
+
+#### Scenario: A store prefix that could widen a policy is refused
+- **WHEN** a store prefix holds `*`, `?`, a `..` segment or an empty segment, or begins with `mimir`, `loki`, `tempo`, `grafana`, `reports` or `pyroscope`
+- **THEN** building the store backend fails, and no policy is built from it

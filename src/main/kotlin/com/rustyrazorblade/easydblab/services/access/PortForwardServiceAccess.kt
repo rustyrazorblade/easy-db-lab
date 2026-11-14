@@ -27,6 +27,11 @@ fun interface ServiceForwarder : AutoCloseable {
  * which a Service port-forward cannot open, so a port that is one of [service]'s NodePorts maps to the
  * Service port behind it; a Service port is used as it is.
  *
+ * A Service port wins over a NodePort of the same number. A Service can declare `port: 30942,
+ * nodePort: 30942` (cassandra-pods does) or one port's number as another port's NodePort; matching
+ * the Service port first opens the port the caller named, and the NodePort lookup applies only when
+ * no Service port has that number.
+ *
  * @throws IllegalStateException when [service] exposes [port] neither way
  */
 fun servicePortFor(

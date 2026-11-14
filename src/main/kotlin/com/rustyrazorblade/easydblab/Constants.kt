@@ -1041,21 +1041,24 @@ object Constants {
         }
 
         /**
-         * The test documents Grafana shows: a read-only web server on the control node's host
-         * network, and the signing proxy it forwards to, bound to loopback. 8081 is the image
-         * renderer's.
+         * The loopback port Grafana itself listens on inside its pod. The nginx front holds Grafana's
+         * client port ([K8s.GRAFANA_PORT]) and forwards to this one, so nothing outside the pod reaches
+         * Grafana but through the front. Not 8081, which the image renderer uses.
+         */
+        const val INTERNAL_PORT = 3001
+
+        /**
+         * The test documents Grafana shows: the nginx front serves them under `/reports/` on Grafana's
+         * own port, from the signing proxy it forwards to, bound to loopback.
          */
         object Documents {
-            /** Host port of the read-only documents web server, reachable from the browser like Grafana. */
-            const val WEB_PORT = 3080
-
-            /** Loopback port of the `aws-sigv4-proxy` that signs the web server's S3 requests. */
+            /** Loopback port of the `aws-sigv4-proxy` that signs the front's S3 requests. */
             const val PROXY_PORT = 3081
 
             /** The signing proxy, a released version. */
             const val SIGV4_PROXY_IMAGE = "public.ecr.aws/aws-observability/aws-sigv4-proxy:1.13"
 
-            /** The read-only web server, a released stable nginx that runs as a non-root user. */
+            /** The front, a released stable nginx that runs as a non-root user. */
             const val WEB_SERVER_IMAGE = "nginxinc/nginx-unprivileged:1.30.5-alpine"
         }
     }

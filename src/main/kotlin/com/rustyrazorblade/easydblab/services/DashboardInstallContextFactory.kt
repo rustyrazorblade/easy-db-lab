@@ -1,10 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
-import com.rustyrazorblade.easydblab.configuration.grafana.documentsUrl
 
 /**
  * Builds the [DashboardInstallContext] of the workspace's cluster, so the core tree, kit `start`
@@ -14,14 +12,10 @@ import com.rustyrazorblade.easydblab.configuration.grafana.documentsUrl
 class DashboardInstallContextFactory(
     private val tenantDirectory: TenantDirectory,
 ) {
-    /** The install context of [clusterState]'s cluster, whose Grafana runs on [controlHost]. */
-    fun forCluster(
-        clusterState: ClusterState,
-        controlHost: ClusterHost,
-    ): DashboardInstallContext =
+    /** The install context of [clusterState]'s cluster. */
+    fun forCluster(clusterState: ClusterState): DashboardInstallContext =
         DashboardInstallContext(
             cluster = clusterState.clusterLabelName(),
             tenants = tenantDirectory.list(ObservabilityStore.from(clusterState).bucket, clusterState.tenant()),
-            documentsUrl = documentsUrl(controlHost),
         )
 }

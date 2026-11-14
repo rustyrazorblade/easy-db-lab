@@ -2,11 +2,15 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaFront
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.Event
@@ -16,6 +20,7 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -24,6 +29,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
@@ -94,7 +100,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
                 .thenReturn(GetBucketLocationResponse.builder().locationConstraint(region).build())
         }
 
-    private fun context(tenant: String) = DashboardInstallContext("test-abc", TenantSet.of(tenant), "http://10.0.1.5:3080")
+    private fun context(tenant: String) = DashboardInstallContext("test-abc", TenantSet.of(tenant))
 
     private fun service() =
         DefaultGrafanaDeployService(
@@ -246,7 +252,38 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
                 .spec.template.spec.containers
                 .single { it.name == "documents-sigv4-proxy" }
         assertThat(proxy.args).containsSequence("--region", "eu-west-1").containsSequence("--host", "s3.eu-west-1.amazonaws.com")
-        val web = applied.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "grafana-documents-web" }
+        val web = applied.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == GrafanaFront.CONFIGMAP_NAME }
         assertThat(web.data.values.single()).contains("/acct-bucket/reports/;")
+    }
+
+    /**
+     * The hosting the stack deploy resolves is the one the applied Grafana Deployment carries: an
+     * environment that does not own its nodes gets no control-node selector, no host path, and the
+     * grafana-data claim, applied before the Deployment that mounts it.
+     */
+    @Test
+    fun `the hosting passed to deploy reaches the applied Grafana Deployment`() {
+        val offAws =
+            ObservabilityHosting(
+                Placement.ANY_NODE,
+                BackendStorage.RetainedClaim("retained-class", Quantity("10Gi")),
+                StoreCredentials.InstanceRole,
+            )
+
+        service().deploy(testControlHost, context("acme"), "acct-bucket", offAws).getOrThrow()
+
+        val applied = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(any(), applied.capture())
+        val pod =
+            applied.allValues
+                .filterIsInstance<Deployment>()
+                .single()
+                .spec.template.spec
+        assertThat(pod.nodeSelector.orEmpty()).isEmpty()
+        assertThat(pod.tolerations.orEmpty()).isEmpty()
+        assertThat(pod.volumes.mapNotNull { it.hostPath }).isEmpty()
+        assertThat(pod.volumes.mapNotNull { it.persistentVolumeClaim?.claimName }).containsExactly("grafana-data")
+        val kinds = applied.allValues.map { "${it.kind}/${it.metadata.name}" }
+        assertThat(kinds.indexOf("PersistentVolumeClaim/grafana-data")).isNotNegative().isLessThan(kinds.indexOf("Deployment/grafana"))
     }
 }

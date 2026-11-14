@@ -97,8 +97,8 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
 
     @Test
     fun `on AWS the ports callers outside the pod network use stay published on the node`() {
-        // Mimir and Loki push and read, Tempo's query and OTLP receivers, Pyroscope ingest, Grafana and
-        // its documents web server (a sidecar, not the first container): a redirected cluster, a
+        // Mimir and Loki push and read, Tempo's query and OTLP receivers, Pyroscope ingest, and Grafana's
+        // client port, held by its nginx front (a sidecar, not the first container): a redirected cluster, a
         // node-side agent and the CLI over the SOCKS tunnel reach these on the control node's private IP.
         val expected =
             mapOf(
@@ -107,7 +107,7 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
                 "/mnt/db1/tempo" to
                     listOf(Constants.K8s.TEMPO_PORT, Constants.K8s.TEMPO_OTLP_GRPC_PORT, Constants.K8s.TEMPO_OTLP_HTTP_PORT),
                 "/mnt/db1/pyroscope" to listOf(PyroscopeManifestBuilder.SERVER_PORT),
-                GRAFANA to listOf(Constants.K8s.GRAFANA_PORT, Constants.Grafana.Documents.WEB_PORT),
+                GRAFANA to listOf(Constants.K8s.GRAFANA_PORT),
             )
 
         val published =

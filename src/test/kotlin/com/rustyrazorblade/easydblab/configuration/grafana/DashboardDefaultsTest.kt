@@ -20,7 +20,6 @@ class DashboardDefaultsTest {
         DashboardInstallContext(
             cluster = "lab-abc123",
             tenants = TenantSet.of("acme", listOf("default")),
-            documentsUrl = "http://10.0.0.5:3080",
         )
 
     private fun parse(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
@@ -137,15 +136,19 @@ class DashboardDefaultsTest {
     }
 
     @Test
-    fun `the documents placeholder becomes the web server URL`() {
+    fun `the documents placeholder leaves a relative path under reports, served on Grafana's own origin`() {
+        // Grafana's own port serves /reports/, so the iframe names no host: the one connection that
+        // reaches Grafana (a 127.0.0.1 port-forward, or the SOCKS path on AWS) reaches the documents too.
         val dashboard =
             parse(
-                """{"panels":[{"type":"text","options":{"content":"<iframe src=\"__DOCUMENTS_URL__/reports/x/index.html\"></iframe>"}}]}""",
+                """{"panels":[{"type":"text","options":{"content":"<iframe src=\"__DOCUMENTS_URL__/reports/acme/lab-1/index.html\"></iframe>"}}]}""",
             )
 
         val out = DashboardDefaults.apply(dashboard, context)
 
-        assertThat(out.toString()).contains("http://10.0.0.5:3080/reports/x/index.html").doesNotContain("__DOCUMENTS_URL__")
+        assertThat(
+            out.toString(),
+        ).contains("""src=\"/reports/acme/lab-1/index.html\"""").doesNotContain("__DOCUMENTS_URL__", "http", "3080")
     }
 
     @Test

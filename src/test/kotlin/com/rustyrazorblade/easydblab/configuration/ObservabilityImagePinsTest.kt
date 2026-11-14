@@ -70,7 +70,7 @@ class ObservabilityImagePinsTest : BaseKoinTest() {
                 LokiManifestBuilder(templates).buildAllResources() +
                 TempoManifestBuilder(templates).buildAllResources() +
                 PyroscopeManifestBuilder(templates).buildAllResources() +
-                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2")) +
+                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS) +
                 YaceManifestBuilder(templates).buildAllResources() +
                 KubeStateMetricsManifestBuilder().buildAllResources()
         return podSpecs(resources).flatMap { pod ->

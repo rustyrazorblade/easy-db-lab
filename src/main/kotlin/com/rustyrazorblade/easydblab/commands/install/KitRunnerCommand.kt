@@ -435,7 +435,7 @@ class KitRunnerCommand(
         if (files.isEmpty()) return
         val names = files.map { it.name }
         val context =
-            runCatching { installContextFactory.forCluster(clusterState, controlHost) }.getOrElse { e ->
+            runCatching { installContextFactory.forCluster(clusterState) }.getOrElse { e ->
                 eventBus.emit(
                     Event.Grafana.KitDashboardsSkipped(kitName, names, "listing the tenants in the account bucket failed: ${e.message}"),
                 )

@@ -96,7 +96,7 @@ class ControlNodePortsTest : BaseKoinTest() {
                 EbpfExporterManifestBuilder().buildAllResources() +
                 BeylaManifestBuilder(templates).buildAllResources() +
                 PyroscopeManifestBuilder(templates).buildAllResources() +
-                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2")) +
+                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS) +
                 RegistryManifestBuilder().buildAllResources() +
                 S3ManagerManifestBuilder(templates).buildAllResources() +
                 YaceManifestBuilder(templates).buildAllResources()

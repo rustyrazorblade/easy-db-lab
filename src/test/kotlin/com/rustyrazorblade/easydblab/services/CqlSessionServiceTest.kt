@@ -154,6 +154,7 @@ class CqlSessionServiceTest : BaseKoinTest() {
                         mock<LocalPortForward>().also {
                             whenever(it.localPort).thenReturn(localPort)
                             whenever(it.isAlive).thenAnswer { forwardAlive }
+                            whenever(it.close()).thenAnswer { forwardAlive = false }
                         }
                     },
                     localPorts = { 24042 },
@@ -180,6 +181,27 @@ class CqlSessionServiceTest : BaseKoinTest() {
         verify(mockSessionFactory).createSingleEndpointSession(InetSocketAddress("127.0.0.1", 24042), "dc1")
         verify(mockSocksProxy, never()).getLocalPort()
         verify(mockSessionFactory, never()).createSession(any(), any(), any())
+    }
+
+    @Test
+    fun `a forward opened for a session that could not be created is closed when the CLI exits`() {
+        whenever(mockClusterStateManager.load())
+            .thenReturn(stateWith(tailscaleActive = false).apply { exposure = Exposure.PortForward })
+        whenever(mockSessionFactory.createSingleEndpointSession(any(), any())).thenThrow(IllegalStateException("no node"))
+        val resources = DefaultResourceManager()
+        val service =
+            DefaultCqlSessionService(
+                socksProxyService = mockSocksProxy,
+                clusterStateManager = mockClusterStateManager,
+                sessionFactory = mockSessionFactory,
+                resourceManager = resources,
+                singleEndpoint = ::singleEndpoint,
+            )
+
+        assertThat(service.execute("SELECT 1").isFailure).isTrue()
+        resources.closeAll()
+
+        assertThat(forwardAlive).isFalse()
     }
 
     @Test

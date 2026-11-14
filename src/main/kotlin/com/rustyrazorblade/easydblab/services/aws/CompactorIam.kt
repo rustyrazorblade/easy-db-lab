@@ -28,6 +28,11 @@ data class CompactorRoles(
  * Finds or creates the IAM the account compactor needs: its task role, which alone may delete
  * under the compacted roots; its execution role; and ECS's service-linked role. IAM is global, so
  * the profile's client serves every region.
+ *
+ * The task role is account-wide and [ensure] puts its allow whole, so the last caller's store
+ * prefix wins: a cluster on prefix `b` replaces the allow a cluster on prefix `a` put, and the
+ * compactor cannot compact `a`'s prefixed roots until `a` runs `up` again. Nothing is deleted;
+ * that data only stays uncompacted. Follow-up #1035 makes the allow cover every prefix in use.
  */
 class CompactorIam(
     private val iam: IamClient,

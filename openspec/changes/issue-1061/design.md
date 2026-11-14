@@ -101,13 +101,15 @@ The S3 fragments take the endpoint from `${STORE_ENDPOINT}` instead of the liter
 
 ### D6. The delete denies cover every prefix; the compactor allow names one
 
-`AWSPolicy` builds the two denies (`denyDataDeletes` on the instance role, the Deny of `S3BucketPolicy`) from `underAnyPrefix`: each denied root at the top of the bucket, and the same root under any prefix (`arn:aws:s3:::<bucket>/*/<root>/*`; `*` spans `/` in an IAM resource, so a nested prefix is covered too).  The deny names no prefix, so every caller builds the same document whichever prefix it passes.
+`AWSPolicy` builds the two denies (`denyDataDeletes` on the instance role, the Deny of `S3BucketPolicy`) from `underAnyPrefix`: each denied root at the top of the bucket, and the same root under any prefix (`arn:aws:s3:::<bucket>/*/<root>/*`; `*` spans `/` in an IAM resource, so a nested prefix is covered too).  The deny builders take no prefix at all, so every caller builds the same document.
 
-This matters because each policy is put whole.  The EC2 instance role (`Constants.AWS.Roles.EC2_INSTANCE_ROLE`) is account-wide, and the bucket policy is shared by every cluster on the bucket.  `up` puts both with the cluster's prefix, and `profile setup`, `AwsS3BucketService.ensureAccountBucket` and `AWSResourceSetupService` put them with none.  A deny built from the caller's own prefix would be replaced by the next caller's, and a cluster on another prefix would lose its guard.  A deny that does not depend on the prefix keeps every cluster's guard, whoever put it last.
+This matters because each policy is put whole.  The EC2 instance role (`Constants.AWS.Roles.EC2_INSTANCE_ROLE`) is account-wide, and the bucket policy is shared by every cluster on the bucket.  `up`, `profile setup`, `AwsS3BucketService.ensureAccountBucket` and `AWSResourceSetupService` all put them.  A deny built from the caller's own prefix would be replaced by the next caller's, and a cluster on another prefix would lose its guard.  A deny that does not depend on the prefix keeps every cluster's guard, whoever put it last.
 
 - With an empty prefix, each deny covers what it covered before and also the same roots under any prefix.  The golden files `instance-role-policy.json` and `bucket-policy.json` were updated for this one change: each deny's resource list gains the `*/<root>/*` entries.  Nothing else in either document changed.
 - A store prefix is validated where it is built (`StorePrefix`): plain path segments, no IAM wildcard, no `..`, and a first segment that is none of the roots.
 - The compactor task role's allow is the only policy that names the prefix (`storeRoots`): the unprefixed compacted roots and, when the prefix is not empty, the same roots under it.  It gains nothing outside `mimir/`, `loki/` and `tempo/`, and its document with an empty prefix is byte-identical to today's.
+- Follow-up (#1035): the compactor task role is account-wide too, and `CompactorIam.ensure` puts its allow whole, so the last `up` wins: a cluster on prefix `b` replaces the allow a cluster on prefix `a` put, and the compactor then cannot compact `a/`'s prefixed roots until `a` runs `up` again.  Nothing is deleted or lost (the data stays uncompacted), so this change leaves it; #1035 makes the allow cover every prefix in use.
+
 ### D7. Golden files prove the AWS config is unchanged
 
 Task 0 runs before any refactor, on this branch, and writes the "before" captures under `src/test/resources/com/rustyrazorblade/easydblab/golden/store/`:

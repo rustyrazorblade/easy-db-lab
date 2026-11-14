@@ -18,7 +18,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
  *   separate writer and compactor identities). Today every client uses the node's instance role.
  *
  * @property bucket The bucket every key lives in.
- * @property prefix The store prefix in front of every key; empty for none.
+ * @property prefix The store prefix in front of every key; empty for none. Every case checks it
+ *   with [StorePrefix.requireValid] when it is built.
  */
 sealed interface StoreBackend {
     val bucket: String
@@ -63,4 +64,8 @@ data class S3Backend(
     override val prefix: String = "",
     val region: String,
     val endpoint: String = "s3.$region.amazonaws.com",
-) : StoreBackend
+) : StoreBackend {
+    init {
+        StorePrefix.requireValid(prefix)
+    }
+}

@@ -26,7 +26,15 @@ A storage location SHALL be a `ClusterStoragePath`: a bucket, a store prefix and
 
 ### Requirement: The store backend is a neutral model
 
-The object store a cluster uses SHALL be described by a `StoreBackend`: a sealed type outside the AWS adapter packages that imports no AWS SDK type.  Its only case SHALL be `S3Backend`, holding the bucket, the store prefix, the region and the endpoint.  Every cluster SHALL resolve to `S3Backend` with its account bucket, an empty prefix, its region and the endpoint `s3.<region>.amazonaws.com`.  The type SHALL hold no credential source; how pods get store credentials is outside this requirement.
+The object store a cluster uses SHALL be described by a `StoreBackend`: a sealed type outside the AWS adapter packages that imports no AWS SDK type.  Its only case SHALL be `S3Backend`, holding the bucket, the store prefix, the region and the endpoint.  Every cluster SHALL resolve to `S3Backend` with its account bucket, an empty prefix, its region and the endpoint `s3.<region>.amazonaws.com`.  The type SHALL hold no credential source; how pods get store credentials is outside this requirement.  A store prefix SHALL be refused wherever a `StoreBackend`, an `ObservabilityStore` or the compactor's policy is built from it, unless it is plain path segments (letters, digits, `.`, `_` and `-`; no empty, `.` or `..` segment; no `*` or `?`) none of which is a store root (`mimir`, `loki`, `tempo`, `grafana`, `reports`, `pyroscope`).  Slashes around the prefix are allowed.
+
+#### Scenario: A prefix that could widen a policy is refused
+- **WHEN** a store backend is built with the prefix `team-*`, `a/../b`, `grafana` or `x/mimir`
+- **THEN** building it fails with a message naming the prefix
+
+#### Scenario: An accepted prefix keeps the compactor off the uncompacted roots
+- **WHEN** the compactor's task-role policy is built from any accepted prefix
+- **THEN** it reaches no object under `grafana/`, `reports/` or `pyroscope/`, with or without that prefix in front
 
 #### Scenario: A cluster resolves to the S3 backend
 - **WHEN** the store backend is resolved for a cluster in `us-west-2` with account bucket `easy-db-lab-x`

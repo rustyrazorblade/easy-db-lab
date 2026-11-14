@@ -71,7 +71,9 @@ endpoint) asks `ServiceAccess.open(ServiceTarget)` for the endpoint it dials. No
 address or reads a proxy port from a JVM property. `ServiceTarget` names the namespace, Service,
 Service port, node role and NodePort; `ClusterServices` holds the observability targets.
 `ExposureServiceAccess` (Koin `serviceAccessModule`, registered with `ResourceManager`) picks the
-implementation from `ClusterState.exposure`:
+implementation from `ClusterState.exposure`, read again on every `open`: it keeps the implementation
+while the exposure is unchanged, and closes it and builds the new one when a later `init` (in a REPL
+or server) recorded another:
 
 - `Socks` (the default, AWS): `SocksServiceAccess` returns `ServiceEndpoint.ViaSocks` for the node's
   private IP and NodePort with the tunnel's current port. HTTP clients apply it with
@@ -81,7 +83,8 @@ implementation from `ClusterState.exposure`:
 - `PortForward` (a cluster easy-db-lab does not own): `PortForwardServiceAccess` checks the Service
   exists, then opens a Fabric8 port-forward bound to `127.0.0.1` on a `LoopbackPortSelector` port
   (20000-29999). A kit's NodePort is mapped to the Service port behind it (`servicePortFor`). It holds
-  one forward per target, reopens a dead one, fails naming namespace/Service/port and the Kubernetes
+  one forward per target, reopens a dead one (closed, or `errorOccurred()`: Fabric8 keeps `isAlive`
+  true after the pod a Service forward resolved is replaced, so `isAlive` alone is not enough), fails naming namespace/Service/port and the Kubernetes
   error, and closes every forward when the CLI exits.
 
 CQL on a port-forward cluster does not use the seam's Service forward. It uses

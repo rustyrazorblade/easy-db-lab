@@ -41,16 +41,30 @@ class ExposureServiceAccessTest {
     }
 
     @Test
-    fun `the implementation is chosen once and closed with the access`() {
-        var reads = 0
-        val access = accessFor { Exposure.PortForward.also { reads++ } }
+    fun `an unchanged exposure keeps one implementation, closed with the access`() {
+        val access = accessFor { Exposure.PortForward }
 
         access.open(ClusterServices.LOKI)
         access.open(ClusterServices.MIMIR)
         access.close()
 
-        assertThat(reads).isEqualTo(1)
         assertThat(built.single().closed).isTrue()
+    }
+
+    @Test
+    fun `an exposure changed since the last open closes the old implementation and builds the new one`() {
+        // A REPL can run init between two commands, recording another exposure.
+        var recorded = Exposure.Socks
+        val access = accessFor { recorded }
+
+        access.open(ClusterServices.LOKI)
+        recorded = Exposure.PortForward
+        val endpoint = access.open(ClusterServices.LOKI)
+
+        assertThat(endpoint.host).isEqualTo("port-forward")
+        assertThat(built.map { it.name }).containsExactly("socks", "port-forward")
+        assertThat(built.first().closed).isTrue()
+        assertThat(built.last().closed).isFalse()
     }
 
     @Test

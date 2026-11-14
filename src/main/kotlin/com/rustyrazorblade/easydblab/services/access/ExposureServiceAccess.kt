@@ -1,13 +1,16 @@
 package com.rustyrazorblade.easydblab.services.access
 
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
  * The [ServiceAccess] a command gets: the implementation its cluster's recorded [Exposure] names.
  *
- * The exposure is read on the first [open], not when Koin builds this, because commands such as
- * `init` resolve their dependencies before a cluster state exists. The chosen implementation is kept
- * for the rest of the process and closed by [close].
+ * The exposure is read on every [open], not when Koin builds this, because commands such as `init`
+ * resolve their dependencies before a cluster state exists, and because a REPL or server can outlive
+ * an `init` that records another exposure. The implementation is kept while the exposure is
+ * unchanged, so its forwards are reused; when it changes, the old one is closed and the new one
+ * built. [close] closes whichever is held.
  *
  * @param exposure the cluster's recorded exposure
  * @param implementations a builder for each exposure's implementation
@@ -16,21 +19,33 @@ class ExposureServiceAccess(
     private val exposure: () -> Exposure,
     private val implementations: Map<Exposure, () -> ServiceAccess>,
 ) : ServiceAccess {
-    private var chosen: ServiceAccess? = null
+    private val log = KotlinLogging.logger {}
+    private var chosen: Pair<Exposure, ServiceAccess>? = null
 
     @Synchronized
-    override fun open(target: ServiceTarget): ServiceEndpoint = selected().open(target)
+    override fun open(target: ServiceTarget): ServiceEndpoint =
+        selected().open(target).also { endpoint ->
+            log.debug { "Reaching ${target.namespace}/${target.service}:${target.servicePort} at $endpoint" }
+        }
 
     @Synchronized
     override fun close() {
-        chosen?.close()
+        chosen?.second?.close()
         chosen = null
     }
 
-    private fun selected(): ServiceAccess =
-        chosen ?: run {
-            val recorded = exposure()
-            val build = implementations[recorded] ?: error("No service access is registered for exposure $recorded")
-            build().also { chosen = it }
+    private fun selected(): ServiceAccess {
+        val recorded = exposure()
+        chosen?.let { (held, access) ->
+            if (held == recorded) return access
+            log.debug { "Exposure changed from $held to $recorded; closing ${access::class.simpleName}" }
+            access.close()
+            chosen = null
         }
+        val build = implementations[recorded] ?: error("No service access is registered for exposure $recorded")
+        return build().also {
+            log.debug { "Service access for exposure $recorded: ${it::class.simpleName}" }
+            chosen = recorded to it
+        }
+    }
 }

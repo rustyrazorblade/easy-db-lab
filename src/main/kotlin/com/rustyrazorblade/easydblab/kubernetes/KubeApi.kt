@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
 import io.fabric8.kubernetes.client.Config
-import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import java.nio.file.Path
 
 /**
@@ -26,7 +25,7 @@ data class KubeApi(
  */
 fun KubeApi.loadConfig(): Config {
     val file = kubeconfig.toFile()
-    val contexts = KubeConfigUtils.parseConfig(file).contexts.orEmpty()
+    val contexts = parseKubeconfig(kubeconfig).contexts.orEmpty()
     require(contexts.any { it.name == context }) {
         "Context '$context' not found in kubeconfig ${file.absolutePath}. " +
             "Available contexts: ${contexts.joinToString(", ") { it.name }}. " +

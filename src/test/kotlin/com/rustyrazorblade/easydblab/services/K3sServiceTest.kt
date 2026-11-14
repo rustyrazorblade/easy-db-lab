@@ -3,9 +3,9 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.kubernetes.parseKubeconfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
-import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -444,7 +444,7 @@ class K3sServiceTest : BaseKoinTest() {
         assertThat(result.isSuccess).isTrue()
 
         val expectedServerUrl = Constants.K3s.DEFAULT_SERVER_URL.replace("127.0.0.1", host.private)
-        val writtenConfig = KubeConfigUtils.parseConfig(localPath.toFile())
+        val writtenConfig = parseKubeconfig(localPath)
         val writtenCluster = writtenConfig.clusters.first()
 
         assertThat(writtenCluster.cluster.server).isEqualTo(expectedServerUrl)

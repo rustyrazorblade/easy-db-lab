@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
-import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import java.nio.file.Path
 
 /**
@@ -21,4 +20,4 @@ fun interface KubeApiLocator {
  * typed parser rather than diving into untyped YAML.
  */
 fun currentContextOf(kubeconfig: Path): String? =
-    KubeConfigUtils.parseConfig(kubeconfig.toFile()).currentContext?.takeIf { it.isNotBlank() }
+    parseKubeconfig(kubeconfig).currentContext?.takeIf { it.isNotBlank() }

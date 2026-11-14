@@ -3,8 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kubernetes.parseKubeconfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import io.fabric8.kubernetes.client.utils.Serialization
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -169,7 +169,7 @@ class DefaultK3sService(
                 )
 
                 // Parse kubeconfig into fabric8's typed model (no untyped map diving)
-                val kubeConfig = KubeConfigUtils.parseConfig(tempFile)
+                val kubeConfig = parseKubeconfig(tempFile.toPath())
 
                 // Modify server URL from 127.0.0.1 to control node's private IP
                 val newServerUrl = Constants.K3s.DEFAULT_SERVER_URL.replace("127.0.0.1", host.private)

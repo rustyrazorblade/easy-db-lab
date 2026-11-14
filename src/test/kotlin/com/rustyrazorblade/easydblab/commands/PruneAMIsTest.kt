@@ -31,6 +31,7 @@ class PruneAMIsTest : BaseKoinTest() {
             creationDate = Instant.parse("2024-01-01T00:00:00Z"),
             ownerId = "123456789012",
             isPublic = false,
+            state = AMI.AVAILABLE_STATE,
             snapshotIds = listOf("snap-old1"),
         )
 
@@ -42,6 +43,7 @@ class PruneAMIsTest : BaseKoinTest() {
             creationDate = Instant.parse("2024-06-01T00:00:00Z"),
             ownerId = "123456789012",
             isPublic = false,
+            state = AMI.AVAILABLE_STATE,
             snapshotIds = listOf("snap-new1"),
         )
 

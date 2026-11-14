@@ -16,6 +16,7 @@ import java.time.Instant
  * @property ownerId The AWS account ID that owns this AMI
  * @property isPublic Whether the AMI is publicly accessible (true) or private (false)
  * @property snapshotIds List of EBS snapshot IDs associated with this AMI
+ * @property state EC2 image state: `available`, `pending`, `failed` and so on
  */
 data class AMI(
     val id: String,
@@ -25,8 +26,14 @@ data class AMI(
     val ownerId: String,
     val isPublic: Boolean,
     val snapshotIds: List<String>,
+    val state: String,
 ) : Comparable<AMI> {
+    /** True when EC2 can launch from this image; a `pending` image is still being created. */
+    val isAvailable: Boolean get() = state == AVAILABLE_STATE
+
     companion object {
+        const val AVAILABLE_STATE = "available"
+
         // AMI name parsing constants
         // Pattern: rustyrazorblade/images/easy-db-lab-{type}-{arch}-{version}
         // After split by '-': [..., 'lab', 'cassandra', 'amd64', '20240101']

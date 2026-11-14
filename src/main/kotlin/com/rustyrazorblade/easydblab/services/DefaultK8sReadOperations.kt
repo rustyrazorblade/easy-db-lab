@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesNode
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.kubernetes.imagePullFailure
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.batch.v1.Job
@@ -164,6 +165,7 @@ private fun Pod.toKubernetesPod(): KubernetesPod {
         restarts = totalRestarts,
         age = age,
         terminating = metadata?.deletionTimestamp != null,
+        imagePullFailure = imagePullFailure(),
     )
 }
 

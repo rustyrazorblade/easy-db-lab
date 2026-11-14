@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
@@ -20,7 +21,9 @@ import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.LiveInfrastructureLookup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.DataDiskRequirement
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -362,8 +365,8 @@ class Init : PicoBaseCommand() {
         if (clean) {
             refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)
-            // Execute Clean immediately with full lifecycle
-            commandExecutor.execute { Clean() }
+            // Execute Clean immediately with full lifecycle; a failed clean fails init.
+            runNested(commandExecutor, Clean())
         } else {
             checkExistingFiles()
         }
@@ -491,9 +494,9 @@ class Init : PicoBaseCommand() {
                     InitConfig.fromInit(
                         init = this,
                         region = userConfig.region,
-                        dbArch = deriveArch(resolvedDbInstanceType),
-                        appArch = deriveArch(resolvedAppInstanceType),
-                        controlArch = deriveArch(DEFAULT_CONTROL_INSTANCE_TYPE),
+                        dbArch = nodeArch(ServerType.Cassandra, resolvedDbInstanceType),
+                        appArch = nodeArch(ServerType.Stress, resolvedAppInstanceType),
+                        controlArch = nodeArch(ServerType.Control, DEFAULT_CONTROL_INSTANCE_TYPE),
                     ),
                 tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
             )
@@ -507,8 +510,21 @@ class Init : PicoBaseCommand() {
      * Fails fast (before any provisioning) if the instance type is unknown in the region or its
      * architectures do not resolve to a single [Arch] — the architecture is never defaulted.
      */
-    private fun deriveArch(instanceType: String): Arch =
-        Arch.fromEc2(ec2InstanceService.describeInstanceType(instanceType).supportedArchitectures)
+    private fun deriveArch(capabilities: InstanceTypeCapabilities): Arch = Arch.fromEc2(capabilities.supportedArchitectures)
+
+    /**
+     * Reads [instanceType] once, checks that a [serverType] node of it has a data disk (see
+     * [DataDiskRequirement]), and returns its architecture. Every node type is checked, whatever
+     * the node count, as the instance-storage-validation spec requires.
+     */
+    private fun nodeArch(
+        serverType: ServerType,
+        instanceType: String,
+    ): Arch {
+        val capabilities = ec2InstanceService.describeInstanceType(instanceType)
+        DataDiskRequirement.check(serverType, instanceType, capabilities.hasInstanceStore, ebsConfigured = ebsType != "NONE")
+        return deriveArch(capabilities)
+    }
 
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)

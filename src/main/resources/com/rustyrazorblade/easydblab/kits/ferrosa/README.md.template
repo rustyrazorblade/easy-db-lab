@@ -1,0 +1,37 @@
+# FerrosaDB on __CLUSTER_NAME__
+
+Workload: FerrosaDB, one pod on each db node (__DB_NODE_COUNT__ db nodes)
+Region: __REGION__
+DB node private IPs: __DB_NODE_IPS__
+
+## Quick start
+
+```bash
+easy-db-lab ferrosa start                    # ghcr.io/ferrosadb/ferrosa:nightly, data on the node's disk
+easy-db-lab ferrosa start --version=<tag>    # another tag of ghcr.io/ferrosadb/ferrosa
+easy-db-lab ferrosa start --image=<ref>      # a full image reference, e.g. a custom build in your ECR
+easy-db-lab ferrosa stop                     # remove the pods; the data and the claims stay
+easy-db-lab kit info ferrosa                 # every start option and endpoint
+```
+
+Only 3 or more db nodes is the tested topology.
+
+## Endpoints
+
+Every endpoint answers on the private IP of every db node and reaches the first pod (`ferrosa-0-0`). Authentication is off.
+
+| Endpoint | NodePort | Connect with |
+|---|---|---|
+| CQL | 30942 | `cqlsh <db-node-ip> 30942` |
+| Console, `/metrics`, `/readyz` | 30909 | `http://<db-node-ip>:30909/` |
+| Bolt | 30787 | `bolt://<db-node-ip>:30787` |
+| Graph HTTP API | 30747 | `http://<db-node-ip>:30747` |
+| SPARQL | 30880 | `http://<db-node-ip>:30880` |
+| Postgres wire stub | 30532 | `psql -h <db-node-ip> -p 30532` |
+| Arrow Flight | 30815 | `grpc://<db-node-ip>:30815` |
+
+Pod `i` is `ferrosa-<i>-0`, in StatefulSet `ferrosa-<i>`. Inside the cluster it is also `ferrosa-<i>.default.svc.cluster.local` (CQL 9042).
+
+## Data
+
+Each pod keeps its data in `/var/lib/ferrosa`, the platform PV on its db node's data disk (`/mnt/db1/ferrosa`). With `--storage=s3` FerrosaDB keeps its data in the cluster data bucket under `ferrosa/`. `--heap-profile` writes `.heap` files to `/var/lib/ferrosa/heap-profiles/`.

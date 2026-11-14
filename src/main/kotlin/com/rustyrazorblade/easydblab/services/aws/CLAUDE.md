@@ -28,7 +28,8 @@ services/aws/
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 ├── CompactorLeaseReader.kt    # Reads the account compactor's lease for `observability compactor status`, in the bucket's region
-└── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
+├── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
+└── DataDiskRequirement.kt     # Every node needs a data disk: db has instance store or --ebs.type, control and app have instance store (checked by init, and by InstanceSpecFactory for db)
 ```
 
 ## What Belongs Here vs `providers/aws/`

@@ -143,6 +143,7 @@ class AMIService(
                             image
                                 .blockDeviceMappings()
                                 .mapNotNull { it.ebs()?.snapshotId() },
+                        state = image.stateAsString(),
                     )
                 }
             }.get()

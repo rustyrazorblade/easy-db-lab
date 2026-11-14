@@ -1,0 +1,5678 @@
+{
+  "workload": "ferrosa",
+  "exported_at": "2026-11-14T17:59:07Z",
+  "common_labels": {
+    "cluster": [
+      "ferrosa-969-1114-a4b50da9-938b-468b-ad6a-ac880babdb3b"
+    ],
+    "host_name": [
+      "db0",
+      "db1",
+      "db2"
+    ],
+    "job": [
+      "ferrosa"
+    ],
+    "k8s_app_instance": [
+      "ferrosa"
+    ],
+    "k8s_container_name": [
+      "data-dir"
+    ],
+    "k8s_namespace_name": [
+      "default"
+    ],
+    "k8s_node_name": [
+      "db0",
+      "db1",
+      "db2"
+    ],
+    "k8s_node_uid": [
+      "7313ad6a-d45c-4656-bd58-5242d043600e",
+      "929d840c-5be8-4757-9b02-1127c6470c91",
+      "cc99da19-cda9-48ec-92e0-ab7f0a4c2432"
+    ],
+    "k8s_statefulset_name": [
+      "ferrosa-0",
+      "ferrosa-1",
+      "ferrosa-2"
+    ],
+    "node_role": [
+      "db"
+    ],
+    "os_type": [
+      "linux"
+    ],
+    "server_address": [
+      "ferrosa-0-0",
+      "ferrosa-1-0",
+      "ferrosa-2-0"
+    ],
+    "url_scheme": [
+      "http"
+    ]
+  },
+  "series": [
+    {
+      "name": "ferrosa_anti_entropy_refills_no_source_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_anti_entropy_refills_scheduled_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_archive_status_archive_errors_total",
+      "labels": {
+        "last_archive_success": [
+          "never"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_archive_status_oldest_unarchived_age_secs",
+      "labels": {
+        "last_archive_success": [
+          "never"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_archive_status_unarchived_segments",
+      "labels": {
+        "last_archive_success": [
+          "never"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_partitions_streamed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_sessions_failed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_sessions_ok_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_skipped_not_ready_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_tables_failed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_tables_no_sessions_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_tables_repaired_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_ticks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_auto_repair_timestamp_ties_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_blocking_pool_capacity",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "pool": [
+          "raft-log-store",
+          "raft-physical-apply",
+          "time-series-materialization-blocking"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_blocking_pool_in_flight",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "pool": [
+          "raft-log-store",
+          "raft-physical-apply",
+          "time-series-materialization-blocking"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_blocking_pool_saturated",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "pool": [
+          "raft-log-store",
+          "raft-physical-apply",
+          "time-series-materialization-blocking"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_blocking_pool_waiting",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "pool": [
+          "raft-log-store",
+          "raft-physical-apply",
+          "time-series-materialization-blocking"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_blocking_pool_waits_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "pool": [
+          "raft-log-store",
+          "raft-physical-apply",
+          "time-series-materialization-blocking"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_cgroup_memory_bytes",
+      "labels": {
+        "kind": [
+          "current",
+          "max"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_cgroup_memory_events_total",
+      "labels": {
+        "event": [
+          "high",
+          "low",
+          "max",
+          "oom",
+          "oom_group_kill",
+          "oom_kill",
+          "sock_throttled"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_alloc_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_alloc_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_mark_dirty_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_mark_dirty_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_rotate_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_rotate_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_rotations_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_sync_notify_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_sync_notify_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_write_entry_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_append_write_entry_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_appends_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_archive_notify_dropped_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_empty_segments_skipped_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_flush_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_flushes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_full_flush_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_full_flushes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_not_durable_refusals_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_periodic_idle_flushes_skipped_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_replay_set_aside_mutations_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_replay_set_aside_pending_mutations",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_batch_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_batch_wait_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_batch_wait_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_batch_writes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_batches_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_data_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_data_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_file_lock_wait_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_file_lock_wait_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_parent_dir_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_parent_dir_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_pending_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_pending_writes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_stalls_total",
+      "labels": {
+        "cause": [
+          "attempt_failed",
+          "device_slow",
+          "no_attempt_issued",
+          "sync_thread_dead"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_wait_writers_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_wait_writers_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_write_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_sync_write_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_syncs_by_mode_total",
+      "labels": {
+        "mode": [
+          "barrier",
+          "fsync",
+          "full"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_commitlog_syncs_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_anti_entropy_repairs_requested_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_hints_rejected_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_hints_stored_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_inbound_mutation_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_inbound_mutation_forwards_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_inbound_mutation_rows_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_post_quorum_remote_acks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_post_quorum_remote_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_replica_write_acks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "target": [
+          "local",
+          "remote"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_replica_write_attempts_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "target": [
+          "local",
+          "remote"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_replica_write_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "target": [
+          "local",
+          "remote"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_write_admission_in_flight",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_coordinator_write_admission_in_flight_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_cql_request_duration_seconds_bucket",
+      "labels": {
+        "kind": [
+          "batch",
+          "execute",
+          "prepare",
+          "query"
+        ],
+        "le": [
+          "+Inf",
+          "0.0005",
+          "0.001",
+          "0.0025",
+          "0.005",
+          "0.01",
+          "0.025",
+          "0.05",
+          "0.1",
+          "0.25",
+          "0.5",
+          "1",
+          "10",
+          "2.5",
+          "5"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_cql_request_duration_seconds_count",
+      "labels": {
+        "kind": [
+          "batch",
+          "execute",
+          "prepare",
+          "query"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_cql_request_duration_seconds_sum",
+      "labels": {
+        "kind": [
+          "batch",
+          "execute",
+          "prepare",
+          "query"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_cql_requests_in_flight",
+      "labels": {
+        "kind": [
+          "batch",
+          "execute",
+          "prepare",
+          "query"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_cql_requests_total",
+      "labels": {
+        "kind": [
+          "batch",
+          "execute",
+          "prepare",
+          "query"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "outcome": [
+          "cancelled",
+          "error",
+          "ok"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_emfile_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_fd_budget_hard",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_fd_budget_soft",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_full_scan_reasons_count",
+      "labels": {
+        "keyspace": [
+          "edl_plan"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "kv"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_full_scan_reasons_last_seen_ms",
+      "labels": {
+        "keyspace": [
+          "edl_plan"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "kv"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_graph_adjacency_entries_removed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_graph_adjacency_entries_repaired_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_graph_adjacency_entries_rewritten_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_graph_adjacency_heals_completed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_graph_adjacency_heals_failed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_graph_adjacency_queries_refused_during_heal_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_graph_adjacency_reconcile_errors_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_graph_adjacency_reconcile_passes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_host_block_device_in_flight",
+      "labels": {
+        "device": [
+          "nvme0n1",
+          "nvme0n1p1",
+          "nvme0n1p13",
+          "nvme0n1p14",
+          "nvme0n1p15",
+          "nvme1n1"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_host_block_device_io_bytes_total",
+      "labels": {
+        "device": [
+          "nvme0n1",
+          "nvme0n1p1",
+          "nvme0n1p13",
+          "nvme0n1p14",
+          "nvme0n1p15",
+          "nvme1n1"
+        ],
+        "direction": [
+          "read",
+          "write"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_host_block_device_io_seconds_total",
+      "labels": {
+        "device": [
+          "nvme0n1",
+          "nvme0n1p1",
+          "nvme0n1p13",
+          "nvme0n1p14",
+          "nvme0n1p15",
+          "nvme1n1"
+        ],
+        "direction": [
+          "read",
+          "write"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_host_block_device_io_total",
+      "labels": {
+        "device": [
+          "nvme0n1",
+          "nvme0n1p1",
+          "nvme0n1p13",
+          "nvme0n1p14",
+          "nvme0n1p15",
+          "nvme1n1"
+        ],
+        "direction": [
+          "read",
+          "write"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_host_network_receive_bytes_total",
+      "labels": {
+        "interface": [
+          "eth0"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_host_network_transmit_bytes_total",
+      "labels": {
+        "interface": [
+          "eth0"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_index_backfill_build_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_index_backfill_retries_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_listener_up",
+      "labels": {
+        "listener": [
+          "bolt",
+          "flight",
+          "graph_http",
+          "postgres",
+          "sparql"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_data_lane_active",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_data_lane_active_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_data_lane_cap_blocked_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_data_lane_max_in_flight",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_data_lane_rejected_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_abandoned_unsent_total",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_enqueue_total",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_expired_in_queue_total",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_pending_stream_depth",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_pending_stream_depth_max",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_queue_capacity",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_queue_depth_max",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_queue_wait_seconds_max",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_queue_wait_seconds_total",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_stream_capacity",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_stream_wait_seconds_max",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_lane_stream_wait_seconds_total",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_rpc_handler_failures_total",
+      "labels": {
+        "kind": [
+          "handler_failed",
+          "handler_panicked",
+          "not_ready",
+          "request_decode_failed",
+          "response_encode_failed",
+          "response_too_large"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_rpc_in_flight",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_rpc_in_flight_max",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_rpc_orphan_responses_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_rpc_requests_total",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_net_rpc_timeouts_total",
+      "labels": {
+        "lane": [
+          "bulk",
+          "data",
+          "raft"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_pg_suspended_portal_expiries_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_pg_suspended_portal_refusals_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_pg_suspended_portals",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_cpu_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_io_read_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_io_read_syscalls_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_io_write_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_io_write_syscalls_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_memory_bytes",
+      "labels": {
+        "kind": [
+          "data",
+          "locked",
+          "pinned",
+          "rss",
+          "rss_hwm",
+          "stack",
+          "swap",
+          "vsize"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_resident_memory_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_smaps_rollup_bytes",
+      "labels": {
+        "kind": [
+          "anon_huge_pages",
+          "anonymous",
+          "lazy_free",
+          "private_clean",
+          "private_dirty",
+          "pss",
+          "referenced",
+          "rss",
+          "shared_clean",
+          "shared_dirty",
+          "swap"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_process_virtual_memory_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_raft_current_term",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_raft_election_storm_term_jumps_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_raft_has_leader",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_raft_is_leader",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_raft_replication_lag_entries",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "peer": [
+          "144115188075855872",
+          "216172782113783808",
+          "72057594037927936"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_raft_replication_lag_flat_sweeps",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "peer": [
+          "144115188075855872",
+          "216172782113783808",
+          "72057594037927936"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_raft_snapshot_send_consecutive_failures",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "peer": [
+          "144115188075855872",
+          "216172782113783808",
+          "72057594037927936"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_rrd_runtime_settings_setting_value",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "setting_name": [
+          "ring_memory_budget_bytes",
+          "ring_thrash_warn_evictions"
+        ],
+        "source": [
+          "runtime"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_admissions_rejected_overload_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_admit_wait_micros_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_consensus_headroom_cores",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_io_permits_acquired_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_io_permits_capacity",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_io_permits_in_flight",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_max_chunk_micros",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_over_budget_chunks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_pool_active",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_pool_capacity",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_runtime_stall_events_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_runtime_stall_max_micros",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_runtime_stall_micros_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_scan_carrier_threads_busy",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_scan_carrier_threads_capacity",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_scan_releases_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sched_tasks_admitted_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_secondary_indexes_build_errors",
+      "labels": {
+        "index_name": [
+          "rdf_triples_object_idx"
+        ],
+        "index_type": [
+          "secondary"
+        ],
+        "keyspace_name": [
+          "default"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "status": [
+          "current"
+        ],
+        "table_name": [
+          "rdf_triples_v2"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_secondary_indexes_indexed_sstable_count",
+      "labels": {
+        "index_name": [
+          "rdf_triples_object_idx"
+        ],
+        "index_type": [
+          "secondary"
+        ],
+        "keyspace_name": [
+          "default"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "status": [
+          "current"
+        ],
+        "table_name": [
+          "rdf_triples_v2"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_secondary_indexes_lag_seconds",
+      "labels": {
+        "index_name": [
+          "rdf_triples_object_idx"
+        ],
+        "index_type": [
+          "secondary"
+        ],
+        "keyspace_name": [
+          "default"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "status": [
+          "current"
+        ],
+        "table_name": [
+          "rdf_triples_v2"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_secondary_indexes_last_build_ms",
+      "labels": {
+        "index_name": [
+          "rdf_triples_object_idx"
+        ],
+        "index_type": [
+          "secondary"
+        ],
+        "keyspace_name": [
+          "default"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "status": [
+          "current"
+        ],
+        "table_name": [
+          "rdf_triples_v2"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_secondary_indexes_pending_bytes",
+      "labels": {
+        "index_name": [
+          "rdf_triples_object_idx"
+        ],
+        "index_type": [
+          "secondary"
+        ],
+        "keyspace_name": [
+          "default"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "status": [
+          "current"
+        ],
+        "table_name": [
+          "rdf_triples_v2"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_secondary_indexes_pending_sstable_count",
+      "labels": {
+        "index_name": [
+          "rdf_triples_object_idx"
+        ],
+        "index_type": [
+          "secondary"
+        ],
+        "keyspace_name": [
+          "default"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "status": [
+          "current"
+        ],
+        "table_name": [
+          "rdf_triples_v2"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_secondary_indexes_total_builds",
+      "labels": {
+        "index_name": [
+          "rdf_triples_object_idx"
+        ],
+        "index_type": [
+          "secondary"
+        ],
+        "keyspace_name": [
+          "default"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "status": [
+          "current"
+        ],
+        "table_name": [
+          "rdf_triples_v2"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_spill_pool_forced_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_spill_pool_limit_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_spill_pool_operators",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_spill_pool_refused_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_spill_pool_used_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_dio_align_probe_fallbacks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_direct_read_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_direct_read_fallbacks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_direct_read_files_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_direct_write_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_direct_write_fallbacks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_direct_write_files_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_write_pump_aborts_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_write_pump_blocked_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "stage": [
+          "free"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_write_pump_inflight_segments",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_write_pump_stalls_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_sstable_write_pump_sync_fallbacks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_cancel_latency_seconds_count_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_cancel_latency_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_cancel_latency_seconds_sum_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_cancelled_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_completed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_failed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_input_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_input_rows_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_last_input_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_last_input_rows",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_last_output_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_last_output_partitions",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_last_output_rows",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_output_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_output_partitions_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_output_rows_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_panics_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_paused_tables",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_phase_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "input_cleanup",
+          "local_write_sstable",
+          "manifest_update",
+          "merge_partition",
+          "merge_read",
+          "open_inputs",
+          "output_verify",
+          "promote_output",
+          "queue_wait",
+          "s3_upload_await",
+          "total",
+          "writer_add_partition",
+          "writer_finish"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_phase_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "input_cleanup",
+          "local_write_sstable",
+          "manifest_update",
+          "merge_partition",
+          "merge_read",
+          "open_inputs",
+          "output_verify",
+          "promote_output",
+          "queue_wait",
+          "s3_upload_await",
+          "total",
+          "writer_add_partition",
+          "writer_finish"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_phase_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "input_cleanup",
+          "local_write_sstable",
+          "manifest_update",
+          "merge_partition",
+          "merge_read",
+          "open_inputs",
+          "output_verify",
+          "promote_output",
+          "queue_wait",
+          "s3_upload_await",
+          "total",
+          "writer_add_partition",
+          "writer_finish"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_planning_deferred_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_pool_input_opens_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_purge_held_back_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_purge_policy_errors_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_purged_markers_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_queue_depth",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_queue_depth_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_retire_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_running",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_running_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_skipped_overlap_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_started_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_compaction_submitted_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_last_disk_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_last_evicted_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_last_evicted_generations",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_last_manifest_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_last_trigger",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_last_unix_ms",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_offload_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_offload_uploaded_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_passes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_refused_not_in_store_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_eviction_audit_write_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flush_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flush_last_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flush_last_partitions",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flush_last_rows",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flush_partitions_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flush_phase_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "encode_sstable",
+          "local_write_sstable",
+          "lock_wait",
+          "snapshot_memtable",
+          "sort_partitions",
+          "swap_memtable",
+          "total",
+          "validate_rows"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flush_phase_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "encode_sstable",
+          "local_write_sstable",
+          "lock_wait",
+          "snapshot_memtable",
+          "sort_partitions",
+          "swap_memtable",
+          "total",
+          "validate_rows"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flush_rows_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_flushes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_index_reload_skipped_rows_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_index_sidecar_mapped_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_index_sidecar_mapped_files",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_legacy_ns_timestamps_normalised_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "source": [
+          "memtable_write",
+          "mutation",
+          "sstable"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_memtable_backpressure_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_memtable_flush_threshold_bytes",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_memtable_size_bytes_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_observer_backpressure_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_observer_queue_capacity",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_observer_queue_depth",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_pending_upload_ledger_corrupt_entries_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_pending_upload_unreplayable_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_range_read_truncated_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_flushing_hits_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_found_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_memtable_hits_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_sstable_errors_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_sstable_hits_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_sstable_probes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_sstable_pruned_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_limited_rows_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_sstable_fanout_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_read_sstable_high_fanout_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_publication_refused_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "reason": [
+          "digest_mismatch",
+          "fsync",
+          "length_mismatch",
+          "readback_failed"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_components_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_failure_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_in_flight",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_in_flight_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_requests_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_sstable_rehydration_success_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_compressed_sstable_count",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_local_cache_max_bytes",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_local_sstable_cache_bytes",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_local_sstable_component_count",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_memtable_count",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_memtable_size_bytes",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_pending_compactions",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_s3_bytes",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_s3_object_count",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_sstable_count",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_sstable_size_bytes",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_stats_uncompressed_sstable_count",
+      "labels": {
+        "keyspace": [
+          "default",
+          "edl_plan",
+          "system_auth",
+          "system_observability",
+          "system_schema"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "columns",
+          "functions",
+          "indexes",
+          "keyspaces",
+          "kv",
+          "metrics",
+          "rdf_triples_v2",
+          "role_members",
+          "role_permissions",
+          "roles",
+          "slow_queries",
+          "spans",
+          "tables",
+          "types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_upload_bytes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_upload_files_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_upload_phase_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "file_put",
+          "manifest_save",
+          "pending_log_add",
+          "pending_log_compaction_add",
+          "pending_log_remove",
+          "submit_wait",
+          "sync_await",
+          "worker_task"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_upload_phase_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "file_put",
+          "manifest_save",
+          "pending_log_add",
+          "pending_log_compaction_add",
+          "pending_log_remove",
+          "submit_wait",
+          "sync_await",
+          "worker_task"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_upload_queue_depth",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_upload_queue_depth_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_upload_task_panics_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_upload_tasks_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_vector_generation_repair_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_vector_generations_pending",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_vector_generations_repaired_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_admission_delay_seconds_bucket",
+      "labels": {
+        "le": [
+          "+Inf",
+          "0.001",
+          "0.005",
+          "0.01",
+          "0.025",
+          "0.05",
+          "1"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_admission_delay_seconds_count",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_admission_delay_seconds_sum",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_admission_delayed_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_admission_rejected_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "reason": [
+          "hard_flush_lag",
+          "hard_memtable"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_failures_by_reason_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "reason": [
+          "commitlog_append",
+          "disk_reserve",
+          "memtable_backpressure",
+          "memtable_write",
+          "table_missing"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_failures_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_inline_flush_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_phase_seconds_max",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "admission_disk",
+          "admission_memtable",
+          "commitlog_append",
+          "inline_flush",
+          "memtable_write",
+          "observers",
+          "total"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_phase_seconds_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "admission_disk",
+          "admission_memtable",
+          "commitlog_append",
+          "inline_flush",
+          "memtable_write",
+          "observers",
+          "total"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_phase_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "phase": [
+          "admission_disk",
+          "admission_memtable",
+          "commitlog_append",
+          "inline_flush",
+          "memtable_write",
+          "observers",
+          "total"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_write_pressure_ratio",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table": [
+          "default.rdf_triples_v2",
+          "system_auth.role_members",
+          "system_auth.role_permissions",
+          "system_auth.roles",
+          "system_observability.metrics",
+          "system_observability.slow_queries",
+          "system_observability.spans",
+          "system_schema.columns",
+          "system_schema.functions",
+          "system_schema.indexes",
+          "system_schema.keyspaces",
+          "system_schema.tables",
+          "system_schema.types"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_storage_writes_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_supervised_task_failures_total",
+      "labels": {
+        "kind": [
+          "error",
+          "exit",
+          "panic",
+          "stall"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "task": [
+          "commitlog_sync",
+          "maintenance_loop",
+          "storage_flush"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_supervised_task_restarts_total",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "task": [
+          "commitlog_sync",
+          "maintenance_loop",
+          "storage_flush"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_supervised_task_up",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "task": [
+          "commitlog_sync",
+          "maintenance_loop",
+          "storage_flush"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_table_access_summary_full_scans",
+      "labels": {
+        "keyspace": [
+          "edl_plan"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "kv"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_table_access_summary_point_lookups",
+      "labels": {
+        "keyspace": [
+          "edl_plan"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "kv"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_table_access_summary_range_scans",
+      "labels": {
+        "keyspace": [
+          "edl_plan"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "kv"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_table_access_summary_reads",
+      "labels": {
+        "keyspace": [
+          "edl_plan"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "kv"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_table_access_summary_writes",
+      "labels": {
+        "keyspace": [
+          "edl_plan"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ],
+        "table_name": [
+          "kv"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_up",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "ferrosa_virtual_tables_registered",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "scrape_duration_seconds",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "scrape_samples_post_metric_relabeling",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "scrape_samples_scraped",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "scrape_series_added",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "target_info",
+      "labels": {}
+    },
+    {
+      "name": "up",
+      "labels": {
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "write_pump_bytes_total",
+      "labels": {
+        "component": [
+          "CRC.db",
+          "CompressionInfo.db",
+          "Data.db",
+          "Digest.crc32",
+          "Filter.db",
+          "Partitions.db",
+          "Rows.db",
+          "Statistics.db",
+          "TOC.txt"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "write_pump_files_total",
+      "labels": {
+        "component": [
+          "CRC.db",
+          "CompressionInfo.db",
+          "Data.db",
+          "Digest.crc32",
+          "Filter.db",
+          "Partitions.db",
+          "Rows.db",
+          "Statistics.db",
+          "TOC.txt"
+        ],
+        "mode": [
+          "buffered",
+          "direct",
+          "nocache"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    },
+    {
+      "name": "write_pump_writes_total",
+      "labels": {
+        "component": [
+          "CRC.db",
+          "CompressionInfo.db",
+          "Data.db",
+          "Digest.crc32",
+          "Filter.db",
+          "Partitions.db",
+          "Rows.db",
+          "Statistics.db",
+          "TOC.txt"
+        ],
+        "otel_scope_name": [
+          "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver"
+        ],
+        "otel_scope_version": [
+          "0.161.0"
+        ],
+        "service_name": [
+          "ferrosa"
+        ]
+      }
+    }
+  ]
+}

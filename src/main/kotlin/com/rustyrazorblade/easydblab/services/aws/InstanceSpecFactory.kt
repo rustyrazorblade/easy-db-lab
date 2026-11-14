@@ -96,10 +96,7 @@ class DefaultInstanceSpecFactory : InstanceSpecFactory {
     ): List<InstanceSpec> {
         val ebsConfig = createEbsConfig(initConfig)
 
-        require(dbHasInstanceStore || ebsConfig != null) {
-            "Instance type ${initConfig.instanceType} has no local instance store. " +
-                "You must specify --ebs.type (e.g., --ebs.type gp3) to attach an EBS volume for data storage."
-        }
+        DataDiskRequirement.check(ServerType.Cassandra, initConfig.instanceType, dbHasInstanceStore, ebsConfig != null)
 
         return initConfig.nodeGroups().map { group ->
             val existing = existingInstances[group.serverType].orEmpty()

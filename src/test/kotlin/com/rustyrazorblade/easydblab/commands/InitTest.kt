@@ -10,11 +10,13 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -51,8 +53,18 @@ class InitTest : BaseKoinTest() {
                 single { mockInfrastructureService }
                 single { mockEc2InstanceService }
                 single { TemplateService(get(), get()) }
+                single<CommandExecutor> {
+                    object : CommandExecutor {
+                        override fun <T : PicoCommand> execute(commandFactory: () -> T): Int = nestedFailure ?: commandFactory().call()
+
+                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) = Unit
+                    }
+                }
             },
         )
+
+    /** When set, the exit code every nested command reports instead of running. */
+    private var nestedFailure: Int? = null
 
     @BeforeEach
     fun setupMocks() {
@@ -206,6 +218,17 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager, never()).save(any())
             assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("already has a bin/").contains("new, empty directory")
         }
+    }
+
+    @Test
+    fun `a failed clean fails init before any state is saved`() {
+        nestedFailure = Constants.ExitCodes.ERROR
+        val command = Init()
+        command.clean = true
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        verify(mockClusterStateManager, never()).save(any())
     }
 
     @Nested
@@ -433,6 +456,106 @@ class InitTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * Every node writes its data under `/mnt/db1`, so every node type needs a data disk
+     * (instance-storage-validation). `--ebs.type` adds an EBS volume to db nodes only, so control
+     * and app nodes need instance store.
+     */
+    @Nested
+    inner class DataDiskStorage {
+        private fun withStore(vararg typesWithStore: String) {
+            whenever(mockEc2InstanceService.describeInstanceType(any())).thenAnswer { call ->
+                InstanceTypeCapabilities(
+                    hasInstanceStore = call.getArgument<String>(0) in typesWithStore,
+                    supportedArchitectures = listOf("x86_64"),
+                )
+            }
+        }
+
+        private fun assertNothingSaved() = verify(mockClusterStateManager, never()).save(any())
+
+        @Test
+        fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
+            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 2
+            command.stressInstanceType = "c5.2xlarge"
+            command.ebsType = "gp3"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("app")
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `a control instance type without instance store fails, naming the node type and instance type`() {
+            withStore("i4i.xlarge", "c6id.2xlarge")
+            val command = Init()
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("control")
+                .hasMessageContaining(Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `a db instance type without instance store fails without an ebs type and passes with one`() {
+            withStore("c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val noEbs = Init()
+            noEbs.clean = true
+            noEbs.instanceType = "c5.2xlarge"
+
+            assertThatThrownBy { noEbs.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("The db instance type c5.2xlarge")
+                .hasMessageContaining("instance store")
+                .hasMessageContaining("--ebs.type")
+            assertNothingSaved()
+
+            val withEbs = Init()
+            withEbs.clean = true
+            withEbs.instanceType = "c5.2xlarge"
+            withEbs.ebsType = "gp3"
+            withEbs.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.instanceType == "c5.2xlarge" })
+        }
+
+        @Test
+        fun `an app instance type without instance store fails even with no app nodes`() {
+            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 0
+            command.stressInstanceType = "c5.2xlarge"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `the default db, control and app instance types pass`() {
+            withStore("i4i.xlarge", "c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 1
+
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.stressInstances == 1 })
+        }
+    }
+
     @Nested
     inner class ArchitectureDerivation {
         @Test
@@ -440,7 +563,7 @@ class InitTest : BaseKoinTest() {
             whenever(mockEc2InstanceService.describeInstanceType("arm.db"))
                 .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("arm64")))
             whenever(mockEc2InstanceService.describeInstanceType("x86.app"))
-                .thenReturn(InstanceTypeCapabilities(hasInstanceStore = false, supportedArchitectures = listOf("x86_64")))
+                .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
 
             val command = Init()
             command.clean = true
@@ -564,7 +687,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("^[a-z][a-z0-9_-]{0,62}$")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
 
         /** A Loki tenant named `index` would put its chunks under Loki's index path. */
@@ -577,7 +700,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("'index' is reserved")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 
@@ -615,7 +738,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 
@@ -692,7 +815,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("traces")
 
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 

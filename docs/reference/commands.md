@@ -499,7 +499,13 @@ easy-db-lab cassandra download-config [options]
 
 | Option | Description |
 |--------|-------------|
-| `--version` | Version to download config for |
+| `--version` | Version to download config for (default: the current one) |
+| `--hosts` | Download from these hosts; blank means every host. A host name that matches no node is an error |
+
+Each targeted host's own version is resolved on that host, and one directory is downloaded for each
+distinct version among them, so a cluster running a custom build on one node gets a directory for
+that build as well as for the stock version. `update-config` needs the directory of each host's
+version and, when it is missing, stops before changing the host and names this command.
 
 The files land in a directory named for the version (for example `5.0/`) in the workspace. An
 existing directory is never overwritten: the command reports that it already exists and skips the

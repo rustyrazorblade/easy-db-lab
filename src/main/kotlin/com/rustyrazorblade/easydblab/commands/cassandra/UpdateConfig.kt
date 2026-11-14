@@ -14,6 +14,7 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
+import java.io.File
 import java.nio.file.Files
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.inputStream
@@ -48,6 +49,16 @@ class UpdateConfig : PicoBaseCommand() {
         // upload the patch file
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
+
+            // Each host runs its own version, and its config directory is that version's. Check before
+            // anything is changed on the host: a missing directory used to surface only after the
+            // patch had already been applied, as a bare "Local directory does not exist".
+            val resolvedVersion = remoteOps.getRemoteVersion(it, version)
+            check(File(context.workingDirectory, resolvedVersion.versionString).isDirectory) {
+                "No local config directory for ${resolvedVersion.versionString}, the version ${it.alias} runs. " +
+                    "Create it with: easy-db-lab cassandra download-config --hosts ${it.alias}"
+            }
+
             eventBus.emit(Event.Cassandra.ConfigFileUploading(file, it.alias))
 
             val yaml =
@@ -69,7 +80,6 @@ class UpdateConfig : PicoBaseCommand() {
             // call the patch command on the server
             remoteOps.upload(it, tmp, file)
             tmp.deleteExisting()
-            val resolvedVersion = remoteOps.getRemoteVersion(it, version)
 
             // Execute patch-config and handle errors.
             // Check stdout for the success marker — stderr may contain sudo warnings (e.g. sudoers

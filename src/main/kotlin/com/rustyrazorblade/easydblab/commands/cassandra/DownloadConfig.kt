@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
+import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
@@ -35,14 +37,25 @@ class DownloadConfig : PicoBaseCommand() {
     }
 
     override fun execute() {
-        // The first targeted host: every host when --hosts is blank, so that stays the first host.
         val targeted = hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
         require(targeted.isNotEmpty()) {
             "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'"
         }
-        val host = targeted.first().toHost()
-        val resolvedVersion = remoteOps.getRemoteVersion(host, version)
 
+        // One download per distinct version among the targeted hosts, from the first host that runs
+        // it: update-config looks for the directory of each host's own version, so a cluster that
+        // runs a custom build on one node needs a directory for that build as well as the stock one.
+        targeted
+            .map { it.toHost() }
+            .map { host -> host to remoteOps.getRemoteVersion(host, version) }
+            .distinctBy { (_, resolved) -> resolved.localDir }
+            .forEach { (host, resolved) -> download(host, resolved) }
+    }
+
+    private fun download(
+        host: Host,
+        resolvedVersion: Version,
+    ) {
         logger.info {
             "Original version: $version.  Resolved version: ${resolvedVersion.versionString}. "
         }

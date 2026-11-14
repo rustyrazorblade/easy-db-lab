@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -79,11 +80,17 @@ class UseCassandra : PicoBaseCommand() {
 
         clusterStateManager.save(state)
 
-        commandExecutor.execute { DownloadConfig() }
-
-        // make sure we only apply to the filtered hosts
-        commandExecutor.execute {
-            UpdateConfig().apply { this.hosts = this@UseCassandra.hosts }
+        // Both steps are limited to the targeted hosts: each host's config directory is the one of the
+        // version it now runs, and on a mixed-version cluster that is not the first host's version.
+        // The executor reports a failed step as an exit code, never as an exception, so a step that
+        // failed is checked here. The symlink switch above has already happened.
+        val configured =
+            commandExecutor.execute { DownloadConfig().apply { this.hosts = this@UseCassandra.hosts } } == 0 &&
+                commandExecutor.execute { UpdateConfig().apply { this.hosts = this@UseCassandra.hosts } } == 0
+        if (!configured) {
+            throw CommandFailedException(
+                "Version $version is active on the targeted hosts, but their configuration was not updated; see the error above.",
+            )
         }
 
         eventBus.emit(Event.Cassandra.ConfigUpdateHint(version))

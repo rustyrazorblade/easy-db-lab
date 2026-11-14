@@ -21,6 +21,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -121,5 +122,48 @@ class DownloadConfigTest : BaseKoinTest() {
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("db9")
         verify(remoteOps, never()).downloadDirectory(any(), any(), any(), any(), any())
+    }
+
+    /**
+     * `cassandra use --hosts=db2 <build>` leaves db2 on a different version than db0. update-config
+     * then looks for a directory per version, so download-config must produce one per version.
+     */
+    @Test
+    fun `targeted hosts on different versions get a directory each`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, secondCassandraHost))),
+        )
+        whenever(remoteOps.getRemoteVersion(eq(testCassandraHost.toHost()), eq("current")))
+            .thenReturn(Version("/usr/local/cassandra/5.0"))
+        whenever(remoteOps.getRemoteVersion(eq(secondCassandraHost.toHost()), eq("current")))
+            .thenReturn(Version("/usr/local/cassandra/5.0.9-custom"))
+
+        DownloadConfig().execute()
+
+        verify(remoteOps).downloadDirectory(
+            eq(testCassandraHost.toHost()),
+            eq("/usr/local/cassandra/5.0/conf"),
+            eq(File(context.workingDirectory, "5.0")),
+            any(),
+            any(),
+        )
+        verify(remoteOps).downloadDirectory(
+            eq(secondCassandraHost.toHost()),
+            eq("/usr/local/cassandra/5.0.9-custom/conf"),
+            eq(File(context.workingDirectory, "5.0.9-custom")),
+            any(),
+            any(),
+        )
+    }
+
+    @Test
+    fun `hosts on the same version download it once`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, secondCassandraHost))),
+        )
+
+        DownloadConfig().execute()
+
+        verify(remoteOps, times(1)).downloadDirectory(any(), any(), any(), any(), any())
     }
 }

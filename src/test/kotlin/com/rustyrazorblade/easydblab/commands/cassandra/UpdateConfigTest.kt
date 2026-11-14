@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -23,6 +24,8 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
@@ -77,6 +80,9 @@ class UpdateConfigTest : BaseKoinTest() {
         whenever(mockRemoteOps.getRemoteVersion(any(), any()))
             .doReturn(Version("/usr/local/cassandra/5.0"))
 
+        // The version's config directory, which download-config creates in the workspace.
+        File(context.workingDirectory, "5.0").mkdirs()
+
         // Create required patch file
         File(context.workingDirectory, "cassandra.patch.yaml").writeText(
             """
@@ -98,6 +104,23 @@ class UpdateConfigTest : BaseKoinTest() {
 
         val output = outputHandler.messages.joinToString("\n")
         assertThat(output).contains("Uploading cassandra.patch.yaml")
+    }
+
+    /**
+     * A host on a build that has no config directory in the workspace used to be patched first and
+     * then fail with a bare "Local directory does not exist". It now fails before touching the
+     * host, and names the command that creates the directory.
+     */
+    @Test
+    fun `a missing config directory fails before the host is patched and names download-config`() {
+        File(context.workingDirectory, "5.0").deleteRecursively()
+        whenever(mockRemoteOps.getRemoteVersion(any(), any()))
+            .doReturn(Version("/usr/local/cassandra/5.0.9-custom"))
+
+        assertThatThrownBy { UpdateConfig().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContainingAll("5.0.9-custom", "download-config --hosts db0")
+        verify(mockRemoteOps, never()).executeRemotely(any<Host>(), argThat { contains("patch-config") }, any(), any())
     }
 
     /** Hosts are named by alias, as an operator knows them, never as the internal Host object. */

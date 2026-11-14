@@ -180,7 +180,7 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
   `K8sClientProvider`) or a private cluster HTTP endpoint (via `ProxiedHttpClientFactory`), and
   therefore needs the SOCKS5 tunnel. `DefaultCommandExecutor.checkRequirements()` starts the
   tunnel before the command runs, when the cluster is provisioned, infrastructure is UP, and it
-  is reached through the tunnel (`ClusterState.reachedBySocksTunnel`: `exposure` Socks and
+  is reached through the tunnel (`proxy/reachedBySocksTunnel`: `exposure` Socks and
   Tailscale not active; a Direct or PortForward cluster never gets one); a failure to establish it propagates and aborts the command. See
   `annotations/RequiresProxy.kt` and design decision D7/D9 in
   `openspec/changes/up-fail-fast/design.md`.

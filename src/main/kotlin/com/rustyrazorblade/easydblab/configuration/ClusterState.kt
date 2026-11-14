@@ -337,13 +337,6 @@ data class ClusterState(
     fun isTailscaleEnabled(): Boolean = tailscaleActive
 
     /**
-     * Whether the CLI reaches this cluster through the SOCKS tunnel, so a command should start one:
-     * only for [Exposure.Socks], and never under Tailscale (a state saved before [exposure] existed
-     * reads as Socks even when Tailscale routes it).
-     */
-    fun reachedBySocksTunnel(): Boolean = exposure == Exposure.Socks && !tailscaleActive
-
-    /**
      * Update hosts
      */
     fun updateHosts(hosts: Map<ServerType, List<ClusterHost>>) {

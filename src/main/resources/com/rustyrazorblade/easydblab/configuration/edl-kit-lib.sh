@@ -29,6 +29,8 @@ EDL_POLL_SECONDS="${EDL_POLL_SECONDS:-2}"
 EDL_CONFIGMAP_MAX_BYTES=1000000
 # Checks, 0.1s apart, for the gauge push's `kubectl proxy` to start serving.
 EDL_PROXY_START_TRIES="${EDL_PROXY_START_TRIES:-50}"
+# The longest the gauge push waits on one API server lookup, so a hung API server cannot stall a kit.
+EDL_GAUGE_PUSH_TIMEOUT="${EDL_GAUGE_PUSH_TIMEOUT:-5s}"
 
 # Prints the message to stderr and exits the calling script with status 1.
 edl_fail() {
@@ -272,15 +274,18 @@ edl_push_gauges() {
     sep=","
     if [ "$#" -ge 2 ]; then shift 2; else shift; fi
   done
-  if ! control="$(kubectl get nodes -l node-role.kubernetes.io/control-plane -o 'jsonpath={.items[0].metadata.name}' 2> /dev/null)"; then
+  if ! control="$(kubectl get nodes "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -l node-role.kubernetes.io/control-plane -o 'jsonpath={.items[0].metadata.name}' 2> /dev/null)"; then
     failure=": could not find the control node"
   elif [ -z "${control}" ]; then
     failure=": the cluster has no control node (node-role.kubernetes.io/control-plane)"
-  elif ! pods="$(kubectl get pods -n default -l app.kubernetes.io/name=otel-collector \
+  elif ! pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
     "--field-selector=status.phase=Running,spec.nodeName=${control}" \
     -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)"; then
     failure=": could not list the otel-collector pods on control node ${control}"
   fi
+  # The core collector tolerates every taint, so the control node always runs a core pod, and that
+  # pod stamps host.name=control0. While it is Pending (a rollout, a slow image pull) the pod list
+  # above has nothing Running there: the push warns and skips, and the kit runs on.
   if [ -z "${failure}" ]; then
     # During a rolling update the control node can run two core pods; both stamp control0. A pod
     # being deleted is still Running until it stops, so the first one with no deletionTimestamp.

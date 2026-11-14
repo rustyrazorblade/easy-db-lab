@@ -23,6 +23,9 @@
 #                     `kubectl get pods -l app.kubernetes.io/name=otel-collector` filters by
 #                     spec.nodeName and prints as "<name> <deletionTimestamp>" lines (absent: one
 #                     pod per node, otel-collector-c0 on control0 and otel-collector-d0 on db0)
+#   api-hang          a resource (nodes, pods): `kubectl get <it>` hangs as against a hung API server; with
+#                     --request-timeout it fails as the real one does when that deadline passes,
+#                     and with none it holds for 5 seconds and prints nothing
 #   curl-signal       a signal name (TERM, INT): curl sends it to the shell that ran it, as a kill
 #                     or a Ctrl-C arriving during a push would
 #
@@ -64,6 +67,12 @@ while :; do
     *) break ;;
   esac
 done
+if [ "$1" = get ] && [ -f "${S}/api-hang" ] && [ "$2" = "$(cat "${S}/api-hang")" ]; then
+  case " $* " in
+    *" --request-timeout="*) echo "error: context deadline exceeded" >&2; exit 1 ;;
+    *) /bin/sleep 5; exit 0 ;;
+  esac
+fi
 case "$1" in
   get)
     case "$2" in

@@ -337,6 +337,33 @@ test_a_push_with_no_core_pod_on_the_control_node_warns_without_curl() {
     fail "message: ${err}"
 }
 
+# A hung API server must not block the kit: both lookups carry a request timeout, so the push
+# only warns and the script goes on.
+test_a_push_against_a_hung_api_server_is_bounded_and_only_warns() {
+  start_test "hung API server"
+  echo nodes > "${STUB_STATE}/api-hang"
+  local started=${SECONDS}
+  run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'
+  [ $((SECONDS - started)) -lt 3 ] || fail "the push waited on the hung API server"
+  [ "${rc}" -eq 0 ] || fail "exited ${rc}"
+  [ "${out}" = after ] || fail "the script did not continue: ${out}"
+  [ "${err}" = "warning: could not push sysbench gauges: could not find the control node; the dashboard will not show this run" ] ||
+    fail "message: ${err}"
+  [ ! -e "${STUB_STATE}/curl.1" ] || fail "posted with no control node"
+}
+
+test_a_push_whose_core_pod_lookup_hangs_is_bounded_and_only_warns() {
+  start_test "hung core pod lookup"
+  echo pods > "${STUB_STATE}/api-hang"
+  local started=${SECONDS}
+  run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'
+  [ $((SECONDS - started)) -lt 3 ] || fail "the push waited on the hung API server"
+  [ "${rc}" -eq 0 ] || fail "exited ${rc}"
+  [ "${out}" = after ] || fail "the script did not continue: ${out}"
+  [ "${err}" = "warning: could not push sysbench gauges: could not list the otel-collector pods on control node control0; the dashboard will not show this run" ] ||
+    fail "message: ${err}"
+}
+
 # A TERM (or a Ctrl-C) during the push must not leave the background `kubectl proxy` running or its
 # banner file behind, and must still reach the caller: its own trap runs, and its traps are back.
 test_a_term_during_a_push_stops_the_proxy_and_reaches_the_callers_trap() {
@@ -500,6 +527,8 @@ test_a_failed_push_returns_0
 test_a_push_whose_proxy_never_serves_returns_0_without_curl
 test_every_push_goes_to_the_control_nodes_core_pod
 test_a_push_with_no_core_pod_on_the_control_node_warns_without_curl
+test_a_push_against_a_hung_api_server_is_bounded_and_only_warns
+test_a_push_whose_core_pod_lookup_hangs_is_bounded_and_only_warns
 test_a_term_during_a_push_stops_the_proxy_and_reaches_the_callers_trap
 test_a_term_during_a_push_ends_a_script_with_no_trap
 test_an_int_during_a_push_stops_the_proxy_and_reaches_the_callers_trap

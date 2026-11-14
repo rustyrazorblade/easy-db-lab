@@ -313,7 +313,6 @@ class SetupProfileTest : BaseKoinTest() {
                     "awsProfile" to "my-profile",
                     "keyName" to "test-key",
                     "s3Bucket" to "test-bucket",
-                    "keyName" to "test-key",
                     "sshTransport" to "tunnel",
                 ),
             )
@@ -651,6 +650,18 @@ class SetupProfileTest : BaseKoinTest() {
             assertThat(saved.lastValue.s3Bucket).startsWith("easy-db-lab-")
             assertThat(saved.lastValue.keyName).isEqualTo("test-key")
             assertThat(saved.lastValue.awsProfile).isEqualTo("my-profile")
+        }
+
+        @Test
+        fun `asks for the AWS profile again when the saved one fails validation`() {
+            doThrow(RuntimeException("expired")).doNothing().whenever(mockAws).checkPermissions()
+            testPrompter = TestPrompter(mapOf("IAM policies" to "N", "AWS Profile" to "fixed-profile"))
+            setupTestModule()
+
+            SetupProfile().execute()
+
+            assertThat(testPrompter.wasPromptedFor("AWS Profile")).isTrue()
+            verify(mockAwsClientFactory, atLeastOnce()).createAWSClientWithProfile(eq("fixed-profile"), any())
         }
 
         @Test

@@ -7,6 +7,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.nio.file.Path
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 /** The `ObjectStore` contract, held by the in-memory adapter the unit tests store objects in. */
 class InMemoryObjectStoreTest {
@@ -148,6 +151,17 @@ class InMemoryObjectStoreTest {
         assertThat(down.filesDownloaded).isEqualTo(2)
         assertThat(target.resolve("top.txt").toFile().readText()).isEqualTo("t")
         assertThat(target.resolve("nested/deep.txt").toFile().readText()).isEqualTo("dd")
+    }
+
+    /** A caller that compares upload times (EMR's final stderr) needs them to come from a clock it sets. */
+    @Test
+    fun `an object's last-modified time is the store clock's time when it was written`() {
+        val writtenAt = Instant.parse("2026-09-28T14:08:45Z")
+        val clocked = InMemoryObjectStore(Clock.fixed(writtenAt, ZoneOffset.UTC))
+        clocked.uploadContent("x", root.resolve("a/1"))
+
+        assertThat(clocked.getFileInfo(root.resolve("a/1"))?.lastModified).isEqualTo(writtenAt.toString())
+        assertThat(clocked.listFiles(root.resolve("a")).single().lastModified).isEqualTo(writtenAt.toString())
     }
 
     @Test

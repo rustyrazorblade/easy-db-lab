@@ -77,8 +77,9 @@ If the JDK switch fails on a node, the command fails.
 easy-db-lab ls
 ```
 
-Versions installed on the node are listed first. A version declared with
-`lazy: true` that has not been installed is listed too, marked
+Every node is asked. Versions installed on all nodes are listed first; a version
+only some nodes have is listed with the nodes that have it. A version declared
+with `lazy: true` that has not been installed is listed too, marked
 `(declared, not installed)`.
 
 ## Configuration

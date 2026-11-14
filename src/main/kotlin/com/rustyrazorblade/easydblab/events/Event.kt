@@ -370,13 +370,26 @@ sealed interface Event {
             val versions: List<String>,
             val declaredNotInstalled: List<String> = emptyList(),
             val builds: List<String> = emptyList(),
+            /** Versions installed on only some nodes: version to the aliases that have it. */
+            val partial: Map<String, List<String>> = emptyMap(),
+            /** Aliases of the nodes that could not be listed, with the error. */
+            val unreachable: Map<String, String> = emptyMap(),
+            /** Every node that was asked, in cluster order; names the nodes a partial version is missing from. */
+            val nodes: List<String> = emptyList(),
         ) : Cassandra {
             override fun toDisplayString(): String =
                 (
                     versions +
+                        partial.map { (version, have) ->
+                            val missing = (nodes - unreachable.keys - have.toSet()).joinToString(", ")
+                            "$version (installed on ${have.joinToString(", ")} only, not on $missing)"
+                        } +
                         declaredNotInstalled.map { "$it (declared, not installed - run: cassandra install $it)" } +
-                        builds.map { "$it (build, not installed - run: cassandra install $it)" }
+                        builds.map { "$it (build, not installed - run: cassandra install $it)" } +
+                        unreachable.map { (alias, error) -> "$alias: could not list versions: $error" }
                 ).joinToString("\n")
+
+            override fun isError(): Boolean = unreachable.isNotEmpty()
         }
 
         @Serializable

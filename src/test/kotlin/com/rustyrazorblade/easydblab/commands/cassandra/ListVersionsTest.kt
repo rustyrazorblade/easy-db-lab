@@ -7,20 +7,29 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
+import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 class ListVersionsTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockCatalog: CassandraBuildCatalog
+    private val remoteOps = mock<RemoteOperationsService>()
     private lateinit var outputHandler: BufferedOutputHandler
 
     private val testCassandraHost =
@@ -48,6 +57,8 @@ class ListVersionsTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<CassandraBuildCatalog> { mockCatalog }
+                single { HostOperationsService(mockClusterStateManager) }
+                factory<RemoteOperationsService> { remoteOps }
             },
         )
 
@@ -122,14 +133,96 @@ class ListVersionsTest : BaseKoinTest() {
 
     private fun eagerVersion(version: String) = CassandraVersion(version = version, java = "11", python = "3.11.9", jvmOptions = null)
 
-    @Test
-    fun `execute lists versions excluding current`() {
-        // RemoteOperationsService mock returns empty response by default
-        // The command calls remoteOps.executeRemotely which returns Response("")
-        val command = ListVersions()
-        command.execute()
+    private fun host(alias: String) =
+        ClusterHost(
+            publicIp = "54.1.2.${alias.last()}",
+            privateIp = "10.0.1.${alias.last()}",
+            alias = alias,
+            availabilityZone = "us-west-2a",
+            instanceId = "i-$alias",
+        )
 
-        // The mock SSH returns empty response, so nothing is listed
-        // But the command should not throw
+    private fun clusterOf(vararg aliases: String) = testClusterState.copy(hosts = mapOf(ServerType.Cassandra to aliases.map { host(it) }))
+
+    private fun nodeLists(
+        alias: String,
+        listing: String,
+    ) {
+        whenever(remoteOps.executeRemotely(eq(host(alias).toHost()), eq("ls /usr/local/cassandra"), any(), any()))
+            .thenReturn(Response(listing))
+    }
+
+    /** A homogeneous cluster prints exactly what one node would: no per-node noise. */
+    @Test
+    fun `a cluster where every node has the same versions lists them once`() {
+        val event =
+            ListVersions().buildVersionList(
+                perHost = mapOf("db0" to listOf("5.0", "4.1"), "db1" to listOf("5.0", "4.1"), "db2" to listOf("5.0", "4.1")),
+                unreachable = emptyMap(),
+                declared = emptyList(),
+                builds = emptyList(),
+            )
+
+        assertThat(event.versions).containsExactly("5.0", "4.1")
+        assertThat(event.partial).isEmpty()
+        assertThat(event.toDisplayString()).isEqualTo("5.0\n4.1")
+    }
+
+    @Test
+    fun `a version on only some nodes is reported with the nodes that have it`() {
+        val event =
+            ListVersions().buildVersionList(
+                perHost =
+                    mapOf(
+                        "db0" to listOf("5.0"),
+                        "db1" to listOf("5.0"),
+                        "db2" to listOf("5.0", "5.0.9-custom"),
+                    ),
+                unreachable = emptyMap(),
+                declared = emptyList(),
+                builds = emptyList(),
+            )
+
+        assertThat(event.versions).containsExactly("5.0")
+        assertThat(event.partial).containsExactly(entry("5.0.9-custom", listOf("db2")))
+        assertThat(event.toDisplayString())
+            .contains("5.0.9-custom (installed on db2 only, not on db0, db1)")
+    }
+
+    @Test
+    fun `a node that cannot be listed is named with its error and its versions are not assumed`() {
+        val event =
+            ListVersions().buildVersionList(
+                perHost = mapOf("db0" to listOf("5.0")),
+                unreachable = mapOf("db1" to "connection refused"),
+                declared = emptyList(),
+                builds = emptyList(),
+            )
+
+        assertThat(event.toDisplayString()).contains("db1: could not list versions: connection refused")
+    }
+
+    @Test
+    fun `execute asks every node, not just the first`() {
+        whenever(mockClusterStateManager.load()).thenReturn(clusterOf("db0", "db1"))
+        nodeLists("db0", "5.0\ncurrent\n")
+        nodeLists("db1", "5.0\n5.0.9-custom\ncurrent\n")
+
+        ListVersions().execute()
+
+        assertThat(outputHandler.messages.joinToString("\n"))
+            .contains("5.0.9-custom (installed on db1 only, not on db0)")
+    }
+
+    @Test
+    fun `execute fails after reporting when a node cannot be listed`() {
+        whenever(mockClusterStateManager.load()).thenReturn(clusterOf("db0", "db1"))
+        nodeLists("db0", "5.0\n")
+        whenever(remoteOps.executeRemotely(eq(host("db1").toHost()), eq("ls /usr/local/cassandra"), any(), any()))
+            .thenThrow(IllegalStateException("connection refused"))
+
+        assertThatThrownBy { ListVersions().execute() }.isInstanceOf(CommandFailedException::class.java)
+        assertThat(outputHandler.messages.joinToString("\n") + outputHandler.errors.joinToString { it.first })
+            .contains("db1", "connection refused")
     }
 }

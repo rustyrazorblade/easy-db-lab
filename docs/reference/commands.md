@@ -550,9 +550,12 @@ easy-db-lab cassandra list
 
 **Aliases:** `ls`
 
-Versions installed on the node are listed first. A version declared with `lazy: true` that is not
-installed on that node is listed too, marked `(declared, not installed)`, as is any build published
-by [`cassandra build`](#cassandra-build) and not yet installed there, marked
+Every node is asked. Versions installed on all nodes are listed first. A version only some nodes have
+is listed with the nodes that have it, for example `5.0.9-custom (installed on db2 only, not on db0, db1)`,
+so a mixed-version cluster does not read as uniform. A node that cannot be listed is named with its
+error, and the command exits non-zero. A version declared with `lazy: true` that is not installed on
+any node is listed too, marked `(declared, not installed)`, as is any build published
+by [`cassandra build`](#cassandra-build) and not yet installed anywhere, marked
 `(build, not installed)`.
 
 ---

@@ -56,6 +56,13 @@ The system MUST provision EC2 instances in AWS with configurable instance types 
 - **WHEN** provisioning completes
 - **THEN** K3s Kubernetes is deployed on all nodes.
 
+#### Scenario: Pod logs and kubelet eviction on a node with a data disk
+
+- **GIVEN** a node whose data disk is mounted at `/mnt/db1`
+- **WHEN** its K3s start script runs
+- **THEN** `/var/log/pods` is a link to `/mnt/db1/container-logs`, and logs already in `/var/log/pods` are kept
+- **AND** the kubelet's hard eviction thresholds for `nodefs.available` and `imagefs.available` are `0%`, so a database that fills its own disk does not make the kubelet evict pods, while the memory and inode thresholds keep their defaults.
+
 #### Scenario: Per-cluster data bucket created
 
 - **GIVEN** cluster provisioning

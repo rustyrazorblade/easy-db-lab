@@ -62,7 +62,7 @@ Node-local pod-SD keeps working: the DaemonSet already overrides `HOSTNAME` from
 
 ## Risks / trade-offs
 
-- **`host.name` of the stress JVM** shifts from `control0` to its own node; comparison dashboards' `host_name` filters are fixed via the dashboard-editor agent (Q2).
+- **`host.name` of the stress JVM** shifts from `control0` to its own node. A static read of every core and kit dashboard found no stress or kit query that filters or groups on `host_name`, so this change edits no dashboard JSON. `system-overview.json` and `system-ab-comparison.json` group the unscoped `jvm_*` series by `host_name`, so the stress JVM now appears under its app node, which is its real host. The live read-back through the dashboard-editor agent (Q2, task 9.1) is deferred to the first real-cluster run.
 - **Port race on in-place update** (`grafana update-config`): old core pods hold hostPorts 4317/4318 while the add-on starts, so the add-on CrashLoops binding them. Mitigation: wait for the core rollout before applying the add-on stage. A fresh `up` is unaffected.
 - **`internalTrafficPolicy: Local`** drops traffic on a node with no core pod; mitigated by tolerating every taint and `maxSurge`. Fargate-style nodeless scheduling is not supported.
 - **Host file logs now traverse the core's `logs/otlp` and connectors** — they carry no severity/scope, so the `cassandra.log.*` counters must ignore them (guarded by a test).

@@ -58,7 +58,8 @@
   - Verified in review (static read of every core and kit dashboard): no query on a stress series (`job="cassandra-easy-stress"`: `mutations`, `selects`, `*_count`, `errors_total`) filters or groups on `host_name`; they select on `cluster`, `job`, `job_name` and `quantile` only. In `client-vs-server-latency.json` `host_name=~"$host"` sits only on the server-side `cassandra_client_request_*` series, and `$host` lists `cassandra_storage_load_bytes` hosts (db nodes), so the shift does not touch it. The kit gauges (`sysbench_*`, `clickhouse_benchmark_*`) select on `cluster` and `kit` only, and keep one `host_name` (control0) through the pod-proxy push.
   - `trace-red.json` filters every spanmetrics panel on `host_name`, but the `traces` pipeline is `[resource/cluster, batch]` on both the base branch and this one: it never stamped `host.name`, so span-derived `host_name` is the producer's own and does not move.
   - What does move: `system-overview.json` and `system-ab-comparison.json` group the unscoped `jvm_*` series (no `job` filter) by `host_name`, so the stress JVM's heap, CPU and allocation now count under its app node instead of `control0`. That is the stress JVM's real node; no filter there names `control0` or a stress job, so nothing goes empty.
-  - Finding: no dashboard needs a `host_name` edit for this change. Left unchecked only because the task says to confirm through the `dashboard-editor` agent's read-back from a live Grafana, which was not run here.
+  - Finding: no dashboard needs a `host_name` edit for this change, and this change edits no dashboard JSON. The check above was a static read of the dashboard files only.
+  - Deferred: the live read-back through the `dashboard-editor` agent (deploy, then read each panel back from Grafana) needs a running cluster and is deferred to the first real-cluster run of this change. This task stays unchecked until then.
 
 ## 10. Tests
 

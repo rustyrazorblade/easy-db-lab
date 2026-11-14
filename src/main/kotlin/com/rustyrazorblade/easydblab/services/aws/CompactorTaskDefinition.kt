@@ -1,9 +1,11 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import software.amazon.awssdk.core.SdkPojo
@@ -28,7 +30,7 @@ import java.util.Base64
 
 /**
  * Builds the account compactor's ECS task definition: a pure function of the bucket, its region,
- * the two roles and the log group.
+ * the two roles, the store prefix and the log group.
  *
  * One Fargate task runs every compactor of the shared store, each in its own container on its own
  * ports: Mimir's compactor, Loki's compactor, and Tempo's backend-scheduler and backend-worker (Tempo
@@ -45,6 +47,8 @@ import java.util.Base64
  * @property region the account bucket's region.
  * @property taskRoleArn the role the containers run as (`EasyDBLabCompactorTaskRole`).
  * @property executionRoleArn the role ECS pulls images and ships logs with.
+ * @property storePrefix the store prefix the compacted roots sit under: the one the task role
+ *   ([CompactorIam]) was built for, so the task reads exactly the roots its role may compact.
  * @property logGroup the CloudWatch Logs group every container logs to.
  */
 data class CompactorTaskDefinition(
@@ -52,6 +56,7 @@ data class CompactorTaskDefinition(
     val region: String,
     val taskRoleArn: String,
     val executionRoleArn: String,
+    val storePrefix: String = StoreBackend.NO_PREFIX,
     val logGroup: String = Constants.Compactor.LOG_GROUP,
 ) {
     companion object {
@@ -66,6 +71,9 @@ data class CompactorTaskDefinition(
             listOf(CONFIG_CONTAINER, MIMIR_CONTAINER, LOKI_CONTAINER, TEMPO_SCHEDULER_CONTAINER, TEMPO_WORKER_CONTAINER)
 
         const val TEMPO_BACKEND_FILE = "tempo-backend.yaml"
+
+        /** The tenant and cluster name the compactor runs as; it reads every tenant and names no cluster. */
+        private const val COMPACTOR_IDENTITY = "compactor"
         private const val CONFIG_DIR = "/config"
         private const val CONFIG_VOLUME = "config"
 
@@ -158,17 +166,18 @@ data class CompactorTaskDefinition(
 
     /** What the containers read from their environment; the configuration files expand it. */
     private fun storageEnv(): List<KeyValuePair> {
-        val store = S3Backend(bucket = bucket, region = region)
+        val store = S3Backend(bucket = bucket, prefix = storePrefix, region = region)
+        val layout = ObservabilityStore(bucket, tenant = COMPACTOR_IDENTITY, storePrefix = storePrefix)
         return mapOf(
             "STORE_BUCKET" to store.bucket,
             "STORE_REGION" to store.region,
             "STORE_ENDPOINT" to store.endpoint,
-            "METRICS_STORE_PREFIX" to Constants.Observability.METRICS_ROOT,
-            "LOGS_STORE_PREFIX" to Constants.Observability.LOGS_ROOT,
-            "TRACES_STORE_PREFIX" to Constants.Observability.TRACES_ROOT,
+            "METRICS_STORE_PREFIX" to layout.metricsPrefix(),
+            "LOGS_STORE_PREFIX" to layout.logsPrefix(),
+            "TRACES_STORE_PREFIX" to layout.tracesPrefix(),
             // loki.yaml names its ingester after these; the compactor runs no ingester.
-            "TENANT" to "compactor",
-            "CLUSTER_NAME" to "compactor",
+            "TENANT" to COMPACTOR_IDENTITY,
+            "CLUSTER_NAME" to COMPACTOR_IDENTITY,
         ).map { (name, value) ->
             KeyValuePair
                 .builder()

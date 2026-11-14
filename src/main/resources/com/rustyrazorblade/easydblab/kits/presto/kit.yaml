@@ -13,16 +13,21 @@ runtime:
   type: helm
   release: presto
   namespace: default
+# The chart's coordinator Service is named for the release and serves HTTP on 8080.
 endpoints:
   - name: "Presto UI"
     node-type: app
     port: 8080
     type: http
+    service: presto
+    service-port: 8080
   - name: "JDBC"
     node-type: app
     port: 8080
     type: jdbc
     scheme: presto
+    service: presto
+    service-port: 8080
 args:
   - flag: --workers
     variable: WORKERS

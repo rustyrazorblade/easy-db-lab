@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import java.time.Duration
 import java.time.Instant
 
@@ -134,7 +135,7 @@ class TempoTailFlush(
     }
 
     private fun read(): Reading {
-        val response = http.get(Constants.K8s.TEMPO_PORT, "/metrics")
+        val response = http.get(ClusterServices.TEMPO, "/metrics")
         check(response.code == Constants.HttpStatus.OK) { "Could not read Tempo's metrics (status ${response.code})" }
         val failureCounters =
             response.body

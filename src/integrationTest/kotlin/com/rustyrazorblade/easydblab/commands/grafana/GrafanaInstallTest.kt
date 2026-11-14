@@ -9,10 +9,10 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
-import com.rustyrazorblade.easydblab.services.DefaultGrafanaClient
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.TenantDirectory
+import com.rustyrazorblade.easydblab.services.fixedGrafanaClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -75,10 +75,7 @@ class GrafanaInstallTest : BaseKoinTest() {
                     OkHttpClient.Builder().addInterceptor(interceptor).build()
                 }
                 single<GrafanaClient> {
-                    DefaultGrafanaClient(
-                        eventBus = get<EventBus>(),
-                        okHttpClient = get<OkHttpClient>(),
-                    )
+                    fixedGrafanaClient(eventBus = get<EventBus>(), client = get<OkHttpClient>())
                 }
                 single {
                     val objectStore = mock<ObjectStore>()

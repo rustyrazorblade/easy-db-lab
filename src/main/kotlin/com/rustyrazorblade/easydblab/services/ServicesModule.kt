@@ -30,17 +30,18 @@ import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
-import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
+import com.rustyrazorblade.easydblab.proxy.LoopbackPortSelector
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
+import com.rustyrazorblade.easydblab.services.access.CassandraPodForward
+import com.rustyrazorblade.easydblab.services.access.Fabric8PodForwarder
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
-import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
@@ -92,7 +93,22 @@ val servicesModule =
 
         // CQL session factory and service - singleton for session caching in REPL/Server mode
         singleOf(::DefaultCqlSessionFactory) bind CqlSessionFactory::class
-        singleOf(::DefaultCqlSessionService) bind CqlSessionService::class
+        single<CqlSessionService> {
+            val workspace = get<Context>().workingDirectory
+            val clients = get<K8sClientProvider>()
+            DefaultCqlSessionService(get(), get(), get(), get()) {
+                val target = CassandraPodTarget.inWorkspace(workspace)
+                SingleEndpointCql(
+                    forward =
+                        CassandraPodForward(
+                            pod = target.pod,
+                            forwarder = Fabric8PodForwarder(clients::createClient),
+                            localPorts = LoopbackPortSelector()::select,
+                        ),
+                    datacenter = target.datacenter,
+                )
+            }
+        }
 
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class
@@ -118,12 +134,9 @@ val servicesModule =
         factoryOf(::YaceManifestBuilder)
         factoryOf(::KubeStateMetricsManifestBuilder)
         factoryOf(::DefaultGrafanaDeployService) bind GrafanaDeployService::class
+        // GrafanaClient reaches Grafana through the service-access seam, with the route on its own client.
         factoryOf(::DefaultGrafanaClient) bind GrafanaClient::class
         factory { DashboardInstallContextFactory(get()) }
-        // GrafanaClient calls the Grafana API on the control node's PRIVATE IP, so its
-        // client must route through the SOCKS tunnel when active. Source it from the proxied factory
-        // rather than a bare OkHttpClient (which, without the global socks property, would go direct).
-        single<OkHttpClient> { get<HttpClientFactory>().createClient() }
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
@@ -161,7 +174,10 @@ val servicesModule =
                 .build()
         }
         factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
-        singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class
+        single<ObservabilityHttp> {
+            val clusterStateManager = get<ClusterStateManager>()
+            DefaultObservabilityHttp(get(), { clusterStateManager.load().tenant() }, get())
+        }
         singleOf(::DefaultLokiQueryService) bind LokiQueryService::class
         factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultSidecarService) bind SidecarService::class

@@ -11,6 +11,8 @@ import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.PodSecurityContextBuilder
+import io.fabric8.kubernetes.api.model.Service
+import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.Volume
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMount
@@ -42,7 +44,7 @@ class GrafanaManifestBuilder(
         /** The Grafana Deployment's name, which the deploy waits on to finish rolling out. */
         const val DEPLOYMENT_NAME = "grafana"
         private const val NAMESPACE = "default"
-        private const val APP_LABEL = "grafana"
+        private const val APP_LABEL = Constants.K8s.GRAFANA_APP_LABEL
 
         /** The Grafana image the cluster deploys; tests run the same one. */
         const val GRAFANA_IMAGE = "grafana/grafana:13.2.2"
@@ -158,14 +160,42 @@ class GrafanaManifestBuilder(
     }
 
     /**
+     * Builds Grafana's ClusterIP Service on its HTTP port, so a port-forward reaches Grafana through a
+     * Service, as it does Mimir, Loki, Tempo and Pyroscope, rather than through a pod.
+     */
+    fun buildService(): Service =
+        ServiceBuilder()
+            .withNewMetadata()
+            .withName(APP_LABEL)
+            .withNamespace(NAMESPACE)
+            .addToLabels("app.kubernetes.io/name", APP_LABEL)
+            .endMetadata()
+            .withNewSpec()
+            .withType("ClusterIP")
+            .addNewPort()
+            .withName("http")
+            .withPort(Constants.K8s.GRAFANA_PORT)
+            .withNewTargetPort(Constants.K8s.GRAFANA_PORT)
+            .withProtocol("TCP")
+            .endPort()
+            .addToSelector("app.kubernetes.io/name", APP_LABEL)
+            .endSpec()
+            .build()
+
+    /**
      * Builds all Grafana K8s resources: the provisioning ConfigMap, the documents web server's
-     * ConfigMap and the Deployment.
+     * ConfigMap, the Deployment and the Service.
      *
      * @param documents The bucket and region the documents sidecars read from
      * @return List of all Grafana K8s resources in apply order
      */
     fun buildAllResources(documents: DocumentsBucket): List<HasMetadata> =
-        listOf(buildDashboardProvisioningConfigMap(), documentsSidecars.configMap(documents), buildDeployment(documents))
+        listOf(
+            buildDashboardProvisioningConfigMap(),
+            documentsSidecars.configMap(documents),
+            buildDeployment(documents),
+            buildService(),
+        )
 
     private fun buildGrafanaContainer(clusterName: String): Container =
         ContainerBuilder()

@@ -8,6 +8,8 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
+import com.rustyrazorblade.easydblab.services.access.RouteServiceAccess
+import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
@@ -28,7 +30,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-class RoutedObservabilityHttpIntegrationTest : BaseKoinTest() {
+class ObservabilityHttpRouteIntegrationTest : BaseKoinTest() {
     private val server = MockWebServer()
     private lateinit var state: ClusterState
 
@@ -73,11 +75,7 @@ class RoutedObservabilityHttpIntegrationTest : BaseKoinTest() {
         )
 
         val response =
-            RoutedObservabilityHttp(
-                state,
-                ObservabilityRoute.Direct,
-                factory,
-            ).get(server.port, "/prometheus/api/v1/query?query=up")
+            routed(ObservabilityRoute.Direct).get(target(server.port), "/prometheus/api/v1/query?query=up")
 
         assertThat(response).isEqualTo(ObservabilityResponse(200, "ok"))
         val recorded = server.takeRequest(5, TimeUnit.SECONDS)
@@ -97,7 +95,7 @@ class RoutedObservabilityHttpIntegrationTest : BaseKoinTest() {
             }
 
             assertThatThrownBy {
-                RoutedObservabilityHttp(state, ObservabilityRoute.Socks(tunnel.localPort), factory).get(server.port, "/x")
+                routed(ObservabilityRoute.Socks(tunnel.localPort)).get(target(server.port), "/x")
             }.isInstanceOf(IOException::class.java)
 
             // 5 is the SOCKS version byte of the client's greeting.
@@ -107,6 +105,12 @@ class RoutedObservabilityHttpIntegrationTest : BaseKoinTest() {
             assertThat(System.getProperty("socksProxyPort")).isNull()
         }
     }
+
+    /** The merged [ObservabilityHttp] over a looked-up [route], as a `metrics stream` cycle builds it. */
+    private fun routed(route: ObservabilityRoute) = DefaultObservabilityHttp(RouteServiceAccess(state, route), state::tenant, factory)
+
+    /** A Service on the control node whose port is the mock server's. */
+    private fun target(port: Int) = ServiceTarget(Constants.K8s.NAMESPACE, "mock", port, ServerType.Control, port)
 
     private object DeadSocksSelector : ProxySelector() {
         override fun select(uri: URI): List<Proxy> = listOf(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 1)))

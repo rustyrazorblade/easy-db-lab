@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -374,6 +375,43 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
+    fun `on an AWS cluster the observability section prints the control node addresses, unchanged by the seam`() {
+        setupBasicClusterState()
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+
+        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+
+        assertThat(capturedOutput()).contains(
+            """
+            Observability:
+              Grafana:         http://10.0.3.100:3000
+              Mimir:           http://10.0.3.100:9009/prometheus
+              Loki:            http://10.0.3.100:3100
+              Tempo:           http://10.0.3.100:3200
+              Pyroscope:       http://10.0.3.100:4040
+            """.trimIndent(),
+        )
+        assertThat(capturedOutput()).doesNotContain("run: bin/kubectl")
+    }
+
+    @Test
+    fun `on a port-forward cluster a kit endpoint names its Service and the command that forwards it`() {
+        setupBasicClusterState(runningKits = setOf("clickhouse"), exposure = Exposure.PortForward)
+        installPackagedKit("clickhouse")
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+
+        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+
+        val output = capturedOutput()
+        assertThat(output).contains("http://clickhouse-nodeport.default.svc.cluster.local:8123")
+        assertThat(output).contains("run: bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123\n")
+        assertThat(output).doesNotContain("svc.cluster.local:30123")
+        assertThat(output).contains("http://grafana.default.svc.cluster.local:3000")
+        assertThat(output).contains("run: bin/kubectl port-forward -n default svc/grafana 3000")
+        assertThat(output).doesNotContain("10.0.1.100:30123")
+    }
+
+    @Test
     fun `the S3 Manager section appears only where the environment has S3`() {
         setupBasicClusterStateWithS3Bucket("test-bucket")
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
@@ -438,7 +476,12 @@ class StatusTest : BaseKoinTest() {
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/${Constants.Kit.CONFIG_FILE}")) {
                 "packaged kit $name not found"
             }.readText()
-        File(createWorkspaceDir(name), Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        val kitDir = createWorkspaceDir(name)
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        // The rendered NodePort Service, as install writes it; clickhouse's has no template variables.
+        javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/nodeport-service.yaml.template")?.let {
+            File(kitDir, "nodeport-service.yaml").writeText(it.readText())
+        }
     }
 
     @Test
@@ -595,7 +638,10 @@ class StatusTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }
 
-    private fun setupBasicClusterState(runningKits: Set<String> = emptySet()) {
+    private fun setupBasicClusterState(
+        runningKits: Set<String> = emptySet(),
+        exposure: Exposure = Exposure.Socks,
+    ) {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
@@ -606,7 +652,10 @@ class StatusTest : BaseKoinTest() {
                 infrastructureStatus = InfrastructureStatus.UP,
                 createdAt = Instant.parse("2024-01-15T10:00:00Z"),
                 default = NodeState(version = "5.0"),
-            ).also { it.runningKits = runningKits }
+            ).also {
+                it.runningKits = runningKits
+                it.exposure = exposure
+            }
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }

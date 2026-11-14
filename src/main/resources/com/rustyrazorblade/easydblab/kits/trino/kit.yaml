@@ -15,16 +15,21 @@ runtime:
   type: helm
   release: trino
   namespace: default
+# The chart's coordinator Service is named for the release and serves HTTP on 8080.
 endpoints:
   - name: "Trino UI"
     node-type: app
     port: 8080
     type: http
+    service: trino
+    service-port: 8080
   - name: "JDBC"
     node-type: app
     port: 8080
     type: jdbc
     scheme: trino
+    service: trino
+    service-port: 8080
 args:
   - flag: --version
     variable: VERSION

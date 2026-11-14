@@ -102,7 +102,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-        whenever(mockGrafanaClient.installDashboard(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockGrafanaClient.installDashboard(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockWorkloadStepExecutor.execute(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockMetricsRegistryService.register(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockMetricsRegistryService.deregister(any())).thenReturn(Result.success(Unit))

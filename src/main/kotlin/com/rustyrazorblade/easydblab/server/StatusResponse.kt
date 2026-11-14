@@ -158,6 +158,8 @@ data class ObservabilityAccess(
     val loki: String,
     val tempo: String,
     val pyroscope: String,
+    // On a port-forward cluster, the `bin/kubectl port-forward` commands that reach each backend.
+    val portForwardCommands: List<String>? = null,
 )
 
 /**
@@ -178,6 +180,8 @@ data class KitEndpointAccess(
     val name: String,
     val type: String,
     val address: String,
+    // On a port-forward cluster, the `bin/kubectl port-forward` command that makes [address] reachable.
+    val portForwardCommand: String? = null,
 )
 
 @Serializable

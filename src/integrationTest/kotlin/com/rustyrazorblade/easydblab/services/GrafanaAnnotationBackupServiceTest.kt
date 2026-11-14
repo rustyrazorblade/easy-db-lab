@@ -71,10 +71,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
                 chain.proceed(original.newBuilder().url(redirected).build())
             }
         val grafanaService =
-            DefaultGrafanaClient(
-                eventBus = getKoin().get<EventBus>(),
-                okHttpClient = OkHttpClient.Builder().addInterceptor(interceptor).build(),
-            )
+            fixedGrafanaClient(eventBus = getKoin().get<EventBus>(), client = OkHttpClient.Builder().addInterceptor(interceptor).build())
         service = DefaultGrafanaAnnotationBackupService(grafanaService, objectStore, getKoin().get<EventBus>())
     }
 
@@ -88,7 +85,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
         val annotationsJson = """[{"id":1,"text":"a"},{"id":2,"text":"b"}]"""
         mockWebServer.enqueue(MockResponse(code = 200, body = annotationsJson))
 
-        val result = service.backup(controlHost, clusterState("acct-bucket")).getOrThrow()
+        val result = service.backup(clusterState("acct-bucket")).getOrThrow()
 
         val contentCaptor = argumentCaptor<String>()
         val pathCaptor = argumentCaptor<ClusterS3Path>()
@@ -114,7 +111,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
         val annotationsJson = (1..150).joinToString(",", "[", "]") { """{"id":$it,"text":"a$it"}""" }
         mockWebServer.enqueue(MockResponse(code = 200, body = annotationsJson))
 
-        val result = service.backup(controlHost, clusterState("acct-bucket")).getOrThrow()
+        val result = service.backup(clusterState("acct-bucket")).getOrThrow()
 
         // All 150 are captured, not truncated to the default 100.
         assertThat(result.annotationCount).isEqualTo(150)
@@ -135,7 +132,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
                 .joinToString(",", "[", "]") { """{"id":$it}""" }
         mockWebServer.enqueue(MockResponse(code = 200, body = fullPage))
 
-        val result = service.backup(controlHost, clusterState("acct-bucket"))
+        val result = service.backup(clusterState("acct-bucket"))
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull())
@@ -147,7 +144,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
 
     @Test
     fun `backup fails fast with the run-up-first message when no bucket is configured`() {
-        val result = service.backup(controlHost, clusterState(null))
+        val result = service.backup(clusterState(null))
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull())

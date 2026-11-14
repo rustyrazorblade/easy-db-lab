@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -85,12 +86,12 @@ class TempoTailFlushTest {
         val http =
             object : ObservabilityHttp by recorded {
                 override fun get(
-                    port: Int,
+                    target: ServiceTarget,
                     pathAndQuery: String,
                     timeout: Duration,
                 ): ObservabilityResponse {
                     if (failures-- > 0) throw IOException("unexpected end of stream")
-                    return recorded.get(port, pathAndQuery, timeout)
+                    return recorded.get(target, pathAndQuery, timeout)
                 }
             }
         walListing("blocks/acme/01HDONE/meta.json\nblocks/acme/01HDONE/flushed")

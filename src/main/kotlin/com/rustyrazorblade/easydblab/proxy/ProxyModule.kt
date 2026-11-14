@@ -21,7 +21,7 @@ private fun isSshOpenToAll(clusterStateManager: ClusterStateManager): Boolean =
  * - [ToolWrapperInstaller] as a singleton — writes the shell-side tool wrappers
  * - [WorkspaceShellTools] as a singleton — the wrappers plus the Tailscale flag, at `up` and restore
  * - [ProxyPreflight] as a singleton — starts the tunnel for `@RequiresProxy` commands
- * - [HttpClientFactory] for creating OkHttp clients (proxy routing via JVM system properties)
+ * - [HttpClientFactory] for the base OkHttp client (no proxy route; each endpoint applies its own with `forEndpoint`)
  * - [ProxyAvailability] as a singleton — lets a `@RequiresProxy(tolerateFailure = true)`
  *   command (currently only `Status`) observe a proxy establishment failure the executor
  *   chose not to propagate

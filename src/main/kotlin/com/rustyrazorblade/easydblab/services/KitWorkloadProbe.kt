@@ -117,7 +117,8 @@ class KitWorkloadProbe(
     /**
      * The pods [selector] matches in [namespace], terminating ones included. A pod that has
      * finished (Succeeded or Failed, as a completed sysbench run leaves behind) is not running and
-     * never counts.
+     * does not count, unless it is terminating: the kubelet moves a deleted pod to a finished phase
+     * once its containers stop, while a finalizer or the grace period still holds the object.
      */
     private fun findPods(
         selector: String,
@@ -127,7 +128,7 @@ class KitWorkloadProbe(
             kubeService
                 .listPodsByLabel(selector, namespace)
                 .getOrThrow()
-                .filter { it.status !in FINISHED_POD_PHASES }
+                .filter { it.terminating || it.status !in FINISHED_POD_PHASES }
         return if (pods.isEmpty()) {
             WorkloadPresence.Absent
         } else {

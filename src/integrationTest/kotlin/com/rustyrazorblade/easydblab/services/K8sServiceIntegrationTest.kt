@@ -329,6 +329,7 @@ class K8sServiceIntegrationTest {
         // K8s objects, so nothing per dashboard is expected here.
         applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2")))
         assertDeploymentExists("grafana")
+        assertServiceExists("grafana")
     }
 
     // -----------------------------------------------------------------------

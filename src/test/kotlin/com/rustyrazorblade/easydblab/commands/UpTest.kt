@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
@@ -33,6 +34,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -722,6 +725,18 @@ class UpTest : UpTestFixture() {
 
         assertThat(sshCheckedAliases).isNotEmpty()
         assertThat(echoedCommands).doesNotContain("echo 1")
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Exposure::class, names = ["Direct", "PortForward"])
+    fun `up starts and reports no SOCKS tunnel on a cluster not reached by SOCKS`(exposure: Exposure) {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false, exposure = exposure))
+        val events = captureEvents()
+
+        newUp().execute()
+
+        verify(getKoin().get<SocksProxyService>(), never()).ensureRunning(any())
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).isEmpty()
     }
 
     @Test

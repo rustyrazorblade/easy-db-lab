@@ -9,7 +9,10 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.access.DirectServiceAccess
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
+import com.rustyrazorblade.easydblab.services.sql.KitService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -54,6 +57,7 @@ class KitSqlCommandTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single<ServiceAccess> { DirectServiceAccess { mockClusterStateManager.load() } }
             },
         )
 
@@ -107,6 +111,7 @@ class KitSqlCommandTest : BaseKoinTest() {
         driverClass: String = "",
     ) = KitSqlCommand(
         kitName = "presto",
+        service = KitService("default", "presto"),
         endpoint = jdbcEndpoint,
         user = "easy-db-lab",
         driverClass = driverClass,

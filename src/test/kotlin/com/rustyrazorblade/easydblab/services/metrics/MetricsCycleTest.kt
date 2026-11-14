@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.metrics
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
@@ -9,7 +10,10 @@ import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import com.rustyrazorblade.easydblab.proxy.RouteLookup
 import com.rustyrazorblade.easydblab.services.DefaultMimirQueryService
-import com.rustyrazorblade.easydblab.services.RoutedObservabilityHttp
+import com.rustyrazorblade.easydblab.services.DefaultObservabilityHttp
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
+import com.rustyrazorblade.easydblab.services.access.ServiceEndpoint
 import okhttp3.OkHttpClient
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -159,14 +163,14 @@ class MetricsCycleTest : BaseKoinTest() {
 
     @Test
     fun `one cycle instance follows the route recorded for each cycle`() {
-        val routes = mutableListOf<ObservabilityRoute>()
+        val routes = mutableListOf<ServiceEndpoint>()
         val queries =
             CycleQueries(
                 loadState = { state },
                 routes = { route },
                 httpClientFactory = clientFactory,
                 mimirFor = { routed ->
-                    routes += (routed as RoutedObservabilityHttp).route
+                    routes += (routed as DefaultObservabilityHttp).access.open(ClusterServices.MIMIR)
                     DefaultMimirQueryService(http)
                 },
             )
@@ -176,7 +180,72 @@ class MetricsCycleTest : BaseKoinTest() {
         route = RouteLookup.Usable(ObservabilityRoute.Socks(PORT + 1))
         cycle.run()
 
-        assertThat(routes).containsExactly(ObservabilityRoute.Socks(PORT), ObservabilityRoute.Socks(PORT + 1))
+        assertThat(routes.map { (it as ServiceEndpoint.ViaSocks).socksPort }).containsExactly(PORT, PORT + 1)
+    }
+
+    /** The Mimir endpoint and the stress-list route one cycle of [queries] used. */
+    private fun reachOfOneCycle(
+        exposure: Exposure,
+        configure: ClusterState.() -> Unit = {},
+        forwarded: ServiceAccess = ServiceAccess { error("no port-forward on this cluster") },
+    ): Pair<ServiceEndpoint, ObservabilityRoute> {
+        state = runningCluster().apply { this.exposure = exposure }.apply(configure)
+        var endpoint: ServiceEndpoint? = null
+        var listedOver: ObservabilityRoute? = null
+        val queries =
+            CycleQueries(
+                loadState = { state },
+                routes = { error("the recorded tunnel is looked up only on a Socks cluster") },
+                httpClientFactory = clientFactory,
+                mimirFor = { routed ->
+                    endpoint = (routed as DefaultObservabilityHttp).access.open(ClusterServices.MIMIR)
+                    DefaultMimirQueryService(http)
+                },
+                stressJobs =
+                    StressJobWatcher { _, route ->
+                        listedOver = route
+                        emptyList()
+                    },
+                forwardedAccess = forwarded,
+            )
+
+        cycle(queries, memory).run()
+
+        return checkNotNull(endpoint) to checkNotNull(listedOver)
+    }
+
+    @Test
+    fun `a direct cluster is read at the node address with no tunnel lookup`() {
+        val (endpoint, listedOver) = reachOfOneCycle(Exposure.Direct)
+
+        assertThat(endpoint).isEqualTo(ServiceEndpoint.Plain("10.0.1.5", ClusterServices.MIMIR.nodePort))
+        assertThat(listedOver).isEqualTo(ObservabilityRoute.Direct)
+    }
+
+    @Test
+    fun `a port-forwarded cluster with no control host is read through the port-forward seam`() {
+        val forwarded = ServiceAccess { ServiceEndpoint.Plain("127.0.0.1", 25000) }
+
+        val (endpoint, listedOver) =
+            reachOfOneCycle(Exposure.PortForward, configure = { updateHosts(emptyMap()) }, forwarded = forwarded)
+
+        assertThat(endpoint).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 25000))
+        assertThat(listedOver).isEqualTo(ObservabilityRoute.Direct)
+    }
+
+    @Test
+    fun `a direct cluster that is not running fails every metric as not running`() {
+        state = runningCluster().apply { exposure = Exposure.Direct }.apply { infrastructureStatus = InfrastructureStatus.DOWN }
+
+        cycle(memory).run()
+
+        assertThat(http.queries).isEmpty()
+        assertThat(
+            recording.events
+                .filterIsInstance<Event.Metrics.MetricFailing>()
+                .single()
+                .reason,
+        ).contains("not running")
     }
 
     @Test

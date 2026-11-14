@@ -49,7 +49,7 @@ Removes all Kafka resources including PVCs and PVs, then uninstalls the Strimzi 
 **Internal** (in-cluster pods, e.g. a Cassandra sidecar or another kit):
 
 ```
-kafka.default.svc.cluster.local:9092
+kafka-kafka-bootstrap.default.svc.cluster.local:9092
 ```
 
 **External** (from outside the cluster via Tailscale):
@@ -121,7 +121,7 @@ The Kafka Overview Grafana dashboard is installed automatically and shows broker
 When using Kafka as a CDC target for Cassandra, configure the sidecar connector with the internal bootstrap address to avoid NodePort overhead:
 
 ```
-kafka.default.svc.cluster.local:9092
+kafka-kafka-bootstrap.default.svc.cluster.local:9092
 ```
 
 ## Replication and Multi-Broker Setup

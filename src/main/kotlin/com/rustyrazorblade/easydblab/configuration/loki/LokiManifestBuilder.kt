@@ -51,7 +51,7 @@ class LokiManifestBuilder(
         /** Loki's data directory on the control node: WAL, index head, index cache, compactor. */
         const val DATA_HOST_PATH = "/mnt/db1/loki"
 
-        private val STATE = StateVolume(APP_LABEL, "data", DATA_HOST_PATH)
+        private val STATE = StateVolume(APP_LABEL, "data", DATA_HOST_PATH, owner = LOKI_UID)
 
         /** The user the Loki image runs as; [DATA_HOST_PATH] must be owned by it. */
         const val LOKI_UID = 10001L

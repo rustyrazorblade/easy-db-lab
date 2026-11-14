@@ -56,7 +56,7 @@ class GrafanaManifestBuilder(
         private const val DATA_VOLUME = "data"
         const val GRAFANA_DATA_PATH = "/mnt/db1/grafana"
 
-        private val STATE = StateVolume(APP_LABEL, DATA_VOLUME, GRAFANA_DATA_PATH)
+        private val STATE = StateVolume(APP_LABEL, DATA_VOLUME, GRAFANA_DATA_PATH, owner = GRAFANA_UID.toLong())
 
         /**
          * Where the dashboard tree lives on the control node. It is [GRAFANA_DASHBOARD_ROOT] seen

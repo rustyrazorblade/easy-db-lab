@@ -36,7 +36,7 @@ class TempoManifestBuilder(
         /** Tempo's data directory on the control node: both write-ahead logs live under it. */
         const val DATA_HOST_PATH = "/mnt/db1/tempo"
 
-        private val STATE = StateVolume(APP_LABEL, "wal", DATA_HOST_PATH)
+        private val STATE = StateVolume(APP_LABEL, "wal", DATA_HOST_PATH, owner = TEMPO_UID)
 
         /** The user the Tempo image runs as; [DATA_HOST_PATH] must be owned by it. */
         const val TEMPO_UID = 10001L

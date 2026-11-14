@@ -43,7 +43,7 @@ class PyroscopeManifestBuilder(
         /** The server's data directory on the control node: the v2 metastore index and Raft state. */
         const val DATA_HOST_PATH = "/mnt/db1/pyroscope"
 
-        private val STATE = StateVolume(SERVER_APP_LABEL, "data", DATA_HOST_PATH)
+        private val STATE = StateVolume(SERVER_APP_LABEL, "data", DATA_HOST_PATH, owner = PYROSCOPE_UID)
 
         /** Where [DATA_HOST_PATH] is mounted in the server container; config.yaml names paths under it. */
         private const val DATA_MOUNT_PATH = "/data"

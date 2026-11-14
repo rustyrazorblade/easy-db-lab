@@ -100,6 +100,10 @@ data class ClusterStoragePath(
          * This should be used when reconstructing paths from S3 list operations
          * where the full key is returned.
          *
+         * The path it returns has no store prefix: every segment of [key], a store prefix included,
+         * becomes a key segment, so [getKey] gives back [key] unchanged. Never resolve a listed key
+         * onto a path built with a store prefix ([root] or [from]); the prefix would appear twice.
+         *
          * @param bucket The S3 bucket name
          * @param key The S3 object key (e.g., "spark/myapp.jar")
          * @return A new ClusterStoragePath representing the key

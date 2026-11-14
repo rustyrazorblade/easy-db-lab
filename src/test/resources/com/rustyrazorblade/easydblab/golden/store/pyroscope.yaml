@@ -7,6 +7,7 @@ architecture_storage: v2
 # The account bucket, under the pyroscope root. Pyroscope v2 lays out its own directories
 # (segments, blocks) under this prefix. Nothing is written to the cluster's data bucket.
 storage:
+  # Filled by TemplateService at build time: Pyroscope runs without -config.expand-env.
   backend: s3
   prefix: pyroscope
   s3:

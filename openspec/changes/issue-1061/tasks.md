@@ -27,20 +27,22 @@
 
 ## 4. Neutral cluster-config keys
 
-- [ ] 4.1 `ClusterConfigData.of` publishes the `store_*` keys of design D5, from `StoreBackend` and `ObservabilityStore`. Update its test.
-- [ ] 4.2 Rename the `clusterConfigEnv` keys and env names in the Loki, Mimir and Tempo builders, the `${...}` names in the fragments and configs, the compactor task env, and Pyroscope's build-time names. The S3 fragments take the endpoint from `${STORE_ENDPOINT}`.
-- [ ] 4.3 The golden tests of task 0 pass unchanged. A search of `src/main` and `docs/` finds no `aws_region`, `s3_bucket` or `*_s3_prefix` `cluster-config` key.
+- [x] 4.1 `ClusterConfigData.of` publishes the `store_*` keys of design D5, from `StoreBackend` and `ObservabilityStore`. Update its test.
+- [x] 4.2 Rename the `clusterConfigEnv` keys and env names in the Loki, Mimir and Tempo builders, the `${...}` names in the fragments and configs, the compactor task env, and Pyroscope's build-time names. The S3 fragments take the endpoint from `${STORE_ENDPOINT}`.
+- [x] 4.3 The golden tests of task 0 pass unchanged. A search of `src/main` and `docs/` finds no `aws_region`, `s3_bucket` or `*_s3_prefix` `cluster-config` key.
+  - The compactor task-definition golden was recaptured: only its env names changed (`S3_BUCKET`, `AWS_REGION` and `*_S3_PREFIX` became `STORE_BUCKET`, `STORE_REGION`, `STORE_ENDPOINT` and `*_STORE_PREFIX`); every other line is unchanged. The other goldens pass unchanged. The search is `StoreKeyNamesTest`.
 
 ## 5. Store prefix and the delete guards
 
-- [ ] 5.1 `ObservabilityStore` and `ClusterStoragePath.from`/`root` put every root under the store prefix from `StoreBackend`.
-- [ ] 5.2 Test first: policy tests with the prefix `team-a` (every old deny resource kept, the prefixed roots added, the compactor allow gains only the prefixed compacted roots, nothing under `grafana/` or `pyroscope/` for the compactor). Then add the prefix-joining helper to `AWSPolicy` and use it in `denyDataDeletes`, `CompactorTaskAccess` and `S3BucketPolicy`; every caller passes the cluster's store prefix.
-- [ ] 5.3 The empty-prefix golden policy tests of task 0 pass unchanged.
+- [x] 5.1 `ObservabilityStore` and `ClusterStoragePath.from`/`root` put every root under the store prefix from `StoreBackend`.
+- [x] 5.2 Test first: policy tests with the prefix `team-a` (every old deny resource kept, the prefixed roots added, the compactor allow gains only the prefixed compacted roots, nothing under `grafana/` or `pyroscope/` for the compactor). Then add the prefix-joining helper to `AWSPolicy` and use it in `denyDataDeletes`, `CompactorTaskAccess` and `S3BucketPolicy`; every caller passes the cluster's store prefix.
+- [x] 5.3 The empty-prefix golden policy tests of task 0 pass unchanged.
 
 ## 6. Docs, specs and checks
 
-- [ ] 6.1 Update `docs/` pages that name `aws_region`, `s3_bucket`, the S3 blocks or `ClusterS3Path`.
-- [ ] 6.2 Update `configuration/CLAUDE.md` (the `cluster-config` key list, the store fragments, and that an intended backend config edit must update its golden file in the same change), `services/CLAUDE.md` and `services/aws/CLAUDE.md`, and the root `CLAUDE.md` Observability section where it names the delete deny.
-- [ ] 6.3 Fix the `ObjectStore` KDoc, which still says the rename is future work.
+- [x] 6.1 Update `docs/` pages that name `aws_region`, `s3_bucket`, the S3 blocks or `ClusterS3Path`.
+- [x] 6.2 Update `configuration/CLAUDE.md` (the `cluster-config` key list, the store fragments, and that an intended backend config edit must update its golden file in the same change), `services/CLAUDE.md` and `services/aws/CLAUDE.md`, and the root `CLAUDE.md` Observability section where it names the delete deny.
+  - `services/CLAUDE.md` covers SystemD and cluster tooling only and names no store key; the root `CLAUDE.md` in this branch names no delete deny. Neither needed a change. `docs/plans/2026-11-11-kubernetes-forward-architecture.md` keeps `ClusterS3Path`: it records the plan as written.
+- [x] 6.3 Fix the `ObjectStore` KDoc, which still says the rename is future work.
 - [ ] 6.4 `./gradlew check` on JDK 21 passes with no new `@Suppress`, detekt threshold change or baseline entry; the provider-boundary ArchUnit rules pass with no allowlist.
 - [ ] 6.5 Owner-driven, agent-executed (`requires-aws`): on a real AWS cluster, `up`, query metrics, logs, traces and profiles in Grafana, then `down`.

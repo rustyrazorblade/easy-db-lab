@@ -38,7 +38,7 @@ The object store a cluster uses SHALL be described by a `StoreBackend`: a sealed
 
 ### Requirement: Each backend takes its object-store block from the store backend
 
-The configuration of Mimir, Loki, Tempo, the Pyroscope server and the account compactor's Tempo backend SHALL take its object-store block from a fragment resource selected by the `StoreBackend` case, placed where the block stands in the configuration.  The S3 fragments SHALL hold the only `backend: s3` lines and the only S3 endpoint in the backend configurations.  On AWS the fully expanded configuration of every backend, and the account compactor's registered task definition, SHALL be byte-identical to the configuration captured before this change.
+The configuration of Mimir, Loki, Tempo, the Pyroscope server and the account compactor's Tempo backend SHALL take its object-store block from a fragment resource selected by the `StoreBackend` case, placed where the block stands in the configuration.  The S3 fragments SHALL hold the only `backend: s3` lines and the only S3 endpoint in the backend configurations.  On AWS the fully expanded configuration of every backend SHALL be byte-identical to the configuration captured before this change.  The account compactor's registered task definition SHALL be byte-identical to the one captured before this change, apart from the environment names design D5 renames (`S3_BUCKET`, `AWS_REGION` and `*_S3_PREFIX` become `STORE_BUCKET`, `STORE_REGION` and `*_STORE_PREFIX`) and the one variable it adds, `STORE_ENDPOINT`.
 
 #### Scenario: The AWS configuration is unchanged
 - **WHEN** Mimir, Loki, Tempo and Pyroscope are rendered for an AWS cluster and expanded against its cluster configuration
@@ -46,7 +46,8 @@ The configuration of Mimir, Loki, Tempo, the Pyroscope server and the account co
 
 #### Scenario: The compactor task definition is unchanged
 - **WHEN** the account compactor's task definition is built for an AWS account
-- **THEN** the request, with every configuration it carries decoded and expanded, is byte-identical to its golden file captured before the change
+- **THEN** the request, with every configuration it carries decoded and expanded and each D5-renamed environment name mapped back to its former name, is byte-identical to its golden file captured before the change
+- **AND** every container carries `STORE_ENDPOINT` with the region's S3 endpoint
 
 #### Scenario: A different block renders with no S3 in it
 - **WHEN** every backend is rendered with a stub store backend whose fragment holds a stub block
@@ -71,7 +72,8 @@ The system SHALL provide an in-memory `ObjectStore` that keeps every object in p
 
 #### Scenario: A non-recursive listing returns only direct children
 - **WHEN** keys `a/1` and `a/b/2` are stored and `a/` is listed non-recursively
-- **THEN** only `a/1` is returned
+- **THEN** `a/1` and one directory entry `a/b` are returned, in that order, as `S3ObjectStore` returns a common prefix
+- **AND** `a/b/2` is not returned
 
 #### Scenario: Reading a missing object fails
 - **WHEN** a path that holds no object is read

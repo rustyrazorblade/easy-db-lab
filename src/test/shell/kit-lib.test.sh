@@ -341,7 +341,7 @@ test_a_push_with_no_core_pod_on_the_control_node_warns_without_curl() {
 # banner file behind, and must still reach the caller: its own trap runs, and its traps are back.
 test_a_term_during_a_push_stops_the_proxy_and_reaches_the_callers_trap() {
   start_test "TERM during a push"
-  touch "${STUB_STATE}/proxy-hold" "${STUB_STATE}/curl-term"
+  touch "${STUB_STATE}/proxy-hold"; echo TERM > "${STUB_STATE}/curl-signal"
   mkdir -p "${WORK}/tmp"
   rm -rf "${WORK}/tmp/"*
   run_lib "export TMPDIR='${WORK}/tmp'; trap 'echo caller-term' TERM; edl_push_gauges sysbench sysbench_tps 1; trap -p TERM; echo after"
@@ -362,7 +362,7 @@ after" ] || fail "the caller's trap did not run, or was not restored: ${out}"
 # A TERM with no trap of the caller's ends the script, as it would have without the push.
 test_a_term_during_a_push_ends_a_script_with_no_trap() {
   start_test "TERM with no caller trap"
-  touch "${STUB_STATE}/proxy-hold" "${STUB_STATE}/curl-term"
+  touch "${STUB_STATE}/proxy-hold"; echo TERM > "${STUB_STATE}/curl-signal"
   # The test shell reports the subshell TERM ended ("Terminated: 15"); that line is expected here.
   { run_lib 'trap "echo exit-trap" EXIT; edl_push_gauges sysbench sysbench_tps 1; echo after'; } 2> /dev/null
   local pid
@@ -373,6 +373,73 @@ test_a_term_during_a_push_ends_a_script_with_no_trap() {
   fi
   [ "${rc}" -eq 143 ] || fail "exited ${rc}, not as killed by TERM"
   [ "${out}" = exit-trap ] || fail "the script went on, or its EXIT trap did not run: ${out}"
+}
+
+# A Ctrl-C reaches the push as INT: the proxy stops, and the caller's INT trap runs.
+test_an_int_during_a_push_stops_the_proxy_and_reaches_the_callers_trap() {
+  start_test "INT during a push"
+  touch "${STUB_STATE}/proxy-hold"; echo INT > "${STUB_STATE}/curl-signal"
+  mkdir -p "${WORK}/tmp"
+  rm -rf "${WORK}/tmp/"*
+  run_lib "export TMPDIR='${WORK}/tmp'; trap 'echo caller-int' INT; edl_push_gauges sysbench sysbench_tps 1; trap -p INT; echo after"
+  local pid
+  pid="$(cat "${STUB_STATE}/proxy.pid" 2>/dev/null)"
+  [ -n "${pid}" ] || { fail "the proxy never started: $(calls)"; return; }
+  if kill -0 "${pid}" 2> /dev/null; then
+    kill "${pid}" 2> /dev/null
+    fail "kubectl proxy ${pid} is still running"
+  fi
+  [ -z "$(ls -A "${WORK}/tmp")" ] || fail "left files behind: $(ls -A "${WORK}/tmp")"
+  [ "${rc}" -eq 0 ] || fail "exited ${rc}: ${err}"
+  [ "${out}" = "caller-int
+trap -- 'echo caller-int' SIGINT
+after" ] || fail "the caller's trap did not run, or was not restored: ${out}"
+}
+
+# An INT with no trap of the caller's ends the script by INT, and the proxy is not left running.
+test_an_int_during_a_push_ends_a_script_with_no_trap() {
+  start_test "INT with no caller trap"
+  touch "${STUB_STATE}/proxy-hold"; echo INT > "${STUB_STATE}/curl-signal"
+  { run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'; } 2> /dev/null
+  local pid
+  pid="$(cat "${STUB_STATE}/proxy.pid" 2>/dev/null)"
+  [ -n "${pid}" ] || { fail "the proxy never started: $(calls)"; return; }
+  if kill -0 "${pid}" 2> /dev/null; then
+    kill "${pid}" 2> /dev/null
+    fail "kubectl proxy ${pid} is still running"
+  fi
+  [ "${rc}" -eq 130 ] || fail "exited ${rc}, not as killed by INT"
+  [ -z "${out}" ] || fail "the script went on: ${out}"
+}
+
+# The push keeps its state in its own globals only while it runs, so nothing of it is left in the
+# caller's shell, and a caller variable named like a push local is not touched.
+test_a_push_leaves_no_state_in_the_callers_shell() {
+  start_test "no push state left behind"
+  run_lib 'proxy_pid=mine; banner=mine; saved_traps=mine; edl_push_gauges sysbench sysbench_tps 1
+    echo "${proxy_pid} ${banner} ${saved_traps}"; set | grep "^EDL_PUSH_" || true'
+  [ "${rc}" -eq 0 ] || fail "exited ${rc}: ${err}"
+  [ "${out}" = "mine mine mine" ] || fail "push state left in the caller's shell: ${out}"
+}
+
+# During a rolling update a terminating core pod is still Running; the push must not pick it.
+test_a_push_skips_a_terminating_core_pod() {
+  start_test "terminating core pod skipped"
+  printf '%s\n' "otel-collector-old control0 2026-11-14T00:00:00Z" "otel-collector-new control0" > "${STUB_STATE}/core-pods"
+  run_lib 'edl_push_gauges sysbench sysbench_tps 1'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-new:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
+    fail "did not post to the pod that is not terminating: $(cat "${STUB_STATE}/curl.1" 2>/dev/null)"
+}
+
+test_a_push_with_only_a_terminating_core_pod_warns_without_curl() {
+  start_test "only a terminating core pod"
+  echo "otel-collector-old control0 2026-11-14T00:00:00Z" > "${STUB_STATE}/core-pods"
+  run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'
+  [ "${rc}" -eq 0 ] || fail "exited ${rc}"
+  [ ! -e "${STUB_STATE}/curl.1" ] || fail "posted to a terminating pod: $(cat "${STUB_STATE}/curl.1")"
+  [ "${err}" = "warning: could not push sysbench gauges: no running otel-collector pod on control node control0; the dashboard will not show this run" ] ||
+    fail "message: ${err}"
 }
 
 test_a_push_leaves_the_callers_traps_as_they_were() {
@@ -435,6 +502,11 @@ test_every_push_goes_to_the_control_nodes_core_pod
 test_a_push_with_no_core_pod_on_the_control_node_warns_without_curl
 test_a_term_during_a_push_stops_the_proxy_and_reaches_the_callers_trap
 test_a_term_during_a_push_ends_a_script_with_no_trap
+test_an_int_during_a_push_stops_the_proxy_and_reaches_the_callers_trap
+test_an_int_during_a_push_ends_a_script_with_no_trap
+test_a_push_leaves_no_state_in_the_callers_shell
+test_a_push_skips_a_terminating_core_pod
+test_a_push_with_only_a_terminating_core_pod_warns_without_curl
 test_a_push_leaves_the_callers_traps_as_they_were
 test_sourcing_changes_no_option_and_defines_only_edl_names
 test_a_script_run_outside_easy_db_lab_says_so

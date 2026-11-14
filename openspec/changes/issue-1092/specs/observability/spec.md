@@ -115,6 +115,13 @@ Every in-cluster producer SHALL send OTLP to the `otel-collector` Service by its
 
 - **WHEN** the kit script receives TERM or INT while a gauge push runs
 - **THEN** the push's `kubectl proxy` is stopped and its temporary file removed, and the caller's trap (or the default action) handles the signal
+- **AND** the push leaves no variable of its own in the caller's shell
+
+#### Scenario: A gauge push skips a terminating core pod
+
+- **GIVEN** a rollout in which the control node runs a core pod that is being deleted and its replacement
+- **WHEN** a kit script pushes a gauge
+- **THEN** the push goes to the pod that is not being deleted, and with only the terminating pod it warns and posts nothing
 
 ### Requirement: down stops both collectors before teardown
 
@@ -144,6 +151,12 @@ During `down`, the telemetry-sender stop SHALL delete and wait for both collecto
 - **WHEN** `down` stops the telemetry senders
 - **THEN** the stop fails at that one deadline, not a fresh one per collector, naming the add-on
 - **AND** the core is not deleted, and the failure reports the add-on deleted and the core running
+
+#### Scenario: A failed collector stop always stops down
+
+- **GIVEN** any set of signals still to save, with or without traces
+- **WHEN** the telemetry-sender stop fails or times out
+- **THEN** the save reports a failure at the collector-stop step, `down` stops, and nothing is torn down
 
 ## MODIFIED Requirements
 

@@ -19,11 +19,12 @@
 #                     does, and writes its PID to proxy.pid
 #   control-nodes     what `kubectl get nodes -l node-role.kubernetes.io/control-plane` prints
 #                     (absent: control0)
-#   core-pods         "<pod> <node>" lines, the Running core collector pods `kubectl get pods -l
-#                     app.kubernetes.io/name=otel-collector` filters by spec.nodeName (absent: one
+#   core-pods         "<pod> <node> [<deletionTimestamp>]" lines, the Running core collector pods
+#                     `kubectl get pods -l app.kubernetes.io/name=otel-collector` filters by
+#                     spec.nodeName and prints as "<name> <deletionTimestamp>" lines (absent: one
 #                     pod per node, otel-collector-c0 on control0 and otel-collector-d0 on db0)
-#   curl-term         present: curl sends TERM to the shell that ran it, as a Ctrl-C or a kill
-#                     arriving during a push would
+#   curl-signal       a signal name (TERM, INT): curl sends it to the shell that ran it, as a kill
+#                     or a Ctrl-C arriving during a push would
 #
 # and records:
 #
@@ -83,13 +84,11 @@ case "$1" in
               case "${a}" in --field-selector=*spec.nodeName=*) node="${a##*spec.nodeName=}"; node="${node%%,*}" ;; esac
             done
             if [ -f "${S}/core-pods" ]; then core="$(cat "${S}/core-pods")"; else core="$(printf 'otel-collector-c0 control0\notel-collector-d0 db0')"; fi
-            names=""
-            while read -r name on; do
+            while read -r name on deleting; do
               [ -n "${name}" ] || continue
               [ -z "${node}" ] || [ "${on}" = "${node}" ] || continue
-              names="${names:+${names} }${name}"
+              printf '%s %s\n' "${name}" "${deleting:-}"
             done <<< "${core}"
-            printf '%s' "${names}"
             exit 0
             ;;
         esac
@@ -182,7 +181,7 @@ n=$(( $(cat "${S}/curl.count" 2>/dev/null || echo 0) + 1 ))
 echo "${n}" > "${S}/curl.count"
 printf '%s\n' "$@" > "${S}/curl.${n}"
 [ -f "${S}/curl-out" ] && cat "${S}/curl-out"
-[ -f "${S}/curl-term" ] && kill -TERM "${PPID}"
+[ -f "${S}/curl-signal" ] && kill -s "$(cat "${S}/curl-signal")" "${PPID}"
 exit "$(cat "${S}/curl-exit" 2>/dev/null || echo 0)"
 EOF
   cat > "${dir}/date" <<'EOF'

@@ -253,12 +253,16 @@ edl_wait_for_pod_exit() {
 # pod stamps host.name=control0, as the control node's collector did before the core moved to the
 # pod network.
 #
-# A TERM or an INT during the push stops the proxy and removes its banner file, then reaches the
-# caller as if the push had not been running: the caller's trap runs, or the script ends by the
-# signal. The caller's INT and TERM traps are restored before the function returns.
+# The pod is the first Running core pod on the control node with no deletionTimestamp: during a
+# rollout the pod being replaced is still Running until it stops.
+#
+# A TERM or an INT during the push is noted, not acted on in the trap: the push skips what is left
+# (the running curl finishes, within its 2-second limit), stops the proxy, removes its banner file,
+# restores the caller's INT and TERM traps and then sends the signal to this shell again, so the
+# caller's trap runs or, with none, the script ends by the signal.
 edl_push_gauges() {
-  local service="$1" now points="" sep="" value failure="" banner="" proxy_pid="" port="" tries=0
-  local control pod saved_traps
+  local service="$1" now points="" sep="" value failure="" port="" tries=0
+  local control pods pod="" name deleting
   shift
   now="$(date +%s)000000000"
   while [ "$#" -ge 1 ]; do
@@ -272,25 +276,37 @@ edl_push_gauges() {
     failure=": could not find the control node"
   elif [ -z "${control}" ]; then
     failure=": the cluster has no control node (node-role.kubernetes.io/control-plane)"
-  elif ! pod="$(kubectl get pods -n default -l app.kubernetes.io/name=otel-collector \
-    "--field-selector=status.phase=Running,spec.nodeName=${control}" -o 'jsonpath={.items[*].metadata.name}' 2> /dev/null)"; then
+  elif ! pods="$(kubectl get pods -n default -l app.kubernetes.io/name=otel-collector \
+    "--field-selector=status.phase=Running,spec.nodeName=${control}" \
+    -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)"; then
     failure=": could not list the otel-collector pods on control node ${control}"
-  elif [ -z "${pod}" ]; then
-    failure=": no running otel-collector pod on control node ${control}"
-  else
-    # During a rolling update the control node can run two core pods; both stamp control0.
-    pod="${pod%% *}"
-    saved_traps="$(trap -p INT TERM)"
-    trap 'edl_push_interrupted INT' INT
-    trap 'edl_push_interrupted TERM' TERM
-    banner="$(mktemp)"
-    kubectl proxy --port=0 --address=127.0.0.1 > "${banner}" 2>&1 &
-    proxy_pid=$!
-    while [ -z "${port}" ] && [ "${tries}" -lt "${EDL_PROXY_START_TRIES}" ]; do
-      port="$(sed -n 's/^Starting to serve on 127\.0\.0\.1:\([0-9][0-9]*\)$/\1/p' "${banner}")"
+  fi
+  if [ -z "${failure}" ]; then
+    # During a rolling update the control node can run two core pods; both stamp control0. A pod
+    # being deleted is still Running until it stops, so the first one with no deletionTimestamp.
+    while read -r name deleting; do
+      if [ -n "${name}" ] && [ -z "${deleting}" ]; then
+        pod="${name}"
+        break
+      fi
+    done <<< "${pods}"
+    [ -n "${pod}" ] || failure=": no running otel-collector pod on control node ${control}"
+  fi
+  if [ -z "${failure}" ]; then
+    EDL_PUSH_SAVED_TRAPS="$(trap -p INT TERM)"
+    EDL_PUSH_SIGNAL=""
+    trap 'EDL_PUSH_SIGNAL=INT' INT
+    trap 'EDL_PUSH_SIGNAL=TERM' TERM
+    EDL_PUSH_BANNER="$(mktemp)"
+    kubectl proxy --port=0 --address=127.0.0.1 > "${EDL_PUSH_BANNER}" 2>&1 &
+    EDL_PUSH_PROXY_PID=$!
+    while [ -z "${port}" ] && [ -z "${EDL_PUSH_SIGNAL}" ] && [ "${tries}" -lt "${EDL_PROXY_START_TRIES}" ]; do
+      port="$(sed -n 's/^Starting to serve on 127\.0\.0\.1:\([0-9][0-9]*\)$/\1/p' "${EDL_PUSH_BANNER}")"
       [ -n "${port}" ] || { tries=$((tries + 1)); sleep 0.1; }
     done
-    if [ -n "${port}" ]; then
+    if [ -n "${EDL_PUSH_SIGNAL}" ]; then
+      :
+    elif [ -n "${port}" ]; then
       local code=0
       curl -sf --max-time 2 -X POST \
         "http://127.0.0.1:${port}/api/v1/namespaces/default/pods/${pod}:4318/proxy/v1/metrics" \
@@ -299,11 +315,17 @@ edl_push_gauges() {
         > /dev/null 2>&1 || code=$?
       [ "${code}" -eq 0 ] || failure=" to collector pod ${pod} (curl exit ${code})"
     else
-      failure=": kubectl proxy did not start: $(cat "${banner}" 2> /dev/null)"
+      failure=": kubectl proxy did not start: $(cat "${EDL_PUSH_BANNER}" 2> /dev/null)"
     fi
-    edl_push_cleanup
-    trap - INT TERM
-    eval "${saved_traps}"
+    local signal="${EDL_PUSH_SIGNAL}"
+    edl_push_end
+    # Sent again only now, outside the trap: bash 3.2 loses an INT a trap sends to its own shell.
+    # BASHPID is this shell even in a subshell; bash 3.2 has none, and there $$ is the script,
+    # where every kit pushes from.
+    if [ -n "${signal}" ]; then
+      kill -s "${signal}" "${BASHPID:-$$}" || true
+      return 0
+    fi
   fi
   if [ -n "${failure}" ] && [ -z "${EDL_GAUGE_PUSH_WARNED:-}" ]; then
     EDL_GAUGE_PUSH_WARNED=1
@@ -312,27 +334,20 @@ edl_push_gauges() {
   return 0
 }
 
-# Stops edl_push_gauges' kubectl proxy and removes its banner file. It reads the push's locals
-# (proxy_pid, banner), so it runs only inside edl_push_gauges; a second call does nothing.
-edl_push_cleanup() {
-  if [ -n "${proxy_pid}" ]; then
-    kill "${proxy_pid}" 2> /dev/null || true
-    wait "${proxy_pid}" 2> /dev/null || true
-    proxy_pid=""
+# Ends edl_push_gauges' proxy: stops the kubectl proxy, removes its banner file, puts the caller's
+# INT and TERM traps back and clears the push's state. The state lives in the EDL_PUSH_* globals,
+# set only while a push runs and named for it, so no caller variable is read or changed; a second
+# call does nothing.
+edl_push_end() {
+  [ -n "${EDL_PUSH_SAVED_TRAPS+set}" ] || return 0
+  if [ -n "${EDL_PUSH_PROXY_PID:-}" ]; then
+    kill "${EDL_PUSH_PROXY_PID}" 2> /dev/null || true
+    wait "${EDL_PUSH_PROXY_PID}" 2> /dev/null || true
   fi
-  if [ -n "${banner}" ]; then
-    rm -f "${banner}"
-    banner=""
+  if [ -n "${EDL_PUSH_BANNER:-}" ]; then
+    rm -f "${EDL_PUSH_BANNER}"
   fi
-}
-
-# edl_push_gauges' trap for signal $1: cleans up, puts the caller's traps back and sends the signal
-# again to this shell, so the caller's own trap runs or, with none, the script ends by the signal.
-# $$ would name the parent of a subshell, and bash 3.2 has no BASHPID, so the shell's PID is read
-# as the parent of a child it execs.
-edl_push_interrupted() {
-  edl_push_cleanup
   trap - INT TERM
-  eval "${saved_traps}"
-  kill -s "$1" "$(exec sh -c 'echo "${PPID}"')" || true
+  eval "${EDL_PUSH_SAVED_TRAPS:-}"
+  unset EDL_PUSH_PROXY_PID EDL_PUSH_BANNER EDL_PUSH_SAVED_TRAPS EDL_PUSH_SIGNAL
 }

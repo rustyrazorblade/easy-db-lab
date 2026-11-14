@@ -717,7 +717,7 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(42)
-    fun `all deployments should use Recreate strategy for hostNetwork compatibility`() {
+    fun `all deployments should use Recreate strategy so a pod never runs beside its replacement`() {
         val allResources = collectAllResources()
         val violations = mutableListOf<String>()
 
@@ -727,7 +727,7 @@ class K8sServiceIntegrationTest {
                 if (strategy != "Recreate") {
                     violations.add(
                         "Deployment/${resource.metadata?.name} has strategy '$strategy' " +
-                            "(must be 'Recreate' for hostNetwork port binding)",
+                            "(must be 'Recreate': a published host port or a ReadWriteOnce claim admits one pod)",
                     )
                 }
             }

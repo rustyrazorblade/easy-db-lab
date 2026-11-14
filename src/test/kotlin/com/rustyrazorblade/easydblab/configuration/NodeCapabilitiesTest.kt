@@ -1,11 +1,17 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.serialization.json.Json
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import java.io.File
 
 class NodeCapabilitiesTest {
+    private val jackson = ObjectMapper()
+
     private fun state(capabilities: Set<NodeCapability>?) =
         ClusterState(name = "lab", versions = mutableMapOf(), capabilities = capabilities)
 
@@ -63,6 +69,22 @@ class NodeCapabilitiesTest {
 
         assertThat(stateFile.readText()).contains("\"host-network\"", "\"node-ssh\"")
         assertThat(manager.load().capabilities).isEqualTo(recorded)
+    }
+
+    /**
+     * The serial name is written three times per entry (constructor, `@SerialName`, `@JsonProperty`);
+     * a typo in any one splits `state.json`, `init --capability` and `cluster-config` apart.
+     */
+    @ParameterizedTest
+    @EnumSource(NodeCapability::class)
+    fun `every capability round-trips under its serial name in kotlinx and Jackson`(capability: NodeCapability) {
+        val quoted = "\"${capability.serialName}\""
+
+        assertThat(Json.encodeToString(capability)).isEqualTo(quoted)
+        assertThat(Json.decodeFromString<NodeCapability>(quoted)).isEqualTo(capability)
+        assertThat(jackson.writeValueAsString(capability)).isEqualTo(quoted)
+        assertThat(jackson.readValue(quoted, NodeCapability::class.java)).isEqualTo(capability)
+        assertThat(NodeCapability.fromSerialName(capability.serialName)).isEqualTo(capability)
     }
 
     @Test

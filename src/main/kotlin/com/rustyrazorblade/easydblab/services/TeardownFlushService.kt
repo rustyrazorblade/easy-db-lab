@@ -300,6 +300,8 @@ class DefaultTeardownFlushService private constructor(
         }
         val sendersProgress = FlushProgress(FlushStep.SENDERS_STOP, TelemetrySenders.COLLECTORS.toSet()).also(progresses::add)
         val sendersStop = attempt(sendersProgress) { stopSenders(sendersProgress) }
+        // The stop runs whatever is pending, so its failure always fails the save, and `down` stops.
+        sendersStop.exceptionOrNull()?.let { failed[FlushStep.SENDERS_STOP.signal] = it as FlushStepFailed }
 
         if (TailSignal.METRICS in pending) {
             val progress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, setOf(Constants.K8s.MIMIR_APP_LABEL)).also(progresses::add)
@@ -307,7 +309,6 @@ class DefaultTeardownFlushService private constructor(
         }
         if (TailSignal.TRACES in pending) {
             // The collector is Tempo's only sender: while it may still run, Tempo cannot drain.
-            sendersStop.exceptionOrNull()?.let { failed[TailSignal.TRACES] = it as FlushStepFailed }
             if (sendersStop.isSuccess) {
                 val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, setOf(Constants.K8s.TEMPO_APP_LABEL)).also(progresses::add)
                 tasks +=

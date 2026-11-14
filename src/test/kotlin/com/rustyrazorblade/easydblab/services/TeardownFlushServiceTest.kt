@@ -368,6 +368,21 @@ class TeardownFlushServiceTest {
             .containsEntry(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.DELETED)
     }
 
+    /**
+     * The collector stop runs whatever is pending, so its failure must fail the save even when
+     * traces are not among the pending signals; otherwise `down` would tear down past it.
+     */
+    @Test
+    fun `a failed collector stop fails the save even when traces are not pending`() {
+        sendersFailure = KubernetesClientException("connection refused")
+
+        val outcome = service().saveTail(control, state, all - TailSignal.TRACES)
+
+        val failure = outcome.failed.values.single { it.step == FlushStep.SENDERS_STOP }
+        assertThat(failure).hasMessageContaining("connection refused")
+        assertThat(failure.backends).containsAllEntriesOf(TelemetrySenders.COLLECTORS.associateWith { BackendState.RUNNING })
+    }
+
     @Test
     fun `a stop that fails before any delete reports every collector still running`() {
         sendersFailure = KubernetesClientException("connection refused")

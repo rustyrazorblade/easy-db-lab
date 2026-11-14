@@ -241,6 +241,20 @@ class TeardownFlushServiceTest {
         assertThat(outcome.failed.getValue(TailSignal.TRACES)).hasMessageContaining("kubeconfig (No such file or directory)")
     }
 
+    /** A record step writes the local state file: a missing file there is not a cluster that could not be reached. */
+    @Test
+    fun `a failed record is never reported as unable to reach the cluster`() {
+        val outcome =
+            service().saveTail(control, state, setOf(TailSignal.METRICS)) { _, _ ->
+                throw java.nio.file.NoSuchFileException("/ws/state.json")
+            }
+
+        val failure = outcome.failed.getValue(TailSignal.METRICS)
+        assertThat(failure.step).isEqualTo(FlushStep.RECORD_METRICS)
+        assertThat(failure.unreached).isFalse()
+        assertThat(outcome.backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
+    }
+
     /** A timeout means the request may have arrived, so the conservative state stays and the step is not "unreached". */
     @Test
     fun `a timeout keeps the state the step marked`() {

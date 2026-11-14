@@ -274,6 +274,22 @@ class DownBackupTest : BaseKoinTest() {
             .doesNotContain("deleted", "scaled to 0", "left stopped", "Stopped by the save")
     }
 
+    /** Only the workload whose step never got an answer drops out of "left stopped"; the others keep their state. */
+    @Test
+    fun `a workload the save did stop stays listed when another one was never reached`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        previewFindsResources()
+        val backends = mapOf("loki" to BackendState.SCALED_TO_ZERO, "mimir" to BackendState.UNREACHED)
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(
+            failedSave(FlushStep.MIMIR_SHUTDOWN, "Malformed reply from SOCKS server", backends),
+        )
+
+        Down().apply { autoApprove = true }.call()
+
+        assertThat(errorOutput()).contains("left stopped: loki.")
+    }
+
     @Test
     fun `a re-run reports the recorded signals as already saved and saves the rest`() {
         whenever(clusterStateManager.exists()).thenReturn(true)

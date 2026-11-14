@@ -2,7 +2,7 @@
 
 ## Grafana Dashboards
 
-Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node. On a port-forward cluster, run the `bin/kubectl port-forward` command `status` prints for Grafana, then open `http://127.0.0.1:3000` (see [Port Reference](../reference/ports.md#reaching-services-on-a-port-forward-cluster)).
+Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node. On a port-forward cluster, run the `bin/kubectl port-forward` command `status` prints for Grafana, then open `http://127.0.0.1:3000` (see [Port Reference](../reference/ports.md#reaching-services-on-a-port-forward-cluster)).  Grafana and the backends it reads (Mimir, Loki, Tempo, Pyroscope) run in the Kubernetes pod network; Grafana reaches each backend by its Service name, such as `http://mimir.default.svc:9009/prometheus`.  By default they all run on the control node.  To narrow where they run, add node labels at init with `--node-label key=value`; every backend and Grafana then also requires those labels.
 
 ### Cluster Identification
 

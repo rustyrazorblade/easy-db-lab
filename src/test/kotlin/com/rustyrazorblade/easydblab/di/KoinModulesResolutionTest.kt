@@ -26,7 +26,6 @@ import org.koin.dsl.module
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import software.amazon.awssdk.services.ec2.Ec2Client
-import software.amazon.awssdk.services.ecr.EcrClient
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
@@ -82,7 +81,6 @@ class KoinModulesResolutionTest {
             single<StsClient> { mock() }
             single<EmrClient> { mock() }
             single<OpenSearchClient> { mock() }
-            single<EcrClient> { mock() }
             single<ServiceQuotasClient> { mock() }
         }
 

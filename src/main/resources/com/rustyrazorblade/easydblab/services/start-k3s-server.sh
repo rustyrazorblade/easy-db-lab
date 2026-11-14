@@ -36,6 +36,11 @@ fi
 mkdir -p /opt/cni/bin
 ln -sfn /var/lib/rancher/k3s/data/cni/portmap /opt/cni/bin/portmap
 
+# Kubelet ECR image credential provider: every node pulls *.dkr.ecr.*.amazonaws.com images
+# using its instance role, with no per-pod imagePullSecrets. The binary and config are baked
+# into the AMI by install/install_ecr_credential_provider.sh; keep these paths in sync.
+KUBELET_ECR_ARGS="--kubelet-arg=image-credential-provider-config=/var/lib/rancher/credentialprovider/config.yaml --kubelet-arg=image-credential-provider-bin-dir=/var/lib/rancher/credentialprovider/bin"
+
 # Note: Registry TLS configuration is handled by configure_registry_tls.sh
 # which runs before K3s startup to configure /etc/rancher/k3s/registries.yaml with HTTPS
 
@@ -51,9 +56,9 @@ else
         # InternalIP as the traefik LoadBalancer ingress IP, and Cilium installs a port-0 wildcard
         # per LoadBalancer IP that rejects every pod packet to a node IP on a non-service port, so
         # kubelet probes never get their SYN-ACK and no pod in the pod network becomes Ready.
-        K3S_EXEC_ARGS="server --write-kubeconfig-mode=644 --flannel-backend=none --disable-network-policy --disable=traefik,servicelb$CIDR_ARGS"
+        K3S_EXEC_ARGS="server --write-kubeconfig-mode=644 --flannel-backend=none --disable-network-policy --disable=traefik,servicelb$CIDR_ARGS $KUBELET_ECR_ARGS"
     else
-        K3S_EXEC_ARGS="server --write-kubeconfig-mode=644$CIDR_ARGS"
+        K3S_EXEC_ARGS="server --write-kubeconfig-mode=644$CIDR_ARGS $KUBELET_ECR_ARGS"
     fi
 
     INSTALL_K3S_SKIP_DOWNLOAD=true \

@@ -36,7 +36,6 @@ import java.time.Duration
 class DefaultStressJobServiceTest : BaseKoinTest() {
     private lateinit var service: DefaultStressJobService
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockEcrPullSecrets: EcrPullSecretService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -77,9 +76,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         mockK8sService = getKoin().get()
-        // The default stress image is public, so no pull secret is involved.
-        mockEcrPullSecrets = mock()
-        whenever(mockEcrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
         val clusterStateManager: ClusterStateManager = getKoin().get()
         service =
             DefaultStressJobService(
@@ -88,7 +84,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
                 getKoin().get(),
-                mockEcrPullSecrets,
             )
     }
 
@@ -212,6 +207,26 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(sidecar.volumeMounts[0].name).isEqualTo("otel-sidecar-config")
         assertThat(sidecar.volumeMounts[0].mountPath).isEqualTo("/etc/otel")
         assertThat(sidecar.volumeMounts[0].readOnly).isTrue()
+    }
+
+    @Test
+    fun `buildJob with an ECR image attaches no image pull secret`() {
+        val ecrImage = "123456789012.dkr.ecr.us-west-2.amazonaws.com/cassandra-easy-stress:latest"
+        val job =
+            service.buildJob(
+                StressJobConfig(
+                    jobName = "stress-test-ecr",
+                    image = ecrImage,
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
+            )
+
+        assertThat(
+            job.spec.template.spec.containers
+                .map { it.image },
+        ).contains(ecrImage)
+        assertThat(job.spec.template.spec.imagePullSecrets).isNullOrEmpty()
     }
 
     @Test
@@ -660,14 +675,11 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                     },
                 )
             }
-        val ecrPullSecrets: EcrPullSecretService = mock()
-        whenever(ecrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
         return DefaultStressJobService(
             k8sService = k8sService,
             clusterStateManager = getKoin().get(),
             eventBus = eventBus,
             templateService = getKoin().get(),
-            ecrPullSecrets = ecrPullSecrets,
             podReadyPollInterval = Duration.ZERO,
         )
     }

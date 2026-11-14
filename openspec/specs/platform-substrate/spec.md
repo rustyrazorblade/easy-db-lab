@@ -101,3 +101,28 @@ Kit-specific subcommands add extra variables (e.g. `__REPLICAS__`, `__WORKERS__`
 - **WHEN** an install template is rendered
 - **THEN** the standard variables are substituted from cluster state
 - **AND** an unresolved `__VAR__` placeholder emits a warning but does not fail the render
+
+### Requirement: ECR Image Pull via Kubelet Credential Provider
+
+Every node's kubelet SHALL pull images from the account's Amazon ECR using the node's instance
+role, through the `ecr-credential-provider` kubelet image credential provider, with no per-pod
+`imagePullSecrets`. The provider binary and a `CredentialProviderConfig` SHALL be baked into the
+AMI for both architectures (amd64 and arm64), and the K3s server and agent SHALL be started with
+`--kubelet-arg=image-credential-provider-config=<path>` and
+`--kubelet-arg=image-credential-provider-bin-dir=<dir>`.
+
+The `CredentialProviderConfig` SHALL match the ECR hostnames `*.dkr.ecr.*.amazonaws.com`,
+`*.dkr.ecr.*.amazonaws.com.cn` and `*.dkr.ecr-fips.*.amazonaws.com`, use a `defaultCacheDuration`
+of `12h`, and declare the provider `apiVersion` `credentialprovider.kubelet.k8s.io/v1`. The
+provider SHALL resolve region and credentials from IMDSv2, so the instance metadata hop limit
+MUST permit kubelet on the host to reach it (the launched instances and the AMI build both set a
+hop limit of 2). No cluster workload (stress jobs, the sidecar
+DaemonSet, kits, `kubectl run`) SHALL attach an ECR pull secret.
+
+#### Scenario: A pod with an ECR image pulls with no pull secret
+- **WHEN** a pod naming a `*.dkr.ecr.*.amazonaws.com` image with no `imagePullSecrets` is scheduled on a db node, an app node, or the control node, in a namespace easy-db-lab did not create
+- **THEN** kubelet obtains credentials from the node instance role through `ecr-credential-provider` and the image pulls and runs
+
+#### Scenario: Stress and sidecar images need no pull secret
+- **WHEN** `cassandra stress --image <ECR image>` runs or the sidecar DaemonSet deploys a custom ECR image
+- **THEN** the workload pulls the image with no `ecr-pull-secret` present

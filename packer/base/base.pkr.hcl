@@ -187,6 +187,13 @@ build {
     script = "install/install_k3s.sh"
   }
 
+  # install the kubelet ECR image credential provider so every node pulls ECR images
+  # using its instance role (no per-pod imagePullSecrets)
+  provisioner "shell" {
+    environment_vars = ["ARCH=${var.arch}"]
+    script           = "install/install_ecr_credential_provider.sh"
+  }
+
   # install tailscale (disabled, not auto-started)
   provisioner "shell" {
     script = "install/install_tailscale.sh"

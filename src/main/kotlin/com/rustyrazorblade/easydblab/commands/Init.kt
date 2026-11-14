@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.commands.converters.NodeCapabilityNames
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
 import com.rustyrazorblade.easydblab.commands.converters.PicoCniModeConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
@@ -266,8 +267,9 @@ class Init : PicoBaseCommand() {
         names = [Constants.Capabilities.OVERRIDE_OPTION],
         description = [
             "Override one node capability, as <name>=true or <name>=false (repeatable). " +
-                "Names: systemd-journal, cloudwatch, s3, privileged, host-network, host-path, node-ssh.",
+                "Names: \${COMPLETION-CANDIDATES}.",
         ],
+        completionCandidates = NodeCapabilityNames::class,
     )
     var capabilityOverrides: List<String> = emptyList()
 

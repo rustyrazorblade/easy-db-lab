@@ -293,6 +293,16 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `the capability option offers and documents every capability's serial name`() {
+            val commandLine = picocli.CommandLine(Init())
+            val option = commandLine.commandSpec.findOption(Constants.Capabilities.OVERRIDE_OPTION)
+            val names = NodeCapability.entries.map { it.serialName }
+
+            assertThat(option.completionCandidates()).containsExactlyElementsOf(names)
+            assertThat(commandLine.usageMessage.replace(Regex("\\s+"), " ")).contains(names.joinToString(", "))
+        }
+
+        @Test
         fun `without overrides the declared AWS set is recorded and nothing is reported absent`() {
             Init().apply { clean = true }.execute()
 

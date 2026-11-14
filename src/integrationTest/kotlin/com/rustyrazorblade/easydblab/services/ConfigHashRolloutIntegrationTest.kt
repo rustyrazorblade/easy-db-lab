@@ -53,14 +53,16 @@ class ConfigHashRolloutIntegrationTest {
 
     private val controlHost =
         ClusterHost(publicIp = "1.2.3.4", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a")
-    private val clusterConfig =
-        mapOf(
-            "control_node_ip" to "10.0.0.1",
-            "aws_region" to "us-west-2",
-            "s3_bucket" to "acct-bucket",
-            "traces_s3_prefix" to "tempo",
-            "cluster_name" to "test",
+    private val clusterState =
+        ClusterState(
+            name = "test",
+            versions = mutableMapOf(),
+            s3Bucket = "acct-bucket",
+            hosts = mapOf(ServerType.Control to listOf(controlHost)),
         )
+
+    /** Built the way the deploy builds it, so the keys are the ones the workloads read. */
+    private val clusterConfig = ClusterConfigData.of(controlHost, clusterState, defaultRegion = "us-west-2")
 
     private lateinit var client: KubernetesClient
     private lateinit var manifests: DefaultK8sManifestOperations
@@ -83,14 +85,7 @@ class ConfigHashRolloutIntegrationTest {
         namespaces = DefaultK8sNamespaceOperations(clientProvider, EventBus())
 
         stateManager = mock()
-        whenever(stateManager.load()).thenReturn(
-            ClusterState(
-                name = "test",
-                versions = mutableMapOf(),
-                s3Bucket = "acct-bucket",
-                hosts = mapOf(ServerType.Control to listOf(controlHost)),
-            ),
-        )
+        whenever(stateManager.load()).thenReturn(clusterState)
         user =
             User(
                 region = "us-west-2",

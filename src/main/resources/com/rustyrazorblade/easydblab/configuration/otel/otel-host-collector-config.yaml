@@ -171,6 +171,16 @@ exporters:
     endpoint: ${env:OTEL_CORE_ENDPOINT}
     tls:
       insecure: true
+    # The Service reaches only this node's core pod (internalTrafficPolicy: Local), so while that pod
+    # restarts or crash-loops there is nowhere else to send. Keep retrying with no time limit (the
+    # default gives up after 300s and drops the batch) and hold the node's batches in a queue five
+    # times the default, so a core restart does not lose this node's host data.
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0s
+    sending_queue:
+      enabled: true
+      queue_size: 5000
 
 extensions:
   health_check:

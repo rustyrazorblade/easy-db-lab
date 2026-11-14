@@ -67,6 +67,21 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
         assertThat(endpoint).isEqualTo("otel-collector.default.svc:4317")
     }
 
+    /**
+     * The core is the only way out of the add-on, through a node-local Service: while the node's core pod
+     * restarts, the add-on queues and keeps retrying instead of giving up after the exporter's default 300s.
+     */
+    @Test
+    fun `the core exporter queues and retries without a time limit while the core is down`() {
+        val yaml = config()
+
+        assertThat(scalarAt(yaml, "exporters", "otlp_grpc/core", "retry_on_failure", "enabled")).isEqualTo("true")
+        assertThat(scalarAt(yaml, "exporters", "otlp_grpc/core", "retry_on_failure", "max_elapsed_time")).isEqualTo("0s")
+        assertThat(scalarAt(yaml, "exporters", "otlp_grpc/core", "sending_queue", "enabled")).isEqualTo("true")
+        assertThat(scalarAt(yaml, "exporters", "otlp_grpc/core", "sending_queue", "queue_size")?.toInt())
+            .isGreaterThanOrEqualTo(MIN_CORE_QUEUE_BATCHES)
+    }
+
     /** Host processes that are not pods keep their endpoint: the node's 4317 and 4318. */
     @Test
     fun `the add-on owns the node's OTLP listener`() {
@@ -239,5 +254,10 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
         keysAt(yaml, "processors").filter { it.startsWith("transform") }.forEach {
             assertThat(scalarAt(yaml, "processors", it, "error_mode")).describedAs(it).isEqualTo("propagate")
         }
+    }
+
+    private companion object {
+        /** Five times the exporter's default of 1000 batches: a core restart must not fill it. */
+        const val MIN_CORE_QUEUE_BATCHES = 5000
     }
 }

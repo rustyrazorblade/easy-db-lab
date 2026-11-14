@@ -2,13 +2,21 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
+import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import org.assertj.core.api.Assertions.assertThat
@@ -34,11 +42,13 @@ class InitTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockEc2InstanceService: EC2InstanceService
     private lateinit var outputHandler: BufferedOutputHandler
+    private lateinit var mockInfrastructureService: AwsInfrastructureService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single { mockInfrastructureService }
                 single { mockEc2InstanceService }
                 single { TemplateService(get(), get()) }
             },
@@ -48,6 +58,7 @@ class InitTest : BaseKoinTest() {
     fun setupMocks() {
         mockClusterStateManager = mock()
         mockEc2InstanceService = mock()
+        mockInfrastructureService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         whenever(mockClusterStateManager.exists()).thenReturn(false)
@@ -61,6 +72,64 @@ class InitTest : BaseKoinTest() {
         File("setup_instance.sh").delete()
         File("cassandra").deleteRecursively()
         File("k8s").deleteRecursively()
+    }
+
+    /**
+     * `init --clean` deletes `state.json`, the only local record of the cluster's VPC, so it asks
+     * AWS first and refuses while the cluster has infrastructure.
+     */
+    @Nested
+    inner class CleanGuard {
+        private val workspaceFile: File get() = File(context.workingDirectory, "sshConfig")
+
+        private fun clusterWithVpc() {
+            whenever(mockClusterStateManager.exists()).thenReturn(true)
+            whenever(mockClusterStateManager.load())
+                .thenReturn(ClusterState(name = "lab", versions = mutableMapOf()).apply { vpcId = "vpc-live" })
+        }
+
+        @Test
+        fun `init --clean with live infrastructure is refused, names the VPC and instances, and deletes nothing`() {
+            clusterWithVpc()
+            workspaceFile.writeText("Host db0")
+            whenever(mockInfrastructureService.teardownVpc("vpc-live", true)).thenReturn(
+                TeardownResult.success(
+                    DiscoveredResources(vpcId = "vpc-live", instanceIds = listOf("i-aaa", "i-bbb"), subnetIds = listOf("subnet-1")),
+                ),
+            )
+            val events = mutableListOf<Event>()
+            getKoin().get<EventBus>().addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+
+            assertThatThrownBy { Init().apply { clean = true }.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(events.filterIsInstance<Event.Setup.CleanRefusedLiveInfrastructure>())
+                .containsExactly(Event.Setup.CleanRefusedLiveInfrastructure("vpc-live", listOf("i-aaa", "i-bbb"), 1))
+            assertThat(outputHandler.errors.joinToString("\n") { it.first })
+                .contains("vpc-live", "i-aaa", "i-bbb", "easy-db-lab down")
+            assertThat(workspaceFile).exists()
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
+        fun `init --clean proceeds when AWS shows nothing left for the cluster`() {
+            clusterWithVpc()
+            workspaceFile.writeText("Host db0")
+            whenever(mockInfrastructureService.teardownVpc("vpc-live", true))
+                .thenReturn(TeardownResult.success(DiscoveredResources(vpcId = "vpc-live")))
+
+            Init().apply { clean = true }.execute()
+
+            assertThat(workspaceFile).doesNotExist()
+            verify(mockClusterStateManager).save(any())
+        }
     }
 
     /** The workspace `bin/` belongs to the tool wrappers, so `init` refuses a directory that already has one. */

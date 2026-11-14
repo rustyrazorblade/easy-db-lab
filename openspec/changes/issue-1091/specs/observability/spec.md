@@ -4,6 +4,8 @@
 
 Mimir, Loki, Tempo, Pyroscope and Grafana SHALL run as ordinary pod-network workloads behind ClusterIP Services, with no `hostNetwork`. Their placement SHALL come from a resolved `Placement` value — a node selector, tolerations, and a host-network flag — derived once from the recorded environment, never from testing an environment name. On AWS the resolved placement SHALL keep today's control-node selector and its matching toleration; where the environment declares no such node the selector and tolerations SHALL be empty. An `init` user node label SHALL merge into the selector. The same manifests SHALL be used on every environment.
 
+On an environment that owns its nodes (AWS), each of these workloads SHALL also publish its client ports on the node as container `hostPort`s, with no `hostNetwork`. Callers outside the pod network reach those ports at the control node's private IP: redirected clusters, node-side agents, the documents iframe, and the CLI and the teardown flush until #1090. The ports are Mimir 9009, Loki 3100, Tempo 3200, 4320 and 4321, Pyroscope 4040, Grafana 3000 and the documents web server 3080. Where the environment does not own its nodes, no workload SHALL declare a host port.
+
 Every in-cluster caller of these backends SHALL address them by Service DNS (`<service>.<namespace>.svc`), not `localhost` or a node IP. This SHALL include the Grafana datasources' backend base URLs and the OTel collector's backend exporter endpoints.
 
 Each backend's local state SHALL be stored on a `hostPath` where the environment provides `HOST_PATH` (keeping today's `/mnt/db1/<backend>` on AWS), and otherwise on a per-backend claim whose StorageClass reclaims with `Retain`; `emptyDir` SHALL NOT be used for backend state. Each backend workload SHALL expose a `serviceAccountName` and an optional store-credentials Secret mount as plug points for pod credentials; on AWS neither alters today's instance-role behaviour.
@@ -19,6 +21,16 @@ Each backend's local state SHALL be stored on a `hostPath` where the environment
 - **WHEN** the five workloads are rendered
 - **THEN** each carries the `node-role.kubernetes.io/control-plane=true` selector and its matching toleration
 - **AND** each mounts its state from the `/mnt/db1/<backend>` host path, exactly as today
+
+#### Scenario: On AWS the client ports stay published on the control node
+- **GIVEN** an AWS environment
+- **WHEN** the five workloads are rendered
+- **THEN** each declares exactly its client ports as host ports, and none runs with `hostNetwork`
+
+#### Scenario: Off owned nodes no workload declares a host port
+- **GIVEN** an environment that does not own its nodes
+- **WHEN** the five workloads are rendered
+- **THEN** none declares a host port
 
 #### Scenario: Grafana datasources use Service DNS
 - **WHEN** Grafana's datasources are built

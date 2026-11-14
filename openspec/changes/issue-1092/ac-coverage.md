@@ -19,6 +19,10 @@
 | `memory_limiter` creeping into either collector | "No collector has a memory limiter" |
 | Static `localhost` scrapes break off hostNetwork | "Core collector scrapes a host-exposed metrics port at the node IP" |
 | Pod logs require a hostPath | "Pod logs skipped without HOST_PATH" |
+| The Service proxy spreads a kit's gauge pushes over core pods on every node, one series per node | "Every gauge push lands on one node" |
+| A TERM during a gauge push leaves `kubectl proxy` running | "An interrupted gauge push leaves nothing running" |
+| An add-on that does not drain gets the core deleted under it, or a fresh deadline | "An add-on that does not drain leaves the core running" |
+| The core skips kubelet TLS verification, or can write its root filesystem | "Core runs unprivileged on the pod network"; "Core verifies the kubelet it reads stats from" |
 
 ## Intentional exclusions
 

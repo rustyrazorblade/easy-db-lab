@@ -34,7 +34,7 @@ Today one DaemonSet (`OtelManifestBuilder.kt`) runs with `hostNetwork`, hostPort
 | Cilium agent / Hubble `localhost` scrapes; Cilium operator pod-SD | add-on | Kept on localhost. Cilium exists only on the K3s we build, which always has `PRIVILEGED`, so AWS is unchanged. `buildCniScrapeJobs` moves to the add-on builder. |
 | Pod-SD jobs: kube-state-metrics, backends, YACE, kit pod-SD | core | Pod/node IP is reachable from the pod network. |
 | Static NodePort kit jobs (`localhost:<port>`) | core | Target `${env:K8S_NODE_IP}:<port>`; `instance` stays `<node>:<port>`. |
-| `kubeletstats` (new) | core | `https://${env:K8S_NODE_IP}:10250`, `insecure_skip_verify`; adds RBAC `nodes/stats`. |
+| `kubeletstats` (new) | core | `https://${env:K8S_NODE_IP}:10250`, verified with `ca_file` = the service-account `ca.crt` (K3s signs each kubelet serving cert with that CA, node IP in the SANs); adds RBAC `nodes/stats`. |
 | `k8s_attributes`, connectors, exporters | core | |
 | `resource_detection[system]` (os hostname) | replaced | `host.name = ${env:K8S_NODE_NAME}` in core and add-on, since the OS hostname on the pod network is the pod name. |
 | `transform/node_role_from_host`, EMR `keep/restore_emr_host` | core (OTLP) + add-on (host sources) | Node role derived from `host.name`. |

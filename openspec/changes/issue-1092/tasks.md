@@ -10,7 +10,7 @@
 - [x] 2.1 Remove `hostNetwork` and hostPorts 4317/4318 from the core DaemonSet; set `maxSurge: 1, maxUnavailable: 0`; keep tolerating every taint.
 - [x] 2.2 Take a `PodLogSource` (`NodeFiles` | `None`) parameter instead of reading capabilities. `NodeFiles` mounts `/var/log/pods` read-only and renders `logs/containers`; `None` renders no pod-log pipeline, mounts no hostPath and uses a restricted security context. Drop the `DirectoryOrCreate` `/mnt/db1/container-logs` hostPath.
 - [x] 2.3 Replace `resource_detection[system]` with `host.name = ${env:K8S_NODE_NAME}`; rename the `HOSTNAME` env (from `spec.nodeName`) to `K8S_NODE_NAME`; add `K8S_NODE_IP` from `status.hostIP`.
-- [x] 2.4 Add the `kubeletstats` receiver (`https://${env:K8S_NODE_IP}:10250`, `insecure_skip_verify`) on every environment; add RBAC `nodes/stats get`.
+- [x] 2.4 Add the `kubeletstats` receiver (`https://${env:K8S_NODE_IP}:10250`, verified with `ca_file` = the service-account `ca.crt`; `insecure_skip_verify` replaced in review, SEC F3) on every environment; add RBAC `nodes/stats get`.
 - [x] 2.5 Move host sources (host metrics, host file logs, Beyla/ebpf/Cilium localhost scrapes, `buildCniScrapeJobs`) out of the core config.
 - [x] 2.6 Retarget static NodePort kit jobs from `localhost:<port>` to `${env:K8S_NODE_IP}:<port>`, keeping `instance` = `<node>:<port>`.
 - [x] 2.7 Refactor `buildDaemonSet` so the `@Suppress("LongMethod")` is removed (folded-in debt). Fix with code, not a suppression or threshold change.
@@ -55,6 +55,10 @@
 ## 9. Dashboards (via the `dashboard-editor` agent)
 
 - [ ] 9.1 Use the `dashboard-editor` agent to fix the comparison dashboards' `host_name` filters (e.g. `client-vs-server-latency.json`), since the stress JVM's `host.name` shifts from `control0` to its own node. The agent must edit, deploy and read back from Grafana.
+  - Verified in review (static read of every core and kit dashboard): no query on a stress series (`job="cassandra-easy-stress"`: `mutations`, `selects`, `*_count`, `errors_total`) filters or groups on `host_name`; they select on `cluster`, `job`, `job_name` and `quantile` only. In `client-vs-server-latency.json` `host_name=~"$host"` sits only on the server-side `cassandra_client_request_*` series, and `$host` lists `cassandra_storage_load_bytes` hosts (db nodes), so the shift does not touch it. The kit gauges (`sysbench_*`, `clickhouse_benchmark_*`) select on `cluster` and `kit` only, and keep one `host_name` (control0) through the pod-proxy push.
+  - `trace-red.json` filters every spanmetrics panel on `host_name`, but the `traces` pipeline is `[resource/cluster, batch]` on both the base branch and this one: it never stamped `host.name`, so span-derived `host_name` is the producer's own and does not move.
+  - What does move: `system-overview.json` and `system-ab-comparison.json` group the unscoped `jvm_*` series (no `job` filter) by `host_name`, so the stress JVM's heap, CPU and allocation now count under its app node instead of `control0`. That is the stress JVM's real node; no filter there names `control0` or a stress job, so nothing goes empty.
+  - Finding: no dashboard needs a `host_name` edit for this change. Left unchecked only because the task says to confirm through the `dashboard-editor` agent's read-back from a live Grafana, which was not run here.
 
 ## 10. Tests
 

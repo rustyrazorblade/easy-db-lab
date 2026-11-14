@@ -8,6 +8,12 @@ The system SHALL run the OTel collector as two DaemonSets. The **core** collecto
 
 - **WHEN** the observability stack deploys
 - **THEN** the `otel-collector` DaemonSet's pods use neither `hostNetwork` nor any `hostPort`, and are not privileged
+- **AND** their root filesystem is read-only, whether or not they read pod logs from the node
+
+#### Scenario: Core verifies the kubelet it reads stats from
+
+- **WHEN** the core's `kubeletstats` receiver connects to its node's kubelet
+- **THEN** it verifies the kubelet's serving certificate against the service-account CA and does not skip verification
 
 #### Scenario: Core reaches Ready without PRIVILEGED
 
@@ -124,6 +130,13 @@ During `down`, the telemetry-sender stop SHALL delete and wait for both collecto
 - **GIVEN** an environment that lacks `PRIVILEGED`, so no host add-on was deployed
 - **WHEN** `down` stops the telemetry senders
 - **THEN** the absent add-on counts as stopped and the core is deleted and awaited
+
+#### Scenario: An add-on that does not drain leaves the core running
+
+- **GIVEN** a host add-on pod that does not go before the flush deadline
+- **WHEN** `down` stops the telemetry senders
+- **THEN** the stop fails at that one deadline, not a fresh one per collector, naming the add-on
+- **AND** the core is not deleted, and the failure reports the add-on deleted and the core running
 
 ## MODIFIED Requirements
 

@@ -124,6 +124,13 @@ class UpdateConfigTest : BaseKoinTest() {
         verify(mockRemoteOps, never()).executeRemotely(any<Host>(), argThat { contains("patch-config") }, any(), any())
     }
 
+    @Test
+    fun `a host filter that matches no node fails instead of succeeding silently`() {
+        assertThatThrownBy { UpdateConfig().apply { hosts.hostList = "db9" }.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("db9")
+    }
+
     /** On a multi-host run no host is changed unless every targeted host's directory is there. */
     @Test
     fun `one host without a config directory stops the whole run before any host is patched`() {

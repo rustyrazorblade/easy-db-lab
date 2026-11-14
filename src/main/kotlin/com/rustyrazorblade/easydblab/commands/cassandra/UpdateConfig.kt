@@ -57,6 +57,7 @@ class UpdateConfig : PicoBaseCommand() {
             hostOperationsService
                 .filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
                 .associate { it.alias to remoteOps.getRemoteVersion(it.toHost(), version) }
+        require(versions.isNotEmpty()) { "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'" }
         val missing = versions.filterValues { !File(context.workingDirectory, it.versionString).isDirectory }
         check(missing.isEmpty()) {
             "No local config directory for " +

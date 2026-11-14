@@ -17,10 +17,6 @@ object ClusterServices {
     /** Every catalogued Service, in the order `status` lists them. */
     val ALL = listOf(GRAFANA, MIMIR, LOKI, TEMPO, PYROSCOPE)
 
-    /** The catalogued Service whose Service port is [port]; observability readers address them by port. */
-    fun byPort(port: Int): ServiceTarget =
-        ALL.firstOrNull { it.servicePort == port } ?: error("No cluster Service is catalogued on port $port")
-
     private fun controlService(
         name: String,
         port: Int,

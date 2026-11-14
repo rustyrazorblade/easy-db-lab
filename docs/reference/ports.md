@@ -70,7 +70,6 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 Every built-in kit's NodePorts, each postgres instance's, and the Hubble UI's 31234 are distinct,
 so any combination of kits can run at once.
 
-
 ## Reaching Services on a Port-Forward Cluster
 
 On a cluster easy-db-lab does not own (`exposure` PortForward), the CLI reaches each Service through
@@ -93,6 +92,7 @@ machine to it. For ClickHouse's HTTP endpoint that is
 ```bash
 bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123
 ```
+
 ## Server
 
 | Port | Purpose |

@@ -57,7 +57,7 @@ If explicit flags were provided, use those. Otherwise:
 **`--cassandra` (default for core changes)** — if changes touch:
 - `**/configuration/**`, `**/kubernetes/**`, `**/providers/**`
 - `**/commands/Init*`, `packer/base/**`, `**/server/**`
-- `**/services/ClusterBackupService*`, `**/ClusterS3Path*`
+- `**/services/ClusterBackupService*`, `**/ClusterStoragePath*`
 - Observability: `**/mimir/**`, `**/loki/**`, `**/grafana/**`, `**/services/TeardownFlush*`, `**/services/LokiTailFlush*`
 
 **Documentation only** (`docs/**`, `*.md`): No e2e tests needed — tell the user and stop.
@@ -103,7 +103,7 @@ Format:
 <For each relevant changed file, one line explaining what it does and why it's relevant>
 
 Example:
-- `src/main/kotlin/.../ClusterS3Path.kt` — S3 path construction logic → tests S3 backup/restore
+- `src/main/kotlin/.../ClusterStoragePath.kt` — storage path construction logic → tests S3 backup/restore
 - `packer/cassandra/install/install_cassandra.sh` — Cassandra install script → tests Cassandra provisioning
 
 ### Test Commands
@@ -118,8 +118,8 @@ Example:
 5. easy-db-lab exec run -t cassandra -- hostname  → verify exec command
 
 **Only include the following steps if the changes directly relate to them:**
-- Server / `/status` endpoint → only if `server` startup, REST endpoints, or `ClusterS3Path` changed
-- S3 backup file check → only if `ClusterBackupService`, `ClusterS3Path`, or S3 config changed
+- Server / `/status` endpoint → only if `server` startup, REST endpoints, or `ClusterStoragePath` changed
+- S3 backup file check → only if `ClusterBackupService`, `ClusterStoragePath`, or S3 config changed
 - Restore from VPC → only if restore/backup logic changed
 - Observability (Mimir, Loki, Grafana) → only if observability stack changed
 - Metrics/logs in S3 → only if the Mimir or Loki storage, or the `down` flush, changed
@@ -210,7 +210,7 @@ easy-db-lab status
 easy-db-lab hosts
 ```
 
-### Server Verification (only if server/REST endpoints or ClusterS3Path changed)
+### Server Verification (only if server/REST endpoints or ClusterStoragePath changed)
 
 ```bash
 # Find a free port

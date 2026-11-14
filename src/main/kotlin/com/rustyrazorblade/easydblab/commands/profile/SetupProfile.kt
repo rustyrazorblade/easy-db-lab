@@ -10,7 +10,6 @@ import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
-import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory

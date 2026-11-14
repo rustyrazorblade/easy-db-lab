@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.core.exception.SdkServiceException

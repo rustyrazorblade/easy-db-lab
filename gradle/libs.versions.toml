@@ -4,7 +4,7 @@ kotlin = "2.4.10"
 
 # Logging
 logback = "1.5.32"
-kotlin-logging = "8.0.01"
+kotlin-logging = "8.0.4"
 
 # Jackson
 jackson-dataformat = "2.22.1"

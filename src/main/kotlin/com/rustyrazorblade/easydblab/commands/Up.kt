@@ -634,7 +634,9 @@ class Up(
     }
 
     /**
-     * Starts the SOCKS5 proxy to the control node when Tailscale is not active.
+     * Starts the SOCKS5 proxy to the control node when the cluster is reached through it: a
+     * [com.rustyrazorblade.easydblab.configuration.Exposure.Socks] cluster without Tailscale. A
+     * Direct or PortForward cluster never gets a tunnel.
      *
      * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
      * Both are started at the same point so that subsequent K3s setup, kubectl, and
@@ -646,7 +648,7 @@ class Up(
      * tunnel it just started "already running".
      */
     private fun startProxyIfNeeded() {
-        if (workingState.isTailscaleEnabled()) return
+        if (!workingState.reachedBySocksTunnel()) return
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
         log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
         val proxy = socksProxyService.ensureRunning(controlHost)

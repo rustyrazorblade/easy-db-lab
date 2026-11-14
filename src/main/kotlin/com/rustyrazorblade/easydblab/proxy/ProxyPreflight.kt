@@ -1,12 +1,14 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
  * What the command executor does for a `@RequiresProxy` command before it runs: start or reuse the
- * SOCKS tunnel when the cluster is provisioned, its infrastructure is UP, and it is not a Tailscale
- * cluster.
+ * SOCKS tunnel when the cluster is provisioned, its infrastructure is UP, and it is reached through
+ * the tunnel ([ClusterState.reachedBySocksTunnel]: a Socks exposure without Tailscale). A Direct or
+ * PortForward cluster never gets one.
  *
  * Whenever the cluster state can be read, it also records the cluster's Tailscale flag in the proxy
  * env file. A Tailscale cluster never starts a tunnel, so without this the tool wrappers and `env.sh`
@@ -47,7 +49,7 @@ class ProxyPreflight(
                 return
             }
         envFile.recordTailscale(state.isTailscaleEnabled())
-        if (!state.isInfrastructureUp() || state.isTailscaleEnabled()) return
+        if (!state.isInfrastructureUp() || !state.reachedBySocksTunnel()) return
         val controlHost = state.getControlHost() ?: return
         obtained.set(socksProxyService.ensureRunning(controlHost))
     }

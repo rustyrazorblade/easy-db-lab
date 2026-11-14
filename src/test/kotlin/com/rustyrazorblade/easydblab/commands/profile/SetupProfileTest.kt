@@ -31,6 +31,7 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.doNothing
 import org.mockito.kotlin.doThrow
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -97,6 +98,8 @@ class SetupProfileTest : BaseKoinTest() {
                     "email" to "test@example.com",
                     "region" to "us-west-2",
                     "awsAccessKey" to "AKIATEST",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "test-bucket",
                     "awsSecret" to "secret123",
                     "axonOpsOrg" to "myorg",
                 )
@@ -149,6 +152,8 @@ class SetupProfileTest : BaseKoinTest() {
                     "email" to "test@example.com",
                     "region" to "us-west-2",
                     "awsProfile" to "my-profile",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "test-bucket",
                     "axonOpsOrg" to "acme-corp",
                     "axonOpsKey" to "secret-key-123",
                     "tailscaleClientId" to "tskey-client-abc",
@@ -191,6 +196,8 @@ class SetupProfileTest : BaseKoinTest() {
                     "email" to "test@example.com",
                     "region" to "us-west-2",
                     "awsAccessKey" to "AKIATEST",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "test-bucket",
                     "awsSecret" to "secret123",
                 )
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)
@@ -226,6 +233,8 @@ class SetupProfileTest : BaseKoinTest() {
                     "email" to "test@example.com",
                     "region" to "us-west-2",
                     "awsAccessKey" to "AKIATEST",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "test-bucket",
                     "awsSecret" to "secret123",
                     "axonOpsOrg" to "old-org",
                 )
@@ -303,6 +312,8 @@ class SetupProfileTest : BaseKoinTest() {
                     "region" to "us-west-2",
                     "awsProfile" to "my-profile",
                     "keyName" to "test-key",
+                    "s3Bucket" to "test-bucket",
+                    "keyName" to "test-key",
                     "sshTransport" to "tunnel",
                 ),
             )
@@ -327,6 +338,8 @@ class SetupProfileTest : BaseKoinTest() {
                     "email" to "test@example.com",
                     "region" to "us-west-2",
                     "awsAccessKey" to "AKIATEST",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "test-bucket",
                     "awsSecret" to "secret123",
                 ),
             )
@@ -609,6 +622,49 @@ class SetupProfileTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class WhenProfileLacksTheBucket {
+        @BeforeEach
+        fun seedHalfSetUpProfile() {
+            // A profile that can authenticate but never got its bucket: today's update path would
+            // leave it that way forever, because it only re-prompts the optional fields.
+            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
+                mapOf(
+                    "email" to "user@test.com",
+                    "region" to "us-west-2",
+                    "awsProfile" to "my-profile",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "",
+                ),
+            )
+            testPrompter = TestPrompter(mapOf("IAM policies" to "N"))
+            setupTestModule()
+        }
+
+        @Test
+        fun `takes the full setup path, keeps what it has and creates the missing bucket`() {
+            SetupProfile().execute()
+
+            verify(mockAwsResourceSetup).ensureAWSResources(any())
+            verify(mockAws).createS3Bucket(any())
+            val saved = argumentCaptor<User>()
+            verify(mockUserConfigProvider, atLeastOnce()).saveUserConfig(saved.capture())
+            assertThat(saved.lastValue.s3Bucket).startsWith("easy-db-lab-")
+            assertThat(saved.lastValue.keyName).isEqualTo("test-key")
+            assertThat(saved.lastValue.awsProfile).isEqualTo("my-profile")
+        }
+
+        @Test
+        fun `does not ask again for the details it already holds`() {
+            SetupProfile().execute()
+
+            assertThat(testPrompter.wasPromptedFor("email")).isFalse()
+            assertThat(testPrompter.wasPromptedFor("region")).isFalse()
+            assertThat(testPrompter.wasPromptedFor("AWS Profile")).isFalse()
+            verify(mockAwsClientFactory, atLeastOnce()).createAWSClientWithProfile(eq("my-profile"), any())
+        }
+    }
+
+    @Nested
     inner class AMIValidation {
         @BeforeEach
         fun setupConfigAndAws() {
@@ -801,6 +857,8 @@ class SetupProfileTest : BaseKoinTest() {
                     "email" to "test@example.com",
                     "region" to "us-west-2",
                     "awsAccessKey" to "AKIATEST",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "test-bucket",
                     "awsSecret" to "secret123",
                 )
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(existingConfig)

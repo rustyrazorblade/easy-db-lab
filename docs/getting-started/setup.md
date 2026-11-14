@@ -46,6 +46,12 @@ The AWS profile name is asked **first**. If you provide one, the access key and 
 
 `profile setup` validates your credentials against AWS immediately (and then provisions resources), so your credentials must be usable **before** you run it. For static keys this is automatic; for an SSO profile, run `aws sso login` first (see below).
 
+`profile setup` creates a profile that does not exist yet, so it also sets up a second AWS account: run it with `EASY_DB_LAB_PROFILE=<new-name>`.
+
+```admonish note
+A profile counts as set up only when it can authenticate **and** holds a key pair and an S3 bucket. If one of those is blank, `profile setup` runs the full setup again: it keeps the values the profile already has, asks only for what is missing (it does not ask again for an AWS profile name the profile already holds), and creates the missing key pair, IAM roles, bucket and Packer VPC. A profile that has everything only offers to update the optional fields.
+```
+
 ### What Gets Created
 
 During setup, the following AWS resources are created:

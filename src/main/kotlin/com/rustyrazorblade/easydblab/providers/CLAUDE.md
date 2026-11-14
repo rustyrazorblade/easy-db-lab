@@ -136,6 +136,13 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
 (`DirectSshRoute` or `ssm/SsmSshRoute`). Everything else asks the route; do not add another
 `when (sshTransport)` elsewhere. The only other reader is `up`'s local-tooling preflight.
 
+The binding is a `LazySshRoute`: the profile is read on the route's first use, not when Koin
+builds it. `profile setup` creates the profile, and Koin builds the SOCKS proxy (which holds the
+route) before that command runs, so a route that read the profile at construction made
+`profile setup` fail on a new profile. Nothing built at Koin resolution may read `User` or
+anything else that needs the profile (`ProcessSocksProxyService` takes `verifyAttempts` as a
+function for the same reason).
+
 - **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper and the `bin/` SSH wrappers) use
   `sshConfig`. `ClusterConfigWriter.writeSshConfig` puts every cluster-wide option (host keys, user,
   identity, keepalives, `ConnectTimeout`) in one `Host db* app* control* !*.*` block, its wildcards

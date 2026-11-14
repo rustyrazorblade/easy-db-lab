@@ -7,9 +7,9 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.ssm.SsmProxyWrapper
-import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
 import com.rustyrazorblade.easydblab.providers.ssm.ssmModule
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -44,7 +44,6 @@ internal class SshRouteBindingTest : BaseKoinTest() {
         useTransport(SshTransport.Ssm)
 
         getKoin().get<SshRoute>().use { route ->
-            assertThat(route).isInstanceOf(SsmSshRoute::class.java)
             assertThat(route.proxyCommand(host)).contains("AWS-StartSSHSession", "--target i-0abc", "--region us-west-2")
             assertThat(route.tunnelVerifyAttempts).isEqualTo(Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)
             assertThat(route.authTimeout).isEqualTo(Duration.ofSeconds(30))
@@ -62,7 +61,6 @@ internal class SshRouteBindingTest : BaseKoinTest() {
 
         val route = getKoin().get<SshRoute>()
 
-        assertThat(route).isInstanceOf(DirectSshRoute::class.java)
         assertThat(route.proxyCommand(host)).isNull()
         assertThat(route.endpoint(host)).isEqualTo(SshEndpoint("54.1.2.3", 22))
         assertThat(route.tunnelVerifyAttempts).isEqualTo(Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS)
@@ -70,6 +68,19 @@ internal class SshRouteBindingTest : BaseKoinTest() {
         assertThat(route.authTimeout).isNull()
         route.invalidate(host)
         assertThat(route.endpoint(host)).isEqualTo(SshEndpoint("54.1.2.3", 22))
+    }
+
+    @Test
+    fun `the route can be built before the profile exists and fails only when it is used`() {
+        getKoin().loadModules(
+            listOf(module { single<User> { error("User configuration file not found") } }),
+            allowOverride = true,
+        )
+
+        val route = getKoin().get<SshRoute>()
+
+        assertThatThrownBy { route.proxyCommand(host) }
+            .hasStackTraceContaining("User configuration file not found")
     }
 
     private fun useTransport(transport: SshTransport) {

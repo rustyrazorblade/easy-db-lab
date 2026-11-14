@@ -22,11 +22,15 @@ val sshModule =
         // SSH connection provider - singleton because it manages a connection pool
         single<SSHConnectionProvider> { DefaultSSHConnectionProvider(get(), get()) }
 
+        // Lazy: the profile that names the transport does not exist yet while `profile setup`
+        // runs, and Koin builds this route (through the SOCKS proxy) before that command starts.
         single<SshRoute> {
-            val sshPort = get<SSHConfiguration>().sshPort
-            when (get<User>().sshTransport) {
-                SshTransport.Direct -> DirectSshRoute(sshPort)
-                SshTransport.Ssm -> SsmSshRoute(get(), sshPort, get())
+            LazySshRoute {
+                val sshPort = get<SSHConfiguration>().sshPort
+                when (get<User>().sshTransport) {
+                    SshTransport.Direct -> DirectSshRoute(sshPort)
+                    SshTransport.Ssm -> SsmSshRoute(get(), sshPort, get())
+                }
             }
         }
 

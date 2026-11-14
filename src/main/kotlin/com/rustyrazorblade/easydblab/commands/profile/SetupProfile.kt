@@ -50,7 +50,7 @@ class SetupProfile : PicoBaseCommand() {
     override fun execute() {
         val existingConfig = userConfigProvider.loadExistingConfig()
 
-        if (isProfileAlreadySetUp(existingConfig)) {
+        if (isFullySetUp(existingConfig)) {
             handleExistingProfile(existingConfig)
             return
         }
@@ -113,20 +113,6 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * Checks if the profile already has all required fields configured.
-     * Accepts either profile-based auth (awsProfile set) or static credentials.
-     */
-    private fun isProfileAlreadySetUp(existingConfig: Map<String, Any>): Boolean {
-        val hasEmailAndRegion = existingConfig.containsKey("email") && existingConfig.containsKey("region")
-        if (!hasEmailAndRegion) return false
-
-        val hasProfile = (existingConfig["awsProfile"] as? String)?.isNotEmpty() == true
-        val hasCredentials = existingConfig.containsKey("awsAccessKey") && existingConfig.containsKey("awsSecret")
-
-        return hasProfile || hasCredentials
-    }
-
-    /**
      * Collects credentials and validates them, retrying on failure.
      * Returns validated credentials and region.
      * @throws SetupProfileException if credentials fail validation after max retries
@@ -159,6 +145,24 @@ class SetupProfile : PicoBaseCommand() {
 
         /** The profile file's key for [User.sshTransport]. */
         private const val SSH_TRANSPORT_KEY = "sshTransport"
+
+        /**
+         * Whether [existingConfig] describes a profile with nothing left to create: an email and
+         * region, a way to authenticate (a named AWS profile or static credentials), and the key
+         * pair and bucket every cluster needs. A profile missing any of these takes the full setup
+         * path, which keeps the values it has and creates the rest; the update path only
+         * re-prompts optional fields and would leave it incomplete.
+         */
+        internal fun isFullySetUp(existingConfig: Map<String, Any>): Boolean {
+            val hasEmailAndRegion = existingConfig.containsKey("email") && existingConfig.containsKey("region")
+            val hasProfile = existingConfig.isNotBlank("awsProfile")
+            val hasCredentials = existingConfig.containsKey("awsAccessKey") && existingConfig.containsKey("awsSecret")
+            val hasResources = existingConfig.isNotBlank("keyName") && existingConfig.isNotBlank("s3Bucket")
+
+            return hasEmailAndRegion && (hasProfile || hasCredentials) && hasResources
+        }
+
+        private fun Map<String, Any>.isNotBlank(key: String): Boolean = (this[key] as? String)?.isNotBlank() == true
     }
 
     /**
@@ -170,12 +174,14 @@ class SetupProfile : PicoBaseCommand() {
         val email = promptIfMissing(existingConfig, "email", "What's your email?", "")
         val region = promptIfMissing(existingConfig, "region", "What AWS region do you use?", "us-west-2")
 
-        // Ask for AWS profile first (empty = manual credentials)
+        // A profile that already names its AWS profile is not asked again. Otherwise ask first
+        // (empty = manual credentials).
         val awsProfile =
-            prompter.prompt(
-                "AWS Profile name (or press Enter to enter credentials manually)",
-                "",
-            )
+            (existingConfig["awsProfile"] as? String)?.takeIf { it.isNotBlank() }
+                ?: prompter.prompt(
+                    "AWS Profile name (or press Enter to enter credentials manually)",
+                    "",
+                )
 
         val (awsAccessKey, awsSecret) =
             if (awsProfile.isNotEmpty()) {

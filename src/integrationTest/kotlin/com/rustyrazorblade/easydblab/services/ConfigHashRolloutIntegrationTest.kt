@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -83,7 +84,12 @@ class ConfigHashRolloutIntegrationTest {
 
         stateManager = mock()
         whenever(stateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "acct-bucket"),
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                s3Bucket = "acct-bucket",
+                hosts = mapOf(ServerType.Control to listOf(controlHost)),
+            ),
         )
         user =
             User(
@@ -310,7 +316,16 @@ class ConfigHashRolloutIntegrationTest {
      */
     private fun deployCollectorStage(): List<Event.Grafana.WorkloadConfigCompared> {
         val scrapeConfigs = otel.listWorkloadScrapeConfigs(client)
-        val resources = CollectorResources.build(otel, controlHost, stateManager.load(), user.region, scrapeConfigs, NodeCapabilities.AWS)
+        val state = stateManager.load()
+        val resources =
+            CollectorResources.build(
+                otel,
+                checkNotNull(state.getControlHost()),
+                state,
+                user.region,
+                scrapeConfigs,
+                NodeCapabilities.AWS,
+            )
         val emitted = mutableListOf<Event.Grafana.WorkloadConfigCompared>()
         ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(resources, Constants.K8s.NAMESPACE)
         resources.forEach { manifests.applyResource(it).getOrThrow() }

@@ -210,7 +210,10 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     /** The collector does not run here: its stop only counts, and Tempo's senders are the test's pushes. */
     private val senders =
         object : TelemetrySenders {
-            override fun stop(timeout: Duration) {
+            override fun stop(
+                timeout: Duration,
+                onDeleteAccepted: () -> Unit,
+            ) {
                 sendersStopped.incrementAndGet()
             }
         }

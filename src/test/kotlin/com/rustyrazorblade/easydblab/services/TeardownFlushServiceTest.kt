@@ -70,6 +70,7 @@ class TeardownFlushServiceTest {
 
     private var mirrorFailure: Throwable? = null
     private var sendersFailure: Throwable? = null
+    private var sendersAnswered = false
 
     private val mirror =
         object : AnnotationMirror by RecordingAnnotationMirror() {
@@ -81,8 +82,12 @@ class TeardownFlushServiceTest {
 
     private val senders =
         object : TelemetrySenders {
-            override fun stop(timeout: Duration) {
+            override fun stop(
+                timeout: Duration,
+                onDeleteAccepted: () -> Unit,
+            ) {
                 order += "senders stop"
+                if (sendersAnswered) onDeleteAccepted()
                 sendersFailure?.let { throw it }
             }
         }
@@ -267,13 +272,17 @@ class TeardownFlushServiceTest {
         assertThat(outcome.backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
     }
 
-    /** A step that already got an answer keeps what that answer showed when a later step cannot reach the cluster. */
+    /**
+     * Once the cluster has answered a step's first call, a later call of the same step that fails to
+     * connect proves nothing: the change may have happened first. The mark stays.
+     */
     @Test
-    fun `an earlier observed state survives a later step that cannot reach the cluster`() {
+    fun `a later call that cannot connect keeps the mark once the first call was answered`() {
         val loki =
             SignalFlush { _, _, progress ->
                 progress.begin(FlushStep.LOKI_SHUTDOWN)
                 progress.mark("loki", BackendState.INGESTER_STOPPED)
+                progress.answered()
                 progress.begin(FlushStep.LOKI_SCALE_DOWN)
                 progress.mark("loki", BackendState.SCALED_TO_ZERO)
                 throw java.net.ConnectException("Connection refused")
@@ -281,8 +290,17 @@ class TeardownFlushServiceTest {
 
         val outcome = service(loki = loki).saveTail(control, state, setOf(TailSignal.LOGS))
 
-        assertThat(outcome.failed.getValue(TailSignal.LOGS).unreached).isTrue()
-        assertThat(outcome.backends).containsEntry("loki", BackendState.INGESTER_STOPPED)
+        assertThat(outcome.backends).containsEntry("loki", BackendState.SCALED_TO_ZERO)
+    }
+
+    @Test
+    fun `a collector stop whose delete was accepted keeps the collector deleted when the wait loses the tunnel`() {
+        sendersAnswered = true
+        sendersFailure = java.net.SocketException("Malformed reply from SOCKS server")
+
+        val outcome = service().saveTail(control, state, setOf(TailSignal.TRACES))
+
+        assertThat(outcome.backends).containsEntry("otel-collector", BackendState.DELETED)
     }
 
     /** A failure of any other type still fails only its signal: it never escapes and loses the others. */

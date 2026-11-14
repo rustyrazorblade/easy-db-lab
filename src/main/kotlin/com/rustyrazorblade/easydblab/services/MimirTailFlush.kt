@@ -33,6 +33,7 @@ class MimirTailFlush(
         // Marked before the call: a shutdown that times out may still have stopped the ingester.
         progress.mark(Constants.K8s.MIMIR_APP_LABEL, BackendState.INGESTER_STOPPED)
         val shutdown = http.post(Constants.K8s.MIMIR_HTTP_PORT, "/ingester/shutdown", timeout = timeouts.shutdown)
+        progress.answered()
         check(shutdown.code in Constants.HttpStatus.OK until Constants.HttpStatus.MULTIPLE_CHOICES) {
             "Mimir's ingester shutdown failed (status ${shutdown.code}): ${shutdown.body}"
         }

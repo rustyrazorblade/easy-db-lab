@@ -107,16 +107,11 @@ class FlushProgress(
     /** The owned workload's state, or nothing when this step owns no workload. */
     val backends: Map<String, BackendState> get() = owns?.let { mapOf(it to state) }.orEmpty()
 
-    /** The last state a finished step left the workload in, which is the last one the cluster answered for. */
     @Volatile
-    private var confirmed: BackendState? = null
+    private var answered = false
 
-    @Volatile
-    private var marked = false
-
-    /** Starts [step]. Starting the next step means the previous step's call returned, so its mark held. */
+    /** Starts [step]. */
     fun begin(step: FlushStep) {
-        if (marked) confirmed = state
         this.step = step
     }
 
@@ -129,16 +124,25 @@ class FlushProgress(
         state: BackendState,
     ) {
         require(workload == owns) { "this step owns ${owns ?: "no workload"}, not $workload" }
-        marked = true
         this.state = state
     }
 
     /**
-     * Takes back the mark of the failing step: the request never left, so the workload is as the last
-     * finished step left it, or [BackendState.UNREACHED] when no step of this signal got an answer.
+     * Records that the cluster answered the step's first call, whatever the answer. From then on a
+     * failure of a later call (a poll that follows the request) proves nothing about what the first
+     * call did, so [neverReached] keeps the mark.
+     */
+    fun answered() {
+        answered = true
+    }
+
+    /**
+     * Takes back the mark of the failing step: its first call never reached the cluster, so the
+     * save observed nothing about the workload. Once the cluster has answered ([answered]) the mark
+     * stays, because the change may have happened before a later call failed.
      */
     fun neverReached() {
-        if (owns != null) state = confirmed ?: BackendState.UNREACHED
+        if (owns != null && !answered) state = BackendState.UNREACHED
     }
 }
 
@@ -383,7 +387,7 @@ class DefaultTeardownFlushService private constructor(
     private fun stopSenders(progress: FlushProgress) {
         // Marked before the call: a stop that times out may still have deleted the DaemonSet.
         progress.mark(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.DELETED)
-        telemetrySenders.stop(timeouts.sendersStop)
+        telemetrySenders.stop(timeouts.sendersStop, progress::answered)
         eventBus.emit(Event.Teardown.TelemetrySendersStopped)
     }
 

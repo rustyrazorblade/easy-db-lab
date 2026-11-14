@@ -38,6 +38,7 @@ class LokiTailFlush(
         // Marked before the call: a shutdown that times out may still have stopped the ingester.
         progress.mark(Constants.K8s.LOKI_APP_LABEL, BackendState.INGESTER_STOPPED)
         val shutdown = http.post(Constants.K8s.LOKI_HTTP_PORT, SHUTDOWN_PATH, timeout = timeouts.shutdown)
+        progress.answered()
         check(shutdown.code == Constants.HttpStatus.NO_CONTENT) {
             "Loki's ingester did not finish flushing (status ${shutdown.code}): ${shutdown.body}"
         }

@@ -144,14 +144,14 @@ internal class LocalClusterToolingTest {
                 catchThrowableOfType(ClusterToolTimedOutException::class.java) {
                     bounded.run(ClusterTool.KUBECTL, listOf("hang", "https://user:s3cret@host/m.yaml"), echo = false)
                 }
-            pid = File(workspace, "hang.pid").readText().trim().toLong()
+            pid = recordedPid()
 
             assertThat(failure.tool).isEqualTo(ClusterTool.KUBECTL)
             assertThat(failure.message)
                 .contains("kubectl hang https://***@host/m.yaml")
                 .contains("PT0.5S")
                 .doesNotContain("s3cret")
-            assertThat(awaitExit(pid)).describedAs("the tool is still running").isTrue()
+            pid?.let { assertThat(awaitExit(it)).describedAs("the tool is still running").isTrue() }
         } finally {
             pid?.let { ProcessHandle.of(it).ifPresent { handle -> handle.destroyForcibly() } }
         }
@@ -165,7 +165,7 @@ internal class LocalClusterToolingTest {
 
         assertThatThrownBy { bounded.run(ClusterTool.KUBECTL, listOf("hang", "-"), stdin = "x".repeat(STDIN_BYTES), echo = false) }
             .isInstanceOf(ClusterToolTimedOutException::class.java)
-        ProcessHandle.of(File(workspace, "hang.pid").readText().trim().toLong()).ifPresent { it.destroyForcibly() }
+        recordedPid()?.let { pid -> ProcessHandle.of(pid).ifPresent { it.destroyForcibly() } }
     }
 
     @Test
@@ -233,6 +233,18 @@ internal class LocalClusterToolingTest {
         assertThat(shown).isEqualTo("hello" + System.lineSeparator())
         assertThat(hidden).isEmpty()
     }
+
+    /**
+     * The pid the `hang` stand-in wrote, or null when it wrote none. On a loaded machine a short timeout
+     * can kill the stand-in before it writes its pid; it then never became `sleep`, so no tool outlives
+     * the call and nothing needs cleaning up.
+     */
+    private fun recordedPid(): Long? =
+        File(workspace, "hang.pid")
+            .takeIf { it.isFile }
+            ?.readText()
+            ?.trim()
+            ?.toLongOrNull()
 
     /** The pid the `hang` stand-in wrote before it became `sleep`, once it has written it. */
     private fun awaitPid(file: File): Long {

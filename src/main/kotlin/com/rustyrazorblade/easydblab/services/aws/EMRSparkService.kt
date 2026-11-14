@@ -25,6 +25,7 @@ import software.amazon.awssdk.services.emr.model.ListStepsRequest
 import software.amazon.awssdk.services.emr.model.StepCancellationOption
 import software.amazon.awssdk.services.emr.model.StepConfig
 import software.amazon.awssdk.services.emr.model.StepState
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -173,7 +174,6 @@ class EMRSparkService(
             }
         }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun handleFailedJob(
         clusterId: String,
         stepId: String,
@@ -254,7 +254,6 @@ class EMRSparkService(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun queryStepLogs(stepId: String) {
         println("\n=== Step Logs ===")
         try {
@@ -277,14 +276,24 @@ class EMRSparkService(
                     eventBus.emit(Event.Emr.SparkLogError(e.message ?: "Unknown error"))
                     println("Try: easy-db-lab spark logs --step-id $stepId")
                 }
-        } catch (e: Exception) {
-            log.warn { "Failed to query Loki: ${e.message}" }
-            eventBus.emit(Event.Emr.SparkLogQueryFailed)
-            println("Try: easy-db-lab spark logs --step-id $stepId")
+        } catch (e: IOException) {
+            // The cluster state could not be read or parsed.
+            reportLokiQueryFailure(stepId, e)
+        } catch (e: IllegalStateException) {
+            // The cluster state holds an invalid cluster name.
+            reportLokiQueryFailure(stepId, e)
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
+    private fun reportLokiQueryFailure(
+        stepId: String,
+        e: Exception,
+    ) {
+        log.warn { "Failed to query Loki: ${e.message}" }
+        eventBus.emit(Event.Emr.SparkLogQueryFailed)
+        println("Try: easy-db-lab spark logs --step-id $stepId")
+    }
+
     private fun downloadAndDisplayLogs(
         clusterId: String,
         stepId: String,
@@ -303,16 +312,11 @@ class EMRSparkService(
             """.trimMargin()
 
         eventBus.emit(Event.Emr.DownloadingStepLogsHeader)
-        try {
-            downloadStepLogs(clusterId, stepId)
-                .onFailure { e ->
-                    eventBus.emit(Event.Emr.SparkLogDownloadFailed(e.message ?: "Unknown error"))
-                    println(manualDebugCommands)
-                }
-        } catch (e: Exception) {
-            log.warn { "Failed to download step logs: ${e.message}" }
-            println(manualDebugCommands)
-        }
+        downloadStepLogs(clusterId, stepId)
+            .onFailure { e ->
+                eventBus.emit(Event.Emr.SparkLogDownloadFailed(e.message ?: "Unknown error"))
+                println(manualDebugCommands)
+            }
     }
 
     override fun getJobStatus(

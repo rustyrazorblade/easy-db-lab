@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import com.rustyrazorblade.easydblab.services.access.baseUrl
 import com.rustyrazorblade.easydblab.services.access.forEndpoint
+import io.github.oshai.kotlinlogging.KotlinLogging
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -65,6 +66,8 @@ class DefaultObservabilityHttp(
     private val tenant: () -> String,
     private val httpClientFactory: HttpClientFactory,
 ) : ObservabilityHttp {
+    private val log = KotlinLogging.logger {}
+
     override fun get(
         target: ServiceTarget,
         pathAndQuery: String,
@@ -86,6 +89,8 @@ class DefaultObservabilityHttp(
         method: (Request.Builder) -> Request.Builder,
     ): ObservabilityResponse {
         val endpoint = access.open(target)
+        // The path only: a query string can carry user input, and nothing here holds credentials.
+        log.debug { "${target.service} request to ${endpoint.baseUrl()}${pathAndQuery.substringBefore('?')} via $endpoint" }
         val request =
             method(Request.Builder().url("${endpoint.baseUrl()}$pathAndQuery"))
                 .header(Constants.Observability.TENANT_HEADER, tenant())

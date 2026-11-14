@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -117,6 +118,18 @@ class GrafanaFrontTest : BaseKoinTest() {
         // A kept-alive upstream connection needs the client's Connection header cleared, except on the websocket.
         assertThat(blocks.getValue("/")).contains("proxy_set_header Connection \"\";").doesNotContain("Upgrade")
         assertThat(blocks.getValue("/reports/")).contains("proxy_set_header Connection \"\";")
+    }
+
+    @Test
+    fun `a bucket or region that could break out of the nginx configuration is refused`() {
+        assertThatThrownBy { DocumentsBucket("acct; return 200", "eu-west-1") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("bucket")
+        assertThatThrownBy { DocumentsBucket("Acct_Bucket", "eu-west-1") }.isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { DocumentsBucket("acct-bucket", "eu-west-1;") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("region")
+        assertThat(DocumentsBucket("easy-db-lab-acct.123", "us-gov-west-1").bucket).isEqualTo("easy-db-lab-acct.123")
     }
 
     /** Each `location <path> {` block's body in [config], keyed by its path. */

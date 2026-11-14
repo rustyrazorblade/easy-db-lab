@@ -13,13 +13,26 @@ import io.fabric8.kubernetes.api.model.VolumeBuilder
 /**
  * The account bucket that holds the test documents, and the region to sign requests to it for.
  *
+ * Both are written into the front's nginx configuration and the proxy's arguments, so each must be
+ * a valid name: a `;`, a brace or a space would change what nginx does.
+ *
  * @property bucket The account bucket.
  * @property region The bucket's own region, which may differ from the cluster's.
  */
 data class DocumentsBucket(
     val bucket: String,
     val region: String,
-)
+) {
+    init {
+        require(BUCKET_NAME.matches(bucket)) { "The documents bucket '$bucket' is not a valid S3 bucket name." }
+        require(REGION.matches(region)) { "The documents bucket's region '$region' is not a valid AWS region name." }
+    }
+
+    private companion object {
+        val BUCKET_NAME = Regex(Constants.Grafana.Documents.BUCKET_NAME_PATTERN)
+        val REGION = Regex(Constants.Grafana.Documents.REGION_PATTERN)
+    }
+}
 
 /**
  * The two containers in the Grafana pod that put Grafana and a test's documents behind one port, so

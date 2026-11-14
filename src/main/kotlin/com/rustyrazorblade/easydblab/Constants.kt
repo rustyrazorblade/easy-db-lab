@@ -1123,6 +1123,12 @@ object Constants {
          * own port, from the signing proxy it forwards to, bound to loopback.
          */
         object Documents {
+            /** An S3 bucket name as AWS allows it: lowercase letters, digits, dots and hyphens, 3 to 63 long. */
+            const val BUCKET_NAME_PATTERN = "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\$"
+
+            /** An AWS region name, such as `us-west-2` or `us-gov-west-1`. */
+            const val REGION_PATTERN = "^[a-z]{2}(-[a-z]+)+-[0-9]+\$"
+
             /** Loopback port of the `aws-sigv4-proxy` that signs the front's S3 requests. */
             const val PROXY_PORT = 3081
 

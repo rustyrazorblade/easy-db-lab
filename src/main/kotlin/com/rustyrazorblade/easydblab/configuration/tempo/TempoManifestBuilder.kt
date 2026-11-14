@@ -23,11 +23,11 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * cluster-config ConfigMap.
  *
  * @property templateService Used for loading config files from classpath resources
- * @property storeBlocks Places the store's object-store block into the config ([StoreBlockRenderer]).
+ * @property storeBlocks Places the object-store block of the cluster's store ([TemplateService.storeBackend]) into the config.
  */
 class TempoManifestBuilder(
     private val templateService: TemplateService,
-    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.S3,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
         private const val NAMESPACE = "default"

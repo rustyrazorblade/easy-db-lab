@@ -33,11 +33,11 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * storage prefix come from the cluster-config ConfigMap ([ClusterConfigData]) as env vars.
  *
  * @property templateService Loads the config file from the classpath.
- * @property storeBlocks Places the store's object-store block into the config ([StoreBlockRenderer]).
+ * @property storeBlocks Places the object-store block of the cluster's store ([TemplateService.storeBackend]) into the config.
  */
 class MimirManifestBuilder(
     private val templateService: TemplateService,
-    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.S3,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
         private const val NAMESPACE = Constants.K8s.NAMESPACE

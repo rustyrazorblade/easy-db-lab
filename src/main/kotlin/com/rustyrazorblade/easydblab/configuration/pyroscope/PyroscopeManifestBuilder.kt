@@ -26,11 +26,11 @@ import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
  * and the Grafana Alloy eBPF agent (DaemonSet + ConfigMap) that collects CPU profiles from all nodes.
  *
  * @property templateService Used for loading config files from classpath resources
- * @property storeBlocks Places the store's object-store block into the config ([StoreBlockRenderer]).
+ * @property storeBlocks Places the object-store block of the cluster's store ([TemplateService.storeBackend]) into the config.
  */
 class PyroscopeManifestBuilder(
     private val templateService: TemplateService,
-    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.S3,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
         private const val NAMESPACE = "default"

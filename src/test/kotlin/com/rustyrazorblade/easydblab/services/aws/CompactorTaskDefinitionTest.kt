@@ -150,7 +150,7 @@ class CompactorTaskDefinitionTest {
 
         assertThat(data.readOnly() == true).describedAs("read-only").isFalse()
         assertThat(request.volumes().map { it.name() }).contains(data.sourceVolume())
-        assertThat(CompactorTaskDefinition.configFiles().getValue("mimir.yaml")).contains("filepath: /data/")
+        assertThat(definition.configFiles().getValue("mimir.yaml")).contains("filepath: /data/")
     }
 
     /** A stopped service reuses the latest revision only when nothing the task runs with changed. */

@@ -56,6 +56,27 @@ class StoreBlockRendererTest {
             .isInstanceOf(IllegalArgumentException::class.java)
     }
 
+    /**
+     * The builders are created before a cluster has state (Koin singles, `init`), so they resolve
+     * the store only when they render, and then through [StoreBlockSource.of].
+     */
+    @Test
+    fun `a renderer for the cluster's store resolves the store only when it renders, every time it renders`() {
+        var resolved = 0
+        val renderer =
+            StoreBlockRenderer.of {
+                resolved++
+                S3Backend(bucket = "b", region = "r")
+            }
+
+        assertThat(resolved).isZero()
+        val rendered = renderer.render("top:\n  ${StoreBlockRenderer.PLACEHOLDER}\n", StoreBlockRendererTest::class.java)
+        renderer.render("top:\n  ${StoreBlockRenderer.PLACEHOLDER}\n", StoreBlockRendererTest::class.java)
+
+        assertThat(rendered).isEqualTo("top:\n  stub-s3-fragment: true\n")
+        assertThat(resolved).isEqualTo(2)
+    }
+
     @Test
     fun `the S3 source reads the s3 fragment beside the config`() {
         val text = StoreBlockSource.of(S3Backend(bucket = "b", region = "r")).fragment(StoreBlockRendererTest::class.java)

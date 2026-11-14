@@ -67,7 +67,7 @@ class SetupProfileTest : BaseKoinTest() {
         doNothing().whenever(mockAws).checkPermissions()
         whenever(mockAws.getAccountId()).thenReturn("123456789012")
         whenever(mockAws.createS3Bucket(any())).thenReturn("test-bucket")
-        doNothing().whenever(mockAws).putS3BucketPolicy(any(), any())
+        doNothing().whenever(mockAws).putS3BucketPolicy(any())
         doNothing().whenever(mockAws).tagS3Bucket(any(), any())
     }
 
@@ -568,7 +568,7 @@ class SetupProfileTest : BaseKoinTest() {
 
             // Then - S3 bucket should be created
             verify(mockAws).createS3Bucket(any())
-            verify(mockAws).putS3BucketPolicy(any(), any())
+            verify(mockAws).putS3BucketPolicy(any())
             verify(mockAws).tagS3Bucket(any(), any())
 
             assertThat(bufferedOutput.messages.joinToString("\n"))

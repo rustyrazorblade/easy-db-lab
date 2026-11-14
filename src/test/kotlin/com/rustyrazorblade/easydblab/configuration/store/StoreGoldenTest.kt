@@ -190,12 +190,12 @@ class StoreGoldenTest : BaseKoinTest() {
 
     @Test
     fun `instance role policy renders to the golden file`() {
-        assertGolden("instance-role-policy.json", AWSPolicy.Inline.S3AccessWildcard(ACCOUNT_ID, storePrefix = "").toJson())
+        assertGolden("instance-role-policy.json", AWSPolicy.Inline.S3AccessWildcard(ACCOUNT_ID).toJson())
     }
 
     @Test
     fun `bucket policy renders to the golden file`() {
-        assertGolden("bucket-policy.json", AWSPolicy.Inline.S3BucketPolicy(ACCOUNT_ID, BUCKET, storePrefix = "").toJson())
+        assertGolden("bucket-policy.json", AWSPolicy.Inline.S3BucketPolicy(ACCOUNT_ID, BUCKET).toJson())
     }
 
     @Test

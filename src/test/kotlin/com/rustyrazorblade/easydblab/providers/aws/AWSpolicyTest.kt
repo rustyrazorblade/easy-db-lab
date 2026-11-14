@@ -47,7 +47,7 @@ class AWSpolicyTest {
     inner class InlinePolicies {
         @Test
         fun `S3AccessWildcard should generate valid policy with multiple statements`() {
-            val json = AWSPolicy.Inline.S3AccessWildcard("123456789012", "").toJson()
+            val json = AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson()
 
             // First statement for ListAllMyBuckets
             assertThat(json).contains(""""Action":"s3:ListAllMyBuckets"""")
@@ -74,7 +74,7 @@ class AWSpolicyTest {
         fun `S3AccessWildcard denies deletes on every observability prefix but profiles`() {
             val statements =
                 Json
-                    .parseToJsonElement(AWSPolicy.Inline.S3AccessWildcard("123456789012", "").toJson())
+                    .parseToJsonElement(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson())
                     .jsonObject
                     .getValue("Statement")
                     .jsonArray
@@ -107,7 +107,7 @@ class AWSpolicyTest {
 
         @Test
         fun `S3BucketPolicy should generate valid policy with multiple principals`() {
-            val policy = AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", "")
+            val policy = AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket")
             val json = policy.toJson()
 
             // Check for multiple AWS principals
@@ -126,7 +126,7 @@ class AWSpolicyTest {
         @Test
         fun `S3BucketPolicy denies the cluster roles every delete under the compacted roots`() {
             val deny =
-                statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", "").toJson()).single {
+                statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket").toJson()).single {
                     it.effect() ==
                         "Deny"
                 }
@@ -164,38 +164,25 @@ class AWSpolicyTest {
     }
 
     /**
-     * A store prefix only ever adds denied paths: the instance role is account-wide, so a cluster on
-     * one prefix must never drop the guard a cluster on another prefix, or on none, relies on.
+     * The denies take no prefix: each is put whole, so whoever puts one last (`up` on any prefix, or
+     * `profile setup`) puts the same deny. It must therefore cover every root under any prefix, so a
+     * cluster on one prefix never drops the guard a cluster on another prefix, or on none, relies on.
      */
     @Nested
     inner class StorePrefix {
         private val prefix = "team-a"
-        private val prefixes = listOf("", "team-a", "team-b/nested")
 
-        private fun instanceDeny(storePrefix: String) =
-            statements(AWSPolicy.Inline.S3AccessWildcard("123456789012", storePrefix).toJson()).single { it.effect() == "Deny" }
+        private fun instanceDeny() =
+            statements(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson()).single { it.effect() == "Deny" }
 
-        private fun bucketDeny(storePrefix: String) =
-            statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "easy-db-lab-test", storePrefix).toJson()).single {
+        private fun bucketDeny() =
+            statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "easy-db-lab-test").toJson()).single {
                 it.effect() == "Deny"
             }
 
-        /**
-         * `up` puts each deny whole, so a deny built from one cluster's prefix replaces the one
-         * another cluster put. Only a deny that does not depend on the prefix keeps every cluster's
-         * guard, whichever cluster applied it last, and whether that was `profile setup` with none.
-         */
         @Test
-        fun `every deny is the same whichever prefix it is built with`() {
-            prefixes.forEach { storePrefix ->
-                assertThat(instanceDeny(storePrefix)).isEqualTo(instanceDeny(StoreBackend.NO_PREFIX))
-                assertThat(bucketDeny(storePrefix)).isEqualTo(bucketDeny(StoreBackend.NO_PREFIX))
-            }
-        }
-
-        @Test
-        fun `the instance role deny built with no prefix covers every denied root under any prefix`() {
-            val resources = instanceDeny(StoreBackend.NO_PREFIX).values("Resource")
+        fun `the instance role deny covers every denied root under any prefix`() {
+            val resources = instanceDeny().values("Resource")
 
             listOf("mimir", "loki", "tempo", "grafana", "reports").forEach { root ->
                 listOf("$root/x", "team-a/$root/x", "team-b/nested/$root/x").forEach { key ->
@@ -208,8 +195,8 @@ class AWSpolicyTest {
         }
 
         @Test
-        fun `the bucket policy deny built with no prefix covers every compacted root under any prefix`() {
-            val resources = bucketDeny(StoreBackend.NO_PREFIX).values("Resource")
+        fun `the bucket policy deny covers every compacted root under any prefix`() {
+            val resources = bucketDeny().values("Resource")
 
             listOf("mimir", "loki", "tempo").forEach { root ->
                 listOf("$root/x", "team-a/$root/x", "team-b/nested/$root/x").forEach { key ->
@@ -219,16 +206,6 @@ class AWSpolicyTest {
             listOf("grafana/x", "reports/x", "pyroscope/x", "team-a/grafana/x").forEach { key ->
                 assertThat(IamResourceMatcher.anyCovers(resources, "easy-db-lab-test", key)).describedAs(key).isFalse()
             }
-        }
-
-        @Test
-        fun `a prefix widens no allow of the instance role or the bucket policy`() {
-            fun allows(json: String) = statements(json).filter { it.effect() == "Allow" }
-
-            assertThat(allows(AWSPolicy.Inline.S3AccessWildcard("123456789012", prefix).toJson()))
-                .isEqualTo(allows(AWSPolicy.Inline.S3AccessWildcard("123456789012", "").toJson()))
-            assertThat(allows(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", prefix).toJson()))
-                .isEqualTo(allows(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", "").toJson()))
         }
 
         @Test

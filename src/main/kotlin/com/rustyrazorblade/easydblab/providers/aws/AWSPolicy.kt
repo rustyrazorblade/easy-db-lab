@@ -168,12 +168,11 @@ sealed class AWSPolicy {
          * Also includes s3:ListAllMyBuckets for S3Manager web UI, and denies deleting observability
          * data (metrics, logs, traces, annotations). `up` re-applies it every time.
          *
-         * @param storePrefix The cluster's store prefix. The deny does not depend on it: it covers the
-         *   denied roots at the top of every easy-db-lab bucket and under any prefix ([underAnyPrefix]).
+         * The deny is prefix-independent: it covers the denied roots at the top of every easy-db-lab
+         * bucket and under any store prefix ([underAnyPrefix]), so it takes no prefix.
          */
         data class S3AccessWildcard(
             val accountId: String,
-            val storePrefix: String,
         ) : Inline() {
             override fun toJson() =
                 IamPolicyDocument(
@@ -320,13 +319,13 @@ sealed class AWSPolicy {
          *
          * @param accountId The AWS account ID for constructing role ARNs
          * @param bucketName The S3 bucket name to apply the policy to
-         * @param storePrefix The store prefix. The deny does not depend on it: it covers the compacted
-         *   roots at the top of the bucket and under any prefix ([underAnyPrefix])
+         *
+         * The deny is prefix-independent: it covers the compacted roots at the top of the bucket and
+         * under any store prefix ([underAnyPrefix]), so it takes no prefix.
          */
         data class S3BucketPolicy(
             val accountId: String,
             val bucketName: String,
-            val storePrefix: String,
         ) : Inline() {
             override fun toJson() =
                 IamPolicyDocument(

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.EventBus
+import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer
 import org.assertj.core.api.Assertions.assertThat
@@ -103,5 +104,39 @@ class DefaultK8sStorageOperationsTest {
                 .map { it.metadata.name }
 
         assertThat(names).contains(Constants.K8s.LOCAL_STORAGE_CLASS, Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+    }
+
+    @Test
+    fun `a StorageClass's reclaim policy is read, a missing one reads as Delete, and an absent class as null`() {
+        val classes =
+            server
+                .createClient()
+                .storage()
+                .v1()
+                .storageClasses()
+        classes
+            .resource(
+                StorageClassBuilder()
+                    .withNewMetadata()
+                    .withName(
+                        "kept",
+                    ).endMetadata()
+                    .withProvisioner("p")
+                    .withReclaimPolicy("Retain")
+                    .build(),
+            ).create()
+        classes
+            .resource(
+                StorageClassBuilder()
+                    .withNewMetadata()
+                    .withName("defaulted")
+                    .endMetadata()
+                    .withProvisioner("p")
+                    .build(),
+            ).create()
+
+        assertThat(storageOps.storageClassReclaimPolicy("kept").getOrThrow()).isEqualTo("Retain")
+        assertThat(storageOps.storageClassReclaimPolicy("defaulted").getOrThrow()).isEqualTo("Delete")
+        assertThat(storageOps.storageClassReclaimPolicy("absent").getOrThrow()).isNull()
     }
 }

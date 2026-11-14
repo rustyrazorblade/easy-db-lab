@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -62,7 +63,7 @@ class ConfigHashRolloutIntegrationTest {
         )
 
     /** Built the way the deploy builds it, so the keys are the ones the workloads read. */
-    private val clusterConfig = ClusterConfigData.of(controlHost, clusterState, defaultRegion = "us-west-2")
+    private val clusterConfig = ClusterConfigData.of(clusterState, ObservabilityHosting.AWS, defaultRegion = "us-west-2")
 
     private lateinit var client: KubernetesClient
     private lateinit var manifests: DefaultK8sManifestOperations
@@ -315,7 +316,7 @@ class ConfigHashRolloutIntegrationTest {
         val resources =
             CollectorResources.build(
                 otel,
-                checkNotNull(state.getControlHost()),
+                ObservabilityHosting.AWS,
                 state,
                 user.region,
                 scrapeConfigs,

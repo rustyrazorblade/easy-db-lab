@@ -6,8 +6,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
@@ -42,11 +45,31 @@ class OtelSyncServiceTest : BaseKoinTest() {
     private lateinit var mockFiltered: FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>
     private lateinit var service: OtelSyncService
 
+    /** The hosting the sync under test resolves; AWS unless a test declares otherwise. */
+    private var hosting: ObservabilityHosting = ObservabilityHosting.AWS
+
     /** The capabilities the sync under test sees; AWS unless a test declares otherwise. */
     private var capabilities: NodeCapabilities = NodeCapabilities.AWS
 
-    private val controlHosts =
-        mapOf(ServerType.Control to listOf(ClusterHost("1.2.3.4", "10.0.0.1", "control0", "us-west-2a")))
+    private val controlHost =
+        ClusterHost(
+            publicIp = "1.2.3.4",
+            privateIp = "10.0.0.1",
+            alias = "control0",
+            availabilityZone = "us-west-2a",
+        )
+
+    /** An AWS cluster: its control node is where the backends publish their ports. */
+    private val withControlHost =
+        ClusterState(
+            name = "test",
+            versions = mutableMapOf(),
+            s3Bucket = "easy-db-lab-test",
+            hosts = mapOf(ServerType.Control to listOf(controlHost)),
+        )
+
+    /** A cluster brought by the operator: no control node in its state. */
+    private val noControlHost = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test")
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -55,9 +78,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 single { mock<K8sService>().also { mockK8sService = it } }
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(
-                            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test", hosts = controlHosts),
-                        )
+                        whenever(it.load()).thenReturn(withControlHost)
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -96,11 +117,12 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
                 capabilitiesOf = { capabilities },
+                hostingOf = { hosting },
             )
     }
 
     @Test
-    fun `syncConfigMap creates a K8s client to list the workload scrape configs`() {
+    fun `syncConfigMap creates the K8s client for the control host in state`() {
         service.syncConfigMap()
 
         verify(mockK8sClientProvider).createClient()
@@ -270,7 +292,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 name = "test",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
-                hosts = controlHosts,
+                hosts = withControlHost.hosts,
                 initConfig = InitConfig(region = "us-west-2", cni = CniMode.Cilium),
             )
         whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(ciliumState)
@@ -281,5 +303,55 @@ class OtelSyncServiceTest : BaseKoinTest() {
         assertThat(applied.map { it.metadata.name }).noneMatch { it.startsWith("otel-collector-host") }
         val yaml = checkNotNull(applied.filterIsInstance<ConfigMap>().single().data["otel-collector-config.yaml"])
         assertThat(yaml).doesNotContain("cilium-agent")
+    }
+
+    /**
+     * Off owned nodes the backends are not published on a node, so a sync needs no control host: the
+     * cluster-config it hashes the collector against carries no node IP, and the collector config it
+     * renders reaches every backend by Service DNS.
+     */
+    @Test
+    fun `a sync off owned nodes runs with no control host and renders no node IP`() {
+        hosting = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE)
+        whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(noControlHost)
+        val applied = captureApplied()
+
+        service.syncConfigMap().getOrThrow()
+
+        val withoutNodeIp = collectorHash(ClusterConfigData.of(noControlHost, hosting, "us-west-2"))
+        val withNodeIp = collectorHash(ClusterConfigData.of(withControlHost, ObservabilityHosting.AWS, "us-west-2"))
+        assertThat(ClusterConfigData.of(noControlHost, hosting, "us-west-2")).doesNotContainKey(ClusterConfigData.CONTROL_NODE_IP_KEY)
+        assertThat(appliedConfigHash(applied)).isEqualTo(withoutNodeIp).isNotEqualTo(withNodeIp)
+        val config =
+            applied
+                .filterIsInstance<ConfigMap>()
+                .single()
+                .data.values
+                .single()
+        assertThat(
+            config.replace("0.0.0.0:", ""),
+        ).describedAs("no endpoint at a node IP").doesNotContainPattern("""\b\d{1,3}(\.\d{1,3}){3}:\d+""")
+        assertThat(config).contains("mimir.default.svc.cluster.local", "loki.default.svc.cluster.local", "tempo.default.svc.cluster.local")
+    }
+
+    /** The collector's hash against [clusterConfig], built the way [CollectorResources] builds it. */
+    private fun collectorHash(clusterConfig: Map<String, String>): String =
+        ConfigHashAnnotator
+            .annotate(
+                otelManifestBuilder.buildAllResources(capabilities, emptyList(), null, CollectorResources.podLogSource(capabilities)),
+                mapOf(ClusterConfigData.NAME to clusterConfig),
+            ).let(::appliedConfigHash)
+
+    @Test
+    fun `a sync on the AWS control node without a control host fails naming why it needs one`() {
+        whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(noControlHost)
+
+        val result = service.syncConfigMap()
+
+        assertThat(result.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("no control node")
+            .hasMessageContaining("redirected clusters")
+        verify(mockK8sService, never()).applyResource(any())
     }
 }

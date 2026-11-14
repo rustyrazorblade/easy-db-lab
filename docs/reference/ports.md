@@ -13,10 +13,12 @@ This page documents the ports used by easy-db-lab and the services it provisions
 
 ## Observability Ports (Control Node)
 
+Mimir, Loki, Tempo, the Pyroscope server and Grafana run in the Kubernetes pod network and reach each other by Service name (for example `mimir.default.svc:9009`).  On an AWS cluster they also publish these ports on the control node, so nodes, redirected clusters and the CLI reach them at the control node's private IP.
+
 | Port | Service |
 |------|---------|
-| 3000 | Grafana |
-| 3080 | Test documents web server (read-only, in the Grafana pod) |
+| 3000 | Grafana, through the nginx front in the Grafana pod, which also serves the test documents under `/reports/` (read-only) |
+| 3001 | Grafana itself (loopback only, in the Grafana pod, behind the front) |
 | 3081 | Test documents signing proxy (loopback only, in the Grafana pod) |
 | 8081 | Grafana image renderer (in the Grafana pod) |
 | 4040 | Pyroscope (continuous profiling) |

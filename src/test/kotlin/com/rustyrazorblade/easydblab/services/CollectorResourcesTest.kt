@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -28,11 +30,27 @@ class CollectorResourcesTest : BaseKoinTest() {
         )
 
     private val host = ClusterHost("1.2.3.4", "10.0.0.1", "control0", "us-west-2a")
-    private val state = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test")
+    private val state =
+        ClusterState(
+            name = "test",
+            versions = mutableMapOf(),
+            s3Bucket = "easy-db-lab-test",
+            hosts =
+                mapOf(
+                    ServerType.Control to listOf(host),
+                ),
+        )
 
     private fun config(capabilities: NodeCapabilities): String {
         val resources: List<HasMetadata> =
-            CollectorResources.build(OtelManifestBuilder(getKoin().get()), host, state, "us-west-2", emptyList(), capabilities)
+            CollectorResources.build(
+                OtelManifestBuilder(getKoin().get()),
+                ObservabilityHosting.AWS,
+                state,
+                "us-west-2",
+                emptyList(),
+                capabilities,
+            )
         return checkNotNull(resources.filterIsInstance<ConfigMap>().single().data["otel-collector-config.yaml"])
     }
 
@@ -57,7 +75,7 @@ class CollectorResourcesTest : BaseKoinTest() {
 
     private fun daemonSet(capabilities: NodeCapabilities): DaemonSet =
         CollectorResources
-            .build(OtelManifestBuilder(getKoin().get()), host, state, "us-west-2", emptyList(), capabilities)
+            .build(OtelManifestBuilder(getKoin().get()), ObservabilityHosting.AWS, state, "us-west-2", emptyList(), capabilities)
             .filterIsInstance<DaemonSet>()
             .single()
 }

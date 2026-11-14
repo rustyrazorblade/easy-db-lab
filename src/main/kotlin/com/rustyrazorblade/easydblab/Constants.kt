@@ -492,9 +492,17 @@ object Constants {
          * attempt and one retry.
          */
         const val PORT_FORWARD_BIND_ATTEMPTS = 2
+
+        /** The fully qualified in-cluster DNS name of [service], a Service in [NAMESPACE]. */
+        fun serviceHost(service: String): String = "$service.$NAMESPACE.svc.cluster.local"
+
         const val MANIFEST_DIR = "k8s"
         const val LOCAL_STORAGE_CLASS = "local-storage"
         const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
+
+        /** The access mode of a volume one node mounts read-write, as every easy-db-lab claim is. */
+        const val READ_WRITE_ONCE = "ReadWriteOnce"
+
         const val GRAFANA_PORT = 3000
         const val GRAFANA_APP_LABEL = "grafana"
         const val S3MANAGER_PORT = 8080
@@ -1066,6 +1074,13 @@ object Constants {
         const val HOME_DASHBOARD_PATH = "infrastructure/system-overview.json"
 
         /**
+         * The most dashboard JSON one `grafana-dashboard-tree-<n>` ConfigMap carries, keys included, where
+         * the tree reaches Grafana through the K8s API. Half the API's 1 MiB object limit, so a
+         * dashboard that grows does not push its ConfigMap over it.
+         */
+        const val DASHBOARD_CONFIGMAP_MAX_BYTES = 512 * 1024
+
+        /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
          * addition to any operator-supplied tags. The core dashboards' annotation query filters on
          * this tag so global markers render on their timelines. Scoped annotations
@@ -1104,21 +1119,30 @@ object Constants {
         }
 
         /**
-         * The test documents Grafana shows: a read-only web server on the control node's host
-         * network, and the signing proxy it forwards to, bound to loopback. 8081 is the image
-         * renderer's.
+         * The loopback port Grafana itself listens on inside its pod. The nginx front holds Grafana's
+         * client port ([K8s.GRAFANA_PORT]) and forwards to this one, so nothing outside the pod reaches
+         * Grafana but through the front. Not 8081, which the image renderer uses.
+         */
+        const val INTERNAL_PORT = 3001
+
+        /**
+         * The test documents Grafana shows: the nginx front serves them under `/reports/` on Grafana's
+         * own port, from the signing proxy it forwards to, bound to loopback.
          */
         object Documents {
-            /** Host port of the read-only documents web server, reachable from the browser like Grafana. */
-            const val WEB_PORT = 3080
+            /** An S3 bucket name as AWS allows it: lowercase letters, digits, dots and hyphens, 3 to 63 long. */
+            const val BUCKET_NAME_PATTERN = "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\$"
 
-            /** Loopback port of the `aws-sigv4-proxy` that signs the web server's S3 requests. */
+            /** An AWS region name, such as `us-west-2` or `us-gov-west-1`. */
+            const val REGION_PATTERN = "^[a-z]{2}(-[a-z]+)+-[0-9]+\$"
+
+            /** Loopback port of the `aws-sigv4-proxy` that signs the front's S3 requests. */
             const val PROXY_PORT = 3081
 
             /** The signing proxy, a released version. */
             const val SIGV4_PROXY_IMAGE = "public.ecr.aws/aws-observability/aws-sigv4-proxy:1.13"
 
-            /** The read-only web server, a released stable nginx that runs as a non-root user. */
+            /** The front, a released stable nginx that runs as a non-root user. */
             const val WEB_SERVER_IMAGE = "nginxinc/nginx-unprivileged:1.30.5-alpine"
         }
     }

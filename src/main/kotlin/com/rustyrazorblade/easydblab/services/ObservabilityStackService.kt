@@ -1,13 +1,15 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
-import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
@@ -53,14 +55,18 @@ import io.fabric8.kubernetes.api.model.HasMetadata
  */
 interface ObservabilityStackService {
     /**
-     * Deploys the observability stack to [controlNode].
+     * Deploys the observability stack to the cluster in the workspace kubeconfig.
      *
      * The mode comes from the cluster state: when its init config records a [TelemetryRedirect],
      * the collectors are pointed at that external stack and the local backends, Grafana, and
      * dashboards are skipped. Reading it from the state, not from the caller, is what keeps the
      * collector this deploy applies identical to the one a kit sync applies ([CollectorResources]).
      *
-     * @param controlNode the cluster's control node running K3s.
+     * The control node in the cluster state is needed only where the stack uses the node itself: the
+     * host-path state directories and dashboard tree, and the node IP the backends publish on under
+     * [com.rustyrazorblade.easydblab.configuration.Placement.CONTROL_NODE]. Off owned nodes the deploy
+     * needs no control node.
+     *
      * @return success once the stack is applied and the namespace reaches Ready; failure otherwise.
      */
     fun deploy(): Result<Unit>
@@ -70,16 +76,16 @@ interface ObservabilityStackService {
  * Default implementation that applies the stack over the K8s API and configures on-node
  * directories over SSH.
  *
- * @property capabilitiesOf derives what the environment provides from cluster state. It is a test
- *   seam so a unit test can run a non-AWS environment; production takes the default. The four such
- *   seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
+ * @property environmentOf derives what the environment provides and how the stack is hosted on it
+ *   from cluster state. It is a test seam so a unit test can run a non-AWS environment; production
+ *   takes the default. The four capability seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
  *   [com.rustyrazorblade.easydblab.server.StatusCache]) are consolidated by #1040 into one provider.
  */
 @Suppress("LongParameterList")
 class DefaultObservabilityStackService(
     private val k8sService: K8sService,
     private val k8sClientProvider: K8sClientProvider,
-    private val remoteOps: RemoteOperationsService,
+    remoteOps: RemoteOperationsService,
     private val clusterStateManager: ClusterStateManager,
     private val user: User,
     private val eventBus: EventBus,
@@ -99,7 +105,7 @@ class DefaultObservabilityStackService(
     private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
     private val configChangeReport: ConfigChangeReport,
     private val installContextFactory: DashboardInstallContextFactory,
-    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
+    private val environmentOf: (ClusterState) -> StackEnvironment = StackEnvironment::from,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
@@ -133,96 +139,50 @@ class DefaultObservabilityStackService(
             missing.isEmpty()
         }
 
+    private val stateDirectories = OnNodeStateDirectories(remoteOps, eventBus)
+    private val retainedClaimCheck = RetainedClaimCheck(k8sService)
+    private val placementCheck = PlacementCheck(k8sService)
+
     override fun deploy(): Result<Unit> =
         runCatching {
             val clusterState = clusterStateManager.load()
-            val controlNode =
-                checkNotNull(clusterState.getControlHost()) {
-                    "No control node in cluster state; cannot deploy the observability stack."
-                }
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
-            val capabilities = capabilitiesOf(clusterState)
+            val environment = environmentOf(clusterState)
+            val hosting = environment.hosting
+            // Before anything is applied: a claim on a class that deletes its volume would lose the state.
+            retainedClaimCheck.require(hosting.storage)
+            // A selector no node matches would leave every backend Pending until the rollout wait times out.
+            placementCheck.require(hosting.placement)
 
-            val clusterConfig = createClusterConfigMap(clusterState)
-
-            val scrapeConfigs =
-                k8sClientProvider.createClient().use { client ->
-                    otelManifestBuilder.listWorkloadScrapeConfigs(client)
-                }
-
-            // The collector arrives already hashed, by the same function the kit sync uses, so both
-            // stamp it with the same config hash.
-            val collector =
-                Stage(
-                    "OTel Collector",
-                    CollectorResources.build(otelManifestBuilder, controlNode, clusterState, user.region, scrapeConfigs, capabilities),
-                )
+            val clusterConfig = createClusterConfigMap(clusterState, hosting)
+            val collector = collectorStage(clusterState, environment)
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
-            val stages = applyCapabilityGate(buildStages(telemetryRedirect, clusterState.initConfig?.cni ?: CniMode.Flannel), capabilities)
+            reportPlacement(hosting)
+            val stages =
+                applyCapabilityGate(
+                    buildStages(telemetryRedirect, clusterState.initConfig?.cni ?: CniMode.Flannel, hosting),
+                    environment.capabilities,
+                )
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
-            // not, so prepare them only in local mode.
+            // not, so prepare them only in local mode, and only where state lives on the node.
+            val onNodeState = telemetryRedirect == null && hosting.storage == BackendStorage.HostPath
+            if (onNodeState) {
+                stateDirectories.prepareBackends(stateNode(clusterState))
+            }
+
+            val appliedResources = applyHashed(collector, stages, clusterConfig)
+
+            if (onNodeState) {
+                stateDirectories.prepareGrafana(stateNode(clusterState))
+            }
             if (telemetryRedirect == null) {
-                preparePyroscopeDirectory(controlNode.toHost())
-                prepareTempoDirectory(controlNode.toHost())
-                prepareMimirDirectory(controlNode.toHost())
-                prepareLokiDirectory(controlNode.toHost())
+                uploadDashboards(clusterState, hosting)
             }
 
-            // Every ConfigMap this deploy knows the contents of, so a workload that reads one from
-            // another stage, or the runtime cluster-config, is hashed on it too.
-            val knownConfigMaps =
-                mapOf(ClusterConfigData.NAME to clusterConfig) +
-                    (listOf(collector) + stages)
-                        .flatMap { it.resources }
-                        .filterIsInstance<ConfigMap>()
-                        .associate { it.metadata.name to it.data.orEmpty() }
-
-            // Hash every stage before applying any, so a workload reading a ConfigMap this deploy
-            // cannot hash fails the deploy before it touches the cluster.
-            val hashedStages =
-                listOf(collector) + stages.map { it.copy(resources = ConfigHashAnnotator.annotate(it.resources, knownConfigMaps)) }
-            val appliedResources = hashedStages.flatMap { it.resources }
-            configChangeReport.report(appliedResources, DEFAULT_NAMESPACE)
-            for (stage in hashedStages) {
-                awaitRollouts(stage.rolledOutFirst)
-                applyStage(stage)
-            }
-
-            if (telemetryRedirect == null) {
-                prepareGrafanaDirectory(controlNode.toHost())
-                uploadDashboards(clusterState)
-            }
-
-            // Grafana is applied by the Grafana deploy service, not a stage, and rolls on a datasource change.
-            val grafana =
-                when (telemetryRedirect) {
-                    null -> listOf(WorkloadRef(WorkloadKind.Deployment, GrafanaManifestBuilder.DEPLOYMENT_NAME))
-                    else -> emptyList()
-                }
-            val workloads = appliedWorkloads(appliedResources) + grafana
-
-            // Wait for every applied workload's rollout to finish before the readiness gate. Right
-            // after a changed workload starts rolling the old pods are still Ready and the
-            // replacements may not exist yet, so a pod-readiness check alone reports the stack ready
-            // with new pods at 0/1.
-            k8sService
-                .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
-                .getOrElse { exception ->
-                    error("Observability stack did not finish rolling out: ${exception.message}")
-                }
-
-            // Gate success on the whole stack reaching Ready. waitForPodsReady is namespace-wide and
-            // fail-fast: it aborts on CrashLoopBackOff / ImagePullBackOff and on timeout, so `up`
-            // never reports success while the observability stack is broken or still coming up.
-            // Pods that ran to completion (a kit's Job pods share this namespace) are not awaited.
-            k8sService
-                .waitForPodsReady(Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
-                .getOrElse { exception ->
-                    error("Observability stack did not become ready: ${exception.message}")
-                }
+            awaitStack(appliedWorkloads(appliedResources) + grafanaWorkloads(telemetryRedirect))
         }
 
     /** Waits for [workloads] to finish rolling out, failing the deploy if they do not. */
@@ -231,6 +191,114 @@ class DefaultObservabilityStackService(
         k8sService
             .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
             .getOrElse { exception -> error("$workloads did not finish rolling out: ${exception.message}") }
+    }
+
+    /**
+     * The node whose host directories hold the backends' and Grafana's state; only host-path storage
+     * asks. The K8s API is reached through the workspace kubeconfig, so nothing else needs the node.
+     */
+    private fun stateNode(clusterState: ClusterState): ClusterHost =
+        checkNotNull(clusterState.getControlHost()) {
+            "The backends keep their state in host directories on the control node, but the cluster state has no control node."
+        }
+
+    /**
+     * The collector stage. It arrives already hashed, by the same function the kit sync uses, so both
+     * stamp it with the same config hash.
+     */
+    private fun collectorStage(
+        clusterState: ClusterState,
+        environment: StackEnvironment,
+    ): Stage {
+        val scrapeConfigs =
+            k8sClientProvider.createClient().use { client ->
+                otelManifestBuilder.listWorkloadScrapeConfigs(client)
+            }
+        return Stage(
+            "OTel Collector",
+            CollectorResources.build(
+                otelManifestBuilder,
+                environment.hosting,
+                clusterState,
+                user.region,
+                scrapeConfigs,
+                environment.capabilities,
+            ),
+        )
+    }
+
+    /**
+     * Reports where the backends, Grafana and kube-state-metrics are placed, before anything is
+     * applied, so a node label no node carries is visible before the rollout wait times out.
+     */
+    private fun reportPlacement(hosting: ObservabilityHosting) {
+        val placement = hosting.placement
+        eventBus.emit(
+            Event.Grafana.PlacementResolved(
+                placement.nodeSelector,
+                placement.tolerations.map { "${it.key}:${it.operator}:${it.effect}" },
+            ),
+        )
+    }
+
+    /**
+     * Hashes every stage, reports which workloads change, then applies the collector and [stages] in
+     * order, returning everything applied. Every stage is hashed before any is applied, so a workload
+     * reading a ConfigMap this deploy cannot hash fails the deploy before it touches the cluster.
+     */
+    private fun applyHashed(
+        collector: Stage,
+        stages: List<Stage>,
+        clusterConfig: Map<String, String>,
+    ): List<HasMetadata> {
+        // Every ConfigMap this deploy knows the contents of, so a workload that reads one from
+        // another stage, or the runtime cluster-config, is hashed on it too.
+        val knownConfigMaps =
+            mapOf(ClusterConfigData.NAME to clusterConfig) +
+                (listOf(collector) + stages)
+                    .flatMap { it.resources }
+                    .filterIsInstance<ConfigMap>()
+                    .associate { it.metadata.name to it.data.orEmpty() }
+
+        val hashedStages =
+            listOf(collector) + stages.map { it.copy(resources = ConfigHashAnnotator.annotate(it.resources, knownConfigMaps)) }
+        val appliedResources = hashedStages.flatMap { it.resources }
+        configChangeReport.report(appliedResources, DEFAULT_NAMESPACE)
+        for (stage in hashedStages) {
+            awaitRollouts(stage.rolledOutFirst)
+            applyStage(stage)
+        }
+        return appliedResources
+    }
+
+    /** Grafana is applied by the Grafana deploy service, not a stage, and rolls on a datasource change. */
+    private fun grafanaWorkloads(telemetryRedirect: TelemetryRedirect?): List<WorkloadRef> =
+        when (telemetryRedirect) {
+            null -> listOf(WorkloadRef(WorkloadKind.Deployment, GrafanaManifestBuilder.DEPLOYMENT_NAME))
+            else -> emptyList()
+        }
+
+    /**
+     * Waits for every applied workload's rollout to finish, then for the namespace to reach Ready.
+     *
+     * Right after a changed workload starts rolling the old pods are still Ready and the replacements
+     * may not exist yet, so a pod-readiness check alone reports the stack ready with new pods at 0/1.
+     * The readiness gate is namespace-wide and fail-fast: it aborts on CrashLoopBackOff /
+     * ImagePullBackOff and on timeout, so `up` never reports success while the observability stack is
+     * broken or still coming up. Pods that ran to completion (a kit's Job pods share this namespace)
+     * are not awaited.
+     */
+    private fun awaitStack(workloads: List<WorkloadRef>) {
+        k8sService
+            .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+            .getOrElse { exception ->
+                error("Observability stack did not finish rolling out: ${exception.message}")
+            }
+        k8sService
+            .waitForPodsReady(Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+            .getOrElse { exception ->
+                error("Observability stack did not become ready: ${exception.message}")
+            }
     }
 
     /**
@@ -245,9 +313,10 @@ class DefaultObservabilityStackService(
     private fun buildStages(
         telemetryRedirect: TelemetryRedirect?,
         cni: CniMode,
+        hosting: ObservabilityHosting,
     ): List<Stage> =
         ObservabilityStage.declared(telemetryRedirect).map { stage ->
-            Stage(stage.label, resourcesOf(stage, telemetryRedirect, cni), stage.requires, rolledOutFirstFor(stage))
+            Stage(stage.label, resourcesOf(stage, telemetryRedirect, cni, hosting), stage.requires, rolledOutFirstFor(stage))
         }
 
     private fun rolledOutFirstFor(stage: ObservabilityStage): List<WorkloadRef> =
@@ -260,22 +329,23 @@ class DefaultObservabilityStackService(
         stage: ObservabilityStage,
         telemetryRedirect: TelemetryRedirect?,
         cni: CniMode,
+        hosting: ObservabilityHosting,
     ): List<HasMetadata> =
         when (stage) {
             ObservabilityStage.OTEL_HOST_COLLECTOR -> otelHostCollectorManifestBuilder.buildAllResources(cni)
-            ObservabilityStage.KUBE_STATE_METRICS -> kubeStateMetricsManifestBuilder.buildAllResources()
+            ObservabilityStage.KUBE_STATE_METRICS -> kubeStateMetricsManifestBuilder.buildAllResources(hosting.placement)
             ObservabilityStage.FLUENT_BIT_JOURNALD -> journaldOtelManifestBuilder.buildAllResources()
             ObservabilityStage.EBPF_EXPORTER -> ebpfExporterManifestBuilder.buildAllResources()
             ObservabilityStage.REGISTRY -> registryManifestBuilder.buildAllResources()
             ObservabilityStage.S3_MANAGER -> s3ManagerManifestBuilder.buildAllResources()
             ObservabilityStage.BEYLA -> beylaManifestBuilder.buildAllResources()
             ObservabilityStage.YACE -> yaceManifestBuilder.buildAllResources()
-            ObservabilityStage.MIMIR -> mimirManifestBuilder.buildAllResources()
-            ObservabilityStage.LOKI -> lokiManifestBuilder.buildAllResources()
-            ObservabilityStage.TEMPO -> tempoManifestBuilder.buildAllResources()
-            ObservabilityStage.PYROSCOPE -> pyroscopeManifestBuilder.buildServerResources()
+            ObservabilityStage.MIMIR -> mimirManifestBuilder.buildAllResources(hosting)
+            ObservabilityStage.LOKI -> lokiManifestBuilder.buildAllResources(hosting)
+            ObservabilityStage.TEMPO -> tempoManifestBuilder.buildAllResources(hosting)
+            ObservabilityStage.PYROSCOPE -> pyroscopeManifestBuilder.buildServerResources(hosting)
             // Every node, in both modes; under a redirect it points at the external Pyroscope.
-            ObservabilityStage.PYROSCOPE_AGENT -> pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect)
+            ObservabilityStage.PYROSCOPE_AGENT -> pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect, hosting)
             // The core collector already left its pod-log receiver out (CollectorResources).
             ObservabilityStage.POD_LOGS -> emptyList()
         }
@@ -284,14 +354,18 @@ class DefaultObservabilityStackService(
      * Deploys Grafana with a datasource for every tenant in the shared store, so each deploy picks up
      * new ones, and the dashboards with the install-time pass for this cluster.
      */
-    private fun uploadDashboards(clusterState: ClusterState) {
-        val controlNode =
-            checkNotNull(clusterState.getControlHost()) {
-                "No control node in cluster state; cannot upload dashboards."
-            }
+    private fun uploadDashboards(
+        clusterState: ClusterState,
+        hosting: ObservabilityHosting,
+    ) {
         grafanaDeployService
-            .deploy(controlNode, installContextFactory.forCluster(clusterState, controlNode), ObservabilityStore.from(clusterState).bucket)
-            .getOrElse { exception ->
+            .deploy(
+                // Null on a cluster the operator brought; only the dashboard tree copy needs it.
+                clusterState.getControlHost(),
+                installContextFactory.forCluster(clusterState),
+                ObservabilityStore.from(clusterState).bucket,
+                hosting,
+            ).getOrElse { exception ->
                 error("Failed to upload dashboards: ${exception.message}")
             }
     }
@@ -321,67 +395,15 @@ class DefaultObservabilityStackService(
                 }
             }.distinct()
 
-    private fun preparePyroscopeDirectory(controlNode: Host) {
-        eventBus.emit(Event.Grafana.PyroscopeDirectoryPreparing)
-        remoteOps.executeRemotely(
-            controlNode,
-            "sudo mkdir -p /mnt/db1/pyroscope && " +
-                "sudo chown -R ${PyroscopeManifestBuilder.PYROSCOPE_UID}:${PyroscopeManifestBuilder.PYROSCOPE_UID} /mnt/db1/pyroscope",
-        )
-    }
-
-    /**
-     * Tempo keeps both write-ahead logs under [TempoManifestBuilder.DATA_HOST_PATH], so spans that
-     * were received but not yet cut into a block survive a pod restart. The image runs as
-     * [TempoManifestBuilder.TEMPO_UID] and must own the directory.
-     */
-    private fun prepareTempoDirectory(controlNode: Host) {
-        eventBus.emit(Event.Grafana.TempoDirectoryPreparing)
-        val path = TempoManifestBuilder.DATA_HOST_PATH
-        val uid = TempoManifestBuilder.TEMPO_UID
-        remoteOps.executeRemotely(controlNode, "sudo mkdir -p $path && sudo chown -R $uid:$uid $path")
-    }
-
-    /**
-     * Mimir keeps its TSDB — head, WAL and every local block — under
-     * [MimirManifestBuilder.DATA_HOST_PATH]. The image runs as root, so only the directory is needed.
-     */
-    private fun prepareMimirDirectory(controlNode: Host) {
-        eventBus.emit(Event.Grafana.MimirDirectoryPreparing)
-        remoteOps.executeRemotely(controlNode, "sudo mkdir -p ${MimirManifestBuilder.DATA_HOST_PATH}")
-    }
-
-    /**
-     * Loki keeps its WAL, TSDB index head, index cache and compactor directory under
-     * [LokiManifestBuilder.DATA_HOST_PATH]. The image runs as [LokiManifestBuilder.LOKI_UID] and must
-     * own the directory.
-     */
-    private fun prepareLokiDirectory(controlNode: Host) {
-        eventBus.emit(Event.Grafana.LokiDirectoryPreparing)
-        val path = LokiManifestBuilder.DATA_HOST_PATH
-        val uid = LokiManifestBuilder.LOKI_UID
-        remoteOps.executeRemotely(controlNode, "sudo mkdir -p $path && sudo chown -R $uid:$uid $path")
-    }
-
-    private fun prepareGrafanaDirectory(controlNode: Host) {
-        eventBus.emit(Event.Grafana.GrafanaDirectoryPreparing)
-        remoteOps.executeRemotely(
-            controlNode,
-            "sudo mkdir -p ${GrafanaManifestBuilder.GRAFANA_DATA_PATH} && " +
-                "sudo chown -R ${GrafanaManifestBuilder.GRAFANA_UID}:${GrafanaManifestBuilder.GRAFANA_UID} ${GrafanaManifestBuilder.GRAFANA_DATA_PATH}",
-        )
-    }
-
     /**
      * Creates the cluster-config ConfigMap with runtime values needed by OTel and Tempo
      * ([ClusterConfigData]), returning its data.
      */
-    private fun createClusterConfigMap(clusterState: ClusterState): Map<String, String> {
-        val controlNode =
-            checkNotNull(clusterState.getControlHost()) {
-                "No control node in cluster state; cannot build the cluster-config ConfigMap."
-            }
-        val configData = ClusterConfigData.of(controlNode, clusterState, user.region)
+    private fun createClusterConfigMap(
+        clusterState: ClusterState,
+        hosting: ObservabilityHosting,
+    ): Map<String, String> {
+        val configData = ClusterConfigData.of(clusterState, hosting, user.region)
 
         k8sService
             .createConfigMap(
@@ -398,5 +420,23 @@ class DefaultObservabilityStackService(
                 error("Failed to create cluster-config ConfigMap: ${exception.message}")
             }
         return configData
+    }
+}
+
+/**
+ * What one stack deploy needs to know about the environment it deploys into: the capabilities that
+ * gate stages and the hosting the backends and Grafana are placed with. One value, resolved once
+ * per deploy from cluster state, so the two never come from different readings of it.
+ *
+ * @property capabilities what the environment's nodes and account provide.
+ * @property hosting where the backends and Grafana run and keep their state.
+ */
+data class StackEnvironment(
+    val capabilities: NodeCapabilities,
+    val hosting: ObservabilityHosting,
+) {
+    companion object {
+        /** The environment [state] records. */
+        fun from(state: ClusterState): StackEnvironment = StackEnvironment(NodeCapabilities.from(state), ObservabilityHosting.from(state))
     }
 }

@@ -49,6 +49,9 @@ interface K8sManifestOperations {
         nodeName: String,
         labels: Map<String, String>,
     ): Result<Unit>
+
+    /** The names of the nodes that carry every one of [labels]; every node when [labels] is empty. */
+    fun nodesMatching(labels: Map<String, String>): Result<List<String>>
 }
 
 /**
@@ -182,6 +185,12 @@ interface K8sStorageOperations {
     fun ensureLocalStorageClass(): Result<Unit>
 
     fun ensureLocalStorageWfcClass(): Result<Unit>
+
+    /**
+     * The `reclaimPolicy` of the StorageClass named [name], or null when no such class exists. A
+     * class that sets none reclaims with Kubernetes' default, `Delete`.
+     */
+    fun storageClassReclaimPolicy(name: String): Result<String?>
 }
 
 /**

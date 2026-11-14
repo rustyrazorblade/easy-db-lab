@@ -223,6 +223,18 @@ class Init : PicoBaseCommand() {
     var tags: Map<String, String> = mutableMapOf()
 
     @Option(
+        names = ["--node-label"],
+        description = [
+            "Node label the observability backends, Grafana and kube-state-metrics are scheduled by " +
+                "(format: key=value, can be repeated), added to the environment's own placement. " +
+                "The label must already be on a node; the deploy fails if no node matches.",
+        ],
+        arity = "1..*",
+        split = ",",
+    )
+    var nodeLabels: Map<String, String> = mutableMapOf()
+
+    @Option(
         names = ["--clean"],
         description = ["Clean existing configuration before initializing"],
     )

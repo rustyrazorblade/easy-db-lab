@@ -13,10 +13,18 @@ import org.junit.jupiter.params.provider.ValueSource
  */
 class StorePrefixTest {
     @ParameterizedTest
-    @ValueSource(strings = ["", "team-a", "team_a.v2", "a/b", "/team-a/", "grafana-x", "Team-A", "v.1"])
-    fun `a prefix of plain segments is accepted`(prefix: String) {
+    @ValueSource(strings = ["", "team-a", "team_a.v2", "a/b", "grafana-x", "Team-A", "v.1"])
+    fun `a prefix of plain segments is accepted as it is`(prefix: String) {
         assertThat(S3Backend(bucket = "b", prefix = prefix, region = "r").prefix).isEqualTo(prefix)
         assertThat(ObservabilityStore("b", "t", prefix).storePrefix).isEqualTo(prefix)
+    }
+
+    /** Every key and the compactor allow join the prefix with `/`, so the stored prefix carries none at its ends. */
+    @ParameterizedTest
+    @ValueSource(strings = ["/team-a/", "team-a/", "/team-a"])
+    fun `slashes around a prefix are dropped from the stored prefix`(prefix: String) {
+        assertThat(StorePrefix.requireValid(prefix)).isEqualTo("team-a")
+        assertThat(S3Backend(bucket = "b", prefix = prefix, region = "r").prefix).isEqualTo("team-a")
     }
 
     @ParameterizedTest

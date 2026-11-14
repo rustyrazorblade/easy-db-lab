@@ -402,7 +402,7 @@ sealed class AWSPolicy {
                 storePrefix: String,
                 roots: List<String>,
             ): List<String> {
-                val prefix = StorePrefix.requireValid(storePrefix).trim('/')
+                val prefix = StorePrefix.requireValid(storePrefix)
                 return if (prefix.isEmpty()) roots else roots + roots.map { "$prefix/$it" }
             }
         }

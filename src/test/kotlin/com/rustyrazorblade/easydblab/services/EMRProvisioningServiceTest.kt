@@ -70,6 +70,7 @@ internal class EMRProvisioningServiceTest {
             ClusterState(
                 name = "test",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             ),
         )

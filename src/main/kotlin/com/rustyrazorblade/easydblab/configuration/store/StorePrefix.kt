@@ -26,16 +26,17 @@ object StorePrefix {
         )
 
     /**
-     * [prefix] when it follows the rule.
+     * [prefix] with the slashes around it dropped, when it follows the rule. Callers store the
+     * returned value, so every key and the compactor allow join a prefix with no `/` at its ends.
      *
      * @throws IllegalArgumentException naming [prefix] when a segment is empty, `.` or `..`, holds
      *   a character other than letters, digits, `.`, `_` and `-`, or is a store root.
      */
     fun requireValid(prefix: String): String {
         val trimmed = prefix.trim('/')
-        if (trimmed.isEmpty()) return prefix
+        if (trimmed.isEmpty()) return trimmed
         trimmed.split('/').forEach { segment ->
-            require(SEGMENT.matches(segment) && segment != "..") {
+            require(SEGMENT.matches(segment)) {
                 "Invalid store prefix '$prefix': each segment must be letters, digits, '.', '_' or '-', " +
                     "with no wildcard, no empty segment and no '..'."
             }
@@ -43,6 +44,6 @@ object StorePrefix {
                 "Invalid store prefix '$prefix': '$segment' is a store root (${ROOTS.sorted().joinToString()})."
             }
         }
-        return prefix
+        return trimmed
     }
 }

@@ -61,7 +61,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun setup() {
         mockClusterStateManager = getKoin().get()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf()),
+            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"),
         )
         val templateService = getKoin().get<TemplateService>()
         builder = OtelManifestBuilder(templateService)

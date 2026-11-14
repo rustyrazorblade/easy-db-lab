@@ -60,6 +60,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts = mutableMapOf(ServerType.Control to listOf(controlHost)),
             ),
         )

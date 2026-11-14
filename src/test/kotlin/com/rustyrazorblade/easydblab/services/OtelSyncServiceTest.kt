@@ -55,7 +55,9 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 single { mock<K8sService>().also { mockK8sService = it } }
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), hosts = controlHosts))
+                        whenever(it.load()).thenReturn(
+                            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test", hosts = controlHosts),
+                        )
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -268,6 +270,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
             ClusterState(
                 name = "test",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts = controlHosts,
                 initConfig = InitConfig(region = "us-west-2", cni = CniMode.Cilium),
             )

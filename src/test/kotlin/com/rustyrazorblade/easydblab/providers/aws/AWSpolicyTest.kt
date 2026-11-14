@@ -171,8 +171,7 @@ class AWSpolicyTest {
     inner class StorePrefix {
         private val prefix = "team-a"
 
-        private fun instanceDeny() =
-            statements(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson()).single { it.effect() == "Deny" }
+        private fun instanceDeny() = statements(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson()).single { it.effect() == "Deny" }
 
         private fun bucketDeny() =
             statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "easy-db-lab-test").toJson()).single {

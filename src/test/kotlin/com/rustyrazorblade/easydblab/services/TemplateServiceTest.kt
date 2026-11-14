@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -114,13 +115,12 @@ class TemplateServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildContextVariables uses empty string when s3Bucket is null`() {
+    fun `buildContextVariables fails and says to run up when the cluster has no account bucket yet`() {
         setupClusterState(bucketName = null)
 
-        val service = createService()
-        val variables = service.buildContextVariables()
-
-        assertThat(variables).containsEntry("ACCOUNT_BUCKET", "")
+        assertThatThrownBy { createService().buildContextVariables() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("easy-db-lab up")
     }
 
     @Test

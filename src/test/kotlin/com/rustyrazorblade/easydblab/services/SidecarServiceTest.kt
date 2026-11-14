@@ -47,6 +47,7 @@ class SidecarServiceTest : BaseKoinTest() {
         ClusterState(
             name = "test-cluster",
             versions = null,
+            s3Bucket = "easy-db-lab-test",
             clusterId = "test-cluster-id",
         )
 

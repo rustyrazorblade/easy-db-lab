@@ -32,22 +32,31 @@ sealed interface StoreBackend {
          */
         const val NO_PREFIX = ""
 
-        /** The store prefix of [clusterState]: the prefix of its [from] backend, whatever its region. */
-        fun prefixOf(clusterState: ClusterState): String = from(clusterState, defaultRegion = "").prefix
+        /**
+         * The store prefix of [clusterState], the prefix its [from] backend carries. It reads
+         * neither the bucket nor the region, so it can be read before `up` sets the bucket. No
+         * cluster records a prefix yet (#1035 adds the setting), so every cluster has none.
+         */
+        fun prefixOf(clusterState: ClusterState): String = NO_PREFIX
 
         /**
          * The store of [clusterState]. Every cluster stores on S3 today; this is the one place
          * that knows it.
          *
          * @param defaultRegion the region used when the cluster state records none.
+         * @throws IllegalStateException when the cluster has no account bucket yet: `up` sets it, and
+         *   a blank bucket would render configs that write nowhere.
          */
         fun from(
             clusterState: ClusterState,
             defaultRegion: String,
         ): StoreBackend =
             S3Backend(
-                bucket = clusterState.s3Bucket.orEmpty(),
-                prefix = NO_PREFIX,
+                bucket =
+                    checkNotNull(clusterState.s3Bucket) {
+                        "S3 bucket not configured for cluster '${clusterState.name}'. Run 'easy-db-lab up' first."
+                    },
+                prefix = prefixOf(clusterState),
                 region = clusterState.initConfig?.region ?: defaultRegion,
             )
     }
@@ -56,16 +65,27 @@ sealed interface StoreBackend {
 /**
  * Amazon S3, reached at its regional endpoint.
  *
+ * Built through [invoke], which checks the prefix and stores it without the slashes around it,
+ * so two backends with the same store are equal however their prefix was written. `copy()` is
+ * private like the constructor, so no copy skips the check.
+ *
  * @property region The bucket's region.
  * @property endpoint The host the backends talk to.
  */
-data class S3Backend(
+@ConsistentCopyVisibility
+data class S3Backend private constructor(
     override val bucket: String,
-    override val prefix: String = "",
+    override val prefix: String,
     val region: String,
-    val endpoint: String = "s3.$region.amazonaws.com",
+    val endpoint: String,
 ) : StoreBackend {
-    init {
-        StorePrefix.requireValid(prefix)
+    companion object {
+        /** The S3 store of [bucket] in [region], under [prefix] (checked by [StorePrefix.requireValid]). */
+        operator fun invoke(
+            bucket: String,
+            prefix: String = StoreBackend.NO_PREFIX,
+            region: String,
+            endpoint: String = "s3.$region.amazonaws.com",
+        ): S3Backend = S3Backend(bucket, StorePrefix.requireValid(prefix), region, endpoint)
     }
 }

@@ -87,6 +87,21 @@ class StatusAddressesTest {
                 type: native
             """.trimIndent(),
         )
+        File(kitDir, "nodeport-service.yaml").writeText(
+            """
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: cassandra-pods-nodeport
+              namespace: default
+            spec:
+              type: NodePort
+              ports:
+                - name: cql
+                  port: 30942
+                  nodePort: 30942
+            """.trimIndent(),
+        )
         val broken = File(workspace, "broken").apply { mkdirs() }
         File(broken, Constants.Kit.CONFIG_FILE).writeText("name: [broken")
         val addresses = StatusAddresses(state(Exposure.PortForward))
@@ -146,11 +161,8 @@ class StatusAddressesTest {
                 "http://web-nodeport.default.svc.cluster.local:8080",
                 "bin/kubectl port-forward -n default svc/web-nodeport 31080:8080",
             ),
-            // A port the manifest does not map is shown as it is.
-            StatusAddress(
-                "http://web-nodeport.default.svc.cluster.local:31090",
-                "bin/kubectl port-forward -n default svc/web-nodeport 31090",
-            ),
+            // A port no manifest maps has no Service port to forward to, so no command is offered.
+            StatusAddress("web-nodeport.default.svc.cluster.local (Service port unknown)"),
         )
     }
 

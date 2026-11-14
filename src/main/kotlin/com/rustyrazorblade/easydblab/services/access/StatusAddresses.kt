@@ -99,13 +99,17 @@ class StatusAddresses(
         kitName: String,
         runtime: KitRuntime?,
         endpoint: KitEndpoint,
-        servicePort: (KitService, Int) -> Int = { _, port -> port },
+        servicePort: (KitService, Int) -> Int? = { _, port -> port },
     ): List<StatusAddress> {
         if (!forwarded) {
             return KitEndpointAddresses.resolve(listOf(endpoint), state.hosts).map { StatusAddress(it.address) }
         }
         val service = KitService.of(kitName, runtime)
-        val port = servicePort(service, endpoint.port)
+        val port =
+            servicePort(service, endpoint.port) ?: run {
+                log.debug { "No manifest of kit '$kitName' maps NodePort ${endpoint.port} of ${service.namespace}/${service.name}" }
+                return listOf(StatusAddress("${dnsName(service.namespace, service.name)} $UNKNOWN_SERVICE_PORT"))
+            }
         return listOf(forwardedAddress(service.namespace, service.name, endpoint.port, port) { host, p -> endpoint.formatUrl(host, p) })
     }
 
@@ -120,10 +124,9 @@ class StatusAddresses(
         }.onFailure { e ->
             log.warn(e) { "Cannot read ${Constants.Kit.CONFIG_FILE} of kit '${kitDir.name}'; its endpoints are not shown" }
         }.map { config ->
-            val ports = if (forwarded) KitServicePorts.read(kitDir) else null
+            val ports = if (forwarded) KitServicePorts.read(kitDir) else KitServicePorts(emptyMap())
             config.endpoints.flatMap { endpoint ->
-                kitEndpoint(kitDir.name, config.runtime, endpoint) { service, port -> ports?.servicePort(service, port) ?: port }
-                    .map { ShownEndpoint(endpoint, it) }
+                kitEndpoint(kitDir.name, config.runtime, endpoint, ports::servicePort).map { ShownEndpoint(endpoint, it) }
             }
         }
 
@@ -136,12 +139,18 @@ class StatusAddresses(
     ): StatusAddress {
         val ports = if (localPort == remotePort) "$remotePort" else "$localPort:$remotePort"
         return StatusAddress(
-            address = format("$service.$namespace.svc.cluster.local", remotePort),
+            address = format(dnsName(namespace, service), remotePort),
             hint = "bin/kubectl port-forward -n $namespace svc/$service $ports",
         )
     }
 
+    private fun dnsName(
+        namespace: String,
+        service: String,
+    ) = "$service.$namespace.svc.cluster.local"
+
     private companion object {
         const val MIMIR_PROMETHEUS_PATH = "/prometheus"
+        const val UNKNOWN_SERVICE_PORT = "(Service port unknown)"
     }
 }

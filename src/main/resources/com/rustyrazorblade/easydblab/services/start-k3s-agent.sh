@@ -43,6 +43,23 @@ if mountpoint -q /mnt/db1 && [ ! -L /var/log/pods ]; then
     echo "Container logs relocated to NVMe"
 fi
 
+# On a host whose data disk holds the database, that disk is also the kubelet's nodefs and
+# imagefs (k3s keeps its kubelet and containerd data under /var/lib/rancher/k3s, which is on
+# /mnt/db1). The kubelet's default hard eviction (nodefs.available<10%) then evicts pods when the
+# database fills its own disk, including the database's pods, which cannot start again (their
+# local PV is bound to the node, and DiskPressure keeps the scheduler off it), and the node's
+# observability pods. Eviction frees nothing there, so the disk signals are set to 0%. Memory
+# eviction and the inode guard keep their kubelet defaults; an explicit eviction-hard replaces
+# every default, so they are restated. This is a k3s config file, not an installer argument, so it
+# is rewritten on every run and `%` needs no escaping for systemd.
+if mountpoint -q /mnt/db1; then
+    mkdir -p /etc/rancher/k3s/config.yaml.d
+    cat > /etc/rancher/k3s/config.yaml.d/10-kubelet-eviction.yaml <<'EOF'
+kubelet-arg:
+  - "eviction-hard=memory.available<100Mi,nodefs.inodesFree<5%,nodefs.available<0%,imagefs.available<0%"
+EOF
+fi
+
 # Cilium chains the portmap CNI plugin for hostPort. With --flannel-backend=none, K3s leaves
 # containerd on its default CNI bin dir, /opt/cni/bin, where Cilium installs only cilium-cni.
 # Link K3s's bundled portmap (its stable data/cni dir, populated when K3s starts) there so every

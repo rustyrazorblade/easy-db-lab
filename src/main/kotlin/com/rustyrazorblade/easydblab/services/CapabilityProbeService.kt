@@ -127,7 +127,7 @@ class CapabilityProbeService(
                 ).create()
         } catch (e: KubernetesClientException) {
             // Another caller created it between the read and the create.
-            if (e.code != CONFLICT) fail(namespace, "creating the namespace: ${explain(e)}")
+            if (e.code != Constants.HttpStatus.CONFLICT) fail(namespace, "creating the namespace: ${explain(e)}")
         }
         awaitDefaultServiceAccount(client, namespace)
     }
@@ -178,9 +178,6 @@ class CapabilityProbeService(
     ): Nothing = error("The capability probe failed in namespace '$namespace': $reason")
 
     private companion object {
-        /** HTTP 409, what the API server answers a create of an existing object with. */
-        const val CONFLICT = 409
-
         const val DEFAULT_SERVICE_ACCOUNT = "default"
     }
 }

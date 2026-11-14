@@ -159,6 +159,12 @@ object Constants {
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
+
+        /** What the Kubernetes API server answers a create of an object that already exists with. */
+        const val CONFLICT = 409
+
+        /** What Pod Security admission and Pod validation reject a Pod with. */
+        const val UNPROCESSABLE_ENTITY = 422
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599
         const val CLIENT_ERROR_THRESHOLD = 500 // Errors >= 500 are server errors
@@ -633,8 +639,11 @@ object Constants {
         /** How long the probe waits for a namespace it created to get its default ServiceAccount. */
         const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
 
-        /** HTTP 422, the status Pod Security admission and validation reject a Pod with. */
-        const val HTTP_UNPROCESSABLE = 422
+        /** The seccomp profile type Pod Security "restricted" requires of the probe Pods. */
+        const val PROBE_SECCOMP_PROFILE = "RuntimeDefault"
+
+        /** The Linux capabilities the restricted probe Pods drop: all of them. */
+        const val PROBE_DROPPED_CAPABILITIES = "ALL"
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

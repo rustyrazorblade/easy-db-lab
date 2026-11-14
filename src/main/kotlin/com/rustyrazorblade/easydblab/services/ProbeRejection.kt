@@ -34,7 +34,7 @@ sealed interface ProbeRejection {
         ): ProbeRejection {
             val webhook = DRY_RUN_UNSUPPORTED.find(message)?.groupValues?.get(1)
             return when {
-                code == Constants.HttpStatus.FORBIDDEN || code == Constants.Capabilities.HTTP_UNPROCESSABLE -> Refused(message)
+                code == Constants.HttpStatus.FORBIDDEN || code == Constants.HttpStatus.UNPROCESSABLE_ENTITY -> Refused(message)
                 code == Constants.HttpStatus.BAD_REQUEST && webhook != null ->
                     Refused("admission webhook $webhook does not support dry run, so it cannot be probed")
                 else -> Unexpected(message)

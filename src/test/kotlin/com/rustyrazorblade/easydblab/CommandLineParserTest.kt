@@ -177,6 +177,30 @@ class CommandLineParserTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * `cassandra download-config --help` failed with "Unknown option": the command owns `--version`,
+     * which blocked picocli's standard help options.  Every command in the tree must answer `--help`
+     * with a help request, and the ones that own `--version` must keep it as a value option.
+     */
+    @Test
+    fun `every command in the tree accepts help, including those that own a version option`() {
+        fun leaves(cl: CommandLine): List<CommandLine> =
+            listOf(cl) +
+                cl.subcommands.values
+                    .distinct()
+                    .flatMap { leaves(it) }
+
+        val all = leaves(CommandLineParser().commandLine)
+        val ownVersion = all.filter { it.commandSpec.findOption("--version")?.versionHelp() == false }
+        assertThat(ownVersion.map { it.commandSpec.qualifiedName() })
+            .contains("easy-db-lab cassandra download-config", "easy-db-lab cassandra update-config")
+
+        all.forEach { cl ->
+            val result = cl.parseArgs("--help")
+            assertThat(result.isUsageHelpRequested).describedAs(cl.commandSpec.qualifiedName()).isTrue()
+        }
+    }
+
     /** `commands` and `--help` print each option's description; an empty one tells the user nothing. */
     @Test
     fun `every visible option in the command tree has a description`() {

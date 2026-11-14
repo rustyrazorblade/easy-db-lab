@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
+import com.rustyrazorblade.easydblab.commands.StandardHelpOptions
 import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.Up
 import com.rustyrazorblade.easydblab.commands.UploadAuthorizedKeys
@@ -220,7 +221,7 @@ class CommandLineParser : KoinComponent {
     }
 
     private fun applyHelpOptionsToAll(cl: CommandLine) {
-        cl.commandSpec.mixinStandardHelpOptions(true)
+        StandardHelpOptions.apply(cl.commandSpec)
         cl.subcommands.values.forEach { applyHelpOptionsToAll(it) }
     }
 

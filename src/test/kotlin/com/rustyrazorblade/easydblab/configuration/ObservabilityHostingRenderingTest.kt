@@ -153,6 +153,35 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
     }
 
     @Test
+    fun `on a claim each workload that does not run as root owns its volume through fsGroup`() {
+        val claimed = ObservabilityHosting.AWS.copy(storage = BackendStorage.RetainedClaim("retained-class", Quantity("50Gi")))
+        // A CSI volume's root directory is root-owned; only fsGroup lets a non-root process write it.
+        val owners =
+            mapOf(
+                "/mnt/db1/loki" to LokiManifestBuilder.LOKI_UID,
+                "/mnt/db1/tempo" to TempoManifestBuilder.TEMPO_UID,
+                "/mnt/db1/pyroscope" to PyroscopeManifestBuilder.PYROSCOPE_UID,
+                GRAFANA to GrafanaManifestBuilder.GRAFANA_UID.toLong(),
+            )
+
+        val rendered = backends(claimed)
+        owners.forEach { (hostPath, uid) ->
+            assertThat(pod(rendered.getValue(hostPath)).securityContext?.fsGroup).describedAs(hostPath).isEqualTo(uid)
+        }
+        // Mimir runs as root and needs no group ownership.
+        assertThat(pod(rendered.getValue("/mnt/db1/mimir")).securityContext?.fsGroup).isNull()
+    }
+
+    @Test
+    fun `on a host path the backends keep today's pod security context`() {
+        val rendered = backends(ObservabilityHosting.AWS)
+
+        listOf("/mnt/db1/mimir", "/mnt/db1/loki", "/mnt/db1/tempo", "/mnt/db1/pyroscope").forEach { hostPath ->
+            assertThat(pod(rendered.getValue(hostPath)).securityContext?.fsGroup).describedAs(hostPath).isNull()
+        }
+    }
+
+    @Test
     fun `every backend runs as the default service account, with no credentials Secret on AWS`() {
         backends(ObservabilityHosting.AWS).minus(GRAFANA).forEach { (hostPath, resources) ->
             val pod = pod(resources)

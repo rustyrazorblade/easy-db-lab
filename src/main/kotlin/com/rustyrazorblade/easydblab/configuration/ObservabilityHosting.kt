@@ -6,6 +6,9 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
+import io.fabric8.kubernetes.api.model.PodSecurityContextBuilder
+import io.fabric8.kubernetes.api.model.PodSpec
+import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.Volume
 import io.fabric8.kubernetes.api.model.VolumeBuilder
@@ -57,11 +60,15 @@ sealed interface StoreCredentials {
  * @property workload the workload's name; a claim for it is named `<workload>-data`.
  * @property volumeName the pod volume that holds the state.
  * @property hostPath the directory on the node when the environment provides host paths.
+ * @property owner the uid the workload's process runs as and must write the state as, or null for
+ *   one that runs as root. On a host path `up` chowns the directory to it; on a claim it is the
+ *   pod's `fsGroup`, since a provisioned volume's root directory belongs to root.
  */
 data class StateVolume(
     val workload: String,
     val volumeName: String,
     val hostPath: String,
+    val owner: Long? = null,
 )
 
 /**
@@ -89,7 +96,8 @@ data class ObservabilityHosting(
         isBackend: Boolean = true,
     ): List<HasMetadata> {
         val claim = claimFor(state, deployment.metadata.namespace)
-        val pod = placement.applyTo(deployment.spec.template.spec)
+        val placed = placement.applyTo(deployment.spec.template.spec)
+        val pod = if (claim != null) ownedBy(placed, state.owner) else placed
         val hosted =
             DeploymentBuilder(deployment)
                 .editSpec()
@@ -103,6 +111,19 @@ data class ObservabilityHosting(
                 .build()
         return listOfNotNull(claim, if (isBackend) withBackendIdentity(hosted) else hosted)
     }
+
+    /** [pod] with [owner] as its `fsGroup`, keeping the rest of its security context. */
+    private fun ownedBy(
+        pod: PodSpec,
+        owner: Long?,
+    ): PodSpec =
+        when (owner) {
+            null -> pod
+            else -> {
+                val context = pod.securityContext?.let { PodSecurityContextBuilder(it) } ?: PodSecurityContextBuilder()
+                PodSpecBuilder(pod).withSecurityContext(context.withFsGroup(owner).build()).build()
+            }
+        }
 
     private fun claimFor(
         state: StateVolume,

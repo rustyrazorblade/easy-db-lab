@@ -45,5 +45,5 @@
 - [x] 6.2 Update `configuration/CLAUDE.md` (the `cluster-config` key list, the store fragments, and that an intended backend config edit must update its golden file in the same change), `services/CLAUDE.md` and `services/aws/CLAUDE.md`, and the root `CLAUDE.md` Observability section where it names the delete deny.
   - `services/CLAUDE.md` covers SystemD and cluster tooling only and names no store key; the root `CLAUDE.md` in this branch names no delete deny. Neither needed a change. `docs/plans/2026-11-11-kubernetes-forward-architecture.md` keeps `ClusterS3Path`: it records the plan as written.
 - [x] 6.3 Fix the `ObjectStore` KDoc, which still says the rename is future work.
-- [ ] 6.4 `./gradlew check` on JDK 21 passes with no new `@Suppress`, detekt threshold change or baseline entry; the provider-boundary ArchUnit rules pass with no allowlist.
+- [x] 6.4 `./gradlew check` on JDK 21 passes with no new `@Suppress`, detekt threshold change or baseline entry; the provider-boundary ArchUnit rules pass with no allowlist. (PR Checks on 885ce6c0, JDK 21: test, integrationTest, ktlintCheck and detekt green.)
 - [ ] 6.5 Owner-driven, agent-executed (`requires-aws`): on a real AWS cluster, `up`, query metrics, logs, traces and profiles in Grafana, then `down`.

@@ -19,8 +19,8 @@ val kubernetesModule =
             ProxiedKubernetesClientFactory()
         }
 
-        // Factory because it holds state (API client) tied to the proxy session. The locator is
-        // asked for the address only when the client is first used.
+        // Holds no client: every operation asks the locator for the kubeconfig and context, builds a
+        // client with the current proxy port, and closes it, so a long-lived instance never goes stale.
         factory<KubernetesService> { DefaultKubernetesService(clientFactory = get(), locator = get()) }
     }
 

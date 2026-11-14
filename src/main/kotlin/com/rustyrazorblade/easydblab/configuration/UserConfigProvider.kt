@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.JsonMappingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -59,10 +61,50 @@ class UserConfigProvider(
     fun loadExistingConfig(): Map<String, Any> =
         if (userConfigFile.exists()) {
             @Suppress("UNCHECKED_CAST")
-            yaml.readValue(userConfigFile, Map::class.java) as Map<String, Any>
+            readRedacted { yaml.readValue(userConfigFile, Map::class.java) as Map<String, Any> }
         } else {
             emptyMap()
         }
+
+    /**
+     * Runs a read of settings.yaml and turns a parse failure into one that carries no file text.
+     *
+     * The parser's messages quote the offending line, and that line can be the AWS secret key, the
+     * AxonOps key or the Tailscale client secret. The log, its archives and the OTel log export
+     * would all receive it. The replacement names the file, where parsing stopped and what kind of
+     * problem it was, from parts the parser wrote itself, and keeps no Jackson or SnakeYAML cause.
+     * The one cause kept is a validation failure from our own code, such as an unknown SSH
+     * transport, whose message names the bad choice and the valid ones.
+     */
+    private fun <T> readRedacted(read: () -> T): T =
+        try {
+            read()
+        } catch (e: JsonProcessingException) {
+            val where = e.location?.takeIf { it.lineNr > 0 }?.let { "line ${it.lineNr}, column ${it.columnNr}" }
+            val field = (e as? JsonMappingException)?.path?.mapNotNull { it.fieldName }?.joinToString(".")
+            // Only a plain IllegalArgumentException is ours (a failed `require` or enum parse). A
+            // subclass such as NumberFormatException comes from the JDK and quotes the bad input.
+            val ours =
+                generateSequence<Throwable>(e) { it.cause }
+                    .firstOrNull { it.javaClass == IllegalArgumentException::class.java }
+            val reason =
+                listOfNotNull(
+                    field?.takeIf { it.isNotEmpty() }?.let { "field $it" },
+                    ours?.message ?: "a value has the wrong type or form",
+                ).joinToString(": ")
+            throw unreadable(where, reason, cause = ours)
+        }
+
+    private fun unreadable(
+        where: String?,
+        reason: String,
+        cause: Throwable?,
+    ): IllegalStateException =
+        IllegalStateException(
+            "Cannot read $userConfigFile${where?.let { " at $it" }.orEmpty()}: $reason. " +
+                "The text of the file is not shown because it can hold credentials.",
+            cause,
+        )
 
     /**
      * Loads the user configuration from the YAML file.
@@ -81,7 +123,7 @@ class UserConfigProvider(
             )
         }
 
-        return yaml.readValue(userConfigFile)
+        return readRedacted { yaml.readValue(userConfigFile) }
     }
 
     /**

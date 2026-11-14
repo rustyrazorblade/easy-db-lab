@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -9,12 +11,12 @@ import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
@@ -44,6 +46,8 @@ class PyroscopeManifestBuilder(
         /** The server's data directory on the control node: the v2 metastore index and Raft state. */
         const val DATA_HOST_PATH = "/mnt/db1/pyroscope"
 
+        private val STATE = StateVolume(SERVER_APP_LABEL, "data", DATA_HOST_PATH)
+
         /** Where [DATA_HOST_PATH] is mounted in the server container; config.yaml names paths under it. */
         private const val DATA_MOUNT_PATH = "/data"
 
@@ -68,12 +72,15 @@ class PyroscopeManifestBuilder(
      * @param telemetryRedirect When non-null, the eBPF agent writes profiles to this external
      *   stack instead of the in-cluster server. Passing it here keeps [buildAllResources] valid in
      *   redirect mode even though a redirect cluster normally deploys only [buildAgentResources].
+     * @param hosting where the server is placed and keeps its metastore.
      * @return List of: server ConfigMap, server Service, server Deployment,
      *   eBPF ServiceAccount, eBPF ClusterRole, eBPF ClusterRoleBinding,
      *   eBPF ConfigMap, eBPF DaemonSet
      */
-    fun buildAllResources(telemetryRedirect: TelemetryRedirect? = null): List<HasMetadata> =
-        buildServerResources() + buildAgentResources(telemetryRedirect)
+    fun buildAllResources(
+        telemetryRedirect: TelemetryRedirect? = null,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): List<HasMetadata> = buildServerResources(hosting) + buildAgentResources(telemetryRedirect)
 
     /**
      * Builds the Pyroscope server resources (ConfigMap, Service, Deployment).
@@ -81,12 +88,12 @@ class PyroscopeManifestBuilder(
      * A redirect cluster ships profiles to an external Pyroscope and never stands up this server,
      * so the observability stack deploys these only in local mode.
      */
-    fun buildServerResources(): List<HasMetadata> =
-        listOf(
-            buildServerConfigMap(),
-            buildServerService(),
-            buildServerDeployment(),
-        )
+    fun buildServerResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
+        listOf(buildServerConfigMap(), buildServerService()) + hosting.host(buildServerPodTemplate(), STATE)
+
+    /** The Pyroscope server Deployment as [hosting] runs it. */
+    fun buildServerDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
+        hosting.host(buildServerPodTemplate(), STATE).filterIsInstance<Deployment>().single()
 
     /**
      * Builds the Grafana Alloy eBPF agent resources (RBAC, ConfigMap, DaemonSet).
@@ -199,16 +206,17 @@ class PyroscopeManifestBuilder(
             .build()
 
     /**
-     * Builds the Pyroscope server Deployment.
-     *
-     * Runs on the control plane node with hostNetwork enabled. Profiles are stored in S3 under
+     * Builds the Pyroscope server Deployment before it is hosted. [ObservabilityHosting] places it
+     * and sets where its metastore volume lives; its port is published on the node, where the eBPF
+     * agents and the JVM profilers send profiles, which the hosting keeps only on a node
+     * easy-db-lab owns. Profiles are stored in S3 under
      * `pyroscope` in the account bucket (configured at build time via TemplateService);
      * the v2 metastore index lives on the node at [DATA_HOST_PATH], so a pod restart keeps it.
      *
      * A startup probe holds liveness off until `/ready` first passes, because Pyroscope 2 spends
      * about 45 s of every start in fixed readiness waits; see [Constants.PyroscopeProbes].
      */
-    fun buildServerDeployment() =
+    private fun buildServerPodTemplate(): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(SERVER_APP_LABEL)
@@ -229,14 +237,6 @@ class PyroscopeManifestBuilder(
             .addToLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
             .withContainers(buildServerContainer())
             .addNewVolume()
             .withName("config")
@@ -246,13 +246,8 @@ class PyroscopeManifestBuilder(
                     .build(),
             ).endVolume()
             .addNewVolume()
-            .withName("data")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath(DATA_HOST_PATH)
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
+            .withName(STATE.volumeName)
+            .endVolume()
             .endSpec()
             .endTemplate()
             .endSpec()

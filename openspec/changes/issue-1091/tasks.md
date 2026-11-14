@@ -4,14 +4,14 @@
 
 ## 2. Backends and Grafana on the pod network
 
-- [ ] 2.1 Test first: rendering test that with the AWS placement each of Mimir, Loki, Tempo, Pyroscope, Grafana carries the `control-plane` selector + toleration and the `/mnt/db1/<backend>` hostPath, identical to today; with an empty placement none carries a selector/toleration and none sets `hostNetwork`.
-- [ ] 2.2 Remove the hardcoded `addToNodeSelector(... control-plane ...)`, the control-plane toleration and `withHostNetwork(true)` from `MimirManifestBuilder`, `LokiManifestBuilder`, `TempoManifestBuilder`, `PyroscopeManifestBuilder`, `GrafanaManifestBuilder`; apply the resolved `Placement` instead. `ObservabilityStackService` passes one `Placement` into each builder.
-- [ ] 2.3 Swap kube-state-metrics' control-node selector to the same resolved `Placement` (it already runs pod-network ClusterIP).
+- [x] 2.1 Test first: rendering test that with the AWS placement each of Mimir, Loki, Tempo, Pyroscope, Grafana carries the `control-plane` selector + toleration and the `/mnt/db1/<backend>` hostPath, identical to today; with an empty placement none carries a selector/toleration and none sets `hostNetwork`.
+- [x] 2.2 Remove the hardcoded `addToNodeSelector(... control-plane ...)`, the control-plane toleration and `withHostNetwork(true)` from `MimirManifestBuilder`, `LokiManifestBuilder`, `TempoManifestBuilder`, `PyroscopeManifestBuilder`, `GrafanaManifestBuilder`; apply the resolved `Placement` instead. `ObservabilityStackService` passes one `Placement` into each builder.
+- [x] 2.3 Swap kube-state-metrics' control-node selector to the same resolved `Placement` (it already runs pod-network ClusterIP).
 
 ## 3. Backend storage
 
-- [ ] 3.1 Test first: with `HOST_PATH` present each backend mounts its `/mnt/db1/<backend>` host path; without it each mounts a per-backend claim whose StorageClass reclaims with `Retain`, and none uses `emptyDir`.
-- [ ] 3.2 Wire each backend's volume source from the resolved storage: hostPath where `HOST_PATH`, otherwise a retained claim (StatefulSet `volumeClaimTemplates`, or Deployment + PVC with the existing `Recreate` strategy). Feature-gate the off-AWS branch behind a stub until #1035's `ObservabilityStorage` lands; the AWS hostPath branch is fully delivered.
+- [x] 3.1 Test first: with `HOST_PATH` present each backend mounts its `/mnt/db1/<backend>` host path; without it each mounts a per-backend claim whose StorageClass reclaims with `Retain`, and none uses `emptyDir`.
+- [x] 3.2 Wire each backend's volume source from the resolved storage: hostPath where `HOST_PATH`, otherwise a retained claim (StatefulSet `volumeClaimTemplates`, or Deployment + PVC with the existing `Recreate` strategy). Feature-gate the off-AWS branch behind a stub until #1035's `ObservabilityStorage` lands; the AWS hostPath branch is fully delivered.
 
 ## 4. Service DNS for in-cluster callers
 
@@ -27,7 +27,7 @@
 
 ## 6. Credential plug points
 
-- [ ] 6.1 Give each backend workload a `serviceAccountName` (default) and an optional `envFrom` store-credentials Secret mount, absent on AWS. (Population is #1061.)
+- [x] 6.1 Give each backend workload a `serviceAccountName` (default) and an optional `envFrom` store-credentials Secret mount, absent on AWS. (Population is #1061.)
 
 ## 7. Integration test and docs
 

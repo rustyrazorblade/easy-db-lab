@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -9,7 +11,6 @@ import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVar
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.PodSecurityContextBuilder
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.ServiceBuilder
@@ -56,6 +57,8 @@ class GrafanaManifestBuilder(
         private const val DASHBOARDS_CONFIG_VOLUME = "dashboards-config"
         private const val DATA_VOLUME = "data"
         const val GRAFANA_DATA_PATH = "/mnt/db1/grafana"
+
+        private val STATE = StateVolume(APP_LABEL, DATA_VOLUME, GRAFANA_DATA_PATH)
 
         /**
          * Where the dashboard tree lives on the control node. It is [GRAFANA_DASHBOARD_ROOT] seen
@@ -112,9 +115,20 @@ class GrafanaManifestBuilder(
      * The cluster name for Grafana branding is read from TemplateService context variables.
      *
      * @param documents The bucket and region the documents sidecars read from
+     * @param hosting Where the Deployment is placed and keeps its database and dashboard tree
      * @return Fabric8 Deployment object
      */
-    fun buildDeployment(documents: DocumentsBucket): Deployment {
+    fun buildDeployment(
+        documents: DocumentsBucket,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): Deployment = hostedResources(documents, hosting).filterIsInstance<Deployment>().single()
+
+    private fun hostedResources(
+        documents: DocumentsBucket,
+        hosting: ObservabilityHosting,
+    ): List<HasMetadata> = hosting.host(buildPodTemplate(documents), STATE, isBackend = false)
+
+    private fun buildPodTemplate(documents: DocumentsBucket): Deployment {
         val clusterName = templateService.buildContextVariables()["CLUSTER_NAME"] ?: "cluster"
 
         return DeploymentBuilder()
@@ -137,14 +151,6 @@ class GrafanaManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
             .withSecurityContext(
                 PodSecurityContextBuilder()
                     .withFsGroup(FS_GROUP)
@@ -187,15 +193,16 @@ class GrafanaManifestBuilder(
      * ConfigMap, the Deployment and the Service.
      *
      * @param documents The bucket and region the documents sidecars read from
+     * @param hosting Where the Deployment is placed and keeps its database and dashboard tree
      * @return List of all Grafana K8s resources in apply order
      */
-    fun buildAllResources(documents: DocumentsBucket): List<HasMetadata> =
-        listOf(
-            buildDashboardProvisioningConfigMap(),
-            documentsSidecars.configMap(documents),
-            buildDeployment(documents),
-            buildService(),
-        )
+    fun buildAllResources(
+        documents: DocumentsBucket,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): List<HasMetadata> =
+        listOf(buildDashboardProvisioningConfigMap(), documentsSidecars.configMap(documents)) +
+            hostedResources(documents, hosting) +
+            buildService()
 
     private fun buildGrafanaContainer(clusterName: String): Container =
         ContainerBuilder()
@@ -269,14 +276,7 @@ class GrafanaManifestBuilder(
                 .withName(PROVISIONING_CONFIGMAP_NAME)
                 .endConfigMap()
                 .build(),
-            VolumeBuilder()
-                .withName(DATA_VOLUME)
-                .withHostPath(
-                    HostPathVolumeSourceBuilder()
-                        .withPath(GRAFANA_DATA_PATH)
-                        .withType("DirectoryOrCreate")
-                        .build(),
-                ).build(),
+            VolumeBuilder().withName(STATE.volumeName).build(),
         )
 
     private fun buildEnvVars(clusterName: String): List<EnvVar> =

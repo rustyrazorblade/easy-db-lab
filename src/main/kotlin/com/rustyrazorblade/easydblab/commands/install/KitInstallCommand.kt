@@ -52,12 +52,12 @@ class KitInstallCommand(
         return if (lifecycleExit != 0) lifecycleExit else exitCode
     }
 
-    override fun execute() {
-        if (requiredNodePoolIsMissing()) {
-            exitCode = Constants.ExitCodes.ERROR
-            return
-        }
-
+    /**
+     * Completes [argValues] after parsing: each arg the user did not give gets its resolved
+     * default, including a `${...}` one picocli was never handed, and every arg still unset gets
+     * the empty string.
+     */
+    internal fun applyArgDefaults() {
         for ((variable, default) in resolvedDefaults) {
             argValues.putIfAbsent(variable, default)
         }
@@ -67,6 +67,15 @@ class KitInstallCommand(
         for (arg in config.args) {
             argValues.putIfAbsent(arg.variable, "")
         }
+    }
+
+    override fun execute() {
+        if (requiredNodePoolIsMissing()) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
+        }
+
+        applyArgDefaults()
 
         validateKitRefTarget()
 

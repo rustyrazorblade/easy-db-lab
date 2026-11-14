@@ -30,6 +30,7 @@ data class KubernetesJob(
  * @property age How long ago the pod was created
  * @property terminating Whether the pod has been deleted and is shutting down
  * @property nodeName The node the pod is scheduled on (its host alias); empty while unscheduled
+ * @property imagePullFailure The first container that cannot pull its image, or null
  */
 data class KubernetesPod(
     val namespace: String,
@@ -40,6 +41,7 @@ data class KubernetesPod(
     val age: Duration,
     val terminating: Boolean = false,
     val nodeName: String = "",
+    val imagePullFailure: ImagePullFailure? = null,
 )
 
 /**

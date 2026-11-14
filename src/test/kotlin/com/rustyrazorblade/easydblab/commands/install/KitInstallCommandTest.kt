@@ -313,6 +313,17 @@ class KitInstallCommandTest : BaseKoinTest() {
         assertThat(resolvedArgs("store")).containsEntry("STORAGE_SIZE", "100Gi")
     }
 
+    @Test
+    fun `an install arg value with a line break is rejected and writes no kit directory`() {
+        val config =
+            KitConfig(name = "br", type = null, args = listOf(KitArgSpec(flag = "--note", variable = "NOTE")))
+
+        assertThatThrownBy { parseAndRun(config, "--note", "a\nINJECTED=1") }
+            .hasMessageContaining("NOTE")
+            .hasMessageContaining("line break")
+        assertThat(File(workingDir, "br")).doesNotExist()
+    }
+
     /** Parses [args] as the user would type them, then runs the install. */
     private fun parseAndRun(
         config: KitConfig,

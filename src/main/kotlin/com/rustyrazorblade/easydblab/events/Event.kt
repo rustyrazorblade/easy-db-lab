@@ -21,10 +21,6 @@ import kotlinx.serialization.Serializable
  *
  * The type discriminator for serialization is derived from the class name.
  */
-private const val BACKUP_TABLE_SEPARATOR_LENGTH = 104
-private const val BACKUP_TABLE_HEADER_FORMAT = "%-17s  %-55s  %10s  %15s"
-private const val BACKUP_TABLE_ROW_FORMAT = "%-17s  %-55s  %10d  %15s"
-
 @Serializable
 sealed interface Event {
     /**
@@ -2673,8 +2669,25 @@ sealed interface Event {
         }
 
         /**
+         * [kit]'s [dashboard] did not reach Grafana, for [reason]: the declared file is missing, or
+         * Grafana rejected the install. The kit's pods run, but its `start` fails.
+         */
+        @Serializable
+        @SerialName("Grafana.KitDashboardInstallFailed")
+        data class KitDashboardInstallFailed(
+            val kit: String,
+            val dashboard: String,
+            val reason: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Failed to install the Grafana dashboard $dashboard of $kit: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * [kit]'s [dashboards] were not installed because preparing them failed, for [reason]: the
-         * tenant listing in the account bucket, or reading a dashboard file. The kit itself is running.
+         * tenant listing in the account bucket, or reading or rendering a dashboard file. The kit's
+         * pods run, but its `start` fails.
          */
         @Serializable
         @SerialName("Grafana.KitDashboardsSkipped")
@@ -3446,6 +3459,26 @@ sealed interface Event {
             override fun toDisplayString(): String = "Pod $podName is $status"
         }
 
+        /**
+         * The stress job's pod [podName] cannot start: its [container] cannot pull [image]
+         * ([reason], with the kubelet's [message]). `stress start` fails at once.
+         */
+        @Serializable
+        @SerialName("Stress.ImagePullFailed")
+        data class ImagePullFailed(
+            val podName: String,
+            val container: String,
+            val image: String,
+            val reason: String,
+            val message: String,
+        ) : Stress {
+            override fun toDisplayString(): String =
+                "Pod $podName cannot pull image $image for container $container ($reason)" +
+                    message.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty()
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Stress.JobStarted")
         data class JobStarted(
@@ -3658,6 +3691,21 @@ sealed interface Event {
 
     @Serializable
     sealed interface Provision : Event {
+        /**
+         * Instance setup (`setup_instance.sh`) exited non-zero on [host], for [reason]: for example
+         * no data disk was found, or mounting it at `/mnt/db1` failed. `up` stops before K3s starts.
+         */
+        @Serializable
+        @SerialName("Provision.InstanceSetupFailed")
+        data class InstanceSetupFailed(
+            val host: String,
+            val reason: String,
+        ) : Provision {
+            override fun toDisplayString(): String = "Instance setup failed on $host: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Provision.ControlNodeRequired")
         data class ControlNodeRequired(
@@ -4029,6 +4077,22 @@ sealed interface Event {
             val error: String,
         ) : Command {
             override fun toDisplayString(): String = error
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * [command] stopped because the [nested] command it runs exited with [exitCode]. The
+         * nested command's own error, printed just before this, gives the cause.
+         */
+        @Serializable
+        @SerialName("Command.NestedCommandFailed")
+        data class NestedCommandFailed(
+            val command: String,
+            val nested: String,
+            val exitCode: Int,
+        ) : Command {
+            override fun toDisplayString(): String = "$command failed: $nested exited with code $exitCode; its error is shown above."
 
             override fun isError(): Boolean = true
         }
@@ -4609,6 +4673,22 @@ sealed interface Event {
 
     @Serializable
     sealed interface Ami : Event {
+        /**
+         * `build-image` stopped because its [phase] (`build-base` or `build-cassandra`) exited
+         * with [exitCode]. The phase's own error, printed just before this, gives the cause.
+         */
+        @Serializable
+        @SerialName("Ami.BuildPhaseFailed")
+        data class BuildPhaseFailed(
+            val phase: String,
+            val exitCode: Int,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                "build-image failed: the $phase phase exited with code $exitCode; its error is shown above."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Ami.PruningStarting")
         data class PruningStarting(
@@ -5827,11 +5907,16 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * One installable kit as `kit list` shows it. [problem] says why its `kit.yaml` could not
+         * be read (the file and the cause), and is empty for a kit that loads.
+         */
         @Serializable
         data class TemplateDetail(
             val name: String,
             val version: String,
             val description: String,
+            val problem: String = "",
         )
 
         // =========================================================================
@@ -5921,6 +6006,21 @@ sealed interface Event {
             // printed every failure message twice. The tail stays on the event for structured
             // consumers (Redis subscribers).
             override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1} (shell) failed with exit code $exitCode."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * [kit]'s metrics scrape ConfigMaps could not be written, for [reason], so the collector
+         * will not scrape it. The kit's pods run, but its `start` fails.
+         */
+        @Serializable
+        @SerialName("Kit.MetricsRegistrationFailed")
+        data class MetricsRegistrationFailed(
+            val kit: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] metrics registration failed: $reason"
 
             override fun isError(): Boolean = true
         }

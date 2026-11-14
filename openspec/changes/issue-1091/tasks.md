@@ -31,6 +31,6 @@
 
 ## 7. Integration test and docs
 
-- [ ] 7.1 Integration test (`src/integrationTest/`, K3s TestContainer): delete the `node-role.kubernetes.io/control-plane` label on the node, deploy with an empty `Placement`, assert every backend and Grafana reaches Ready and the datasource URLs are Service DNS.
+- [x] 7.1 Integration test (`src/integrationTest/`, K3s TestContainer): delete the `node-role.kubernetes.io/control-plane` label on the node, deploy with an empty `Placement`, assert every backend and Grafana reaches Ready and the datasource URLs are Service DNS.
 - [ ] 7.2 Update the root `CLAUDE.md` observability section and `configuration/CLAUDE.md`: backends/Grafana on the pod network with per-environment placement, Service-DNS in-cluster callers, retained claims off owned nodes, documents same-origin. Note the #1090 sequencing and that #1090 owns the grafana Service.
 - [ ] 7.3 Run `./gradlew check` on JDK 21 in a subagent, with no new `@Suppress`, detekt threshold change or baseline entry.

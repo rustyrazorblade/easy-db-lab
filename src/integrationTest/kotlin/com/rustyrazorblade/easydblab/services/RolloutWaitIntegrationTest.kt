@@ -90,6 +90,7 @@ class RolloutWaitIntegrationTest {
     private fun createDeployment(
         name: String,
         readinessCommand: String = "true",
+        nodeSelector: Map<String, String> = emptyMap(),
     ) {
         val deployment =
             DeploymentBuilder()
@@ -106,7 +107,7 @@ class RolloutWaitIntegrationTest {
                 .withNewMetadata()
                 .addToLabels("app", name)
                 .endMetadata()
-                .withSpec(podSpec(readinessCommand))
+                .withSpec(PodSpecBuilder(podSpec(readinessCommand)).withNodeSelector<String, String>(nodeSelector).build())
                 .endTemplate()
                 .endSpec()
                 .build()
@@ -212,5 +213,25 @@ class RolloutWaitIntegrationTest {
             .hasMessageContaining("Timed out after ${SHORT_TIMEOUT_SECONDS}s")
             .hasMessageContaining("Deployment/$name")
             .hasMessageContaining("0 of 1 updated replicas are available")
+    }
+
+    @Test
+    fun `a rollout that cannot schedule fails naming the scheduler's reason, not only the timeout`() {
+        // An init --node-label no node carries: the pod stays Pending with PodScheduled=False.
+        val name = "rollout-unschedulable"
+        createDeployment(name, nodeSelector = mapOf("easydblab.test/no-such-node" to "true"))
+
+        val result =
+            ops.waitForRollouts(
+                controlHost,
+                listOf(WorkloadRef(WorkloadKind.Deployment, name)),
+                NAMESPACE,
+                SHORT_TIMEOUT_SECONDS,
+            )
+
+        assertThat(result.exceptionOrNull())
+            .hasMessageContaining("Deployment/$name")
+            .hasMessageContaining("unschedulable")
+            .hasMessageContaining("node affinity/selector")
     }
 }

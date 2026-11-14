@@ -7,6 +7,13 @@ import org.junit.jupiter.api.Test
 
 class S3UriTest {
     @Test
+    fun `isS3Uri tells an s3 URI from a local path`() {
+        assertThat(S3Uri.isS3Uri("s3://my-bucket/app.jar")).isTrue()
+        assertThat(S3Uri.isS3Uri("/tmp/s3://app.jar")).isFalse()
+        assertThat(S3Uri.isS3Uri("build/libs/app.jar")).isFalse()
+    }
+
+    @Test
     fun `uri renders bucket and key as an s3 URI`() {
         val path = ClusterStoragePath.root("my-bucket").resolve("spark/app.jar")
 

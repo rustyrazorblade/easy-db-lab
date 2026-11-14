@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.architecture
 
 import com.rustyrazorblade.easydblab.architecture.fixtures.SdkOnlyInCatch
 import com.rustyrazorblade.easydblab.architecture.fixtures.SdkTypeInField
+import com.tngtech.archunit.base.DescribedPredicate
 import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.domain.JavaClasses
 import com.tngtech.archunit.core.domain.JavaCodeUnit
@@ -45,6 +46,30 @@ class PackageBoundaryTest {
     @Test
     fun `no class outside the adapters depends on an SDK type`() {
         sdkDependencyRule().check(mainClasses)
+    }
+
+    /**
+     * The neutral store model stays outside the SDK boundary by itself, not only because the general
+     * rule happens to pass: the store package, the storage path and the in-memory adapter name no SDK
+     * type, with no allowlist (object-store spec, "The model stays outside the SDK boundary").
+     */
+    @Test
+    fun `the store model and the in-memory adapter depend on no SDK type`() {
+        val storeModel =
+            mainClasses.that(
+                DescribedPredicate.describe("the neutral store model") { javaClass: JavaClass ->
+                    javaClass.packageName == "$root.configuration.store" ||
+                        javaClass.name.startsWith("$root.configuration.ClusterStoragePath") ||
+                        javaClass.name.startsWith("$root.services.InMemoryObjectStore")
+                },
+            )
+
+        assertThat(storeModel.map { it.simpleName }).contains("StoreBackend", "S3Backend", "ClusterStoragePath", "InMemoryObjectStore")
+        noClasses()
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage(sdk)
+            .check(storeModel)
     }
 
     @Test

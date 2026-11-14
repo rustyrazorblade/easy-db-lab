@@ -13,6 +13,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 object S3Uri {
     private const val SCHEME = "s3://"
 
+    /** Whether [value] is an `s3://` URI rather than a local path. */
+    fun isS3Uri(value: String): Boolean = value.startsWith(SCHEME)
+
     /** [path] as `s3://bucket/key`, or `s3://bucket` for a bucket root. */
     fun uri(path: ClusterStoragePath): String = "$SCHEME$path"
 

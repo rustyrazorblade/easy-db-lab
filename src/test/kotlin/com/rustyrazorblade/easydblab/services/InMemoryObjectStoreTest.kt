@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.DirectoryNotEmptyException
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -135,6 +136,26 @@ class InMemoryObjectStoreTest {
     fun `uploading a missing local file fails`() {
         assertThatThrownBy { store.uploadFile(File(tempDir.toFile(), "nope"), root.resolve("x")) }
             .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    /** The download is staged beside its target; a move that fails must not leave the staged copy behind. */
+    @Test
+    fun `a download whose move fails leaves no staged file`() {
+        store.uploadContent("x", root.resolve("a/1"))
+        // A non-empty directory cannot be replaced by a file, so the move onto it throws.
+        val target = tempDir.resolve("taken").also { File(it.toFile(), "child").apply { parentFile.mkdirs() }.writeText("c") }
+
+        assertThatThrownBy { store.downloadFile(root.resolve("a/1"), target) }
+            .isInstanceOf(DirectoryNotEmptyException::class.java)
+        assertThat(tempDir.toFile().list()).containsExactly("taken")
+    }
+
+    @Test
+    fun `uriOf spells the bucket and key, whatever the path's own string form`() {
+        val prefixed = ClusterStoragePath.root("bucket", prefix = "team-a").resolve("a/b")
+
+        assertThat(store.uriOf(prefixed)).isEqualTo("mem://bucket/team-a/a/b")
+        assertThat(store.uriOf(root)).isEqualTo("mem://bucket/")
     }
 
     @Test

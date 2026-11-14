@@ -340,7 +340,7 @@ class DefaultObservabilityStackService(
         grafanaDeployService
             .deploy(
                 controlNode,
-                installContextFactory.forCluster(clusterState, controlNode),
+                installContextFactory.forCluster(clusterState),
                 ObservabilityStore.from(clusterState).bucket,
                 hosting,
             ).getOrElse { exception ->

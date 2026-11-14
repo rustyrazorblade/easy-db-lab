@@ -38,7 +38,7 @@ interface GrafanaDeployService {
      *
      * @param controlHost The control node running K3s
      * @param context The cluster the dashboards are installed on; its tenants make the datasources
-     * @param bucket The account bucket, which the documents sidecars read from in its own region
+     * @param bucket The account bucket, which the documents front and its signing proxy read from in its own region
      * @param hosting Where Grafana is placed and where its database lives, resolved from the environment
      */
     fun deploy(

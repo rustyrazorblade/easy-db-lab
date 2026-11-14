@@ -88,39 +88,56 @@ class WorkspaceKubeApiLocatorTest {
             .hasMessageContaining(kubeconfig.absolutePath)
     }
 
-    @Test
-    fun `falling back to the kubeconfig's current-context logs the context and the kubeconfig`() {
-        writeKubeconfig(currentContext = "default")
+    /** Runs [block] and returns the events of [Level.INFO] or above the locator logged meanwhile. */
+    private fun infoLogsDuring(block: () -> Unit): List<ILoggingEvent> {
         val appender = ListAppender<ILoggingEvent>().apply { start() }
         val logger = LoggerFactory.getLogger(WorkspaceKubeApiLocator::class.java) as Logger
         logger.addAppender(appender)
         try {
-            locator(recorded = null).locate()
+            block()
         } finally {
             logger.detachAppender(appender)
         }
+        return appender.list.filter { it.level.isGreaterOrEqual(Level.INFO) }
+    }
 
-        assertThat(appender.list)
-            .anySatisfy { event ->
-                assertThat(event.level.isGreaterOrEqual(Level.INFO)).isTrue()
-                assertThat(event.formattedMessage)
-                    .contains("'default'")
-                    .contains(kubeconfig.absolutePath)
+    @Test
+    fun `falling back to the kubeconfig's current-context logs the context and the kubeconfig once`() {
+        writeKubeconfig(currentContext = "default")
+        val locator = locator(recorded = null)
+
+        val events = infoLogsDuring { repeat(3) { locator.locate() } }
+
+        assertThat(events).singleElement().satisfies({ event ->
+            assertThat(event.formattedMessage)
+                .contains("'default'")
+                .contains(kubeconfig.absolutePath)
+        })
+    }
+
+    @Test
+    fun `a fallback to a different current-context is logged again`() {
+        writeKubeconfig(currentContext = "default")
+        val locator = locator(recorded = null)
+
+        val events =
+            infoLogsDuring {
+                locator.locate()
+                writeKubeconfig(currentContext = "pinned")
+                locator.locate()
             }
+
+        assertThat(events.map { it.formattedMessage })
+            .satisfiesExactly(
+                { assertThat(it).contains("'default'") },
+                { assertThat(it).contains("'pinned'") },
+            )
     }
 
     @Test
     fun `a recorded context logs no fallback`() {
         writeKubeconfig(currentContext = "default")
-        val appender = ListAppender<ILoggingEvent>().apply { start() }
-        val logger = LoggerFactory.getLogger(WorkspaceKubeApiLocator::class.java) as Logger
-        logger.addAppender(appender)
-        try {
-            locator(recorded = "pinned").locate()
-        } finally {
-            logger.detachAppender(appender)
-        }
 
-        assertThat(appender.list).noneMatch { it.level.isGreaterOrEqual(Level.INFO) }
+        assertThat(infoLogsDuring { locator(recorded = "pinned").locate() }).isEmpty()
     }
 }

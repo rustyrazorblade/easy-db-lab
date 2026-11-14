@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.proxy.reachedBySocksTunnel
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService

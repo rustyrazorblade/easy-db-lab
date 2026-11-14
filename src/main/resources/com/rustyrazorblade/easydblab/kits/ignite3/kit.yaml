@@ -122,10 +122,10 @@ start:
       echo "Enabling Ignite native OTLP metrics exporter..."
       # Ignite's native OTLP exporter emits the full native metric set (JMX exposes none to
       # the platform MBean server in 3.1.0, so it is not usable). Metrics push to the
-      # control-node OTel collector's OTLP receiver (:4318), which forwards to Mimir
+      # core OTel collector Service's OTLP receiver on each Ignite node, which forwards to Mimir
       # under the stable `cluster` label. Ignite's config API needs text/plain + HOCON
       # (application/json → 415). Retry: the NodePort was just created (kube-proxy timing).
-      OTLP='ignite.metrics.exporters.otlpExporter{exporterName=otlp,endpoint="http://'"${CONTROL_HOST_PRIVATE}"':4318/v1/metrics",protocol="http/protobuf"}'
+      OTLP='ignite.metrics.exporters.otlpExporter{exporterName=otlp,endpoint="'"${OTEL_OTLP_HTTP_ENDPOINT}"'/v1/metrics",protocol="http/protobuf"}'
       for attempt in $(seq 1 12); do
         if curl -s -f -X PATCH "http://${CONTROL_HOST_PRIVATE}:30300/management/v1/configuration/cluster" \
              -H "Content-Type: text/plain" -d "${OTLP}"; then

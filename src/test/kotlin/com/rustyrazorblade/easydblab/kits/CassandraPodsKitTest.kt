@@ -199,7 +199,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(cassandra().env.map { it.name }).containsSubsequence("NODE_NAME", "OTEL_RESOURCE_ATTRIBUTES")
         val attributes = env.getValue("OTEL_RESOURCE_ATTRIBUTES").value
         assertThat(attributes).contains("host.name=$(NODE_NAME)", "node_role=db", "cassandra_build=@RESOLVED_BUILD@")
-        assertThat(env.getValue("OTEL_EXPORTER_OTLP_ENDPOINT").value).isEqualTo("http://$(HOST_IP):4318")
+        assertThat(env.getValue("OTEL_EXPORTER_OTLP_ENDPOINT").value).isEqualTo("http://otel-collector.default.svc:4318")
     }
 
     @Test

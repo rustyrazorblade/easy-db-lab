@@ -10,13 +10,13 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.nodeAt
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardFiles
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -107,7 +107,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     @Test
     fun `the SDK resource drop covers the argv in both of its forms`() {
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
-        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resource_detection:")
+        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resource/host_name:")
 
         assertThat(dropBlock).contains("key: process.command_line", "key: process.command_args")
     }
@@ -119,7 +119,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     @Test
     fun `the SDK resource drop removes the per-restart container id`() {
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
-        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resource_detection:")
+        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resource/host_name:")
 
         assertThat(dropBlock).contains("key: container.id")
     }
@@ -136,19 +136,17 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
     /**
      * Host metrics and host log files carry no pod, so k8s_attributes never finds the node's `type`
-     * label for them; their node_role comes from the host name that resource_detection stamps. The
+     * label for them; their node_role comes from the host name the collector stamps from K8S_NODE_NAME. The
      * kit metrics that metrics/local scrapes by pod discovery do carry their pod (the Prometheus
      * receiver sets k8s.pod.name and k8s.namespace.name from the target), so k8s_attributes runs
      * first and the host-name rule only fills a node_role it left unset.
      */
     @Test
-    fun `host metrics take node_role from the host name, after pod metadata for scraped kit pods`() {
+    fun `scraped metrics take node_role from the host name, after pod metadata for scraped kit pods`() {
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(listAt(yaml, "service", "pipelines", "metrics/local", "processors"))
-            .containsSubsequence("resource_detection", "k8s_attributes", "transform/node_role_from_host", "batch")
-        assertThat(listAt(yaml, "service", "pipelines", "logs/local", "processors"))
-            .containsSubsequence("resource_detection", "transform/node_role_from_host")
+            .containsSubsequence("resource/host_name", "k8s_attributes", "transform/node_role_from_host", "batch")
         assertThat(listAt(yaml, "service", "pipelines", "logs/containers", "processors")).contains("k8s_attributes")
     }
 
@@ -195,9 +193,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
         assertThat(listAt(yaml, "service", "pipelines", "metrics/servicegraph", "processors"))
-            .containsSubsequence("resource_detection", "batch")
-        assertThat(scalarAt(yaml, "processors", "resource_detection", "system", "resource_attributes", "host.name", "enabled"))
-            .isEqualTo("true")
+            .containsSubsequence("resource/host_name", "batch")
     }
 
     /**
@@ -214,40 +210,6 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "connectors", "span_metrics", "metrics_flush_interval")).isEqualTo("15s")
     }
 
-    /**
-     * The collector is a container. Without the node's root filesystem mounted and `root_path`
-     * pointing at it, the hostmetrics scrapers describe the container, and the filesystem scraper
-     * finds nothing worth reporting at all — which is why every filesystem panel was empty while
-     * `filesystem:` sat in the scrapers list looking correct.
-     */
-    @Test
-    fun `hostmetrics reads the node through a read-only host root mount`() {
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
-
-        // root_path belongs to the receiver, not to a scraper: indented two levels, beside
-        // collection_interval, not four levels under `scrapers:`.
-        assertThat(yaml).contains("\n    root_path: ${OtelManifestBuilder.HOST_ROOT_MOUNT_PATH}\n")
-
-        val container =
-            builder
-                .buildDaemonSet()
-                .spec.template.spec.containers
-                .first()
-        val mount = container.volumeMounts.first { it.name == OtelManifestBuilder.HOST_ROOT_VOLUME }
-
-        assertThat(mount.mountPath).isEqualTo(OtelManifestBuilder.HOST_ROOT_MOUNT_PATH)
-        assertThat(mount.readOnly).isTrue()
-
-        val volume =
-            builder
-                .buildDaemonSet()
-                .spec.template.spec.volumes
-                .first { it.name == OtelManifestBuilder.HOST_ROOT_VOLUME }
-
-        assertThat(volume.hostPath.path).isEqualTo("/")
-        assertThat(volume.hostPath.type).isEqualTo("Directory")
-    }
-
     @Test
     fun `spans get the cluster label from the pipeline, not from each producer`() {
         // Every metrics pipeline already stamps cluster this way. Doing it here too means any span
@@ -258,40 +220,6 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(tracesPipeline).contains("resource/cluster")
         // Before batch, as on the metrics pipelines.
         assertThat(tracesPipeline.substringAfter("processors:")).containsSubsequence("resource/cluster", "batch")
-    }
-
-    @Test
-    fun `hostmetrics scrapes paging alongside the scrapers it already had`() {
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
-        val scrapers = yaml.substringAfter("scrapers:").substringBefore("prometheus:")
-
-        // paging is swap and page faults, and was simply never in the list.
-        assertThat(scrapers).contains("paging:")
-        // Regression guard: adding one scraper must not drop another.
-        assertThat(scrapers).contains("cpu:", "disk:", "load:", "filesystem:", "memory:", "network:", "processes:")
-    }
-
-    @Test
-    fun `the two utilization metrics are switched on explicitly`() {
-        // Measured against the collector image, not assumed: system.filesystem.utilization and
-        // system.paging.utilization are optional metrics and are NOT emitted by default. They are
-        // the ready-made 0-1 fractions the usage-percentage panels want.
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
-
-        assertThat(yaml).contains("system.filesystem.utilization:")
-        assertThat(yaml).contains("system.paging.utilization:")
-    }
-
-    @Test
-    fun `the filesystem scraper drops squashfs, which the virtual-fs default does not`() {
-        // include_virtual_filesystems defaults to false, so overlay, tmpfs, devtmpfs, sysfs and
-        // proc are already gone. squashfs is device-backed, so it survives that default — and every
-        // snap on an Ubuntu host is one more read-only squashfs mount sitting at 100% full.
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
-
-        assertThat(yaml).contains("exclude_fs_types:")
-        assertThat(yaml).contains("- squashfs")
-        assertThat(yaml).contains("match_type: strict")
     }
 
     /**
@@ -445,12 +373,10 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildConfigMap with empty list contains all static scrape jobs`() {
+    fun `buildConfigMap with empty list contains all infrastructure scrape jobs`() {
         val configMap = builder.buildConfigMap(NodeCapabilities.AWS, emptyList())
         val yaml = yamlFrom(configMap)
 
-        assertThat(yaml).contains("job_name: 'beyla'")
-        assertThat(yaml).contains("job_name: 'ebpf-exporter'")
         assertThat(yaml).contains("job_name: \"yace\"")
         assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
     }
@@ -474,7 +400,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `the AWS yace job is scraped by node-local pod discovery and keeps its old labels`() {
-        val job = builder.buildInfraScrapeJobs(NodeCapabilities.AWS, CniMode.Flannel).single { it.jobName == "yace" }
+        val job = builder.buildInfraScrapeJobs(NodeCapabilities.AWS).single { it.jobName == "yace" }
 
         assertThat(job.staticConfigs).isNull()
         assertThat(job.kubernetesSdConfigs?.single()?.role).isEqualTo("pod")
@@ -490,12 +416,12 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val keeps = job.relabelConfigs.filter { it.action == "keep" }
         assertThat(keeps.map { it.sourceLabels?.single() to it.regex }).containsExactly(
             "__meta_kubernetes_pod_label_app_kubernetes_io_name" to "yace",
-            "__meta_kubernetes_pod_node_name" to "\${env:HOSTNAME}",
+            "__meta_kubernetes_pod_node_name" to "\${env:K8S_NODE_NAME}",
             "__meta_kubernetes_pod_container_port_number" to "5001",
         )
         assertThat(job.relabelConfigs.filter { it.targetLabel != null }.map { it.targetLabel to it.replacement }).containsExactly(
             "__address__" to "\$\$1:5001",
-            "instance" to "\${env:HOSTNAME}:5001",
+            "instance" to "\${env:K8S_NODE_NAME}:5001",
             "cluster" to "\${env:CLUSTER_NAME}",
         )
     }
@@ -507,7 +433,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
      */
     @Test
     fun `kube-state-metrics is scraped through node-local pod discovery, not a static target`() {
-        val job = builder.buildInfraScrapeJobs(NodeCapabilities.AWS, CniMode.Flannel).single { it.jobName == "kube-state-metrics" }
+        val job = builder.buildInfraScrapeJobs(NodeCapabilities.AWS).single { it.jobName == "kube-state-metrics" }
 
         assertThat(job.staticConfigs).isNull()
         assertThat(job.kubernetesSdConfigs?.single()?.role).isEqualTo("pod")
@@ -520,7 +446,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val keeps = job.relabelConfigs.filter { it.action == "keep" }
         assertThat(keeps.map { it.sourceLabels?.single() to it.regex }).containsExactly(
             "__meta_kubernetes_pod_label_app_kubernetes_io_name" to "kube-state-metrics",
-            "__meta_kubernetes_pod_node_name" to "\${env:HOSTNAME}",
+            "__meta_kubernetes_pod_node_name" to "\${env:K8S_NODE_NAME}",
             "__meta_kubernetes_pod_container_port_number" to "8080",
         )
         val address = job.relabelConfigs.single { it.targetLabel == "__address__" }
@@ -531,93 +457,6 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).doesNotContain("kube-state-metrics.default.svc")
         // Rendered at the depth of the static jobs under scrape_configs.
         assertThat(yaml).contains("\n        - job_name: \"kube-state-metrics\"")
-    }
-
-    /**
-     * Flannel has no Cilium agent, operator, or Hubble. Rendering their jobs anyway would have
-     * every collector poll three dead ports for the life of every default cluster.
-     */
-    @Test
-    fun `buildConfigMap renders no Cilium scrape jobs on a Flannel cluster`() {
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), cni = CniMode.Flannel))
-
-        assertThat(yaml).doesNotContain("cilium-agent")
-        assertThat(yaml).doesNotContain("cilium-operator")
-        assertThat(yaml).doesNotContain("job_name: \"hubble\"")
-        assertThat(yaml).doesNotContain("localhost:9962")
-        assertThat(yaml).doesNotContain("localhost:9965")
-        assertThat(builder.buildCniScrapeJobs(CniMode.Flannel)).isEmpty()
-    }
-
-    @Test
-    fun `buildConfigMap defaults to the Flannel rendering when no CNI is given`() {
-        assertThat(yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList())))
-            .isEqualTo(yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), cni = CniMode.Flannel)))
-    }
-
-    @Test
-    fun `buildConfigMap on a Cilium cluster scrapes the agent and Hubble at localhost on every node`() {
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), cni = CniMode.Cilium))
-
-        assertThat(yaml).contains("job_name: \"cilium-agent\"")
-        assertThat(yaml).contains("localhost:9962")
-        assertThat(yaml).contains("replacement: \"\${env:HOSTNAME}:9962\"")
-        assertThat(yaml).contains("job_name: \"hubble\"")
-        assertThat(yaml).contains("localhost:9965")
-        assertThat(yaml).contains("replacement: \"\${env:HOSTNAME}:9965\"")
-        // Every job carries the cluster label, as the static infrastructure jobs do.
-        assertThat(yaml).contains("replacement: \"\${env:CLUSTER_NAME}\"")
-        // The jobs land under the prometheus receiver's scrape_configs, at the same depth as the
-        // static jobs, so the collector parses them as part of that list.
-        assertThat(yaml).contains("\n        - job_name: \"cilium-agent\"")
-    }
-
-    /**
-     * The operator runs on exactly one node, so a `localhost` target would fail everywhere but
-     * there. Pod discovery in kube-system on the chart's `io.cilium/app=operator` label, filtered
-     * to the collector's own node and to the metrics port, scrapes it once.
-     */
-    @Test
-    fun `buildConfigMap on a Cilium cluster discovers the operator by pod label on its own node`() {
-        val jobs = builder.buildCniScrapeJobs(CniMode.Cilium)
-        val operator = jobs.single { it.jobName == "cilium-operator" }
-
-        assertThat(operator.staticConfigs).isNull()
-        assertThat(operator.kubernetesSdConfigs).hasSize(1)
-        assertThat(operator.kubernetesSdConfigs?.single()?.role).isEqualTo("pod")
-        assertThat(
-            operator.kubernetesSdConfigs
-                ?.single()
-                ?.namespaces
-                ?.names,
-        ).containsExactly("kube-system")
-
-        val keeps = operator.relabelConfigs.filter { it.action == "keep" }
-        assertThat(keeps.map { it.sourceLabels?.single() to it.regex }).containsExactly(
-            "__meta_kubernetes_pod_label_io_cilium_app" to "operator",
-            "__meta_kubernetes_pod_node_name" to "\${env:HOSTNAME}",
-            "__meta_kubernetes_pod_container_port_number" to "9963",
-        )
-        val address = operator.relabelConfigs.single { it.targetLabel == "__address__" }
-        assertThat(address.sourceLabels).containsExactly("__meta_kubernetes_pod_ip")
-        assertThat(address.replacement).isEqualTo("\$\$1:9963")
-        val instance = operator.relabelConfigs.single { it.targetLabel == "instance" }
-        assertThat(instance.sourceLabels).containsExactly("__meta_kubernetes_pod_name")
-
-        assertThat(yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), cni = CniMode.Cilium)))
-            .contains("job_name: \"cilium-operator\"")
-            .doesNotContain("localhost:9963")
-    }
-
-    @Test
-    fun `Cilium scrape jobs and kit scrape jobs coexist in one rendering`() {
-        val kits = listOf(WorkloadScrapeConfig(kitName = "clickhouse", jobName = "clickhouse", port = 9363, path = "/metrics"))
-
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, kits, cni = CniMode.Cilium))
-
-        assertThat(yaml).contains("job_name: \"cilium-agent\"")
-        assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")
-        assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
     }
 
     @Test
@@ -632,10 +471,10 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val yaml = yamlFrom(configMap)
 
         assertThat(yaml).contains("job_name: \"presto-presto\"")
-        assertThat(yaml).contains("localhost:8081")
+        assertThat(yaml).contains("\${env:K8S_NODE_IP}:8081")
         assertThat(yaml).contains("metrics_path: \"/metrics\"")
         assertThat(yaml).contains("job_name: \"opensearch-opensearch\"")
-        assertThat(yaml).contains("localhost:9600")
+        assertThat(yaml).contains("\${env:K8S_NODE_IP}:9600")
         assertThat(yaml).contains("metrics_path: \"/_prometheus/metrics\"")
         // Without a pod-selector, targets are static NodePorts — no pod discovery.
         assertThat(jobBlock(yaml, "presto-presto")).contains("static_configs").doesNotContain("kubernetes_sd_configs")
@@ -683,7 +522,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yaml).contains("action: \"keep\"")
         // Node-local filtering so each collector scrapes only its own node's pod (no duplicate series).
         assertThat(yaml).contains("__meta_kubernetes_pod_node_name")
-        assertThat(yaml).contains("\${env:HOSTNAME}")
+        assertThat(yaml).contains("\${env:K8S_NODE_NAME}")
         // instance = pod name — the per-store identity, sourced from the pod name meta-label.
         assertThat(yaml).contains("__meta_kubernetes_pod_name")
         assertThat(yaml).contains("target_label: \"instance\"")
@@ -716,14 +555,12 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildConfigMap with dynamic jobs still contains all static scrape jobs`() {
+    fun `buildConfigMap with dynamic jobs still contains all infrastructure scrape jobs`() {
         val scrapeConfigs = listOf(WorkloadScrapeConfig(kitName = "clickhouse", jobName = "clickhouse", port = 9363, path = "/metrics"))
 
         val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
-        assertThat(yaml).contains("job_name: 'beyla'")
-        assertThat(yaml).contains("job_name: 'ebpf-exporter'")
         assertThat(yaml).contains("job_name: \"yace\"")
         assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
         assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")
@@ -736,7 +573,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val configMap = builder.buildConfigMap(NodeCapabilities.AWS, scrapeConfigs)
         val yaml = yamlFrom(configMap)
 
-        assertThat(yaml).contains("\${env:HOSTNAME}:9999")
+        assertThat(yaml).contains("\${env:K8S_NODE_NAME}:9999")
         assertThat(yaml).contains("\${env:CLUSTER_NAME}")
     }
 
@@ -877,7 +714,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
                 .contains("- \"__meta_kubernetes_pod_label_app_kubernetes_io_name\"")
                 .contains("regex: \"$job\"")
                 .contains("- \"__meta_kubernetes_pod_node_name\"")
-                .contains("regex: \"\${env:HOSTNAME}\"")
+                .contains("regex: \"\${env:K8S_NODE_NAME}\"")
                 .contains("regex: \"$port\"")
                 .contains("replacement: \"\$\$1:$port\"")
                 .contains("metrics_path: \"/metrics\"")
@@ -930,15 +767,6 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         }
     }
 
-    /** Per-core CPU is opt-in on the host CPU scraper; dashboards break down CPU time by core. */
-    @Test
-    fun `the host CPU scraper reports time per core`() {
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
-
-        assertThat(listAt(yaml, "receivers", "host_metrics", "scrapers", "cpu", "metrics", "system.cpu.time", "attributes"))
-            .contains("cpu", "state")
-    }
-
     /**
      * Tempo runs native multi-tenancy, so every trace write carries the cluster's tenant — on a
      * redirected cluster too, or a multi-tenant external stack would reject the data. The tenant is
@@ -984,7 +812,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `every logs pipeline exports to Loki with no VictoriaLogs processor`() {
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
-        for (name in listOf("logs/local", "logs/containers", "logs/otlp")) {
+        for (name in listOf("logs/containers", "logs/otlp")) {
             assertThat(listAt(yaml, "service", "pipelines", name, "exporters")).describedAs(name).contains("otlp_http/logs")
             assertThat(
                 listAt(yaml, "service", "pipelines", name, "processors"),
@@ -995,35 +823,200 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
-     * Loki indexes `source` only when it is a resource attribute. The file receivers set it on the
-     * resource, and journald lines (Fluent Bit sets it on the record) have it moved there before export.
+     * Loki indexes `source` only when it is a resource attribute. The host add-on's file receivers set it
+     * on the resource, and journald lines (Fluent Bit sets it on the record) have it moved there before export.
      */
     @Test
-    fun `the log source is a resource attribute`() {
+    fun `a journald log source is moved onto the resource`() {
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
 
-        for (receiver in listOf("file_log/system", "file_log/tools", "file_log/cassandra")) {
-            assertThat(scalarAt(yaml, "receivers", receiver, "resource", "source")).describedAs(receiver).isNotBlank()
-            assertThat(keysAt(yaml, "receivers", receiver, "attributes")).describedAs(receiver).doesNotContain("source")
-        }
         assertThat(listAt(yaml, "service", "pipelines", "logs/otlp", "processors")).contains("transform/source_to_resource")
         assertThat(listAt(yaml, "processors", "transform/source_to_resource", "log_statements").plus(yaml))
             .anyMatch { it.contains("set(resource.attributes[\"source\"], attributes[\"source\"])") }
     }
 
-    /**
-     * Cassandra's application logs reach Loki once, over OTLP from the Java agent. The file
-     * receiver tails only the JVM GC log, which the JVM writes itself and the agent never sees;
-     * tailing system.log or debug.log as well stored every Cassandra line twice.
-     */
-    @Test
-    fun `the Cassandra file receiver tails only the JVM GC log, under its own source`() {
-        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
+    // ---- Core collector: unprivileged, on the pod network (issue 1092) ----
 
-        assertThat(listAt(yaml, "receivers", "file_log/cassandra", "include"))
-            .containsExactly("/mnt/db1/cassandra/logs/gc.log*")
-        assertThat(listAt(yaml, "receivers", "file_log/cassandra", "exclude"))
-            .contains("/mnt/db1/cassandra/logs/gc.log*.gz")
-        assertThat(scalarAt(yaml, "receivers", "file_log/cassandra", "resource", "source")).isEqualTo("cassandra-gc")
+    private fun coreDaemonSet(source: PodLogSource = PodLogSource.NodeFiles) = builder.buildDaemonSet(source)
+
+    @Test
+    fun `the core runs on the pod network with no host port and no privilege`() {
+        for (source in listOf(PodLogSource.NodeFiles, PodLogSource.None)) {
+            val pod = coreDaemonSet(source).spec.template.spec
+            assertThat(pod.hostNetwork).describedAs("$source hostNetwork").isNotEqualTo(true)
+            assertThat(pod.containers.flatMap { it.ports.orEmpty() }.mapNotNull { it.hostPort }).describedAs("$source").isEmpty()
+            pod.containers.forEach { container ->
+                assertThat(container.securityContext?.privileged).describedAs("$source privileged").isNotEqualTo(true)
+                assertThat(container.securityContext?.allowPrivilegeEscalation).describedAs("$source").isFalse()
+            }
+        }
+    }
+
+    /** Root in NodeFiles mode reads the node's files; it must not be able to write its own image. */
+    @Test
+    fun `the core's root filesystem is read-only whichever way it reads pod logs`() {
+        for (source in listOf(PodLogSource.NodeFiles, PodLogSource.None)) {
+            val container =
+                coreDaemonSet(source)
+                    .spec.template.spec.containers
+                    .single()
+            assertThat(container.securityContext.readOnlyRootFilesystem).describedAs("$source").isTrue()
+        }
+    }
+
+    @Test
+    fun `without pod logs the core mounts no hostPath and runs as a restricted non-root user`() {
+        val pod = coreDaemonSet(PodLogSource.None).spec.template.spec
+        assertThat(pod.volumes.filter { it.hostPath != null }).isEmpty()
+        val context = pod.containers.single().securityContext
+        assertThat(context.runAsNonRoot).isTrue()
+        assertThat(context.capabilities.drop).containsExactly("ALL")
+        assertThat(context.seccompProfile.type).isEqualTo("RuntimeDefault")
+    }
+
+    @Test
+    fun `with pod logs the core mounts only the kubelet's pod log directory, read-only`() {
+        val pod = coreDaemonSet(PodLogSource.NodeFiles).spec.template.spec
+        val hostPaths = pod.volumes.filter { it.hostPath != null }
+        assertThat(hostPaths.map { it.hostPath.path }).containsExactly("/var/log/pods")
+        val mount =
+            pod.containers
+                .single()
+                .volumeMounts
+                .single { it.name == hostPaths.single().name }
+        assertThat(mount.mountPath).isEqualTo("/var/log/pods")
+        assertThat(mount.readOnly).isTrue()
+    }
+
+    @Test
+    fun `pod logs are a pipeline only when the core reads them from the node`() {
+        val withLogs = builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), podLogSource = PodLogSource.NodeFiles)
+        val without = builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), podLogSource = PodLogSource.None)
+
+        assertThat(listAt(yamlFrom(withLogs), "service", "pipelines", "logs/containers", "receivers"))
+            .containsExactlyInAnyOrder("file_log/containers", "file_log/clickhouse-containers")
+        assertThat(keysAt(yamlFrom(without), "service", "pipelines")).doesNotContain("logs/containers")
+        assertThat(keysAt(yamlFrom(without), "receivers")).noneMatch { it.startsWith("file_log") }
+        assertThat(yamlFrom(without)).doesNotContainPattern("__[A-Z_]+__")
+    }
+
+    @Test
+    fun `the core rolls one node at a time without a gap and runs on every node`() {
+        val spec = coreDaemonSet().spec
+        assertThat(spec.updateStrategy.type).isEqualTo("RollingUpdate")
+        assertThat(spec.updateStrategy.rollingUpdate.maxSurge.intVal).isEqualTo(1)
+        assertThat(spec.updateStrategy.rollingUpdate.maxUnavailable.intVal).isEqualTo(0)
+        val tolerations = spec.template.spec.tolerations
+        assertThat(tolerations).anyMatch { it.operator == "Exists" && it.key == null && it.effect == null }
+    }
+
+    @Test
+    fun `node identity comes from the node name and the node IP from the downward API`() {
+        val env =
+            coreDaemonSet()
+                .spec.template.spec.containers
+                .single()
+                .env
+        assertThat(
+            env
+                .single { it.name == "K8S_NODE_NAME" }
+                .valueFrom.fieldRef.fieldPath,
+        ).isEqualTo("spec.nodeName")
+        assertThat(
+            env
+                .single { it.name == "K8S_NODE_IP" }
+                .valueFrom.fieldRef.fieldPath,
+        ).isEqualTo("status.hostIP")
+        assertThat(env.map { it.name }).doesNotContain("HOSTNAME")
+
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
+        assertThat(keysAt(yaml, "processors")).doesNotContain("resource_detection")
+        assertThat(yaml).doesNotContain("\${env:HOSTNAME}")
+        val hostName = nodeAt(yaml, "processors", "resource/host_name", "attributes") as YamlList
+        val entry = hostName.items.single() as YamlMap
+        assertThat(entry.get<YamlScalar>("key")?.content).isEqualTo("host.name")
+        assertThat(entry.get<YamlScalar>("value")?.content).isEqualTo("\${env:K8S_NODE_NAME}")
+        assertThat(entry.get<YamlScalar>("action")?.content).isEqualTo("upsert")
+    }
+
+    @Test
+    fun `the core has no host source`() {
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
+        assertThat(keysAt(yaml, "receivers")).doesNotContain("host_metrics", "file_log/system", "file_log/tools", "file_log/cassandra")
+        assertThat(keysAt(yaml, "service", "pipelines")).doesNotContain("logs/local")
+        assertThat(yaml).doesNotContain("job_name: 'beyla'").doesNotContain("job_name: 'ebpf-exporter'")
+        assertThat(yaml).doesNotContain("localhost:9400").doesNotContain("localhost:9435")
+        assertThat(builder.buildInfraScrapeJobs(NodeCapabilities.AWS).map { it.jobName })
+            .doesNotContain("cilium-agent", "hubble", "cilium-operator")
+    }
+
+    @Test
+    fun `the core has no memory limiter`() {
+        for (source in listOf(PodLogSource.NodeFiles, PodLogSource.None)) {
+            builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), podLogSource = source).data.values.forEach {
+                assertThat(it).describedAs("$source").doesNotContain("memory_limiter")
+            }
+        }
+    }
+
+    @Test
+    fun `the core reads kubelet stats from its own node`() {
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
+        assertThat(scalarAt(yaml, "receivers", "kubelet_stats", "endpoint")).isEqualTo("https://\${env:K8S_NODE_IP}:10250")
+        assertThat(scalarAt(yaml, "receivers", "kubelet_stats", "auth_type")).isEqualTo("serviceAccount")
+        // K3s signs each kubelet serving cert with its server CA, the CA in the service-account
+        // ca.crt, so the kubelet is verified, not trusted blind (CoreAndHostCollectorIntegrationTest).
+        assertThat(
+            scalarAt(yaml, "receivers", "kubelet_stats", "ca_file"),
+        ).isEqualTo("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+        assertThat(yaml).doesNotContain("insecure_skip_verify")
+        assertThat(listAt(yaml, "service", "pipelines", "metrics/local", "receivers")).contains("kubelet_stats")
+
+        val rules = builder.buildClusterRole().rules
+        assertThat(rules).anyMatch { "nodes/stats" in it.resources && "get" in it.verbs }
+    }
+
+    @Test
+    fun `the Service selects only core pods and keeps traffic on the producer's node`() {
+        val service = builder.buildService()
+        assertThat(service.spec.internalTrafficPolicy).isEqualTo("Local")
+        assertThat(service.spec.ports.map { it.port to it.protocol })
+            .containsExactlyInAnyOrder(4317 to "TCP", 4318 to "TCP", 6831 to "UDP")
+        assertThat(service.spec.selector).containsExactly(entry("app.kubernetes.io/name", "otel-collector"))
+
+        val corePodLabels =
+            coreDaemonSet()
+                .spec.template.metadata.labels
+        assertThat(corePodLabels).containsAllEntriesOf(service.spec.selector)
+    }
+
+    @Test
+    fun `a static kit job scrapes the host port at the node IP and keeps the node as its instance`() {
+        val kit = listOf(WorkloadScrapeConfig(kitName = "presto", jobName = "presto", port = 8081, path = "/metrics"))
+        val job = builder.buildKitScrapeJobs(kit).single()
+
+        assertThat(job.staticConfigs?.single()?.targets).containsExactly("\${env:K8S_NODE_IP}:8081")
+        assertThat(job.relabelConfigs.single { it.targetLabel == "instance" }.replacement).isEqualTo("\${env:K8S_NODE_NAME}:8081")
+    }
+
+    @Test
+    fun `host file logs forwarded by the add-on are not counted as Cassandra logs`() {
+        val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList()))
+        val counters = keysAt(yaml, "connectors", "count", "logs")
+        assertThat(counters).isNotEmpty()
+        counters.forEach { name ->
+            val conditions = listAt(yaml, "connectors", "count", "logs", name, "conditions")
+            assertThat(conditions).describedAs(name).isNotEmpty()
+            conditions.forEach { condition ->
+                assertThat(condition).describedAs(name).contains(OtelManifestBuilder.NOT_A_HOST_LOG)
+            }
+        }
+        val signals = nodeAt(yaml, "connectors", "signal_to_metrics", "logs") as YamlList
+        signals.items.forEach { metric ->
+            val conditions = checkNotNull((metric as YamlMap).get<YamlList>("conditions")).items.map { (it as YamlScalar).content }
+            conditions.forEach { assertThat(it).contains(OtelManifestBuilder.NOT_A_HOST_LOG) }
+        }
+        // Every host file receiver sets `source` on the resource, which is what the guard reads.
+        assertThat(OtelManifestBuilder.NOT_A_HOST_LOG).isEqualTo("resource.attributes[\"source\"] == nil")
     }
 }

@@ -29,13 +29,13 @@ class LokiTailFlushTest {
 
     private fun flush(
         http: RecordingObservabilityHttp,
-        progress: FlushProgress = FlushProgress(FlushStep.LOKI_SHUTDOWN, "loki"),
+        progress: FlushProgress = FlushProgress(FlushStep.LOKI_SHUTDOWN, setOf("loki")),
     ) = LokiTailFlush(http, workloads, timeouts).flush(control, state, progress)
 
     @Test
     fun `the synchronous shutdown flushes every chunk, then Loki is scaled to 0 and nothing else is called`() {
         val http = RecordingObservabilityHttp(ObservabilityResponse(204, ""))
-        val progress = FlushProgress(FlushStep.LOKI_SHUTDOWN, "loki")
+        val progress = FlushProgress(FlushStep.LOKI_SHUTDOWN, setOf("loki"))
 
         assertThat(flush(http, progress)).isEqualTo(SignalReport.Logs)
         assertThat(http.calls.map { "${it.method} ${it.port} ${it.path}" })
@@ -47,7 +47,7 @@ class LokiTailFlushTest {
 
     @Test
     fun `a shutdown that does not answer 204 stops the flush there, with Loki's ingester stopped`() {
-        val progress = FlushProgress(FlushStep.LOKI_SHUTDOWN, "loki")
+        val progress = FlushProgress(FlushStep.LOKI_SHUTDOWN, setOf("loki"))
 
         // 200 is not enough: only 204 means every flush queue drained.
         assertThatThrownBy { flush(RecordingObservabilityHttp(ObservabilityResponse(200, "flush failed")), progress) }

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.sidecar
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Constants.Cassandra
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -179,7 +180,7 @@ class SidecarManifestBuilder(
         .endEnv()
         .addNewEnv()
         .withName("OTEL_EXPORTER_OTLP_ENDPOINT")
-        .withValue("http://localhost:${Constants.K8s.OTEL_GRPC_PORT}")
+        .withValue(OtelEndpoints.otlpGrpcEndpoint())
         .endEnv()
         .addNewEnv()
         .withName("OTEL_SERVICE_NAME")

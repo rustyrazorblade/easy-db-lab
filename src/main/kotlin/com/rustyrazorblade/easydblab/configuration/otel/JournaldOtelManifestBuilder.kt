@@ -12,9 +12,10 @@ import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 /**
  * Builds K8s resources for a Fluent Bit DaemonSet that reads systemd journal entries.
  *
- * Isolated from the main OTel collector so journal collection failures
- * don't affect existing log/metric/trace collection. Forwards logs via OTLP HTTP
- * to the main collector on localhost:4318.
+ * Isolated from the OTel collectors so journal collection failures don't affect
+ * existing log/metric/trace collection. Forwards logs via OTLP HTTP to
+ * localhost:4318, the host add-on collector's node listener (`otel-collector-host`),
+ * which forwards them to the core collector through its Service.
  *
  * Fluent Bit has a native systemd input plugin with journalctl compiled in,
  * so no external binary or chroot is needed.

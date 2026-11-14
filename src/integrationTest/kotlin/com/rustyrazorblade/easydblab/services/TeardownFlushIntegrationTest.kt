@@ -210,7 +210,11 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     /** The collector does not run here: its stop only counts, and Tempo's senders are the test's pushes. */
     private val senders =
         object : TelemetrySenders {
-            override fun stop(timeout: Duration) {
+            override fun stop(
+                timeout: Duration,
+                onAbsent: (String) -> Unit,
+                onDeleting: (String) -> Unit,
+            ) {
                 sendersStopped.incrementAndGet()
             }
         }
@@ -514,7 +518,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         startTempo()
         val started = Instant.now()
 
-        val report = tempoDrain().flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, Constants.K8s.TEMPO_APP_LABEL))
+        val report = tempoDrain().flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, setOf(Constants.K8s.TEMPO_APP_LABEL)))
 
         assertThat(report).isEqualTo(SignalReport.Traces)
         assertThat(Duration.between(started, Instant.now())).isLessThan(NO_SPAN_DRAIN_WITHIN)

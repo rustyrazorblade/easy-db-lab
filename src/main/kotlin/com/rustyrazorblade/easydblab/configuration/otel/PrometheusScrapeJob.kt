@@ -1,10 +1,16 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
+import com.charleskorn.kaml.Yaml
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 
+/**
+ * HTTP basic auth for a scrape job whose target requires it. [password] defaults to empty for
+ * targets that check only the user name.
+ */
 @Serializable
 data class PrometheusBasicAuth(
     val username: String,
@@ -33,8 +39,39 @@ data class PrometheusScrapeJob(
     @SerialName("basic_auth") val basicAuth: PrometheusBasicAuth? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     @SerialName("scrape_timeout") val scrapeTimeout: String? = null,
-)
+) {
+    companion object {
+        /**
+         * The default indent for a scrape-job list embedded under
+         * `receivers.prometheus.config.scrape_configs` in a collector config template: eight spaces,
+         * the depth of the `- job_name:` entries. If that nesting changes, this must change with it.
+         */
+        const val SCRAPE_CONFIGS_INDENT = "        "
 
+        /**
+         * Renders [jobs] as the YAML body of a `scrape_configs:` list, each line prefixed by
+         * [indent] so it drops into a collector config template at the right depth. Empty when there
+         * are no jobs. Shared by the core and host-add-on collector builders so both emit identical
+         * YAML for the same jobs.
+         */
+        fun render(
+            jobs: List<PrometheusScrapeJob>,
+            indent: String = SCRAPE_CONFIGS_INDENT,
+        ): String {
+            if (jobs.isEmpty()) return ""
+            return Yaml()
+                .encodeToString(ListSerializer(serializer()), jobs)
+                .trimEnd()
+                .lines()
+                .joinToString("\n") { line -> if (line.isEmpty()) "" else "$indent$line" }
+        }
+    }
+}
+
+/**
+ * A fixed target list for a scrape job, used when a workload is reached at a known address (a
+ * NodePort on the node, or a localhost port) rather than found by pod discovery.
+ */
 @Serializable
 data class PrometheusStaticConfig(
     val targets: List<String>,
@@ -53,6 +90,10 @@ data class PrometheusKubernetesSdConfig(
     val namespaces: PrometheusSdNamespaces? = null,
 )
 
+/**
+ * The namespaces a Kubernetes service-discovery block is limited to, so discovery lists only the
+ * workload's own namespace instead of every pod in the cluster.
+ */
 @Serializable
 data class PrometheusSdNamespaces(
     val names: List<String>,

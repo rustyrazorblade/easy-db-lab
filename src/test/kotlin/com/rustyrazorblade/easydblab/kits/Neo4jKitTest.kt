@@ -166,9 +166,7 @@ class Neo4jKitTest : BaseKoinTest() {
 
             assertThat(declared.serviceName).isEqualTo("neo4j")
             assertThat(env(container, "OTEL_SERVICE_NAME").value).isEqualTo(declared.serviceName)
-            assertThat(env(container, "HOST_IP").valueFrom.fieldRef.fieldPath).isEqualTo("status.hostIP")
-            assertThat(container.env.map { it.name }).containsSubsequence("HOST_IP", "OTEL_EXPORTER_OTLP_ENDPOINT")
-            assertThat(env(container, "OTEL_EXPORTER_OTLP_ENDPOINT").value).isEqualTo("http://$(HOST_IP):4318")
+            assertThat(env(container, "OTEL_EXPORTER_OTLP_ENDPOINT").value).isEqualTo("http://otel-collector.default.svc:4318")
             assertThat(env(container, "OTEL_METRIC_EXPORT_INTERVAL").value).isEqualTo("5000")
         }
 

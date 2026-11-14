@@ -23,7 +23,7 @@ processors:
 
 exporters:
   otlp_grpc:
-    endpoint: ${env:HOST_IP}:4317
+    endpoint: __OTEL_CORE_GRPC_ENDPOINT__
     tls:
       insecure: true
     sending_queue:

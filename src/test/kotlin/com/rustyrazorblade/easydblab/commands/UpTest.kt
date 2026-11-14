@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
+import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -915,6 +916,42 @@ class UpTest : UpTestFixture() {
         newUp().execute()
 
         assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).isEmpty()
+    }
+
+    @Test
+    fun `a capacity shortage is reported as one, with the instance type and zone`() {
+        val shortage =
+            InsufficientInstanceCapacityException(
+                serverType = "app",
+                instanceType = "c6id.4xlarge",
+                availabilityZone = "us-west-2a",
+                subnetId = "subnet-1",
+                cause = RuntimeException("AWS refusal"),
+            )
+        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenReturn(
+            ProvisioningResult(hosts = happyHosts(), errors = mapOf("app instances" to shortage)),
+        )
+        val events = captureEvents()
+
+        assertThatThrownBy { newUp().execute() }.isInstanceOf(IllegalStateException::class.java)
+
+        assertThat(events.filterIsInstance<Event.Provision.InstanceCapacityShortage>())
+            .containsExactly(Event.Provision.InstanceCapacityShortage("app", "c6id.4xlarge", "us-west-2a"))
+        assertThat(events.filterIsInstance<Event.Provision.InfrastructureFailure>()).isEmpty()
+    }
+
+    @Test
+    fun `any other provisioning error is still reported as an infrastructure failure`() {
+        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenReturn(
+            ProvisioningResult(hosts = happyHosts(), errors = mapOf("db instances" to IllegalStateException("boom"))),
+        )
+        val events = captureEvents()
+
+        assertThatThrownBy { newUp().execute() }.isInstanceOf(IllegalStateException::class.java)
+
+        assertThat(events.filterIsInstance<Event.Provision.InfrastructureFailure>())
+            .containsExactly(Event.Provision.InfrastructureFailure("db instances", "boom"))
+        assertThat(events.filterIsInstance<Event.Provision.InstanceCapacityShortage>()).isEmpty()
     }
 
     private fun captureEvents(): List<Event> {

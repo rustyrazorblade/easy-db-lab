@@ -65,6 +65,14 @@ The system MUST provision EC2 instances in AWS with configurable instance types 
 - **WHEN** the user provisions the cluster
 - **THEN** EC2 instances are launched and accessible via SSH.
 
+#### Scenario: AWS has no capacity for an instance type in a zone
+
+- **GIVEN** a launch during `up` that AWS refuses with `InsufficientInstanceCapacity`
+- **WHEN** `up` reports the provisioning failures
+- **THEN** it emits `Provision.InstanceCapacityShortage`, which names the node role, the instance type and the availability zone, in place of the generic `Provision.InfrastructureFailure`
+- **AND** its text says the failure is a capacity shortage, and suggests a different availability zone (`--azs`) or instance type
+- **AND** `up` makes no capacity preflight and no automatic retry in another zone or type.
+
 #### Scenario: K3s deployed on provisioned instances
 
 - **GIVEN** provisioned instances

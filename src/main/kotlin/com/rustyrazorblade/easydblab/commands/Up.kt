@@ -23,6 +23,7 @@ import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
+import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -576,7 +577,7 @@ class Up(
         if (result.errors.isNotEmpty()) {
             eventBus.emit(Event.Provision.InfrastructureFailureHeader)
             result.errors.forEach { (resource, error) ->
-                eventBus.emit(Event.Provision.InfrastructureFailure(resource, error.message ?: "Unknown error"))
+                eventBus.emit(provisioningFailureEvent(resource, error))
             }
             error(
                 "Failed to create ${result.errors.size} infrastructure resource(s): " +
@@ -584,6 +585,17 @@ class Up(
             )
         }
     }
+
+    /** A capacity shortage gets its own event so it is not mistaken for an easy-db-lab failure. */
+    private fun provisioningFailureEvent(
+        resource: String,
+        error: Exception,
+    ): Event.Provision =
+        when (error) {
+            is InsufficientInstanceCapacityException ->
+                Event.Provision.InstanceCapacityShortage(error.serverType, error.instanceType, error.availabilityZone)
+            else -> Event.Provision.InfrastructureFailure(resource, error.message ?: "Unknown error")
+        }
 
     private fun finalizeInfrastructureState(
         vpcId: String,

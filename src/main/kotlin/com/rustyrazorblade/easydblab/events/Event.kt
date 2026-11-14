@@ -3875,6 +3875,27 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * A launch during `up` failed because AWS has no capacity for [instanceType] in
+         * [availabilityZone] (`InsufficientInstanceCapacity`). It is a shortage on AWS's side, not
+         * a bug; the fix is another zone or instance type. [availabilityZone] is null when it
+         * could not be resolved.
+         */
+        @Serializable
+        @SerialName("Provision.InstanceCapacityShortage")
+        data class InstanceCapacityShortage(
+            val serverType: String,
+            val instanceType: String,
+            val availabilityZone: String?,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "  - AWS has no capacity for $instanceType ($serverType nodes) in ${availabilityZone ?: "the target zone"}. " +
+                    "This is a capacity shortage, not an easy-db-lab error. Run easy-db-lab down, then init again with " +
+                    "a different availability zone (--azs) or instance type (--db.instance-type, --app.instance-type)."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Provision.InfrastructureFailure")
         data class InfrastructureFailure(

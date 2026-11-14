@@ -32,9 +32,10 @@ The proxy's port and Grafana's internal port SHALL be constants and SHALL be lis
 - **WHEN** a client calls a Grafana API path, or opens the Grafana Live websocket, on Grafana's client port
 - **THEN** Grafana receives the request with its method, body, `Host` header and upgrade intact
 
-#### Scenario: The proxy is not reachable from the network
-- **WHEN** another host on the VPC or the tailnet connects to the proxy's port on the control node
-- **THEN** the connection fails
+#### Scenario: The proxy is reachable only inside the Grafana pod
+- **GIVEN** the signing proxy binds `127.0.0.1:3081` in the Grafana pod, publishes no host port, and no Service targets it
+- **WHEN** anything outside that pod (another pod, a node, a host on the VPC or the tailnet) connects to the pod's IP on 3081, or to any node on 3081
+- **THEN** the connection fails: only the front, in the same pod, reaches the proxy over loopback
 
 #### Scenario: The proxy signs for the bucket's region
 - **WHEN** the account bucket is in a region other than the cluster's

@@ -42,9 +42,10 @@ Each backend's local state SHALL be stored on a `hostPath` where the environment
 - **THEN** it addresses Mimir, Loki and Tempo by Service DNS
 - **AND** the dashboards show data
 
-#### Scenario: A rescheduled backend stays reachable
-- **WHEN** a backend Pod is rescheduled to another node in the volume's zone
-- **THEN** Grafana and the collector still reach it through its ClusterIP Service
+#### Scenario: A replaced backend on a retained claim stays reachable
+- **GIVEN** an environment without `HOST_PATH`, so the backend's state is on its retained claim
+- **WHEN** the backend's pod is deleted and its replacement reattaches the same claim (on another node only within the volume's zone, since the claim is zonal)
+- **THEN** Grafana reaches the replacement through the backend's ClusterIP Service, at the same URL its datasource uses
 
 #### Scenario: Off owned nodes the stack and the collector sync need no control node
 - **GIVEN** an environment that does not own its nodes and a cluster state with no control node

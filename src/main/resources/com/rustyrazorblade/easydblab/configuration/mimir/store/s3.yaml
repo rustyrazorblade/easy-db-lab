@@ -1,11 +1,11 @@
 backend: s3
 # The metrics root, mimir, at the top level of the account bucket. Mimir makes one directory per
 # tenant under it.
-storage_prefix: ${METRICS_S3_PREFIX}
+storage_prefix: ${METRICS_STORE_PREFIX}
 s3:
-  bucket_name: ${S3_BUCKET}
-  endpoint: s3.${AWS_REGION}.amazonaws.com
-  region: ${AWS_REGION}
+  bucket_name: ${STORE_BUCKET}
+  endpoint: ${STORE_ENDPOINT}
+  region: ${STORE_REGION}
   # Keep S3 connections open and reuse them: with the defaults 23% of Mimir's CPU went to new TLS
   # handshakes with S3 (issue 988). 0 is no limit on idle connections in total.
   http:

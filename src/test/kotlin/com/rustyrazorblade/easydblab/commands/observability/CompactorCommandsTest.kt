@@ -66,7 +66,7 @@ class CompactorCommandsTest : BaseKoinTest() {
         CompactorStart().execute()
         CompactorStop().execute()
 
-        verify(compactor).ensureRunning("easy-db-lab-acct")
+        verify(compactor).ensureRunning("easy-db-lab-acct", "")
         verify(compactor).stop("easy-db-lab-acct")
         verifyNoInteractions(clusterStateManager)
     }

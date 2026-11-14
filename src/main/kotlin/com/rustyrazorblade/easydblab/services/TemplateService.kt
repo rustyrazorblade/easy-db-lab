@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.store.S3Backend
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import org.apache.commons.text.StringSubstitutor
 import java.io.File
 
@@ -32,7 +34,8 @@ class TemplateService(
         val state = clusterStateManager.load()
         val region = state.initConfig?.region ?: user.region
         val controlHost = state.getControlHost()
-        val store = ObservabilityStore(state.s3Bucket.orEmpty(), state.tenant())
+        val backend = StoreBackend.from(state, region)
+        val store = ObservabilityStore(backend.bucket, state.tenant(), backend.prefix)
         return mapOf(
             "ACCOUNT_BUCKET" to store.bucket,
             "AWS_REGION" to region,
@@ -41,10 +44,17 @@ class TemplateService(
             "CONTROL_NODE_IP" to (controlHost?.privateIp.orEmpty()),
             "METRICS_FILTER_ID" to buildMetricsFilterId(state),
             "CLUSTER_S3_PREFIX" to buildClusterPrefix(state),
-            "PROFILES_S3_PREFIX" to store.profilesPrefix(),
+            "STORE_BUCKET" to backend.bucket,
+            "PROFILES_STORE_PREFIX" to store.profilesPrefix(),
             "TENANT" to store.tenant,
-        )
+        ) + storeLocation(backend)
     }
+
+    /** Where the store is reached, for the build-time store fragments (Pyroscope's): only its S3 fragment reads these. */
+    private fun storeLocation(backend: StoreBackend): Map<String, String> =
+        when (backend) {
+            is S3Backend -> mapOf("STORE_REGION" to backend.region, "STORE_ENDPOINT" to backend.endpoint)
+        }
 
     private fun buildMetricsFilterId(state: ClusterState): String = state.metricsConfigId()
 

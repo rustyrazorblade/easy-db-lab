@@ -45,7 +45,7 @@ class AWSpolicyTest {
     inner class InlinePolicies {
         @Test
         fun `S3AccessWildcard should generate valid policy with multiple statements`() {
-            val json = AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson()
+            val json = AWSPolicy.Inline.S3AccessWildcard("123456789012", "").toJson()
 
             // First statement for ListAllMyBuckets
             assertThat(json).contains(""""Action":"s3:ListAllMyBuckets"""")
@@ -72,7 +72,7 @@ class AWSpolicyTest {
         fun `S3AccessWildcard denies deletes on every observability prefix but profiles`() {
             val statements =
                 Json
-                    .parseToJsonElement(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson())
+                    .parseToJsonElement(AWSPolicy.Inline.S3AccessWildcard("123456789012", "").toJson())
                     .jsonObject
                     .getValue("Statement")
                     .jsonArray
@@ -100,7 +100,7 @@ class AWSpolicyTest {
 
         @Test
         fun `S3BucketPolicy should generate valid policy with multiple principals`() {
-            val policy = AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket")
+            val policy = AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", "")
             val json = policy.toJson()
 
             // Check for multiple AWS principals
@@ -118,7 +118,11 @@ class AWSpolicyTest {
         /** Every cluster-side principal the bucket policy grants is denied deletes under the compacted roots. */
         @Test
         fun `S3BucketPolicy denies the cluster roles every delete under the compacted roots`() {
-            val deny = statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket").toJson()).single { it.effect() == "Deny" }
+            val deny =
+                statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", "").toJson()).single {
+                    it.effect() ==
+                        "Deny"
+                }
 
             assertThat(deny.values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
             assertThat(deny.values("Resource")).containsExactlyInAnyOrder(
@@ -136,7 +140,7 @@ class AWSpolicyTest {
         /** Only the compacted roots: the compactor's task role has no access to grafana/ or pyroscope/. */
         @Test
         fun `the compactor task role deletes only under mimir, loki and tempo`() {
-            val statements = statements(AWSPolicy.Inline.CompactorTaskAccess.toJson())
+            val statements = statements(AWSPolicy.Inline.CompactorTaskAccess("").toJson())
             val objects = statements.single { "s3:DeleteObject" in it.values("Action") }
 
             assertThat(objects.values("Resource")).containsExactlyInAnyOrder(
@@ -146,6 +150,82 @@ class AWSpolicyTest {
             )
             assertThat(statements.flatMap { it.values("Resource") }).noneMatch { it.contains("grafana") || it.contains("pyroscope") }
             assertThat(statements).allMatch { it.effect() == "Allow" }
+        }
+    }
+
+    /**
+     * A store prefix only ever adds denied paths: the instance role is account-wide, so a cluster on
+     * one prefix must never drop the guard a cluster on another prefix, or on none, relies on.
+     */
+    @Nested
+    inner class StorePrefix {
+        private val prefix = "team-a"
+
+        @Test
+        fun `the instance role deny keeps every unprefixed root and adds the prefixed ones`() {
+            val deny = statements(AWSPolicy.Inline.S3AccessWildcard("123456789012", prefix).toJson()).single { it.effect() == "Deny" }
+
+            assertThat(deny.values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::easy-db-lab-*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/grafana/*",
+                "arn:aws:s3:::easy-db-lab-*/reports/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/grafana/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/reports/*",
+            )
+        }
+
+        @Test
+        fun `the bucket policy deny keeps every unprefixed compacted root and adds the prefixed ones`() {
+            val deny =
+                statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", prefix).toJson()).single {
+                    it.effect() ==
+                        "Deny"
+                }
+
+            assertThat(deny.values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::test-bucket/mimir/*",
+                "arn:aws:s3:::test-bucket/loki/*",
+                "arn:aws:s3:::test-bucket/tempo/*",
+                "arn:aws:s3:::test-bucket/team-a/mimir/*",
+                "arn:aws:s3:::test-bucket/team-a/loki/*",
+                "arn:aws:s3:::test-bucket/team-a/tempo/*",
+            )
+        }
+
+        @Test
+        fun `a prefix widens no allow of the instance role or the bucket policy`() {
+            fun allows(json: String) = statements(json).filter { it.effect() == "Allow" }
+
+            assertThat(allows(AWSPolicy.Inline.S3AccessWildcard("123456789012", prefix).toJson()))
+                .isEqualTo(allows(AWSPolicy.Inline.S3AccessWildcard("123456789012", "").toJson()))
+            assertThat(allows(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", prefix).toJson()))
+                .isEqualTo(allows(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket", "").toJson()))
+        }
+
+        @Test
+        fun `the compactor task role reaches the prefixed compacted roots and nothing else`() {
+            val statements = statements(AWSPolicy.Inline.CompactorTaskAccess(prefix).toJson())
+            val objects = statements.single { "s3:DeleteObject" in it.values("Action") }
+
+            assertThat(objects.values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::easy-db-lab-*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/team-a/tempo/*",
+            )
+            assertThat(statements.flatMap { it.values("Resource") }).noneMatch { it.contains("grafana") || it.contains("pyroscope") }
+        }
+
+        @Test
+        fun `slashes around the prefix are not doubled`() {
+            assertThat(AWSPolicy.Inline.storeRoots("/team-a/", listOf("mimir"))).containsExactly("mimir", "team-a/mimir")
         }
     }
 

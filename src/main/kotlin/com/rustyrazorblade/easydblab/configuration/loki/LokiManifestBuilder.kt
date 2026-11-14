@@ -161,9 +161,10 @@ class LokiManifestBuilder(
                 "-config.file=$CONFIG_MOUNT_PATH/$CONFIG_FILE",
                 "-config.expand-env=true",
             ).withEnv(
-                clusterConfigEnv("AWS_REGION", "aws_region"),
-                clusterConfigEnv("S3_BUCKET", "s3_bucket"),
-                clusterConfigEnv("LOGS_S3_PREFIX", "logs_s3_prefix"),
+                clusterConfigEnv("STORE_BUCKET", "store_bucket"),
+                clusterConfigEnv("STORE_REGION", "store_region"),
+                clusterConfigEnv("STORE_ENDPOINT", "store_endpoint"),
+                clusterConfigEnv("LOGS_STORE_PREFIX", "logs_store_prefix"),
                 clusterConfigEnv("TENANT", "tenant"),
                 clusterConfigEnv("CLUSTER_NAME", "cluster_name"),
             ).addNewPort()

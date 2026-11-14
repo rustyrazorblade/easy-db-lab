@@ -39,8 +39,11 @@ class CompactorIam(
         const val ECS_SERVICE_LINKED_ROLE = "AWSServiceRoleForECS"
     }
 
-    /** Ensures both roles and their policies, and ECS's service-linked role. */
-    fun ensure(): CompactorRoles {
+    /**
+     * Ensures both roles and their policies, and ECS's service-linked role. The task role may
+     * compact under [storePrefix] as well as at the top of the bucket.
+     */
+    fun ensure(storePrefix: String): CompactorRoles {
         val taskRoleArn = ensureRole(Constants.Compactor.TASK_ROLE, "easy-db-lab account compactor task")
         withIamRetry("compactor-task-policy") {
             iam.putRolePolicy(
@@ -48,7 +51,7 @@ class CompactorIam(
                     .builder()
                     .roleName(Constants.Compactor.TASK_ROLE)
                     .policyName(TASK_POLICY_NAME)
-                    .policyDocument(AWSPolicy.Inline.CompactorTaskAccess.toJson())
+                    .policyDocument(AWSPolicy.Inline.CompactorTaskAccess(storePrefix).toJson())
                     .build(),
             )
         }

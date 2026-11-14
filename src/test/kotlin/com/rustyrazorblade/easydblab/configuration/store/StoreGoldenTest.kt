@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.services.ClusterConfigData
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.CompactorTaskDefinition
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -109,55 +110,42 @@ class StoreGoldenTest : BaseKoinTest() {
         assertThat(actual).isEqualTo(goldenOrCapture(name, actual))
     }
 
+    /**
+     * The values a backend pod sees: every env var of [deployment]'s containers that reads the
+     * `cluster-config` ConfigMap, resolved against [clusterConfig] exactly as Kubernetes would. A key
+     * the ConfigMap does not publish fails here, so a mis-keyed or dropped env wiring cannot hide
+     * behind a hand-written expansion map.
+     */
+    private fun podEnv(deployment: Deployment): Map<String, String> =
+        deployment.spec.template.spec.containers
+            .flatMap { it.env.orEmpty() }
+            .mapNotNull { env ->
+                env.valueFrom?.configMapKeyRef?.takeIf { it.name == ClusterConfigData.NAME }?.let { ref ->
+                    val value = clusterConfig[ref.key]
+                    checkNotNull(value) { "${env.name} reads cluster-config key '${ref.key}', which it does not publish" }
+                    env.name to value
+                }
+            }.toMap()
+
     @Test
     fun `mimir config expands to the golden file`() {
         val builder = MimirManifestBuilder(templateService)
         val config = builder.buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
-        val expanded =
-            ExpandEnv.expand(
-                config,
-                mapOf(
-                    "AWS_REGION" to clusterConfig.getValue("aws_region"),
-                    "S3_BUCKET" to clusterConfig.getValue("s3_bucket"),
-                    "METRICS_S3_PREFIX" to clusterConfig.getValue("metrics_s3_prefix"),
-                ),
-            )
-        assertGolden("mimir.yaml", expanded)
+        assertGolden("mimir.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
     }
 
     @Test
     fun `loki config expands to the golden file`() {
         val builder = LokiManifestBuilder(templateService)
         val config = builder.buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
-        val expanded =
-            ExpandEnv.expand(
-                config,
-                mapOf(
-                    "AWS_REGION" to clusterConfig.getValue("aws_region"),
-                    "S3_BUCKET" to clusterConfig.getValue("s3_bucket"),
-                    "LOGS_S3_PREFIX" to clusterConfig.getValue("logs_s3_prefix"),
-                    "TENANT" to clusterConfig.getValue("tenant"),
-                    "CLUSTER_NAME" to clusterConfig.getValue("cluster_name"),
-                ),
-            )
-        assertGolden("loki.yaml", expanded)
+        assertGolden("loki.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
     }
 
     @Test
     fun `tempo config expands to the golden file`() {
         val builder = TempoManifestBuilder(templateService)
         val config = builder.buildConfigMap().data.getValue("tempo.yaml")
-        val expanded =
-            ExpandEnv.expand(
-                config,
-                mapOf(
-                    "AWS_REGION" to clusterConfig.getValue("aws_region"),
-                    "S3_BUCKET" to clusterConfig.getValue("s3_bucket"),
-                    "TRACES_S3_PREFIX" to clusterConfig.getValue("traces_s3_prefix"),
-                    "CLUSTER_NAME" to clusterConfig.getValue("cluster_name"),
-                ),
-            )
-        assertGolden("tempo.yaml", expanded)
+        assertGolden("tempo.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
     }
 
     @Test
@@ -184,17 +172,17 @@ class StoreGoldenTest : BaseKoinTest() {
 
     @Test
     fun `instance role policy renders to the golden file`() {
-        assertGolden("instance-role-policy.json", AWSPolicy.Inline.S3AccessWildcard(ACCOUNT_ID).toJson())
+        assertGolden("instance-role-policy.json", AWSPolicy.Inline.S3AccessWildcard(ACCOUNT_ID, storePrefix = "").toJson())
     }
 
     @Test
     fun `bucket policy renders to the golden file`() {
-        assertGolden("bucket-policy.json", AWSPolicy.Inline.S3BucketPolicy(ACCOUNT_ID, BUCKET).toJson())
+        assertGolden("bucket-policy.json", AWSPolicy.Inline.S3BucketPolicy(ACCOUNT_ID, BUCKET, storePrefix = "").toJson())
     }
 
     @Test
     fun `compactor task role policy renders to the golden file`() {
-        assertGolden("compactor-task-policy.json", AWSPolicy.Inline.CompactorTaskAccess.toJson())
+        assertGolden("compactor-task-policy.json", AWSPolicy.Inline.CompactorTaskAccess(storePrefix = "").toJson())
     }
 
     /**

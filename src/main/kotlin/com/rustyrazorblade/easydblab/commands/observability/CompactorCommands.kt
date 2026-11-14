@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.observability
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -28,7 +29,7 @@ abstract class CompactorCommand : PicoBaseCommand() {
     mixinStandardHelpOptions = true,
 )
 class CompactorStart : CompactorCommand() {
-    override fun execute() = compactorService.ensureRunning(accountBucket())
+    override fun execute() = compactorService.ensureRunning(accountBucket(), StoreBackend.NO_PREFIX)
 }
 
 /** Stops the account compactor by setting its desired count to 0. */

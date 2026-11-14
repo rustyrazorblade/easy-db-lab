@@ -170,6 +170,20 @@ class ClusterStoragePathTest {
     }
 
     @Test
+    fun `from puts a cluster's files under its store prefix`() {
+        val state =
+            ClusterState(
+                name = "lab",
+                versions = mutableMapOf(),
+                s3Bucket = "acct",
+                clusterId = "abc",
+            )
+
+        assertThat(ClusterStoragePath.from(state, storePrefix = "team-a").getKey()).isEqualTo("team-a/clusters/lab-abc")
+        assertThat(ClusterStoragePath.from(state).getKey()).isEqualTo("clusters/lab-abc")
+    }
+
+    @Test
     fun `a nested store prefix is split like any other path`() {
         val root = ClusterStoragePath.root("my-bucket", prefix = "/org/team-a/")
 

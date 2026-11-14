@@ -4,7 +4,7 @@ empty_tenant_deletion_enabled: false
 wal:
   path: /var/tempo/wal
 s3:
-  bucket: ${S3_BUCKET}
-  endpoint: s3.${AWS_REGION}.amazonaws.com
-  region: ${AWS_REGION}
-  prefix: ${TRACES_S3_PREFIX}
+  bucket: ${STORE_BUCKET}
+  endpoint: ${STORE_ENDPOINT}
+  region: ${STORE_REGION}
+  prefix: ${TRACES_STORE_PREFIX}

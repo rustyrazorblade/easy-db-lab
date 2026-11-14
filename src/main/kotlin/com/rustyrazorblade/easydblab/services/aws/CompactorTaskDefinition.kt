@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import software.amazon.awssdk.core.SdkPojo
@@ -156,13 +157,15 @@ data class CompactorTaskDefinition(
     }
 
     /** What the containers read from their environment; the configuration files expand it. */
-    private fun storageEnv(): List<KeyValuePair> =
-        mapOf(
-            "S3_BUCKET" to bucket,
-            "AWS_REGION" to region,
-            "METRICS_S3_PREFIX" to Constants.Observability.METRICS_ROOT,
-            "LOGS_S3_PREFIX" to Constants.Observability.LOGS_ROOT,
-            "TRACES_S3_PREFIX" to Constants.Observability.TRACES_ROOT,
+    private fun storageEnv(): List<KeyValuePair> {
+        val store = S3Backend(bucket = bucket, region = region)
+        return mapOf(
+            "STORE_BUCKET" to store.bucket,
+            "STORE_REGION" to store.region,
+            "STORE_ENDPOINT" to store.endpoint,
+            "METRICS_STORE_PREFIX" to Constants.Observability.METRICS_ROOT,
+            "LOGS_STORE_PREFIX" to Constants.Observability.LOGS_ROOT,
+            "TRACES_STORE_PREFIX" to Constants.Observability.TRACES_ROOT,
             // loki.yaml names its ingester after these; the compactor runs no ingester.
             "TENANT" to "compactor",
             "CLUSTER_NAME" to "compactor",
@@ -173,6 +176,7 @@ data class CompactorTaskDefinition(
                 .value(value)
                 .build()
         }
+    }
 
     private fun logs(container: String): LogConfiguration =
         LogConfiguration

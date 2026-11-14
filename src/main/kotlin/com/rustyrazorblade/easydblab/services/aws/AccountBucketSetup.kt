@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -28,8 +29,9 @@ class AccountBucketSetup(
     fun prepare(state: ClusterState) {
         configureBuckets(state)
         val bucket = requireBucket(state)
-        reapplyPolicies(bucket)
-        compactorService.ensureRunning(bucket)
+        val storePrefix = StoreBackend.prefixOf(state)
+        reapplyPolicies(bucket, storePrefix)
+        compactorService.ensureRunning(bucket, storePrefix)
     }
 
     /**
@@ -49,7 +51,7 @@ class AccountBucketSetup(
 
         // Configure account-level bucket
         eventBus.emit(Event.S3.BucketUsing(accountBucket))
-        s3BucketService.putBucketPolicy(accountBucket)
+        s3BucketService.putBucketPolicy(accountBucket, StoreBackend.prefixOf(state))
         state.s3Bucket = accountBucket
         eventBus.emit(Event.S3.BucketConfigured(accountBucket, state.clusterPrefix()))
 
@@ -85,10 +87,13 @@ class AccountBucketSetup(
      * permissions and delete denies. Both are idempotent: PutRolePolicy and PutBucketPolicy leave
      * the same end state however often they run.
      */
-    private fun reapplyPolicies(bucket: String) {
+    private fun reapplyPolicies(
+        bucket: String,
+        storePrefix: String,
+    ) {
         eventBus.emit(Event.Provision.IamUpdating)
-        awsResourceSetup.reapplyInstanceRolePolicies()
-        s3BucketService.putBucketPolicy(bucket)
+        awsResourceSetup.reapplyInstanceRolePolicies(storePrefix)
+        s3BucketService.putBucketPolicy(bucket, storePrefix)
         log.debug { "Instance role and bucket policies re-applied successfully" }
     }
 }

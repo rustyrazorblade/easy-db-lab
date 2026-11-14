@@ -44,7 +44,7 @@ class CompactorIamTest {
 
     @Test
     fun `an existing service-linked role is not created again`() {
-        CompactorIam(iam).ensure()
+        CompactorIam(iam).ensure("")
 
         verify(iam, never()).createServiceLinkedRole(any<CreateServiceLinkedRoleRequest>())
     }
@@ -55,7 +55,7 @@ class CompactorIamTest {
             .whenever(iam)
             .getRole(argThat<GetRoleRequest> { roleName() == serviceLinkedRole })
 
-        CompactorIam(iam).ensure()
+        CompactorIam(iam).ensure("")
 
         val created = argumentCaptor<CreateServiceLinkedRoleRequest>()
         verify(iam).createServiceLinkedRole(created.capture())

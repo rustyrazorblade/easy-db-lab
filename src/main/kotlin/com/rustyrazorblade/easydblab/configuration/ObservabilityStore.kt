@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -8,22 +9,25 @@ import java.time.format.DateTimeFormatter
 /**
  * The layout of a cluster's observability data in the account bucket.
  *
- * This is the one place that builds those paths. Each backend's root sits at the top level of the
- * bucket, named for the tool: `mimir/`, `loki/`, `tempo/` and `pyroscope/`. Those tools run native
+ * This is the one place that builds those paths. Each backend's root sits under the store prefix,
+ * named for the tool: `mimir/`, `loki/`, `tempo/` and `pyroscope/`. The store prefix is empty on
+ * AWS, so the roots sit at the top level of the bucket there. Those tools run native
  * multi-tenancy and lay out their own tenant directories, so their backends get a fixed prefix with
  * no tenant in it. The annotation backups have no backend to do that, so they carry the tenant in the
  * path: `grafana/annotations/<tenant>/<backup>.json`.
  *
- * @property bucket The account-level S3 bucket.
+ * @property bucket The account-level bucket.
  * @property tenant The cluster's observability tenant.
+ * @property storePrefix The store prefix every root sits under ([StoreBackend.prefix]); empty for none.
  */
 data class ObservabilityStore(
     val bucket: String,
     val tenant: String,
+    val storePrefix: String = StoreBackend.NO_PREFIX,
 ) {
     companion object {
         /**
-         * The store of the given cluster: its account bucket and its tenant.
+         * The store of the given cluster: its account bucket, its tenant and its store prefix.
          *
          * @throws IllegalStateException if the cluster has no account bucket yet.
          */
@@ -31,38 +35,46 @@ data class ObservabilityStore(
             val bucket =
                 clusterState.s3Bucket
                     ?: error("S3 bucket not configured for cluster '${clusterState.name}'. Run 'easy-db-lab up' first.")
-            return ObservabilityStore(bucket, clusterState.tenant())
+            return ObservabilityStore(bucket, clusterState.tenant(), StoreBackend.prefixOf(clusterState))
         }
     }
 
+    /** The root of the store: the bucket under the store prefix. */
+    private fun storeRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket, storePrefix)
+
+    /** The key of [root] under the store prefix, the form a backend takes as its prefix setting. */
+    private fun prefixed(root: String): String = storeRoot().resolve(root).getKey()
+
     /** Key prefix of Tempo's live backend; Tempo makes the tenant directories under it. */
-    fun tracesPrefix(): String = Constants.Observability.TRACES_ROOT
+    fun tracesPrefix(): String = prefixed(Constants.Observability.TRACES_ROOT)
 
     /** Mimir's storage prefix; Mimir makes the tenant directories under it. */
-    fun metricsPrefix(): String = Constants.Observability.METRICS_ROOT
+    fun metricsPrefix(): String = prefixed(Constants.Observability.METRICS_ROOT)
 
     /** Key prefix of Loki's backend; Loki lays out its tenants' chunks and its index tables under it. */
-    fun logsPrefix(): String = Constants.Observability.LOGS_ROOT
+    fun logsPrefix(): String = prefixed(Constants.Observability.LOGS_ROOT)
 
     /** Key prefix of the Pyroscope server's live backend; Pyroscope makes its own layout under it. */
-    fun profilesPrefix(): String = Constants.Observability.PROFILES_ROOT
+    fun profilesPrefix(): String = prefixed(Constants.Observability.PROFILES_ROOT)
 
     /** Location of Tempo's backend root. */
-    fun tracesRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket).resolve(tracesPrefix())
+    fun tracesRoot(): ClusterStoragePath = storeRoot().resolve(Constants.Observability.TRACES_ROOT)
 
     /** Location of Pyroscope's backend root. */
-    fun profilesRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket).resolve(profilesPrefix())
+    fun profilesRoot(): ClusterStoragePath = storeRoot().resolve(Constants.Observability.PROFILES_ROOT)
 
     /** Location of this tenant's metrics, the directory Mimir makes under its root. */
-    fun tenantMetricsRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket).resolve(metricsPrefix()).resolve(tenant)
+    fun tenantMetricsRoot(): ClusterStoragePath = metricsRoot().resolve(tenant)
+
+    /** Location of Mimir's backend root, which holds one directory per tenant. */
+    fun metricsRoot(): ClusterStoragePath = storeRoot().resolve(Constants.Observability.METRICS_ROOT)
 
     /** Location of Loki's backend root. */
-    fun logsRoot(): ClusterStoragePath = ClusterStoragePath.root(bucket).resolve(logsPrefix())
+    fun logsRoot(): ClusterStoragePath = storeRoot().resolve(Constants.Observability.LOGS_ROOT)
 
     /** The tenant's Grafana annotation backups. */
     fun annotationsRoot(): ClusterStoragePath =
-        ClusterStoragePath
-            .root(bucket)
+        storeRoot()
             .resolve(Constants.Observability.GRAFANA_ROOT)
             .resolve(Constants.Observability.ANNOTATIONS_DIR)
             .resolve(tenant)
@@ -72,8 +84,7 @@ data class ObservabilityStore(
 
     /** The folder of one test's documents, `reports/<tenant>/<cluster>`, for the cluster label [cluster]. */
     fun documentsRoot(cluster: String): ClusterStoragePath =
-        ClusterStoragePath
-            .root(bucket)
+        storeRoot()
             .resolve(Constants.Observability.REPORTS_ROOT)
             .resolve(tenant)
             .resolve(cluster)

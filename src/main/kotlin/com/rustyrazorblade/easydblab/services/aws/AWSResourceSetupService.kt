@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
@@ -70,7 +71,7 @@ class AWSResourceSetupService(
      * Re-applies the instance role's inline policies, so `up` always launches instances under the
      * current permissions, the latest S3 delete denies included. Idempotent.
      */
-    fun reapplyInstanceRolePolicies() = instanceRolePolicies.apply(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+    fun reapplyInstanceRolePolicies(storePrefix: String) = instanceRolePolicies.apply(Constants.AWS.Roles.EC2_INSTANCE_ROLE, storePrefix)
 
     /**
      * Ensures all AWS IAM resources are set up before any command runs.
@@ -129,7 +130,7 @@ class AWSResourceSetupService(
     private fun addMissingInstanceRolePolicies(roleName: String) {
         val missing = instanceRolePolicies.missing(roleName)
         if (missing.isEmpty()) return
-        instanceRolePolicies.apply(roleName)
+        instanceRolePolicies.apply(roleName, StoreBackend.NO_PREFIX)
         eventBus.emit(Event.AwsSetup.InstanceRolePoliciesAdded(roleName, missing))
     }
 
@@ -164,7 +165,7 @@ class AWSResourceSetupService(
         try {
             // EC2 role (for Cassandra, Stress, Control nodes) with wildcard S3 policy
             aws.createRoleWithS3Policy(roleName)
-            instanceRolePolicies.apply(roleName)
+            instanceRolePolicies.apply(roleName, StoreBackend.NO_PREFIX)
             eventBus.emit(Event.AwsSetup.Ec2RoleReady(roleName))
 
             // EMR Service role

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.core.exception.SdkServiceException
@@ -216,16 +217,20 @@ class AWS(
      * - EasyDBLabEMREC2Role (EMR EC2 instances)
      *
      * @param bucketName The S3 bucket name to apply the policy to
+     * @param storePrefix The store prefix whose roots the delete deny also covers
      * @throws IllegalArgumentException if bucket name is invalid
      * @throws S3Exception if S3 operations fail
      */
-    fun putS3BucketPolicy(bucketName: String) {
+    fun putS3BucketPolicy(
+        bucketName: String,
+        storePrefix: String,
+    ) {
         require(bucketName.matches(Regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"))) {
             "Invalid S3 bucket name: $bucketName. Must be lowercase, 3-63 chars, alphanumeric and hyphens only."
         }
 
         val accountId = getAccountId()
-        val bucketPolicy = AWSPolicy.Inline.S3BucketPolicy(accountId, bucketName).toJson()
+        val bucketPolicy = AWSPolicy.Inline.S3BucketPolicy(accountId, bucketName, storePrefix).toJson()
 
         try {
             val request =
@@ -487,7 +492,7 @@ class AWS(
         log.info { "Setting up IAM role and instance profile: $roleName" }
 
         createIamRole(roleName, AWSPolicy.Trust.EC2Service.toJson(), "IAM role for easy-db-lab with S3 access")
-        attachS3Policy(roleName)
+        attachS3Policy(roleName, StoreBackend.NO_PREFIX)
         createIamInstanceProfile(roleName, roleName)
 
         log.info { "Validating IAM role setup: $roleName" }
@@ -510,9 +515,13 @@ class AWS(
      * Attaches an inline S3 access policy to an IAM role, granting full access to all easy-db-lab buckets.
      *
      * @param roleName The name of the IAM role to attach the policy to
+     * @param storePrefix The store prefix whose roots the delete deny also covers
      */
-    fun attachS3Policy(roleName: String) {
-        val s3Policy = AWSPolicy.Inline.S3AccessWildcard(getAccountId()).toJson()
+    fun attachS3Policy(
+        roleName: String,
+        storePrefix: String,
+    ) {
+        val s3Policy = AWSPolicy.Inline.S3AccessWildcard(getAccountId(), storePrefix).toJson()
         val retryConfig = RetryUtil.createIAMRetryConfig()
         val retry = Retry.of("attach-s3-policy-$roleName", retryConfig)
 

@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
+
 /**
  * Immutable, storage-neutral object location following java.nio.file.Path patterns: a bucket, a
  * store prefix and key segments, with no URI scheme.
@@ -62,17 +64,21 @@ data class ClusterStoragePath(
 
         /**
          * Create a ClusterStoragePath from ClusterState.
-         * Uses the account-level bucket and cluster prefix from ClusterState.
+         * Uses the account-level bucket, the cluster's store prefix and its cluster prefix.
          *
          * @param clusterState The cluster state containing s3Bucket
+         * @param storePrefix The store prefix in front of the key; the cluster's [StoreBackend] prefix by default
          * @return A new ClusterStoragePath for this cluster's prefix within the account bucket
          * @throws IllegalStateException if s3Bucket is not configured
          */
-        fun from(clusterState: ClusterState): ClusterStoragePath {
+        fun from(
+            clusterState: ClusterState,
+            storePrefix: String = StoreBackend.prefixOf(clusterState),
+        ): ClusterStoragePath {
             val bucket =
                 clusterState.s3Bucket
                     ?: error("S3 bucket not configured for cluster '${clusterState.name}'. Run 'easy-db-lab up' first.")
-            return ClusterStoragePath(bucket, segments = clusterState.clusterPrefix().split("/"))
+            return ClusterStoragePath(bucket, storePrefix, clusterState.clusterPrefix().split("/"))
         }
 
         /**

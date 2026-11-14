@@ -123,8 +123,20 @@ class TemplateServiceTest : BaseKoinTest() {
         val variables = createService().buildContextVariables()
 
         assertThat(variables).containsEntry("TENANT", "acme")
-        assertThat(variables).containsEntry("PROFILES_S3_PREFIX", "pyroscope")
-        assertThat(variables).doesNotContainKey("PYROSCOPE_STORAGE_PREFIX")
+        assertThat(variables).containsEntry("PROFILES_STORE_PREFIX", "pyroscope")
+        assertThat(variables).doesNotContainKeys("PYROSCOPE_STORAGE_PREFIX", "PROFILES_S3_PREFIX")
+    }
+
+    @Test
+    fun `buildContextVariables publishes the store in neutral names for Pyroscope's build-time config`() {
+        setupClusterState()
+
+        val variables = createService().buildContextVariables()
+
+        assertThat(variables)
+            .containsEntry("STORE_BUCKET", "my-test-bucket")
+            .containsEntry("STORE_REGION", "us-east-1")
+            .containsEntry("STORE_ENDPOINT", "s3.us-east-1.amazonaws.com")
     }
 
     @Test

@@ -16,14 +16,18 @@ class ExternalIpServiceTest {
     private val primary = URI("https://primary.example/").toURL()
     private val fallback = URI("https://fallback.example/").toURL()
 
-    /** A fetch that answers from [answers] by URL; a [Throwable] value is thrown instead. */
+    /**
+     * A fetch that answers from [answers] by URL text; a [Throwable] value is thrown instead.  Keys
+     * and the call log use the URL's text, never a [URL]: `URL.equals` and `URL.hashCode` resolve
+     * the host name, which sent this test to the DNS resolver and made it wait on its timeouts.
+     */
     private fun fetchFrom(
-        answers: Map<URL, Any>,
-        calls: MutableList<URL> = mutableListOf(),
+        answers: Map<String, Any>,
+        calls: MutableList<String> = mutableListOf(),
     ): (URL) -> String =
         { url ->
-            calls.add(url)
-            when (val answer = answers.getValue(url)) {
+            calls.add(url.toString())
+            when (val answer = answers.getValue(url.toString())) {
                 is Throwable -> throw answer
                 else -> answer.toString()
             }
@@ -31,32 +35,32 @@ class ExternalIpServiceTest {
 
     @Test
     fun `the default order asks checkip first and ipify second`() {
-        val calls = mutableListOf<URL>()
+        val calls = mutableListOf<String>()
         val service =
             DefaultExternalIpService(
                 fetch = { url ->
-                    calls.add(url)
+                    calls.add(url.toString())
                     throw IOException("down")
                 },
             )
 
         assertThatThrownBy { service.getExternalIpAddress() }.isInstanceOf(IOException::class.java)
-        assertThat(calls.map { it.toString() })
+        assertThat(calls)
             .containsExactly(Constants.Network.EXTERNAL_IP_URL, Constants.Network.EXTERNAL_IP_FALLBACK_URL)
         assertThat(Constants.Network.EXTERNAL_IP_URL).isEqualTo("https://checkip.amazonaws.com/")
     }
 
     @Test
     fun `the first answer is trimmed of its trailing newline and the fallback is not asked`() {
-        val calls = mutableListOf<URL>()
+        val calls = mutableListOf<String>()
         val service =
             DefaultExternalIpService(
                 urls = listOf(primary, fallback),
-                fetch = fetchFrom(mapOf(primary to "203.0.113.10\n", fallback to "198.51.100.1"), calls),
+                fetch = fetchFrom(mapOf("$primary" to "203.0.113.10\n", "$fallback" to "198.51.100.1"), calls),
             )
 
         assertThat(service.getExternalIpAddress()).isEqualTo("203.0.113.10")
-        assertThat(calls).containsExactly(primary)
+        assertThat(calls).containsExactly("$primary")
     }
 
     @Test
@@ -64,7 +68,7 @@ class ExternalIpServiceTest {
         val service =
             DefaultExternalIpService(
                 urls = listOf(primary, fallback),
-                fetch = fetchFrom(mapOf(primary to IOException("refused"), fallback to "198.51.100.1")),
+                fetch = fetchFrom(mapOf("$primary" to IOException("refused"), "$fallback" to "198.51.100.1")),
             )
 
         assertThat(service.getExternalIpAddress()).isEqualTo("198.51.100.1")
@@ -76,7 +80,7 @@ class ExternalIpServiceTest {
             val service =
                 DefaultExternalIpService(
                     urls = listOf(primary, fallback),
-                    fetch = fetchFrom(mapOf(primary to bad, fallback to "198.51.100.1")),
+                    fetch = fetchFrom(mapOf("$primary" to bad, "$fallback" to "198.51.100.1")),
                 )
 
             assertThat(service.getExternalIpAddress()).describedAs("first answer '%s'", bad).isEqualTo("198.51.100.1")
@@ -89,7 +93,7 @@ class ExternalIpServiceTest {
         val service =
             DefaultExternalIpService(
                 urls = listOf(primary, fallback),
-                fetch = fetchFrom(mapOf(primary to first, fallback to "not an ip")),
+                fetch = fetchFrom(mapOf("$primary" to first, "$fallback" to "not an ip")),
             )
 
         assertThatThrownBy { service.getExternalIpAddress() }

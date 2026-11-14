@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
+import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import com.rustyrazorblade.easydblab.providers.aws.withEc2InstanceRetry
@@ -20,6 +21,7 @@ import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
+import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest
 import software.amazon.awssdk.services.ec2.model.Filter
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
 import software.amazon.awssdk.services.ec2.waiters.Ec2Waiter
@@ -135,7 +137,13 @@ class EC2InstanceService(
         batch: LaunchBatch,
     ): List<CreatedInstance> {
         val request = RunInstancesRequests.build(config, batch, UUID.randomUUID().toString())
-        val response = withEc2ThrottleRetry("run-instances-${batch.aliases.first()}", throttleBackoff) { ec2Client.runInstances(request) }
+        val response =
+            try {
+                withEc2ThrottleRetry("run-instances-${batch.aliases.first()}", throttleBackoff) { ec2Client.runInstances(request) }
+            } catch (e: AwsServiceException) {
+                if (InsufficientInstanceCapacityException.isCapacityRefusal(e)) throw capacityShortage(config, batch, e)
+                throw e
+            }
 
         return response
             .instances()
@@ -151,6 +159,35 @@ class EC2InstanceService(
                     serverType = config.serverType,
                 )
             }
+    }
+
+    /**
+     * The exception for a capacity refusal of [batch]. The zone comes from the batch's subnet; if
+     * that lookup fails too, the report names the subnet instead, and the refusal is still raised.
+     */
+    private fun capacityShortage(
+        config: InstanceCreationConfig,
+        batch: LaunchBatch,
+        refusal: AwsServiceException,
+    ): InsufficientInstanceCapacityException {
+        val zone =
+            try {
+                ec2Client
+                    .describeSubnets(DescribeSubnetsRequest.builder().subnetIds(batch.subnetId).build())
+                    .subnets()
+                    .firstOrNull()
+                    ?.availabilityZone()
+            } catch (e: AwsServiceException) {
+                log.warn(e) { "Could not look up the availability zone of ${batch.subnetId}" }
+                null
+            }
+        return InsufficientInstanceCapacityException(
+            serverType = config.serverType.serverType,
+            instanceType = config.instanceType,
+            availabilityZone = zone,
+            subnetId = batch.subnetId,
+            cause = refusal,
+        )
     }
 
     /**

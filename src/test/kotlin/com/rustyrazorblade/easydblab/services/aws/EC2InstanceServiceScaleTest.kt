@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
+import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -25,6 +26,8 @@ import software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusResponse
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse
+import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest
+import software.amazon.awssdk.services.ec2.model.DescribeSubnetsResponse
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.Instance
 import software.amazon.awssdk.services.ec2.model.InstanceState
@@ -36,6 +39,7 @@ import software.amazon.awssdk.services.ec2.model.Reservation
 import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse
+import software.amazon.awssdk.services.ec2.model.Subnet
 import software.amazon.awssdk.services.ec2.model.SummaryStatus
 import software.amazon.awssdk.services.ec2.model.Tag
 import software.amazon.awssdk.services.ec2.paginators.DescribeInstancesIterable
@@ -395,13 +399,50 @@ class EC2InstanceServiceScaleTest {
             .build() as Ec2Exception
 
     @Test
-    fun `an InsufficientInstanceCapacity refusal is not retried`() {
-        runInstancesFailsSecondCallWith(ec2Error(400, "InsufficientInstanceCapacity"))
+    fun `an InsufficientInstanceCapacity refusal is not retried and names the instance type and zone`() {
+        runInstancesFailsSecondCallWith(ec2Error(500, "InsufficientInstanceCapacity"))
+        whenever(ec2.describeSubnets(any<DescribeSubnetsRequest>())).thenReturn(
+            DescribeSubnetsResponse
+                .builder()
+                .subnets(
+                    Subnet
+                        .builder()
+                        .subnetId("subnet-b")
+                        .availabilityZone("us-west-2b")
+                        .build(),
+                ).build(),
+        )
+
+        assertThatThrownBy { service.createInstances(config(count = 2, subnets = listOf("subnet-a", "subnet-b"))) }
+            .isInstanceOfSatisfying(InsufficientInstanceCapacityException::class.java) {
+                assertThat(it.serverType).isEqualTo("db")
+                assertThat(it.instanceType).isEqualTo("i4i.xlarge")
+                assertThat(it.subnetId).isEqualTo("subnet-b")
+                assertThat(it.availabilityZone).isEqualTo("us-west-2b")
+                assertThat(it.cause).isInstanceOf(Ec2Exception::class.java)
+            }
+
+        verify(ec2, times(2)).runInstances(any<RunInstancesRequest>())
+    }
+
+    @Test
+    fun `a capacity refusal is still reported when the zone of its subnet cannot be looked up`() {
+        runInstancesFailsSecondCallWith(ec2Error(500, "InsufficientInstanceCapacity"))
+        whenever(ec2.describeSubnets(any<DescribeSubnetsRequest>())).thenThrow(ec2Error(403, "UnauthorizedOperation"))
+
+        assertThatThrownBy { service.createInstances(config(count = 2, subnets = listOf("subnet-a", "subnet-b"))) }
+            .isInstanceOfSatisfying(InsufficientInstanceCapacityException::class.java) {
+                assertThat(it.availabilityZone).isNull()
+                assertThat(it.subnetId).isEqualTo("subnet-b")
+            }
+    }
+
+    @Test
+    fun `a refusal that is not a capacity shortage stays the AWS exception`() {
+        runInstancesFailsSecondCallWith(ec2Error(400, "InvalidParameterValue"))
 
         assertThatThrownBy { service.createInstances(config(count = 2, subnets = listOf("subnet-a", "subnet-b"))) }
             .isInstanceOf(Ec2Exception::class.java)
-
-        verify(ec2, times(2)).runInstances(any<RunInstancesRequest>())
     }
 
     @Test

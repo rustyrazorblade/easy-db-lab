@@ -148,6 +148,8 @@ object RetryUtil {
                 val code = (throwable as? AwsServiceException)?.awsErrorDetails()?.errorCode()
                 when {
                     throwable !is AwsServiceException -> false
+                    // AWS sends this as a 500, but waiting does not create capacity: fail fast.
+                    code == Constants.AWS.EC2_INSUFFICIENT_CAPACITY -> false
                     code == EC2_THROTTLED || code == Constants.AWS.EC2_INSTANCE_NOT_FOUND -> {
                         log.warn { "EC2 $code - will retry" }
                         true

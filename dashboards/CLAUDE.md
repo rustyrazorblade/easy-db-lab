@@ -105,8 +105,8 @@ path applies one pass, `DashboardDefaults` (`configuration/grafana/`): the core 
 - `cluster`, `baseline_cluster` and `candidate_cluster` to the current cluster: the value `<name>-<id>`
   and the text its short name (a one-element list when the variable is multi-select);
 - `doc_tenant`'s options to every tenant, and its `current` to the cluster's own tenant;
-- `__DOCUMENTS_URL__` in any string to the documents web server, `http://<control private
-  IP>:3080`.
+- `__DOCUMENTS_URL__` in any string to nothing, so `__DOCUMENTS_URL__/reports/...` becomes the
+  relative `/reports/...`, which the nginx front in the Grafana pod serves on Grafana's own port.
 
 So `grafana install` shows exactly what `up` installs.
 

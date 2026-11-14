@@ -17,8 +17,8 @@ Mimir, Loki, Tempo, the Pyroscope server and Grafana run in the Kubernetes pod n
 
 | Port | Service |
 |------|---------|
-| 3000 | Grafana |
-| 3080 | Test documents web server (read-only, in the Grafana pod) |
+| 3000 | Grafana, through the nginx front in the Grafana pod, which also serves the test documents under `/reports/` (read-only) |
+| 3001 | Grafana itself (loopback only, in the Grafana pod, behind the front) |
 | 3081 | Test documents signing proxy (loopback only, in the Grafana pod) |
 | 8081 | Grafana image renderer (in the Grafana pod) |
 | 4040 | Pyroscope (continuous profiling) |

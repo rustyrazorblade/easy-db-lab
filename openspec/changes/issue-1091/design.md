@@ -25,34 +25,39 @@ Retained PVC per backend off owned nodes (StatefulSet `volumeClaimTemplates`, or
 | Pyroscope | v2 metastore (Raft) + segments | hostPath `/mnt/db1/pyroscope` | retained PVC |
 | Grafana | sqlite db + provisioning tree | hostPath `/mnt/db1/grafana` | retained PVC |
 
-### B — Grafana documents delivery (settled)
+### B — Grafana documents delivery (settled, revised 2026-11-13: nginx fronts Grafana)
 
-Serve the documents web server same-origin through the grafana Service on a second Service port with a relative URL, so one `127.0.0.1` port-forward (decision K12) covers both Grafana and documents. The host port (`GrafanaDocumentsSidecars.kt:114`) is removed.
+The documents nginx sidecar (`GrafanaFront`) takes Grafana's client port, 3000: it listens on the container port the grafana Service targets, so #1090's Service (PR #1110) needs no change and one `127.0.0.1` port-forward (decision K12) carries both Grafana and the documents. Grafana listens on `127.0.0.1` only, on `Constants.Grafana.INTERNAL_PORT` (3001), behind it. The front routes:
 
-- **Chosen** because a node-IP/host-port URL is unreachable off AWS, where the browser reaches Grafana only through the port-forward.
+- `/reports/`, `GET` and `HEAD` only, to the `aws-sigv4-proxy` on `127.0.0.1:3081`, with the account bucket prefixed, the normalized path matched against `^/reports/[A-Za-z0-9._/-]+$` (400 otherwise) and the query string dropped. Any other method under `/reports/` is answered 405 and reaches neither upstream.
+- Every other path to Grafana, with the client's `Host` preserved, the websocket `Upgrade`/`Connection` headers passed through (Grafana Live, `/api/live/ws`), no body size limit and hour-long read and send timeouts.
+
+`DashboardDefaults` replaces the documents placeholder with nothing, so the iframe URL is the relative `/reports/<tenant>/<name>-<id>/...`, same-origin with Grafana whichever way the browser reaches it. Host port 3080 and the separate documents port are gone; on AWS the published host port 3000 now lands on the front. The front's configuration is the resource `grafana-front-nginx.conf`, rendered by `TemplateService` into the `grafana-front` ConfigMap, which the config hash covers. The kubelet cannot reach a loopback listener, so Grafana's probes are `exec` `wget` calls to its internal port; the front's readiness probe is `GET /api/health` on 3000, through the front. The image renderer calls Grafana back on `127.0.0.1:3001`.
+
+- **Chosen** because a relative URL is same-origin only on Grafana's own port: a second Service port is a different origin, and a forward carries one port.
+- **Rejected: a second Service port with a relative URL** (the first version of this decision) — not same-origin, and not carried by the one forward.
+- **Rejected: a separate reverse proxy in front of both** — a third container doing what the documents nginx already can.
 - **Rejected: a second forwarded port** — two forwards for one UI; the Text-panel iframe URL would still have to be environment-specific.
 - **Rejected: keep the host port, gate documents off AWS by capability** — leaves the feature AWS-only, against "one set of manifests".
 - The sigv4 proxy uses the default credential chain; its credentials are #1061's concern, not this change.
-- **Open (found while implementing, 2026-11-13): B contradicts itself as written.** A second Service port is a different origin. A relative `/reports/...` URL resolves against the page's origin, which is Grafana's own port (3000 behind the forward), not the documents port (3080). A single `127.0.0.1` forward also carries one Service port, not two. To be same-origin, `/reports/` has to be served on Grafana's own port. One way is a reverse proxy in the Grafana pod that serves Grafana's Service port, sends `/reports/` to the documents nginx and everything else to Grafana. Another is the documents nginx fronting Grafana. The owner has to pick one before 5.1 and 5.2 can be built. They also wait on #1090's grafana Service, which is not on main yet (PR #1110, draft). Until then the documents web server keeps host port 3080 on AWS (decision D), and the iframe does not load off AWS.
 
 ### C — Grafana Service ownership and sequencing (settled)
 
-#1090 (service access) **adds** the grafana ClusterIP Service. This change does **not** add a second one — it adds the documents port to #1090's Service and treats #1090 as the owner of the Service definition. Implementation merges after #1090, because the CLI readers and the teardown flush dial node IPs and break the moment `hostNetwork` drops.
+#1090 (service access) **adds** the grafana ClusterIP Service. This change does **not** add a second one, and adds no port to it: the documents are served on Grafana's own port 3000, which #1090's Service already targets (decision B). #1090 owns the Service definition. Implementation merges after #1090, because the CLI readers and the teardown flush dial node IPs and break the moment `hostNetwork` drops.
 
-### D — Node ports on an environment that owns its nodes (proposed; needs owner sign-off)
+### D — Node ports on an environment that owns its nodes (signed off 2026-11-13: keep for now)
 
-On AWS, `Placement.CONTROL_NODE` sets `publishOnNode = true`. The five workloads leave `hostNetwork`, but each container port keeps the `hostPort` it declares on the control node. That port is reached through the CNI's `portmap` chaining. The ports are Mimir 9009, Loki 3100, Tempo 3200/4320/4321, Pyroscope 4040, Grafana 3000 and documents 3080. Off AWS (`ANY_NODE`) every host port is dropped.
+On AWS, `Placement.CONTROL_NODE` sets `publishOnNode = true`. The five workloads leave `hostNetwork`, but each container port keeps the `hostPort` it declares on the control node. That port is reached through the CNI's `portmap` chaining. The ports are Mimir 9009, Loki 3100, Tempo 3200/4320/4321, Pyroscope 4040 and Grafana 3000 (held by the nginx front, decision B). Off AWS (`ANY_NODE`) every host port is dropped.
 
 - **Why:** without this, AWS loses callers that reach the control node's private IP today. Some of them are not CLI readers, so landing #1090 does not fix them:
   - another cluster's collector, under `init --telemetry-redirect` (`TelemetryRedirect.fromBaseHost`, `<host>:9009/3100/4320/4040`);
   - the hostNetwork Alloy eBPF DaemonSet (`PyroscopeManifestBuilder.resolvePyroscopeWriteUrl`);
   - the db-node sidecar's Pyroscope agent (`SidecarManifestBuilder`, `CONTROL_NODE_IP:4040`) and stress jobs (`StressJobService`);
-  - the documents iframe URL (`DashboardDefaults.documentsUrl`, `<privateIp>:3080`);
   - the CLI readers and the teardown flush, until #1090 repoints them.
 
   Dropping the host ports would break proposal AC1 ("on AWS: no behaviour change").
 - **Rejected: drop `publishOnNode` and merge after #1090.** #1090 repoints only the CLI and flush callers. Redirected clusters and the node-side agents would still lose the backends.
-- **Open for the owner:** whether this stays permanent on AWS (as the redirect callers need), or each node-IP caller moves to a Service or NodePort in a follow-up and this flag is removed.
+- **Temporary.** The owner signed this off as "keep for now". A follow-up issue moves each node-IP caller (the telemetry redirect, Alloy eBPF, the sidecar Pyroscope agent, stress jobs) to Service DNS or a NodePort and then removes `publishOnNode`.
 
 ## Placement value
 
@@ -71,7 +76,7 @@ Resolved alongside `NodeCapabilities.from(ClusterState)` (`NodeCapability.kt`). 
 - `GrafanaDatasourceSet.kt:42-50` — backend base URLs from `http://localhost:<port>` to `http://<svc>.<namespace>.svc:<port>`. The datasource-building pure function is unchanged (only the URLs it is called with).
 - The OTel collector's backend exporter endpoints (`OtelManifestBuilder` `LOCAL_*` rendered into `otel-collector-config.yaml`) from `localhost:<port>` to Service DNS. This is a backend caller, so it is owned here even though the collector's placement split is #1092.
 
-Service names = the workloads' existing app labels, on `<svc>.<namespace>.svc`: `mimir:9009` (`/prometheus`), `loki:3100`, `tempo:3200` (+ `otlp-grpc`/`otlp-http`), `pyroscope:4040`, `grafana:3000` (added by #1090), documents on a second grafana Service port. Collector Service `otel-collector` (agreed with #1092).
+Service names = the workloads' existing app labels, on `<svc>.<namespace>.svc`: `mimir:9009` (`/prometheus`), `loki:3100`, `tempo:3200` (+ `otlp-grpc`/`otlp-http`), `pyroscope:4040`, `grafana:3000` (added by #1090), documents under `/reports/` on that same port, through the nginx front (decision B). Collector Service `otel-collector` (agreed with #1092).
 
 **CLI callers are #1090, not here:** `ObservabilityHttp` (Mimir/Loki/Tempo readers), `GrafanaClient`, `status`, the MCP status cache, and the teardown flush's HTTP shutdown calls (`TempoTailFlush`, `AnnotationMirror`, `/ingester/shutdown`). Scale-to-0 and collector-stop already go through the K8s API (`BackendWorkloads.scaleDown`, `TelemetrySenders.stop`) and are unchanged, so the `down` flush contract holds.
 

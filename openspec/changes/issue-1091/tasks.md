@@ -22,8 +22,8 @@
 
 ## 5. Grafana documents same-origin
 
-- [ ] 5.1 Test first: the documents web server is exposed as a second port on the grafana Service with no host port, and the documents URL used by dashboards is same-origin/relative.
-- [ ] 5.2 Remove the documents host port from `GrafanaDocumentsSidecars`; add the documents port to #1090's grafana Service (do not add a second grafana Service here). Make `DashboardDefaults.documentsUrl` same-origin/relative. The sigv4 proxy uses the default credential chain.
+- [x] 5.1 Test first: through Grafana's one client port, a `GET` under `/reports/` reaches the signing proxy (stubbed), a write under `/reports/` is refused, a Grafana API path and the Live websocket reach Grafana (`GrafanaFrontIntegrationTest`, K3s); the documents URL the dashboards get is relative (`DashboardDefaultsTest`).
+- [x] 5.2 Revised decision B: the documents nginx (`GrafanaFront`) fronts Grafana on port 3000 and Grafana moves to `127.0.0.1:${Constants.Grafana.INTERNAL_PORT}`; host port 3080 and the separate documents port are removed; `DashboardDefaults` makes the documents URL relative. #1090's grafana Service needs no change. The sigv4 proxy uses the default credential chain.
 
 ## 6. Credential plug points
 
@@ -32,5 +32,5 @@
 ## 7. Integration test and docs
 
 - [x] 7.1 Integration test (`src/integrationTest/`, K3s TestContainer): delete the `node-role.kubernetes.io/control-plane` label on the node, deploy with an empty `Placement`, assert every backend and Grafana reaches Ready and the datasource URLs are Service DNS.
-- [x] 7.2 Update the root `CLAUDE.md` observability section and `configuration/CLAUDE.md`: backends/Grafana on the pod network with per-environment placement, Service-DNS in-cluster callers, retained claims off owned nodes, documents same-origin. Note the #1090 sequencing and that #1090 owns the grafana Service.
+- [x] 7.2 Update the root `CLAUDE.md` observability section and `configuration/CLAUDE.md`: backends/Grafana on the pod network with per-environment placement, Service-DNS in-cluster callers, retained claims off owned nodes, documents same-origin through the nginx front. Note the #1090 sequencing and that #1090 owns the grafana Service.
 - [ ] 7.3 Run `./gradlew check` on JDK 21 in a subagent, with no new `@Suppress`, detekt threshold change or baseline entry.

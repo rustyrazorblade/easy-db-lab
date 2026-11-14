@@ -10,7 +10,7 @@ Mimir, Loki, Tempo, Pyroscope and Grafana pin `node-role.kubernetes.io/control-p
 - Infra-pod placement is a resolved value, not a hardcoded control-plane pin: `Placement(nodeSelector, tolerations, hostNetwork)`, resolved from the recorded environment/capabilities. AWS keeps today's control-node selector and toleration (as values); the default elsewhere is any node; an `init` user label is allowed. The same edit swaps kube-state-metrics' control-node selector to the resolved placement.
 - Grafana datasources and every **in-cluster** caller use Service DNS (`<svc>.<namespace>.svc`), not `localhost` or a node IP. This includes the OTel collector's backend exporter endpoints — without this, once the backends are ClusterIP-only the hostNetwork collector's `localhost:9009` stops resolving and no data reaches the dashboards.
 - Backend local state (Mimir TSDB head/WAL and store-gateway sync dir, Loki WAL and pre-flush chunks, Tempo WAL and pre-flush blocks, Pyroscope v2 metastore, Grafana sqlite) lives on a `hostPath` where the environment has `HOST_PATH` (AWS, today's `/mnt/db1/<backend>`), otherwise on a **retained** per-backend claim (owner decision A, 2026-11-13). `emptyDir` is ruled out: Pyroscope's metastore is the only record of its blocks, so losing it on reschedule would lose data (no-delete rule). The off-AWS claim's storage type comes from #1035 (`ObservabilityStorage`), which is stubbed/feature-gated until it lands; the AWS `hostPath` path is independent.
-- The Grafana documents web server is served **same-origin** through the grafana Service on a second Service port with a relative URL (owner decision B), so one `127.0.0.1` port-forward covers both Grafana and the documents view (decision K12). The host port is removed.
+- The Grafana documents web server is served **same-origin** on Grafana's own port with a relative URL: the documents nginx fronts Grafana, sending `/reports/` to the signing proxy and every other path to Grafana (owner decision B, revised), so one `127.0.0.1` port-forward covers both Grafana and the documents view (decision K12). The host port is removed.
 - Backends expose a `serviceAccountName` and an optional `envFrom` store-credentials Secret as plug points, so #1061 can deliver pod credentials without re-touching these builders. On AWS the Secret is absent and the instance role is used, unchanged.
 
 ## Capabilities
@@ -20,7 +20,7 @@ Mimir, Loki, Tempo, Pyroscope and Grafana pin `node-role.kubernetes.io/control-p
 
 ### MODIFIED Requirements
 - `observability`: kube-state-metrics placement comes from the environment, not a hardcoded control node.
-- `test-documents`: Grafana reads test documents through a read-only web server served same-origin on the grafana Service, not a host port.
+- `test-documents`: Grafana reads test documents through a read-only web server served same-origin on Grafana's own port by an nginx front, not a host port.
 
 ## Impact
 
@@ -31,7 +31,7 @@ Mimir, Loki, Tempo, Pyroscope and Grafana pin `node-role.kubernetes.io/control-p
 ## Out of scope
 
 - The OTel collector's own placement/privilege split (#1092). Only its backend **exporter endpoints** change here.
-- How the CLI reaches these Services (#1090). The Grafana ClusterIP Service definition is **added by #1090**; this change only adds the documents port to it and states that #1090 owns the Service.
+- How the CLI reaches these Services (#1090). The Grafana ClusterIP Service definition is **added by #1090**; this change adds no port to it (the documents share Grafana's port 3000) and states that #1090 owns the Service.
 - The `ObservabilityStorage` storage-type selection and the reclaim-`Delete` refusal (#1035).
 - Store credential delivery to pods (#1061) — only the plug points are added here.
 - Namespace parameterization (#1094); the current namespace constant is used.

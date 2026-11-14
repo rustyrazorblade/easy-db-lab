@@ -80,7 +80,7 @@ class PyroscopeManifestBuilder(
     fun buildAllResources(
         telemetryRedirect: TelemetryRedirect? = null,
         hosting: ObservabilityHosting = ObservabilityHosting.AWS,
-    ): List<HasMetadata> = buildServerResources(hosting) + buildAgentResources(telemetryRedirect)
+    ): List<HasMetadata> = buildServerResources(hosting) + buildAgentResources(telemetryRedirect, hosting)
 
     /**
      * Builds the Pyroscope server resources (ConfigMap, Service, Deployment).
@@ -102,13 +102,16 @@ class PyroscopeManifestBuilder(
      * under redirect, injected as the DaemonSet's `PYROSCOPE_WRITE_URL` env var by
      * [buildEbpfDaemonSet].
      */
-    fun buildAgentResources(telemetryRedirect: TelemetryRedirect? = null): List<HasMetadata> =
+    fun buildAgentResources(
+        telemetryRedirect: TelemetryRedirect? = null,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): List<HasMetadata> =
         listOf(
             buildEbpfServiceAccount(),
             buildEbpfClusterRole(),
             buildEbpfClusterRoleBinding(),
             buildEbpfConfigMap(),
-            buildEbpfDaemonSet(telemetryRedirect),
+            buildEbpfDaemonSet(telemetryRedirect, hosting),
         )
 
     /**
@@ -323,12 +326,22 @@ class PyroscopeManifestBuilder(
 
     /**
      * The full Pyroscope write URL for the eBPF agent: the external ingest URL under redirect,
-     * otherwise the in-cluster server on the control node.
+     * otherwise the in-cluster server: on the control node where the backends publish their ports
+     * there, at its Service everywhere else. The agent runs with host networking and
+     * `ClusterFirstWithHostNet`, so it resolves Service DNS.
      */
-    private fun resolvePyroscopeWriteUrl(telemetryRedirect: TelemetryRedirect?): String {
+    private fun resolvePyroscopeWriteUrl(
+        telemetryRedirect: TelemetryRedirect?,
+        hosting: ObservabilityHosting,
+    ): String {
         if (telemetryRedirect != null) return telemetryRedirect.profiles
-        val controlNodeIp = templateService.buildContextVariables()["CONTROL_NODE_IP"].orEmpty()
-        return "http://$controlNodeIp:$SERVER_PORT"
+        return when (hosting.placement.publishOnNode) {
+            true -> {
+                val controlNodeIp = templateService.buildContextVariables()["CONTROL_NODE_IP"].orEmpty()
+                "http://$controlNodeIp:$SERVER_PORT"
+            }
+            false -> "http://$SERVER_APP_LABEL.${Constants.K8s.NAMESPACE}.svc:$SERVER_PORT"
+        }
     }
 
     /**
@@ -359,94 +372,98 @@ class PyroscopeManifestBuilder(
      * Pyroscope; the tenant, read from the cluster-config ConfigMap, is sent either way.
      *
      * @param telemetryRedirect when non-null, profiles are written to [TelemetryRedirect.profiles].
+     * @param hosting decides how the local server is reached: its port on the control node where the
+     *   backends publish there, otherwise its Service.
      */
     @Suppress("LongMethod")
-    fun buildEbpfDaemonSet(telemetryRedirect: TelemetryRedirect? = null) =
-        DaemonSetBuilder()
-            .withNewMetadata()
-            .withName(EBPF_APP_LABEL)
-            .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withNewSelector()
-            .addToMatchLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
-            .endSelector()
-            .withNewTemplate()
-            .withNewMetadata()
-            .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withServiceAccountName(EBPF_SERVICE_ACCOUNT_NAME)
-            .withHostNetwork(true)
-            .withHostPID(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addNewToleration()
-            .withOperator("Exists")
-            .endToleration()
-            .addNewContainer()
-            .withName("alloy")
-            .withImage(ALLOY_IMAGE)
-            .withArgs(
-                "run",
-                "--server.http.listen-addr=0.0.0.0:$ALLOY_PORT",
-                "/etc/alloy/config.alloy",
-            ).addNewEnv()
-            .withName("HOSTNAME")
-            .withNewValueFrom()
-            .withNewFieldRef()
-            .withFieldPath("spec.nodeName")
-            .endFieldRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("CLUSTER_NAME")
-            .withValue(resolveClusterName())
-            .endEnv()
-            .addNewEnv()
-            .withName("PYROSCOPE_WRITE_URL")
-            .withValue(resolvePyroscopeWriteUrl(telemetryRedirect))
-            .endEnv()
-            .addNewEnv()
-            .withName("TENANT")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("tenant")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .withSecurityContext(
-                SecurityContextBuilder()
-                    .withPrivileged(true)
-                    .withRunAsUser(0L)
-                    .withRunAsGroup(0L)
-                    .build(),
-            ).addToVolumeMounts(
-                VolumeMountBuilder()
-                    .withName("config")
-                    .withMountPath("/etc/alloy")
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName("sym-cache")
-                    .withMountPath("/tmp/symb-cache")
-                    .build(),
-            ).endContainer()
-            .addNewVolume()
-            .withName("config")
-            .withConfigMap(
-                ConfigMapVolumeSourceBuilder()
-                    .withName(EBPF_CONFIGMAP_NAME)
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("sym-cache")
-            .withNewEmptyDir()
-            .endEmptyDir()
-            .endVolume()
-            .endSpec()
-            .endTemplate()
-            .endSpec()
-            .build()
+    fun buildEbpfDaemonSet(
+        telemetryRedirect: TelemetryRedirect? = null,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ) = DaemonSetBuilder()
+        .withNewMetadata()
+        .withName(EBPF_APP_LABEL)
+        .withNamespace(NAMESPACE)
+        .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
+        .endMetadata()
+        .withNewSpec()
+        .withNewSelector()
+        .addToMatchLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
+        .endSelector()
+        .withNewTemplate()
+        .withNewMetadata()
+        .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
+        .endMetadata()
+        .withNewSpec()
+        .withServiceAccountName(EBPF_SERVICE_ACCOUNT_NAME)
+        .withHostNetwork(true)
+        .withHostPID(true)
+        .withDnsPolicy("ClusterFirstWithHostNet")
+        .addNewToleration()
+        .withOperator("Exists")
+        .endToleration()
+        .addNewContainer()
+        .withName("alloy")
+        .withImage(ALLOY_IMAGE)
+        .withArgs(
+            "run",
+            "--server.http.listen-addr=0.0.0.0:$ALLOY_PORT",
+            "/etc/alloy/config.alloy",
+        ).addNewEnv()
+        .withName("HOSTNAME")
+        .withNewValueFrom()
+        .withNewFieldRef()
+        .withFieldPath("spec.nodeName")
+        .endFieldRef()
+        .endValueFrom()
+        .endEnv()
+        .addNewEnv()
+        .withName("CLUSTER_NAME")
+        .withValue(resolveClusterName())
+        .endEnv()
+        .addNewEnv()
+        .withName("PYROSCOPE_WRITE_URL")
+        .withValue(resolvePyroscopeWriteUrl(telemetryRedirect, hosting))
+        .endEnv()
+        .addNewEnv()
+        .withName("TENANT")
+        .withNewValueFrom()
+        .withNewConfigMapKeyRef()
+        .withName("cluster-config")
+        .withKey("tenant")
+        .endConfigMapKeyRef()
+        .endValueFrom()
+        .endEnv()
+        .withSecurityContext(
+            SecurityContextBuilder()
+                .withPrivileged(true)
+                .withRunAsUser(0L)
+                .withRunAsGroup(0L)
+                .build(),
+        ).addToVolumeMounts(
+            VolumeMountBuilder()
+                .withName("config")
+                .withMountPath("/etc/alloy")
+                .withReadOnly(true)
+                .build(),
+            VolumeMountBuilder()
+                .withName("sym-cache")
+                .withMountPath("/tmp/symb-cache")
+                .build(),
+        ).endContainer()
+        .addNewVolume()
+        .withName("config")
+        .withConfigMap(
+            ConfigMapVolumeSourceBuilder()
+                .withName(EBPF_CONFIGMAP_NAME)
+                .build(),
+        ).endVolume()
+        .addNewVolume()
+        .withName("sym-cache")
+        .withNewEmptyDir()
+        .endEmptyDir()
+        .endVolume()
+        .endSpec()
+        .endTemplate()
+        .endSpec()
+        .build()
 }

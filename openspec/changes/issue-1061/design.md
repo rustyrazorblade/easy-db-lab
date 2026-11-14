@@ -121,7 +121,7 @@ Task 0 runs before any refactor, on this branch, and writes the "before" capture
 
 After the refactor, the tests render each through the new code with `S3Backend(bucket, "", region)` and compare byte for byte.  The before-capture is committed in its own commit, so a reviewer can see it was taken from unchanged code.
 
-A second test renders every backend with a test-only `StoreBackend` case and a stub fragment in `src/test/resources`.  It asserts that the stub block appears and that the output holds no `s3://`, no `amazonaws.com` and no `endpoint:` line from the S3 fragment.  The stub case needs a test-only implementation of the sealed type; because Kotlin seals by module and package, the renderer takes the fragment name through a small `StoreBlockSource` function so a test can supply its own.  The production `when` stays exhaustive over the real cases.
+A second test renders every backend with a stub fragment in `src/test/resources`.  It asserts that the stub block appears and that the output holds no `s3://`, no `amazonaws.com` and no `endpoint:` line from the S3 fragment.  The stub needs no test-only `StoreBackend` case: `StoreBlockRenderer` takes its fragment through a `StoreBlockSource` function, and the test (`StoreBlockStubTest`) supplies one that returns the stub fragment.  Production code gets its source from `StoreBlockSource.of(backend)`, whose `when` stays exhaustive over the real cases.
 
 ### D8. The in-memory adapter
 

@@ -347,4 +347,22 @@ class DefaultK8sStorageOperations(
                 eventBus.emit(Event.K8s.StorageClassWfcCreated)
             }
         }
+
+    override fun storageClassReclaimPolicy(name: String): Result<String?> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                client
+                    .storage()
+                    .v1()
+                    .storageClasses()
+                    .withName(name)
+                    .get()
+                    ?.let { it.reclaimPolicy ?: DEFAULT_RECLAIM_POLICY }
+            }
+        }
+
+    private companion object {
+        /** What Kubernetes reclaims with when a StorageClass sets no `reclaimPolicy`. */
+        const val DEFAULT_RECLAIM_POLICY = "Delete"
+    }
 }

@@ -15,7 +15,7 @@ Retained PVC per backend off owned nodes (StatefulSet `volumeClaimTemplates`, or
 - **Chosen** because Pyroscope's v2 metastore is the only record of its blocks; `emptyDir` would silently lose it (and any unflushed Mimir/Loki samples) on reschedule, violating the no-delete rule.
 - **Rejected: `emptyDir` everywhere** — data loss on reschedule.
 - **Caveat folded into the AC:** EBS `gp3-retain` is `WaitForFirstConsumer` + zonal, so a rescheduled pod lands on a node *in the volume's zone*, not literally any node. Reachability is via Service DNS and is independent of the node, so "Grafana and the collector still reach it" holds. The issue AC now reads "rescheduled to another node in the volume's zone".
-- The off-AWS claim's StorageClass and the reclaim-`Delete` refusal are **#1035**'s `ObservabilityStorage`. Until it lands, the off-AWS branch is feature-gated behind a stub that resolves `HOST_PATH` present (AWS `hostPath`); the AWS path is fully delivered here.
+- The off-AWS claim's StorageClass is **#1035**'s `ObservabilityStorage`. The deploy refuses a class that does not reclaim with `Retain` before it applies anything (`RetainedClaimCheck`): a `Delete` class (the Kubernetes default) would delete the owner's data with the claim. Until #1035 lands, the off-AWS branch is feature-gated behind a stub that resolves `HOST_PATH` present (AWS `hostPath`); the AWS path is fully delivered here.
 
 | Workload | Local state | AWS (`HOST_PATH`) | Off-AWS |
 |---|---|---|---|

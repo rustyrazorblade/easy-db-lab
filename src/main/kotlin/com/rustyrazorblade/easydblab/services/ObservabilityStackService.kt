@@ -140,6 +140,7 @@ class DefaultObservabilityStackService(
         }
 
     private val stateDirectories = OnNodeStateDirectories(remoteOps, eventBus)
+    private val retainedClaimCheck = RetainedClaimCheck(k8sService)
 
     override fun deploy(): Result<Unit> =
         runCatching {
@@ -147,6 +148,8 @@ class DefaultObservabilityStackService(
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
             val environment = environmentOf(clusterState)
             val hosting = environment.hosting
+            // Before anything is applied: a claim on a class that deletes its volume would lose the state.
+            retainedClaimCheck.require(hosting.storage)
 
             val clusterConfig = createClusterConfigMap(clusterState, hosting)
             val collector = collectorStage(clusterState, environment)

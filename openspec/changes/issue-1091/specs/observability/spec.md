@@ -65,6 +65,11 @@ Each backend's local state SHALL be stored on a `hostPath` where the environment
 - **THEN** its state is on a per-backend claim whose StorageClass reclaims with `Retain`
 - **AND** no backend uses `emptyDir` for its state
 
+#### Scenario: A claim StorageClass that deletes its volumes is refused
+- **GIVEN** an environment without `HOST_PATH` whose backend StorageClass reclaims with `Delete`, sets no reclaim policy, or does not exist
+- **WHEN** the observability stack deploys
+- **THEN** it fails before applying anything, naming the StorageClass and that it must reclaim with `Retain`
+
 ## MODIFIED Requirements
 
 ### Requirement: kube-state-metrics reports Kubernetes object state

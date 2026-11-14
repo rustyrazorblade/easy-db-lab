@@ -49,6 +49,7 @@ import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
 import io.fabric8.kubernetes.client.dsl.MixedOperation
 import io.fabric8.kubernetes.client.dsl.Resource
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -157,6 +158,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         )
 
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.storageClassReclaimPolicy(any())).thenReturn(Result.success("Retain"))
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
@@ -561,6 +563,34 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                     "chown -R ${LokiManifestBuilder.LOKI_UID}:${LokiManifestBuilder.LOKI_UID} ${LokiManifestBuilder.DATA_HOST_PATH}",
                 )
         }
+    }
+
+    @Test
+    fun `a claim StorageClass that deletes its volumes fails the deploy before anything is applied`() {
+        hosting = { ObservabilityHosting.AWS.copy(storage = BackendStorage.RetainedClaim("gp3", Quantity("50Gi"))) }
+        whenever(mockK8sService.storageClassReclaimPolicy("gp3")).thenReturn(Result.success("Delete"))
+
+        assertThatThrownBy { service.deploy().getOrThrow() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("gp3")
+            .hasMessageContaining("Delete")
+            .hasMessageContaining("Retain")
+
+        verify(mockK8sService, never()).createConfigMap(any(), any(), any(), any())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+    }
+
+    @Test
+    fun `a claim StorageClass that does not exist fails the deploy before anything is applied`() {
+        hosting = { ObservabilityHosting.AWS.copy(storage = BackendStorage.RetainedClaim("missing", Quantity("50Gi"))) }
+        whenever(mockK8sService.storageClassReclaimPolicy("missing")).thenReturn(Result.success(null))
+
+        assertThatThrownBy { service.deploy().getOrThrow() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("missing")
+            .hasMessageContaining("does not exist")
+
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
     }
 
     @Test

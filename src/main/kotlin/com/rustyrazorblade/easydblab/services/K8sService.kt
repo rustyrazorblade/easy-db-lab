@@ -182,6 +182,12 @@ interface K8sStorageOperations {
     fun ensureLocalStorageClass(): Result<Unit>
 
     fun ensureLocalStorageWfcClass(): Result<Unit>
+
+    /**
+     * The `reclaimPolicy` of the StorageClass named [name], or null when no such class exists. A
+     * class that sets none reclaims with Kubernetes' default, `Delete`.
+     */
+    fun storageClassReclaimPolicy(name: String): Result<String?>
 }
 
 /**

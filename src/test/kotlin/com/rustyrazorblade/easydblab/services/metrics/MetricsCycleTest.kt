@@ -240,7 +240,12 @@ class MetricsCycleTest : BaseKoinTest() {
         cycle(memory).run()
 
         assertThat(http.queries).isEmpty()
-        assertThat(recording.events.filterIsInstance<Event.Metrics.MetricFailing>().single().reason).contains("not running")
+        assertThat(
+            recording.events
+                .filterIsInstance<Event.Metrics.MetricFailing>()
+                .single()
+                .reason,
+        ).contains("not running")
     }
 
     @Test

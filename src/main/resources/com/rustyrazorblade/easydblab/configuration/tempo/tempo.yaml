@@ -67,7 +67,7 @@ metrics_generator:
     # Mimir runs native multi-tenancy: each write carries the tenant of the spans it came from.
     remote_write_add_org_id_header: true
     remote_write:
-      - url: http://mimir.default.svc.cluster.local:9009/api/v1/push
+      - url: http://__MIMIR_HOST__:__MIMIR_HTTP_PORT__/api/v1/push
         send_exemplars: true
 
 storage:

@@ -86,7 +86,12 @@ class TempoManifestBuilder(
                 "tempo.yaml",
                 templateService
                     .fromString(storeBlocks.renderResource(TempoManifestBuilder::class.java, "tempo.yaml"))
-                    .substitute(),
+                    .substitute(
+                        mapOf(
+                            "MIMIR_HOST" to Constants.K8s.serviceHost(Constants.K8s.MIMIR_APP_LABEL),
+                            "MIMIR_HTTP_PORT" to Constants.K8s.MIMIR_HTTP_PORT.toString(),
+                        ),
+                    ),
             ).build()
 
     /**

@@ -166,7 +166,7 @@ class DefaultK8sStorageOperations(
                             .endMetadata()
                             .withNewSpec()
                             .addToCapacity("storage", Quantity(config.storageSize))
-                            .withAccessModes("ReadWriteOnce")
+                            .withAccessModes(Constants.K8s.READ_WRITE_ONCE)
                             .withPersistentVolumeReclaimPolicy("Retain")
                             .withStorageClassName(config.storageClass)
                             .withNewLocal()

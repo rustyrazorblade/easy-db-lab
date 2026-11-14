@@ -492,9 +492,17 @@ object Constants {
          * attempt and one retry.
          */
         const val PORT_FORWARD_BIND_ATTEMPTS = 2
+
+        /** The fully qualified in-cluster DNS name of [service], a Service in [NAMESPACE]. */
+        fun serviceHost(service: String): String = "$service.$NAMESPACE.svc.cluster.local"
+
         const val MANIFEST_DIR = "k8s"
         const val LOCAL_STORAGE_CLASS = "local-storage"
         const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
+
+        /** The access mode of a volume one node mounts read-write, as every easy-db-lab claim is. */
+        const val READ_WRITE_ONCE = "ReadWriteOnce"
+
         const val GRAFANA_PORT = 3000
         const val GRAFANA_APP_LABEL = "grafana"
         const val S3MANAGER_PORT = 8080

@@ -85,11 +85,11 @@ class OtelManifestBuilder(
 
         /** In-cluster export endpoints used in local mode: Mimir's remote write and Loki's OTLP base. */
         private val LOCAL_METRICS_ENDPOINT =
-            "http://${Constants.K8s.MIMIR_APP_LABEL}.default.svc.cluster.local:${Constants.K8s.MIMIR_HTTP_PORT}/api/v1/push"
+            "http://${Constants.K8s.serviceHost(Constants.K8s.MIMIR_APP_LABEL)}:${Constants.K8s.MIMIR_HTTP_PORT}/api/v1/push"
         private val LOCAL_LOGS_ENDPOINT =
-            "http://${Constants.K8s.LOKI_APP_LABEL}.default.svc.cluster.local:${Constants.K8s.LOKI_HTTP_PORT}/otlp"
+            "http://${Constants.K8s.serviceHost(Constants.K8s.LOKI_APP_LABEL)}:${Constants.K8s.LOKI_HTTP_PORT}/otlp"
         private val LOCAL_TEMPO_ENDPOINT =
-            "tempo.default.svc.cluster.local:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}"
+            "${Constants.K8s.serviceHost(Constants.K8s.TEMPO_APP_LABEL)}:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}"
 
         /** The pod-log pipeline, rendered into `service.pipelines` only with [PodLogSource.NodeFiles]. */
         private val POD_LOG_PIPELINE =

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvFromSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -150,7 +151,7 @@ data class ObservabilityHosting(
                     .addToLabels("app.kubernetes.io/name", state.workload)
                     .endMetadata()
                     .withNewSpec()
-                    .withAccessModes("ReadWriteOnce")
+                    .withAccessModes(Constants.K8s.READ_WRITE_ONCE)
                     .withStorageClassName(storage.storageClass)
                     .withNewResources()
                     .addToRequests("storage", storage.size)

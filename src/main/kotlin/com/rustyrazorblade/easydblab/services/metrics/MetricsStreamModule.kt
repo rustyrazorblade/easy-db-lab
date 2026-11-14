@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.proxy.ObservabilityRoutes
 import com.rustyrazorblade.easydblab.proxy.RecordedTunnelRoutes
 import com.rustyrazorblade.easydblab.proxy.TunnelProcessControl
 import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import org.koin.dsl.module
 import java.io.File
 
@@ -33,6 +34,8 @@ val metricsStreamModule =
                 routes = get(),
                 httpClientFactory = get(),
                 stressJobs = StressJobWatcher(Fabric8StressJobLister(get<KubeApiLocator>())),
+                // The process-wide seam: on a PortForward cluster it holds the forwards and closes them at exit.
+                forwardedAccess = get<ServiceAccess>(),
             )
         }
         factory<SamplePublisher> { RedisSamplePublisher(get()) }

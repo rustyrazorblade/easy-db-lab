@@ -40,7 +40,9 @@ import java.util.Base64
  * Task 0 of issue-1061 captures these from the unchanged code, before the neutral-store refactor.
  * Every later task renders the same artifacts through the refactored code with `S3Backend(bucket,
  * "", region)` and compares against the committed golden files: on AWS, every backend config, the
- * compactor task definition and every IAM/bucket policy document must stay identical.
+ * compactor task definition and every IAM/bucket policy document must stay identical. The compactor
+ * task's env names that design D5 renamed are mapped back to their task-0 names before the compare,
+ * so its golden file stays the task-0 capture.
  *
  * A deliberate, intended change to a backend config must update its golden file in the same change
  * (see configuration/CLAUDE.md).
@@ -52,6 +54,22 @@ class StoreGoldenTest : BaseKoinTest() {
         const val TENANT = "acme"
         const val ACCOUNT_ID = "123456789012"
         const val GOLDEN_DIR = "src/test/resources/com/rustyrazorblade/easydblab/golden/store"
+
+        /**
+         * The compactor env names design D5 renamed, new name to the name in the task-0 capture. The
+         * compactor golden is that capture, so the test maps these back instead of recapturing it.
+         */
+        val D5_ENV_RENAMES =
+            mapOf(
+                "STORE_BUCKET" to "S3_BUCKET",
+                "STORE_REGION" to "AWS_REGION",
+                "METRICS_STORE_PREFIX" to "METRICS_S3_PREFIX",
+                "LOGS_STORE_PREFIX" to "LOGS_S3_PREFIX",
+                "TRACES_STORE_PREFIX" to "TRACES_S3_PREFIX",
+            )
+
+        /** The env D5 added to the compactor task, with the value it must carry on AWS. */
+        val D5_ENV_ADDED = mapOf("STORE_ENDPOINT" to "s3.$REGION.amazonaws.com")
 
         val control = ClusterHost("54.0.0.1", "10.0.0.5", "control0", "us-west-2a")
         val state =
@@ -186,6 +204,18 @@ class StoreGoldenTest : BaseKoinTest() {
     }
 
     /**
+     * A container's [env] as the task-0 capture names it: each [D5_ENV_RENAMES] name mapped back to
+     * its old one, and each [D5_ENV_ADDED] entry checked for its value and then dropped. Any other
+     * difference in the env, a missing renamed name included, still fails the golden comparison.
+     */
+    private fun baselineEnv(env: Map<String, String>): Map<String, String> {
+        D5_ENV_ADDED.forEach { (name, value) -> assertThat(env).containsEntry(name, value) }
+        return env
+            .filterKeys { it !in D5_ENV_ADDED }
+            .mapKeys { (name, _) -> D5_ENV_RENAMES[name] ?: name }
+    }
+
+    /**
      * A readable, refactor-stable view of the compactor task: the task shape, each container's
      * command, user and environment, and the config container's files decoded and expanded against
      * the task environment.
@@ -233,7 +263,9 @@ class StoreGoldenTest : BaseKoinTest() {
                                         if (c.name() == CompactorTaskDefinition.CONFIG_CONTAINER) {
                                             put("writtenConfigs", writtenConfigs)
                                         } else {
-                                            c.environment().sortedBy { it.name() }.forEach { put(it.name(), it.value()) }
+                                            baselineEnv(c.environment().associate { it.name() to it.value() })
+                                                .toSortedMap()
+                                                .forEach { (name, value) -> put(name, value) }
                                         }
                                     },
                                 )

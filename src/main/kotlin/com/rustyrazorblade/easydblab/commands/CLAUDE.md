@@ -69,7 +69,7 @@ commands/
 │   ├── Kit.kt             # Parent command group
 │   ├── Install.kt         # kit install — scaffolds kit files (dynamic subcommands added at startup)
 │   ├── KitList.kt         # kit list — lists discoverable templates
-│   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint; SOCKS-bridged when tunnel-only (#740)
+│   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint, opened through the service-access seam; SOCKS-bridged on a tunnel endpoint (#740)
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
 ├── logs/                  # logs query — reads the cluster's logs from Loki
 ├── metrics/               # metrics stream — publishes chosen metrics from Mimir to Redis every 5s until stopped (@RequireProfileSetup, @RequiresProxy; the work is services/metrics/MetricsStreamService); metrics list — prints the 14 accepted names with println
@@ -240,7 +240,7 @@ Commands should delegate to these services:
 | `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
 | `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
 | `TestDocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
-| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS unless Tailscale) |
+| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki; its endpoint comes from the service-access seam (`services/access/ServiceAccess`: SOCKS, direct or port-forward, by the recorded `exposure`) |
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |

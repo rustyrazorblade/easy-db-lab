@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
-import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 
 /**
  * Factory interface for creating Kubernetes clients.
@@ -39,20 +38,7 @@ interface KubernetesClientFactory {
  */
 class ProxiedKubernetesClientFactory : KubernetesClientFactory {
     override fun createClient(api: KubeApi): KubernetesClient {
-        val file = api.kubeconfig.toFile()
-
-        // Fail fast naming the context and path, rather than letting Fabric8 build a client with a
-        // null master URL when the context is absent.
-        val contexts = KubeConfigUtils.parseConfig(file).contexts.orEmpty()
-        require(contexts.any { it.name == api.context }) {
-            "Context '${api.context}' not found in kubeconfig ${file.absolutePath}. " +
-                "Available contexts: ${contexts.joinToString(", ") { it.name }}"
-        }
-
-        // fromKubeconfig(context, file) keeps the file location on the config, so relative
-        // certificate and exec-plugin paths resolve against the kubeconfig's directory. It never
-        // reads the JVM-global kubeconfig property or the KUBECONFIG env var.
-        val config = Config.fromKubeconfig(api.context, file)
+        val config = api.loadConfig()
 
         System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
             config.httpsProxy = socksProxyUrl(port)

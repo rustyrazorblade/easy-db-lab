@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import io.fabric8.kubernetes.client.Config
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import java.nio.file.Path
 
 /**
@@ -13,3 +15,21 @@ data class KubeApi(
     val kubeconfig: Path,
     val context: String,
 )
+
+/**
+ * The Fabric8 [Config] for this address: [KubeApi.kubeconfig] loaded by path with [KubeApi.context].
+ *
+ * Loading by path keeps the file location on the config, so relative certificate and exec-plugin
+ * paths resolve against the kubeconfig's directory; the JVM-global kubeconfig property and the
+ * `KUBECONFIG` env var are never read. A context the file does not hold fails fast naming the
+ * context, the path and the contexts it does hold, rather than yielding a config with no master URL.
+ */
+fun KubeApi.loadConfig(): Config {
+    val file = kubeconfig.toFile()
+    val contexts = KubeConfigUtils.parseConfig(file).contexts.orEmpty()
+    require(contexts.any { it.name == context }) {
+        "Context '$context' not found in kubeconfig ${file.absolutePath}. " +
+            "Available contexts: ${contexts.joinToString(", ") { it.name }}"
+    }
+    return Config.fromKubeconfig(context, file)
+}

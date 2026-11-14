@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.services.metrics
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
+import com.rustyrazorblade.easydblab.kubernetes.KubeApiLocator
 import com.rustyrazorblade.easydblab.kubernetes.applyClusterClientTimeouts
+import com.rustyrazorblade.easydblab.kubernetes.loadConfig
 import com.rustyrazorblade.easydblab.kubernetes.socksProxyUrl
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import io.fabric8.kubernetes.api.model.batch.v1.Job
@@ -22,11 +24,15 @@ import java.time.Instant
  * read the in-JVM published tunnel port, which can name a tunnel another process has replaced, and
  * it never touches the JVM-wide socks properties.
  *
- * @param baseConfig the client configuration for the workspace's kubeconfig, read for each list
+ * @param baseConfig the client configuration for the workspace's kubeconfig and pinned context, read
+ *   for each list
  */
 class Fabric8StressJobLister(
-    private val baseConfig: () -> Config,
+    internal val baseConfig: () -> Config,
 ) : StressJobLister {
+    /** A lister on the cluster [locator] names: its kubeconfig by path, with the pinned context. */
+    constructor(locator: KubeApiLocator) : this({ locator.locate().loadConfig() })
+
     override fun list(
         state: ClusterState,
         route: ObservabilityRoute,

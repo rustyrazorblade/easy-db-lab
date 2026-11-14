@@ -304,12 +304,13 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute displays S3 bucket section`() {
+    fun `execute displays the object store section with the cluster path as a store URI`() {
         setupBasicClusterStateWithS3Bucket("test-bucket-123")
         Status().execute()
         val output = capturedOutput()
-        assertThat(output).contains("=== S3 BUCKET ===")
-        assertThat(output).contains("test-bucket-123")
+        assertThat(output).contains("=== OBJECT STORE ===")
+        assertThat(output).contains("Bucket:    test-bucket-123")
+        assertThat(output).contains("Fullpath:  s3://test-bucket-123/clusters/test-cluster-test-123")
         assertThat(output).contains("spark")
         assertThat(output).contains("cassandra")
     }
@@ -329,12 +330,12 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute handles missing S3 bucket gracefully`() {
+    fun `execute handles a missing object store gracefully`() {
         setupBasicClusterState()
         Status().execute()
         val output = capturedOutput()
-        assertThat(output).contains("=== S3 BUCKET ===")
-        assertThat(output).contains("(no S3 bucket configured)")
+        assertThat(output).contains("=== OBJECT STORE ===")
+        assertThat(output).contains("(no object store configured)")
     }
 
     // ========== KITS SECTION ==========

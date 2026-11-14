@@ -413,7 +413,7 @@ class StatusCacheTest : BaseKoinTest() {
     }
 
     @Test
-    fun `s3 section contains fullpath with bucket and cluster prefix`() {
+    fun `s3 section contains fullpath as the store URI of the cluster path`() {
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
 
@@ -423,7 +423,7 @@ class StatusCacheTest : BaseKoinTest() {
         val s3 = Json.parseToJsonElement(result!!).jsonObject
         assertThat(s3["bucket"]?.jsonPrimitive?.content).isEqualTo("test-bucket-abc")
         assertThat(s3["fullpath"]?.jsonPrimitive?.content)
-            .isEqualTo("test-bucket-abc/clusters/test-cluster-test-cluster-id")
+            .isEqualTo("s3://test-bucket-abc/clusters/test-cluster-test-cluster-id")
     }
 
     @Test

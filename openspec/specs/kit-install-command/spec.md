@@ -353,3 +353,22 @@ catalog override. The catalog name is the kit directory name.
 Each rendered file emits `Event.Install.ArtifactWritten(kit, filePath)`. Template source (built-in vs profile vs ad-hoc) is reported via a corresponding event.
 
 Kit script execution emits `Event.Kit.ScriptStarted(kit, script)` and `Event.Kit.ScriptFinished(kit, script, exitCode)`.
+
+## Argument Validation
+
+`kit install --kit` and `--size` apply only together with `--from <template-dir>`. Given without
+`--from`, the command MUST fail naming `--from` and `kit install <kit-name>`, and MUST NOT print the
+usage text and exit 0. `--kit` is the name of the output directory and MUST be a plain name
+(letters, digits, `-` and `_`, starting with a letter or digit); `kit install --kit`, `cleanup --kit`
+and `platform create-pvs --kit` MUST reject any other value before they act.
+
+`init --name` MUST be rejected at parse time with a message naming the positional form
+`init <name>`.
+
+## Kit Load Failures
+
+A kit whose `kit.yaml` cannot be loaded when the command tree is built (invalid YAML, a duplicate
+option) MUST be skipped with an `Event.Kit.LoadFailed` warning naming the kit, the file and the
+error. Every other command, including `kit source list` and `kit source remove`, MUST keep working,
+so that a bad kit source can be removed from the CLI. Only a command that needs the skipped kit
+fails.

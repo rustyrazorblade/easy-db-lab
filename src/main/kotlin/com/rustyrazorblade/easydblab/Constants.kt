@@ -1074,6 +1074,13 @@ object Constants {
         const val HOME_DASHBOARD_PATH = "infrastructure/system-overview.json"
 
         /**
+         * The most dashboard JSON one `grafana-dashboard-tree-<n>` ConfigMap carries, keys included, where
+         * the tree reaches Grafana through the K8s API. Half the API's 1 MiB object limit, so a
+         * dashboard that grows does not push its ConfigMap over it.
+         */
+        const val DASHBOARD_CONFIGMAP_MAX_BYTES = 512 * 1024
+
+        /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
          * addition to any operator-supplied tags. The core dashboards' annotation query filters on
          * this tag so global markers render on their timelines. Scoped annotations

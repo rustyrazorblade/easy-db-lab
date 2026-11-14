@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.TestDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -10,6 +11,8 @@ import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardConfigMaps
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaFront
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
@@ -107,6 +110,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
             mockK8sService,
             manifestBuilder,
             mockTreeUploader,
+            GrafanaDashboardTreeWriter(TestDashboardCatalog.catalog),
             eventBus,
             ConfigChangeReport(mockK8sService, eventBus),
             BucketRegion(bucketInRegion("eu-west-1")),
@@ -284,5 +288,46 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         assertThat(pod.volumes.mapNotNull { it.persistentVolumeClaim?.claimName }).containsExactly("grafana-data")
         val kinds = applied.allValues.map { "${it.kind}/${it.metadata.name}" }
         assertThat(kinds.indexOf("PersistentVolumeClaim/grafana-data")).isNotNegative().isLessThan(kinds.indexOf("Deployment/grafana"))
+    }
+
+    /**
+     * Where Grafana keeps its state on a claim there is no node directory to copy the tree into, and
+     * maybe no node to reach: the tree goes through the K8s API, as ConfigMaps the Deployment mounts.
+     */
+    @Test
+    fun `on a claim the dashboards reach Grafana as ConfigMaps it mounts, with no copy to a node`() {
+        val offAws =
+            ObservabilityHosting(
+                Placement.ANY_NODE,
+                BackendStorage.RetainedClaim("retained-class", Quantity("10Gi")),
+                StoreCredentials.InstanceRole,
+            )
+
+        service().deploy(null, context("acme"), "acct-bucket", offAws).getOrThrow()
+
+        verify(mockTreeUploader, never()).upload(any(), any())
+        val applied = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(applied.capture())
+        val trees =
+            applied.allValues.filterIsInstance<ConfigMap>().filter {
+                it.metadata.name.startsWith(
+                    GrafanaDashboardConfigMaps.NAME_PREFIX,
+                )
+            }
+        assertThat(trees).isNotEmpty()
+        val pyroscopeLinks = trees.flatMap { it.data.values }.filter { "Pyroscope UI" in it }
+        assertThat(pyroscopeLinks).isNotEmpty().allSatisfy { assertThat(it).contains("http://pyroscope.default.svc:4040") }
+        val kinds = applied.allValues.map { "${it.kind}/${it.metadata.name}" }
+        assertThat(kinds.indexOfFirst { it.startsWith("ConfigMap/${GrafanaDashboardConfigMaps.NAME_PREFIX}") })
+            .isNotNegative()
+            .isLessThan(kinds.indexOf("Deployment/grafana"))
+    }
+
+    @Test
+    fun `on a host path with no control node the deploy fails naming the copy it needs the node for`() {
+        val result = service().deploy(null, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
+
+        assertThat(result.exceptionOrNull()?.message).contains("control node")
+        verify(mockK8sService, never()).applyResource(any())
     }
 }

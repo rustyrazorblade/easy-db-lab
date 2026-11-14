@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardConfigMaps
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
@@ -78,6 +79,13 @@ class PortableObservabilityPlacementIntegrationTest {
         /** K3s's bundled provisioner, standing in for #1035's retained StorageClass. */
         private const val LOCAL_PATH_CLASS = "local-path"
         private const val READY_TIMEOUT_SECONDS = 420L
+
+        /** A two-folder tree standing in for the shipped one: on a claim it reaches Grafana as ConfigMaps. */
+        private val DASHBOARD_TREE =
+            mapOf(
+                "portable-a/one.json" to """{"uid":"portable-one","title":"Portable One","panels":[],"schemaVersion":39}""",
+                "portable-b/two.json" to """{"uid":"portable-two","title":"Portable Two","panels":[],"schemaVersion":39}""",
+            )
         private const val EXEC_TIMEOUT_SECONDS = 60L
 
         /** The images local-path provisioning runs, so a claim never waits on a registry. */
@@ -185,7 +193,10 @@ class PortableObservabilityPlacementIntegrationTest {
                     LokiManifestBuilder(templates).buildAllResources(hosting) +
                     TempoManifestBuilder(templates).buildAllResources(hosting) +
                     PyroscopeManifestBuilder(templates).buildServerResources(hosting) +
-                    GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket(bucket, SharedLocalStack.region()), hosting)
+                    GrafanaDashboardConfigMaps.mountInto(
+                        GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket(bucket, SharedLocalStack.region()), hosting),
+                        DASHBOARD_TREE,
+                    )
             ).map(::toLocalStack)
     }
 
@@ -327,6 +338,20 @@ class PortableObservabilityPlacementIntegrationTest {
         val url = "${BackendUrls.IN_CLUSTER.logs}/ready"
         val status = inGrafana("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url)
         assertThat(status).describedAs("loki at $url after its pod was replaced").isEqualTo("200")
+    }
+
+    /**
+     * With its state on a claim Grafana has no node directory to receive the dashboard tree: the
+     * mounted ConfigMaps put each file in a folder named for its directory, as the host-path copy does.
+     */
+    @Test
+    @Order(5)
+    fun `on a claim Grafana loads the dashboards it mounts from ConfigMaps into their folders`() {
+        val search =
+            inGrafana("curl", "-s", "-u", "admin:admin", "http://127.0.0.1:${Constants.Grafana.INTERNAL_PORT}/api/search?type=dash-db")
+
+        assertThat(search).contains("\"uid\":\"portable-one\"", "\"uid\":\"portable-two\"")
+        assertThat(search).contains("\"folderTitle\":\"portable-a\"", "\"folderTitle\":\"portable-b\"")
     }
 
     /**

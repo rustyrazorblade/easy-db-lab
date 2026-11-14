@@ -71,6 +71,12 @@ Each backend's local state SHALL be stored on a `hostPath` where the environment
 - **THEN** its state is on a per-backend claim whose StorageClass reclaims with `Retain`
 - **AND** no backend uses `emptyDir` for its state
 
+#### Scenario: On a claim the dashboards reach Grafana through the K8s API
+- **GIVEN** an environment without `HOST_PATH`, so Grafana's state is on its retained claim
+- **WHEN** the observability stack deploys
+- **THEN** the dashboard tree is applied as ConfigMaps the Grafana Deployment mounts at its dashboard path, with no copy to a node
+- **AND** each dashboard is filed in the folder named for its directory
+
 #### Scenario: A claim StorageClass that deletes its volumes is refused
 - **GIVEN** an environment without `HOST_PATH` whose backend StorageClass reclaims with `Delete`, sets no reclaim policy, or does not exist
 - **WHEN** the observability stack deploys

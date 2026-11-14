@@ -1,17 +1,23 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
+import com.rustyrazorblade.easydblab.configuration.grafana.GRAFANA_DASHBOARD_ROOT
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardConfigMaps
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
+import io.fabric8.kubernetes.api.model.HasMetadata
 
 /**
  * Gets Grafana, its datasources and the core dashboard tree onto the cluster.
@@ -63,6 +69,7 @@ class DefaultGrafanaDeployService(
     private val k8sService: K8sService,
     private val manifestBuilder: GrafanaManifestBuilder,
     private val treeUploader: GrafanaDashboardTreeUploader,
+    private val treeWriter: GrafanaDashboardTreeWriter,
     private val eventBus: EventBus,
     private val configChangeReport: ConfigChangeReport,
     private val bucketRegion: BucketRegion,
@@ -70,6 +77,10 @@ class DefaultGrafanaDeployService(
     companion object {
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
         private const val DEFAULT_NAMESPACE = "default"
+
+        /** The Pyroscope UI as a browser in the cluster's network reaches it, by its Service. */
+        private const val IN_CLUSTER_PYROSCOPE_URL =
+            "http://${Constants.K8s.PYROSCOPE_APP_LABEL}.${Constants.K8s.NAMESPACE}.svc:${Constants.K8s.PYROSCOPE_PORT}"
     }
 
     override fun createDatasourcesConfigMap(
@@ -100,25 +111,18 @@ class DefaultGrafanaDeployService(
             )
         }
 
-        runCatching {
-            val treeHost =
-                checkNotNull(controlHost) {
-                    "The dashboard tree is copied over SSH into Grafana's directory on the control node, but the cluster state has no control node."
-                }
-            treeUploader.upload(treeHost, context)
-        }.getOrElse { exception ->
-            return Result.failure(
-                IllegalStateException("Failed to upload Grafana dashboards: ${exception.message}", exception),
-            )
-        }
+        val grafana = manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket)), hosting)
+        val withTree =
+            runCatching { withDashboardTree(grafana, controlHost, context, hosting) }.getOrElse { exception ->
+                return Result.failure(
+                    IllegalStateException("Failed to upload Grafana dashboards: ${exception.message}", exception),
+                )
+            }
 
         // Grafana reads grafana-datasources, created above rather than applied with the rest, so hash
         // it in: a datasource change then rolls Grafana.
         val resources =
-            ConfigHashAnnotator.annotate(
-                manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket)), hosting),
-                mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants)),
-            )
+            ConfigHashAnnotator.annotate(withTree, mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants)))
         runCatching { configChangeReport.report(resources, DEFAULT_NAMESPACE) }
             .getOrElse { exception -> return Result.failure(exception) }
         eventBus.emit(Event.Grafana.ResourcesApplying(resources.size))
@@ -136,4 +140,33 @@ class DefaultGrafanaDeployService(
         eventBus.emit(Event.Grafana.ResourcesApplied)
         return Result.success(Unit)
     }
+
+    /**
+     * [grafana] with the dashboard tree delivered the way [hosting] stores Grafana's state: on a host
+     * path the tree is copied over SSH into Grafana's directory on the control node, which needs that
+     * node; on a claim there is no node directory, so it travels with the resources as ConfigMaps
+     * the Deployment mounts ([GrafanaDashboardConfigMaps]), and its Pyroscope link names the Service.
+     */
+    private fun withDashboardTree(
+        grafana: List<HasMetadata>,
+        controlHost: ClusterHost?,
+        context: DashboardInstallContext,
+        hosting: ObservabilityHosting,
+    ): List<HasMetadata> =
+        when (hosting.storage) {
+            BackendStorage.HostPath -> {
+                val treeHost =
+                    checkNotNull(controlHost) {
+                        "The dashboard tree is copied over SSH into Grafana's directory on the control node, " +
+                            "but the cluster state has no control node."
+                    }
+                treeUploader.upload(treeHost, context)
+                grafana
+            }
+            is BackendStorage.RetainedClaim -> {
+                val tree = treeWriter.render(IN_CLUSTER_PYROSCOPE_URL, context)
+                eventBus.emit(Event.Grafana.DashboardTreeUploading(tree.size, GRAFANA_DASHBOARD_ROOT))
+                GrafanaDashboardConfigMaps.mountInto(grafana, tree)
+            }
+        }
 }

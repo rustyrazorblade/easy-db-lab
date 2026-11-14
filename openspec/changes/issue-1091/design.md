@@ -69,7 +69,7 @@ The observability deploy and the kit-driven collector sync (`OtelSyncService`) t
 - **Fail fast only where the node is truly required, and name why:**
   - publishing the node IP under `Placement.CONTROL_NODE`, because redirected clusters, the Alloy eBPF agent, the sidecar Pyroscope agent and stress jobs reach the backends only at that IP (`ClusterConfigData.publishedNodeIp`). This fails the deploy and the sync before anything is applied.
   - host-path state directories (`BackendStorage.HostPath`), which are prepared over SSH on the control node.
-  - the dashboard tree copy into Grafana's directory over SSH.
+  - the dashboard tree copy into Grafana's directory over SSH. Only host-path storage copies it; on a claim the tree reaches Grafana as ConfigMaps the Deployment mounts (`GrafanaDashboardConfigMaps`), through the K8s API, so no node is needed.
 - **Entry points:** `grafana update-config` no longer refuses a state with no control node; the deploy decides. Kit `start`, `stop` and `uninstall` run their post-phase actions (metrics registration and collector sync) with no control node. `up` builds AWS clusters, which always have one.
 - **AWS output is unchanged.** It is pinned by a golden test of the cluster-config data (`ClusterConfigDataTest`), and by the existing deploy and sync hash tests.
 

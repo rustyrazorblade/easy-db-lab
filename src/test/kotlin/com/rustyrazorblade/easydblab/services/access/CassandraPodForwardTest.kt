@@ -116,6 +116,32 @@ class CassandraPodForwardTest {
         assertThat(tried).containsExactly(24001)
     }
 
+    /**
+     * The forward died and another process took its port before the reopen. The driver knows only
+     * that port, so the reopen fails naming it instead of moving the forward to one it would not dial.
+     */
+    @Test
+    fun `a reopen whose port another process took meanwhile fails naming that port, not moving elsewhere`() {
+        val tried = mutableListOf<Int>()
+        val reopened =
+            CassandraPodForward(
+                pod = pod,
+                forwarder = { _, localPort ->
+                    tried += localPort
+                    if (tried.size > 1) throw IllegalStateException("Unable to port forward", BindException("Address already in use"))
+                    FakeForward(localPort).also { forwards += it }
+                },
+                localPorts = { ports.removeFirst() },
+            )
+        reopened.endpoint()
+        forwards.single().alive = false
+
+        assertThatThrownBy { reopened.endpoint() }
+            .hasMessageContaining("127.0.0.1:24001")
+            .hasMessageContaining("another process")
+        assertThat(tried).containsExactly(24001, 24001)
+    }
+
     @Test
     fun `close closes the forward`() {
         forward.endpoint()

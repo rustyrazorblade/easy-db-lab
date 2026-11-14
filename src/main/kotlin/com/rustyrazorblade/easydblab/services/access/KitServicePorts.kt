@@ -20,11 +20,11 @@ import java.io.File
 class KitServicePorts(
     private val ports: Map<Pair<KitService, Int>, Int>,
 ) {
-    /** The Service port of [service] behind [nodePort], or [nodePort] when no manifest maps it. */
+    /** The Service port of [service] behind [nodePort], or null when no manifest maps it. */
     fun servicePort(
         service: KitService,
         nodePort: Int,
-    ): Int = ports[service to nodePort] ?: nodePort
+    ): Int? = ports[service to nodePort]
 
     companion object {
         private val log = KotlinLogging.logger {}

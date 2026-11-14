@@ -278,12 +278,13 @@ class Down : PicoBaseCommand() {
                                 signal = it.signal.description,
                                 step = it.step.description,
                                 reason = it.cause?.message ?: it.message.orEmpty(),
+                                unreached = it.unreached,
                             )
                         },
                     backends = failure.backends.mapValues { it.value.description },
                     stoppedWorkloads =
                         failure.backends
-                            .filterValues { it != BackendState.RUNNING }
+                            .filterValues { it != BackendState.RUNNING && it != BackendState.UNREACHED }
                             .keys
                             .toList(),
                 )

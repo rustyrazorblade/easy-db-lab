@@ -76,6 +76,9 @@ enum class BackendState(
     INGESTER_STOPPED("ingester stopped (the pod still runs and takes no new data)"),
     SCALED_TO_ZERO("scaled to 0"),
     DELETED("deleted"),
+
+    /** The step never reached the cluster, so the save observed nothing about this workload. */
+    UNREACHED("not reached (the step could not reach the cluster, so this workload's state is unknown)"),
 }
 
 /**
@@ -101,18 +104,38 @@ class FlushProgress(
     /** The owned workload's state, or nothing when this step owns no workload. */
     val backends: Map<String, BackendState> get() = owns?.let { mapOf(it to state) }.orEmpty()
 
-    /** Starts [step]. */
+    /** The last state a finished step left the workload in, which is the last one the cluster answered for. */
+    @Volatile
+    private var confirmed: BackendState? = null
+
+    @Volatile
+    private var marked = false
+
+    /** Starts [step]. Starting the next step means the previous step's call returned, so its mark held. */
     fun begin(step: FlushStep) {
+        if (marked) confirmed = state
         this.step = step
     }
 
-    /** Records that [workload], the one this step owns, is now in [state]. */
+    /**
+     * Records that [workload], the one this step owns, is now in [state]. Marked before the call,
+     * because a call that times out may still have changed the workload.
+     */
     fun mark(
         workload: String,
         state: BackendState,
     ) {
         require(workload == owns) { "this step owns ${owns ?: "no workload"}, not $workload" }
+        marked = true
         this.state = state
+    }
+
+    /**
+     * Takes back the mark of the failing step: the request never left, so the workload is as the last
+     * finished step left it, or [BackendState.UNREACHED] when no step of this signal got an answer.
+     */
+    fun neverReached() {
+        if (owns != null) state = confirmed ?: BackendState.UNREACHED
     }
 }
 
@@ -143,11 +166,13 @@ sealed interface SignalReport {
  *
  * @property step the step that failed or timed out.
  * @property backends the state of the workload the step owns, when it stopped.
+ * @property unreached true when the failure proves the step never reached the cluster ([ClusterReach]).
  */
 class FlushStepFailed(
     val step: FlushStep,
     val backends: Map<String, BackendState>,
     cause: Throwable,
+    val unreached: Boolean = false,
 ) : RuntimeException("${step.description} failed: ${cause.message ?: cause}", cause) {
     /** The signal that is not saved. */
     val signal: TailSignal get() = step.signal
@@ -415,7 +440,9 @@ class DefaultTeardownFlushService private constructor(
         } catch (failure: ExecutionException) {
             val cause = failure.cause ?: failure
             if (cause is Error) throw cause
-            Result.failure(FlushStepFailed(progress.step, progress.backends, cause))
+            val unreached = ClusterReach.neverReached(cause)
+            if (unreached) progress.neverReached()
+            Result.failure(FlushStepFailed(progress.step, progress.backends, cause, unreached))
         }
     }
 }

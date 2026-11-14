@@ -64,9 +64,9 @@ class StatusAddressesTest {
     @Test
     fun `the forward command maps the local NodePort to the Service port behind it`() {
         val http = KitEndpoint(name = "HTTP", nodeType = "db", port = 30123, type = KitEndpoint.EndpointType.HTTP)
-        val addresses = StatusAddresses(state(Exposure.PortForward)) { _, port -> if (port == 30123) 8123 else port }
+        val addresses = StatusAddresses(state(Exposure.PortForward))
 
-        val shown = addresses.kitEndpoint("clickhouse", null, http).single()
+        val shown = addresses.kitEndpoint("clickhouse", null, http) { _, port -> if (port == 30123) 8123 else port }.single()
 
         assertThat(shown.address).isEqualTo("http://clickhouse-nodeport.default.svc.cluster.local:8123")
         assertThat(shown.hint).isEqualTo("bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123")
@@ -96,6 +96,62 @@ class StatusAddressesTest {
         assertThat(shown.map { it.endpoint.name to it.address.hint })
             .containsExactly("CQL" to "bin/kubectl port-forward -n default svc/cassandra-pods-nodeport 30942")
         assertThat(addresses.installedKit(broken).isFailure).isTrue()
+    }
+
+    @Test
+    fun `an installed kit's NodePort is shown at the Service port its installed manifest maps it to`(
+        @TempDir workspace: File,
+    ) {
+        val kitDir = File(workspace, "web").apply { mkdirs() }
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText(
+            """
+            name: web
+            endpoints:
+              - name: HTTP
+                node-type: db
+                port: 31080
+                type: http
+              - name: Admin
+                node-type: db
+                port: 31090
+                type: http
+            """.trimIndent(),
+        )
+        File(kitDir, "services.yaml").writeText(
+            """
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: web-nodeport
+              namespace: default
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: web-nodeport
+              namespace: default
+            spec:
+              type: NodePort
+              ports:
+                - name: http
+                  port: 8080
+                  nodePort: 31080
+            """.trimIndent(),
+        )
+
+        val shown = StatusAddresses(state(Exposure.PortForward)).installedKit(kitDir).getOrThrow()
+
+        assertThat(shown.map { it.address }).containsExactly(
+            StatusAddress(
+                "http://web-nodeport.default.svc.cluster.local:8080",
+                "bin/kubectl port-forward -n default svc/web-nodeport 31080:8080",
+            ),
+            // A port the manifest does not map is shown as it is.
+            StatusAddress(
+                "http://web-nodeport.default.svc.cluster.local:31090",
+                "bin/kubectl port-forward -n default svc/web-nodeport 31090",
+            ),
+        )
     }
 
     @Test

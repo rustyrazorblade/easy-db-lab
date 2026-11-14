@@ -589,9 +589,9 @@ class StatusCacheTest : BaseKoinTest() {
         assertThat(observability["grafana"]?.jsonPrimitive?.content).isEqualTo("http://grafana.default.svc.cluster.local:3000")
         assertThat(observability["portForwardCommands"]!!.jsonArray.map { it.jsonPrimitive.content })
             .contains("bin/kubectl port-forward -n default svc/grafana 3000")
-        assertThat(endpoint["address"]?.jsonPrimitive?.content).contains("clickhouse-nodeport.default.svc.cluster.local")
+        assertThat(endpoint["address"]?.jsonPrimitive?.content).isEqualTo("http://clickhouse-nodeport.default.svc.cluster.local:8123")
         assertThat(endpoint["portForwardCommand"]?.jsonPrimitive?.content)
-            .startsWith("bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123")
+            .isEqualTo("bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123")
     }
 
     private fun installPackagedKit(name: String) {
@@ -599,8 +599,12 @@ class StatusCacheTest : BaseKoinTest() {
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/${Constants.Kit.CONFIG_FILE}")) {
                 "packaged kit $name not found"
             }.readText()
-        File(context.workingDirectory, name).mkdirs()
-        File(File(context.workingDirectory, name), Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        val kitDir = File(context.workingDirectory, name).apply { mkdirs() }
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        // The rendered NodePort Service, as install writes it; clickhouse's has no template variables.
+        javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/nodeport-service.yaml.template")?.let {
+            File(kitDir, "nodeport-service.yaml").writeText(it.readText())
+        }
     }
 
     @Test

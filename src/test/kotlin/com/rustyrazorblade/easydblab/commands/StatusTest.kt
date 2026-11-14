@@ -375,6 +375,26 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
+    fun `on an AWS cluster the observability section prints the control node addresses, unchanged by the seam`() {
+        setupBasicClusterState()
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+
+        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+
+        assertThat(capturedOutput()).contains(
+            """
+            Observability:
+              Grafana:         http://10.0.3.100:3000
+              Mimir:           http://10.0.3.100:9009/prometheus
+              Loki:            http://10.0.3.100:3100
+              Tempo:           http://10.0.3.100:3200
+              Pyroscope:       http://10.0.3.100:4040
+            """.trimIndent(),
+        )
+        assertThat(capturedOutput()).doesNotContain("run: bin/kubectl")
+    }
+
+    @Test
     fun `on a port-forward cluster a kit endpoint names its Service and the command that forwards it`() {
         setupBasicClusterState(runningKits = setOf("clickhouse"), exposure = Exposure.PortForward)
         installPackagedKit("clickhouse")
@@ -383,8 +403,9 @@ class StatusTest : BaseKoinTest() {
         Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
 
         val output = capturedOutput()
-        assertThat(output).contains("clickhouse-nodeport.default.svc.cluster.local")
-        assertThat(output).contains("run: bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123")
+        assertThat(output).contains("http://clickhouse-nodeport.default.svc.cluster.local:8123")
+        assertThat(output).contains("run: bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123\n")
+        assertThat(output).doesNotContain("svc.cluster.local:30123")
         assertThat(output).contains("http://grafana.default.svc.cluster.local:3000")
         assertThat(output).contains("run: bin/kubectl port-forward -n default svc/grafana 3000")
         assertThat(output).doesNotContain("10.0.1.100:30123")
@@ -455,7 +476,12 @@ class StatusTest : BaseKoinTest() {
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/${Constants.Kit.CONFIG_FILE}")) {
                 "packaged kit $name not found"
             }.readText()
-        File(createWorkspaceDir(name), Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        val kitDir = createWorkspaceDir(name)
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        // The rendered NodePort Service, as install writes it; clickhouse's has no template variables.
+        javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/nodeport-service.yaml.template")?.let {
+            File(kitDir, "nodeport-service.yaml").writeText(it.readText())
+        }
     }
 
     @Test

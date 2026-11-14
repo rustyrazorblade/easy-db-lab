@@ -166,9 +166,12 @@ sealed class AWSPolicy {
          * Attached to IAM roles to allow EC2 instances to access cluster data.
          * Also includes s3:ListAllMyBuckets for S3Manager web UI, and denies deleting observability
          * data (metrics, logs, traces, annotations). `up` re-applies it every time.
+         *
+         * @param storePrefix The cluster's store prefix; a non-empty one adds its roots to the deny.
          */
         data class S3AccessWildcard(
             val accountId: String,
+            val storePrefix: String,
         ) : Inline() {
             override fun toJson() =
                 IamPolicyDocument(
@@ -236,13 +239,7 @@ sealed class AWSPolicy {
                     action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
                     resource =
                         IamPolicyResource.multiple(
-                            listOf(
-                                "${Constants.Observability.METRICS_ROOT}/*",
-                                "${Constants.Observability.LOGS_ROOT}/*",
-                                "${Constants.Observability.TRACES_ROOT}/*",
-                                "${Constants.Observability.GRAFANA_ROOT}/*",
-                                "${Constants.Observability.REPORTS_ROOT}/*",
-                            ).map { "arn:aws:s3:::easy-db-lab-*/$it" },
+                            storeRoots(storePrefix, DELETE_DENIED_ROOTS).map { "arn:aws:s3:::easy-db-lab-*/$it/*" },
                         ),
                 )
         }
@@ -285,8 +282,12 @@ sealed class AWSPolicy {
          * The account compactor's task role policy: list the easy-db-lab buckets, and get, put and
          * delete objects under the roots it compacts. It has no access to `grafana/` or
          * `pyroscope/`. The compactor removes a source object only after it wrote a merged copy.
+         *
+         * @param storePrefix The store prefix; a non-empty one adds the compacted roots under it.
          */
-        data object CompactorTaskAccess : Inline() {
+        data class CompactorTaskAccess(
+            val storePrefix: String,
+        ) : Inline() {
             override fun toJson() =
                 IamPolicyDocument(
                     statement =
@@ -299,7 +300,10 @@ sealed class AWSPolicy {
                             IamPolicyStatement(
                                 effect = "Allow",
                                 action = IamPolicyAction.multiple(listOf("s3:GetObject", "s3:PutObject", "s3:DeleteObject")),
-                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::easy-db-lab-*/$it/*" }),
+                                resource =
+                                    IamPolicyResource.multiple(
+                                        storeRoots(storePrefix, COMPACTED_ROOTS).map { "arn:aws:s3:::easy-db-lab-*/$it/*" },
+                                    ),
                             ),
                         ),
                 ).toJson()
@@ -314,10 +318,12 @@ sealed class AWSPolicy {
          *
          * @param accountId The AWS account ID for constructing role ARNs
          * @param bucketName The S3 bucket name to apply the policy to
+         * @param storePrefix The store prefix; a non-empty one adds its compacted roots to the deny
          */
         data class S3BucketPolicy(
             val accountId: String,
             val bucketName: String,
+            val storePrefix: String,
         ) : Inline() {
             override fun toJson() =
                 IamPolicyDocument(
@@ -339,7 +345,10 @@ sealed class AWSPolicy {
                                 effect = "Deny",
                                 principal = IamPolicyPrincipal.aws(clusterRoles()),
                                 action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
-                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::$bucketName/$it/*" }),
+                                resource =
+                                    IamPolicyResource.multiple(
+                                        storeRoots(storePrefix, COMPACTED_ROOTS).map { "arn:aws:s3:::$bucketName/$it/*" },
+                                    ),
                             ),
                         ),
                 ).toJson()
@@ -360,6 +369,24 @@ sealed class AWSPolicy {
                     Constants.Observability.LOGS_ROOT,
                     Constants.Observability.TRACES_ROOT,
                 )
+
+            /** Every root no cluster role may delete under: the compacted roots, Grafana's and the documents'. */
+            val DELETE_DENIED_ROOTS =
+                COMPACTED_ROOTS + listOf(Constants.Observability.GRAFANA_ROOT, Constants.Observability.REPORTS_ROOT)
+
+            /**
+             * The [roots] a policy covers under the store prefix [storePrefix]: always the unprefixed
+             * roots, followed by the same roots under the prefix when it is not empty. A policy built
+             * from it can only gain paths from a prefix, never lose one, so an account-wide deny
+             * keeps the guard of every cluster on another prefix or on none.
+             */
+            fun storeRoots(
+                storePrefix: String,
+                roots: List<String>,
+            ): List<String> {
+                val prefix = storePrefix.trim('/')
+                return if (prefix.isEmpty()) roots else roots + roots.map { "$prefix/$it" }
+            }
         }
     }
 

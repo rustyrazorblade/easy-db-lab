@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
@@ -48,7 +49,7 @@ class AwsS3BucketService(
         eventBus.emit(Event.Setup.S3BucketCreating)
         val bucketName = "easy-db-lab-${UUID.randomUUID()}"
         aws.createS3Bucket(bucketName)
-        aws.putS3BucketPolicy(bucketName)
+        aws.putS3BucketPolicy(bucketName, StoreBackend.NO_PREFIX)
         aws.tagS3Bucket(
             bucketName,
             mapOf(
@@ -72,7 +73,10 @@ class AwsS3BucketService(
     /**
      * Applies an S3 bucket policy granting access to all easy-db-lab IAM roles.
      */
-    fun putBucketPolicy(bucketName: String) = aws.putS3BucketPolicy(bucketName)
+    fun putBucketPolicy(
+        bucketName: String,
+        storePrefix: String,
+    ) = aws.putS3BucketPolicy(bucketName, storePrefix)
 
     /**
      * Applies tags to an existing S3 bucket.
@@ -132,7 +136,7 @@ class AwsS3BucketService(
     ): DataBucketConfig {
         eventBus.emit(Event.S3.DataBucketCreating(bucketName))
         createBucket(bucketName)
-        putBucketPolicy(bucketName)
+        putBucketPolicy(bucketName, StoreBackend.NO_PREFIX)
         tagBucket(
             bucketName,
             mapOf(

@@ -49,13 +49,14 @@
                 "-compactor.ring.instance-addr=127.0.0.1"
             ],
             "environment": {
-                "AWS_REGION": "us-west-2",
                 "CLUSTER_NAME": "compactor",
-                "LOGS_S3_PREFIX": "loki",
-                "METRICS_S3_PREFIX": "mimir",
-                "S3_BUCKET": "easy-db-lab-test",
+                "LOGS_STORE_PREFIX": "loki",
+                "METRICS_STORE_PREFIX": "mimir",
+                "STORE_BUCKET": "easy-db-lab-test",
+                "STORE_ENDPOINT": "s3.us-west-2.amazonaws.com",
+                "STORE_REGION": "us-west-2",
                 "TENANT": "compactor",
-                "TRACES_S3_PREFIX": "tempo"
+                "TRACES_STORE_PREFIX": "tempo"
             },
             "mountPoints": [
                 {
@@ -83,13 +84,14 @@
                 "-compactor.retention-enabled=false"
             ],
             "environment": {
-                "AWS_REGION": "us-west-2",
                 "CLUSTER_NAME": "compactor",
-                "LOGS_S3_PREFIX": "loki",
-                "METRICS_S3_PREFIX": "mimir",
-                "S3_BUCKET": "easy-db-lab-test",
+                "LOGS_STORE_PREFIX": "loki",
+                "METRICS_STORE_PREFIX": "mimir",
+                "STORE_BUCKET": "easy-db-lab-test",
+                "STORE_ENDPOINT": "s3.us-west-2.amazonaws.com",
+                "STORE_REGION": "us-west-2",
                 "TENANT": "compactor",
-                "TRACES_S3_PREFIX": "tempo"
+                "TRACES_STORE_PREFIX": "tempo"
             },
             "mountPoints": [
                 {
@@ -110,13 +112,14 @@
                 "-target=backend-scheduler"
             ],
             "environment": {
-                "AWS_REGION": "us-west-2",
                 "CLUSTER_NAME": "compactor",
-                "LOGS_S3_PREFIX": "loki",
-                "METRICS_S3_PREFIX": "mimir",
-                "S3_BUCKET": "easy-db-lab-test",
+                "LOGS_STORE_PREFIX": "loki",
+                "METRICS_STORE_PREFIX": "mimir",
+                "STORE_BUCKET": "easy-db-lab-test",
+                "STORE_ENDPOINT": "s3.us-west-2.amazonaws.com",
+                "STORE_REGION": "us-west-2",
                 "TENANT": "compactor",
-                "TRACES_S3_PREFIX": "tempo"
+                "TRACES_STORE_PREFIX": "tempo"
             },
             "mountPoints": [
                 {
@@ -140,13 +143,14 @@
                 "-memberlist.bind-port=7949"
             ],
             "environment": {
-                "AWS_REGION": "us-west-2",
                 "CLUSTER_NAME": "compactor",
-                "LOGS_S3_PREFIX": "loki",
-                "METRICS_S3_PREFIX": "mimir",
-                "S3_BUCKET": "easy-db-lab-test",
+                "LOGS_STORE_PREFIX": "loki",
+                "METRICS_STORE_PREFIX": "mimir",
+                "STORE_BUCKET": "easy-db-lab-test",
+                "STORE_ENDPOINT": "s3.us-west-2.amazonaws.com",
+                "STORE_REGION": "us-west-2",
                 "TENANT": "compactor",
-                "TRACES_S3_PREFIX": "tempo"
+                "TRACES_STORE_PREFIX": "tempo"
             },
             "mountPoints": [
                 {

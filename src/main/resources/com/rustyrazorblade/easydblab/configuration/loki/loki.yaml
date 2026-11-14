@@ -32,7 +32,7 @@ common:
 
 storage_config:
   # Chunks land under <prefix>/<tenant>/ and index tables under <prefix>/index/.
-  object_prefix: ${LOGS_S3_PREFIX}
+  object_prefix: ${LOGS_STORE_PREFIX}
   tsdb_shipper:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache

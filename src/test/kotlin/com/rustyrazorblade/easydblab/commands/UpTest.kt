@@ -84,9 +84,9 @@ class UpTest : UpTestFixture() {
         newUp().execute()
 
         val order = inOrder(mockS3BucketService, compactor)
-        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
-        order.verify(compactor).ensureRunning("easy-db-lab-test-bucket")
-        verify(compactor).ensureRunning(any())
+        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket", "")
+        order.verify(compactor).ensureRunning("easy-db-lab-test-bucket", "")
+        verify(compactor).ensureRunning(any(), any())
     }
 
     /** The test's document index is rebuilt with the operator's credentials once the account bucket is configured. */
@@ -96,7 +96,7 @@ class UpTest : UpTestFixture() {
 
         val state = argumentCaptor<ClusterState>()
         val order = inOrder(mockS3BucketService, mockDocumentService)
-        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
+        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket", "")
         order.verify(mockDocumentService).rebuildIndex(state.capture())
         assertThat(state.firstValue.s3Bucket).isEqualTo("easy-db-lab-test-bucket")
     }

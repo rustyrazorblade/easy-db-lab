@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 
 /**
@@ -24,21 +24,19 @@ class TenantDirectory(
         ): TenantSet = TenantSet.of(home, names.filter { TENANT.matches(it) && it != Constants.Observability.RESERVED_TENANT })
     }
 
-    /** Every tenant with a directory under `mimir/` in [bucket], and [home]. */
-    fun list(
-        bucket: String,
-        home: String,
-    ): TenantSet {
-        val root = Constants.Observability.METRICS_ROOT
+    /** Every tenant with a directory under Mimir's root in [store] (its bucket and store prefix), and its home tenant. */
+    fun list(store: ObservabilityStore): TenantSet {
+        val root = store.metricsRoot()
+        val rootKey = root.getKey()
         val names =
             objectStore
-                .listFiles(ClusterStoragePath.root(bucket).resolve(root), recursive = false)
+                .listFiles(root, recursive = false)
                 .map {
                     it.path
                         .getKey()
-                        .removePrefix("$root/")
+                        .removePrefix("$rootKey/")
                         .trimEnd('/')
                 }
-        return tenantsFrom(names, home)
+        return tenantsFrom(names, store.tenant)
     }
 }

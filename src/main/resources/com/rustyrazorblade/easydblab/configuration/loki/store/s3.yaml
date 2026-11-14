@@ -1,4 +1,4 @@
 s3:
-  bucketnames: ${S3_BUCKET}
-  endpoint: s3.${AWS_REGION}.amazonaws.com
-  region: ${AWS_REGION}
+  bucketnames: ${STORE_BUCKET}
+  endpoint: ${STORE_ENDPOINT}
+  region: ${STORE_REGION}

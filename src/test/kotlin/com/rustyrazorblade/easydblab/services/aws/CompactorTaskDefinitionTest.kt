@@ -106,11 +106,13 @@ class CompactorTaskDefinitionTest {
         assertThat(compactors.values).allSatisfy { container ->
             assertThat(container.dependsOn().single().containerName()).isEqualTo(CompactorTaskDefinition.CONFIG_CONTAINER)
             assertThat(container.environment().associate { it.name() to it.value() })
-                .containsEntry("S3_BUCKET", "easy-db-lab-acct")
-                .containsEntry("AWS_REGION", "eu-west-1")
-                .containsEntry("METRICS_S3_PREFIX", "mimir")
-                .containsEntry("LOGS_S3_PREFIX", "loki")
-                .containsEntry("TRACES_S3_PREFIX", "tempo")
+                .containsEntry("STORE_BUCKET", "easy-db-lab-acct")
+                .containsEntry("STORE_REGION", "eu-west-1")
+                .containsEntry("STORE_ENDPOINT", "s3.eu-west-1.amazonaws.com")
+                .containsEntry("METRICS_STORE_PREFIX", "mimir")
+                .containsEntry("LOGS_STORE_PREFIX", "loki")
+                .containsEntry("TRACES_STORE_PREFIX", "tempo")
+                .doesNotContainKeys("S3_BUCKET", "AWS_REGION", "METRICS_S3_PREFIX", "LOGS_S3_PREFIX", "TRACES_S3_PREFIX")
             assertThat(container.logConfiguration().logDriver()).isEqualTo(LogDriver.AWSLOGS)
             assertThat(container.logConfiguration().options()).containsEntry("awslogs-group", "/easy-db-lab/compactor")
         }

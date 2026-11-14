@@ -26,6 +26,15 @@ sealed interface StoreBackend {
 
     companion object {
         /**
+         * The store prefix of a path that belongs to no one cluster: profile setup, the AMI
+         * builder and the `observability compactor` commands, which run outside a workspace.
+         */
+        const val NO_PREFIX = ""
+
+        /** The store prefix of [clusterState]: the prefix of its [from] backend, whatever its region. */
+        fun prefixOf(clusterState: ClusterState): String = from(clusterState, defaultRegion = "").prefix
+
+        /**
          * The store of [clusterState]. Every cluster stores on S3 today; this is the one place
          * that knows it.
          *
@@ -37,6 +46,7 @@ sealed interface StoreBackend {
         ): StoreBackend =
             S3Backend(
                 bucket = clusterState.s3Bucket.orEmpty(),
+                prefix = NO_PREFIX,
                 region = clusterState.initConfig?.region ?: defaultRegion,
             )
     }

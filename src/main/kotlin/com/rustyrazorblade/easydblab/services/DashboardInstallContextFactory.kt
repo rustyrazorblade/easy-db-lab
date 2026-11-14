@@ -21,7 +21,7 @@ class DashboardInstallContextFactory(
     ): DashboardInstallContext =
         DashboardInstallContext(
             cluster = clusterState.clusterLabelName(),
-            tenants = tenantDirectory.list(ObservabilityStore.from(clusterState).bucket, clusterState.tenant()),
+            tenants = tenantDirectory.list(ObservabilityStore.from(clusterState)),
             documentsUrl = documentsUrl(controlHost),
         )
 }

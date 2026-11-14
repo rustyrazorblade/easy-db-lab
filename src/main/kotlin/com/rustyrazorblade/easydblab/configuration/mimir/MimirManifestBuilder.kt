@@ -191,9 +191,10 @@ class MimirManifestBuilder(
                 "-config.file=$CONFIG_MOUNT_PATH/$CONFIG_FILE",
                 "-config.expand-env=true",
             ).withEnv(
-                clusterConfigEnv("AWS_REGION", "aws_region"),
-                clusterConfigEnv("S3_BUCKET", "s3_bucket"),
-                clusterConfigEnv("METRICS_S3_PREFIX", "metrics_s3_prefix"),
+                clusterConfigEnv("STORE_BUCKET", "store_bucket"),
+                clusterConfigEnv("STORE_REGION", "store_region"),
+                clusterConfigEnv("STORE_ENDPOINT", "store_endpoint"),
+                clusterConfigEnv("METRICS_STORE_PREFIX", "metrics_store_prefix"),
             ).addNewPort()
             .withName("http")
             .withContainerPort(Constants.K8s.MIMIR_HTTP_PORT)

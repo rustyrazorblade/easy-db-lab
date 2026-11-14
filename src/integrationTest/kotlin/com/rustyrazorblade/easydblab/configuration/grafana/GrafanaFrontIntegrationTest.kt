@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
@@ -27,7 +28,8 @@ import java.util.concurrent.TimeUnit
 /**
  * The nginx front of the Grafana pod, with its real configuration, in a real pod, reached the way a
  * browser reaches Grafana: through a ClusterIP Service on Grafana's one client port, the port the
- * grafana Service (#1090) targets and a `127.0.0.1` port-forward carries. Through that one port a
+ * grafana Service (built here by [GrafanaManifestBuilder.buildService]) targets and a `127.0.0.1`
+ * port-forward carries. Through that one port a
  * `GET` under `/reports/` reaches the signing proxy with the bucket fixed and the query string
  * dropped, every write under `/reports/` is refused, and every other path, a normalized `..` path
  * included, reaches Grafana with its Host header, websocket upgrade and body intact.
@@ -41,7 +43,7 @@ class GrafanaFrontIntegrationTest {
     private companion object {
         const val NAMESPACE = "grafana-front"
         const val POD = "grafana-front"
-        const val SERVICE = "grafana"
+        val SERVICE = ClusterServices.GRAFANA.service
         const val STUB_CONFIGMAP = "stub-upstreams"
         const val BUCKET = "acct-bucket"
         const val READY_TIMEOUT_SECONDS = 180L
@@ -67,7 +69,8 @@ class GrafanaFrontIntegrationTest {
         ).thenReturn(
             ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = BUCKET, initConfig = InitConfig(region = "eu-west-1")),
         )
-        val front = GrafanaFront(TemplateService(stateManager, mock<User>()))
+        val templateService = TemplateService(stateManager, mock<User>())
+        val front = GrafanaFront(templateService)
         val documents = DocumentsBucket(BUCKET, "eu-west-1")
 
         val frontConfig =
@@ -79,7 +82,7 @@ class GrafanaFrontIntegrationTest {
 
         client.resource(frontConfig).create()
         client.resource(stubConfigMap()).create()
-        client.resource(service()).create()
+        client.resource(service(templateService)).create()
         client.resource(pod(frontContainer(front, documents), stubContainer(), front)).create()
         client
             .pods()
@@ -124,20 +127,15 @@ class GrafanaFrontIntegrationTest {
                     ).replace("__GRAFANA_INTERNAL_PORT__", Constants.Grafana.INTERNAL_PORT.toString()),
             ).build()
 
-    /** A ClusterIP Service on Grafana's client port, standing in for the grafana Service #1090 adds. */
-    private fun service() =
-        ServiceBuilder()
-            .withNewMetadata()
-            .withName(SERVICE)
+    /**
+     * The grafana Service exactly as [GrafanaManifestBuilder] builds it, moved into this test's
+     * namespace: the pod carries its selector, so the requests take the port the Service targets.
+     */
+    private fun service(templateService: TemplateService) =
+        ServiceBuilder(GrafanaManifestBuilder(templateService).buildService())
+            .editMetadata()
             .withNamespace(NAMESPACE)
             .endMetadata()
-            .withNewSpec()
-            .addToSelector("app", POD)
-            .addNewPort()
-            .withPort(Constants.K8s.GRAFANA_PORT)
-            .withTargetPort(IntOrString(Constants.K8s.GRAFANA_PORT))
-            .endPort()
-            .endSpec()
             .build()
 
     /** The front exactly as the Grafana pod runs it, less the host port, which this pod does not need. */
@@ -176,7 +174,7 @@ class GrafanaFrontIntegrationTest {
         .withNewMetadata()
         .withName(POD)
         .withNamespace(NAMESPACE)
-        .addToLabels("app", POD)
+        .addToLabels("app.kubernetes.io/name", Constants.K8s.GRAFANA_APP_LABEL)
         .endMetadata()
         .withNewSpec()
         .withContainers(front, stub)

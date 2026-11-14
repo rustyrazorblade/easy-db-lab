@@ -27,6 +27,7 @@ import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -343,12 +344,15 @@ class PortableObservabilityPlacementIntegrationTest {
     /**
      * With its state on a claim Grafana has no node directory to receive the dashboard tree: the
      * mounted ConfigMaps put each file in a folder named for its directory, as the host-path copy does.
+     * The search goes through the grafana Service by its DNS name, so it also proves the Service
+     * reaches Grafana through the front on [Constants.K8s.GRAFANA_PORT].
      */
     @Test
     @Order(5)
     fun `on a claim Grafana loads the dashboards it mounts from ConfigMaps into their folders`() {
-        val search =
-            inGrafana("curl", "-s", "-u", "admin:admin", "http://127.0.0.1:${Constants.Grafana.INTERNAL_PORT}/api/search?type=dash-db")
+        val grafana = ClusterServices.GRAFANA
+        val searchUrl = "http://${Constants.K8s.serviceHost(grafana.service)}:${grafana.servicePort}/api/search?type=dash-db"
+        val search = inGrafana("curl", "-s", "-u", "admin:admin", searchUrl)
 
         assertThat(search).contains("\"uid\":\"portable-one\"", "\"uid\":\"portable-two\"")
         assertThat(search).contains("\"folderTitle\":\"portable-a\"", "\"folderTitle\":\"portable-b\"")

@@ -7,15 +7,14 @@ import java.nio.file.Path
 /**
  * Cloud-agnostic object storage interface for easy-db-lab.
  *
- * This interface abstracts cloud storage operations to enable multi-cloud support.
- * Implementations exist for AWS S3, and future implementations can support:
- * - Google Cloud Storage (GCP)
- * - Azure Blob Storage
- * - Local filesystem (for testing/development)
+ * This interface abstracts cloud storage operations so a second provider is a new adapter, not a
+ * change to its callers. Two implementations exist: `services/aws/S3ObjectStore` and
+ * [InMemoryObjectStore] (tests and local work). Another provider (GCS, Azure Blob, a volume) adds
+ * a [com.rustyrazorblade.easydblab.configuration.store.StoreBackend] case and an adapter.
  *
- * All operations use ClusterStoragePath for type-safe path handling and proper cluster
- * namespacing. Note: ClusterStoragePath will be renamed to ClusterStoragePath in a
- * future refactoring to be truly cloud-agnostic.
+ * All operations take a [ClusterStoragePath], which is provider-neutral: a bucket and a key under
+ * the store prefix, with no scheme. Only an adapter knows how its provider spells a location;
+ * callers that show one to the user ask [uriOf].
  *
  * Implementations should:
  * - Use retry logic for transient failures (network issues, throttling)
@@ -26,8 +25,8 @@ import java.nio.file.Path
  * Example usage:
  * ```kotlin
  * val objectStore: ObjectStore by inject()
- * val s3Path = clusterState.s3Path(userConfig).sparkJars().resolve("myapp.jar")
- * val result = objectStore.uploadFile(localJar, s3Path, showProgress = true)
+ * val jarPath = ClusterStoragePath.from(clusterState).spark().resolve("myapp.jar")
+ * val result = objectStore.uploadFile(localJar, jarPath, showProgress = true)
  * ```
  */
 interface ObjectStore {

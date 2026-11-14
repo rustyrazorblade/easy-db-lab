@@ -14,7 +14,7 @@ class PortForwardServiceAccessTest {
     private class FakeForward(
         private val port: Int,
         var alive: Boolean = true,
-        val failure: Throwable? = null,
+        var failure: Throwable? = null,
     ) : LocalPortForward {
         var closed = false
 
@@ -69,6 +69,17 @@ class PortForwardServiceAccessTest {
         forwards.single().alive = false
 
         assertThat(access.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
+        assertThat(forwards.first().closed).isTrue()
+    }
+
+    @Test
+    fun `a forward that stays alive but reported an error since it opened is reopened, re-resolving its pod`() {
+        access.open(ClusterServices.LOKI)
+        // Fabric8 keeps isAlive true after the Service's pod is replaced; only the error shows it.
+        forwards.single().failure = IllegalStateException("pod \"loki-0\" not found")
+
+        assertThat(access.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
+        assertThat(opened).hasSize(2)
         assertThat(forwards.first().closed).isTrue()
     }
 

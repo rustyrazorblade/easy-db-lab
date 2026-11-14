@@ -86,7 +86,7 @@ class DefaultGrafanaDeployService(
 
     /** The contents of the `grafana-datasources` ConfigMap for [tenants]. */
     private fun datasourcesData(tenants: TenantSet): Map<String, String> =
-        mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.CONTROL_NODE).toYaml())
+        mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.IN_CLUSTER).toYaml())
 
     override fun deploy(
         controlHost: ClusterHost,

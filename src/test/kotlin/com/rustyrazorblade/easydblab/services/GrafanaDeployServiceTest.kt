@@ -107,6 +107,22 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         )
 
     @Test
+    fun `Grafana reaches each backend by its Service DNS name, never localhost`() {
+        service().createDatasourcesConfigMap(testControlHost, TenantSet.of("acme"))
+
+        val data = argumentCaptor<Map<String, String>>()
+        verify(mockK8sService).createConfigMap(any(), any(), any(), data.capture(), any())
+        val yaml = checkNotNull(data.firstValue["datasources.yaml"])
+        assertThat(yaml)
+            .contains(
+                "http://mimir.default.svc:9009/prometheus",
+                "http://loki.default.svc:3100",
+                "http://tempo.default.svc:3200",
+                "http://pyroscope.default.svc:4040",
+            ).doesNotContain("localhost")
+    }
+
+    @Test
     fun `createDatasourcesConfigMap calls k8sService with correct params`() {
         val result = service().createDatasourcesConfigMap(testControlHost, TenantSet.of("acme"))
 

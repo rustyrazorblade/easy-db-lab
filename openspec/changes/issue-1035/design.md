@@ -1,118 +1,226 @@
 # Design: per-environment observability storage (#1035)
 
-Epic #1032 (local execution environment), decision Q3: local storage is a directory on the user's machine with no S3, no emulator and no AWS. Every decision below was approved by the owner on 2026-10-31, except the PVC change, which the owner decided on 2026-11-10: off S3, backend pods mount a PersistentVolumeClaim, never a hostPath. The architect's alternatives are named with each decision.
+This is a re-spec from 2026-11-14 on top of #1061 (neutral store), #1091 (portable placement), #1096/#1037 (NodeCapability) and #1092 (collector split). It also takes into account PR #1071 (in-cluster compactor with a store lease), which is on `main` but not yet on `local-k8s-edbl`. It replaces the 2026-11-10 design.
+
+Owner decisions that bind this design:
+- Q3: local storage is a host directory, never deleted, compacted with retention off.
+- K3: on your cluster durable data needs an object store; a retained volume is allowed and labelled; a deleting class is refused.
+- K5: two store identities.
+- Root rules: no automatic deletion, no S3-outage design, no verify checks in `down`, and no YAML built from strings.
+
+Decisions still open are listed under **Owner decisions** (D1-D14). The design below follows the architect's recommendation for each one until the owner decides.
+
+## What decides storage
+
+Three questions are decided separately.
+
+| Question | Decided by | Type |
+|---|---|---|
+| What the backends write to | the recorded store | `StoreBackend` (`configuration/store/StoreBackend.kt:24`), plus `FilesystemBackend` |
+| Where volumes live (state, plus a filesystem tree) | the `HOST_PATH` capability | `BackendStorage` (`ObservabilityHosting.kt:24-39`) |
+| Who the backends authenticate as | store kind and environment | `StoreAccess` → `StoreIdentities(writer, compactor)` → `StoreCredentials` |
+
+| Environment | Store | Hosting | Identities |
+|---|---|---|---|
+| AWS (no record) | `S3Backend` | `HostPath("/mnt/db1")` | instance role (writer); compactor per D7 |
+| K3s in Docker (#1041) | `FilesystemBackend` | `HostPath(NODE_DATA_DIR/state)`, tree at `NODE_DATA_DIR` | none |
+| Your cluster, object store (#1082) | `S3Backend` | `RetainedClaim(class, size)` for state | writer Secret, compactor Secret |
+| Your cluster, retained volume (#1082) | `FilesystemBackend` | `RetainedClaim`, one claim per workload holding `state/` and `store/` | none, labelled cluster-scoped |
+
+## Data model
+
+### `ClusterState.observabilityStorage: ObservabilityStorageRecord?`
+
+```kotlin
+sealed interface ObservabilityStorageRecord {
+    val claimClass: String?   // StorageClass where HOST_PATH is absent
+    val claimSize: String?
+    data class ObjectStore(scheme: StoreScheme /* S3 */, bucket, prefix = "", region, endpoint: String? = null,
+                           writerSecret: String? = null, compactorSecret: String? = null, claimClass, claimSize)
+    data class Filesystem(dataDirectory: String? /* D on the CLI machine; null on your cluster */, claimClass, claimSize)
+}
+```
+
+- Null means the AWS account bucket, and `StoreBackend.from` keeps today's `checkNotNull(s3Bucket)`.
+- The record is serialized with Jackson `@JsonTypeInfo(NAME, "type")` plus `@JsonSubTypes`, and also carries kotlinx `@Serializable`/`@SerialName`, the way `NodeCapability` does (`NodeCapability.kt:21-36`).
+- D10: this change adds the type and the resolvers. #1040 and #1082 add the `init` flags that write it.
+
+### Constants (`Constants.Observability`)
+
+- `STORE_MOUNT_PATH = "/store"`
+- `STATE_DIR = "state"`
+- `NODE_DATA_DIR`: the node path where #1041 bind-mounts D
+- `FILESYSTEM_CONTAINER`: the fixed "bucket" name for D (D11)
+- `WRITER_SECRET = "edl-store-writer"`, `COMPACTOR_SECRET = "edl-store-compactor"`
+- `HOST_STATE_ROOT_AWS = "/mnt/db1"`
+
+### `cluster-config`
+
+- New `store_kind` (`s3` | `filesystem`), read by Loki's `schema_config…object_store`. `StoreBlockRenderer` allows one placeholder per resource (`StoreBlockRenderer.kt:88-91`), and Loki's schema is the second store reference.
+- `store_bucket` and `store_prefix` are unchanged. For a filesystem store they carry `FILESYSTEM_CONTAINER`.
+
+### D layout
+
+D mirrors the bucket, under the store prefix when one is set:
+- `mimir/`, `loki/` (with `loki/index/`), `tempo/`, `pyroscope/`
+- `grafana/annotations/<tenant>/`, `reports/<tenant>/`
+- `state/<backend>/` for mimir, loki, tempo, pyroscope and grafana
+
+Compactor scratch is not on D, because #1071's lease agent wipes its scratch directory. D is always a parameter, never a constant.
 
 ## Approach
 
-### Storage selection
-- New `ObservabilityStorage` sealed interface in `configuration/`, with two cases:
-  - `S3(bucket, region)`
-  - `Volume(...)`: the backends mount PersistentVolumeClaims and use their native filesystem store on paths inside them. What backs a claim is the environment's choice, not part of the type: static `Retain` PVs over a host directory locally (#1041), the cluster's StorageClass on a bring-your-own cluster (#1082, not built here).
-- The sealed hierarchy with an exhaustive `when` is the extension point: a future storage makes every consumer fail to compile until it handles the case, and no consumer falls back silently to S3.
-- `ObservabilityStorage.from(ClusterState)` returns `S3` until #1040 records the environment.
-- `ObservabilityStore` (`ObservabilityStore.kt:20-35`) takes the storage and the tenant. Its prefix functions (`metricsPrefix`, `logsPrefix`, and so on) stay the same.
+### Filesystem store (`StoreBackend`)
 
-### Config rendering (decision 2)
-- Each backend keeps one resource holding both store blocks, and one value selects between them:
-  - Mimir `blocks_storage.backend: ${METRICS_BACKEND}`, with a `filesystem.dir`
-  - Loki `schema_config.configs[].object_store`, with `storage_config.filesystem`
-  - Tempo `storage.trace.backend`, with `local.path`
-  - Pyroscope `storage.backend: __PROFILES_BACKEND__`, with `filesystem.dir`
-- `ClusterConfigData` (`services/ClusterConfigData.kt:35`) publishes the selector and the filesystem paths into `cluster-config`.
-- Task 1 checks that each backend ignores the block it is not using. Loki's `common.storage` is the least certain.
-- Alternatives:
-  - Separate `*-filesystem.yaml` files. Rejected: they drift from the S3 files.
-  - CLI flag overrides. Rejected: they cannot change Loki's schema.
+- `FilesystemBackend(bucket = FILESYSTEM_CONTAINER, prefix)` is a new `StoreBackend` case. The exhaustive `when`s make every consumer handle it:
+  - `StoreBlockSource.of` returns `named("filesystem")`.
+  - `ClusterConfigData.locationOf` and `TemplateService.storeLocation` return no region or endpoint.
+- Each backend gets a new fragment:
+  - `mimir/store/filesystem.yaml`: `backend: filesystem`, `storage_prefix`, `filesystem.dir: /store`
+  - `loki/store/filesystem.yaml`: `filesystem.directory: /store`. `object_prefix` stays in `loki.yaml:35`.
+  - `tempo/store/filesystem.yaml`: `backend: local`, the same `wal.path`, `local.path: /store/<prefix>tempo`
+  - `pyroscope/store/filesystem.yaml`: `backend: filesystem`, `prefix`, `filesystem.dir: /store`
+- These replace the old "both blocks plus a runtime selector" design, and with it the old "inactive store block" gate.
 
-### Data directory layout (decision 1)
-- D mirrors the bucket, so #902's local viewer and export can open it directly:
-  - `mimir/`, `loki/` (index under `loki/index/`), `tempo/`, `pyroscope/`
-  - `grafana/annotations/<tenant>/`
-  - `reports/<tenant>/`
-  - `state/<backend>/`
-- Local state lives under `state/`, so that a new cluster on the same D can still read earlier data. This matters most for Pyroscope, whose metastore is the only index of its blocks (`pyroscope/config.yaml:17-19`).
-- The four builders take their volumes and paths from one function, `DataPlacement.forStorage(storage, backend)`, instead of each hard-coding `/mnt/db1/<backend>` (`MimirManifestBuilder.kt:53`, `LokiManifestBuilder.kt:51`, `TempoManifestBuilder.kt:35`, `PyroscopeManifestBuilder.kt:42`). It returns the volume source and the mount paths: for `S3` the existing `/mnt/db1/<backend>` hostPath, unchanged; for `Volume` PVC volume sources.
+### Hosting (`ObservabilityHosting`)
 
-### Claims and volumes (owner decision 2026-11-10)
-- **No hostPath in `Volume` storage.** Hardened clusters forbid it, and a bring-your-own cluster has no node to pin to.
-- **Two claims per backend**, named by constants in `Constants.Observability` (name and size), which the provisioner reads:
-  - an object claim, whose volume is `D/<backend>/`, mounted at the backend's object root (Mimir `mimir/`, Loki `loki/`, Tempo `tempo/`, Pyroscope `pyroscope/`);
-  - a state claim, whose volume is `D/state/<backend>/`, mounted at its WAL, index cache, TSDB, metastore and Raft paths.
-  - One claim for the documents server, read-only, over `D/reports/`.
-  - Rationale: a PV pins exactly one directory. The mirrored layout has the object root and the state in different directories, so one claim cannot carry both without a `subPath` over a shared D, which would also give every backend D's other trees. Per-backend claims mean each pod sees only its own data, and the state claim can move independently (see the gate below). Claim sizes are metadata only (see the repo's storage rule); the constant is a nominal size.
-  - Grafana annotation backups under `D/grafana/` are written by the CLI, not a pod, and need no claim.
-- **Binding.** Every claim names an explicit StorageClass constant (`Constants.Observability.STORAGE_CLASS`, e.g. `edl-observability`) that has no provisioner, so no default class adopts it. The local provisioner pre-creates each PV with that class and a `claimRef` to the claim's constant name and namespace. `claimRef` was picked over a selector: it binds exactly one PV to one claim by name, with no label bookkeeping, and the claim names are constants anyway. A claim stays `Pending` until its PV exists; the stack's readiness wait covers that.
-- **Never `local-path`.** K3s's dynamic `local-path` provisioner has reclaim policy `Delete` (it would violate the never-delete-owner-data rule) and names directories `pvc-<uuid>`, so a new cluster on the same D could not find the earlier data. Observability claims never name it.
-- **What `down` does with claims.** `down` flushes and refuses teardown if the flush did not finish, as today, and removes the cluster. It does not delete a PV or anything under D. With the Retain PVs in D, deleting the claims would leave the data intact, but this change makes `down` and `clean` delete no claim either: they do not touch PVs, claims or D. The environment (#1041) removes the whole cluster, and a Released Retain PV and its directory remain; a new cluster's provisioner re-creates PVs over the same fixed paths.
-- **Testing before #1041.** A K3s TestContainer applies the real builders, and the test itself creates the Retain PVs over a temp directory with the same constants, then checks that claims bind, a file written through a pod appears under the temp directory, and a second cluster over the same directory binds to the same paths and sees the data. The provisioner in #1041 uses the same constants, so the rehearsal and the real thing cannot drift.
-- Mounting D into the K3s container and creating the PVs is #1041's job.
-- Alternative: a free-form layout. Rejected: it breaks #902.
-- Alternative: one claim and PV over all of D, with `subPath` per backend. Rejected: every backend could see every other's data, and the state could not move off the bind mount.
+- `BackendStorage.HostPath` becomes `HostPath(stateRoot)`. `StateVolume.hostPath` becomes a directory name, and the full path is resolved against `stateRoot`. AWS still resolves to `/mnt/db1/<backend>`. `OnNodeStateDirectories` reads the resolved path.
+- `credentials: StoreCredentials` is replaced by `store: StoreAccess`:
+  - `Object(StoreIdentities(writer, compactor))` or `Directory`.
+  - Neither "filesystem with credentials" nor "writer Secret on the compactor" can be written down.
+  - `StoreCredentials` keeps `InstanceRole` and `FromSecret(secretName)`. It gains `AssumedRole(roleArn)` only if D7(a) is chosen.
+- For `Directory`, `host(...)` adds the store volume:
+  - `HostPath`: a hostPath of `NODE_DATA_DIR` (all of D, D3) at `/store`, and state at `stateRoot/<dir>`.
+  - `RetainedClaim`: the existing `<workload>-data` claim, mounted with `subPath: state` at the state path and `subPath: store` at `/store`.
+- `withBackendIdentity` gives the backends the writer's `envFrom`. The compactor workload gets `identities.compactor`.
+- `ObservabilityHosting.from(state)`:
+  - `placement = Placement.from(state)`.
+  - `storage = HostPath(record root)` when `HOST_PATH` is in `NodeCapabilities.from(state)`, otherwise `RetainedClaim(record.claimClass, record.claimSize)`. A missing class fails fast and names the `init` flag.
+  - `store = Directory` for a filesystem record, otherwise `Object(identities)`. With no record that is `InstanceRole` for both identities.
+- State directories where `NODE_SSH` is absent (D12): a root init container creates and chowns its own state directories, added only off SSH. AWS keeps `OnNodeStateDirectories` over SSH.
 
-### Local compaction (decisions 3 and 4)
-- **Mimir:**
-  - Adds `compactor` to `target` in filesystem mode.
-  - Runs with the account compactor's flags (`CompactorTaskDefinition.kt:83-97`), moved into one shared `MimirCompactorArgs` so the two cannot drift.
-  - `blocks-retention-period=0` and `partial-block-deletion-delay=0` mean nothing is ever deleted by age or as a partial block.
-  - Its `cleanup-interval=1m` writes the bucket index. Without it, the store-gateway finds no block older than the 15-minute local hold (`mimir.yaml:6`).
-- **Loki:** overrides `compaction_interval: 87600h` (`loki.yaml:82`) with `10m`, matching `LOKI_COMPACTOR_ARGS`. Retention stays disabled and deletion `disabled`. Alternative: leave it idle as on clusters. Rejected: it would not split the shared index files for export.
-- **Tempo:** compaction stays off, as on every cluster today; reads work without it. Alternative: run `backend-scheduler` and `backend-worker` as extra containers.
-- **Pyroscope:** already compacts in its own process with cleanup off. No change.
-- **Account compactor:** for `Volume`, `CompactorService.ensureRunning` and `stopIfLastCluster` are never called.
+### Checks before apply
 
-### Object store (decision 6)
-- New `FilesystemObjectStore(root)`:
-  - Maps a `ClusterS3Path`'s key segments onto `root` and ignores the bucket. `root` is D on the machine that runs the CLI, which is the local environment: the CLI writes D directly, while the backends reach the same files through the PVs. On a bring-your-own cluster the CLI cannot reach the volume, so #1082 must write documents and annotation backups through a pod or to S3.
-  - Each write goes to a temp file, then an atomic rename.
-  - A `..` or absolute segment is rejected.
-- `ObservabilityObjectStores.forStorage(storage)` gives `TestDocumentService`, `GrafanaAnnotationBackupService` and `TenantDirectory` their store.
-- The global `ObjectStore` binding (`AWSModule.kt:233`) stays S3, because Spark and `CassandraBuildCatalog` are AWS-only.
-- Alternative: replace the global binding. Rejected: it breaks Spark and the build catalog.
+- `RetainedClaimCheck` (`services/RetainedClaimCheck.kt`) is unchanged. It already refuses non-`Retain` classes and names the class.
+- The new `StoreSecretCheck(k8sService)` runs beside it in `ObservabilityStackService` (`:151-153`). For each `FromSecret` it requires the Secret and its `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` keys. Otherwise it fails before any apply, names the Secret, and prints that identity's policy. This is a pre-apply check on `up` and is not part of `down`.
+- K3 label (D14): when a `FilesystemBackend` sits on a `RetainedClaim`, `up` emits `Event.Observability.StoreIsClusterScoped(storageClass)`, and `status` prints a line saying the data lives only as long as the cluster's volumes.
 
-### Documents
-- New sealed `DocumentsSource`:
-  - `Bucket`: today's sigv4 proxy plus nginx.
-  - `Volume`: nginx alone, with the read-only reports claim mounted. It uses a second resource, `documents-nginx-local.conf`, with the same `GET`-only, `/reports/`-only guard.
+### Objects and documents
+
+- `FilesystemObjectStore(root): ObjectStore`:
+  - maps `ClusterStoragePath` keys under root and ignores the bucket;
+  - writes to a temp file, then renames atomically;
+  - refuses `..` and absolute segments;
+  - `listFiles(recursive = false)` returns child directories as S3 common prefixes do, which `TenantDirectory` relies on;
+  - `deleteFile` exists because the interface requires it, and no observability path calls it.
+- `fun interface ObservabilityObjectStores { fun forState(state): ObjectStore }`:
+  - returns the Koin S3 store, resolved lazily so a local run builds no AWS client, or `FilesystemObjectStore(record.dataDirectory)`;
+  - on a retained volume (`dataDirectory == null`) it fails with a message that names #1082 (D5).
+  - It is injected into `DefaultTestDocumentService`, `DefaultGrafanaAnnotationBackupService` and `TenantDirectory`.
+  - The Spark, `CassandraBuildCatalog` and `ClusterBackupService` bindings stay S3.
+- `GrafanaFront`'s `DocumentsBucket` becomes a sealed `DocumentsSource`:
+  - `Bucket(bucket, region)`: today's nginx plus sigv4 proxy.
+  - `Directory`: nginx only. It mounts the store volume read-only at `subPath <prefix>reports` and uses `grafana-front-nginx-directory.conf`, with the same `GET`/`HEAD`-only, `/reports/`-only guard.
+  - `GrafanaDeployService` (`:114`) calls `BucketRegion.of` only for `Bucket`.
+
+### Compaction
+
+- Object stores: #1071's `account-compactor` pod, with the K5 compactor identity.
+- Filesystem (D4(a), in-process):
+  - Mimir's `-target` adds `compactor`. The compactor flags (`MIMIR_COMPACTOR_ARGS` from #1071, without `-target`) move into one shared `MimirCompactorFlags`, so the two cannot drift: `blocks-retention-period=0`, `partial-block-deletion-delay=0`, the 10m/2h/12h/24h ranges, and a 1m cleanup that writes the bucket index.
+  - Loki's compactor runs every 10m with retention and deletion `disabled`.
+  - Tempo compaction stays off.
+  - Pyroscope is unchanged.
+  - The account-compactor stage is skipped with `StageSkipped`.
+- This amends the `observability-store` requirement "Mimir on a cluster SHALL run with no compactor module" so that it applies to object stores only.
+
+### Compactor policy across prefixes (gap 1, D9(a))
+
+- The compactor allow is built with the prefix-independent `underAnyPrefix(COMPACTED_ROOTS)` (`AWSPolicy.kt:~386`). Every caller writes the same document, so no `up` can narrow another cluster's allow.
+- The lease is one per store at `<prefix>leases/compactor.json`. The compactor compacts the roots of its own store, through `ObservabilityStore(prefix)`.
+- On AWS, no prefix is ever set. A record carries a prefix only for an object store on your cluster.
 
 ### Teardown
-- `TeardownFlushService` is unchanged, as epic decision Q5 requires. Flushes and the annotation backup reach D through the same paths. `down` only flushes, waits, and refuses teardown when the flush did not finish. It adds no verify checks.
 
-### Concurrency (decision 5)
-- One running stack per D, documented, with no lock (YAGNI). Two stacks on one D would fight over the Pyroscope Raft state and the Loki ingester IDs.
-- Alternatives:
-  - A lock file.
-  - Per-cluster state. Rejected: it breaks the requirement that data survives into a new cluster.
+`TeardownFlushService` is unchanged. Flushes and the annotation backup reach D through the same code paths. Nothing in `down`, `clean` or `init --clean` touches D, a claim or a PV. #1041 owns that check for the local environment.
 
-## macOS bind-mount gate (decision 7)
+### Concurrency
 
-#902's spike S4 (PR #1020 `design.md:171`) found that the Mimir shipper sets an xattr that a macOS bind mount does not support. Local mode on macOS writes through exactly that kind of mount, and the static PVs sit on the Docker Desktop bind mount, so the claim does not change the problem.
+One running stack per D. This is documented, and there is no lock (owner decision 5, 2026-10-31). Two stacks on one D would contend for Pyroscope Raft and the Loki ingester state.
 
-**Status: NOT YET RUN.** The check was attempted on 2026-10-31 and could not finish: the Docker Desktop daemon stopped answering, and `docker ps` and `docker info` hung for more than 20s. The prepared harness is in `/tmp/edl-1035-xattr.TR8g`. It runs two `grafana/mimir:3.2.1` containers with a Prometheus remote-writing to each:
-- variant A: object root and TSDB/sync dirs on the bind mount;
-- variant B: only the object root on the mount.
+## Owner decisions (open)
 
-So task 1 is a gate. It runs before any other task, and its result picks the Mimir state layout:
-- **If variant A passes**, Mimir's state claim is a PV over `D/state/mimir/`, like the other backends.
-- **If only B passes**, Mimir's state claim is backed by a node-local volume that is not on the bind mount: the provisioner makes its PV a `local`-type PV on the K3s container's own disk (the claim is still a PVC, so the pod never mounts a hostPath), instead of a second claim or an `emptyDir`. Picked over `emptyDir` because the TSDB/WAL must survive a Mimir pod restart within the cluster; picked over a second claim on a different mount because the claim already exists (the state claim) and only its PV changes, so the manifests are the same in both outcomes. Only the object claim, `mimir/`, sits on D. The 15-minute local hold and `flush_blocks_on_shutdown` already ship every block to D before `down` removes the node, so nothing acknowledged is lost. The "new cluster on the same D" scenario still holds, because only shipped blocks are read from D.
-- **If both fail**, implementation stops and the owner decides. Do not disable local metrics.
+Each decision lists its options. The recommendation (rec.) is the architect's. The owner decides.
 
-The decision and its evidence go in this file before task 2 starts.
-
-## Coordination with #902 / PR #1020
-
-- #1020's `ExportStacks` already builds filesystem Loki and Tempo configs, and its `LokiFilesystemLayout` handles Loki's base64 filesystem chunk names.
-- Whichever PR merges first owns the shared storage selection, and the other reuses it.
-- The mirrored layout (decision 1) is what lets #902's local viewer open D.
-- Naming: docs keep `observability local` (#902's viewer of the shared store) separate from local mode (`init --local`, #1040).
+- **D1. Ordering with PR #1071.**
+  - (a) rec.: merge `origin/main` into `local-k8s-edbl` as its own PR before #1035 builds. The merge is real work: #1071's compactor ConfigMap renders `mimir.yaml`/`loki.yaml` without `StoreBlockRenderer`, reads the old `s3_bucket` key, and pins `*_S3_PREFIX` to bare roots.
+  - (b) Build without #1071 and reconcile later. Any `CompactorIam` fix would be thrown away.
+  - (c) Fold the merge into this PR. The PR gets larger and mixes two reviews.
+- **D2. Local state hosting.**
+  - (a) rec.: hostPath into D, chosen by `HOST_PATH`. This follows the 2026-11-11 amendment.
+  - (b) Static Retain PVs with `claimRef`, two per backend. This is the 2026-11-10 decision. It conflicts with the amendment and adds PV bookkeeping to #1041.
+- **D3. Filesystem tree mount.**
+  - (a) rec.: all of D at `/store` in each backend. The prefixes work as on S3, there is one mount, and D mirrors the bucket exactly. The cost is that each backend sees the others' trees.
+  - (b) A `subPath` per root. Loki's `object_prefix` would nest `loki/loki/`.
+  - (c) Separate host directories per root. This gives isolation, at the cost of more volumes.
+- **D4. Local compaction.**
+  - (a) rec.: in-process (Mimir `compactor` target with shared flags, Loki 10m). There is no lease, laptops stay out of lease candidacy, and it works on RWO per-backend claims. It amends the #1048 "no compactor on a cluster" requirement to object stores.
+  - (b) #1071's pod with the gate always open and no lease. This reuses one pod definition but fails on RWO claims.
+  - (c) #1071's pod with a filesystem `ConditionalObjects`. This is the most code, for no contention (one stack per D).
+- **D5. Retained-volume store on your cluster.**
+  - (a) rec.: build the backend half now (the claim holds `state/` and `store/`, with a K3s test). CLI-side backups and documents fail, naming #1082.
+  - (b) Object store only off AWS until #1082. Simpler, but K3's "retained volume allowed" stays unbuilt.
+- **D6. Store credentials off AWS.**
+  - (a) rec.: user-created Secrets named at `init` (defaults `edl-store-writer` and `edl-store-compactor`). `up` validates them and prints both policies. Nothing is minted or rotated.
+  - (b) The CLI builds the Secrets from a named profile. SSO credentials expire, so this breaks silently.
+  - (c) Workload identity, `StoreCredentials.ServiceAccount`. Deferred to #1082 on EKS or GKE.
+- **D7. K5 on AWS.** Since #1071 the compactor runs as the instance role, and the instance role's delete deny under `mimir/`, `loki/` and `tempo/` is gone.
+  - (a) A new `EasyDBLabCompactorRole` assumed by the lease container and served on `127.0.0.1` as ECS-style container credentials. The instance role's deny returns to all roots. A spike must first prove that minio-go and Loki's S3 client honour `AWS_CONTAINER_CREDENTIALS_FULL_URI`.
+  - (b) An IAM user with static keys in a Secret. IAM allows two keys per user, which breaks with several clusters.
+  - (c) Keep #1071's lease-only guard on AWS and apply K5 only off AWS.
+  - Rec.: (a), as a child issue. This change's AWS criterion is "unchanged".
+- **D8. Pyroscope and the writer identity.** Pyroscope v2 compaction runs in the server and removes merged segments.
+  - (a) rec.: the writer may delete under `pyroscope/` only. This is today's exception, made explicit.
+  - (b) Give Pyroscope the compactor identity, which widens its delete to `mimir/`, `loki/` and `tempo/`.
+  - Disabling Pyroscope compaction is not an option.
+- **D9. Compactor allow and store prefixes (gap 1).**
+  - (a) rec.: a prefix-independent allow, with lease and roots per store prefix.
+  - (b) Enumerate the prefixes in use. This needs a census, which #1071 deleted.
+  - (c) Leave it latent, since no prefix is set today.
+- **D10. Who writes the record.**
+  - (a) rec.: #1035 adds the type and resolvers; #1040 and #1082 add the flags.
+  - (b) Wait for #1040, which keeps #1035 blocked.
+- **D11. Filesystem "bucket".**
+  - (a) rec.: a fixed container constant.
+  - (b) Move `bucket` off `StoreBackend`. This touches every `ClusterStoragePath` user.
+- **D12. State directories without SSH.**
+  - (a) rec.: a root init container, only where `NODE_SSH` is absent.
+  - (b) The same init container everywhere. This drops an SSH dependency on AWS but changes AWS.
+  - (c) The CLI or #1041 creates the directories with mode 0777. Fragile on Linux hosts.
+- **D13. macOS bind-mount xattr gate.**
+  - (a) rec.: keep it as a manual gate before the storage tasks, recording the Docker file-sharing implementation used. If only the object root works on the mount, Mimir's state moves to the node container's own disk. This is safe because blocks ship within about 2m and on graceful stop. If the object root fails, stop and ask the owner.
+  - (b) Drop it. The risk is a Mimir that silently does not ship on macOS.
+- **D14. Retained-volume label (K3).**
+  - (a) rec.: a typed event at `up` plus a `status` line.
+  - (b) (a), plus `store_durability` in `cluster-config` for dashboards.
+  - (c) Docs only.
 
 ## Risks
 
-- **macOS xattr.** Handled by the task-1 gate and the decision-7 fallback.
-- **Paths that could delete data.** Each one is pinned by a scenario:
-  - `FilesystemObjectStore.deleteFile` exists because the interface requires it. Only the cluster-backup flow calls it, and no observability path does.
-  - The Mimir compactor deletes only sources it merged, with retention 0.
-  - The Mimir ingester's `retention_period: 15m` removes only local copies that are already shipped. This must be re-checked for the filesystem store.
-  - `down`, `clean` and `init --clean` never touch D, a PV or a claim. #1041 owns that check.
-  - Retain PVs: the provisioner must not set `Delete`, and no observability claim names `local-path`. Pinned by the claim-rendering scenarios.
-- **Inactive store blocks.** A backend could choke on the store block it is not using. Task 1 checks this.
-- **Linux CI.** It cannot reproduce a macOS bind mount, so that case needs a manual macOS check. It is recorded in this file.
+- **R1. AWS calls in local mode.** The paths are `BucketRegion.of`, `CompactorStage.prepare`, the sigv4 container, an eagerly built `S3ObjectStore`, and `ObservabilityStore.from` on a null `s3Bucket`. Covered by the no-egress scenario.
+- **R2. #1071 merge breakage** (D1): a literal `__OBJECT_STORE_BLOCK__`, the old `s3_bucket` key, a prefix ignored. Covered by the compactor-config scenario.
+- **R3. Pyroscope Raft identity across clusters.** The Raft server id and advertise address are pinned to the stable Service DNS name. Covered by the new-cluster-on-the-same-D scenario.
+- **R4. WAL replay on reuse.** Loki's ingester id is `${TENANT}.${CLUSTER_NAME}`. The flush on shutdown leaves the WAL nearly empty. Covered by the no-duplicate-lines check in the reuse test.
+- **R5. K5 cannot be structural on a filesystem.** A process that writes can unlink. The guard is configuration only (retention off, compaction replaces sources). This is documented as a known limit and needs the owner's acceptance.
+- **R6. A deleting StorageClass.** Already refused by `RetainedClaimCheck`. No new deletion path is added.
+- **R7. Writer can delete beyond `pyroscope/`.** Pinned by a policy unit test.
+- **R8. Uncompacted Tempo on a long-lived D.** Queries slow down. Reads stay correct.
+- **R9. Two stacks on one D.** Documented, not locked.
+- **R10. Linux host bind mount uid.** uid 10001 cannot write directories owned by the host user. Handled by D12.
+- **R11. Linux CI cannot reproduce a macOS bind mount.** Handled by the manual gate (D13).
+
+## Coordination
+
+- #902 / PR #1020: its export and viewer should consume the `store/filesystem.yaml` fragments instead of building their own `ExportStacks` configs. The mirrored layout is what lets #902 open D.
+- #1041 owns the D bind mount at `NODE_DATA_DIR` and the check that `down` deletes nothing under D.
+- #1082 owns the `init` flags for your cluster and CLI-side objects on a retained volume.

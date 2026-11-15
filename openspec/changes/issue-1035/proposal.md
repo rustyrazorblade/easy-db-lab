@@ -1,43 +1,72 @@
 ## Why
 
-Mimir, Loki, Tempo and Pyroscope store data only in S3. The endpoint is hard-coded (`s3.${AWS_REGION}.amazonaws.com`) and credentials come from the EC2 instance profile. Annotation backups and test documents also go to S3. Local mode (epic #1032) assumes the user has no AWS access, so local observability storage must be a directory on the user's machine, reached by the backends through a PersistentVolumeClaim and written with each backend's native filesystem store. There is no S3 emulator. AWS behaviour does not change.
+Mimir, Loki, Tempo and Pyroscope can write only to an S3 object store, reached as the EC2 instance role. Annotation backups and test documents also go only to S3. Epic #1032 (Kubernetes-forward) needs three more cases:
+
+- K3s in Docker (#1041). The user has no AWS, so storage is a plain host directory D that is never deleted, compacted with retention off (decision Q3).
+- A user's cluster, object store (#1082). Durable data needs an object store reached with credentials from Secrets. Store access uses two identities: a writer that cannot delete, and a compactor that deletes only what it merged (decision K5).
+- A user's cluster, retained volume (#1082). This is allowed, is labelled as data that lives only as long as that cluster, and a deleting StorageClass is refused (decision K3).
+
+Since the 2026-11-10 spec, the types these cases hang on have landed:
+
+- #1061 (neutral store): `StoreBackend`, `StorePrefix` and the per-backend store fragments.
+- #1091 (portable placement): `ObservabilityHosting` with `BackendStorage` HostPath | RetainedClaim, `StoreCredentials` InstanceRole | FromSecret, and `RetainedClaimCheck`.
+- #1096/#1037: `NodeCapability`.
+
+`ObservabilityHosting.from(state)` is still a stub that always answers AWS, "until #1040 records the environment and #1035/#1061 supply the StorageClass and the Secret". This change fills in that stub. It does not add new parallel types.
 
 ## What Changes
 
-- New `ObservabilityStorage` sealed type in `configuration/`: `S3(bucket, region)` or `Volume(...)`, a PersistentVolumeClaim per backend. `Volume` is the only non-S3 case: the local environment (#1041) backs the claims with static PersistentVolumes over a host directory, and a bring-your-own cluster (#1082) will back them with its StorageClass. The backends never mount a hostPath in this case. `ObservabilityStorage.from(ClusterState)` returns `S3` until #1040 records the environment in state. `ObservabilityStore` takes the storage and the tenant instead of a bucket.
-- Each of `mimir.yaml`, `loki.yaml`, `tempo.yaml` and `pyroscope/config.yaml` keeps one resource with both store blocks. A value published in `cluster-config` chooses between them: `METRICS_BACKEND`, Loki's schema `object_store`, Tempo's `storage.trace.backend`, and Pyroscope's `__PROFILES_BACKEND__`. YAML stays a classpath resource and is never built from strings in Kotlin.
-- In `Volume` storage each backend mounts two claims (an object claim and a state claim), and the claims' backing storage mirrors the bucket layout under a data directory D: `mimir/`, `loki/`, `tempo/`, `pyroscope/`, `grafana/annotations/<tenant>/` and `reports/<tenant>/`, plus `state/<backend>/` for each backend's local state. That state is the Mimir TSDB/WAL and sync dirs, the Loki WAL/index/cache, the Tempo WAL, and the Pyroscope metastore data and Raft. The claim names and sizes are constants in `Constants`, read by the provisioner. The task-1 macOS gate may move Mimir's state claim off the bind mount.
-- Local compaction runs in the backends' own processes, with retention off:
-  - Mimir adds `compactor` to its target, with the account compactor's flags moved into a shared `MimirCompactorArgs`. It writes the bucket index the store-gateway needs.
-  - Loki compacts every 10m, with retention disabled and deletion `disabled`.
-  - Tempo compaction stays off.
-  - Pyroscope is unchanged.
-  - The ECS account compactor is never called for `Volume`.
-- New `FilesystemObjectStore(root)`, used for observability objects only: annotation backups, test documents, tenant listing. It reads and writes D on the machine that runs the CLI. It is built by `ObservabilityObjectStores.forStorage(storage)`. The global `ObjectStore` binding stays S3, because Spark and the build catalog are AWS-only.
-- Grafana's documents view gains a `Volume` source: nginx alone serves a read-only reports claim (backed by `D/reports`), `GET` under `/reports/` only, with no sigv4 proxy.
-- `TeardownFlushService` is unchanged. Flushes and the annotation backup land in D through the same code.
-- New `DataPlacement.forStorage(storage, backend)`: one function that gives the four backend builders their data volumes and paths. For `S3` it answers today's `/mnt/db1/<backend>` hostPath; for `Volume` it answers PVC volume sources and mount paths. They stop hard-coding `/mnt/db1/<backend>`.
-- Docs: `docs/user-guide/monitoring.md`, `docs/user-guide/compactor.md`, `configuration/CLAUDE.md`, and the root `CLAUDE.md` Observability section.
+- **Recorded store.** `ClusterState.observabilityStorage` holds a sealed `ObservabilityStorageRecord`: `ObjectStore(scheme, bucket, prefix, region, endpoint, writerSecret, compactorSecret, claimClass, claimSize)` or `Filesystem(dataDirectory, claimClass, claimSize)`.
+  - Null means the AWS account bucket, exactly as today.
+  - This change adds the type and its resolvers. #1040 (`init --local --data-dir`) and #1082 (`init --kubeconfig ...`) add the flags that write it.
+- **Filesystem store.** `StoreBackend` gains `FilesystemBackend`.
+  - Each backend gets a `store/filesystem.yaml` fragment beside its S3 one: Mimir `filesystem`, Loki `filesystem`, Tempo `local`, Pyroscope `filesystem`. The tree is mounted at `/store`.
+  - Loki's schema `object_store` reads a new `store_kind` key in `cluster-config`.
+- **Hosting resolves for real.** `ObservabilityHosting.from(state)`:
+  - picks `BackendStorage` by the `HOST_PATH` capability, not by the store type;
+  - replaces the `credentials` field with `StoreAccess`: `Object(StoreIdentities(writer, compactor))` or `Directory`;
+  - mounts the filesystem tree (host directory, or `subPath`s of the existing per-workload claim) and the state directories.
+  - A recorded claim class must pass `RetainedClaimCheck`.
+- **Store credentials off AWS.** These are Secrets the user creates, named at `init`, with defaults `edl-store-writer` and `edl-store-compactor`. A new `StoreSecretCheck` refuses `up` before anything is applied when a Secret or one of its keys is missing, names the Secret, and prints the policy that identity needs. Backends get the writer Secret, and the compactor gets the compactor Secret.
+- **Local compaction, retention off.**
+  - Mimir adds the `compactor` target, with flags shared with the account compactor.
+  - Loki's compactor interval becomes 10m, with retention and deletion off.
+  - Tempo compaction stays off. Pyroscope is unchanged.
+  - The account-compactor stage is skipped for a filesystem store.
+- **Annotation backups and test documents.**
+  - A new `FilesystemObjectStore(root)` gives atomic writes and refuses keys outside root.
+  - `ObservabilityObjectStores.forState` gives `TestDocumentService`, `GrafanaAnnotationBackupService` and `TenantDirectory` the store for the cluster. The global `ObjectStore` binding stays S3.
+- **Documents view.** `GrafanaFront`'s `DocumentsBucket` becomes a sealed `DocumentsSource`: `Bucket` (today's nginx and sigv4 proxy) or `Directory` (nginx only, serving the tree read-only, `GET`/`HEAD` under `/reports/` only). `BucketRegion` is not called for `Directory`.
+- **Compactor policy across store prefixes** (the "known gap left to #1035"). The compactor allow becomes prefix-independent, so every caller puts the same document and the last writer can no longer narrow it. The compactor's roots and lease follow its store's prefix.
+- **Retained-volume label (K3).** When a filesystem store sits on a claim, `up` emits a typed event, and `status` says the data lives only as long as the cluster's volumes.
+- **D layout** mirrors the bucket, under the store prefix when one is set: `mimir/`, `loki/`, `tempo/`, `pyroscope/`, `grafana/annotations/<tenant>/`, `reports/<tenant>/`, and `state/<backend>/` for each backend's local state.
+
+The owner decisions still open, D1-D14, are in `design.md`. Each one names the architect's recommendation, and the spec is written to those recommendations until the owner decides.
 
 ## Capabilities
 
 ### New Capabilities
-- `local-observability-compaction`: in-process compaction of the filesystem store, with retention off.
+- `local-observability-compaction`: in-process compaction of a filesystem store, with retention off.
 
 ### Modified Capabilities
-- `observability-store`: storage selection, the data-directory layout, local state under D, and AWS behaviour unchanged.
-- `grafana-annotations`: annotation backups land under D in filesystem mode.
+- `observability-store`: the recorded store, the filesystem store, hosting and identities resolved from state, the D layout, objects and documents off S3, and AWS unchanged.
+- `account-compactor`: a prefix-independent compactor allow, and roots and lease per store prefix.
+- `grafana-annotations`: annotation backups land under D on a filesystem store.
 
 ## Impact
 
-- The four backend config resources and manifest builders (volumes, Mimir target and flags); `ClusterConfigData`, `ObservabilityStore`, `GrafanaDocumentsSidecars`, `CompactorTaskDefinition`, `ServicesModule`, the `Up` compactor call site, `Constants`, and the KDoc in `ObjectStore.kt`.
-- No change to the AWS path's storage, the IAM deny rules, or the account compactor.
-- Selecting `Volume` from state, and creating the PersistentVolumes over D, belong to #1040 and #1041. Until then the claim path is exercised in a K3s TestContainer where the test creates the Retain PVs over a temp directory.
+- Code:
+  - `configuration/store/` (`StoreBackend`, `StoreBlockRenderer`) and the four `store/filesystem.yaml` fragments.
+  - `loki.yaml` (`object_store`), `ObservabilityHosting`, `ClusterState`, `ClusterConfigData`, `TemplateService.storeLocation`.
+  - `OnNodeStateDirectories`, `ObservabilityStackService`, a new `StoreSecretCheck`, `GrafanaFront`/`GrafanaDeployService`.
+  - `TestDocumentService`, `GrafanaAnnotationBackupService`, `TenantDirectory`, `AWSPolicy`, the compactor builders, `Constants`, `ServicesModule`.
+- Ordering: this change is built after PR #1071 (in-cluster compactor with a store lease, removes the Fargate account compactor) reaches `local-k8s-edbl` (decision D1).
+- AWS: rendered configs are byte-identical except Loki's `object_store` line, which now reads `store_kind` and rolls Loki once. The IAM deny rules and the compactor are unchanged unless the owner picks D7(a).
 
 ## Out of scope
 
-- What backs the claims. That is the environment's job:
-  - Local K3s-in-docker (#1041): the provisioner pre-creates one static PersistentVolume per claim, `Retain`, at a fixed path under the bind-mounted D, pre-bound by `claimRef`. It never uses K3s's `local-path` provisioner (reclaim `Delete`, random `pvc-<uuid>` directories).
-  - Bring-your-own cluster (#1082, later): the cluster's StorageClass provisions the claims. Not built here.
-- Documents and annotation backups on a bring-your-own cluster. The CLI cannot reach the volume there, so #1082 must write them through a pod or to S3. Here the CLI writes D on the host, which is the local environment only.
-- Any bring-your-own Kubernetes environment.
+- The `init` flags that write the record: #1040 for local, #1082 for your cluster.
+- Mounting D into the K3s node container: #1041, at `Constants.Observability.NODE_DATA_DIR`.
+- CLI-side annotation backups and documents on a user's retained volume. The CLI cannot reach the volume, so these fail with a message that names #1082.
+- Workload identity (IRSA, Pod Identity, GKE/Azure WI) as a credential source (D6(c), deferred).
+- Any S3 endpoint emulator, and #902's read-only viewer. #902 should consume the `store/filesystem.yaml` fragments.

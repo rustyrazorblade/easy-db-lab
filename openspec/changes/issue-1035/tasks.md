@@ -1,45 +1,62 @@
-## 1. Gate: macOS bind mount and inactive store blocks
+## 0. Preconditions
 
-- [ ] 1.1 Run the Mimir 3.2.1 bind-mount check on macOS Docker Desktop. Variant A puts the object root and the TSDB/sync directories on the mount; variant B puts only the object root there. The PV for each claim sits on the same bind mount, so the result carries over. Prometheus remote-writes to each until a block and `bucket-index.json.gz` appear, or 5 minutes pass. The harness is in `/tmp/edl-1035-xattr.TR8g`; it was not run because the Docker daemon was hung on 2026-10-31.
-- [ ] 1.2 Record the result in `design.md`. If only B passes, apply the decision-7 fallback: Mimir's state claim is backed by a node-local `local`-type PV instead of one on the bind mount. If neither passes, stop and ask the owner.
-- [ ] 1.3 Check that each backend starts with its unused store block present, Loki's `common.storage` included.
+- [ ] 0.1 The owner has decided D1-D14 in `design.md`. Record each decision there. Where it differs from the recommendation, revise the affected tasks below before starting.
+- [ ] 0.2 (D1) PR #1071 (in-cluster compactor) is on `local-k8s-edbl`. Merge `origin/local-k8s-edbl` into this branch.
 
-## 2. Storage selection
+## 1. Gate: macOS bind mount (D13)
 
-- [ ] 2.1 Write tests: `ObservabilityStorage.from` returns `S3` for a state with no environment, and `ObservabilityStore` builds the same prefixes for both storages.
-- [ ] 2.2 Add `ObservabilityStorage` (sealed, with KDoc) and make `ObservabilityStore` take the storage and the tenant.
-- [ ] 2.3 Add the `Constants.Observability` values the provisioner reads: the `STORAGE_CLASS` name, each claim's name and nominal size (object and state claim per backend, plus the reports claim), and the `state/<backend>` directory names.
-- [ ] 2.4 Test first: `DataPlacement.forStorage` returns the existing `/mnt/db1/<backend>` hostPath placement for `S3` and PVC volume sources and mount paths for `Volume`, for each of the four backends. The `Volume` answer never contains a hostPath. Add `DataPlacement` and make the Mimir, Loki, Tempo and Pyroscope builders call it.
-- [ ] 2.5 Test first: rendering for `Volume` names no `local-path` StorageClass, each claim names `Constants.Observability.STORAGE_CLASS`, and no two workloads mount one claim. Add the claim manifests (fabric8).
+- [ ] 1.1 On macOS Docker Desktop, run Mimir 3.2.1 with variant A (the object root and TSDB/sync dirs both on a bind mount) and variant B (only the object root on the mount). Prometheus remote-writes to each until a block and `bucket-index.json.gz` appear, or 5 minutes pass. Record the Docker file-sharing implementation used.
+- [ ] 1.2 Record the result in `design.md`. If only B passes, put Mimir's state on the node container's own disk. If neither passes, stop and ask the owner.
 
-## 3. Backend configs
+## 2. Store record and store backend
 
-- [ ] 3.1 Write rendering tests: for each backend and each storage, the rendered config selects the matching store with the claim mount paths, and the S3 rendering is unchanged.
-- [ ] 3.2 Add the filesystem blocks and the selector value to `mimir.yaml`, `loki.yaml`, `tempo.yaml` and `pyroscope/config.yaml`, and publish the selector and paths through `ClusterConfigData`.
-- [ ] 3.3 Make the filesystem placement in `DataPlacement` point the four backends at their claim mount paths (the builders already call it, task 2.4).
+- [ ] 2.1 Test first: `ObservabilityStorageRecord` round-trips through `state.json`, for both cases. A state with no record resolves to `S3Backend` + `HostPath("/mnt/db1")` + instance role for both identities.
+- [ ] 2.2 Add `ClusterState.observabilityStorage` and the sealed record (Jackson type info plus kotlinx annotations, with KDoc).
+- [ ] 2.3 Add the `Constants.Observability` values: `STORE_MOUNT_PATH`, `STATE_DIR`, `NODE_DATA_DIR`, `FILESYSTEM_CONTAINER`, `WRITER_SECRET`, `COMPACTOR_SECRET`, `HOST_STATE_ROOT_AWS`.
+- [ ] 2.4 Test first: `StoreBackend.from` returns `FilesystemBackend` for a filesystem record and keeps the record's prefix. Add `FilesystemBackend` and handle it in every exhaustive `when` (`StoreBlockSource.of`, `ClusterConfigData.locationOf`, `TemplateService.storeLocation`).
+- [ ] 2.5 Test first, using the real `TemplateService`: each of the four backends renders its `store/filesystem.yaml` fragment under `/store` and the prefix. The AWS rendering is byte-identical except Loki's `object_store`. Add the fragments, the `store_kind` key and `loki.yaml`'s `object_store: ${STORE_KIND}`.
 
-## 4. Local compaction
+## 3. Hosting and identities
 
-- [ ] 4.1 Extract `MimirCompactorArgs`, shared by `CompactorTaskDefinition` and local Mimir, and add a test that both carry the same values.
-- [ ] 4.2 In `Volume` storage, add `compactor` to Mimir's target, set Loki's compaction interval to 10m, and keep Tempo's compaction off.
-- [ ] 4.3 Skip `CompactorService.ensureRunning` and `stopIfLastCluster` for `Volume`, with a test that makes no ECS, IAM or CloudWatch call.
+- [ ] 3.1 Test first: the resolution table for (record, capabilities) gives the expected (`StoreBackend`, `BackendStorage`, `StoreAccess`). A missing claim class fails and names the `init` option.
+- [ ] 3.2 Make `HostPath` carry `stateRoot`, turn `StateVolume.hostPath` into a directory name, and make `OnNodeStateDirectories` read the resolved path.
+- [ ] 3.3 Replace `credentials` with `StoreAccess`/`StoreIdentities`, and implement `ObservabilityHosting.from(state)`.
+- [ ] 3.4 Test first: `host(...)` for `Directory` + `HostPath` mounts `NODE_DATA_DIR` at `/store` and the state under `stateRoot`; `Directory` + `RetainedClaim` mounts the claim's `state` and `store` sub-paths with no hostPath; backends read only the writer Secret, the compactor only the compactor Secret.
+- [ ] 3.5 (D12) Add the root init container that creates and chowns the state directories when `NODE_SSH` is absent. Test that it renders only then.
+- [ ] 3.6 (R3) Pin the Pyroscope Raft server id and advertise address to the stable Service DNS name.
 
-## 5. Object store and documents
+## 4. Checks and labelling
 
-- [ ] 5.1 Write `FilesystemObjectStore` tests on `@TempDir`: round trip, listing order, `startAfter`, atomic write, traversal refused.
-- [ ] 5.2 Add `FilesystemObjectStore` and `ObservabilityObjectStores.forStorage`, and wire `TestDocumentService`, `GrafanaAnnotationBackupService` and `TenantDirectory` to them. The global binding stays S3. The filesystem store's root is D on the CLI's machine.
-- [ ] 5.3 Add `DocumentsSource` and `documents-nginx-local.conf` (read-only, `GET` under `/reports/` only), with an nginx integration test serving from a directory that stands in for the reports claim.
+- [ ] 4.1 Add `StoreSecretCheck` and run it beside `RetainedClaimCheck` before any apply. Integration test against a K3s TestContainer: a missing Secret, a missing key, and a present Secret. It fails naming the Secret and key, and prints the policy.
+- [ ] 4.2 (D14) Add `Event.Observability.StoreIsClusterScoped` and a `status` line for a filesystem store on a claim. Test the event at `up`.
 
-## 6. Integration
+## 5. IAM and compactor
 
-- [ ] 6.1 Write an integration test that runs the real backend images with the rendered filesystem configs on a `@TempDir` standing in for a claim's volume, on a Docker network with no egress. It writes all four signals, waits for the Mimir bucket index, and queries past the hold window.
-- [ ] 6.2 In the same test, destroy the containers and start new ones on the same directory, then query every signal again, profiles included.
-- [ ] 6.3 In the same test, after compaction, check that the readable sample, line and profile counts are unchanged.
-- [ ] 6.4 Write a K3s TestContainers test that applies the stack's real builders for `Volume` storage. The test creates the static `Retain` PVs over a temp directory (with `claimRef` to the constant claim names and the constant StorageClass), then checks that every claim binds, that data written by a backend pod is under the temp directory, and that no hostPath and no `local-path` is used. It is the rehearsal for #1041.
-- [ ] 6.5 In the same test, delete the cluster's claims and the namespace, create a second K3s over the same temp directory with fresh PVs and claims, and check that each claim binds to its backend's directory and the earlier data is readable. Check that the temp directory is untouched by the removal.
+- [ ] 5.1 Test first (D9): the compactor allow is identical for prefix `a/`, prefix `b/` and no prefix, and covers every compacted root at the top and under any prefix. Build it with `underAnyPrefix`. Remove the "known gap" note from `services/aws/CLAUDE.md`.
+- [ ] 5.2 Test first: the compactor's roots and lease follow the store prefix, and its ConfigMap goes through `StoreBlockRenderer` with no unreplaced placeholder and the `store_bucket` key.
+- [ ] 5.3 Test first (D8): the writer policy denies deletes under `mimir/`, `loki/` and `tempo/` at the top and under any prefix, and allows deletes only under `pyroscope/`. Render the writer and compactor policies that `StoreSecretCheck` prints.
+- [ ] 5.4 (D7) Implement whichever option the owner picked, or open the child issue if K5 on AWS is deferred.
 
-## 7. Docs and project guidance
+## 6. Local compaction
 
-- [ ] 7.1 Update `docs/user-guide/monitoring.md` and `docs/user-guide/compactor.md` with local storage (PVC-backed, with the static Retain PV contract for provisioners), the data directory layout, and "one stack per directory".
-- [ ] 7.2 Update `configuration/CLAUDE.md` and the root `CLAUDE.md` Observability section: storage selection, the claims and constants, the D layout, and local compaction with retention off.
-- [ ] 7.3 Update the KDoc in `ObjectStore.kt`, which names the filesystem implementation.
+- [ ] 6.1 Move the Mimir compactor flags into a shared `MimirCompactorFlags`, used by the account compactor and local Mimir. Test that both carry the same values.
+- [ ] 6.2 For a filesystem store, add `compactor` to Mimir's target, set Loki's compaction interval to 10m (retention and deletion stay off), keep Tempo's compaction off, and skip the account-compactor stage with `StageSkipped`. Test the rendering and the skip.
+
+## 7. Objects and documents
+
+- [ ] 7.1 Write an `ObjectStoreContract` (round trip, listing order, `startAfter`, non-recursive directory children, atomic write, traversal refused) and run it against `InMemoryObjectStore` and `FilesystemObjectStore` on `@TempDir`.
+- [ ] 7.2 Add `FilesystemObjectStore` and `ObservabilityObjectStores.forState`, the latter with a lazy S3 binding and a #1082 error when there is no D. Wire `TestDocumentService`, `GrafanaAnnotationBackupService` and `TenantDirectory` to it. Test `report upload`, `grafana backup` (same-second no-overwrite) and the tenant listing over D. Spark and the build catalog stay on S3.
+- [ ] 7.3 Make `GrafanaFront` use a sealed `DocumentsSource` and add `grafana-front-nginx-directory.conf`. `GrafanaDeployService` calls `BucketRegion` only for `Bucket`. Integration test: nginx serves only `GET`/`HEAD` under `/reports/` from a directory.
+
+## 8. Integration
+
+- [ ] 8.1 Integration test: run the real Mimir, Loki, Tempo and Pyroscope images with the rendered filesystem fragments on a `@TempDir`, on an internal Docker network with no egress. Write all four signals, wait for `mimir/<tenant>/bucket-index.json.gz`, and query past a shortened hold window.
+- [ ] 8.2 In the same test, after compaction, check that the readable sample, line and profile counts are unchanged. Then destroy the containers, start new ones on the same directory, and query every signal again, profiles included, with no duplicate log lines.
+- [ ] 8.3 K3s TestContainers test: bind-mount a temp directory at `NODE_DATA_DIR`, declare `HOST_PATH`, and apply the real builders. Files land in the bucket layout, and a second K3s on the same directory reads them back. This is the rehearsal for #1041.
+- [ ] 8.4 (D5) Extend `PortableObservabilityPlacementIntegrationTest` for a filesystem store on `RetainedClaim`: one claim per backend holds `state/` and `store/`, the pods reach Ready, and no hostPath is used.
+
+## 9. Docs and guidance
+
+- [ ] 9.1 Update `docs/user-guide/monitoring.md` and `docs/user-guide/compactor.md`: store kinds per environment, the D layout, store Secrets and their policies, the retained-volume label, local compaction, and "one stack per D".
+- [ ] 9.2 Update `configuration/CLAUDE.md` (`ObservabilityHosting`, the store fragments), `services/aws/CLAUDE.md`, and the root `CLAUDE.md` Observability section.
+- [ ] 9.3 Update the KDoc in `ObjectStore.kt` and `StoreBackend.kt`, so credentials are documented in one place.

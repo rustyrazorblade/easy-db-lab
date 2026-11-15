@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
 
 /**
  * Prepares a cluster's control node for the `account-compactor` pod, on every cluster, telemetry
@@ -45,9 +46,7 @@ class CompactorAgentInstaller(
                 .text
                 .trim() == PRESENT
         if (!present) {
-            val staged = "compactor-lease-${remote.sha256}.jar"
-            remoteOps.upload(controlNode, jar.path, staged)
-            remoteOps.executeRemotely(controlNode, "sudo mv $staged ${remote.hostPath} && sudo chmod 0644 ${remote.hostPath}")
+            remoteOps.installFile(controlNode, jar.path, remote.hostPath, "0644")
         }
         eventBus.emit(Event.Grafana.CompactorAgentPrepared(remote.hostPath, uploaded = !present))
         return remote

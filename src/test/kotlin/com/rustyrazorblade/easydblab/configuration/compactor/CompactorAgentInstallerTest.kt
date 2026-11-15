@@ -90,7 +90,11 @@ class CompactorAgentInstallerTest {
         val staged = argumentCaptor<String>()
         verify(remoteOps).upload(eq(host), eq(jar.path), staged.capture())
         assertThat(commands()).anySatisfy { command ->
-            assertThat(command).isEqualTo("sudo mv ${staged.firstValue} $remotePath && sudo chmod 0644 $remotePath")
+            assertThat(
+                command,
+            ).isEqualTo(
+                "sudo chmod 0644 ${staged.firstValue} && sudo mv ${staged.firstValue} $remotePath || { rm -f ${staged.firstValue}; exit 1; }",
+            )
         }
         assertThat(events).contains(Event.Grafana.CompactorAgentPrepared(remotePath, uploaded = true))
     }

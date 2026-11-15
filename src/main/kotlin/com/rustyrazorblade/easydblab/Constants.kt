@@ -1270,6 +1270,12 @@ object Constants {
 
     // OpenSSH options the generated sshConfig sets for every SSH transport
     object Ssh {
+        /** Name prefix of a file staged in the login directory by `installFile` before it is moved into place. */
+        const val INSTALL_STAGING_PREFIX = "edl-staged-"
+
+        /** The file modes `installFile` accepts: octal digits as `chmod` takes them (`0644`, `755`). */
+        const val FILE_MODE_PATTERN = "[0-7]{3,4}"
+
         /**
          * ssh keepalive interval for every host, direct or over SSM: well inside Session Manager's
          * 20-minute idle timeout, and short enough that a tunnel whose connection died is noticed.

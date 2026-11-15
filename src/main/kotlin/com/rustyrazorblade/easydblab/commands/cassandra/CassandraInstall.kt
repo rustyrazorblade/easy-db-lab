@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.CommandExecutionException
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
@@ -341,8 +342,7 @@ class CassandraInstall : PicoBaseCommand() {
     ) {
         val host = clusterHost.toHost()
         CassandraVersion.write(versions, localFile)
-        remoteOps.upload(host, localFile.toPath(), STAGED_VERSIONS_FILE)
-        remoteOps.executeRemotely(host, "sudo mv $STAGED_VERSIONS_FILE $REMOTE_VERSIONS_FILE").text
+        remoteOps.installFile(host, localFile.toPath(), REMOTE_VERSIONS_FILE, "0644")
     }
 
     private fun installCommand(resolved: CassandraVersion): String =
@@ -357,7 +357,6 @@ class CassandraInstall : PicoBaseCommand() {
 
     companion object {
         private const val REMOTE_VERSIONS_FILE = "/etc/cassandra_versions.yaml"
-        private const val STAGED_VERSIONS_FILE = "cassandra_versions.yaml"
         private const val CASSANDRA_INSTALL_DIR = "/usr/local/cassandra"
         private const val INSTALLED_MARKER = "installed"
     }

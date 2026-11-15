@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.profiling.parseProfilingConfig
 import com.rustyrazorblade.easydblab.profiling.parseProfilingEffectiveState
 import com.rustyrazorblade.easydblab.profiling.toJson
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import com.rustyrazorblade.easydblab.shellQuote
 import java.io.File
 import java.nio.file.Path
@@ -110,10 +111,8 @@ class DefaultCassandraProfilingService(
         try {
             scratch.writeText(config.toJson())
             remoteOps.executeRemotely(host, "sudo mkdir -p ${Constants.Profiling.DESIRED_STATE_DIR}")
-            remoteOps.upload(host, scratch.toPath(), STAGED_CONFIG_NAME)
-            remoteOps.executeRemotely(host, "sudo chmod 644 $STAGED_CONFIG_NAME")
-            // rename(2) within one filesystem: the reconciler never sees a partial document.
-            remoteOps.executeRemotely(host, "sudo mv $STAGED_CONFIG_NAME ${Constants.Profiling.DESIRED_STATE_PATH}")
+            // The mv is a rename(2) within one filesystem: the reconciler never sees a partial document.
+            remoteOps.installFile(host, scratch.toPath(), Constants.Profiling.DESIRED_STATE_PATH, "0644")
         } finally {
             scratch.delete()
         }
@@ -203,10 +202,5 @@ class DefaultCassandraProfilingService(
         local: Path,
     ) {
         remoteOps.download(host, remotePath, local)
-    }
-
-    private companion object {
-        /** Staging name in the SSH user's home directory, renamed into place under sudo. */
-        const val STAGED_CONFIG_NAME = "profiling.json"
     }
 }

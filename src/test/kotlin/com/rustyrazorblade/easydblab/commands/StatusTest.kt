@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeState
+import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -535,6 +536,50 @@ class StatusTest : BaseKoinTest() {
 
         // Then - a partial report must never be read by a script as a healthy cluster
         assertThat(exitCode).isNotEqualTo(0)
+    }
+
+    // ========== PARTIAL FAILURES ==========
+
+    @Test
+    fun `execute says why a security group could not be fetched`() {
+        setupBasicClusterState()
+        whenever(mockVpcService.describeSecurityGroup("sg-12345")).thenThrow(RuntimeException("UnauthorizedOperation"))
+
+        Status().execute()
+
+        assertThat(outputHandler.messages.joinToString("\n"))
+            .contains("Security Group: sg-12345 (unable to fetch details: UnauthorizedOperation)")
+    }
+
+    @Test
+    fun `execute shows an OpenSearch endpoint with https`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                clusterId = "test-123",
+                versions = mutableMapOf(),
+                hosts = testHosts,
+                infrastructure = testInfrastructure,
+                default = NodeState(version = "5.0"),
+                openSearchDomain = OpenSearchClusterState("dom", "id-1", endpoint = "search.example.com", state = "Creating"),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        Status().execute()
+
+        assertThat(capturedOutput()).contains("Domain:     dom (id-1)", "Endpoint:   https://search.example.com")
+    }
+
+    @Test
+    fun `execute reports stress jobs that cannot be listed with the reason`() {
+        setupBasicClusterState()
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockStressJobService.listJobs()).thenReturn(Result.failure(IllegalStateException("api down")))
+
+        Status().execute()
+
+        assertThat(outputHandler.messages.joinToString("\n")).contains("(unable to list stress jobs: api down)")
     }
 
     private fun setupBasicClusterStateWithEmr() {

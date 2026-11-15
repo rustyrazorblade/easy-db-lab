@@ -4290,8 +4290,10 @@ sealed interface Event {
         @SerialName("Status.SecurityGroupFetchFailed")
         data class SecurityGroupFetchFailed(
             val sgId: String,
+            val reason: String? = null,
         ) : Status {
-            override fun toDisplayString(): String = "\n=== SECURITY GROUP ===\nSecurity Group: $sgId (unable to fetch details)"
+            override fun toDisplayString(): String =
+                "\n=== SECURITY GROUP ===\nSecurity Group: $sgId (unable to fetch details${reason?.let { ": $it" } ?: ""})"
         }
 
         @Serializable

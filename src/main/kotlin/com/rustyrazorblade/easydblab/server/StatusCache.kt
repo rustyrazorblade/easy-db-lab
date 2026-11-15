@@ -1,33 +1,15 @@
 package com.rustyrazorblade.easydblab.server
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
-import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.services.K8sService
-import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
-import com.rustyrazorblade.easydblab.services.StressJobService
-import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
-import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
-import com.rustyrazorblade.easydblab.services.aws.EMRService
-import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import java.time.Duration
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.CountDownLatch
@@ -39,21 +21,21 @@ import kotlin.system.exitProcess
 /**
  * Background cache for environment status data.
  *
- * Periodically fetches live data from AWS, SSH, and Kubernetes,
- * storing the result in memory for instant retrieval via the /status endpoint.
+ * Periodically asks [ClusterStatusCollector] for the live status (AWS, SSH, Kubernetes) and
+ * stores the result in memory for instant retrieval via the /status endpoint. It only schedules
+ * and caches: what the status contains is the collector's.
  */
 class StatusCache(
     private val refreshIntervalSeconds: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS,
     private val autoShutdown: Boolean = false,
     private val vpcName: String? = null,
     private val onShutdown: () -> Unit = { exitProcess(0) },
+    private val collector: ClusterStatusCollector = ClusterStatusCollector(),
 ) : KoinComponent,
     CachedStatus {
     companion object {
         private val log = KotlinLogging.logger {}
         private const val INITIALIZATION_TIMEOUT_SECONDS = 60L
-        private const val HOURS_PER_DAY = 24
-        private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
         val VALID_SECTIONS =
             listOf(
@@ -71,17 +53,9 @@ class StatusCache(
             )
     }
 
-    private val context: Context by inject()
     private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
-    private val ec2InstanceService: EC2InstanceService by inject()
     private val vpcService: VpcService by inject()
-    private val k8sService: K8sService by inject()
-    private val remoteOperationsService: RemoteOperationsService by inject()
-    private val emrService: EMRService by inject()
-    private val openSearchService: OpenSearchService by inject()
-    private val stressJobService: StressJobService by inject()
-    private val workspaceKitScanner: WorkspaceKitScanner by inject()
 
     private val lock = ReentrantLock()
     private val timer = Timer("status-cache-refresh", true)
@@ -194,7 +168,7 @@ class StatusCache(
                 }
 
                 val clusterState = clusterStateManager.load()
-                cachedResponse = buildStatusResponse(clusterState)
+                cachedResponse = collector.collect(clusterState).response
                 initializedLatch.countDown()
                 log.debug { "Status cache refreshed" }
             } catch (e: Exception) {
@@ -219,335 +193,6 @@ class StatusCache(
             }
         } catch (e: Exception) {
             log.warn(e) { "Failed to check VPC existence for '$vpcName'; skipping shutdown" }
-        }
-    }
-
-    private fun buildStatusResponse(state: ClusterState): StatusResponse {
-        val instanceStates = fetchInstanceStates(state)
-
-        return StatusResponse(
-            cluster = buildClusterInfo(state),
-            nodes = buildNodesInfo(state, instanceStates),
-            networking = buildNetworkingInfo(state),
-            securityGroup = buildSecurityGroupInfo(state),
-            spark = buildSparkInfo(state),
-            opensearch = buildOpenSearchInfo(state),
-            s3 = buildS3Info(state),
-            kubernetes = buildKubernetesInfo(),
-            stressJobs = buildStressInfo(),
-            cassandraVersion = buildCassandraVersionInfo(state, instanceStates),
-            accessInfo = buildAccessInfo(state),
-        )
-    }
-
-    private fun fetchInstanceStates(state: ClusterState): Map<String, InstanceDetails> {
-        val allInstanceIds = state.getAllInstanceIds()
-        if (allInstanceIds.isEmpty()) return emptyMap()
-
-        return runCatching {
-            ec2InstanceService
-                .describeInstances(allInstanceIds)
-                .associateBy { it.instanceId }
-        }.getOrElse {
-            log.warn(it) { "Failed to get instance states from EC2" }
-            emptyMap()
-        }
-    }
-
-    private fun buildClusterInfo(state: ClusterState): ClusterInfo =
-        ClusterInfo(
-            clusterId = state.clusterId,
-            name = state.name,
-            createdAt =
-                state.createdAt
-                    .atZone(ZoneId.systemDefault())
-                    .format(DATE_FORMATTER),
-            infrastructureStatus = state.infrastructureStatus.name,
-        )
-
-    private fun buildNodesInfo(
-        state: ClusterState,
-        instanceStates: Map<String, InstanceDetails>,
-    ): NodesInfo =
-        NodesInfo(
-            database = buildNodeList(state, ServerType.Cassandra, instanceStates),
-            app = buildNodeList(state, ServerType.Stress, instanceStates),
-            control = buildNodeList(state, ServerType.Control, instanceStates),
-        )
-
-    private fun buildNodeList(
-        state: ClusterState,
-        serverType: ServerType,
-        instanceStates: Map<String, InstanceDetails>,
-    ): List<NodeInfo> =
-        (state.hosts[serverType] ?: emptyList()).map { host ->
-            NodeInfo(
-                alias = host.alias,
-                instanceId = host.instanceId.ifEmpty { "" },
-                publicIp = host.publicIp,
-                privateIp = host.privateIp,
-                availabilityZone = host.availabilityZone,
-                state = instanceStates[host.instanceId]?.state?.uppercase(),
-                instanceType = instanceStates[host.instanceId]?.instanceType,
-            )
-        }
-
-    private fun buildNetworkingInfo(state: ClusterState): NetworkingInfo? {
-        val infra = state.infrastructure ?: return null
-        return NetworkingInfo(
-            vpcId = infra.vpcId,
-            internetGatewayId = infra.internetGatewayId,
-            subnetIds = infra.subnetIds,
-            routeTableId = infra.routeTableId,
-        )
-    }
-
-    private fun buildSecurityGroupInfo(state: ClusterState): SecurityGroupInfo? {
-        val sgId = state.infrastructure?.securityGroupId ?: return null
-        val sgDetails =
-            runCatching {
-                vpcService.describeSecurityGroup(sgId)
-            }.getOrNull()
-
-        return SecurityGroupInfo(
-            securityGroupId = sgId,
-            name = sgDetails?.name,
-            inboundRules =
-                sgDetails?.inboundRules?.map { rule ->
-                    SecurityGroupRuleResponse(
-                        protocol = rule.protocol,
-                        fromPort = rule.fromPort,
-                        toPort = rule.toPort,
-                        cidrBlocks = rule.cidrBlocks,
-                        description = rule.description,
-                    )
-                },
-            outboundRules =
-                sgDetails?.outboundRules?.map { rule ->
-                    SecurityGroupRuleResponse(
-                        protocol = rule.protocol,
-                        fromPort = rule.fromPort,
-                        toPort = rule.toPort,
-                        cidrBlocks = rule.cidrBlocks,
-                        description = rule.description,
-                    )
-                },
-        )
-    }
-
-    private fun buildSparkInfo(state: ClusterState): SparkInfo? {
-        val emrCluster = state.emrCluster ?: return null
-        val liveState =
-            runCatching {
-                emrService.getClusterStatus(emrCluster.clusterId).state
-            }.getOrElse { emrCluster.state }
-
-        return SparkInfo(
-            clusterId = emrCluster.clusterId,
-            clusterName = emrCluster.clusterName,
-            state = liveState,
-            masterPublicDns = emrCluster.masterPublicDns,
-        )
-    }
-
-    private fun buildOpenSearchInfo(state: ClusterState): OpenSearchInfo? {
-        val domain = state.openSearchDomain ?: return null
-        val liveState =
-            runCatching {
-                openSearchService.describeDomain(domain.domainName).state.name
-            }.getOrElse { domain.state }
-
-        return OpenSearchInfo(
-            domainName = domain.domainName,
-            domainId = domain.domainId,
-            state = liveState,
-            endpoint = domain.endpoint?.let { "https://$it" },
-            dashboardsEndpoint = domain.dashboardsEndpoint,
-        )
-    }
-
-    private fun buildS3Info(state: ClusterState): S3Info? {
-        if (state.s3Bucket.isNullOrBlank()) return null
-        val s3Path = state.s3Path()
-        val store = ObservabilityStore.from(state)
-        return S3Info(
-            bucket = requireNotNull(state.s3Bucket) { "s3Bucket is null after isNullOrBlank check" },
-            fullpath = "${state.s3Bucket}/${state.clusterPrefix()}",
-            paths =
-                S3Paths(
-                    cassandra = s3Path.cassandra().toString(),
-                    clickhouse = s3Path.clickhouse().toString(),
-                    spark = s3Path.spark().toString(),
-                    emrLogs = s3Path.emrLogs().toString(),
-                    traces = "s3://${store.bucket}/${store.tracesPrefix()}",
-                    profiles = "s3://${store.bucket}/${store.profilesPrefix()}",
-                    metrics = "s3://${store.bucket}/${store.metricsPrefix()}/${store.tenant}",
-                    logs = "s3://${store.bucket}/${store.logsPrefix()}",
-                    annotations = store.annotationsRoot().toString(),
-                ),
-        )
-    }
-
-    private fun buildKubernetesInfo(): KubernetesInfo? {
-        if (!WorkspaceKubeconfig.exists(context.workingDirectory)) return null
-
-        val result = k8sService.listPods()
-        return result.fold(
-            onSuccess = { pods ->
-                KubernetesInfo(
-                    pods =
-                        pods.map { pod ->
-                            PodInfo(
-                                namespace = pod.namespace,
-                                name = pod.name,
-                                ready = pod.ready,
-                                status = pod.status,
-                                restarts = pod.restarts,
-                                age = formatAge(pod.age),
-                            )
-                        },
-                )
-            },
-            onFailure = { e ->
-                log.debug(e) { "Failed to get Kubernetes pods" }
-                null
-            },
-        )
-    }
-
-    private fun buildStressInfo(): StressInfo? =
-        if (!WorkspaceKubeconfig.exists(context.workingDirectory)) {
-            null
-        } else {
-            readStressInfo()
-        }
-
-    private fun readStressInfo(): StressInfo? =
-        runCatching {
-            stressJobService
-                .listJobs()
-                .getOrThrow()
-                .map { job ->
-                    StressJobInfo(
-                        name = job.name,
-                        status = job.status,
-                        completions = job.completions,
-                        age = formatAge(job.age),
-                    )
-                }.let { StressInfo(jobs = it) }
-        }.getOrElse { e ->
-            log.debug(e) { "Failed to get stress jobs" }
-            null
-        }
-
-    private fun buildCassandraVersionInfo(
-        state: ClusterState,
-        instanceStates: Map<String, InstanceDetails>,
-    ): CassandraVersionInfo? {
-        val cassandraHosts = state.hosts[ServerType.Cassandra] ?: return null
-        if (cassandraHosts.isEmpty()) return null
-
-        // Only try live version if at least one node is running
-        val hasRunningNodes =
-            cassandraHosts.any { host ->
-                instanceStates[host.instanceId]?.state?.uppercase() == "RUNNING"
-            }
-
-        if (hasRunningNodes) {
-            val liveVersion = tryGetLiveVersion(cassandraHosts)
-            if (liveVersion != null) {
-                return CassandraVersionInfo(version = liveVersion, source = "live")
-            }
-        }
-
-        val cachedVersion = state.default.version.ifEmpty { "unknown" }
-        return CassandraVersionInfo(version = cachedVersion, source = "cached")
-    }
-
-    private fun buildAccessInfo(state: ClusterState): AccessInfo? {
-        val controlHost = state.getControlHost() ?: return null
-        if (!WorkspaceKubeconfig.exists(context.workingDirectory)) return null
-
-        val controlIp = controlHost.privateIp
-
-        val observability =
-            ObservabilityAccess(
-                grafana = "http://$controlIp:${Constants.K8s.GRAFANA_PORT}",
-                mimir = "http://$controlIp:${Constants.K8s.MIMIR_HTTP_PORT}",
-                loki = "http://$controlIp:${Constants.K8s.LOKI_HTTP_PORT}",
-                tempo = "http://$controlIp:${Constants.K8s.TEMPO_PORT}",
-                pyroscope = "http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
-            )
-
-        val kits = buildKitAccess(state)
-
-        val s3Path = state.s3Path()
-        val s3Manager =
-            S3ManagerAccess(
-                ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
-            )
-
-        val registry =
-            RegistryAccess(
-                endpoint = "$controlIp:${Constants.K8s.REGISTRY_PORT}",
-            )
-
-        return AccessInfo(
-            observability = observability,
-            kits = kits,
-            s3Manager = s3Manager,
-            registry = registry,
-        )
-    }
-
-    /**
-     * The endpoints of every installed kit recorded as running, from each kit's `kit.yaml`.
-     * A stopped kit is left out even when other pods of the kit, such as ClickHouse Keeper, run.
-     */
-    private fun buildKitAccess(state: ClusterState): List<KitAccess> =
-        workspaceKitScanner
-            .discover()
-            .filter { it.name in state.runningKits }
-            .sortedBy { it.name }
-            .map { kitDir ->
-                val resolved = KitEndpointAddresses.resolveInstalled(kitDir, state.hosts)
-                KitAccess(
-                    name = kitDir.name,
-                    endpoints =
-                        resolved.getOrDefault(emptyList()).map {
-                            val address = KitEndpointAddresses.toEndpointAddress(it)
-                            KitEndpointAccess(name = address.name, type = address.type, address = address.address)
-                        },
-                    endpointsUnavailable = resolved.exceptionOrNull()?.let { KitEndpointAddresses.UNREADABLE_DESCRIPTOR },
-                )
-            }
-
-    private fun tryGetLiveVersion(hosts: List<ClusterHost>): String? {
-        for (host in hosts) {
-            val version =
-                runCatching {
-                    val sshHost = host.toHost()
-                    val result = remoteOperationsService.getRemoteVersion(sshHost)
-                    result.versionString
-                }.onFailure { e ->
-                    log.debug(e) { "Failed to get version from ${host.alias}" }
-                }.getOrNull()
-
-            if (!version.isNullOrEmpty() && version != "current") {
-                return version
-            }
-        }
-        return null
-    }
-
-    private fun formatAge(duration: Duration): String {
-        val hours = duration.toHours()
-        val minutes = duration.toMinutesPart()
-
-        return when {
-            hours > HOURS_PER_DAY -> "${hours / HOURS_PER_DAY}d"
-            hours > 0 -> "${hours}h"
-            else -> "${minutes}m"
         }
     }
 }

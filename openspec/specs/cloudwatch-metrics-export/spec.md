@@ -86,3 +86,20 @@ Every running cluster's YACE reports the shared account bucket, labelled with it
 - **WHEN** a dashboard has an `aws_s3_` query that is not collapsed with `max by (...)`, keeps `cluster`, or drops `dimension_BucketName`
 - **THEN** the unit test fails and names the file and the query
 
+### Requirement: YACE runs only where CloudWatch exists
+
+The system SHALL deploy YACE only in an environment whose capabilities include CloudWatch. Elsewhere it SHALL NOT be deployed, and the deploy SHALL report that it was skipped and why.
+
+#### Scenario: YACE skipped without CloudWatch
+
+- **GIVEN** an environment without CloudWatch
+- **WHEN** the observability stack deploys
+- **THEN** no YACE ConfigMap or Deployment is applied
+- **AND** the output says YACE was skipped because the environment has no CloudWatch
+
+#### Scenario: YACE deployed on AWS
+
+- **GIVEN** an AWS environment
+- **WHEN** the observability stack deploys
+- **THEN** the YACE ConfigMap and Deployment are applied, as today
+

@@ -47,9 +47,10 @@ SHIM
 chmod +x "${BIN}"/*
 export PATH="${BIN}:${PATH}"
 
-# The tests above must not depend on the machine they run on: a node or a packer container has the
-# real cache library at its default path. The download-cache cases below load it explicitly.
-export EDL_CACHE_LIB=/nonexistent
+# Always load the repo copy of the cache library, never one the machine happens to have at its
+# default path. With no bucket configured it downloads directly, through the stubbed curl.
+export EDL_CACHE_LIB="${SCRIPT_DIR}/../../base/install/edl-cache-lib.sh"
+unset EDL_S3_BUCKET
 
 export CASSANDRA_INSTALL_DIR="${SANDBOX}/cassandra"
 export CASSANDRA_IN_SH_SNIPPET="${SANDBOX}/cassandra.in.sh"

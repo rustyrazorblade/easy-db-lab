@@ -23,14 +23,10 @@ K9S_VERSION="v0.50.18"
 RELEASE="k9s_Linux_${ARCH}.tar.gz"
 
 echo "Downloading k9s ${K9S_VERSION} for ${ARCH}..."
-# Use the shared S3 download cache when present; otherwise download directly (local script
-# tests, or no cache configured).
-if [ -f /usr/local/lib/edl-cache.sh ]; then
-    # shellcheck disable=SC1091
-    source /usr/local/lib/edl-cache.sh
-else
-    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
-fi
+# cached_fetch: S3 download cache when EDL_S3_BUCKET is set, direct download otherwise.
+# EDL_CACHE_LIB points tests at the repo copy; the AMI has it at /usr/local/lib/edl-cache.sh.
+# shellcheck disable=SC1090
+source "${EDL_CACHE_LIB:-/usr/local/lib/edl-cache.sh}"
 cached_fetch \
     "https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/${RELEASE}" \
     "k9s/${K9S_VERSION}/${RELEASE}" \

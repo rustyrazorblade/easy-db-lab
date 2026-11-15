@@ -43,7 +43,11 @@ cached_fetch() {
         return 0
     fi
 
-    echo "cache miss: $key (downloading $url)"
+    if [ -n "$EDL_S3_BUCKET" ]; then
+        echo "cache miss: $key (downloading $url)"
+    else
+        echo "no S3 cache; downloading $url"
+    fi
     curl -fsSL --retry 3 "$url" -o "$dest"
 
     if [ -n "$EDL_S3_BUCKET" ]; then

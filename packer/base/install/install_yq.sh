@@ -11,12 +11,8 @@ echo "=== Running: install_yq.sh ==="
 ARCH="${ARCH:?ARCH must be set}"
 YQ_VERSION="v4.41.1"
 
-if [ -f /usr/local/lib/edl-cache.sh ]; then
-    # shellcheck disable=SC1091
-    source /usr/local/lib/edl-cache.sh
-else
-    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
-fi
+# shellcheck disable=SC1090
+source "${EDL_CACHE_LIB:-/usr/local/lib/edl-cache.sh}"
 
 cached_fetch \
     "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH}" \

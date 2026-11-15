@@ -41,7 +41,7 @@ jobs:
       # installer (packer/base/install/install_yq.sh, the only place the version is written down)
       # so CI exercises the same yq the nodes run.
       - name: Install yq
-        run: ARCH=amd64 bash packer/base/install/install_yq.sh
+        run: ARCH=amd64 EDL_CACHE_LIB=packer/base/install/edl-cache-lib.sh bash packer/base/install/install_yq.sh
 
       - name: Test install-cassandra-version
         run: bash packer/cassandra/bin/install-cassandra-version.test.sh
@@ -66,7 +66,7 @@ jobs:
       # (packer/base/install/install_yq.sh, the only place the version is written down) does the
       # install, so CI runs the yq version the nodes run.
       - name: Install mikefarah yq
-        run: ARCH=amd64 bash packer/base/install/install_yq.sh
+        run: ARCH=amd64 EDL_CACHE_LIB=packer/base/install/edl-cache-lib.sh bash packer/base/install/install_yq.sh
 
       - name: Verify node tooling
         run: |

@@ -152,6 +152,25 @@ else
 fi
 teardown
 
+setup
+EDL_S3_BUCKET="" cached_fetch "s3://my-bucket/cassandra-builds/build/x-bin.tar.gz" "cassandra-dist/build/x-bin.tar.gz" "$TMP/out.tar.gz" >/dev/null 2>&1
+if calls_contain "aws s3 cp s3://my-bucket/cassandra-builds/build/x-bin.tar.gz $TMP/out.tar.gz"; then
+  pass "with no bucket configured an s3:// url is still fetched with aws s3 cp"
+else
+  fail "expected an aws s3 cp of the s3:// url; calls were: $(cat "$CALLS")"
+fi
+if grep -q "^curl" "$CALLS"; then
+  fail "with no bucket configured an s3:// url must never reach curl"
+else
+  pass "with no bucket configured an s3:// url never reaches curl"
+fi
+if grep -q "download-cache" "$CALLS"; then
+  fail "with no bucket configured the download cache must not be touched; calls were: $(cat "$CALLS")"
+else
+  pass "with no bucket configured an s3:// url does not touch the download cache"
+fi
+teardown
+
 echo
 echo "${tests_run} tests, ${tests_failed} failed"
 [ "$tests_failed" -eq 0 ]

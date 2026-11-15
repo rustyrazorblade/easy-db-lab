@@ -83,15 +83,11 @@ CASSANDRA_INSTALL_DIR=${CASSANDRA_INSTALL_DIR:-/usr/local/cassandra}
 WORKDIR=""
 trap 'cd /; [ -n "$WORKDIR" ] && rm -rf "$WORKDIR"' EXIT
 
-# Shared S3 download cache (provides cached_fetch). Falls back to a direct download when the cache
-# lib is absent (local script tests / no cache). Overridable so the tests can load the real lib.
+# Shared S3 download cache (provides cached_fetch, which downloads directly when no bucket is
+# configured). Overridable so the tests can load the repo copy of the lib.
 EDL_CACHE_LIB=${EDL_CACHE_LIB:-/usr/local/lib/edl-cache.sh}
-if [ -f "$EDL_CACHE_LIB" ]; then
-    # shellcheck disable=SC1090
-    source "$EDL_CACHE_LIB"
-else
-    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
-fi
+# shellcheck disable=SC1090
+source "$EDL_CACHE_LIB"
 
 # direct_fetch <url> <dest>
 # Fetch <url> from its origin, never through the download cache. An s3:// url (a `cassandra build`

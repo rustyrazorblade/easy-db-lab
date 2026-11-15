@@ -11,14 +11,15 @@ import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidationException
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import software.amazon.awssdk.regions.Region
@@ -41,6 +42,7 @@ class SetupProfile : PicoBaseCommand() {
     private val userConfigProvider: UserConfigProvider by inject()
     private val awsResourceSetup: AWSResourceSetupService by inject()
     private val awsInfra: AwsInfrastructureService by inject()
+    private val s3BucketService: AwsS3BucketService by inject()
     private val amiValidator: AMIValidator by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val prompter: Prompter by inject()
@@ -215,12 +217,12 @@ class SetupProfile : PicoBaseCommand() {
         eventBus.emit(Event.Setup.ValidatingCredentials)
 
         try {
-            val tempAWS = createAwsClient(credentials, regionObj)
-            tempAWS.checkPermissions()
+            val identity = createAccountIdentity(credentials, regionObj)
+            identity.checkPermissions()
 
             eventBus.emit(Event.Setup.CredentialsValidSuccess)
 
-            offerIamPolicyDisplay(tempAWS)
+            offerIamPolicyDisplay(identity)
         } catch (e: Exception) {
             eventBus.emit(Event.Setup.CredentialsValidFailed)
             throw SetupProfileException("AWS credentials are invalid", e)
@@ -228,22 +230,22 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * Creates an AWS client using either profile or static credentials.
+     * Creates an account identity using either profile or static credentials.
      */
-    private fun createAwsClient(
+    private fun createAccountIdentity(
         credentials: CoreCredentials,
         regionObj: Region,
-    ): AWS =
+    ): AccountIdentity =
         if (credentials.awsProfile.isNotEmpty()) {
-            awsClientFactory.createAWSClientWithProfile(credentials.awsProfile, regionObj)
+            awsClientFactory.createAccountIdentityWithProfile(credentials.awsProfile, regionObj)
         } else {
-            awsClientFactory.createAWSClient(credentials.awsAccessKey, credentials.awsSecret, regionObj)
+            awsClientFactory.createAccountIdentity(credentials.awsAccessKey, credentials.awsSecret, regionObj)
         }
 
     /**
      * Offers to display IAM policies with the user's account ID.
      */
-    private fun offerIamPolicyDisplay(aws: AWS) {
+    private fun offerIamPolicyDisplay(identity: AccountIdentity) {
         val showPolicies =
             prompter.prompt(
                 "Print the IAM policies easy-db-lab needs (to request access from an AWS admin)? " +
@@ -251,7 +253,7 @@ class SetupProfile : PicoBaseCommand() {
                 "N",
             )
         if (showPolicies.equals("y", true)) {
-            val accountId = aws.getAccountId()
+            val accountId = identity.getAccountId()
             displayIAMPolicies(accountId)
         }
     }
@@ -427,7 +429,7 @@ class SetupProfile : PicoBaseCommand() {
     ) {
         ensureKeyPair(userConfig, credentials, regionObj)
         ensureIamRoles(userConfig)
-        ensureS3Bucket(userConfig, credentials, regionObj)
+        ensureS3Bucket(userConfig)
         ensurePackerVpc()
         ensureAmi(userConfig)
     }
@@ -479,31 +481,8 @@ class SetupProfile : PicoBaseCommand() {
     /**
      * Creates an S3 bucket for shared resources if one doesn't exist.
      */
-    private fun ensureS3Bucket(
-        userConfig: User,
-        credentials: CoreCredentials,
-        regionObj: Region,
-    ) {
-        if (userConfig.s3Bucket.isBlank()) {
-            eventBus.emit(Event.Setup.S3BucketCreating)
-            val bucketName = "easy-db-lab-${java.util.UUID.randomUUID()}"
-
-            val awsClient = createAwsClient(credentials, regionObj)
-            awsClient.createS3Bucket(bucketName)
-            awsClient.putS3BucketPolicy(bucketName)
-            awsClient.tagS3Bucket(
-                bucketName,
-                mapOf(
-                    "Profile" to context.profile,
-                    "Owner" to credentials.email,
-                    "easy_cass_lab" to "1",
-                ),
-            )
-
-            userConfig.s3Bucket = bucketName
-            userConfigProvider.saveUserConfig(userConfig)
-            eventBus.emit(Event.Setup.S3BucketCreated(bucketName))
-        }
+    private fun ensureS3Bucket(userConfig: User) {
+        s3BucketService.ensureAccountBucket(userConfig)
     }
 
     /**

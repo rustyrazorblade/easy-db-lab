@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -35,7 +35,7 @@ import com.rustyrazorblade.easydblab.assertions.assertThat as assertThatPruneRes
 internal class AMIServiceTest {
     private val mockEc2Client: Ec2Client = mock()
     private val eventBus: EventBus = EventBus()
-    private val mockAws: AWS = mock()
+    private val mockAccountIdentity: AccountIdentity = mock()
     private lateinit var amiService: AMIService
 
     @BeforeEach
@@ -45,7 +45,7 @@ internal class AMIServiceTest {
                 AMIService(
                     ec2Client = mockEc2Client,
                     eventBus = eventBus,
-                    aws = mockAws,
+                    accountIdentity = mockAccountIdentity,
                 ),
             )
     }

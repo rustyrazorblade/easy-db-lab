@@ -11,7 +11,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
@@ -39,7 +39,7 @@ class ClusterProvisioningServiceTest {
     private lateinit var ec2InstanceService: EC2InstanceService
     private lateinit var emrProvisioningService: EMRProvisioningService
     private lateinit var openSearchService: OpenSearchService
-    private lateinit var aws: AWS
+    private lateinit var accountIdentity: AccountIdentity
     private lateinit var user: User
     private lateinit var eventBus: EventBus
     private lateinit var service: ClusterProvisioningService
@@ -49,17 +49,17 @@ class ClusterProvisioningServiceTest {
         ec2InstanceService = mock()
         emrProvisioningService = mock()
         openSearchService = mock()
-        aws = mock()
+        accountIdentity = mock()
         user = mock()
         eventBus = EventBus()
-        whenever(aws.getAccountId()).thenReturn("123456789012")
+        whenever(accountIdentity.getAccountId()).thenReturn("123456789012")
         whenever(user.region).thenReturn("us-west-2")
         service =
             DefaultClusterProvisioningService(
                 ec2InstanceService = ec2InstanceService,
                 emrProvisioningService = emrProvisioningService,
                 openSearchService = openSearchService,
-                aws = aws,
+                accountIdentity = accountIdentity,
                 user = user,
                 eventBus = eventBus,
             )

@@ -196,7 +196,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
             single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
             single { CiliumNodeImageCheck(get()) }
-            single { AWSResourceSetupService(get(), get(), get()) }
+            single { AWSResourceSetupService(get(), get(), get(), get()) }
             single { ProvisioningPreflight(get(), get(), get(), get()) }
             single<AccountCapacity> { FakeAccountCapacity().also { accountCapacity = it } }
             single { LaunchCapacityPreflight(get(), get()) }

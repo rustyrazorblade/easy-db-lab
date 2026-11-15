@@ -11,8 +11,8 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.aws.AMIValidationException
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
@@ -36,6 +37,10 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest
+import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest
+import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
 
 class SetupProfileTest : BaseKoinTest() {
     private lateinit var mockUserConfigProvider: UserConfigProvider
@@ -43,7 +48,7 @@ class SetupProfileTest : BaseKoinTest() {
     private lateinit var mockAwsInfra: AwsInfrastructureService
     private lateinit var mockAmiValidator: AMIValidator
     private lateinit var mockCommandExecutor: CommandExecutor
-    private lateinit var mockAws: AWS
+    private lateinit var mockAws: AccountIdentity
     private lateinit var mockAwsClientFactory: AWSClientFactory
     private lateinit var testPrompter: TestPrompter
     private lateinit var bufferedOutput: BufferedOutputHandler
@@ -61,15 +66,12 @@ class SetupProfileTest : BaseKoinTest() {
         bufferedOutput = BufferedOutputHandler()
 
         // Default: factory returns our mock AWS (both credential types)
-        whenever(mockAwsClientFactory.createAWSClient(any(), any(), any())).thenReturn(mockAws)
-        whenever(mockAwsClientFactory.createAWSClientWithProfile(any(), any())).thenReturn(mockAws)
+        whenever(mockAwsClientFactory.createAccountIdentity(any(), any(), any())).thenReturn(mockAws)
+        whenever(mockAwsClientFactory.createAccountIdentityWithProfile(any(), any())).thenReturn(mockAws)
 
         // Default: AWS operations succeed
         doNothing().whenever(mockAws).checkPermissions()
         whenever(mockAws.getAccountId()).thenReturn("123456789012")
-        whenever(mockAws.createS3Bucket(any())).thenReturn("test-bucket")
-        doNothing().whenever(mockAws).putS3BucketPolicy(any())
-        doNothing().whenever(mockAws).tagS3Bucket(any(), any())
     }
 
     override fun additionalTestModules(): List<Module> =
@@ -80,7 +82,7 @@ class SetupProfileTest : BaseKoinTest() {
                 single<AwsInfrastructureService> { mockAwsInfra }
                 single<AMIValidator> { mockAmiValidator }
                 single<CommandExecutor> { mockCommandExecutor }
-                single<AWS> { mockAws }
+                single<AccountIdentity> { mockAws }
                 single<AWSClientFactory> { mockAwsClientFactory }
                 single<Prompter> { testPrompter }
                 single<OutputHandler> { bufferedOutput }
@@ -397,7 +399,7 @@ class SetupProfileTest : BaseKoinTest() {
             assertThat(testPrompter.wasPromptedFor("AWS Secret")).isTrue()
 
             // Should call AWS validation using static credentials
-            verify(mockAwsClientFactory).createAWSClient(any(), any(), any())
+            verify(mockAwsClientFactory).createAccountIdentity(any(), any(), any())
             verify(mockAws).checkPermissions()
 
             // Should setup IAM resources
@@ -451,7 +453,7 @@ class SetupProfileTest : BaseKoinTest() {
             assertThat(testPrompter.wasPromptedFor("AWS Secret")).isFalse()
 
             // Should call AWS validation using profile-based auth
-            verify(mockAwsClientFactory).createAWSClientWithProfile(any(), any())
+            verify(mockAwsClientFactory).createAccountIdentityWithProfile(any(), any())
             verify(mockAws).checkPermissions()
 
             // Should setup IAM resources
@@ -579,9 +581,10 @@ class SetupProfileTest : BaseKoinTest() {
             command.execute()
 
             // Then - S3 bucket should be created
-            verify(mockAws).createS3Bucket(any())
-            verify(mockAws).putS3BucketPolicy(any())
-            verify(mockAws).tagS3Bucket(any(), any())
+            val s3Client = get<S3Client>()
+            verify(s3Client).createBucket(any<CreateBucketRequest>())
+            verify(s3Client).putBucketPolicy(any<PutBucketPolicyRequest>())
+            verify(s3Client).putBucketTagging(any<PutBucketTaggingRequest>())
 
             assertThat(bufferedOutput.messages.joinToString("\n"))
                 .contains("Creating S3 bucket")
@@ -616,7 +619,7 @@ class SetupProfileTest : BaseKoinTest() {
             command.execute()
 
             // Then - should not create bucket
-            verify(mockAws, never()).createS3Bucket(any())
+            verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
         }
     }
 
@@ -644,7 +647,7 @@ class SetupProfileTest : BaseKoinTest() {
             SetupProfile().execute()
 
             verify(mockAwsResourceSetup).ensureAWSResources(any())
-            verify(mockAws).createS3Bucket(any())
+            verify(get<S3Client>()).createBucket(any<CreateBucketRequest>())
             val saved = argumentCaptor<User>()
             verify(mockUserConfigProvider, atLeastOnce()).saveUserConfig(saved.capture())
             assertThat(saved.lastValue.s3Bucket).startsWith("easy-db-lab-")
@@ -661,7 +664,7 @@ class SetupProfileTest : BaseKoinTest() {
             SetupProfile().execute()
 
             assertThat(testPrompter.wasPromptedFor("AWS Profile")).isTrue()
-            verify(mockAwsClientFactory, atLeastOnce()).createAWSClientWithProfile(eq("fixed-profile"), any())
+            verify(mockAwsClientFactory, atLeastOnce()).createAccountIdentityWithProfile(eq("fixed-profile"), any())
         }
 
         @Test
@@ -671,7 +674,7 @@ class SetupProfileTest : BaseKoinTest() {
             assertThat(testPrompter.wasPromptedFor("email")).isFalse()
             assertThat(testPrompter.wasPromptedFor("region")).isFalse()
             assertThat(testPrompter.wasPromptedFor("AWS Profile")).isFalse()
-            verify(mockAwsClientFactory, atLeastOnce()).createAWSClientWithProfile(eq("my-profile"), any())
+            verify(mockAwsClientFactory, atLeastOnce()).createAccountIdentityWithProfile(eq("my-profile"), any())
         }
     }
 
@@ -989,7 +992,7 @@ class SetupProfileTest : BaseKoinTest() {
             command.execute()
 
             // Then - should not create bucket (already exists)
-            verify(mockAws, never()).createS3Bucket(any())
+            verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
 
             // Output should mention completion
             assertThat(bufferedOutput.messages.joinToString("\n"))

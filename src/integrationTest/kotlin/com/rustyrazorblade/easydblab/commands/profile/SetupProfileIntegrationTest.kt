@@ -7,11 +7,13 @@ import com.rustyrazorblade.easydblab.TestPrompter
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.StsAccountIdentity
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -43,7 +45,8 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
     private lateinit var s3Client: S3Client
     private lateinit var stsClient: StsClient
     private lateinit var iamClient: IamClient
-    private lateinit var awsService: AWS
+    private lateinit var accountIdentity: AccountIdentity
+    private lateinit var bucketService: AwsS3BucketService
 
     private lateinit var mockUserConfigProvider: UserConfigProvider
     private lateinit var mockAwsResourceSetup: AWSResourceSetupService
@@ -72,8 +75,9 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
         testPrompter = TestPrompter()
         bufferedOutput = BufferedOutputHandler()
 
-        // Create AWS service with real S3/STS and mocked IAM
-        awsService = AWS(iamClient, s3Client, stsClient)
+        // Real S3 and STS adapters on LocalStack
+        accountIdentity = StsAccountIdentity(stsClient)
+        bucketService = AwsS3BucketService(s3Client, accountIdentity)
     }
 
     override fun additionalTestModules(): List<Module> =
@@ -84,7 +88,8 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
                 single<AwsInfrastructureService> { mockAwsInfra }
                 single<AMIValidator> { mockAmiValidator }
                 single<CommandExecutor> { mockCommandExecutor }
-                single<AWS> { awsService }
+                single<AccountIdentity> { accountIdentity }
+                single<AwsS3BucketService> { bucketService }
                 single<Prompter> { testPrompter }
                 single<OutputHandler> { bufferedOutput }
                 single<S3Client> { s3Client }
@@ -94,12 +99,12 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
         )
 
     @Test
-    fun `AWS service can create S3 bucket via LocalStack`() {
+    fun `bucket service can create S3 bucket via LocalStack`() {
         // Given
         val bucketName = "test-integration-bucket-${System.currentTimeMillis()}"
 
         // When
-        val createdBucket = awsService.createS3Bucket(bucketName)
+        val createdBucket = bucketService.createBucket(bucketName)
 
         // Then
         assertThat(createdBucket).isEqualTo(bucketName)
@@ -110,13 +115,13 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
     }
 
     @Test
-    fun `AWS service can tag S3 bucket via LocalStack`() {
+    fun `bucket service can tag S3 bucket via LocalStack`() {
         // Given
         val bucketName = "test-tagged-bucket-${System.currentTimeMillis()}"
-        awsService.createS3Bucket(bucketName)
+        bucketService.createBucket(bucketName)
 
         // When
-        awsService.tagS3Bucket(
+        bucketService.tagBucket(
             bucketName,
             mapOf(
                 "Profile" to "test",
@@ -144,11 +149,11 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
     }
 
     @Test
-    fun `AWS checkPermissions succeeds with LocalStack`() {
+    fun `account identity checkPermissions succeeds with LocalStack`() {
         // Given - real S3/STS clients
 
         // When/Then - should not throw
-        awsService.checkPermissions()
+        accountIdentity.checkPermissions()
     }
 
     @Test
@@ -157,8 +162,8 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
         val bucketName = "test-idempotent-bucket-${System.currentTimeMillis()}"
 
         // When - create twice
-        awsService.createS3Bucket(bucketName)
-        val secondCreate = awsService.createS3Bucket(bucketName)
+        bucketService.createBucket(bucketName)
+        val secondCreate = bucketService.createBucket(bucketName)
 
         // Then - should succeed without error
         assertThat(secondCreate).isEqualTo(bucketName)
@@ -168,7 +173,7 @@ class SetupProfileIntegrationTest : BaseKoinTest() {
     fun `list buckets returns created buckets`() {
         // Given
         val bucketName = "test-list-bucket-${System.currentTimeMillis()}"
-        awsService.createS3Bucket(bucketName)
+        bucketService.createBucket(bucketName)
 
         // When
         val listRequest = ListBucketsRequest.builder().build()

@@ -7,7 +7,7 @@ This package contains AWS service classes that implement business logic on top o
 ```
 services/aws/
 ├── CLAUDE.md                  # This file
-├── AwsS3BucketService.kt     # S3 bucket administration (creation, request metrics, policies, tags)
+├── AwsS3BucketService.kt     # the one S3 bucket adapter on `S3Client`, implements `S3BucketAdmin` (creation, request metrics, policies, tags)
 ├── AWSResourceSetupService.kt # IAM resource setup (roles, instance profiles)
 ├── AwsInfrastructureService.kt # VPC infrastructure creation and teardown orchestration
 ├── EC2VpcService.kt           # VPC resource management (implements VpcService; delegates SecurityGroupOperations to EC2SecurityGroupService)
@@ -41,7 +41,7 @@ services/aws/
 - Contain domain-specific logic beyond simple SDK calls
 
 **In providers/aws/:** Low-level infrastructure:
-- `AWS.kt`, `EC2.kt` — direct SDK wrappers
+- `AwsIamRoles.kt`, `AccountIdentity.kt`, `EC2.kt` — direct SDK wrappers
 - Data types, type aliases, enums
 - `RetryUtil` — retry configuration
 - Interfaces (`VpcService`, `AWSClientFactory`)

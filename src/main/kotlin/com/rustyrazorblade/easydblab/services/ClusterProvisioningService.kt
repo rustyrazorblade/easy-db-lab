@@ -10,7 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
@@ -219,7 +219,7 @@ class DefaultClusterProvisioningService(
     private val ec2InstanceService: EC2InstanceService,
     private val emrProvisioningService: EMRProvisioningService,
     private val openSearchService: OpenSearchService,
-    private val aws: AWS,
+    private val accountIdentity: AccountIdentity,
     private val user: User,
     private val eventBus: EventBus,
 ) : ClusterProvisioningService {
@@ -468,7 +468,7 @@ class DefaultClusterProvisioningService(
                 engineVersion = "OpenSearch_${initConfig.opensearchVersion}",
                 subnetId = subnetId,
                 securityGroupIds = listOf(securityGroupId),
-                accountId = aws.getAccountId(),
+                accountId = accountIdentity.getAccountId(),
                 region = user.region,
                 tags = tags,
             )

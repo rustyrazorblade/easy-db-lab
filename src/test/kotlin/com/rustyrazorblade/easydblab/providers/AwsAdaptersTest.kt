@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.providers
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
+import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -22,31 +24,28 @@ import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 import software.amazon.awssdk.services.iam.model.PutRolePolicyResponse
 import software.amazon.awssdk.services.iam.model.Role
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.Bucket
 import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.CreateBucketResponse
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationResponse
-import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
-import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
-import software.amazon.awssdk.services.s3.model.ListBucketsResponse
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException
 import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationResponse
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.S3Exception
-import software.amazon.awssdk.services.s3.model.Tag
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse
 
-internal class AWSTest :
+internal class AwsAdaptersTest :
     BaseKoinTest(),
     KoinComponent {
     // Inject the mocked AWS service and AWS clients from BaseKoinTest
-    private val aws: AWS by inject()
+    private val accountIdentity: AccountIdentity by inject()
+    private val iamRoles: IamRoles by inject()
+    private val s3Admin: S3BucketAdmin by inject()
     private val mockIamClient: IamClient by inject()
     private val mockS3Client: S3Client by inject()
     private val mockStsClient: StsClient by inject()
@@ -75,7 +74,7 @@ internal class AWSTest :
         whenever(mockIamClient.attachRolePolicy(any<AttachRolePolicyRequest>())).thenReturn(attachPolicyResponse)
 
         // Execute the method
-        val result = aws.createServiceRole()
+        val result = iamRoles.createServiceRole()
 
         // Verify the expected calls were made
         verify(mockIamClient).createRole(any<CreateRoleRequest>())
@@ -99,7 +98,7 @@ internal class AWSTest :
             )
 
         // Execute the method - should not throw exception
-        val result = aws.createServiceRole()
+        val result = iamRoles.createServiceRole()
 
         // Verify the createRole was attempted
         verify(mockIamClient).createRole(any<CreateRoleRequest>())
@@ -117,7 +116,7 @@ internal class AWSTest :
         whenever(mockS3Client.createBucket(any<CreateBucketRequest>())).thenReturn(createBucketResponse)
 
         // Execute the method
-        val result = aws.createS3Bucket(bucketName)
+        val result = s3Admin.createBucket(bucketName)
 
         // Verify the expected call was made
         verify(mockS3Client).createBucket(any<CreateBucketRequest>())
@@ -140,7 +139,7 @@ internal class AWSTest :
             )
 
         // Execute the method - should not throw exception
-        val result = aws.createS3Bucket(bucketName)
+        val result = s3Admin.createBucket(bucketName)
 
         // Verify the createBucket was attempted
         verify(mockS3Client).createBucket(any<CreateBucketRequest>())
@@ -153,12 +152,12 @@ internal class AWSTest :
     fun createS3BucketInvalidName() {
         // Test with uppercase letters (invalid)
         assertThrows<IllegalArgumentException> {
-            aws.createS3Bucket("Invalid-Bucket-Name")
+            s3Admin.createBucket("Invalid-Bucket-Name")
         }
 
         // Test with too short name
         assertThrows<IllegalArgumentException> {
-            aws.createS3Bucket("ab")
+            s3Admin.createBucket("ab")
         }
     }
 
@@ -224,7 +223,7 @@ internal class AWSTest :
             .thenReturn(listPoliciesResponse)
 
         // Execute the method
-        val result = aws.createRoleWithS3Policy(roleName)
+        val result = iamRoles.createRoleWithS3Policy(roleName)
 
         // Verify the expected calls were made
         verify(mockIamClient).createRole(any<CreateRoleRequest>())
@@ -300,7 +299,7 @@ internal class AWSTest :
             .thenReturn(listPoliciesResponse)
 
         // Execute the method - should not throw exception
-        val result = aws.createRoleWithS3Policy(roleName)
+        val result = iamRoles.createRoleWithS3Policy(roleName)
 
         // Verify the createRole was attempted
         verify(mockIamClient).createRole(any<CreateRoleRequest>())
@@ -315,13 +314,13 @@ internal class AWSTest :
     fun createRoleWithS3PolicyInvalidRoleName() {
         // Test with invalid characters
         assertThrows<IllegalArgumentException> {
-            aws.createRoleWithS3Policy("invalid role name with spaces")
+            iamRoles.createRoleWithS3Policy("invalid role name with spaces")
         }
 
         // Test with too long name (> 64 chars)
         val longName = "a".repeat(65)
         assertThrows<IllegalArgumentException> {
-            aws.createRoleWithS3Policy(longName)
+            iamRoles.createRoleWithS3Policy(longName)
         }
     }
 
@@ -340,7 +339,7 @@ internal class AWSTest :
             .thenReturn(mockResponse)
 
         // Execute - should not throw exception
-        aws.checkPermissions()
+        accountIdentity.checkPermissions()
 
         // Verify STS client was called
         verify(mockStsClient).getCallerIdentity(any<GetCallerIdentityRequest>())
@@ -360,10 +359,10 @@ internal class AWSTest :
             .thenReturn(mockResponse)
 
         // First call - should populate cache
-        val accountId1 = aws.getAccountId()
+        val accountId1 = accountIdentity.getAccountId()
 
         // Second call - should use cached value
-        val accountId2 = aws.getAccountId()
+        val accountId2 = accountIdentity.getAccountId()
 
         assertThat(accountId1).isEqualTo("123456789012")
         assertThat(accountId2).isEqualTo("123456789012")
@@ -385,7 +384,7 @@ internal class AWSTest :
             .thenThrow(stsException)
 
         assertThrows<software.amazon.awssdk.services.sts.model.StsException> {
-            aws.getAccountId()
+            accountIdentity.getAccountId()
         }
     }
 
@@ -403,10 +402,10 @@ internal class AWSTest :
             .thenReturn(mockResponse)
 
         // Call checkPermissions - should cache account ID
-        aws.checkPermissions()
+        accountIdentity.checkPermissions()
 
         // getAccountId should return cached value without additional STS call
-        val accountId = aws.getAccountId()
+        val accountId = accountIdentity.getAccountId()
 
         assertThat(accountId).isEqualTo("123456789012")
 
@@ -424,7 +423,7 @@ internal class AWSTest :
         whenever(mockS3Client.putBucketTagging(any<PutBucketTaggingRequest>())).thenReturn(putTaggingResponse)
 
         // Execute
-        aws.tagS3Bucket(bucketName, tags)
+        s3Admin.tagBucket(bucketName, tags)
 
         // Verify the correct request was made
         verify(mockS3Client).putBucketTagging(
@@ -453,7 +452,7 @@ internal class AWSTest :
 
         // Execute - should throw exception
         assertThrows<NoSuchBucketException> {
-            aws.tagS3Bucket(bucketName, tags)
+            s3Admin.tagBucket(bucketName, tags)
         }
     }
 
@@ -461,152 +460,8 @@ internal class AWSTest :
     fun `tagS3Bucket should validate bucket name`() {
         // Test with invalid bucket name
         assertThrows<IllegalArgumentException> {
-            aws.tagS3Bucket("Invalid-Bucket-Name", mapOf("ClusterId" to "abc123"))
+            s3Admin.tagBucket("Invalid-Bucket-Name", mapOf("ClusterId" to "abc123"))
         }
-    }
-
-    @Test
-    fun `findS3BucketByTag should return bucket name when tag matches`() {
-        val targetBucket = "easy-db-lab-myproject-abc12345"
-        val clusterId = "abc12345-full-uuid"
-
-        // Setup mock for listBuckets
-        val buckets =
-            listOf(
-                Bucket.builder().name("other-bucket-1").build(),
-                Bucket.builder().name(targetBucket).build(),
-                Bucket.builder().name("other-bucket-2").build(),
-            )
-        val listBucketsResponse = ListBucketsResponse.builder().buckets(buckets).build()
-        whenever(mockS3Client.listBuckets()).thenReturn(listBucketsResponse)
-
-        // Setup mock for getBucketTagging - first bucket has no ClusterId tag
-        val otherBucket1Tags =
-            GetBucketTaggingResponse
-                .builder()
-                .tagSet(
-                    Tag
-                        .builder()
-                        .key("Environment")
-                        .value("prod")
-                        .build(),
-                ).build()
-
-        // Target bucket has the matching ClusterId tag
-        val targetBucketTags =
-            GetBucketTaggingResponse
-                .builder()
-                .tagSet(
-                    Tag
-                        .builder()
-                        .key("ClusterId")
-                        .value(clusterId)
-                        .build(),
-                ).build()
-
-        whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>()))
-            .thenAnswer { invocation ->
-                val request = invocation.getArgument<GetBucketTaggingRequest>(0)
-                when (request.bucket()) {
-                    "other-bucket-1" -> otherBucket1Tags
-                    targetBucket -> targetBucketTags
-                    else ->
-                        throw S3Exception
-                            .builder()
-                            .message("The TagSet does not exist")
-                            .statusCode(404)
-                            .build()
-                }
-            }
-
-        // Execute
-        val result = aws.findS3BucketByTag("ClusterId", clusterId)
-
-        // Verify
-        assertThat(result).isEqualTo(targetBucket)
-    }
-
-    @Test
-    fun `findS3BucketByTag should return null when no bucket has matching tag`() {
-        val buckets =
-            listOf(
-                Bucket.builder().name("bucket-1").build(),
-                Bucket.builder().name("bucket-2").build(),
-            )
-        val listBucketsResponse = ListBucketsResponse.builder().buckets(buckets).build()
-        whenever(mockS3Client.listBuckets()).thenReturn(listBucketsResponse)
-
-        // Setup mock - no bucket has tags
-        whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>()))
-            .thenThrow(
-                S3Exception
-                    .builder()
-                    .message("The TagSet does not exist")
-                    .statusCode(404)
-                    .build(),
-            )
-
-        // Execute
-        val result = aws.findS3BucketByTag("ClusterId", "nonexistent-id")
-
-        // Verify
-        assertThat(result).isNull()
-    }
-
-    @Test
-    fun `findS3BucketByTag should only check easy-db-lab prefixed buckets`() {
-        val targetBucket = "easy-db-lab-myproject-abc12345"
-        val nonPrefixedBucket = "my-other-bucket"
-        val clusterId = "abc12345-full-uuid"
-
-        // Setup mock for listBuckets - includes both prefixed and non-prefixed buckets
-        val buckets =
-            listOf(
-                Bucket.builder().name(nonPrefixedBucket).build(),
-                Bucket.builder().name(targetBucket).build(),
-            )
-        val listBucketsResponse = ListBucketsResponse.builder().buckets(buckets).build()
-        whenever(mockS3Client.listBuckets()).thenReturn(listBucketsResponse)
-
-        // Setup mock - target bucket has matching tag
-        val targetBucketTags =
-            GetBucketTaggingResponse
-                .builder()
-                .tagSet(
-                    Tag
-                        .builder()
-                        .key("ClusterId")
-                        .value(clusterId)
-                        .build(),
-                ).build()
-
-        whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>()))
-            .thenReturn(targetBucketTags)
-
-        // Execute
-        val result = aws.findS3BucketByTag("ClusterId", clusterId)
-
-        // Verify - should find the target bucket
-        assertThat(result).isEqualTo(targetBucket)
-
-        // Verify that only easy-db-lab prefixed buckets were checked
-        verify(mockS3Client, org.mockito.kotlin.never()).getBucketTagging(
-            org.mockito.kotlin.argThat<GetBucketTaggingRequest> { request ->
-                request.bucket() == nonPrefixedBucket
-            },
-        )
-    }
-
-    @Test
-    fun `findS3BucketByTag should return null when no buckets exist`() {
-        val listBucketsResponse = ListBucketsResponse.builder().buckets(emptyList()).build()
-        whenever(mockS3Client.listBuckets()).thenReturn(listBucketsResponse)
-
-        // Execute
-        val result = aws.findS3BucketByTag("ClusterId", "some-id")
-
-        // Verify
-        assertThat(result).isNull()
     }
 
     @Test
@@ -616,7 +471,7 @@ internal class AWSTest :
         whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
             .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
 
-        aws.enableBucketRequestMetrics(bucketName)
+        s3Admin.enableBucketRequestMetrics(bucketName, null, Constants.S3.METRICS_CONFIGURATION_ID)
 
         verify(mockS3Client).putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>())
     }
@@ -628,7 +483,7 @@ internal class AWSTest :
         whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
             .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
 
-        aws.enableBucketRequestMetrics(bucketName)
+        s3Admin.enableBucketRequestMetrics(bucketName, null, Constants.S3.METRICS_CONFIGURATION_ID)
 
         val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
         verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
@@ -644,7 +499,7 @@ internal class AWSTest :
         whenever(mockS3Client.deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>()))
             .thenReturn(DeleteBucketMetricsConfigurationResponse.builder().build())
 
-        aws.disableBucketRequestMetrics(bucketName)
+        s3Admin.disableBucketRequestMetrics(bucketName, Constants.S3.METRICS_CONFIGURATION_ID)
 
         verify(mockS3Client).deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>())
     }
@@ -663,7 +518,7 @@ internal class AWSTest :
             )
 
         // Should not throw
-        aws.disableBucketRequestMetrics(bucketName)
+        s3Admin.disableBucketRequestMetrics(bucketName, Constants.S3.METRICS_CONFIGURATION_ID)
     }
 
     @Test
@@ -674,7 +529,7 @@ internal class AWSTest :
         whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
             .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
 
-        aws.enableBucketRequestMetrics(bucketName, prefix, configId)
+        s3Admin.enableBucketRequestMetrics(bucketName, prefix, configId)
 
         val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
         verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
@@ -694,7 +549,7 @@ internal class AWSTest :
         whenever(mockS3Client.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
             .thenReturn(PutBucketMetricsConfigurationResponse.builder().build())
 
-        aws.enableBucketRequestMetrics(bucketName, prefix, configId)
+        s3Admin.enableBucketRequestMetrics(bucketName, prefix, configId)
 
         val captor = argumentCaptor<PutBucketMetricsConfigurationRequest>()
         verify(mockS3Client).putBucketMetricsConfiguration(captor.capture())
@@ -708,7 +563,7 @@ internal class AWSTest :
         whenever(mockS3Client.deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>()))
             .thenReturn(DeleteBucketMetricsConfigurationResponse.builder().build())
 
-        aws.disableBucketRequestMetrics(bucketName, configId)
+        s3Admin.disableBucketRequestMetrics(bucketName, configId)
 
         val captor = argumentCaptor<DeleteBucketMetricsConfigurationRequest>()
         verify(mockS3Client).deleteBucketMetricsConfiguration(captor.capture())

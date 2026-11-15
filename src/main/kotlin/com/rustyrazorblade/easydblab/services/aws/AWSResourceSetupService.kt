@@ -4,8 +4,9 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 
 /**
@@ -22,7 +23,8 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
  * IAM roles use a wildcard S3 policy (easy-db-lab-*) to access all per-environment buckets.
  */
 class AWSResourceSetupService(
-    private val aws: AWS,
+    private val accountIdentity: AccountIdentity,
+    private val iamRoles: IamRoles,
     private val eventBus: EventBus,
     private val instanceRolePolicies: InstanceRolePolicies,
 ) {
@@ -57,7 +59,7 @@ class AWSResourceSetupService(
      *
      * @return The AWS account ID
      */
-    fun getAccountId(): String = aws.getAccountId()
+    fun getAccountId(): String = accountIdentity.getAccountId()
 
     /**
      * Re-applies the instance role's inline policies, so `up` always launches instances under the
@@ -108,7 +110,7 @@ class AWSResourceSetupService(
      * Validates existing resources and returns true if all resources are properly configured.
      */
     private fun validateExistingResources(roleName: String): Boolean {
-        val validation = aws.validateRoleSetup(roleName)
+        val validation = iamRoles.validateRoleSetup(roleName)
         if (validation.isValid) {
             // All resources exist and are properly configured
             return true
@@ -132,7 +134,7 @@ class AWSResourceSetupService(
      */
     private fun validateCredentials() {
         try {
-            aws.checkPermissions()
+            accountIdentity.checkPermissions()
         } catch (e: Exception) {
             emitCredentialError(e)
             throw e
@@ -159,16 +161,16 @@ class AWSResourceSetupService(
     private fun createIAMResources(roleName: String) {
         try {
             // EC2 role (for Cassandra, Stress, Control nodes) with wildcard S3 policy
-            aws.createRoleWithS3Policy(roleName)
+            iamRoles.createRoleWithS3Policy(roleName)
             instanceRolePolicies.apply(roleName)
             eventBus.emit(Event.AwsSetup.Ec2RoleReady(roleName))
 
             // EMR Service role
-            aws.createServiceRole()
+            iamRoles.createServiceRole()
             eventBus.emit(Event.AwsSetup.EmrServiceRoleReady(Constants.AWS.Roles.EMR_SERVICE_ROLE))
 
             // EMR EC2 role (for Spark clusters)
-            aws.createEMREC2Role()
+            iamRoles.createEMREC2Role()
             eventBus.emit(Event.AwsSetup.EmrEc2RoleReady(Constants.AWS.Roles.EMR_EC2_ROLE))
         } catch (e: Exception) {
             emitIamError(e)
@@ -191,7 +193,7 @@ class AWSResourceSetupService(
      * Performs final validation of IAM setup.
      */
     private fun finalizeSetup(roleName: String) {
-        val finalValidation = aws.validateRoleSetup(roleName)
+        val finalValidation = iamRoles.validateRoleSetup(roleName)
         if (!finalValidation.isValid) {
             val errorMsg =
                 """
@@ -260,7 +262,7 @@ class AWSResourceSetupService(
         // Try to get account ID, fallback to placeholder if that fails
         val accountId =
             try {
-                aws.getAccountId()
+                accountIdentity.getAccountId()
             } catch (e: Exception) {
                 eventBus.emit(Event.AwsSetup.AccountIdNote)
                 "ACCOUNT_ID"

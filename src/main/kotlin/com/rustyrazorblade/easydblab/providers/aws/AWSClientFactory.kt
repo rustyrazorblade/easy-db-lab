@@ -7,8 +7,6 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
-import software.amazon.awssdk.services.iam.IamClient
-import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
 
 /**
@@ -17,30 +15,30 @@ import software.amazon.awssdk.services.sts.StsClient
  */
 interface AWSClientFactory {
     /**
-     * Creates an AWS service wrapper with the given credentials.
+     * Creates an [AccountIdentity] with the given credentials.
      *
      * @param accessKey AWS access key
      * @param secret AWS secret key
      * @param region AWS region
-     * @return AWS service wrapper
+     * @return account identity for those credentials
      */
-    fun createAWSClient(
+    fun createAccountIdentity(
         accessKey: String,
         secret: String,
         region: Region,
-    ): AWS
+    ): AccountIdentity
 
     /**
-     * Creates an AWS service wrapper using an AWS profile from ~/.aws/credentials.
+     * Creates an [AccountIdentity] using an AWS profile from ~/.aws/credentials.
      *
      * @param profileName AWS profile name
      * @param region AWS region
-     * @return AWS service wrapper
+     * @return account identity for that profile
      */
-    fun createAWSClientWithProfile(
+    fun createAccountIdentityWithProfile(
         profileName: String,
         region: Region,
-    ): AWS
+    ): AccountIdentity
 
     /**
      * Creates an EC2 client with the given credentials.
@@ -75,24 +73,24 @@ interface AWSClientFactory {
  * AWS SDK instrumentation is handled automatically by the OpenTelemetry Java agent.
  */
 class DefaultAWSClientFactory : AWSClientFactory {
-    override fun createAWSClient(
+    override fun createAccountIdentity(
         accessKey: String,
         secret: String,
         region: Region,
-    ): AWS {
+    ): AccountIdentity {
         val credentialsProvider =
             StaticCredentialsProvider.create(
                 AwsBasicCredentials.create(accessKey, secret),
             )
-        return createAWSWithProvider(credentialsProvider, region)
+        return createAccountIdentityWithProvider(credentialsProvider, region)
     }
 
-    override fun createAWSClientWithProfile(
+    override fun createAccountIdentityWithProfile(
         profileName: String,
         region: Region,
-    ): AWS {
+    ): AccountIdentity {
         val credentialsProvider = ProfileCredentialsProvider.create(profileName)
-        return createAWSWithProvider(credentialsProvider, region)
+        return createAccountIdentityWithProvider(credentialsProvider, region)
     }
 
     override fun createEc2Client(
@@ -115,37 +113,19 @@ class DefaultAWSClientFactory : AWSClientFactory {
         return createEc2ClientWithProvider(credentialsProvider, region)
     }
 
-    private fun createAWSWithProvider(
+    private fun createAccountIdentityWithProvider(
         credentialsProvider: AwsCredentialsProvider,
         region: Region,
-    ): AWS {
-        val overrideConfig = ClientOverrideConfiguration.builder().build()
-
-        val iamClient =
-            IamClient
-                .builder()
-                .region(region)
-                .credentialsProvider(credentialsProvider)
-                .overrideConfiguration(overrideConfig)
-                .build()
-
-        val s3Client =
-            S3Client
-                .builder()
-                .region(region)
-                .credentialsProvider(credentialsProvider)
-                .overrideConfiguration(overrideConfig)
-                .build()
-
+    ): AccountIdentity {
         val stsClient =
             StsClient
                 .builder()
                 .region(region)
                 .credentialsProvider(credentialsProvider)
-                .overrideConfiguration(overrideConfig)
+                .overrideConfiguration(ClientOverrideConfiguration.builder().build())
                 .build()
 
-        return AWS(iamClient, s3Client, stsClient)
+        return StsAccountIdentity(stsClient)
     }
 
     private fun createEc2ClientWithProvider(

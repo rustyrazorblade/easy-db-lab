@@ -3,13 +3,14 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyAction
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.toJson
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyPrincipal
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyResource
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyStatement
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
@@ -105,7 +106,8 @@ data class OpenSearchDomainResult(
  */
 class OpenSearchService(
     private val openSearchClient: OpenSearchClient,
-    private val aws: AWS,
+    private val iamRoles: IamRoles,
+    private val accountIdentity: AccountIdentity,
     private val eventBus: EventBus = EventBus(),
 ) {
     companion object {
@@ -118,14 +120,14 @@ class OpenSearchService(
      * OpenSearch requires a service-linked role to access VPC resources.
      * Delegates to [AWS.ensureOpenSearchServiceLinkedRole].
      */
-    fun ensureServiceLinkedRole() = aws.ensureOpenSearchServiceLinkedRole()
+    fun ensureServiceLinkedRole() = iamRoles.ensureOpenSearchServiceLinkedRole()
 
     /**
      * Retrieves the AWS account ID for the authenticated credentials.
      *
      * @return The AWS account ID
      */
-    fun getAccountId(): String = aws.getAccountId()
+    fun getAccountId(): String = accountIdentity.getAccountId()
 
     /**
      * Creates a new OpenSearch domain with the specified configuration.

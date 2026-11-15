@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -74,8 +74,8 @@ class AMIServiceIntegrationTest {
     @BeforeEach
     fun setup() {
         eventBus = EventBus()
-        val aws: AWS = mock()
-        amiService = AMIService(ec2Client, eventBus, aws)
+        val accountIdentity: AccountIdentity = mock()
+        amiService = AMIService(ec2Client, eventBus, accountIdentity)
     }
 
     /** Creates a test AMI named [name] from the test's x86_64 instance and returns its ID. */

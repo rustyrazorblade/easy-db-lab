@@ -8,7 +8,10 @@ This package contains low-level infrastructure providers for AWS, SSH, and Docke
 providers/
 ├── aws/                    # AWS SDK wrappers and data types
 │   ├── AWSModule.kt        # Koin DI registration for all AWS services
-│   ├── AWS.kt              # Low-level IAM, S3, STS operations
+│   ├── AccountIdentity.kt  # AccountIdentity interface + StsAccountIdentity (STS: account ID, credential check)
+│   ├── IamRoles.kt         # IamRoles interface (roles, instance profiles, inline policies, service-linked role) + RoleValidationResult
+│   ├── AwsIamRoles.kt      # IamRoles on IamClient
+│   ├── S3BucketAdmin.kt    # S3BucketAdmin interface; the one adapter is services/aws/AwsS3BucketService on S3Client
 │   ├── EC2.kt              # Low-level EC2 operations
 │   ├── RetryUtil.kt        # Centralized retry configuration
 │   ├── PollUntil.kt        # pollUntil: fixed-interval poll over createPollUntilRetryConfig

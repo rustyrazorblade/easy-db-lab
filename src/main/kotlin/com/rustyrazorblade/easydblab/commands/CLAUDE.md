@@ -15,7 +15,7 @@ Commands should:
 Commands should NOT:
 - Execute SSH commands directly (use `RemoteOperationsService` or domain services)
 - Make K8s API calls directly (use `K8sService` or `StressJobService`)
-- Call AWS/cloud provider APIs directly (use `AWS`, `EC2Service`, etc.)
+- Call AWS/cloud provider APIs directly (use `AccountIdentity`, `IamRoles`, `S3BucketAdmin`, `EC2Service`, etc.)
 - Contain business logic (belongs in services)
 
 ### Example: Good vs Bad

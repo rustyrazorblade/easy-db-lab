@@ -23,7 +23,7 @@ All tests that need dependency injection should extend `BaseKoinTest`. It provid
 
 | Service | Mock Type |
 |---------|-----------|
-| `AWS` | Real class with mocked clients |
+| `AccountIdentity`, `IamRoles`, `AwsS3BucketService` | Real adapters over mocked STS, IAM and S3 clients |
 | `IamClient`, `S3Client`, `StsClient` | Mockito mocks |
 | `AWSClientFactory`, `AMIValidator` | Mockito mocks |
 | `User` | Test user (region: "us-west-2", email: "test@example.com") |

@@ -63,7 +63,7 @@ private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOv
  * - S3Client: AWS S3 client for object storage operations
  * - StsClient: AWS STS client for credential validation
  * - ServiceQuotasClient: Service Quotas client for the pre-launch quota checks
- * - AWS: AWS service wrapper for lab environment operations
+ * - AccountIdentity, IamRoles, S3BucketAdmin: account, IAM and S3 bucket operations, each a small interface
  * - AMIService: AMI lifecycle management (CRUD, pruning, validation)
  * - AMIValidator: AMI validation interface (implemented by AMIService)
  * - VpcService: Generic VPC infrastructure management
@@ -165,7 +165,8 @@ val awsModule =
         }
 
         // Provide AWS service as singleton
-        single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
+        single<AccountIdentity> { StsAccountIdentity(get<StsClient>()) }
+        single<IamRoles> { AwsIamRoles(get<IamClient>(), get<AccountIdentity>()) }
 
         // The account facts `up` checks before it launches anything, and the checks themselves
         single<AccountCapacity> { Ec2AccountCapacity(get<Ec2Client>(), get<ServiceQuotasClient>()) }
@@ -185,7 +186,7 @@ val awsModule =
             AMIService(
                 get<Ec2Client>(),
                 get<EventBus>(),
-                get<AWS>(),
+                get<AccountIdentity>(),
             )
         }
 
@@ -224,7 +225,8 @@ val awsModule =
 
         single {
             AWSResourceSetupService(
-                get<AWS>(),
+                get<AccountIdentity>(),
+                get<IamRoles>(),
                 get<EventBus>(),
                 get<InstanceRolePolicies>(),
             )
@@ -264,13 +266,15 @@ val awsModule =
         single {
             OpenSearchService(
                 get<OpenSearchClient>(),
-                get<AWS>(),
+                get<IamRoles>(),
+                get<AccountIdentity>(),
                 get<EventBus>(),
             )
         }
 
-        // Provide AwsS3BucketService as singleton
-        single { AwsS3BucketService(get<AWS>()) }
+        // The one S3 bucket adapter, also bound as its S3BucketAdmin contract
+        single { AwsS3BucketService(get<S3Client>(), get<AccountIdentity>()) }
+        single<S3BucketAdmin> { get<AwsS3BucketService>() }
 
         // Provide AMIResolver as singleton
         single<AMIResolver> {

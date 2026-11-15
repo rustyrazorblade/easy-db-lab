@@ -11,9 +11,13 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.AwsIamRoles
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
+import com.rustyrazorblade.easydblab.providers.aws.StsAccountIdentity
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
@@ -166,26 +170,26 @@ object TestModules {
                 }
             }
 
-            // AWS service with mocked IAM, S3, and STS clients
-            // Using real AWS class with mocked clients ensures the service logic
-            // is tested while preventing actual AWS API calls
-            single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
-            single { InstanceRolePolicies(get()) }
+            // Account identity and IAM roles over the mocked STS and IAM clients: the real logic
+            // runs while no AWS API call is made
+            single<AccountIdentity> { StsAccountIdentity(get<StsClient>()) }
+            single<IamRoles> { AwsIamRoles(get<IamClient>(), get<AccountIdentity>()) }
+            single { InstanceRolePolicies(get<IamRoles>()) }
 
-            // Mock AWSClientFactory that returns the injected AWS service
+            // Mock AWSClientFactory that returns the injected account identity
             single<AWSClientFactory> {
-                val aws = get<AWS>()
+                val identity = get<AccountIdentity>()
                 object : AWSClientFactory {
-                    override fun createAWSClient(
+                    override fun createAccountIdentity(
                         accessKey: String,
                         secret: String,
                         region: software.amazon.awssdk.regions.Region,
-                    ): AWS = aws
+                    ): AccountIdentity = identity
 
-                    override fun createAWSClientWithProfile(
+                    override fun createAccountIdentityWithProfile(
                         profileName: String,
                         region: software.amazon.awssdk.regions.Region,
-                    ): AWS = aws
+                    ): AccountIdentity = identity
 
                     override fun createEc2Client(
                         accessKey: String,
@@ -203,8 +207,9 @@ object TestModules {
             // Mock AMIValidator to prevent AMI validation during tests
             single { mock<AMIValidator>() }
 
-            // AwsS3BucketService using mocked AWS
-            single { AwsS3BucketService(get<AWS>()) }
+            // AwsS3BucketService over the mocked S3 client
+            single { AwsS3BucketService(get<S3Client>(), get<AccountIdentity>()) }
+            single<S3BucketAdmin> { get<AwsS3BucketService>() }
 
             // Published Cassandra builds. Mocked rather than real: resolving it for real would
             // create the account bucket. Its defaults (no builds, no match) are what a profile

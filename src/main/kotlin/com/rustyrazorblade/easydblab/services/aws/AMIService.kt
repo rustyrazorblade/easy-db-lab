@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -34,7 +34,7 @@ import java.time.Instant
 class AMIService(
     private val ec2Client: Ec2Client,
     private val eventBus: EventBus,
-    private val aws: AWS,
+    private val accountIdentity: AccountIdentity,
     validationRetryConfig: RetryConfig = defaultValidationRetryConfig,
 ) : AMIValidator {
     private val validationRetry = Retry.of("ami-validation", validationRetryConfig)
@@ -309,7 +309,7 @@ class AMIService(
         val ami =
             Retry
                 .decorateSupplier(validationRetry) {
-                    val amis = listPrivateAMIs(amiId, aws.getAccountId())
+                    val amis = listPrivateAMIs(amiId, accountIdentity.getAccountId())
                     if (amis.isEmpty()) {
                         throw AMIValidationException.NoAMIFound(amiId, requiredArchitecture)
                     }
@@ -383,7 +383,7 @@ class AMIService(
         try {
             Retry
                 .decorateSupplier(validationRetry) {
-                    listPrivateAMIs(pattern, aws.getAccountId())
+                    listPrivateAMIs(pattern, accountIdentity.getAccountId())
                 }.get()
         } catch (e: Exception) {
             throw AMIValidationException.AWSServiceError(

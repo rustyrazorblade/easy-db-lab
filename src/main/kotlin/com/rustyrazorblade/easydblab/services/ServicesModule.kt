@@ -29,7 +29,7 @@ import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.network.SocketTcpReachabilityProbe
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
@@ -220,7 +220,7 @@ val servicesModule =
                 get<EC2InstanceService>(),
                 get<EMRProvisioningService>(),
                 get<OpenSearchService>(),
-                get<AWS>(),
+                get<AccountIdentity>(),
                 get<User>(),
                 get<EventBus>(),
             )

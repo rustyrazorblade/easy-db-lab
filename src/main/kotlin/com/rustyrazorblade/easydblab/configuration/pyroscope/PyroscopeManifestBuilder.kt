@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -14,7 +16,6 @@ import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
-import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
 
@@ -208,54 +209,25 @@ class PyroscopeManifestBuilder(
      * about 45 s of every start in fixed readiness waits; see [Constants.PyroscopeProbes].
      */
     fun buildServerDeployment() =
-        DeploymentBuilder()
-            .withNewMetadata()
-            .withName(SERVER_APP_LABEL)
-            .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withReplicas(1)
-            .withNewSelector()
-            .addToMatchLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
-            .endSelector()
-            .withNewStrategy()
-            .withType("Recreate")
-            .withRollingUpdate(null)
-            .endStrategy()
-            .withNewTemplate()
-            .withNewMetadata()
-            .addToLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
-            .withContainers(buildServerContainer())
-            .addNewVolume()
-            .withName("config")
-            .withConfigMap(
-                ConfigMapVolumeSourceBuilder()
-                    .withName(SERVER_CONFIGMAP_NAME)
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("data")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath(DATA_HOST_PATH)
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .endSpec()
-            .endTemplate()
-            .endSpec()
-            .build()
+        controlPlaneDeployment(SERVER_APP_LABEL, NAMESPACE) {
+            hostNetworked()
+                .withContainers(buildServerContainer())
+                .addNewVolume()
+                .withName("config")
+                .withConfigMap(
+                    ConfigMapVolumeSourceBuilder()
+                        .withName(SERVER_CONFIGMAP_NAME)
+                        .build(),
+                ).endVolume()
+                .addNewVolume()
+                .withName("data")
+                .withHostPath(
+                    HostPathVolumeSourceBuilder()
+                        .withPath(DATA_HOST_PATH)
+                        .withType("DirectoryOrCreate")
+                        .build(),
+                ).endVolume()
+        }
 
     private fun buildServerContainer(): Container =
         ContainerBuilder()
@@ -382,9 +354,8 @@ class PyroscopeManifestBuilder(
             .endMetadata()
             .withNewSpec()
             .withServiceAccountName(EBPF_SERVICE_ACCOUNT_NAME)
-            .withHostNetwork(true)
+            .hostNetworked()
             .withHostPID(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()

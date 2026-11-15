@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.configuration.mimir
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
+import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.ClusterConfigData
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -15,7 +17,6 @@ import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.Deployment
-import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
  * Builds Mimir's K8s resources as typed Fabric8 objects: the metrics backend on the control node.
@@ -152,97 +153,68 @@ class MimirManifestBuilder(
      */
     @Suppress("LongMethod")
     fun buildDeployment(): Deployment =
-        DeploymentBuilder()
-            .withNewMetadata()
-            .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withReplicas(1)
-            .withNewSelector()
-            .addToMatchLabels("app.kubernetes.io/name", APP_LABEL)
-            .endSelector()
-            .withNewStrategy()
-            .withType("Recreate")
-            .withRollingUpdate(null)
-            .endStrategy()
-            .withNewTemplate()
-            .withNewMetadata()
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .withTerminationGracePeriodSeconds(TERMINATION_GRACE_SECONDS)
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
-            .addNewContainer()
-            .withName(APP_LABEL)
-            .withImage(IMAGE)
-            .withArgs(
-                "-config.file=$CONFIG_MOUNT_PATH/$CONFIG_FILE",
-                "-config.expand-env=true",
-            ).withEnv(
-                clusterConfigEnv("AWS_REGION", "aws_region"),
-                clusterConfigEnv("S3_BUCKET", "s3_bucket"),
-                clusterConfigEnv("METRICS_S3_PREFIX", "metrics_s3_prefix"),
-            ).addNewPort()
-            .withName("http")
-            .withContainerPort(Constants.K8s.MIMIR_HTTP_PORT)
-            .withProtocol("TCP")
-            .endPort()
-            .addNewPort()
-            .withName("grpc")
-            .withContainerPort(Constants.K8s.MIMIR_GRPC_PORT)
-            .withProtocol("TCP")
-            .endPort()
-            .addToVolumeMounts(
-                VolumeMountBuilder()
-                    .withName("config")
-                    .withMountPath(CONFIG_MOUNT_PATH)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName("data")
-                    .withMountPath(DATA_MOUNT_PATH)
-                    .build(),
-            ).withNewLivenessProbe()
-            .withNewTcpSocket()
-            .withNewPort(Constants.K8s.MIMIR_HTTP_PORT)
-            .endTcpSocket()
-            .withInitialDelaySeconds(LIVENESS_INITIAL_DELAY)
-            .withPeriodSeconds(LIVENESS_PERIOD)
-            .endLivenessProbe()
-            .withNewReadinessProbe()
-            .withNewHttpGet()
-            .withPath("/ready")
-            .withNewPort(Constants.K8s.MIMIR_HTTP_PORT)
-            .endHttpGet()
-            .withInitialDelaySeconds(READINESS_INITIAL_DELAY)
-            .withPeriodSeconds(READINESS_PERIOD)
-            .endReadinessProbe()
-            .endContainer()
-            .addToContainers(buildMemcachedContainer())
-            .addNewVolume()
-            .withName("config")
-            .withConfigMap(ConfigMapVolumeSourceBuilder().withName(CONFIGMAP_NAME).build())
-            .endVolume()
-            .addNewVolume()
-            .withName("data")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath(DATA_HOST_PATH)
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
-            .endSpec()
-            .endTemplate()
-            .endSpec()
-            .build()
+        controlPlaneDeployment(APP_LABEL, NAMESPACE) {
+            hostNetworked()
+                .withTerminationGracePeriodSeconds(TERMINATION_GRACE_SECONDS)
+                .addNewContainer()
+                .withName(APP_LABEL)
+                .withImage(IMAGE)
+                .withArgs(
+                    "-config.file=$CONFIG_MOUNT_PATH/$CONFIG_FILE",
+                    "-config.expand-env=true",
+                ).withEnv(
+                    clusterConfigEnv("AWS_REGION", "aws_region"),
+                    clusterConfigEnv("S3_BUCKET", "s3_bucket"),
+                    clusterConfigEnv("METRICS_S3_PREFIX", "metrics_s3_prefix"),
+                ).addNewPort()
+                .withName("http")
+                .withContainerPort(Constants.K8s.MIMIR_HTTP_PORT)
+                .withProtocol("TCP")
+                .endPort()
+                .addNewPort()
+                .withName("grpc")
+                .withContainerPort(Constants.K8s.MIMIR_GRPC_PORT)
+                .withProtocol("TCP")
+                .endPort()
+                .addToVolumeMounts(
+                    VolumeMountBuilder()
+                        .withName("config")
+                        .withMountPath(CONFIG_MOUNT_PATH)
+                        .build(),
+                    VolumeMountBuilder()
+                        .withName("data")
+                        .withMountPath(DATA_MOUNT_PATH)
+                        .build(),
+                ).withNewLivenessProbe()
+                .withNewTcpSocket()
+                .withNewPort(Constants.K8s.MIMIR_HTTP_PORT)
+                .endTcpSocket()
+                .withInitialDelaySeconds(LIVENESS_INITIAL_DELAY)
+                .withPeriodSeconds(LIVENESS_PERIOD)
+                .endLivenessProbe()
+                .withNewReadinessProbe()
+                .withNewHttpGet()
+                .withPath("/ready")
+                .withNewPort(Constants.K8s.MIMIR_HTTP_PORT)
+                .endHttpGet()
+                .withInitialDelaySeconds(READINESS_INITIAL_DELAY)
+                .withPeriodSeconds(READINESS_PERIOD)
+                .endReadinessProbe()
+                .endContainer()
+                .addToContainers(buildMemcachedContainer())
+                .addNewVolume()
+                .withName("config")
+                .withConfigMap(ConfigMapVolumeSourceBuilder().withName(CONFIGMAP_NAME).build())
+                .endVolume()
+                .addNewVolume()
+                .withName("data")
+                .withHostPath(
+                    HostPathVolumeSourceBuilder()
+                        .withPath(DATA_HOST_PATH)
+                        .withType("DirectoryOrCreate")
+                        .build(),
+                ).endVolume()
+        }
 
     /**
      * The memcached sidecar that holds Mimir's caches (`mimir.yaml`: the store-gateway's index,

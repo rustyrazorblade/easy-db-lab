@@ -21,6 +21,8 @@ Every manifest builder must have:
 - **NEVER mock manifest builder classes** — always use real instances in tests.
 - **Always use the correct container registry** — e.g., `ghcr.io/cloudflare/ebpf_exporter` not `cloudflare/ebpf_exporter`. The image pull test catches this.
 - When adding a new builder, you MUST add it to `K8sServiceIntegrationTest.collectAllResources()` and add a dedicated apply test.
+- **Place pods through `PodPlacement.kt`.** A control-plane Deployment is `controlPlaneDeployment(name, namespace) { ... }` (name labels, selector, `Recreate`, control-plane node selector and toleration); a pod on the node's network calls `hostNetworked()` (`hostNetwork` plus `ClusterFirstWithHostNet`). Never write those lines in a builder. Inside the `controlPlaneDeployment` block `this` is a `PodSpecBuilder`, so a call such as `buildVolumes()` resolves to the fluent builder's own method: compute values from the enclosing class before the block.
+- `ManifestGoldenTest` pins the rendered YAML of every workload builder against `src/test/resources/golden/manifests/`. Regenerate with `UPDATE_GOLDEN=1 ./gradlew :test --tests '*ManifestGoldenTest'` only for an intended manifest change.
 
 ### Test Location
 

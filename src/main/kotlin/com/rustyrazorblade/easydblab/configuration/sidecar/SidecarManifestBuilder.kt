@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.sidecar
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Constants.Cassandra
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -120,8 +121,7 @@ class SidecarManifestBuilder(
         .endMetadata()
         .withNewSpec()
         .addToNodeSelector("type", "db")
-        .withHostNetwork(true)
-        .withDnsPolicy("ClusterFirstWithHostNet")
+        .hostNetworked()
         // Init container: substitute __HOST_IP__ with the node's actual IP
         .addNewInitContainer()
         .withName("config-init")

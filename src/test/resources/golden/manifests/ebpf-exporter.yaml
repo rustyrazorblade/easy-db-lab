@@ -1,0 +1,83 @@
+---
+apiVersion: "apps/v1"
+kind: "DaemonSet"
+metadata:
+  labels:
+    app.kubernetes.io/name: "ebpf-exporter"
+  name: "ebpf-exporter"
+  namespace: "default"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "ebpf-exporter"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "ebpf-exporter"
+    spec:
+      containers:
+      - args:
+        - "--config.dir=/examples"
+        - "--config.names=biolatency,xfsdist,cachestat,shrinklat,tcp-retransmit,oomkill,syscalls,softirq-latency,tcp-syn-backlog"
+        - "--web.listen-address=0.0.0.0:9435"
+        image: "ghcr.io/cloudflare/ebpf_exporter:v2.5.1"
+        name: "ebpf-exporter"
+        ports:
+        - containerPort: 9435
+          hostPort: 9435
+          name: "metrics"
+          protocol: "TCP"
+        securityContext:
+          privileged: true
+          runAsGroup: 0
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: "/sys/kernel"
+          name: "sys-kernel"
+          readOnly: true
+        - mountPath: "/sys/fs/bpf"
+          name: "sys-fs-bpf"
+        - mountPath: "/proc"
+          name: "proc"
+          readOnly: true
+        - mountPath: "/lib/modules"
+          name: "modules"
+          readOnly: true
+        - mountPath: "/usr/src"
+          name: "kernel-src"
+          readOnly: true
+        - mountPath: "/examples/cachestat.bpf.o"
+          name: "override-cachestat"
+          readOnly: true
+        - mountPath: "/examples/syscalls.bpf.o"
+          name: "override-syscalls"
+          readOnly: true
+      dnsPolicy: "ClusterFirstWithHostNet"
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+      - operator: "Exists"
+      volumes:
+      - hostPath:
+          path: "/sys/kernel"
+        name: "sys-kernel"
+      - hostPath:
+          path: "/sys/fs/bpf"
+        name: "sys-fs-bpf"
+      - hostPath:
+          path: "/proc"
+        name: "proc"
+      - hostPath:
+          path: "/lib/modules"
+        name: "modules"
+      - hostPath:
+          path: "/usr/src"
+        name: "kernel-src"
+      - hostPath:
+          path: "/usr/local/lib/ebpf_exporter/cachestat.bpf.o"
+          type: "File"
+        name: "override-cachestat"
+      - hostPath:
+          path: "/usr/local/lib/ebpf_exporter/syscalls.bpf.o"
+          type: "File"
+        name: "override-syscalls"

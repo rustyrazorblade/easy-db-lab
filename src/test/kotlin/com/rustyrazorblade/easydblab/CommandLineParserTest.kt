@@ -1,6 +1,12 @@
 package com.rustyrazorblade.easydblab
 
+import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.profile.Profile
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService
@@ -43,6 +49,7 @@ class CommandLineParserTest : BaseKoinTest() {
                 single { InstallTemplateResolver(get(), get()) }
                 single<KitCommandScanner> { DefaultKitCommandScanner() }
                 single<HelpTopicService> { DefaultHelpTopicService() }
+                single { CommandFailureReporter(get(), emptyList()) }
             },
         )
 
@@ -77,6 +84,59 @@ class CommandLineParserTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a failing non-PicoCommand is reported through the failure reporter with a non-zero exit`() {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() {
+                    // Nothing to release.
+                }
+            },
+        )
+        val parser = CommandLineParser()
+        parser.commandLine.addSubcommand("boom", BoomCommand())
+
+        val exitCode = parser.commandLine.execute("boom")
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(events.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("IllegalStateException")
+            .contains("boom happened")
+    }
+
+    @Test
+    fun `an interrupt reaching the picocli handler keeps the interrupt flag and is not reported`() {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() {
+                    // Nothing to release.
+                }
+            },
+        )
+        val parser = CommandLineParser()
+        parser.commandLine.addSubcommand("stop", StopCommand())
+
+        try {
+            val exitCode = parser.commandLine.execute("stop")
+
+            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+        assertThat(events.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
     fun `a workspace directory named profile does not shadow the profile command group`() {
         // registerDynamicKitSubcommands() drops a discovered kit whose name collides with a static
         // top-level command. Without that guard a directory named "profile" replaces the command
@@ -90,6 +150,76 @@ class CommandLineParserTest : BaseKoinTest() {
 
         assertThat(profileGroup.commandSpec.userObject()).isInstanceOf(Profile::class.java)
         assertThat(profileGroup.subcommands.keys).contains("show", "setup")
+    }
+
+    @Test
+    fun `a workspace kit named after a built-in command is reported and the built-in stays`() {
+        val kitDir = File(context.workingDirectory, "cassandra")
+        kitDir.mkdirs()
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: cassandra\n")
+        val events = recordEvents()
+
+        val commandLine = CommandLineParser().commandLine
+
+        assertThat(events.filterIsInstance<Event.Kit.NameCollision>())
+            .containsExactly(Event.Kit.NameCollision(kit = "cassandra", command = "cassandra"))
+        assertThat(
+            commandLine.subcommands
+                .getValue("cassandra")
+                .subcommands.keys,
+        ).contains("start")
+    }
+
+    @Test
+    fun `a workspace kit that does not collide registers with no collision event`() {
+        val kitDir = File(context.workingDirectory, "cassandra-pods")
+        kitDir.mkdirs()
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: cassandra-pods\n")
+        val events = recordEvents()
+
+        val commandLine = CommandLineParser().commandLine
+
+        assertThat(commandLine.subcommands).containsKey("cassandra-pods")
+        assertThat(events.filterIsInstance<Event.Kit.NameCollision>()).isEmpty()
+    }
+
+    @Test
+    fun `the built-in command names are exactly the top-level commands of a workspace with no kits`() {
+        val commandLine = CommandLineParser().commandLine
+
+        // Names and aliases both: a kit named like an alias is just as unreachable. Fails when a
+        // command is added to the tree by code (addSubcommand) rather than the @Command annotation.
+        val registered =
+            commandLine.subcommands.values
+                .flatMap { listOf(it.commandName) + it.commandSpec.aliases().toList() }
+                .toSet()
+        assertThat(BuiltInCommands.names).containsAll(registered)
+    }
+
+    private fun recordEvents(): List<Event> {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return events
+    }
+
+    @Test
+    fun `the status command is instantiated with its defaulted capabilities by the CLI factory`() {
+        val status =
+            CommandLineParser()
+                .commandLine.subcommands
+                .getValue("status")
+                .commandSpec
+                .userObject()
+
+        assertThat(status).isInstanceOf(Status::class.java)
     }
 
     @Test
@@ -186,5 +316,17 @@ class CommandLineParserTest : BaseKoinTest() {
                     .flatMap { undescribed(it) }
 
         assertThat(undescribed(CommandLineParser().commandLine)).isEmpty()
+    }
+
+    /** A plain Picocli command that is interrupted, as Ctrl-C or SIGTERM does to a REPL or server thread. */
+    @CommandLine.Command(name = "stop")
+    class StopCommand : Runnable {
+        override fun run(): Unit = throw InterruptedException("stopped")
+    }
+
+    /** A plain Picocli command, not a PicoCommand, so the executor never sees it. */
+    @CommandLine.Command(name = "boom")
+    class BoomCommand : Runnable {
+        override fun run(): Unit = throw IllegalStateException("boom happened")
     }
 }

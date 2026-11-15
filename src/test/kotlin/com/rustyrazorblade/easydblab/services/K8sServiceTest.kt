@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -24,20 +24,11 @@ class K8sServiceTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var k8sService: K8sService
 
-    private val testClusterHost =
-        ClusterHost(
-            publicIp = "54.123.45.67",
-            privateIp = "10.0.1.5",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-test123",
-        )
-
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single { K8sClientProvider(get(), tempDir) }
+                single { K8sClientProvider(WorkspaceKubeApiLocator(get(), tempDir), ProxiedKubernetesClientFactory()) }
                 factory<K8sService> { DefaultK8sService(get(), get()) }
             },
         )
@@ -54,7 +45,7 @@ class K8sServiceTest : BaseKoinTest() {
     fun `applyManifests returns failure when manifest directory does not exist`() {
         val nonExistentDir = tempDir.resolve("does-not-exist").toPath()
 
-        val result = k8sService.applyManifests(testClusterHost, nonExistentDir)
+        val result = k8sService.applyManifests(nonExistentDir)
 
         assertThat(result.isFailure).isTrue()
     }
@@ -63,7 +54,7 @@ class K8sServiceTest : BaseKoinTest() {
     fun `applyManifests returns failure when kubeconfig is missing`() {
         val manifestDir = createTestManifestDir()
 
-        val result = k8sService.applyManifests(testClusterHost, manifestDir)
+        val result = k8sService.applyManifests(manifestDir)
 
         assertThat(result.isFailure).isTrue()
     }

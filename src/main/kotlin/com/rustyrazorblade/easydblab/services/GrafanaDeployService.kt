@@ -1,16 +1,23 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
+import com.rustyrazorblade.easydblab.configuration.grafana.GRAFANA_DASHBOARD_ROOT
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardConfigMaps
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
+import io.fabric8.kubernetes.api.model.HasMetadata
 
 /**
  * Gets Grafana, its datasources and the core dashboard tree onto the cluster.
@@ -27,7 +34,7 @@ interface GrafanaDeployService {
      * @param tenants Every tenant in the shared store and the cluster's own; see [GrafanaDatasourceSet]
      */
     fun createDatasourcesConfigMap(
-        controlHost: ClusterHost,
+        controlHost: ClusterHost?,
         tenants: TenantSet,
     ): Result<Unit>
 
@@ -37,12 +44,14 @@ interface GrafanaDeployService {
      *
      * @param controlHost The control node running K3s
      * @param context The cluster the dashboards are installed on; its tenants make the datasources
-     * @param bucket The account bucket, which the documents sidecars read from in its own region
+     * @param bucket The account bucket, which the documents front and its signing proxy read from in its own region
+     * @param hosting Where Grafana is placed and where its database lives, resolved from the environment
      */
     fun deploy(
-        controlHost: ClusterHost,
+        controlHost: ClusterHost?,
         context: DashboardInstallContext,
         bucket: String,
+        hosting: ObservabilityHosting,
     ): Result<Unit>
 }
 
@@ -60,6 +69,7 @@ class DefaultGrafanaDeployService(
     private val k8sService: K8sService,
     private val manifestBuilder: GrafanaManifestBuilder,
     private val treeUploader: GrafanaDashboardTreeUploader,
+    private val treeWriter: GrafanaDashboardTreeWriter,
     private val eventBus: EventBus,
     private val configChangeReport: ConfigChangeReport,
     private val bucketRegion: BucketRegion,
@@ -67,14 +77,17 @@ class DefaultGrafanaDeployService(
     companion object {
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
         private const val DEFAULT_NAMESPACE = "default"
+
+        /** The Pyroscope UI as a browser in the cluster's network reaches it, by its Service. */
+        private const val IN_CLUSTER_PYROSCOPE_URL =
+            "http://${Constants.K8s.PYROSCOPE_APP_LABEL}.${Constants.K8s.NAMESPACE}.svc:${Constants.K8s.PYROSCOPE_PORT}"
     }
 
     override fun createDatasourcesConfigMap(
-        controlHost: ClusterHost,
+        controlHost: ClusterHost?,
         tenants: TenantSet,
     ): Result<Unit> =
         k8sService.createConfigMap(
-            controlHost = controlHost,
             namespace = DEFAULT_NAMESPACE,
             name = DATASOURCES_CONFIGMAP_NAME,
             data = datasourcesData(tenants),
@@ -83,12 +96,13 @@ class DefaultGrafanaDeployService(
 
     /** The contents of the `grafana-datasources` ConfigMap for [tenants]. */
     private fun datasourcesData(tenants: TenantSet): Map<String, String> =
-        mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.CONTROL_NODE).toYaml())
+        mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.IN_CLUSTER).toYaml())
 
     override fun deploy(
-        controlHost: ClusterHost,
+        controlHost: ClusterHost?,
         context: DashboardInstallContext,
         bucket: String,
+        hosting: ObservabilityHosting,
     ): Result<Unit> {
         eventBus.emit(Event.Grafana.DatasourcesCreating)
         createDatasourcesConfigMap(controlHost, context.tenants).getOrElse { exception ->
@@ -97,27 +111,26 @@ class DefaultGrafanaDeployService(
             )
         }
 
-        runCatching { treeUploader.upload(controlHost, context) }.getOrElse { exception ->
-            return Result.failure(
-                IllegalStateException("Failed to upload Grafana dashboards: ${exception.message}", exception),
-            )
-        }
+        val grafana = manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket)), hosting)
+        val withTree =
+            runCatching { withDashboardTree(grafana, controlHost, context, hosting) }.getOrElse { exception ->
+                return Result.failure(
+                    IllegalStateException("Failed to upload Grafana dashboards: ${exception.message}", exception),
+                )
+            }
 
         // Grafana reads grafana-datasources, created above rather than applied with the rest, so hash
         // it in: a datasource change then rolls Grafana.
         val resources =
-            ConfigHashAnnotator.annotate(
-                manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket))),
-                mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants)),
-            )
-        runCatching { configChangeReport.report(controlHost, resources, DEFAULT_NAMESPACE) }
+            ConfigHashAnnotator.annotate(withTree, mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants)))
+        runCatching { configChangeReport.report(resources, DEFAULT_NAMESPACE) }
             .getOrElse { exception -> return Result.failure(exception) }
         eventBus.emit(Event.Grafana.ResourcesApplying(resources.size))
         for (resource in resources) {
             val kind = resource.kind
             val name = resource.metadata?.name ?: "unknown"
             eventBus.emit(Event.Grafana.ResourceApplying(kind, name))
-            k8sService.applyResource(controlHost, resource).getOrElse { exception ->
+            k8sService.applyResource(resource).getOrElse { exception ->
                 return Result.failure(
                     IllegalStateException("Failed to apply $kind/$name: ${exception.message}", exception),
                 )
@@ -127,4 +140,33 @@ class DefaultGrafanaDeployService(
         eventBus.emit(Event.Grafana.ResourcesApplied)
         return Result.success(Unit)
     }
+
+    /**
+     * [grafana] with the dashboard tree delivered the way [hosting] stores Grafana's state: on a host
+     * path the tree is copied over SSH into Grafana's directory on the control node, which needs that
+     * node; on a claim there is no node directory, so it travels with the resources as ConfigMaps
+     * the Deployment mounts ([GrafanaDashboardConfigMaps]), and its Pyroscope link names the Service.
+     */
+    private fun withDashboardTree(
+        grafana: List<HasMetadata>,
+        controlHost: ClusterHost?,
+        context: DashboardInstallContext,
+        hosting: ObservabilityHosting,
+    ): List<HasMetadata> =
+        when (hosting.storage) {
+            BackendStorage.HostPath -> {
+                val treeHost =
+                    checkNotNull(controlHost) {
+                        "The dashboard tree is copied over SSH into Grafana's directory on the control node, " +
+                            "but the cluster state has no control node."
+                    }
+                treeUploader.upload(treeHost, context)
+                grafana
+            }
+            is BackendStorage.RetainedClaim -> {
+                val tree = treeWriter.render(IN_CLUSTER_PYROSCOPE_URL, context)
+                eventBus.emit(Event.Grafana.DashboardTreeUploading(tree.size, GRAFANA_DASHBOARD_ROOT))
+                GrafanaDashboardConfigMaps.mountInto(grafana, tree)
+            }
+        }
 }

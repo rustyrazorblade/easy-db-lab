@@ -36,7 +36,9 @@ class MimirManifestBuilderTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        whenever(
+                            it.load(),
+                        ).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -171,13 +173,13 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         val yaml = config()
 
         assertThat(scalarAt(yaml, "blocks_storage", "backend")).isEqualTo("s3")
-        assertThat(scalarAt(yaml, "blocks_storage", "storage_prefix")).isEqualTo("\${METRICS_S3_PREFIX}")
-        assertThat(scalarAt(yaml, "blocks_storage", "s3", "bucket_name")).isEqualTo("\${S3_BUCKET}")
+        assertThat(scalarAt(yaml, "blocks_storage", "storage_prefix")).isEqualTo("\${METRICS_STORE_PREFIX}")
+        assertThat(scalarAt(yaml, "blocks_storage", "s3", "bucket_name")).isEqualTo("\${STORE_BUCKET}")
 
         val env = pod().containers[0].env
-        val prefix = env.single { it.name == "METRICS_S3_PREFIX" }.valueFrom.configMapKeyRef
+        val prefix = env.single { it.name == "METRICS_STORE_PREFIX" }.valueFrom.configMapKeyRef
         assertThat(prefix.name).isEqualTo("cluster-config")
-        assertThat(prefix.key).isEqualTo("metrics_s3_prefix")
+        assertThat(prefix.key).isEqualTo("metrics_store_prefix")
         assertThat(pod().containers[0].args).contains("-config.expand-env=true")
     }
 
@@ -254,11 +256,11 @@ class MimirManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the pod runs on the control node's network, with time to flush and no resource limits`() {
+    fun `on AWS the pod runs on the control node in the pod network, with time to flush and no resource limits`() {
         val pod = pod()
         val container = pod.containers[0]
 
-        assertThat(pod.hostNetwork).isTrue()
+        assertThat(pod.hostNetwork ?: false).isFalse()
         assertThat(pod.nodeSelector).containsEntry("node-role.kubernetes.io/control-plane", "true")
         assertThat(pod.terminationGracePeriodSeconds).isEqualTo(600L)
         assertThat(container.resources?.limits.orEmpty()).isEmpty()

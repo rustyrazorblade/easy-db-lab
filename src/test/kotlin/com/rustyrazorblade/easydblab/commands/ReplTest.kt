@@ -57,6 +57,20 @@ class ReplTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the REPL factory chain instantiates status with its defaulted capabilities`() {
+        val picocliFactory = PicocliCommands.PicocliCommandsFactory()
+        val cmd = CommandLine(ShellCommands::class.java, TestChainedFactory(picocliFactory, KoinCommandFactory()))
+
+        val status =
+            cmd.subcommands
+                .getValue("status")
+                .commandSpec
+                .userObject()
+
+        assertThat(status).isInstanceOf(Status::class.java)
+    }
+
+    @Test
     fun `command hierarchy should be complete for completion`() {
         val cmd = CommandLine(ShellCommands::class.java, KoinCommandFactory())
 

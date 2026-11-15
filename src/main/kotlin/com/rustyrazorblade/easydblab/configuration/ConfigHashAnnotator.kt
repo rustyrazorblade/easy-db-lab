@@ -122,7 +122,14 @@ object ConfigHashAnnotator {
     /** The names of every ConfigMap [pod] reads, sorted. */
     private fun referencedConfigMaps(pod: PodSpec): List<String> {
         val containers: List<Container> = pod.containers.orEmpty() + pod.initContainers.orEmpty()
-        val fromVolumes = pod.volumes.orEmpty().mapNotNull { it.configMap?.name }
+        val fromVolumes =
+            pod.volumes.orEmpty().mapNotNull { it.configMap?.name } +
+                pod.volumes.orEmpty().flatMap { volume ->
+                    volume.projected
+                        ?.sources
+                        .orEmpty()
+                        .mapNotNull { it.configMap?.name }
+                }
         val fromEnv = containers.flatMap { it.env.orEmpty() }.mapNotNull { it.valueFrom?.configMapKeyRef?.name }
         val fromEnvFrom = containers.flatMap { it.envFrom.orEmpty() }.mapNotNull { it.configMapRef?.name }
         return (fromVolumes + fromEnv + fromEnvFrom).distinct().sorted()

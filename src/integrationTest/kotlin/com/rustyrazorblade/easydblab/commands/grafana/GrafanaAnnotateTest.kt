@@ -12,9 +12,9 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.AnnotationMirror
-import com.rustyrazorblade.easydblab.services.DefaultGrafanaClient
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.RecordingAnnotationMirror
+import com.rustyrazorblade.easydblab.services.fixedGrafanaClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -84,10 +84,7 @@ class GrafanaAnnotateTest : BaseKoinTest() {
                     OkHttpClient.Builder().addInterceptor(interceptor).build()
                 }
                 single<GrafanaClient> {
-                    DefaultGrafanaClient(
-                        eventBus = get<EventBus>(),
-                        okHttpClient = get<OkHttpClient>(),
-                    )
+                    fixedGrafanaClient(eventBus = get<EventBus>(), client = get<OkHttpClient>())
                 }
             },
         )

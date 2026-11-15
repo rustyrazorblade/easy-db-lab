@@ -1,12 +1,13 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.aws.RegionalClients
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.withEcsRoleRetry
+import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceAlreadyExistsException
@@ -23,6 +24,8 @@ import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.s3.S3Client
 
+private val log = KotlinLogging.logger {}
+
 /**
  * The account compactor: one ECS Fargate service per AWS account, in the account bucket's region,
  * that compacts the shared observability store. Every resource is found by name; nothing is kept
@@ -31,9 +34,13 @@ import software.amazon.awssdk.services.s3.S3Client
 interface CompactorService {
     /**
      * Makes sure the service runs: creates it when missing, starts it at 1 task when stopped, and
-     * leaves a running service as it is. Does not wait for the task to run.
+     * leaves a running service as it is. Does not wait for the task to run. The task role may
+     * compact the roots under [storePrefix] as well as the unprefixed ones.
      */
-    fun ensureRunning(bucket: String)
+    fun ensureRunning(
+        bucket: String,
+        storePrefix: String,
+    )
 
     /** Sets the service's desired count to 0. Does nothing but report it when there is no service. */
     fun stop(bucket: String)
@@ -72,12 +79,16 @@ class DefaultCompactorService(
         const val MAXIMUM_PERCENT = 100
     }
 
-    override fun ensureRunning(bucket: String) {
+    override fun ensureRunning(
+        bucket: String,
+        storePrefix: String,
+    ) {
         val region = bucketRegion(bucket)
-        val roles = iam.ensure()
+        val roles = iam.ensure(storePrefix)
         val vpc = network.ensure(region)
         regionalClients.logs(region).use { ensureLogGroup(it) }
-        val definition = CompactorTaskDefinition(bucket, region, roles.taskRoleArn, roles.executionRoleArn)
+        val definition =
+            CompactorTaskDefinition(bucket, region, roles.taskRoleArn, roles.executionRoleArn, storePrefix = storePrefix)
         regionalClients.ecs(region).use { ecs ->
             withEcsAccess(region) { ensureService(ecs, region, definition, vpc) }
         }
@@ -170,7 +181,8 @@ class DefaultCompactorService(
         } catch (e: EcsException) {
             if (e.awsErrorDetails()?.errorCode() != Constants.Compactor.ECS_ACCESS_DENIED) throw e
             eventBus.emit(Event.Compactor.AccessDenied(region, e.awsErrorDetails().errorMessage().orEmpty()))
-            throw IllegalStateException(
+            log.error(e) { "ECS denied the account compactor's call" }
+            throw CommandFailedException(
                 "ECS denied the account compactor's call: the ${Constants.Compactor.OPERATOR_POLICY} policy is missing. " +
                     "Run `easy-db-lab show-iam-policies compactor` and attach the policy.",
                 e,

@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.commands.grafana
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.AnnotationMirror
 import com.rustyrazorblade.easydblab.services.GrafanaAnnotationBackupService
@@ -33,15 +32,11 @@ class GrafanaBackup : PicoBaseCommand() {
     private val annotationMirror: AnnotationMirror by inject()
 
     override fun execute() {
-        val controlHost =
-            clusterState.hosts[ServerType.Control]?.firstOrNull()
-                ?: error("No control node found in cluster state.")
-
-        val mirrored = annotationMirror.syncAll(controlHost).getOrThrow()
+        val mirrored = annotationMirror.syncAll().getOrThrow()
         eventBus.emit(Event.Grafana.AnnotationsMirrored(mirrored))
 
         // getOrThrow so a missing bucket or an unreachable Grafana exits non-zero; the backup service
         // emits the start/complete events and reports the resulting S3 URI on success.
-        annotationBackupService.backup(controlHost, clusterState).getOrThrow()
+        annotationBackupService.backup(clusterState).getOrThrow()
     }
 }

@@ -36,7 +36,7 @@ import java.time.Duration
 class DefaultStressJobServiceTest : BaseKoinTest() {
     private lateinit var service: DefaultStressJobService
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockEcrPullSecrets: EcrPullSecretService
+    private lateinit var mockEcrPullSecrets: ImagePullSecretService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -48,6 +48,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                             ClusterState(
                                 name = "test-cluster",
                                 versions = mutableMapOf(),
+                                s3Bucket = "easy-db-lab-test",
                                 infrastructure =
                                     InfrastructureState(
                                         vpcId = "vpc-test",
@@ -79,7 +80,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         mockK8sService = getKoin().get()
         // The default stress image is public, so no pull secret is involved.
         mockEcrPullSecrets = mock()
-        whenever(mockEcrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
+        whenever(mockEcrPullSecrets.ensureFor(any(), any())).thenReturn("")
         val clusterStateManager: ClusterStateManager = getKoin().get()
         service =
             DefaultStressJobService(
@@ -159,7 +160,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val envNames = sidecar.env.map { it.name }
         assertThat(envNames).containsExactly(
             "K8S_NODE_NAME",
-            "HOST_IP",
             "CLUSTER_NAME",
             "GOMEMLIMIT",
             "OTEL_RESOURCE_ATTRIBUTES",
@@ -168,9 +168,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
 
         val nodeNameEnv = sidecar.env.first { it.name == "K8S_NODE_NAME" }
         assertThat(nodeNameEnv.valueFrom.fieldRef.fieldPath).isEqualTo("spec.nodeName")
-
-        val hostIpEnv = sidecar.env.first { it.name == "HOST_IP" }
-        assertThat(hostIpEnv.valueFrom.fieldRef.fieldPath).isEqualTo("status.hostIP")
 
         // CLUSTER_NAME is injected directly from cluster state (issue #733) so the stress job no
         // longer depends on a `cluster-config` ConfigMap that may not exist yet.
@@ -325,16 +322,13 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
 
     @Test
     fun `sidecar otel config resource should include the resource_detection processor`() {
-        val templateService: TemplateService = getKoin().get()
-        val config =
-            templateService
-                .fromResource(
-                    DefaultStressJobService::class.java,
-                    "/com/rustyrazorblade/easydblab/configuration/cassandra/otel-stress-sidecar-config.yaml",
-                ).substitute()
+        val config = service.loadSidecarConfig()
         assertThat(config).contains("resource_detection")
         assertThat(config).contains("detectors: [env]")
         assertThat(config).contains("processors: [resource_detection, batch]")
+        // Exported to the node's core collector through its Service, not the node IP: in a
+        // restricted environment no collector listens on the node.
+        assertThat(config).contains("endpoint: otel-collector.default.svc:4317").doesNotContain("HOST_IP")
     }
 
     @Test
@@ -480,12 +474,17 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildJob should export OTLP to the collector's HTTP port, not its gRPC port`() {
+    fun `buildJob should export OTLP to the core collector Service's HTTP port, not its gRPC port`() {
         // The agent's default protocol is http/protobuf, served on 4318. Sent at 4317 — the gRPC
         // port — every export fails with "HttpExporter - Failed to export" and no span arrives.
         val javaToolOptions = javaToolOptionsOf(stressJobConfig())
 
-        assertThat(javaToolOptions).contains("-Dotel.exporter.otlp.endpoint=http://10.0.1.5:${Constants.K8s.OTEL_HTTP_PORT}")
+        // The Service keeps the traffic on the node (internalTrafficPolicy: Local); the control
+        // node's IP would send every stress node's telemetry to one collector.
+        assertThat(
+            javaToolOptions,
+        ).contains("-Dotel.exporter.otlp.endpoint=http://otel-collector.default.svc:${Constants.K8s.OTEL_HTTP_PORT}")
+        assertThat(javaToolOptions).doesNotContain("10.0.1.5:${Constants.K8s.OTEL_HTTP_PORT}")
         assertThat(javaToolOptions).doesNotContain("4317")
     }
 
@@ -561,6 +560,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
                 hosts =
                     mapOf(
@@ -637,6 +637,7 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                             ClusterState(
                                 name = "test-cluster",
                                 versions = mutableMapOf(),
+                                s3Bucket = "easy-db-lab-test",
                                 infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
                                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
                             ),
@@ -660,8 +661,8 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                     },
                 )
             }
-        val ecrPullSecrets: EcrPullSecretService = mock()
-        whenever(ecrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
+        val ecrPullSecrets: ImagePullSecretService = mock()
+        whenever(ecrPullSecrets.ensureFor(any(), any())).thenReturn("")
         return DefaultStressJobService(
             k8sService = k8sService,
             clusterStateManager = getKoin().get(),
@@ -687,67 +688,67 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
 
     @BeforeEach
     fun stubJobCreation() {
-        whenever(k8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(k8sService.createJob(any(), any(), any<Job>())).thenReturn(Result.success("stress-wait"))
+        whenever(k8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.createJob(any(), any<Job>())).thenReturn(Result.success("stress-wait"))
     }
 
     @Test
     fun `returns the job name and reports the pod once it is Running`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(
             Result.success(emptyList()),
             Result.failure(IllegalStateException("connection reset")),
             Result.success(listOf(pod("Pending"))),
             Result.success(listOf(pod("Running"))),
         )
 
-        assertThat(service().startJob(controlHost, config).getOrThrow().jobName).isEqualTo("stress-wait")
+        assertThat(service().startJob(config).getOrThrow().jobName).isEqualTo("stress-wait")
         assertThat(events.filterIsInstance<Event.Stress.PodStatus>())
             .containsExactly(Event.Stress.PodStatus("stress-wait-abc", "Running"))
-        verify(k8sService, times(4)).getPodsForJob(any(), any(), any())
+        verify(k8sService, times(4)).getPodsForJob(any(), any())
     }
 
     @Test
     fun `returns the node the running pod was scheduled on as the host`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Running", nodeName = "app3"))))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Running", nodeName = "app3"))))
 
-        assertThat(service().startJob(controlHost, config).getOrThrow()).isEqualTo(StartedStressJob("stress-wait", "app3"))
+        assertThat(service().startJob(config).getOrThrow()).isEqualTo(StartedStressJob("stress-wait", "app3"))
     }
 
     @Test
     fun `a Succeeded pod also ends the wait`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Succeeded"))))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Succeeded"))))
 
-        assertThat(service().startJob(controlHost, config).getOrThrow().jobName).isEqualTo("stress-wait")
+        assertThat(service().startJob(config).getOrThrow().jobName).isEqualTo("stress-wait")
     }
 
     @Test
     fun `fails naming the job when no pod is ever created`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(emptyList()))
 
-        val result = service().startJob(controlHost, config)
+        val result = service().startJob(config)
 
         assertThat(result.exceptionOrNull()).hasMessage("No pods created yet for job stress-wait")
-        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any(), any())
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
     }
 
     @Test
     fun `fails naming the pod's phase when it never runs`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Pending"))))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Pending"))))
 
-        val result = service().startJob(controlHost, config)
+        val result = service().startJob(config)
 
         assertThat(result.exceptionOrNull()).hasMessage("Pod stress-wait-abc is Pending, waiting for Running")
-        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any(), any())
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
     }
 
     @Test
     fun `a Failed pod is polled again, and fails the wait when it stays Failed`() {
-        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Failed"))))
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Failed"))))
 
-        val result = service().startJob(controlHost, config)
+        val result = service().startJob(config)
 
         assertThat(result.exceptionOrNull()).hasMessage("Pod stress-wait-abc failed")
-        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any(), any())
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
     }
 
     private companion object {

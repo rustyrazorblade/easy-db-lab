@@ -25,15 +25,22 @@ runtime:
   type: pods
   selector: "strimzi.io/cluster=kafka"
   namespace: default
+# Strimzi creates the Services of the Kafka resource's listeners, so no manifest of this kit declares
+# them: `<cluster>-kafka-bootstrap` for the internal `plain` listener and
+# `<cluster>-kafka-<listener>-bootstrap` for the `external` nodeport one. A port-forward targets them.
 endpoints:
   - name: "Kafka Internal"
     node-type: db
     port: 9092
     type: kafka
+    service: kafka-kafka-bootstrap
+    service-port: 9092
   - name: "Kafka Bootstrap"
     node-type: db
     port: 32100
     type: kafka
+    service: kafka-kafka-external-bootstrap
+    service-port: 9094
 args:
   - flag: --version
     variable: KAFKA_VERSION

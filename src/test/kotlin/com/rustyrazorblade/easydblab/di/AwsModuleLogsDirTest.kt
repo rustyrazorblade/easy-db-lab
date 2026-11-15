@@ -4,10 +4,12 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.providers.aws.awsModule
+import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
+import com.rustyrazorblade.easydblab.services.aws.awsServicesModule
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -18,14 +20,15 @@ import org.mockito.kotlin.whenever
 import java.io.File
 
 /**
- * The production [awsModule] binding of the EMR log directory, resolved through Koin against a
+ * The production [awsServicesModule] binding of the EMR log directory, resolved through Koin against a
  * [com.rustyrazorblade.easydblab.Context] whose workspace is not the process's current
  * directory. A bare relative `logs` in the binding would land under the process directory.
  */
 internal class AwsModuleLogsDirTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
-            awsModule,
+            awsClientsModule,
+            awsServicesModule,
             module {
                 single<ClusterStateManager> {
                     mock<ClusterStateManager>().also {
@@ -34,7 +37,7 @@ internal class AwsModuleLogsDirTest : BaseKoinTest() {
                         )
                     }
                 }
-                single<ObjectStore> { mock() }
+                single<ObjectStore> { InMemoryObjectStore() }
                 single<LokiQueryService> { mock() }
             },
         )

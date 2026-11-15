@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.s3manager
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -91,7 +92,7 @@ class S3ManagerManifestBuilder(
             .endEnv()
             .addNewEnv()
             .withName("ENDPOINT")
-            .withValue("s3.$region.amazonaws.com")
+            .withValue(S3Backend(bucket = "", region = region).endpoint)
             .endEnv()
             .addNewEnv()
             .withName("REGION")

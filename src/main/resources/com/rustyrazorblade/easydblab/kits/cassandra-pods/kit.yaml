@@ -1,0 +1,108 @@
+name: cassandra-pods
+type: db
+description: Cassandra as a StatefulSet on the db nodes, any image or branch build, CQL on a NodePort
+version: "1.0.0"
+collision-check: true
+
+# The OpenTelemetry Java agent is copied into each pod by an init container, so the series arrive
+# under job="cassandra" with no AMI hostPath and the existing Cassandra dashboards show them.
+metrics:
+  - type: java-agent
+    service-name: cassandra
+
+runtime:
+  type: pods
+  selector: "easydblab/kit=cassandra-pods"
+  namespace: default
+
+endpoints:
+  - name: "CQL"
+    node-type: db
+    port: 30942
+    type: native
+
+args:
+  - flag: --version
+    variable: CASSANDRA_VERSION
+    description: "Cassandra version, run as the image cassandra:<version>"
+    type: string
+    default: "5.0"
+  - flag: --image
+    variable: CASSANDRA_IMAGE
+    description: "Any image reference, such as a branch build; overrides --version"
+    type: string
+    default: ""
+  - flag: --nodes
+    variable: CASSANDRA_NODES
+    description: "Number of Cassandra nodes, at most one per db node (default: db node count)"
+    type: int
+    default: "${DB_NODE_COUNT}"
+  - flag: --heap
+    variable: CASSANDRA_HEAP
+    description: "JVM heap per node, such as 4G; must be smaller than --memory; empty is half of --memory"
+    type: string
+    default: ""
+  - flag: --memory
+    variable: CASSANDRA_MEMORY
+    description: "Memory request and limit per node, such as 4Gi; the default heap is half of it"
+    type: string
+    default: "4Gi"
+  - flag: --dc
+    variable: CASSANDRA_DC
+    description: "Datacenter name"
+    type: string
+    default: "dc1"
+  - flag: --storage-size
+    variable: STORAGE_SIZE
+    description: "Persistent volume size per node"
+    type: string
+    default: "10Ti"
+
+install:
+  - type: platform-pvs
+    node-type: db
+    volume-claim-template-name: data
+
+start:
+  # Fails before any resource exists: unknown image, too many nodes, or the AMI Cassandra running.
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      bash lib/check-start.sh
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      . "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+      edl_create_configmap cassandra-pods-jmx-rules jmx cassandra-jmx-rules.yaml=cassandra-jmx-rules.yaml
+  - type: manifest
+    template: headless-service.yaml
+  - type: manifest
+    template: nodeport-service.yaml
+  # The image and build label are resolved by the check, so the StatefulSet is filled in here.
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      bash lib/apply-statefulset.sh
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      bash lib/wait-un.sh
+
+# Never the claims: a restarted StatefulSet reattaches them by name, so data survives.
+stop:
+  - type: delete
+    kinds: [statefulset, service, configmap]
+    selector: easydblab/kit=cassandra-pods
+    namespace: default
+
+uninstall:
+  - type: delete
+    kinds: [statefulset, service, configmap, pvc]
+    selector: easydblab/kit=cassandra-pods
+    namespace: default
+  - type: platform-pvs-delete
+    node-type: db

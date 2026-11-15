@@ -60,6 +60,40 @@ internal class OpenSearchServiceTest {
     }
 
     @Test
+    fun `describeDomainOrNull returns null for a domain that does not exist, without retrying`() {
+        whenever(mockOpenSearchClient.describeDomain(any<DescribeDomainRequest>()))
+            .thenThrow(ResourceNotFoundException.builder().message("gone").build())
+
+        assertThat(openSearchService.describeDomainOrNull("missing")).isNull()
+
+        verify(mockOpenSearchClient, org.mockito.kotlin.times(1)).describeDomain(any<DescribeDomainRequest>())
+    }
+
+    @Test
+    fun `describeDomainOrNull returns the domain when it exists`() {
+        whenever(mockOpenSearchClient.describeDomain(any<DescribeDomainRequest>()))
+            .thenReturn(
+                DescribeDomainResponse
+                    .builder()
+                    .domainStatus(
+                        DomainStatus
+                            .builder()
+                            .domainName("lab-os")
+                            .domainId("123/lab-os")
+                            .endpoint("search-lab.example.com")
+                            .processing(false)
+                            .deleted(false)
+                            .build(),
+                    ).build(),
+            )
+
+        val result = openSearchService.describeDomainOrNull("lab-os")
+
+        assertThat(result?.domainName).isEqualTo("lab-os")
+        assertThat(result?.endpoint).isEqualTo("search-lab.example.com")
+    }
+
+    @Test
     fun `createDomain should create domain with correct configuration`() {
         val config =
             OpenSearchDomainConfig(

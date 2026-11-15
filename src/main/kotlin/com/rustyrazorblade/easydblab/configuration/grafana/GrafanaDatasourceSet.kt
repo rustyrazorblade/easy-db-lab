@@ -39,14 +39,22 @@ data class BackendUrls(
     val profiles: String,
 ) {
     companion object {
-        /** The backends on the control node, where Grafana runs with the host's network. */
-        val CONTROL_NODE =
+        /**
+         * The backends as Grafana reaches them inside the cluster: by each backend's ClusterIP
+         * Service name, so neither Grafana nor a backend has to share a node or its network.
+         */
+        val IN_CLUSTER =
             BackendUrls(
-                metrics = "http://localhost:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus",
-                logs = "http://localhost:${Constants.K8s.LOKI_HTTP_PORT}",
-                traces = "http://localhost:${Constants.K8s.TEMPO_PORT}",
-                profiles = "http://localhost:${Constants.K8s.PYROSCOPE_PORT}",
+                metrics = "${serviceUrl(Constants.K8s.MIMIR_APP_LABEL, Constants.K8s.MIMIR_HTTP_PORT)}/prometheus",
+                logs = serviceUrl(Constants.K8s.LOKI_APP_LABEL, Constants.K8s.LOKI_HTTP_PORT),
+                traces = serviceUrl(Constants.K8s.TEMPO_APP_LABEL, Constants.K8s.TEMPO_PORT),
+                profiles = serviceUrl(Constants.K8s.PYROSCOPE_APP_LABEL, Constants.K8s.PYROSCOPE_PORT),
             )
+
+        private fun serviceUrl(
+            service: String,
+            port: Int,
+        ): String = "http://$service.${Constants.K8s.NAMESPACE}.svc:$port"
     }
 }
 

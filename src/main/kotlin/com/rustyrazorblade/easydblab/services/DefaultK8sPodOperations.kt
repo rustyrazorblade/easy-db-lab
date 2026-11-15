@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.WorkloadPod
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.ByteArrayOutputStream
@@ -13,14 +12,13 @@ class DefaultK8sPodOperations(
     private val clientProvider: K8sClientProvider,
 ) : K8sPodOperations {
     override fun execInPod(
-        controlHost: ClusterHost,
         namespace: String,
         podName: String,
         command: List<String>,
     ): Result<String> =
         runCatching {
             log.info { "Executing in pod $podName: ${command.joinToString(" ")}" }
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val output = ByteArrayOutputStream()
                 val error = ByteArrayOutputStream()
                 val execWatch =
@@ -45,9 +43,9 @@ class DefaultK8sPodOperations(
             }
         }
 
-    override fun listWorkloadPods(controlHost: ClusterHost): Result<List<WorkloadPod>> =
+    override fun listWorkloadPods(): Result<List<WorkloadPod>> =
         runCatching {
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .pods()
                     .inAnyNamespace()

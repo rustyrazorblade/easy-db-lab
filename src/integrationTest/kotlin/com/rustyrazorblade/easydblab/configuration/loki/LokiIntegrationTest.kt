@@ -52,7 +52,7 @@ class LokiIntegrationTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "loki-it", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "loki-it", versions = mutableMapOf(), s3Bucket = bucket))
                     }
                 }
                 single { TemplateService(get(), get()) }

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.install
 
+import com.rustyrazorblade.easydblab.BuiltInCommands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -72,6 +73,12 @@ class KitInstallCommand(
 
         val instanceName = resolveInstanceName()
 
+        if (BuiltInCommands.isBuiltIn(instanceName)) {
+            eventBus.emit(Event.Kit.NameCollision(kit = instanceName, command = instanceName))
+            exitCode = Constants.ExitCodes.ERROR
+            return
+        }
+
         if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) && !force) {
             val outputDir = context.workspaceFile(instanceName)
             if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
@@ -91,9 +98,7 @@ class KitInstallCommand(
         )
 
         if (config.install.isNotEmpty()) {
-            val controlHost =
-                clusterState.getControlHost()
-                    ?: error("No control node found in cluster state")
+            checkNotNull(clusterState.getControlHost()) { "No control node found in cluster state" }
             val kitDir = context.workspaceFile(instanceName)
             val variables =
                 TemplateVariables
@@ -110,7 +115,6 @@ class KitInstallCommand(
                     context =
                         StepExecutionContext(
                             kitName = instanceName,
-                            controlHost = controlHost,
                             clusterState = clusterState,
                             variables = variables,
                             kitDir = kitDir,

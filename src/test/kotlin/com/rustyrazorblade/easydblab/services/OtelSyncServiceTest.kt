@@ -6,7 +6,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -40,6 +45,12 @@ class OtelSyncServiceTest : BaseKoinTest() {
     private lateinit var mockFiltered: FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>
     private lateinit var service: OtelSyncService
 
+    /** The hosting the sync under test resolves; AWS unless a test declares otherwise. */
+    private var hosting: ObservabilityHosting = ObservabilityHosting.AWS
+
+    /** The capabilities the sync under test sees; AWS unless a test declares otherwise. */
+    private var capabilities: NodeCapabilities = NodeCapabilities.AWS
+
     private val controlHost =
         ClusterHost(
             publicIp = "1.2.3.4",
@@ -48,6 +59,18 @@ class OtelSyncServiceTest : BaseKoinTest() {
             availabilityZone = "us-west-2a",
         )
 
+    /** An AWS cluster: its control node is where the backends publish their ports. */
+    private val withControlHost =
+        ClusterState(
+            name = "test",
+            versions = mutableMapOf(),
+            s3Bucket = "easy-db-lab-test",
+            hosts = mapOf(ServerType.Control to listOf(controlHost)),
+        )
+
+    /** A cluster brought by the operator: no control node in its state. */
+    private val noControlHost = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test")
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
@@ -55,7 +78,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 single { mock<K8sService>().also { mockK8sService = it } }
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(withControlHost)
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -81,9 +104,9 @@ class OtelSyncServiceTest : BaseKoinTest() {
         whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
 
-        whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
-        whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
+        whenever(mockK8sService.applyResource(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
 
         service =
             DefaultOtelSyncService(
@@ -93,30 +116,53 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
+                capabilitiesOf = { capabilities },
+                hostingOf = { hosting },
             )
     }
 
     @Test
-    fun `syncConfigMap creates K8s client for the given host`() {
-        service.syncConfigMap(controlHost)
+    fun `syncConfigMap creates the K8s client for the control host in state`() {
+        service.syncConfigMap()
 
-        verify(mockK8sClientProvider).createClient(controlHost)
+        verify(mockK8sClientProvider).createClient()
     }
 
     @Test
     fun `syncConfigMap applies the OTel collector ConfigMap`() {
         val applied = captureApplied()
 
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
 
         assertThat(applied.filterIsInstance<ConfigMap>().map { it.metadata.name }).containsExactly("otel-collector-config")
+    }
+
+    @Test
+    fun `a sync under an environment without CloudWatch renders no yace scrape job`() {
+        val awsConfig = collectorConfigFromSync()
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+
+        val localConfig = collectorConfigFromSync()
+
+        assertThat(awsConfig).contains("job_name: \"yace\"")
+        assertThat(localConfig).doesNotContain("yace")
+    }
+
+    private fun collectorConfigFromSync(): String {
+        val applied = captureApplied()
+        service.syncConfigMap()
+        return applied
+            .filterIsInstance<ConfigMap>()
+            .single()
+            .data.values
+            .single()
     }
 
     /** Every resource the sync applies, in order. */
     private fun captureApplied(): MutableList<HasMetadata> {
         val applied = mutableListOf<HasMetadata>()
-        whenever(mockK8sService.applyResource(any(), any())).thenAnswer { invocation ->
-            applied += invocation.getArgument<HasMetadata>(1)
+        whenever(mockK8sService.applyResource(any())).thenAnswer { invocation ->
+            applied += invocation.getArgument<HasMetadata>(0)
             Result.success(Unit)
         }
         return applied
@@ -141,11 +187,11 @@ class OtelSyncServiceTest : BaseKoinTest() {
     @Test
     fun `syncConfigMap changes the collector hash when a kit registers a scrape target`() {
         val before = captureApplied()
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
 
         registerKitScrapeTarget()
         val after = captureApplied()
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
 
         assertThat(appliedConfigHash(after)).isNotEqualTo(appliedConfigHash(before))
     }
@@ -167,24 +213,24 @@ class OtelSyncServiceTest : BaseKoinTest() {
     /** The rollout comes from the hash changing; a forced restart would leave the stale hash behind. */
     @Test
     fun `syncConfigMap does not force a rollout restart`() {
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
 
-        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any(), any())
+        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any())
     }
 
     @Test
     fun `syncConfigMap reports whether the collector configuration changed`() {
         val applied = captureApplied()
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
         val collector = WorkloadRef(WorkloadKind.DaemonSet, Constants.OtelCollector.SERVICE_NAME)
         val runningHash = appliedConfigHash(applied)
         // An Answer bypasses Kotlin's Result unboxing: the JVM method returns the bare map.
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenAnswer { mapOf(collector to runningHash) }
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenAnswer { mapOf(collector to runningHash) }
         val events = recordEvents()
 
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
         registerKitScrapeTarget()
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
 
         assertThat(events.filterIsInstance<Event.Grafana.WorkloadConfigCompared>()).containsExactly(
             Event.Grafana.WorkloadConfigCompared(collector.toString(), changed = false),
@@ -194,17 +240,17 @@ class OtelSyncServiceTest : BaseKoinTest() {
 
     @Test
     fun `syncConfigMap returns failure when applyResource fails`() {
-        whenever(mockK8sService.applyResource(any(), any()))
+        whenever(mockK8sService.applyResource(any()))
             .thenReturn(Result.failure(RuntimeException("K8s API error")))
 
-        val result = service.syncConfigMap(controlHost)
+        val result = service.syncConfigMap()
 
         assertThat(result.isFailure).isTrue()
     }
 
     @Test
     fun `syncConfigMap closes the K8s client after use`() {
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
 
         verify(mockK8sClient).close()
     }
@@ -224,7 +270,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
         whenever(mockFiltered.list()).thenReturn(ConfigMapList().also { it.items = mutableListOf(metricsConfigMap) })
         val applied = captureApplied()
 
-        service.syncConfigMap(controlHost)
+        service.syncConfigMap()
         val appliedConfigMap = applied.filterIsInstance<ConfigMap>().singleOrNull()
 
         val yaml =
@@ -236,25 +282,76 @@ class OtelSyncServiceTest : BaseKoinTest() {
     }
 
     /**
-     * A kit start/stop regenerates the whole ConfigMap. On a Cilium cluster that regeneration must
-     * keep the Cilium scrape jobs, or the first kit start would silently drop agent and operator
-     * metrics for the rest of the cluster's life.
+     * A kit start/stop regenerates the core collector only. The Cilium scrape jobs are the host
+     * add-on's, in its own ConfigMap, so a kit start can neither drop them nor roll the add-on.
      */
     @Test
-    fun `syncConfigMap keeps the Cilium scrape jobs when the cluster state says Cilium`() {
+    fun `syncConfigMap touches only the core collector, so the add-on keeps its Cilium jobs`() {
         val ciliumState =
             ClusterState(
                 name = "test",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
+                hosts = withControlHost.hosts,
                 initConfig = InitConfig(region = "us-west-2", cni = CniMode.Cilium),
             )
         whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(ciliumState)
         val applied = captureApplied()
 
-        service.syncConfigMap(controlHost)
-        val appliedConfigMap = applied.filterIsInstance<ConfigMap>().singleOrNull()
+        service.syncConfigMap()
 
-        val yaml = checkNotNull(appliedConfigMap?.data?.get("otel-collector-config.yaml"))
-        assertThat(yaml).contains("cilium-agent").contains("cilium-operator")
+        assertThat(applied.map { it.metadata.name }).noneMatch { it.startsWith("otel-collector-host") }
+        val yaml = checkNotNull(applied.filterIsInstance<ConfigMap>().single().data["otel-collector-config.yaml"])
+        assertThat(yaml).doesNotContain("cilium-agent")
+    }
+
+    /**
+     * Off owned nodes the backends are not published on a node, so a sync needs no control host: the
+     * cluster-config it hashes the collector against carries no node IP, and the collector config it
+     * renders reaches every backend by Service DNS.
+     */
+    @Test
+    fun `a sync off owned nodes runs with no control host and renders no node IP`() {
+        hosting = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE)
+        whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(noControlHost)
+        val applied = captureApplied()
+
+        service.syncConfigMap().getOrThrow()
+
+        val withoutNodeIp = collectorHash(ClusterConfigData.of(noControlHost, hosting, "us-west-2"))
+        val withNodeIp = collectorHash(ClusterConfigData.of(withControlHost, ObservabilityHosting.AWS, "us-west-2"))
+        assertThat(ClusterConfigData.of(noControlHost, hosting, "us-west-2")).doesNotContainKey(ClusterConfigData.CONTROL_NODE_IP_KEY)
+        assertThat(appliedConfigHash(applied)).isEqualTo(withoutNodeIp).isNotEqualTo(withNodeIp)
+        val config =
+            applied
+                .filterIsInstance<ConfigMap>()
+                .single()
+                .data.values
+                .single()
+        assertThat(
+            config.replace("0.0.0.0:", ""),
+        ).describedAs("no endpoint at a node IP").doesNotContainPattern("""\b\d{1,3}(\.\d{1,3}){3}:\d+""")
+        assertThat(config).contains("mimir.default.svc.cluster.local", "loki.default.svc.cluster.local", "tempo.default.svc.cluster.local")
+    }
+
+    /** The collector's hash against [clusterConfig], built the way [CollectorResources] builds it. */
+    private fun collectorHash(clusterConfig: Map<String, String>): String =
+        ConfigHashAnnotator
+            .annotate(
+                otelManifestBuilder.buildAllResources(capabilities, emptyList(), null, CollectorResources.podLogSource(capabilities)),
+                mapOf(ClusterConfigData.NAME to clusterConfig),
+            ).let(::appliedConfigHash)
+
+    @Test
+    fun `a sync on the AWS control node without a control host fails naming why it needs one`() {
+        whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(noControlHost)
+
+        val result = service.syncConfigMap()
+
+        assertThat(result.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("no control node")
+            .hasMessageContaining("redirected clusters")
+        verify(mockK8sService, never()).applyResource(any())
     }
 }

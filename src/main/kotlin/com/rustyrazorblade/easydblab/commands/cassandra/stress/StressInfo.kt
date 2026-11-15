@@ -58,7 +58,7 @@ class StressInfo : PicoBaseCommand() {
 
         val output =
             stressJobService
-                .runCommand(controlNode, image, args)
+                .runCommand(image, args)
                 .getOrElse { e ->
                     error("Failed to run command: ${e.message}")
                 }

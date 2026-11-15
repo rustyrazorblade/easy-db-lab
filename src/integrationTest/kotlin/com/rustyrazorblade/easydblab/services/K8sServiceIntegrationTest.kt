@@ -9,6 +9,10 @@ import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -18,6 +22,7 @@ import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -49,7 +54,6 @@ import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.slf4j.LoggerFactory
@@ -102,7 +106,7 @@ class K8sServiceIntegrationTest {
 
         val mockClusterStateManager = mock<ClusterStateManager>()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf()),
+            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket"),
         )
         val testUser =
             User(
@@ -121,12 +125,29 @@ class K8sServiceIntegrationTest {
                 .withName("cluster-config")
                 .withNamespace(DEFAULT_NAMESPACE)
                 .endMetadata()
-                .addToData("control_node_ip", "10.0.0.1")
-                .addToData("aws_region", "us-west-2")
-                .addToData("s3_bucket", "test-bucket")
-                .addToData("traces_s3_prefix", "tempo")
-                .addToData("cluster_name", "test")
-                .build()
+                .addToData(
+                    ClusterConfigData.of(
+                        ClusterState(
+                            name = "test",
+                            versions = mutableMapOf(),
+                            s3Bucket = "test-bucket",
+                            hosts =
+                                mapOf(
+                                    ServerType.Control to
+                                        listOf(
+                                            ClusterHost(
+                                                publicIp = "1.2.3.4",
+                                                privateIp = "10.0.0.1",
+                                                alias = "control0",
+                                                availabilityZone = "us-west-2a",
+                                            ),
+                                        ),
+                                ),
+                        ),
+                        ObservabilityHosting.AWS,
+                        defaultRegion = "us-west-2",
+                    ),
+                ).build()
         client.resource(clusterConfig).forceConflicts().serverSideApply()
 
         val datasources =
@@ -195,7 +216,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(10)
     fun `should apply OTel Collector resources`() {
-        val resources = OtelManifestBuilder(templateService).buildAllResources()
+        val resources = OtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS)
         applyAndVerify(resources)
 
         assertServiceAccountExists("otel-collector")
@@ -204,6 +225,19 @@ class K8sServiceIntegrationTest {
         assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
         assertDaemonSetExists("otel-collector")
         assertServiceExists("otel-collector")
+    }
+
+    @Test
+    @Order(22)
+    fun `should apply OTel host add-on resources`() {
+        val resources = OtelHostCollectorManifestBuilder(templateService).buildAllResources(CniMode.Cilium)
+        applyAndVerify(resources)
+
+        assertServiceAccountExists("otel-collector-host")
+        assertClusterRoleExists("otel-collector-host")
+        assertClusterRoleBindingExists("otel-collector-host")
+        assertConfigMapExists("otel-collector-host-config", "otel-host-collector-config.yaml")
+        assertDaemonSetExists("otel-collector-host")
     }
 
     @Test
@@ -328,8 +362,9 @@ class K8sServiceIntegrationTest {
 
         // Apply all resources including Deployment. Dashboards are files on the hostPath, not
         // K8s objects, so nothing per dashboard is expected here.
-        applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2")))
+        applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS))
         assertDeploymentExists("grafana")
+        assertServiceExists("grafana")
     }
 
     // -----------------------------------------------------------------------
@@ -440,13 +475,6 @@ class K8sServiceIntegrationTest {
     @Order(24)
     fun `createLocalPersistentVolumes recycles stale PVs via service layer`() {
         val storageOps = createStorageOperations()
-        val testHost =
-            ClusterHost(
-                publicIp = "unused",
-                privateIp = "unused",
-                alias = "test",
-                availabilityZone = "us-west-2a",
-            )
         val config =
             PersistentVolumeConfig(
                 dbName = "recycletest",
@@ -459,7 +487,7 @@ class K8sServiceIntegrationTest {
         k3s.execInContainer("mkdir", "-p", "/tmp/recycletest")
 
         // First call: creates the PV
-        storageOps.createLocalPersistentVolumes(testHost, config).getOrThrow()
+        storageOps.createLocalPersistentVolumes(config).getOrThrow()
         val pvName = "data-recycletest-0"
         assertThat(client.persistentVolumes().withName(pvName).get()).isNotNull
 
@@ -488,7 +516,7 @@ class K8sServiceIntegrationTest {
         waitForPvPhase(pvName, "Released", timeoutSeconds = 30)
 
         // Second call: should detect stale claimRef and clear the UID
-        storageOps.createLocalPersistentVolumes(testHost, config).getOrThrow()
+        storageOps.createLocalPersistentVolumes(config).getOrThrow()
 
         // Verify the PV's claimRef UID was cleared (pre-bound state)
         val recycledPv = client.persistentVolumes().withName(pvName).get()
@@ -517,7 +545,7 @@ class K8sServiceIntegrationTest {
     @Order(25)
     fun `a db platform PV binds only on a db node with its ordinal, not an app node with the same ordinal`() {
         val storageOps = createStorageOperations()
-        storageOps.ensureLocalStorageWfcClass(testHost).getOrThrow()
+        storageOps.ensureLocalStorageWfcClass().getOrThrow()
         val nodeName =
             client
                 .nodes()
@@ -540,7 +568,6 @@ class K8sServiceIntegrationTest {
         try {
             storageOps
                 .createLocalPersistentVolumes(
-                    testHost,
                     PersistentVolumeConfig(
                         dbName = kit,
                         localPath = "/tmp/$kit",
@@ -582,7 +609,6 @@ class K8sServiceIntegrationTest {
             k3s.execInContainer("mkdir", "-p", "/tmp/$kit")
             storageOps
                 .createLocalPersistentVolumes(
-                    testHost,
                     PersistentVolumeConfig(
                         dbName = kit,
                         localPath = "/tmp/$kit",
@@ -659,12 +685,12 @@ class K8sServiceIntegrationTest {
                 .get()
                 .metadata.labels
         val clientProvider = mock<K8sClientProvider>()
-        whenever(clientProvider.createClient(any())).thenAnswer {
+        whenever(clientProvider.createClient()).thenAnswer {
             KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
         }
         val key = "easydblab.test/label-merge"
         try {
-            DefaultK8sManifestOperations(clientProvider, EventBus()).labelNode(testHost, nodeName, mapOf(key to "yes")).getOrThrow()
+            DefaultK8sManifestOperations(clientProvider, EventBus()).labelNode(nodeName, mapOf(key to "yes")).getOrThrow()
 
             val after =
                 client
@@ -709,7 +735,7 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(42)
-    fun `all deployments should use Recreate strategy for hostNetwork compatibility`() {
+    fun `all deployments should use Recreate strategy so a pod never runs beside its replacement`() {
         val allResources = collectAllResources()
         val violations = mutableListOf<String>()
 
@@ -719,7 +745,7 @@ class K8sServiceIntegrationTest {
                 if (strategy != "Recreate") {
                     violations.add(
                         "Deployment/${resource.metadata?.name} has strategy '$strategy' " +
-                            "(must be 'Recreate' for hostNetwork port binding)",
+                            "(must be 'Recreate': a published host port or a ReadWriteOnce claim admits one pod)",
                     )
                 }
             }
@@ -827,7 +853,8 @@ class K8sServiceIntegrationTest {
 
     private fun collectAllResources(): List<HasMetadata> =
         JournaldOtelManifestBuilder(templateService).buildAllResources() +
-            OtelManifestBuilder(templateService).buildAllResources() +
+            OtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS) +
+            OtelHostCollectorManifestBuilder(templateService).buildAllResources(CniMode.Cilium) +
             EbpfExporterManifestBuilder().buildAllResources() +
             MimirManifestBuilder(templateService).buildAllResources() +
             LokiManifestBuilder(templateService).buildAllResources() +
@@ -838,7 +865,7 @@ class K8sServiceIntegrationTest {
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
             KubeStateMetricsManifestBuilder().buildAllResources() +
-            GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"))
+            GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS)
 
     private fun waitForPvcBound(
         pvcName: String,
@@ -883,9 +910,6 @@ class K8sServiceIntegrationTest {
             "PV '$pvName' did not reach phase '$expectedPhase' within ${timeoutSeconds}s. Phase: ${pv?.status?.phase}",
         )
     }
-
-    private val testHost =
-        ClusterHost(publicIp = "unused", privateIp = "unused", alias = "test", availabilityZone = "us-west-2a")
 
     private fun labelNode(
         nodeName: String,
@@ -995,7 +1019,7 @@ class K8sServiceIntegrationTest {
 
     private fun createStorageOperations(): DefaultK8sStorageOperations {
         val mockClientProvider = mock<K8sClientProvider>()
-        whenever(mockClientProvider.createClient(any())).thenAnswer {
+        whenever(mockClientProvider.createClient()).thenAnswer {
             KubernetesClientBuilder()
                 .withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml))
                 .build()

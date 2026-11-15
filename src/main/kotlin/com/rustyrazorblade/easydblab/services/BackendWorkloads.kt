@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -19,7 +18,6 @@ import java.time.Instant
 interface BackendWorkloads {
     /** Scales [workload] to 0 and waits up to [timeout] until its pod is gone. */
     fun scaleDown(
-        controlHost: ClusterHost,
         workload: String,
         timeout: Duration,
     )
@@ -41,10 +39,9 @@ class K8sBackendWorkloads(
     }
 
     override fun scaleDown(
-        controlHost: ClusterHost,
         workload: String,
         timeout: Duration,
-    ) = clientProvider.createClient(controlHost).use { client ->
+    ) = clientProvider.createClient().use { client ->
         deployment(client, workload).scale(0)
         awaitPods(client, workload, timeout, "gone") { it.isEmpty() }
     }

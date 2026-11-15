@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.store.StorePrefix
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.toJson
 
 /**
@@ -112,6 +113,15 @@ sealed class AWSPolicy {
             throw UnsupportedOperationException("Use loadAll() to get user policies with account ID substitution")
 
         companion object {
+            const val EC2_POLICY = "EasyDBLabEC2"
+            const val IAM_POLICY = "EasyDBLabIAM"
+            const val EMR_POLICY = "EasyDBLabEMR"
+            const val OPENSEARCH_POLICY = "EasyDBLabOpenSearch"
+            const val COMPACTOR_POLICY = "EasyDBLabCompactor"
+
+            /** Every lab user policy name, in the order [loadAll] returns them. */
+            val ALL_NAMES = listOf(EC2_POLICY, IAM_POLICY, EMR_POLICY, OPENSEARCH_POLICY, COMPACTOR_POLICY)
+
             /**
              * Loads all three required user IAM policies from JSON resource files.
              * Performs account ID substitution in policy templates.
@@ -123,11 +133,11 @@ sealed class AWSPolicy {
             fun loadAll(accountId: String): List<Policy> {
                 val policyData =
                     listOf(
-                        "iam-policy-ec2.json" to "EasyDBLabEC2",
-                        "iam-policy-iam-s3.json" to "EasyDBLabIAM",
-                        "iam-policy-emr.json" to "EasyDBLabEMR",
-                        "iam-policy-opensearch.json" to "EasyDBLabOpenSearch",
-                        "iam-policy-compactor.json" to "EasyDBLabCompactor",
+                        "iam-policy-ec2.json" to EC2_POLICY,
+                        "iam-policy-iam-s3.json" to IAM_POLICY,
+                        "iam-policy-emr.json" to EMR_POLICY,
+                        "iam-policy-opensearch.json" to OPENSEARCH_POLICY,
+                        "iam-policy-compactor.json" to COMPACTOR_POLICY,
                     )
 
                 return policyData.map { (fileName, policyName) ->
@@ -157,6 +167,9 @@ sealed class AWSPolicy {
          * Attached to IAM roles to allow EC2 instances to access cluster data.
          * Also includes s3:ListAllMyBuckets for S3Manager web UI, and denies deleting observability
          * data (metrics, logs, traces, annotations). `up` re-applies it every time.
+         *
+         * The deny is prefix-independent: it covers the denied roots at the top of every easy-db-lab
+         * bucket and under any store prefix ([underAnyPrefix]), so it takes no prefix.
          */
         data class S3AccessWildcard(
             val accountId: String,
@@ -227,13 +240,7 @@ sealed class AWSPolicy {
                     action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
                     resource =
                         IamPolicyResource.multiple(
-                            listOf(
-                                "${Constants.Observability.METRICS_ROOT}/*",
-                                "${Constants.Observability.LOGS_ROOT}/*",
-                                "${Constants.Observability.TRACES_ROOT}/*",
-                                "${Constants.Observability.GRAFANA_ROOT}/*",
-                                "${Constants.Observability.REPORTS_ROOT}/*",
-                            ).map { "arn:aws:s3:::easy-db-lab-*/$it" },
+                            underAnyPrefix(DELETE_DENIED_ROOTS).map { "arn:aws:s3:::easy-db-lab-*/$it/*" },
                         ),
                 )
         }
@@ -276,8 +283,12 @@ sealed class AWSPolicy {
          * The account compactor's task role policy: list the easy-db-lab buckets, and get, put and
          * delete objects under the roots it compacts. It has no access to `grafana/` or
          * `pyroscope/`. The compactor removes a source object only after it wrote a merged copy.
+         *
+         * @param storePrefix The store prefix; a non-empty one adds the compacted roots under it.
          */
-        data object CompactorTaskAccess : Inline() {
+        data class CompactorTaskAccess(
+            val storePrefix: String,
+        ) : Inline() {
             override fun toJson() =
                 IamPolicyDocument(
                     statement =
@@ -290,7 +301,10 @@ sealed class AWSPolicy {
                             IamPolicyStatement(
                                 effect = "Allow",
                                 action = IamPolicyAction.multiple(listOf("s3:GetObject", "s3:PutObject", "s3:DeleteObject")),
-                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::easy-db-lab-*/$it/*" }),
+                                resource =
+                                    IamPolicyResource.multiple(
+                                        storeRoots(storePrefix, COMPACTED_ROOTS).map { "arn:aws:s3:::easy-db-lab-*/$it/*" },
+                                    ),
                             ),
                         ),
                 ).toJson()
@@ -305,6 +319,9 @@ sealed class AWSPolicy {
          *
          * @param accountId The AWS account ID for constructing role ARNs
          * @param bucketName The S3 bucket name to apply the policy to
+         *
+         * The deny is prefix-independent: it covers the compacted roots at the top of the bucket and
+         * under any store prefix ([underAnyPrefix]), so it takes no prefix.
          */
         data class S3BucketPolicy(
             val accountId: String,
@@ -330,7 +347,10 @@ sealed class AWSPolicy {
                                 effect = "Deny",
                                 principal = IamPolicyPrincipal.aws(clusterRoles()),
                                 action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
-                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::$bucketName/$it/*" }),
+                                resource =
+                                    IamPolicyResource.multiple(
+                                        underAnyPrefix(COMPACTED_ROOTS).map { "arn:aws:s3:::$bucketName/$it/*" },
+                                    ),
                             ),
                         ),
                 ).toJson()
@@ -351,6 +371,40 @@ sealed class AWSPolicy {
                     Constants.Observability.LOGS_ROOT,
                     Constants.Observability.TRACES_ROOT,
                 )
+
+            /** Every root no cluster role may delete under: the compacted roots, Grafana's and the documents'. */
+            val DELETE_DENIED_ROOTS =
+                COMPACTED_ROOTS + listOf(Constants.Observability.GRAFANA_ROOT, Constants.Observability.REPORTS_ROOT)
+
+            /**
+             * The [roots] a deny covers: each root at the top of the bucket, then each root under
+             * any store prefix (`*` spans `/` in an IAM resource, so a nested prefix is covered too).
+             *
+             * A deny is put whole, so the last `up`, `profile setup` or role re-apply replaces the
+             * one before it. A deny built from the caller's own prefix would drop the guard of every
+             * cluster on another prefix. This list names no prefix, so every caller puts the same
+             * deny.
+             */
+            fun underAnyPrefix(roots: List<String>): List<String> = roots + roots.map { "$ANY_PREFIX/$it" }
+
+            /** An IAM wildcard standing for any store prefix in front of a root. */
+            private const val ANY_PREFIX = "*"
+
+            /**
+             * The [roots] an allow covers under the store prefix [storePrefix]: the unprefixed
+             * roots, followed by the same roots under the prefix when it is not empty. Only the
+             * compactor's allow uses it. It names one prefix, so it never grants a root under a
+             * prefix other than the caller's. Denies use [underAnyPrefix] instead, because a deny
+             * must not depend on who put it last. The prefix is checked first ([StorePrefix]), so no
+             * wildcard, `..` or root segment can widen the allow.
+             */
+            fun storeRoots(
+                storePrefix: String,
+                roots: List<String>,
+            ): List<String> {
+                val prefix = StorePrefix.requireValid(storePrefix)
+                return if (prefix.isEmpty()) roots else roots + roots.map { "$prefix/$it" }
+            }
         }
     }
 

@@ -47,10 +47,10 @@ class GrafanaInstall : PicoBaseCommand() {
         val dashboard =
             DashboardDefaults.apply(
                 Json.parseToJsonElement(file.readText()).jsonObject,
-                installContextFactory.forCluster(clusterState, controlHost),
+                installContextFactory.forCluster(clusterState),
             )
         grafanaClient
-            .installDashboard(dashboard = dashboard, controlHost = controlHost, folderName = folderName)
+            .installDashboard(dashboard = dashboard, folderName = folderName)
             .getOrThrow()
     }
 }

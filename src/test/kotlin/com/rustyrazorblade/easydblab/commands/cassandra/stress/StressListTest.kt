@@ -17,7 +17,6 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -80,14 +79,13 @@ class StressListTest : BaseKoinTest() {
 
     @Test
     fun `execute runs list command with no args`() {
-        whenever(mockStressJobService.runCommand(any(), any(), any()))
+        whenever(mockStressJobService.runCommand(any(), any()))
             .thenReturn(Result.success("Available workloads:\n  KeyValue\n  BasicTimeSeries"))
 
         val command = StressList()
         command.execute()
 
         verify(mockStressJobService).runCommand(
-            eq(testControlHost),
             any(),
             argThat { this == listOf("list") },
         )
@@ -98,7 +96,7 @@ class StressListTest : BaseKoinTest() {
 
     @Test
     fun `execute passes additional args`() {
-        whenever(mockStressJobService.runCommand(any(), any(), any()))
+        whenever(mockStressJobService.runCommand(any(), any()))
             .thenReturn(Result.success("workload list"))
 
         val command = StressList()
@@ -107,14 +105,13 @@ class StressListTest : BaseKoinTest() {
 
         verify(mockStressJobService).runCommand(
             any(),
-            any(),
             argThat { this == listOf("list", "--verbose") },
         )
     }
 
     @Test
     fun `execute fails when runCommand fails`() {
-        whenever(mockStressJobService.runCommand(any(), any(), any()))
+        whenever(mockStressJobService.runCommand(any(), any()))
             .thenReturn(Result.failure(RuntimeException("K8s error")))
 
         val command = StressList()
@@ -126,7 +123,7 @@ class StressListTest : BaseKoinTest() {
 
     @Test
     fun `execute shows running message`() {
-        whenever(mockStressJobService.runCommand(any(), any(), any()))
+        whenever(mockStressJobService.runCommand(any(), any()))
             .thenReturn(Result.success("output"))
 
         val command = StressList()

@@ -187,7 +187,7 @@ If K3s logs `too many open files` and then loops on `Waiting for containerd star
 - **Always** extend `BaseKoinTest` for tests needing DI
 - **Always** use `@TempDir` for temporary directories
 - **Never mock `TemplateService`** — always use the real instance (`single { TemplateService(get(), get()) }`). It only reads classpath resources and does string substitution with no external side effects.
-- **Never mock** any of the classes under `src/main/kotlin/com/rustyrazorblade/easydblab/configuration`
+- **Never mock** any of the classes under `src/main/kotlin/com/rustyrazorblade/easydblab/configuration`, with one exception: `ClusterStateManager`. It reads and writes `state.json` on disk, so tests stub its `load()` with a `ClusterState` built inline (the pattern under "Adding Test-Specific Mocks" above). Build the `ClusterState` itself for real; never mock it or any other configuration class.
 - Use `mockito-kotlin` for mocking (`mock<T>()`, `whenever()`, `verify()`)
 - See [docs/development/testing.md](../../../../docs/development/testing.md) for the full testing guide
 - Aim to mock as minimally as possible.  I want to hit real code in tests as much as possible.

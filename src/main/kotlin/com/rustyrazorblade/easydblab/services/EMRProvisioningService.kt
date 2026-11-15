@@ -1,8 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
 import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -89,7 +90,7 @@ class DefaultEMRProvisioningService(
             EMRClusterConfig(
                 clusterName = "${config.clusterName}-spark",
                 releaseLabel = config.releaseLabel,
-                logUri = s3Path.emrLogs().toString(),
+                logUri = S3Uri.uri(s3Path.emrLogs()),
                 subnetId = config.subnetId,
                 ec2KeyName = config.keyName,
                 masterInstanceType = config.masterInstanceType,
@@ -126,7 +127,7 @@ class DefaultEMRProvisioningService(
     @Suppress("TooGenericExceptionCaught")
     private fun emitBootstrapFailureDiagnostics(
         clusterId: String,
-        s3Path: ClusterS3Path,
+        s3Path: ClusterStoragePath,
     ) {
         eventBus.emit(Event.Emr.BootstrapFailureDiagnosing)
 
@@ -167,12 +168,12 @@ class DefaultEMRProvisioningService(
 
     private fun emitDebugInstructions(
         clusterId: String,
-        s3Path: ClusterS3Path,
+        s3Path: ClusterStoragePath,
     ) {
         eventBus.emit(
             Event.Emr.BootstrapFailureDebugInstructions(
                 clusterId = clusterId,
-                emrLogsPath = s3Path.emrLogs().toString(),
+                emrLogsPath = S3Uri.uri(s3Path.emrLogs()),
             ),
         )
     }
@@ -266,7 +267,7 @@ class DefaultEMRProvisioningService(
      * The control node IP is resolved at upload time by TemplateService
      * (via __CONTROL_NODE_IP__ in the collector config).
      */
-    private fun uploadOtelBootstrapScript(s3Path: ClusterS3Path): BootstrapAction {
+    private fun uploadOtelBootstrapScript(s3Path: ClusterStoragePath): BootstrapAction {
         val collectorConfig =
             templateService
                 .fromResource(OtelBootstrapResource::class.java, "otel-collector-config.yaml")

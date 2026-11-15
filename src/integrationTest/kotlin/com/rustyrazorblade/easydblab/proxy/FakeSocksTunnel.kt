@@ -41,16 +41,26 @@ internal class FakeSocksTunnel(
 
     private val server = ServerSocket(0, BACKLOG, InetAddress.getLoopbackAddress())
     private val clients = CopyOnWriteArrayList<Socket>()
+    private val lock = Any()
+    private var closed = false
 
     val port: Int = server.localPort
 
-    init {
+    private val acceptor =
         thread(isDaemon = true, name = "fake-socks-$port") {
-            while (!server.isClosed) {
-                val client = runCatching { server.accept() }.getOrNull() ?: break
-                clients += client
-                thread(isDaemon = true, name = "fake-socks-$port-client") { runCatching { serve(client) } }
+            generateSequence { runCatching { server.accept() }.getOrNull() }.forEach(::admit)
+        }
+
+    /** Serves [client] on its own thread, unless the tunnel is already closed, when it drops it. */
+    private fun admit(client: Socket) {
+        val open =
+            synchronized(lock) {
+                if (!closed) clients += client
+                !closed
             }
+        when {
+            open -> thread(isDaemon = true, name = "fake-socks-$port-client") { runCatching { serve(client) } }
+            else -> runCatching { client.close() }
         }
     }
 
@@ -88,8 +98,17 @@ internal class FakeSocksTunnel(
         }
     }
 
+    /**
+     * Stops listening before it returns, so a test that probes the port next finds nothing there. On
+     * Linux, closing a [ServerSocket] while another thread is blocked in `accept()` only signals that
+     * thread; the JDK releases the listening socket once the thread leaves `accept()`. Until then the
+     * port still accepts, and a connection taken in that window would be served as if the tunnel still
+     * worked. So this waits for the accept thread to end, and drops every connection accepted after the close.
+     */
     override fun close() {
+        synchronized(lock) { closed = true }
         server.close()
+        acceptor.join()
         clients.forEach { runCatching { it.close() } }
     }
 

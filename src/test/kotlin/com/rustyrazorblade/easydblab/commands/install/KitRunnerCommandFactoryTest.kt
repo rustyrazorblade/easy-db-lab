@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -12,10 +13,10 @@ import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HelmService
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
-import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
@@ -47,7 +48,7 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<GrafanaClient> { mockGrafanaClient }
-                single { DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())) }
+                single { DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore())) }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<HelmService> { mockHelmService }
@@ -540,7 +541,8 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         File(kitDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
         val builder = ProcessBuilder("true").also { it.environment()["SETTINGS"] = "host=x" }
 
-        KitProcessEnvironment(ToolWrapperInstaller()).applyTo(builder, kitDir, command.runtimeArgValues)
+        KitProcessEnvironment(ToolWrapperInstaller(), ClusterStateManager(File(kitDir, CLUSTER_STATE)))
+            .applyTo(builder, kitDir, command.runtimeArgValues)
 
         assertThat(builder.environment()).containsEntry("SETTINGS", "")
     }

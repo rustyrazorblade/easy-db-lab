@@ -62,6 +62,38 @@ enum class CniMode {
 }
 
 /**
+ * How the CLI reaches a cluster Service from the operator's machine — the cluster contract's
+ * `exposure`. The service-access seam picks its implementation from it.
+ *
+ * [Socks] dials the node's private address through the per-client SOCKS tunnel (AWS, the default);
+ * [Direct] dials it with no proxy (Tailscale, or the `direct` network mode); [PortForward] opens a
+ * Kubernetes port-forward bound to `127.0.0.1` (a cluster easy-db-lab does not own). A saved state
+ * that records none predates the field and is read as [Socks].
+ */
+enum class Exposure {
+    Socks,
+    Direct,
+    PortForward,
+    ;
+
+    companion object {
+        /**
+         * The exposure `init` records: [Direct] when Tailscale or the `direct` network mode reaches
+         * the nodes' private addresses, otherwise [Socks]. [PortForward] is recorded only by
+         * `init --kubeconfig`.
+         */
+        fun atInit(
+            tailscaleActive: Boolean,
+            directNetwork: Boolean,
+        ): Exposure =
+            when {
+                tailscaleActive || directNetwork -> Direct
+                else -> Socks
+            }
+    }
+}
+
+/**
  * EMR cluster state tracking for Spark jobs
  */
 data class EMRClusterState(
@@ -169,6 +201,9 @@ data class InitConfig(
     // The observability tenant the cluster's data belongs to. Fixed at init; a state file written
     // before tenants existed has no field and reads as the default tenant.
     val tenant: String = Constants.Observability.DEFAULT_TENANT,
+    // Labels a node must carry to run the observability backends, Grafana and kube-state-metrics,
+    // merged into the environment's placement (`Placement.from`). Empty adds nothing.
+    val nodeLabels: Map<String, String> = emptyMap(),
 ) {
     companion object {
         /**
@@ -227,6 +262,7 @@ data class InitConfig(
                 cni = init.cni,
                 telemetryRedirect = init.resolvedTelemetryRedirect,
                 tenant = init.tenant,
+                nodeLabels = init.nodeLabels,
             )
     }
 }
@@ -282,6 +318,16 @@ data class ClusterState(
     var runningKits: Set<String> = emptySet(),
     // The signals a pre-teardown save already put in S3, so a re-run of `down` skips them; cleared by `up`
     var tailFlush: TailFlushRecord? = null,
+    // The Kubernetes context pinned for this cluster, recorded by `up` from the kubeconfig's
+    // current-context. Every later command targets this context regardless of the user's current
+    // kubectl context; a workspace with no recorded context falls back to the kubeconfig's
+    // current-context.
+    var kubeContext: String? = null,
+    // The effective capability set `init` recorded (declared or probed, plus overrides). Null in a
+    // state written before capabilities were recorded, which reads as AWS (NodeCapabilities.from).
+    var capabilities: Set<NodeCapability>? = null,
+    // How the CLI reaches cluster Services; a state that records none predates the field and reads as Socks
+    var exposure: Exposure = Exposure.Socks,
 ) {
     /**
      * Returns true when the db nodes are provisioned with Cassandra hosts.
@@ -416,5 +462,5 @@ data class ClusterState(
      * Returns the S3 path abstraction for this cluster's account bucket.
      * @throws IllegalStateException if s3Bucket is not configured
      */
-    fun s3Path(): ClusterS3Path = ClusterS3Path.from(this)
+    fun s3Path(): ClusterStoragePath = ClusterStoragePath.from(this)
 }

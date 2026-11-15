@@ -46,7 +46,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
 
         command("mydb", "start").call()
 
-        verify(mockGrafanaClient).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient).installDashboard(any(), any())
     }
 
     @Test
@@ -57,7 +57,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
 
         command("mydb", "start").call()
 
-        verify(mockGrafanaClient, never()).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient, never()).installDashboard(any(), any())
     }
 
     @Test
@@ -68,7 +68,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
 
         command("mydb", "stop").call()
 
-        verify(mockGrafanaClient, never()).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient, never()).installDashboard(any(), any())
     }
 
     @Test
@@ -77,7 +77,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
 
         command("mydb", "start").call()
 
-        verify(mockGrafanaClient, never()).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient, never()).installDashboard(any(), any())
     }
 
     @Test
@@ -123,7 +123,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
     fun `script stop phase deregisters metrics`() {
         writeScript("mydb", "stop", "exit 0")
         command("mydb", "stop").call()
-        verify(mockMetricsRegistryService).deregister(any(), any())
+        verify(mockMetricsRegistryService).deregister(any())
     }
 
     @Test
@@ -140,7 +140,7 @@ class KitRunnerCommandScriptTest : KitRunnerCommandTestBase() {
         )
         writeScript("mydb", "start", "exit 0")
         command("mydb", "start").call()
-        verify(mockMetricsRegistryService).register(any(), any(), any())
+        verify(mockMetricsRegistryService).register(any(), any())
     }
 
     @Test

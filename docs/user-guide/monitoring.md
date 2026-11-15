@@ -2,7 +2,7 @@
 
 ## Grafana Dashboards
 
-Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node.
+Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node. On a port-forward cluster, run the `bin/kubectl port-forward` command `status` prints for Grafana, then open `http://127.0.0.1:3000` (see [Port Reference](../reference/ports.md#reaching-services-on-a-port-forward-cluster)).  Grafana and the backends it reads (Mimir, Loki, Tempo, Pyroscope) run in the Kubernetes pod network; Grafana reaches each backend by its Service name, such as `http://mimir.default.svc:9009/prometheus`.  By default they all run on the control node.  To narrow where they run, add node labels at init with `--node-label key=value`; every backend and Grafana then also requires those labels.  The labels must already be on a node: `--node-label` only adds them to the selector and labels no node, so label one first (for example `kubectl label node <node> pool=observability`).  If no node carries the control-node selector plus every `--node-label`, the deploy fails before it applies anything and names the selector.
 
 ### Cluster Identification
 
@@ -49,7 +49,7 @@ easy-db-lab report upload results.md notes.md
 
 The files go to the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, each with an HTML copy, and one `index.html` holds them all, each under its own heading. Only `.md` files named with letters, digits, `.`, `_` and `-` are accepted, and `index.md` is refused.  Each name can occur only one time in a command.  The command names every file it refuses and uploads nothing.  If an upload fails, the command names the failed file and each document it already stored; run the command again. A file with the name of a stored document replaces it. The command uses your own AWS credentials and needs only the workspace, so it works after `down`. `up` writes the index of a new test, which says "No documents yet".
 
-The Tests dashboard and the comparison dashboards show the documents through a read-only web server in the Grafana pod (port 3080 of the control node).  The server answers only `GET` requests for document paths under `/reports/`; it answers 400 for a path with other characters, and it drops the query string.  Pick the tenant folder with **Documents tenant**; it defaults to the cluster's own tenant.
+The Tests dashboard and the comparison dashboards show the documents from Grafana's own address, under `/reports/`, so they load wherever Grafana does.  A web server in front of Grafana answers only `GET` and `HEAD` requests for document paths under `/reports/`; it refuses any other method there, answers 400 for a path with other characters, and drops the query string.  Pick the tenant folder with **Documents tenant**; it defaults to the cluster's own tenant.
 
 Two `report upload` runs for one test at the same moment can each rebuild the index without the other's document. The document itself is stored; the next upload puts it back in the index.
 
@@ -71,6 +71,8 @@ Pick one or more roles to show every host of those roles, with no host selection
 ### AWS CloudWatch Overview
 
 A combined dashboard showing S3, EBS, and EC2 metrics via CloudWatch. Available after running `easy-db-lab up`.
+
+Environments without CloudWatch (the `CLOUDWATCH` capability) skip YACE and its scrape job, and without S3 (the `S3` capability) skip the S3 Manager; `up` reports each skip, and the CloudWatch panels stay empty there.
 
 **S3 metrics:**
 
@@ -150,8 +152,8 @@ A deep-dive into Cassandra cluster health. Shows:
 - **Storage & Capacity:** Live against total disk space per table, storage growth rate per node
 
 The metrics come from the OpenTelemetry Java Agent, which runs inside the Cassandra JVM and reads
-Cassandra's own MBeans. It exports over OTLP to the node's OTel collector on port 4318, so no
-Prometheus scrape port is involved. One agent serves every Cassandra release, and it needs no
+Cassandra's own MBeans. It exports over OTLP to port 4318 on its own node, where the host add-on collector
+forwards it to the core collector, so no Prometheus scrape port is involved. One agent serves every Cassandra release, and it needs no
 per-release selection: a version installed with `cassandra install --url` or `--branch` reports the
 same metrics as a stock release.
 
@@ -191,7 +193,28 @@ The cluster is ephemeral, but the annotations are worth keeping. Back them up to
 easy-db-lab grafana backup
 ```
 
-This backup also runs automatically before teardown. When you run `easy-db-lab down`, the tool mirrors the annotations to Loki and stops the OTel collector, then flushes Loki and Mimir, waits for Tempo to upload its last traces, and backs up the annotations, all at once, before it removes any infrastructure. If any of that fails, `down` removes nothing and never starts a backend again; the report names every signal that is not saved. Pass `--force` to skip these steps and tear down anyway; it lists what it will not save before the confirmation prompt. See [`down`](../reference/commands.md#down) for details.
+This backup also runs automatically before teardown. When you run `easy-db-lab down`, the tool mirrors the annotations to Loki and stops both OTel collectors (the host add-on first), then flushes Loki and Mimir, waits for Tempo to upload its last traces, and backs up the annotations, all at once, before it removes any infrastructure. If any of that fails, `down` removes nothing and never starts a backend again; the report names every signal that is not saved. Pass `--force` to skip these steps and tear down anyway; it lists what it will not save before the confirmation prompt. See [`down`](../reference/commands.md#down) for details.
+
+## The two collectors
+
+Every node runs two OpenTelemetry collectors.
+
+- **The core collector** (`otel-collector`) runs unprivileged in the pod network. It receives OTLP from pods through the `otel-collector` Service (OTLP gRPC 4317, OTLP HTTP 4318, Jaeger 6831/UDP). The Service keeps the traffic on the sender's node (`internalTrafficPolicy: Local`). The core scrapes the kubelet's pod and container stats (`kubelet_stats`), kube-state-metrics, kits and backends, and tails pod log files. It is the only collector that exports to Mimir, Loki and Tempo, and it adds the `cluster` label and the tenant header.
+- **The host add-on** (`otel-collector-host`) runs privileged on the host network. It owns the node's OTLP listener on 4317 and 4318, so host processes that are not pods keep their endpoint. These are the Cassandra Java agent on a database node, the profiling reconciler, Fluent Bit and EMR. The add-on also collects host metrics, host log files (system, tools and the Cassandra GC log), and the Beyla, ebpf_exporter and Cilium metrics. It sends everything to the core collector on its own node and exports nothing to a backend.
+
+Pods send to the Service, not to a node IP: stress jobs, the Cassandra sidecar, and the cassandra-pods, neo4j, ignite3 and tidb kits. A kit's gauge push (sysbench, clickhouse-benchmark) reaches the core collector pod on the control node through the Kubernetes API server's pod proxy, so its gauges carry `host_name` of the control node, one series per gauge.
+
+Some environments do not let pods use the host. The stack still deploys there, but without the parts that need the host. `up` reports each one it skipped:
+
+| Missing capability | What you do not get |
+|--------------------|---------------------|
+| `PRIVILEGED` (privileged or host-network pods) | The host add-on: host metrics, host log files, the node's OTLP listener for host processes, and the Beyla, ebpf_exporter and Cilium metrics. Also Beyla, ebpf_exporter, the Pyroscope eBPF profiler and the journald reader themselves. |
+| `HOST_PATH` (hostPath volumes) | Pod logs. Without them the core collector runs as a non-root user with no host volume. |
+| `SYSTEMD_JOURNAL` | The journald reader. |
+
+Pod and container metrics from `kubelet_stats`, OTLP from pods, kit and backend scrapes, and kube-state-metrics work in every environment.
+
+`down` stops the host add-on first, then the core, and waits until each one's pods are gone. Nothing then sends data to the backends while they flush.
 
 ## Where observability data is stored
 
@@ -224,7 +247,7 @@ Cluster configuration stays under `clusters/<name>-<id>/config/`. The observabil
 
 **Restarts.** `up` and `grafana update-config` restart an observability workload only when its configuration changed: each workload's pod template carries a hash of the pod template itself (image, probes, environment, volumes) and of the ConfigMaps it reads. A dashboard edit no longer restarts Tempo or Pyroscope. Both commands print, for each workload, whether its configuration changed (and it is rolling) or is unchanged (and it is left running). A new image or probe counts as a change, because Kubernetes rolls the workload for it.
 
-**Versions.** Tempo 3.0.3, Pyroscope 2.3.1, Grafana 13.2.2 with image renderer v5.12.4, Alloy v1.20.0, Beyla 3.36.0, Mimir 3.2.1, Loki 3.7.8, the OpenTelemetry collector 0.161.0 (cluster, stress-job sidecar and EMR), and Fluent Bit 5.1.2. No observability image runs `latest`. The collector also scrapes its own telemetry (`:8888`, job `otel-collector`), so exporter send failures are visible in Mimir. In local mode it also scrapes the Mimir (`:9009`, job `mimir`), Loki (`:3100`, job `loki`), Tempo (`:3200`, job `tempo`) and Pyroscope (`:4040`, job `pyroscope`) servers' own metrics. Only the collector on the node running each server scrapes it, so each job has one target, and `instance` is the server's pod name. A redirect cluster runs none of these servers and renders none of these jobs.
+**Versions.** Tempo 3.0.3, Pyroscope 2.3.1, Grafana 13.2.2 with image renderer v5.12.4, Alloy v1.20.0, Beyla 3.36.0, Mimir 3.2.1, Loki 3.7.8, the OpenTelemetry collector 0.161.0 (cluster, stress-job sidecar and EMR), and Fluent Bit 5.1.2. No observability image runs `latest`. The core collector also scrapes its own telemetry (`:8888`, job `otel-collector`), so exporter send failures are visible in Mimir. The host add-on reports its own as job `otel-collector-host`. In local mode the core also scrapes the Mimir (`:9009`, job `mimir`), Loki (`:3100`, job `loki`), Tempo (`:3200`, job `tempo`) and Pyroscope (`:4040`, job `pyroscope`) servers' own metrics. Only the collector on the node running each server scrapes it, so each job has one target, and `instance` is the server's pod name. A redirect cluster runs none of these servers and renders none of these jobs.
 
 ## eBPF Observability
 
@@ -237,7 +260,7 @@ Grafana Beyla uses eBPF to automatically instrument network traffic and provide 
 - **Cassandra** CQL protocol (port 9042) and inter-node communication (port 7000)
 - **ClickHouse** HTTP (port 8123) and native (port 9000) protocols
 
-Metrics are scraped by the OTel collector and stored in Mimir.
+Metrics are scraped by the host add-on collector, forwarded to the core collector and stored in Mimir.
 
 Beyla observes from outside the process only: its Java agent injection is turned off (`javaagent.enabled: false`), so it never attaches an agent to the database JVM.
 
@@ -249,7 +272,7 @@ Cloudflare's ebpf_exporter provides kernel-level metrics via eBPF:
 - **Block I/O latency** — histogram of block device I/O operation latency
 - **VFS latency** — histogram of filesystem read/write operation latency
 
-These metrics are scraped by the OTel collector and stored in Mimir.
+These metrics are scraped by the host add-on collector, forwarded to the core collector and stored in Mimir.
 
 ## kube-state-metrics
 
@@ -263,7 +286,7 @@ The OTel collector scrapes it once, through pod discovery on the control node, s
 
 ## Cilium metrics
 
-On a Cilium cluster (the default CNI), the OTel collector also scrapes the Cilium agent (`localhost:9962` on every node), Hubble (`localhost:9965` on every node), and the Cilium operator (port 9963 on the node that runs it). A Flannel cluster has none of these jobs. See [Pod Networking (CNI)](networking.md) for the job definitions, the Hubble UI NodePort, and `platform cni`.
+On a Cilium cluster (the default CNI), the host add-on collector also scrapes the Cilium agent (`localhost:9962` on every node), Hubble (`localhost:9965` on every node), and the Cilium operator (port 9963 on the node that runs it). A Flannel cluster has none of these jobs. See [Pod Networking (CNI)](networking.md) for the job definitions, the Hubble UI NodePort, and `platform cni`.
 
 See [Profiling](profiling.md) for continuous profiling with Pyroscope.
 

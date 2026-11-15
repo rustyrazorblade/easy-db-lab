@@ -1,7 +1,10 @@
 package com.rustyrazorblade.easydblab.configuration.mimir
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.services.ClusterConfigData
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -10,7 +13,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
@@ -32,9 +34,11 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * storage prefix come from the cluster-config ConfigMap ([ClusterConfigData]) as env vars.
  *
  * @property templateService Loads the config file from the classpath.
+ * @property storeBlocks Places the object-store block of the cluster's store ([TemplateService.storeBackend]) into the config.
  */
 class MimirManifestBuilder(
     private val templateService: TemplateService,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
         private const val NAMESPACE = Constants.K8s.NAMESPACE
@@ -51,6 +55,8 @@ class MimirManifestBuilder(
 
         /** Mimir's data directory on the control node: the TSDB, its WAL, local blocks and the store-gateway's sync directory. */
         const val DATA_HOST_PATH = "/mnt/db1/mimir"
+
+        private val STATE = StateVolume(APP_LABEL, "data", DATA_HOST_PATH)
 
         /**
          * Time a graceful stop gets to compact the head into a block and ship it
@@ -95,14 +101,15 @@ class MimirManifestBuilder(
     /**
      * Builds all Mimir K8s resources in apply order.
      *
-     * @return ConfigMap, Service, Deployment
+     * @param hosting where the Deployment is placed and keeps its state.
+     * @return ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
-    fun buildAllResources(): List<HasMetadata> =
-        listOf(
-            buildConfigMap(),
-            buildService(),
-            buildDeployment(),
-        )
+    fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
+        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE, isBackend = true)
+
+    /** The Mimir Deployment as [hosting] runs it. */
+    fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
+        hosting.host(buildPodTemplate(), STATE, isBackend = true).filterIsInstance<Deployment>().single()
 
     /** The ConfigMap holding `mimir.yaml`. */
     fun buildConfigMap(): ConfigMap =
@@ -114,7 +121,7 @@ class MimirManifestBuilder(
             .endMetadata()
             .addToData(
                 CONFIG_FILE,
-                templateService.fromResource(MimirManifestBuilder::class.java, CONFIG_FILE).substitute(),
+                templateService.fromString(storeBlocks.renderResource(MimirManifestBuilder::class.java, CONFIG_FILE)).substitute(),
             ).build()
 
     /** The ClusterIP Service over Mimir's HTTP and gRPC ports. */
@@ -144,14 +151,16 @@ class MimirManifestBuilder(
             .build()
 
     /**
-     * The Mimir Deployment: one replica on the control node, host network, `Recreate` so two
-     * ingesters never share the TSDB directory, and no resource limits.
+     * The Mimir Deployment before it is hosted: one replica, `Recreate` so two ingesters never
+     * share the TSDB directory, and no resource limits. [ObservabilityHosting] places it and sets
+     * where its state volume lives. Its HTTP port is published on the node, which the hosting keeps
+     * only on a node easy-db-lab owns.
      *
      * Liveness only checks that the HTTP server answers: readiness waits for the WAL replay, which
      * can outlast any liveness budget after a restart with a large head.
      */
     @Suppress("LongMethod")
-    fun buildDeployment(): Deployment =
+    private fun buildPodTemplate(): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
@@ -172,15 +181,7 @@ class MimirManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
             .withTerminationGracePeriodSeconds(TERMINATION_GRACE_SECONDS)
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
             .addNewContainer()
             .withName(APP_LABEL)
             .withImage(IMAGE)
@@ -188,12 +189,14 @@ class MimirManifestBuilder(
                 "-config.file=$CONFIG_MOUNT_PATH/$CONFIG_FILE",
                 "-config.expand-env=true",
             ).withEnv(
-                clusterConfigEnv("AWS_REGION", "aws_region"),
-                clusterConfigEnv("S3_BUCKET", "s3_bucket"),
-                clusterConfigEnv("METRICS_S3_PREFIX", "metrics_s3_prefix"),
+                clusterConfigEnv("STORE_BUCKET", "store_bucket"),
+                clusterConfigEnv("STORE_REGION", "store_region"),
+                clusterConfigEnv("STORE_ENDPOINT", "store_endpoint"),
+                clusterConfigEnv("METRICS_STORE_PREFIX", "metrics_store_prefix"),
             ).addNewPort()
             .withName("http")
             .withContainerPort(Constants.K8s.MIMIR_HTTP_PORT)
+            .withHostPort(Constants.K8s.MIMIR_HTTP_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewPort()
@@ -232,13 +235,8 @@ class MimirManifestBuilder(
             .withConfigMap(ConfigMapVolumeSourceBuilder().withName(CONFIGMAP_NAME).build())
             .endVolume()
             .addNewVolume()
-            .withName("data")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath(DATA_HOST_PATH)
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
+            .withName(STATE.volumeName)
+            .endVolume()
             .endSpec()
             .endTemplate()
             .endSpec()

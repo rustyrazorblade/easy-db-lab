@@ -99,7 +99,7 @@ class KitRunnerCommandUninstallTest : KitRunnerCommandTestBase() {
 
         verify(mockWorkloadStepExecutor).execute(any(), eq(Constants.Kit.PHASE_STOP), any())
         verify(mockClusterStateManager).removeRunningWorkload("mydb")
-        verify(mockMetricsRegistryService).deregister(any(), eq("mydb"))
+        verify(mockMetricsRegistryService).deregister(eq("mydb"))
         verify(mockKitHookExecutor).firePostKitStop("mydb")
         assertThat(File(workingDir, "mydb")).doesNotExist()
     }
@@ -112,7 +112,7 @@ class KitRunnerCommandUninstallTest : KitRunnerCommandTestBase() {
         assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
 
         verify(mockClusterStateManager).removeRunningWorkload("mydb")
-        verify(mockMetricsRegistryService).deregister(any(), eq("mydb"))
+        verify(mockMetricsRegistryService).deregister(eq("mydb"))
         assertThat(File(workingDir, "mydb")).doesNotExist()
     }
 

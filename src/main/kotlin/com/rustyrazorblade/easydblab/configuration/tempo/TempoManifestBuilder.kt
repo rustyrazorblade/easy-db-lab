@@ -1,13 +1,17 @@
 package com.rustyrazorblade.easydblab.configuration.tempo
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.StateVolume
+import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
+import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
@@ -16,14 +20,16 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * Creates a Deployment on the control plane with S3 backend for trace storage, under
  * `tempo` in the account bucket. Tempo runs native multi-tenancy and never deletes a
  * block. Its write-ahead logs live on a hostPath under [DATA_HOST_PATH], so a pod restart keeps
- * received spans. Config uses Tempo runtime env expansion (`${S3_BUCKET}`, `${AWS_REGION}`,
- * `${TRACES_S3_PREFIX}`), not `__KEY__` template substitution. Env vars are injected from the
+ * received spans. Config uses Tempo runtime env expansion (`${STORE_BUCKET}`, `${STORE_ENDPOINT}`,
+ * `${TRACES_STORE_PREFIX}`), not `__KEY__` template substitution. Env vars are injected from the
  * cluster-config ConfigMap.
  *
  * @property templateService Used for loading config files from classpath resources
+ * @property storeBlocks Places the object-store block of the cluster's store ([TemplateService.storeBackend]) into the config.
  */
 class TempoManifestBuilder(
     private val templateService: TemplateService,
+    private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
         private const val NAMESPACE = "default"
@@ -33,6 +39,8 @@ class TempoManifestBuilder(
 
         /** Tempo's data directory on the control node: both write-ahead logs live under it. */
         const val DATA_HOST_PATH = "/mnt/db1/tempo"
+
+        private val STATE = StateVolume(APP_LABEL, "wal", DATA_HOST_PATH, owner = TEMPO_UID)
 
         /** The user the Tempo image runs as; [DATA_HOST_PATH] must be owned by it. */
         const val TEMPO_UID = 10001L
@@ -54,14 +62,15 @@ class TempoManifestBuilder(
     /**
      * Builds all Tempo K8s resources in apply order.
      *
-     * @return List of: ConfigMap, Service, Deployment
+     * @param hosting where the Deployment is placed and keeps its state.
+     * @return List of: ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
-    fun buildAllResources(): List<HasMetadata> =
-        listOf(
-            buildConfigMap(),
-            buildService(),
-            buildDeployment(),
-        )
+    fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
+        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE, isBackend = true)
+
+    /** The Tempo Deployment as [hosting] runs it. */
+    fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
+        hosting.host(buildPodTemplate(), STATE, isBackend = true).filterIsInstance<Deployment>().single()
 
     /**
      * Builds the Tempo ConfigMap containing tempo.yaml.
@@ -76,10 +85,13 @@ class TempoManifestBuilder(
             .addToData(
                 "tempo.yaml",
                 templateService
-                    .fromResource(
-                        TempoManifestBuilder::class.java,
-                        "tempo.yaml",
-                    ).substitute(),
+                    .fromString(storeBlocks.renderResource(TempoManifestBuilder::class.java, "tempo.yaml"))
+                    .substitute(
+                        mapOf(
+                            "MIMIR_HOST" to Constants.K8s.serviceHost(Constants.K8s.MIMIR_APP_LABEL),
+                            "MIMIR_HTTP_PORT" to Constants.K8s.MIMIR_HTTP_PORT.toString(),
+                        ),
+                    ),
             ).build()
 
     /**
@@ -117,14 +129,14 @@ class TempoManifestBuilder(
             .build()
 
     /**
-     * Builds the Tempo Deployment.
-     *
-     * Runs on control plane with hostNetwork. Uses env vars from cluster-config
+     * Builds the Tempo Deployment before it is hosted. [ObservabilityHosting] places it and sets
+     * where its WAL volume lives; its query and OTLP ports are published on the node, which the
+     * hosting keeps only on a node easy-db-lab owns. Uses env vars from cluster-config
      * ConfigMap for S3 bucket and AWS region, with `-config.expand-env=true` to
      * enable Tempo's runtime env expansion in the config file.
      */
     @Suppress("LongMethod")
-    fun buildDeployment() =
+    private fun buildPodTemplate(): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
@@ -145,57 +157,19 @@ class TempoManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
             .addNewContainer()
             .withName(APP_LABEL)
             .withImage(IMAGE)
             .withArgs(
                 "-config.file=/etc/tempo/tempo.yaml",
                 "-config.expand-env=true",
-            ).addNewEnv()
-            .withName("AWS_REGION")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("aws_region")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("S3_BUCKET")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("s3_bucket")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("TRACES_S3_PREFIX")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("traces_s3_prefix")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("CLUSTER_NAME")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("cluster_name")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewPort()
+            ).withEnv(
+                clusterConfigEnv("STORE_BUCKET", "store_bucket"),
+                clusterConfigEnv("STORE_REGION", "store_region"),
+                clusterConfigEnv("STORE_ENDPOINT", "store_endpoint"),
+                clusterConfigEnv("TRACES_STORE_PREFIX", "traces_store_prefix"),
+                clusterConfigEnv("CLUSTER_NAME", "cluster_name"),
+            ).addNewPort()
             .withContainerPort(Constants.K8s.TEMPO_PORT)
             .withHostPort(Constants.K8s.TEMPO_PORT)
             .withProtocol("TCP")
@@ -253,13 +227,8 @@ class TempoManifestBuilder(
                     .build(),
             ).endVolume()
             .addNewVolume()
-            .withName("wal")
-            .withHostPath(
-                HostPathVolumeSourceBuilder()
-                    .withPath(DATA_HOST_PATH)
-                    .withType("DirectoryOrCreate")
-                    .build(),
-            ).endVolume()
+            .withName(STATE.volumeName)
+            .endVolume()
             .endSpec()
             .endTemplate()
             .endSpec()

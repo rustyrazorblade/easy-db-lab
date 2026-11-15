@@ -1,11 +1,12 @@
 package com.rustyrazorblade.easydblab.di
 
 import com.rustyrazorblade.easydblab.kubernetes.kubernetesModule
-import com.rustyrazorblade.easydblab.providers.aws.awsModule
+import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.providers.docker.dockerModule
 import com.rustyrazorblade.easydblab.providers.ssh.sshModule
-import com.rustyrazorblade.easydblab.providers.ssm.ssmModule
 import com.rustyrazorblade.easydblab.proxy.proxyModule
+import com.rustyrazorblade.easydblab.services.access.serviceAccessModule
+import com.rustyrazorblade.easydblab.services.aws.awsServicesModule
 import com.rustyrazorblade.easydblab.services.metrics.metricsStreamModule
 import com.rustyrazorblade.easydblab.services.servicesModule
 import org.koin.core.module.Module
@@ -25,11 +26,12 @@ object KoinModules {
             eventBusModule,
             dockerModule,
             sshModule,
-            ssmModule,
             proxyModule,
             kubernetesModule,
-            awsModule,
+            awsClientsModule,
+            awsServicesModule,
             servicesModule,
+            serviceAccessModule,
             metricsStreamModule,
             configurationModule,
             commandsModule,

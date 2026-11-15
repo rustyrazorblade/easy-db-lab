@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.documents
 
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import java.io.File
@@ -40,8 +40,8 @@ class DocumentUploadFailedException(
  * @property index The test's rebuilt index.
  */
 data class UploadedDocuments(
-    val documents: List<Pair<String, ClusterS3Path>>,
-    val index: ClusterS3Path,
+    val documents: List<Pair<String, ClusterStoragePath>>,
+    val index: ClusterStoragePath,
 )
 
 /**
@@ -62,7 +62,7 @@ interface TestDocumentService {
     ): UploadedDocuments
 
     /** Rewrites the index of [clusterState]'s test from every document in its folder; it says "No documents yet" when there are none. */
-    fun rebuildIndex(clusterState: ClusterState): ClusterS3Path
+    fun rebuildIndex(clusterState: ClusterState): ClusterStoragePath
 }
 
 /**
@@ -83,7 +83,7 @@ class DefaultTestDocumentService(
         val cluster = clusterState.clusterLabelName()
         val uploaded =
             withScratch { scratch ->
-                val stored = mutableListOf<Pair<String, ClusterS3Path>>()
+                val stored = mutableListOf<Pair<String, ClusterStoragePath>>()
                 files.forEach { file ->
                     runCatching {
                         val markdown = store.document(cluster, file.name)
@@ -99,7 +99,7 @@ class DefaultTestDocumentService(
         return UploadedDocuments(uploaded, rebuildIndex(clusterState))
     }
 
-    override fun rebuildIndex(clusterState: ClusterState): ClusterS3Path {
+    override fun rebuildIndex(clusterState: ClusterState): ClusterStoragePath {
         val store = ObservabilityStore.from(clusterState)
         val cluster = clusterState.clusterLabelName()
         val documents =

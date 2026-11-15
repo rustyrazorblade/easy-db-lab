@@ -51,7 +51,7 @@ class StressLogs : PicoBaseCommand() {
         // Get pods for the job
         val pods =
             stressJobService
-                .getPodsForJob(controlNode, jobName)
+                .getPodsForJob(jobName)
                 .getOrElse { e ->
                     error("Failed to get pods for job $jobName: ${e.message}")
                 }
@@ -66,7 +66,7 @@ class StressLogs : PicoBaseCommand() {
                 eventBus.emit(Event.Stress.PodLogHeader(podName = pod.name, podStatus = pod.status))
             }
 
-            val logsResult = stressJobService.getPodLogs(controlNode, pod.name, tailLines)
+            val logsResult = stressJobService.getPodLogs(pod.name, tailLines)
             if (logsResult.isFailure) {
                 eventBus.emit(
                     Event.Stress.PodLogFailed(

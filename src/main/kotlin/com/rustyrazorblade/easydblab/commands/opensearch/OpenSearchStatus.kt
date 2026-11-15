@@ -11,7 +11,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
-import software.amazon.awssdk.services.opensearch.model.ResourceNotFoundException
 
 /**
  * Check the status of the OpenSearch domain.
@@ -44,7 +43,11 @@ class OpenSearchStatus : PicoBaseCommand() {
         log.info { "Checking OpenSearch domain status: ${domainState.domainName}" }
 
         try {
-            val result = openSearchService.describeDomain(domainState.domainName)
+            val result = openSearchService.describeDomainOrNull(domainState.domainName)
+            if (result == null) {
+                handleDomainNotFound(domainState)
+                return
+            }
 
             if (endpointOnly) {
                 if (result.endpoint != null) {
@@ -55,8 +58,6 @@ class OpenSearchStatus : PicoBaseCommand() {
 
             displayDomainStatus(result)
             updateLocalStateIfChanged(domainState, result)
-        } catch (e: ResourceNotFoundException) {
-            handleDomainNotFound(domainState)
         } catch (e: Exception) {
             handleStatusError(domainState, e)
         }

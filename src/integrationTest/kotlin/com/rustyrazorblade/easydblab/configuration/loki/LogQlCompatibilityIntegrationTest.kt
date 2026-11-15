@@ -42,7 +42,7 @@ class LogQlCompatibilityIntegrationTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "logql", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "logql", versions = mutableMapOf(), s3Bucket = bucket))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -59,7 +59,7 @@ class LogQlCompatibilityIntegrationTest : BaseKoinTest() {
     private fun traceToLogs(): String {
         val query =
             GrafanaDatasourceSet
-                .build(TenantSet.of("acme"), BackendUrls.CONTROL_NODE)
+                .build(TenantSet.of("acme"), BackendUrls.IN_CLUSTER)
                 .datasources
                 .filter { it.uid == Constants.Grafana.DatasourceUid.TEMPO }
                 .firstNotNullOf { it.jsonData?.tracesToLogsV2?.query }

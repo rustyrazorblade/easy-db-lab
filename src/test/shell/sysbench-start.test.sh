@@ -85,7 +85,7 @@ test_pushes_otlp_json_to_the_collector() {
   calls=$(ls "${STUB_STATE}"/curl.[0-9]* | wc -l | tr -d ' ')
   [ "${calls}" -ge 3 ] || fail "expected a push per interval and one for the run, got ${calls}"
   for call in "${STUB_STATE}"/curl.[0-9]*; do
-    grep -Fqx 'http://10.0.0.5:4318/v1/metrics' "${call}" || fail "push not sent to the collector's OTLP HTTP port: $(cat "${call}")"
+    grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-c0:4318/proxy/v1/metrics' "${call}" || fail "push not sent to the collector's OTLP HTTP port: $(cat "${call}")"
     grep -Fqx 'Content-Type: application/json' "${call}" || fail "push is not OTLP JSON: $(cat "${call}")"
     body_of "${call}" | jq -e . > /dev/null || fail "push body is not valid JSON: $(body_of "${call}")"
   done

@@ -43,7 +43,7 @@ class PromQlCompatibilityIntegrationTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "promql", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "promql", versions = mutableMapOf(), s3Bucket = bucket))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -59,7 +59,7 @@ class PromQlCompatibilityIntegrationTest : BaseKoinTest() {
     /** The trace-to-metrics queries as Grafana runs them, with the span's tags filled in. */
     private fun traceToMetrics(): List<String> =
         GrafanaDatasourceSet
-            .build(TenantSet.of("acme"), BackendUrls.CONTROL_NODE)
+            .build(TenantSet.of("acme"), BackendUrls.IN_CLUSTER)
             .datasources
             .filter { it.uid == Constants.Grafana.DatasourceUid.TEMPO }
             .mapNotNull { it.jsonData?.tracesToMetrics }

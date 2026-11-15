@@ -93,7 +93,7 @@ class StopTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
         whenever(mockCassandraService.stop(any())).thenReturn(Result.success(Unit))
-        whenever(mockSidecarService.undeploy(any())).thenReturn(Result.success(Unit))
+        whenever(mockSidecarService.undeploy()).thenReturn(Result.success(Unit))
         whenever(mockCassandraService.isRunning(any())).thenReturn(Result.success(true))
     }
 
@@ -113,7 +113,7 @@ class StopTest : BaseKoinTest() {
 
         verify(mockCassandraService).stop(testCassandraHost.toHost())
         verify(mockCassandraService, never()).stop(secondCassandraHost.toHost())
-        verify(mockSidecarService, never()).undeploy(any())
+        verify(mockSidecarService, never()).undeploy()
         verify(mockClusterStateManager, never()).removeRunningWorkload(any())
         verify(mockKitHookExecutor, never()).firePostKitStop(any())
         assertThat(outputHandler.messages.joinToString("\n")).contains("cassandra-sidecar keeps running").contains("db1")
@@ -125,7 +125,7 @@ class StopTest : BaseKoinTest() {
         command.hosts.hostList = "db0,db1"
         command.execute()
 
-        verify(mockSidecarService).undeploy(testControlHost)
+        verify(mockSidecarService).undeploy()
         verify(mockClusterStateManager).removeRunningWorkload("cassandra")
         verify(mockKitHookExecutor).firePostKitStop("cassandra")
     }
@@ -133,13 +133,13 @@ class StopTest : BaseKoinTest() {
     @Test
     fun `a second partial stop that leaves no db node running removes the sidecar and clears the workload`() {
         Stop().apply { hosts.hostList = "db0" }.execute()
-        verify(mockSidecarService, never()).undeploy(any())
+        verify(mockSidecarService, never()).undeploy()
 
         // db0 is down since the first stop; this stop takes db1, the last node still running.
         whenever(mockCassandraService.isRunning(testCassandraHost.toHost())).thenReturn(Result.success(false))
         Stop().apply { hosts.hostList = "db1" }.execute()
 
-        verify(mockSidecarService).undeploy(testControlHost)
+        verify(mockSidecarService).undeploy()
         verify(mockClusterStateManager).removeRunningWorkload("cassandra")
         verify(mockKitHookExecutor).firePostKitStop("cassandra")
     }
@@ -149,7 +149,7 @@ class StopTest : BaseKoinTest() {
         val command = Stop()
         command.execute()
 
-        verify(mockSidecarService).undeploy(any())
+        verify(mockSidecarService).undeploy()
     }
 
     @Test

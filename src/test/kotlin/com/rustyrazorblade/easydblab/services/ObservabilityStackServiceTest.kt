@@ -2,12 +2,19 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -18,6 +25,7 @@ import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -32,13 +40,16 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
 import io.fabric8.kubernetes.client.dsl.MixedOperation
 import io.fabric8.kubernetes.client.dsl.Resource
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -47,6 +58,7 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
@@ -54,6 +66,7 @@ import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.reset
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -84,6 +97,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             instanceId = "i-test123",
         )
 
+    private val controlHosts = mapOf(ServerType.Control to listOf(controlNode))
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
@@ -99,6 +114,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 single { EbpfExporterManifestBuilder() }
                 single { JournaldOtelManifestBuilder(get()) }
                 single { OtelManifestBuilder(get()) }
+                single { OtelHostCollectorManifestBuilder(get()) }
                 single { PyroscopeManifestBuilder(get()) }
                 single { TempoManifestBuilder(get()) }
                 single { MimirManifestBuilder(get()) }
@@ -128,26 +144,29 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockConfigMapOps.inAnyNamespace()).thenReturn(mockAnyNsOps)
         whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
-        whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
+        whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
 
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 // A data bucket distinct from the account bucket, so a mix-up between the two shows.
                 dataBucket = "easy-db-lab-data-test",
             ),
         )
 
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
-        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.storageClassReclaimPolicy(any())).thenReturn(Result.success("Retain"))
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("control0")))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
 
         service =
             DefaultObservabilityStackService(
@@ -170,20 +189,262 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 getKoin().get(),
                 getKoin().get(),
+                getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
                 DashboardInstallContextFactory(sharedStoreTenants()),
+                environmentOf = { state -> StackEnvironment(capabilities, hosting(state)) },
             )
+    }
+
+    /** The capabilities the service under test sees; AWS unless a test declares otherwise. */
+    private var capabilities: NodeCapabilities = NodeCapabilities.AWS
+
+    /** The hosting the service under test resolves; the production resolution unless a test overrides it. */
+    private var hosting: (ClusterState) -> ObservabilityHosting = ObservabilityHosting::from
+
+    private fun collectEvents(): MutableList<Event> {
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return emitted
+    }
+
+    @Test
+    fun `an environment without capabilities skips every gated stage and does not await them`() {
+        capabilities = NodeCapabilities(emptySet())
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        assertThat(applied).doesNotContain("fluent-bit-journald", "yace", "s3manager", "ebpf-exporter", "beyla")
+        // The core collector and kube-state-metrics need no capability and still deploy.
+        assertThat(applied).contains("otel-collector", "kube-state-metrics")
+
+        val awaited = argumentCaptor<List<WorkloadRef>>()
+        verify(mockK8sService).waitForRollouts(awaited.capture(), eq("default"), any())
+        assertThat(awaited.firstValue.map { it.toString() }).noneMatch {
+            it.contains("fluent-bit-journald") ||
+                it.contains("yace") ||
+                it.contains("s3manager") ||
+                it.contains("ebpf-exporter") ||
+                it.contains("beyla")
+        }
+
+        // Journald needs two capabilities; with neither present it reports both as missing.
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactlyInAnyOrder(
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.SYSTEMD_JOURNAL),
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("YACE", NodeCapability.CLOUDWATCH),
+                Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
+            )
+    }
+
+    @Test
+    fun `a stage needing two capabilities is skipped for the one that is absent`() {
+        // SYSTEMD_JOURNAL present but PRIVILEGED absent: journald is skipped, reported for PRIVILEGED
+        // only (one event per missing capability), and nothing requiring PRIVILEGED is applied.
+        capabilities = NodeCapabilities(setOf(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.CLOUDWATCH, NodeCapability.S3))
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        assertThat(applied).doesNotContain("fluent-bit-journald", "ebpf-exporter", "beyla")
+        assertThat(applied).contains("yace", "s3manager")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactlyInAnyOrder(
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
+            )
+    }
+
+    @Test
+    fun `the YACE stage and the yace scrape job follow the same capability set`() {
+        // One non-AWS set drives both sources: the stage list and the collector config.
+        capabilities = NodeCapabilities(setOf(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.S3))
+
+        service.deploy().getOrThrow()
+
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
+        val collectorConfig =
+            captor.allValues
+                .filterIsInstance<ConfigMap>()
+                .single { it.metadata.name == "otel-collector-config" }
+                .data.values
+                .single()
+        assertThat(appliedKindNames()).doesNotContain("Deployment/yace")
+        assertThat(collectorConfig).doesNotContain("job_name: \"yace\"")
+    }
+
+    @Test
+    fun `an environment with only CloudWatch runs YACE and skips the privileged and S3 stages`() {
+        capabilities = NodeCapabilities(setOf(NodeCapability.CLOUDWATCH))
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        assertThat(applied).contains("yace").doesNotContain("fluent-bit-journald", "s3manager", "ebpf-exporter", "beyla")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactlyInAnyOrder(
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.SYSTEMD_JOURNAL),
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("ebpf_exporter", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Beyla", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
+                Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
+            )
+    }
+
+    @Test
+    fun `skips are reported before the config-change report and the apply`() {
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        val firstSkip = emitted.indexOfFirst { it is Event.Grafana.StageSkipped }
+        val firstCompared = emitted.indexOfFirst { it is Event.Grafana.WorkloadConfigCompared }
+        assertThat(firstSkip).isNotNegative()
+        assertThat(firstSkip).isLessThan(firstCompared)
+    }
+
+    @Test
+    fun `AWS applies the gated stages and emits no skip`() {
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        assertThat(appliedKindNames()).contains("DaemonSet/fluent-bit-journald", "Deployment/yace", "Deployment/s3manager")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>()).isEmpty()
+    }
+
+    @Test
+    fun `the stages init reports for an absent capability are exactly the ones up skips`() {
+        capabilities = NodeCapabilities(emptySet())
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        val reported =
+            ObservabilityStage
+                .declared(null)
+                .flatMap { stage -> stage.requires.filter { it !in capabilities }.map { stage.label to it } }
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().map { it.stage to it.capability })
+            .containsExactlyInAnyOrderElementsOf(reported)
+    }
+
+    @Test
+    fun `the host add-on and the Pyroscope agent are applied only where pods may be privileged`() {
+        service.deploy().getOrThrow()
+        assertThat(appliedKindNames()).contains("DaemonSet/otel-collector-host", "DaemonSet/pyroscope-ebpf")
+
+        reset(mockK8sService)
+        stubK8sSuccess()
+        capabilities = NodeCapabilities(setOf(NodeCapability.HOST_PATH, NodeCapability.CLOUDWATCH, NodeCapability.S3))
+        service.deploy().getOrThrow()
+
+        val applied = appliedKindNames()
+        assertThat(applied).doesNotContain("DaemonSet/otel-collector-host", "DaemonSet/pyroscope-ebpf")
+        // The Pyroscope server is not privileged, so it is still applied and awaited.
+        assertThat(applied).contains("Deployment/pyroscope", "DaemonSet/otel-collector")
+        val awaited = argumentCaptor<List<WorkloadRef>>()
+        verify(mockK8sService, atLeastOnce()).waitForRollouts(awaited.capture(), eq("default"), any())
+        assertThat(awaited.allValues.flatten()).contains(WorkloadRef(WorkloadKind.Deployment, "pyroscope"))
+        assertThat(awaited.allValues.flatten()).doesNotContain(
+            WorkloadRef(WorkloadKind.DaemonSet, "otel-collector-host"),
+            WorkloadRef(WorkloadKind.DaemonSet, "pyroscope-ebpf"),
+        )
+    }
+
+    @Test
+    fun `without hostPath volumes the core collector runs without pod logs and says so`() {
+        capabilities =
+            NodeCapabilities(setOf(NodeCapability.PRIVILEGED, NodeCapability.SYSTEMD_JOURNAL, NodeCapability.CLOUDWATCH, NodeCapability.S3))
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactly(Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH))
+        assertThat(appliedOtelConfig()).doesNotContain("file_log")
+        assertThat(appliedKindNames()).contains("DaemonSet/otel-collector")
+    }
+
+    /**
+     * On an in-place update the old core pods hold hostPorts 4317 and 4318 until their rollout ends,
+     * so the add-on, which binds those ports on the host, is applied only after the core has rolled.
+     */
+    @Test
+    fun `the host add-on is applied only after the core collector has rolled out`() {
+        val calls = mutableListOf<String>()
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenAnswer {
+            val resource = it.getArgument<HasMetadata>(0)
+            calls += "apply ${resource.kind}/${resource.metadata.name}"
+            Result.success(Unit)
+        }
+        whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenAnswer {
+            calls += "wait ${it.getArgument<List<WorkloadRef>>(0)}"
+            Result.success(Unit)
+        }
+
+        service.deploy().getOrThrow()
+
+        val core = calls.indexOf("apply DaemonSet/otel-collector")
+        val coreWait = calls.indexOf("wait [DaemonSet/otel-collector]")
+        val addOn = calls.indexOf("apply DaemonSet/otel-collector-host")
+        assertThat(core).isNotNegative()
+        assertThat(coreWait).isGreaterThan(core)
+        assertThat(addOn).isGreaterThan(coreWait)
+    }
+
+    /**
+     * A core that does not finish rolling out still holds the old pods' hostPorts, so the deploy
+     * fails there: the add-on is never applied to race them, and nothing after it is applied.
+     */
+    @Test
+    fun `a core collector that does not roll out fails the deploy before the host add-on is applied`() {
+        // thenReturn, not thenAnswer: an answer's Result is boxed and would read back as a success.
+        whenever(
+            mockK8sService.waitForRollouts(eq(listOf(WorkloadRef(WorkloadKind.DaemonSet, "otel-collector"))), any(), any()),
+        ).thenReturn(Result.failure(IllegalStateException("otel-collector: 1 of 3 pods updated")))
+
+        val result = service.deploy()
+
+        assertThat(result.exceptionOrNull()).hasMessageContaining("otel-collector").hasMessageContaining("1 of 3 pods updated")
+        val applied = appliedKindNames()
+        assertThat(applied).contains("DaemonSet/otel-collector")
+        assertThat(applied).doesNotContain("DaemonSet/otel-collector-host", "Deployment/kube-state-metrics")
+        verify(mockK8sService, never()).waitForPodsReady(any<Int>())
     }
 
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */
     private fun sharedStoreTenants(): TenantDirectory {
-        val objectStore = mock<ObjectStore>()
-        whenever(objectStore.listFiles(any(), eq(false), any())).thenReturn(
-            listOf(
-                "mimir/acme/",
-                "mimir/__mimir_cluster/",
-            ).map { ObjectStore.FileInfo(ClusterS3Path.fromKey("easy-db-lab-test", it), 0, "") },
-        )
+        val objectStore = InMemoryObjectStore()
+        listOf("mimir/acme", "mimir/__mimir_cluster").forEach {
+            objectStore.uploadContent("x", ClusterStoragePath.fromKey("easy-db-lab-test", "$it/meta.json"))
+        }
         return TenantDirectory(objectStore)
     }
 
@@ -191,6 +452,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         ClusterState(
             name = "test-cluster",
             versions = mutableMapOf(),
+            hosts = controlHosts,
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(region = "us-west-2", cni = cni),
         )
@@ -200,35 +462,48 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         ClusterState(
             name = "test-cluster",
             versions = mutableMapOf(),
+            hosts = controlHosts,
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(region = "us-west-2", telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
         )
 
     /** Re-arms the K8s mock for a second deploy in the same test, after a reset. */
     private fun stubK8sSuccess() {
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("control0")))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
     }
 
     /** The OTel collector config YAML as it was applied to the cluster. */
     private fun appliedOtelConfig(): String {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         val configMap = captor.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "otel-collector-config" }
         return checkNotNull(configMap.data["otel-collector-config.yaml"])
     }
 
-    /** Every applied resource as a "kind/name" string, in apply order. */
-    private fun appliedKindNames(): List<String> {
+    /** The host add-on collector config YAML as it was applied to the cluster. */
+    private fun appliedHostConfig(): String {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
-        return captor.allValues.map { "${it.kind}/${it.metadata?.name}" }
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
+        val configMap = captor.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "otel-collector-host-config" }
+        return checkNotNull(configMap.data["otel-host-collector-config.yaml"])
     }
+
+    /** Every applied resource, in apply order. */
+    private fun appliedResources(): List<HasMetadata> {
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
+        return captor.allValues
+    }
+
+    /** Every applied resource as a "kind/name" string, in apply order. */
+    private fun appliedKindNames(): List<String> = appliedResources().map { "${it.kind}/${it.metadata?.name}" }
 
     /** Every command passed to [RemoteOperationsService.executeRemotely]. */
     private fun remoteCommands(): List<String> {
@@ -239,7 +514,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `local mode deploys the in-cluster backends, dashboards, and on-node directories`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         val kindNames = appliedKindNames()
         val names = kindNames.map { it.substringAfter("/") }
@@ -250,11 +525,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
-        // The documents sidecars read the account bucket, never the data bucket.
-        verify(mockDashboardService).deploy(any(), context.capture(), eq("easy-db-lab-test"))
+        // The documents front and its proxy read the account bucket, never the data bucket.
+        verify(mockDashboardService).deploy(anyOrNull(), context.capture(), eq("easy-db-lab-test"), any())
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
-        assertThat(context.firstValue.documentsUrl).isEqualTo("http://${controlNode.privateIp}:${Constants.Grafana.Documents.WEB_PORT}")
 
         // Both on-node data directories are prepared over SSH.
         val commands = remoteCommands()
@@ -264,7 +538,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `local mode prepares Tempo's WAL directory on the control node, owned by the Tempo user`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         assertThat(remoteCommands()).anyMatch {
             it.contains("mkdir -p ${TempoManifestBuilder.DATA_HOST_PATH}") &&
@@ -276,14 +550,14 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `local mode prepares Mimir's data directory on the control node`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         assertThat(remoteCommands()).anyMatch { it.contains("mkdir -p ${MimirManifestBuilder.DATA_HOST_PATH}") }
     }
 
     @Test
     fun `local mode prepares Loki's data directory on the control node, owned by the Loki user`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         assertThat(remoteCommands()).anyMatch {
             it.contains("mkdir -p ${LokiManifestBuilder.DATA_HOST_PATH}") &&
@@ -294,12 +568,93 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `cluster-config carries the traces prefix instead of the per-cluster prefix`() {
-        service.deploy(controlNode).getOrThrow()
+    fun `a claim StorageClass that deletes its volumes fails the deploy before anything is applied`() {
+        hosting = { ObservabilityHosting.AWS.copy(storage = BackendStorage.RetainedClaim("gp3", Quantity("50Gi"))) }
+        whenever(mockK8sService.storageClassReclaimPolicy("gp3")).thenReturn(Result.success("Delete"))
+
+        assertThatThrownBy { service.deploy().getOrThrow() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("gp3")
+            .hasMessageContaining("Delete")
+            .hasMessageContaining("Retain")
+
+        verify(mockK8sService, never()).createConfigMap(any(), any(), any(), any())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+    }
+
+    @Test
+    fun `a claim StorageClass that does not exist fails the deploy before anything is applied`() {
+        hosting = { ObservabilityHosting.AWS.copy(storage = BackendStorage.RetainedClaim("missing", Quantity("50Gi"))) }
+        whenever(mockK8sService.storageClassReclaimPolicy("missing")).thenReturn(Result.success(null))
+
+        assertThatThrownBy { service.deploy().getOrThrow() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("missing")
+            .hasMessageContaining("does not exist")
+
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+    }
+
+    @Test
+    fun `with retained claims no backend or Grafana directory is prepared on a node`() {
+        hosting = { ObservabilityHosting.AWS.copy(storage = BackendStorage.RetainedClaim("retained", Quantity("50Gi"))) }
+
+        service.deploy().getOrThrow()
+
+        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
+        assertThat(appliedKindNames()).contains("PersistentVolumeClaim/mimir-data", "PersistentVolumeClaim/pyroscope-data")
+    }
+
+    /**
+     * A cluster the operator brought has no control node in its state. Off owned nodes nothing in the
+     * stack needs one: the K8s API comes from the kubeconfig, state lives on claims, and every
+     * in-cluster caller reaches the backends by Service DNS.
+     */
+    @Test
+    fun `off owned nodes the stack deploys with no control node and publishes no node IP`() {
+        hosting =
+            {
+                ObservabilityHosting(
+                    Placement.ANY_NODE,
+                    BackendStorage.RetainedClaim("retained", Quantity("50Gi")),
+                    StoreCredentials.InstanceRole,
+                )
+            }
+        val brought = mockClusterStateManager.load().copy(hosts = emptyMap())
+        whenever(mockClusterStateManager.load()).thenReturn(brought)
+
+        service.deploy().getOrThrow()
 
         val data = argumentCaptor<Map<String, String>>()
-        verify(mockK8sService).createConfigMap(any(), any(), eq("cluster-config"), data.capture(), any())
-        assertThat(data.firstValue).containsEntry("traces_s3_prefix", "tempo")
+        verify(mockK8sService).createConfigMap(any(), eq("cluster-config"), data.capture(), any())
+        assertThat(data.firstValue).doesNotContainKey(ClusterConfigData.CONTROL_NODE_IP_KEY).containsKey("tenant")
+        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
+        val alloy =
+            appliedResources()
+                .filterIsInstance<DaemonSet>()
+                .single { it.metadata.name == "pyroscope-ebpf" }
+                .spec.template.spec.containers
+                .single { it.name == "alloy" }
+        assertThat(alloy.env.single { it.name == "PYROSCOPE_WRITE_URL" }.value).isEqualTo("http://pyroscope.default.svc:4040")
+        assertThat(appliedOtelConfig()).doesNotContain(controlNode.privateIp)
+    }
+
+    @Test
+    fun `on the AWS control node a state with no control node fails, naming the callers that need its IP`() {
+        val brought = mockClusterStateManager.load().copy(hosts = emptyMap())
+        whenever(mockClusterStateManager.load()).thenReturn(brought)
+
+        assertThat(service.deploy().exceptionOrNull()).hasMessageContaining("no control node").hasMessageContaining("redirected clusters")
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+    }
+
+    @Test
+    fun `cluster-config carries the traces prefix instead of the per-cluster prefix`() {
+        service.deploy().getOrThrow()
+
+        val data = argumentCaptor<Map<String, String>>()
+        verify(mockK8sService).createConfigMap(any(), eq("cluster-config"), data.capture(), any())
+        assertThat(data.firstValue).containsEntry("traces_store_prefix", "tempo")
         assertThat(data.firstValue).doesNotContainKey("cluster_s3_prefix")
     }
 
@@ -307,7 +662,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     fun `redirect mode skips local backends and dashboards but still runs the eBPF agent`() {
         whenever(mockClusterStateManager.load()).thenReturn(redirectState())
 
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         val kindNames = appliedKindNames()
         val names = kindNames.map { it.substringAfter("/") }
@@ -319,56 +674,139 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(kindNames).contains("DaemonSet/pyroscope-ebpf")
 
         // No Grafana in redirect mode, so no dashboards uploaded.
-        verify(mockDashboardService, never()).deploy(any(), any(), any())
+        verify(mockDashboardService, never()).deploy(anyOrNull(), any(), any(), any())
 
         // Neither on-node directory (Pyroscope server data, Grafana data) is prepared: the server
         // and Grafana do not exist here, so redirect makes no SSH calls at all.
         verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
 
         // Readiness is still gated on the applied collectors coming up.
-        verify(mockK8sService).waitForPodsReady(any(), any())
+        verify(mockK8sService).waitForPodsReady(any())
     }
 
     @Test
     fun `kube-state-metrics is deployed in both local and redirect mode`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
         assertThat(appliedKindNames()).contains("Deployment/kube-state-metrics", "Service/kube-state-metrics")
 
         reset(mockK8sService)
         stubK8sSuccess()
         whenever(mockClusterStateManager.load()).thenReturn(redirectState())
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
         assertThat(appliedKindNames()).contains("Deployment/kube-state-metrics", "Service/kube-state-metrics")
     }
 
     @Test
-    fun `the collector config carries the Cilium scrape jobs only when the cluster state says Cilium`() {
+    fun `the node labels recorded at init place every backend, kube-state-metrics and Grafana`() {
+        val labels = mapOf("pool" to "observability")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts = controlHosts,
+                s3Bucket = "easy-db-lab-test",
+                initConfig = InitConfig(region = "us-west-2", nodeLabels = labels),
+            ),
+        )
+
+        service.deploy().getOrThrow()
+
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
+        val placed =
+            captor.allValues
+                .filterIsInstance<Deployment>()
+                .filter { it.metadata.name in setOf("mimir", "loki", "tempo", "pyroscope", "kube-state-metrics") }
+        assertThat(placed.map { it.metadata.name }).containsExactlyInAnyOrder("mimir", "loki", "tempo", "pyroscope", "kube-state-metrics")
+        placed.forEach { assertThat(it.spec.template.spec.nodeSelector).describedAs(it.metadata.name).containsAllEntriesOf(labels) }
+
+        val hosting = argumentCaptor<ObservabilityHosting>()
+        verify(mockDashboardService).deploy(anyOrNull(), any(), any(), hosting.capture())
+        assertThat(hosting.firstValue.placement.nodeSelector).containsAllEntriesOf(labels)
+    }
+
+    @Test
+    fun `a node selector no node matches fails the deploy before anything is applied`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts = controlHosts,
+                s3Bucket = "easy-db-lab-test",
+                initConfig = InitConfig(region = "us-west-2", nodeLabels = mapOf("pool" to "observability")),
+            ),
+        )
+        val selector = argumentCaptor<Map<String, String>>()
+        whenever(mockK8sService.nodesMatching(selector.capture())).thenReturn(Result.success(emptyList()))
+
+        assertThatThrownBy { service.deploy().getOrThrow() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("pool=observability")
+            .hasMessageContaining("--node-label")
+
+        assertThat(
+            selector.firstValue,
+        ).containsEntry("pool", "observability").containsEntry("node-role.kubernetes.io/control-plane", "true")
+        verify(mockK8sService, never()).createConfigMap(any(), any(), any(), any())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+    }
+
+    /**
+     * An `init --node-label` no node carries leaves every backend Pending; the operator can only see
+     * why if the deploy says which selector it placed them with, before the rollout wait times out.
+     */
+    @Test
+    fun `the deploy reports the placement it resolved, node labels merged, before it applies anything`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts = controlHosts,
+                s3Bucket = "easy-db-lab-test",
+                initConfig = InitConfig(region = "us-west-2", nodeLabels = mapOf("pool" to "observability")),
+            ),
+        )
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        val resolved = emitted.filterIsInstance<Event.Grafana.PlacementResolved>().single()
+        assertThat(resolved.nodeSelector)
+            .containsEntry("pool", "observability")
+            .containsEntry("node-role.kubernetes.io/control-plane", "true")
+        assertThat(resolved.tolerations).containsExactly("node-role.kubernetes.io/control-plane:Exists:NoSchedule")
+        assertThat(emitted.indexOf(resolved)).isLessThan(emitted.indexOfFirst { it is Event.Grafana.LabelResourcesApplying })
+    }
+
+    @Test
+    fun `the host add-on config carries the Cilium scrape jobs only when the cluster state says Cilium`() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Cilium))
-        service.deploy(controlNode).getOrThrow()
-        assertThat(appliedOtelConfig()).contains("cilium-agent").contains("cilium-operator")
+        service.deploy().getOrThrow()
+        assertThat(appliedHostConfig()).contains("cilium-agent").contains("cilium-operator")
+        assertThat(appliedOtelConfig()).doesNotContain("cilium")
 
         reset(mockK8sService)
         stubK8sSuccess()
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Flannel))
-        service.deploy(controlNode).getOrThrow()
-        assertThat(appliedOtelConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
+        service.deploy().getOrThrow()
+        assertThat(appliedHostConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
     }
 
     @Test
     fun `the readiness gate runs only after every applied workload has finished rolling out`() {
         // Pod readiness alone passes while a restarted workload's old pods are still serving, which
         // is how `update-config` reported ready with replacement pods at 0/1.
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         val applied = appliedKindNames()
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockK8sService)
-        order.verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
-        order.verify(mockK8sService).waitForPodsReady(any(), any())
+        order.verify(mockK8sService, times(2)).waitForRollouts(workloads.capture(), eq("default"), any())
+        order.verify(mockK8sService).waitForPodsReady(any<Int>())
 
         // Grafana is applied by the dashboard service rather than a stage, so it is not among these.
         val expected = applied.filter { it.startsWith("Deployment/") || it.startsWith("DaemonSet/") }.distinct() + "Deployment/grafana"
-        assertThat(workloads.firstValue.map { it.toString() }).containsExactlyInAnyOrderElementsOf(expected)
+        assertThat(workloads.lastValue.map { it.toString() }).containsExactlyInAnyOrderElementsOf(expected)
         assertThat(expected).contains("DaemonSet/otel-collector", "Deployment/tempo", "Deployment/pyroscope")
     }
 
@@ -379,12 +817,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      */
     @Test
     fun `the Grafana rollout is waited on after the dashboards are uploaded`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockDashboardService, mockK8sService)
-        order.verify(mockDashboardService).deploy(any(), any(), any())
-        order.verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
+        order.verify(mockDashboardService).deploy(anyOrNull(), any(), any(), any())
+        order.verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).contains(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }
 
@@ -395,24 +833,24 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      */
     @Test
     fun `a failure to read the running configuration hashes fails the deploy before anything is applied`() {
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any()))
+        whenever(mockK8sService.workloadConfigHashes(any(), any()))
             .thenReturn(Result.failure(IllegalStateException("apiserver unreachable")))
 
-        val result = service.deploy(controlNode)
+        val result = service.deploy()
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("apiserver unreachable")
-        verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
     }
 
     @Test
     fun `redirect mode deploys no Grafana, so it waits on none`() {
         whenever(mockClusterStateManager.load()).thenReturn(redirectState())
 
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
-        verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
-        assertThat(workloads.firstValue).doesNotContain(WorkloadRef(WorkloadKind.Deployment, "grafana"))
+        verify(mockK8sService, atLeastOnce()).waitForRollouts(workloads.capture(), eq("default"), any())
+        assertThat(workloads.allValues.flatten()).doesNotContain(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }
 
     /**
@@ -422,22 +860,32 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      */
     @Test
     fun `a deploy never force-restarts a workload`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
-        verify(mockK8sService, never()).rolloutRestartDeployment(any(), any(), any())
-        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any(), any())
+        verify(mockK8sService, never()).rolloutRestartDeployment(any(), any())
+        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any())
     }
 
     @Test
     fun `every applied workload carries the hash of the configuration it reads, including cluster-config`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
         val firstTempo = appliedTemplateHash("tempo")
         val firstGrafanaIndependent = appliedTemplateHash("otel-collector")
 
         // Only the runtime cluster-config differs between the two deploys: a new control node IP.
         reset(mockK8sService)
         stubK8sSuccess()
-        service.deploy(controlNode.copy(privateIp = "10.0.1.99")).getOrThrow()
+        val moved =
+            mockClusterStateManager.load().let {
+                it.copy(
+                    hosts =
+                        mapOf(
+                            ServerType.Control to listOf(controlNode.copy(privateIp = "10.0.1.99")),
+                        ),
+                )
+            }
+        whenever(mockClusterStateManager.load()).thenReturn(moved)
+        service.deploy().getOrThrow()
 
         assertThat(firstTempo).isNotBlank()
         assertThat(appliedTemplateHash("tempo"))
@@ -448,12 +896,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `an identical deploy leaves every workload's hash unchanged`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
         val first = listOf("tempo", "pyroscope", "otel-collector").associateWith { appliedTemplateHash(it) }
 
         reset(mockK8sService)
         stubK8sSuccess()
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         assertThat(listOf("tempo", "pyroscope", "otel-collector").associateWith { appliedTemplateHash(it) }).isEqualTo(first)
     }
@@ -461,7 +909,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     /** The config-hash annotation on the pod template of the applied workload named [name]. */
     private fun appliedTemplateHash(name: String): String? {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         val template =
             when (val workload = captor.allValues.single { it.metadata.name == name && it.kind in setOf("Deployment", "DaemonSet") }) {
                 is io.fabric8.kubernetes.api.model.apps.Deployment -> workload.spec.template
@@ -473,13 +921,13 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `a rollout that does not finish fails the deploy without reporting the stack ready`() {
-        whenever(mockK8sService.waitForRollouts(any(), any(), any(), any()))
+        whenever(mockK8sService.waitForRollouts(any(), any(), any()))
             .thenReturn(Result.failure(IllegalStateException("Deployment/tempo: 0 of 1 updated replicas are available")))
 
-        val result = service.deploy(controlNode)
+        val result = service.deploy()
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("Deployment/tempo: 0 of 1 updated replicas are available")
-        verify(mockK8sService, never()).waitForPodsReady(any(), any())
+        verify(mockK8sService, never()).waitForPodsReady(any())
     }
 
     @Test
@@ -497,17 +945,17 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 override fun close() = Unit
             },
         )
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("apiserver rejected the ConfigMap")))
 
-        val result = service.deploy(controlNode)
+        val result = service.deploy()
 
         assertThat(result.isFailure).isTrue()
         val failure = emitted.filterIsInstance<Event.Provision.ClusterConfigMapFailed>().single()
         assertThat(failure.reason).contains("apiserver rejected the ConfigMap")
         assertThat(failure.isError()).isTrue()
         // Nothing was applied: the abort happens before any manifest reaches the cluster.
-        verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
     }
 
     /**
@@ -516,18 +964,18 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      */
     @Test
     fun `each applied workload reports whether its configuration changed from the running one`() {
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
         val runningTempoHash = appliedTemplateHash("tempo")
 
         reset(mockK8sService)
         stubK8sSuccess()
         // An Answer bypasses Kotlin's Result unboxing: the JVM method returns the bare map.
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), eq("default"))).thenAnswer { invocation ->
-            invocation.getArgument<List<WorkloadRef>>(1).associateWith { if (it.name == "tempo") runningTempoHash else "stale" }
+        whenever(mockK8sService.workloadConfigHashes(any(), eq("default"))).thenAnswer { invocation ->
+            invocation.getArgument<List<WorkloadRef>>(0).associateWith { if (it.name == "tempo") runningTempoHash else "stale" }
         }
         val emitted = recordEvents()
 
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         val compared = emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>().associateBy { it.workload }
         assertThat(compared["Deployment/tempo"]?.changed).isFalse()
@@ -539,10 +987,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
     @Test
     fun `a workload not yet on the cluster reports its configuration as changed`() {
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
         val emitted = recordEvents()
 
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
 
         assertThat(emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>()).isNotEmpty().allMatch { it.changed }
     }
@@ -550,7 +998,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     /** The config hash on the otel-collector DaemonSet among the resources applied so far. */
     private fun appliedCollectorHash(): String {
         val captor = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), captor.capture())
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
         return captor.allValues
             .filterIsInstance<DaemonSet>()
             .single { it.metadata.name == Constants.OtelCollector.SERVICE_NAME }
@@ -563,22 +1011,26 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      * `grafana update-config` redeploys it through this service. Both must stamp the same config
      * hash, or that next deploy sees a "changed" collector and rolls it for nothing.
      */
-    @ParameterizedTest(name = "{0}, redirect={1}")
+    @ParameterizedTest(name = "{0}, redirect={1}, aws={2}")
     @MethodSource("collectorClusters")
     fun `the stack deploy and a kit sync stamp the collector with the same config hash`(
         cni: CniMode,
         redirect: TelemetryRedirect?,
+        awsCapabilities: Boolean,
     ) {
+        val sharedCapabilities = if (awsCapabilities) NodeCapabilities.AWS else NodeCapabilities.LOCAL_DOCKER
+        capabilities = sharedCapabilities
         val state =
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", cni = cni, telemetryRedirect = redirect),
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)
 
-        service.deploy(controlNode).getOrThrow()
+        service.deploy().getOrThrow()
         val deployHash = appliedCollectorHash()
 
         reset(mockK8sService)
@@ -590,7 +1042,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             mockClusterStateManager,
             getKoin().get(),
             ConfigChangeReport(mockK8sService, getKoin().get()),
-        ).syncConfigMap(controlNode).getOrThrow()
+            { sharedCapabilities },
+        ).syncConfigMap().getOrThrow()
 
         assertThat(appliedCollectorHash()).isEqualTo(deployHash)
     }
@@ -613,10 +1066,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         @JvmStatic
         fun collectorClusters(): List<Arguments> =
             listOf(CniMode.Flannel, CniMode.Cilium).flatMap { cni ->
-                listOf(
-                    Arguments.of(cni, null),
-                    Arguments.of(cni, TelemetryRedirect.fromBaseHost("10.0.0.9")),
-                )
+                listOf(true, false).flatMap { capabilities ->
+                    listOf(
+                        Arguments.of(cni, null, capabilities),
+                        Arguments.of(cni, TelemetryRedirect.fromBaseHost("10.0.0.9"), capabilities),
+                    )
+                }
             }
     }
 }

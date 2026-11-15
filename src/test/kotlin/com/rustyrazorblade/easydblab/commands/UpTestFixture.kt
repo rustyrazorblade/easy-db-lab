@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -189,7 +190,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
             single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
             single { CiliumNodeImageCheck(get()) }
-            single { AWSResourceSetupService(get(), get(), get()) }
+            single { AWSResourceSetupService(get(), get(), get(), AwsErrorHandler()) }
             single { ProvisioningPreflight(get(), get(), get(), get()) }
             single { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
         }
@@ -379,11 +380,11 @@ abstract class UpTestFixture : BaseKoinTest() {
         whenever(mockK3sClusterService.setupCluster(any())).thenReturn(K3sSetupResult(serverStarted = true))
         stubCiliumSuccess()
 
-        whenever(mockK8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.ensureLocalStorageClass()).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.ensureLocalStorageWfcClass()).thenReturn(Result.success(Unit))
 
-        whenever(mockObservabilityStackService.deploy(any())).thenReturn(Result.success(Unit))
+        whenever(mockObservabilityStackService.deploy()).thenReturn(Result.success(Unit))
 
         whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
             @Suppress("UNCHECKED_CAST")

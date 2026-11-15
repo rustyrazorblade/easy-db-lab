@@ -64,7 +64,7 @@ http://<control node private IP>:31234
 
 ### Metrics
 
-On a Cilium cluster the OTel collector scrapes three Cilium jobs:
+On a Cilium cluster the host add-on OTel collector (`otel-collector-host`) scrapes three Cilium jobs and forwards them to the core collector:
 
 | Job | Target | Source |
 |-----|--------|--------|

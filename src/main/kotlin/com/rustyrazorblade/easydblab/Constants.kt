@@ -134,6 +134,13 @@ object Constants {
         const val MAX_PORT = 65535
         const val SSH_PORT = 22
 
+        /**
+         * The IPv4 loopback address every local listener of the CLI binds and every client of one
+         * dials: the SOCKS tunnel and the Kubernetes port-forwards. Never `localhost`, which can
+         * resolve to `::1`, where another process can hold the same port.
+         */
+        const val LOOPBACK_ADDRESS = "127.0.0.1"
+
         /** EC2 IP protocol name for ICMP security group rules. */
         const val ICMP_PROTOCOL = "icmp"
 
@@ -153,11 +160,18 @@ object Constants {
     // HTTP Status Codes
     object HttpStatus {
         const val OK = 200
+        const val CREATED = 201
         const val NO_CONTENT = 204
         const val MULTIPLE_CHOICES = 300
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
+
+        /** What the Kubernetes API server answers a create of an object that already exists with. */
+        const val CONFLICT = 409
+
+        /** What Pod Security admission and Pod validation reject a Pod with. */
+        const val UNPROCESSABLE_ENTITY = 422
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599
         const val CLIENT_ERROR_THRESHOLD = 500 // Errors >= 500 are server errors
@@ -224,6 +238,56 @@ object Constants {
         // EC2 error code for instance ids it does not know yet; right after RunInstances this is
         // eventual consistency, not a missing instance.
         const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
+
+        /**
+         * AWS error codes, grouped by what the user must do. `AwsErrorHandler` checks the code
+         * before the HTTP status, because STS, IAM and S3 answer 403 for bad credentials.
+         */
+        object ErrorCodes {
+            val CREDENTIALS =
+                setOf(
+                    "ExpiredToken",
+                    "ExpiredTokenException",
+                    "RequestExpired",
+                    "AuthFailure",
+                    "InvalidClientTokenId",
+                    "UnrecognizedClientException",
+                    "InvalidAccessKeyId",
+                    "SignatureDoesNotMatch",
+                    "InvalidSignatureException",
+                    "InvalidToken",
+                    "TokenRefreshRequired",
+                    "MissingAuthenticationToken",
+                    "IncompleteSignature",
+                )
+
+            val PERMISSION_DENIED =
+                setOf(
+                    "AccessDenied",
+                    "AccessDeniedException",
+                    "UnauthorizedOperation",
+                )
+
+            /** A 403 from clock skew is neither a credentials nor a permission problem. */
+            const val CLOCK_SKEW = "RequestTimeTooSkewed"
+
+            /**
+             * Prefixes of the `SdkClientException` messages a credentials provider raises when it finds no usable
+             * credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGE]. An expired SSO session
+             * has its own type, `ExpiredTokenException`, so it needs no message here.
+             */
+            val CREDENTIALS_MESSAGES =
+                listOf(
+                    "Unable to load credentials",
+                    "Profile file contained no credentials for profile",
+                )
+
+            /** The SDK package whose providers raise a missing-credentials `SdkClientException`. */
+            const val CREDENTIALS_PROVIDER_PACKAGE = "software.amazon.awssdk.auth.credentials."
+
+            /** The SDK package of the exception builders, skipped to find the code that raised an exception. */
+            const val SDK_EXCEPTION_PACKAGE = "software.amazon.awssdk.core.exception."
+        }
 
         // IAM Role Names
         object Roles {
@@ -421,10 +485,26 @@ object Constants {
     // K8s observability configuration
     object K8s {
         const val NAMESPACE = "default"
+
+        /**
+         * How many times a Service port-forward is opened, each on a freshly chosen loopback port,
+         * when the port it was given was bound by another process after it was chosen: the first
+         * attempt and one retry.
+         */
+        const val PORT_FORWARD_BIND_ATTEMPTS = 2
+
+        /** The fully qualified in-cluster DNS name of [service], a Service in [NAMESPACE]. */
+        fun serviceHost(service: String): String = "$service.$NAMESPACE.svc.cluster.local"
+
         const val MANIFEST_DIR = "k8s"
         const val LOCAL_STORAGE_CLASS = "local-storage"
         const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
+
+        /** The access mode of a volume one node mounts read-write, as every easy-db-lab claim is. */
+        const val READ_WRITE_ONCE = "ReadWriteOnce"
+
         const val GRAFANA_PORT = 3000
+        const val GRAFANA_APP_LABEL = "grafana"
         const val S3MANAGER_PORT = 8080
         const val REGISTRY_PORT = 5000
         const val TEMPO_PORT = 3200
@@ -529,6 +609,12 @@ object Constants {
         /** The variable that holds the absolute path of the workspace's kit shell library, for every kit process. */
         const val LIBRARY_ENV = "EDL_KIT_LIB"
 
+        /**
+         * The variable that tells every kit process whether the environment reaches its nodes over SSH:
+         * `true` or `false`, from the recorded `NODE_SSH` capability (see `KitProcessEnvironment`).
+         */
+        const val NODE_SSH_ENV = "EDL_NODE_SSH"
+
         // After the stop of a kit that declares a runtime, how often and how many times to look for its
         // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a
         // StatefulSet's or operator's cascading delete plus each pod's termination grace period.
@@ -536,6 +622,51 @@ object Constants {
         const val STOP_WAIT_MAX_POLLS = 150
 
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
+
+        /** The `cassandra-pods` kit: the CQL NodePort and the agent-carrying image. The UN wait bound lives in `lib/wait-un.sh`. */
+        object CassandraPods {
+            /** NodePort and native transport port; no other kit uses it. */
+            const val CQL_NODE_PORT = 30942
+
+            /** Image whose `/javaagent.jar` the init container copies; its tag is the build's agent version. */
+            const val AGENT_IMAGE_REPOSITORY = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java"
+        }
+    }
+
+    // Node capabilities: `init --capability` overrides and the admission probe (CapabilityProbeService)
+    object Capabilities {
+        /** The `init` option that overrides one capability, `--capability <name>=<bool>`. */
+        const val OVERRIDE_OPTION = "--capability"
+
+        /** Separates a capability's name from its value in an override. */
+        const val OVERRIDE_SEPARATOR = "="
+
+        /** The `cluster-config` key that lists the present capabilities. */
+        const val CLUSTER_CONFIG_KEY = "capabilities"
+
+        /** Separates the capability names in [CLUSTER_CONFIG_KEY]. */
+        const val CLUSTER_CONFIG_SEPARATOR = ","
+
+        /** The image of every dry-run probe Pod. Never pulled: a dry-run creates nothing. */
+        const val PROBE_IMAGE = "registry.k8s.io/pause:3.10"
+
+        /** The name prefix of the dry-run probe Pods. */
+        const val PROBE_POD_PREFIX = "edl-capability-probe"
+
+        /** The host directory the hostPath probe Pod mounts, read-only. */
+        const val PROBE_HOST_PATH = "/var/log"
+
+        /** The non-root user the restricted baseline probe Pod runs as. */
+        const val PROBE_RUN_AS_USER = 65532L
+
+        /** How long the probe waits for a namespace it created to get its default ServiceAccount. */
+        const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
+
+        /** The seccomp profile type Pod Security "restricted" requires of the probe Pods. */
+        const val PROBE_SECCOMP_PROFILE = "RuntimeDefault"
+
+        /** The Linux capabilities the restricted probe Pods drop: all of them. */
+        const val PROBE_DROPPED_CAPABILITIES = "ALL"
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration
@@ -608,6 +739,12 @@ object Constants {
         const val INSTALL_PATH = "/opt/otel/otelcol-contrib"
         const val CONFIG_PATH = "/opt/otel/config.yaml"
         const val SERVICE_NAME = "otel-collector"
+
+        /** The host add-on collector's DaemonSet name and `app.kubernetes.io/name` label. */
+        const val HOST_COLLECTOR_NAME = "otel-collector-host"
+
+        /** The non-root user the core runs as where it reads no pod logs (the image's own `otel` user). */
+        const val NON_ROOT_UID = 10001L
     }
 
     // Pyroscope Java Agent configuration (for EMR Spark JVMs)
@@ -937,6 +1074,13 @@ object Constants {
         const val HOME_DASHBOARD_PATH = "infrastructure/system-overview.json"
 
         /**
+         * The most dashboard JSON one `grafana-dashboard-tree-<n>` ConfigMap carries, keys included, where
+         * the tree reaches Grafana through the K8s API. Half the API's 1 MiB object limit, so a
+         * dashboard that grows does not push its ConfigMap over it.
+         */
+        const val DASHBOARD_CONFIGMAP_MAX_BYTES = 512 * 1024
+
+        /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
          * addition to any operator-supplied tags. The core dashboards' annotation query filters on
          * this tag so global markers render on their timelines. Scoped annotations
@@ -975,21 +1119,30 @@ object Constants {
         }
 
         /**
-         * The test documents Grafana shows: a read-only web server on the control node's host
-         * network, and the signing proxy it forwards to, bound to loopback. 8081 is the image
-         * renderer's.
+         * The loopback port Grafana itself listens on inside its pod. The nginx front holds Grafana's
+         * client port ([K8s.GRAFANA_PORT]) and forwards to this one, so nothing outside the pod reaches
+         * Grafana but through the front. Not 8081, which the image renderer uses.
+         */
+        const val INTERNAL_PORT = 3001
+
+        /**
+         * The test documents Grafana shows: the nginx front serves them under `/reports/` on Grafana's
+         * own port, from the signing proxy it forwards to, bound to loopback.
          */
         object Documents {
-            /** Host port of the read-only documents web server, reachable from the browser like Grafana. */
-            const val WEB_PORT = 3080
+            /** An S3 bucket name as AWS allows it: lowercase letters, digits, dots and hyphens, 3 to 63 long. */
+            const val BUCKET_NAME_PATTERN = "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\$"
 
-            /** Loopback port of the `aws-sigv4-proxy` that signs the web server's S3 requests. */
+            /** An AWS region name, such as `us-west-2` or `us-gov-west-1`. */
+            const val REGION_PATTERN = "^[a-z]{2}(-[a-z]+)+-[0-9]+\$"
+
+            /** Loopback port of the `aws-sigv4-proxy` that signs the front's S3 requests. */
             const val PROXY_PORT = 3081
 
             /** The signing proxy, a released version. */
             const val SIGV4_PROXY_IMAGE = "public.ecr.aws/aws-observability/aws-sigv4-proxy:1.13"
 
-            /** The read-only web server, a released stable nginx that runs as a non-root user. */
+            /** The front, a released stable nginx that runs as a non-root user. */
             const val WEB_SERVER_IMAGE = "nginxinc/nginx-unprivileged:1.30.5-alpine"
         }
     }
@@ -1032,7 +1185,7 @@ object Constants {
          * listened on `::1` keeps running with only that address bound when another process holds
          * 127.0.0.1 on the port, and a client of `localhost` could then reach that other process.
          */
-        const val TUNNEL_LISTEN_ADDRESS = "127.0.0.1"
+        const val TUNNEL_LISTEN_ADDRESS = Network.LOOPBACK_ADDRESS
 
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the

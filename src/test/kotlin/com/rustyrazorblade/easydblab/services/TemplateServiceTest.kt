@@ -7,7 +7,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -82,6 +84,23 @@ class TemplateServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(state)
     }
 
+    /** The builders pick each config's object-store block from this backend. */
+    @Test
+    fun `the store backend is the cluster's account bucket in the cluster's region`() {
+        setupClusterState(bucketName = "easy-db-lab-x", region = "eu-west-1")
+
+        assertThat(createService().storeBackend()).isEqualTo(S3Backend(bucket = "easy-db-lab-x", region = "eu-west-1"))
+    }
+
+    @Test
+    fun `the store backend falls back to the profile's region when the cluster records none`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "easy-db-lab-x"),
+        )
+
+        assertThat(createService().storeBackend()).isEqualTo(S3Backend(bucket = "easy-db-lab-x", region = "us-west-2"))
+    }
+
     @Test
     fun `buildContextVariables returns correct map from cluster state`() {
         setupClusterState()
@@ -96,13 +115,12 @@ class TemplateServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildContextVariables uses empty string when s3Bucket is null`() {
+    fun `buildContextVariables fails and says to run up when the cluster has no account bucket yet`() {
         setupClusterState(bucketName = null)
 
-        val service = createService()
-        val variables = service.buildContextVariables()
-
-        assertThat(variables).containsEntry("ACCOUNT_BUCKET", "")
+        assertThatThrownBy { createService().buildContextVariables() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("easy-db-lab up")
     }
 
     @Test
@@ -123,8 +141,20 @@ class TemplateServiceTest : BaseKoinTest() {
         val variables = createService().buildContextVariables()
 
         assertThat(variables).containsEntry("TENANT", "acme")
-        assertThat(variables).containsEntry("PROFILES_S3_PREFIX", "pyroscope")
-        assertThat(variables).doesNotContainKey("PYROSCOPE_STORAGE_PREFIX")
+        assertThat(variables).containsEntry("PROFILES_STORE_PREFIX", "pyroscope")
+        assertThat(variables).doesNotContainKeys("PYROSCOPE_STORAGE_PREFIX", "PROFILES_S3_PREFIX")
+    }
+
+    @Test
+    fun `buildContextVariables publishes the store in neutral names for Pyroscope's build-time config`() {
+        setupClusterState()
+
+        val variables = createService().buildContextVariables()
+
+        assertThat(variables)
+            .containsEntry("STORE_BUCKET", "my-test-bucket")
+            .containsEntry("STORE_REGION", "us-east-1")
+            .containsEntry("STORE_ENDPOINT", "s3.us-east-1.amazonaws.com")
     }
 
     @Test

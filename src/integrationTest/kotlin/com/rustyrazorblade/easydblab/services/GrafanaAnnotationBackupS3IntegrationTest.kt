@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -33,9 +32,6 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
     private lateinit var grafana: MockWebServer
     private lateinit var service: DefaultGrafanaAnnotationBackupService
 
-    private val controlHost =
-        ClusterHost(publicIp = "127.0.0.1", privateIp = "10.0.1.1", alias = "control0", availabilityZone = "us-west-2a")
-
     private val clusterState =
         ClusterState(
             name = "lab",
@@ -63,10 +59,7 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
             }
         val eventBus = getKoin().get<EventBus>()
         val dashboards =
-            DefaultGrafanaClient(
-                eventBus = eventBus,
-                okHttpClient = OkHttpClient.Builder().addInterceptor(toGrafana).build(),
-            )
+            fixedGrafanaClient(eventBus = eventBus, client = OkHttpClient.Builder().addInterceptor(toGrafana).build())
         service = DefaultGrafanaAnnotationBackupService(dashboards, objectStore, eventBus, sameSecond)
     }
 
@@ -82,8 +75,8 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
         grafana.enqueue(MockResponse(code = 200, body = firstJson))
         grafana.enqueue(MockResponse(code = 200, body = secondJson))
 
-        val first = service.backup(controlHost, clusterState).getOrThrow()
-        val second = service.backup(controlHost, clusterState).getOrThrow()
+        val first = service.backup(clusterState).getOrThrow()
+        val second = service.backup(clusterState).getOrThrow()
 
         assertThat(second.s3Path).isNotEqualTo(first.s3Path)
         assertThat(first.s3Path.getKey()).isEqualTo("grafana/annotations/acme/20260924-130405_lab-c0ffee.json")

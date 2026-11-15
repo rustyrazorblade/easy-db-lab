@@ -42,6 +42,20 @@ interface CqlSessionFactory {
         contactPoints: List<String>,
         datacenter: String,
     ): CqlSession
+
+    /**
+     * Create a CqlSession on one Cassandra node reached through a local port-forward: [forward] is the
+     * sole contact point, dialed with no proxy, every other node is ignored, and the token map is off,
+     * since the driver can reach no peer to route a token to.
+     *
+     * @param forward The loopback address of the port-forward
+     * @param datacenter The forwarded node's datacenter
+     * @return A connected CqlSession
+     */
+    fun createSingleEndpointSession(
+        forward: InetSocketAddress,
+        datacenter: String,
+    ): CqlSession
 }
 
 /**
@@ -106,7 +120,27 @@ open class DefaultCqlSessionFactory : CqlSessionFactory {
         return session
     }
 
-    private fun buildConfigLoader(datacenter: String) =
+    override fun createSingleEndpointSession(
+        forward: InetSocketAddress,
+        datacenter: String,
+    ): CqlSession {
+        log.info { "Creating CqlSession on the port-forward at $forward" }
+        val session =
+            newDirectBuilder()
+                .withConfigLoader(
+                    configLoaderBuilder(datacenter)
+                        .withBoolean(DefaultDriverOption.METADATA_TOKEN_MAP_ENABLED, false)
+                        .build(),
+                ).addContactPoint(forward)
+                .withNodeDistanceEvaluator(SingleEndpointDistanceEvaluator(forward))
+                .build()
+        log.info { "CqlSession created successfully (single endpoint)" }
+        return session
+    }
+
+    private fun buildConfigLoader(datacenter: String) = configLoaderBuilder(datacenter).build()
+
+    private fun configLoaderBuilder(datacenter: String) =
         DriverConfigLoader
             .programmaticBuilder()
             .withDuration(
@@ -121,5 +155,4 @@ open class DefaultCqlSessionFactory : CqlSessionFactory {
             // Reduce connection pool size for initial connection
             .withInt(DefaultDriverOption.CONNECTION_POOL_LOCAL_SIZE, 1)
             .withInt(DefaultDriverOption.CONNECTION_POOL_REMOTE_SIZE, 1)
-            .build()
 }

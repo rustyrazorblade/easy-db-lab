@@ -1,8 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
+import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer
 import org.assertj.core.api.Assertions.assertThat
@@ -17,28 +17,19 @@ class DefaultK8sStorageOperationsTest {
     private lateinit var mockEventBus: EventBus
     private lateinit var mockClientProvider: K8sClientProvider
 
-    private val controlHost =
-        ClusterHost(
-            publicIp = "1.2.3.4",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-test",
-        )
-
     lateinit var server: KubernetesMockServer
 
     @BeforeEach
     fun setup() {
         mockEventBus = mock()
         mockClientProvider = mock()
-        whenever(mockClientProvider.createClient(controlHost)).thenAnswer { server.createClient() }
+        whenever(mockClientProvider.createClient()).thenAnswer { server.createClient() }
         storageOps = DefaultK8sStorageOperations(mockClientProvider, mockEventBus)
     }
 
     @Test
     fun `ensureLocalStorageWfcClass creates StorageClass with WaitForFirstConsumer and Delete`() {
-        val result = storageOps.ensureLocalStorageWfcClass(controlHost)
+        val result = storageOps.ensureLocalStorageWfcClass()
 
         assertThat(result.isSuccess).isTrue()
 
@@ -59,8 +50,8 @@ class DefaultK8sStorageOperationsTest {
 
     @Test
     fun `ensureLocalStorageWfcClass is idempotent when StorageClass already exists`() {
-        storageOps.ensureLocalStorageWfcClass(controlHost)
-        val result = storageOps.ensureLocalStorageWfcClass(controlHost)
+        storageOps.ensureLocalStorageWfcClass()
+        val result = storageOps.ensureLocalStorageWfcClass()
 
         assertThat(result.isSuccess).isTrue()
 
@@ -79,7 +70,7 @@ class DefaultK8sStorageOperationsTest {
 
     @Test
     fun `ensureLocalStorageClass creates StorageClass with Immediate and Retain`() {
-        val result = storageOps.ensureLocalStorageClass(controlHost)
+        val result = storageOps.ensureLocalStorageClass()
 
         assertThat(result.isSuccess).isTrue()
 
@@ -99,8 +90,8 @@ class DefaultK8sStorageOperationsTest {
 
     @Test
     fun `both StorageClasses can coexist`() {
-        storageOps.ensureLocalStorageClass(controlHost)
-        storageOps.ensureLocalStorageWfcClass(controlHost)
+        storageOps.ensureLocalStorageClass()
+        storageOps.ensureLocalStorageWfcClass()
 
         val client = server.createClient()
         val names =
@@ -113,5 +104,39 @@ class DefaultK8sStorageOperationsTest {
                 .map { it.metadata.name }
 
         assertThat(names).contains(Constants.K8s.LOCAL_STORAGE_CLASS, Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+    }
+
+    @Test
+    fun `a StorageClass's reclaim policy is read, a missing one reads as Delete, and an absent class as null`() {
+        val classes =
+            server
+                .createClient()
+                .storage()
+                .v1()
+                .storageClasses()
+        classes
+            .resource(
+                StorageClassBuilder()
+                    .withNewMetadata()
+                    .withName(
+                        "kept",
+                    ).endMetadata()
+                    .withProvisioner("p")
+                    .withReclaimPolicy("Retain")
+                    .build(),
+            ).create()
+        classes
+            .resource(
+                StorageClassBuilder()
+                    .withNewMetadata()
+                    .withName("defaulted")
+                    .endMetadata()
+                    .withProvisioner("p")
+                    .build(),
+            ).create()
+
+        assertThat(storageOps.storageClassReclaimPolicy("kept").getOrThrow()).isEqualTo("Retain")
+        assertThat(storageOps.storageClassReclaimPolicy("defaulted").getOrThrow()).isEqualTo("Delete")
+        assertThat(storageOps.storageClassReclaimPolicy("absent").getOrThrow()).isNull()
     }
 }

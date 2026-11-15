@@ -96,6 +96,7 @@ Commands (PicoCLI) → Services → External Systems (K8s, AWS, Filesystem)
 
 - **Commands** (`commands/`): Lightweight PicoCLI execution units
 - **Services** (`services/`, `providers/`): Business logic layer
-- **Kernel** (`kernel/`): Types both layers share, such as the `PicoCommand` interface. It keeps commands and services from depending on each other.
+- **Kernel** (`kernel/`): Types shared by commands, services and providers, such as the `PicoCommand` interface and the provider error contract. It keeps those layers from depending on each other.
+- **Provider boundary**: AWS SDK types stay in `providers/aws` and `services/aws`; a unit test (`PackageBoundaryTest`) fails the build if one appears elsewhere.
 
 For more details, see the project's `CLAUDE.md` file.

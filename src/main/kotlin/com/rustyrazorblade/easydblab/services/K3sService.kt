@@ -1,16 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
+import com.rustyrazorblade.easydblab.kubernetes.parseKubeconfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import io.fabric8.kubernetes.client.utils.Serialization
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -72,46 +66,13 @@ interface K3sService : SystemDServiceManager {
      *
      * @param host The control node running the K3s server
      * @param localPath Path where the kubeconfig should be written locally
-     * @return Result indicating success or failure
+     * @return Result containing the kubeconfig's current-context, which the caller records in its
+     *   cluster state as the context every later command targets
      */
     fun downloadAndConfigureKubeconfig(
         host: Host,
         localPath: Path,
-    ): Result<Unit>
-
-    /**
-     * Lists Kubernetes jobs from the K3s cluster.
-     *
-     * This method handles the complete connection chain:
-     * 1. Establishes SOCKS proxy to the control node
-     * 2. Creates proxied Kubernetes client
-     * 3. Lists all jobs across namespaces
-     *
-     * @param controlHost The control node running K3s
-     * @param kubeconfigPath Local path to the kubeconfig file
-     * @return Result containing list of jobs or an error
-     */
-    fun listJobs(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesJob>>
-
-    /**
-     * Lists Kubernetes pods from the K3s cluster.
-     *
-     * This method handles the complete connection chain:
-     * 1. Establishes SOCKS proxy to the control node
-     * 2. Creates proxied Kubernetes client
-     * 3. Lists all pods across namespaces
-     *
-     * @param controlHost The control node running K3s
-     * @param kubeconfigPath Local path to the kubeconfig file
-     * @return Result containing list of pods or an error
-     */
-    fun listPods(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesPod>>
+    ): Result<String>
 }
 
 /**
@@ -130,7 +91,6 @@ interface K3sService : SystemDServiceManager {
  */
 class DefaultK3sService(
     remoteOps: RemoteOperationsService,
-    private val clusterStateManager: ClusterStateManager,
     eventBus: EventBus,
 ) : AbstractSystemDServiceManager("k3s", remoteOps, eventBus),
     K3sService {
@@ -195,7 +155,7 @@ class DefaultK3sService(
     override fun downloadAndConfigureKubeconfig(
         host: Host,
         localPath: Path,
-    ): Result<Unit> =
+    ): Result<String> =
         runCatching {
             log.debug { "Downloading kubeconfig from ${host.alias}" }
 
@@ -209,7 +169,7 @@ class DefaultK3sService(
                 )
 
                 // Parse kubeconfig into fabric8's typed model (no untyped map diving)
-                val kubeConfig = KubeConfigUtils.parseConfig(tempFile)
+                val kubeConfig = parseKubeconfig(tempFile.toPath())
 
                 // Modify server URL from 127.0.0.1 to control node's private IP
                 val newServerUrl = Constants.K3s.DEFAULT_SERVER_URL.replace("127.0.0.1", host.private)
@@ -219,38 +179,19 @@ class DefaultK3sService(
                         ?: error("Kubeconfig downloaded from ${host.alias} contains no clusters")
                 cluster.server = newServerUrl
 
+                val context =
+                    kubeConfig.currentContext?.takeIf { it.isNotBlank() }
+                        ?: error("Kubeconfig downloaded from ${host.alias} names no current-context")
+
                 // Write modified kubeconfig to local path
                 Files.writeString(localPath, Serialization.asYaml(kubeConfig))
 
                 log.info { "Successfully configured kubeconfig at $localPath with server URL $newServerUrl" }
+                context
             } finally {
                 tempFile.delete()
             }
         }
-
-    override fun listJobs(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesJob>> =
-        runCatching {
-            kubernetesService(controlHost, kubeconfigPath).listJobs().getOrThrow()
-        }
-
-    override fun listPods(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesPod>> =
-        runCatching {
-            kubernetesService(controlHost, kubeconfigPath).listPods().getOrThrow()
-        }
-
-    private fun kubernetesService(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): DefaultKubernetesService {
-        val clientFactory = ProxiedKubernetesClientFactory()
-        return DefaultKubernetesService(clientFactory, kubeconfigPath)
-    }
 
     /**
      * Uploads a script from classpath resources to a remote host.

@@ -67,19 +67,12 @@ metrics_generator:
     # Mimir runs native multi-tenancy: each write carries the tenant of the spans it came from.
     remote_write_add_org_id_header: true
     remote_write:
-      - url: http://mimir.default.svc.cluster.local:9009/api/v1/push
+      - url: http://__MIMIR_HOST__:__MIMIR_HTTP_PORT__/api/v1/push
         send_exemplars: true
 
 storage:
   trace:
-    backend: s3
-    wal:
-      path: /var/tempo/wal
-    s3:
-      bucket: ${S3_BUCKET}
-      endpoint: s3.${AWS_REGION}.amazonaws.com
-      region: ${AWS_REGION}
-      prefix: ${TRACES_S3_PREFIX}
+    __OBJECT_STORE_BLOCK__
 
 overrides:
   defaults:

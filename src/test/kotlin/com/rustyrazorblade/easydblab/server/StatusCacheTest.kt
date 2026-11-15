@@ -5,24 +5,29 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
-import com.rustyrazorblade.easydblab.services.K3sService
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -39,6 +44,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -46,7 +52,7 @@ class StatusCacheTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockEc2InstanceService: EC2InstanceService
     private lateinit var mockVpcService: VpcService
-    private lateinit var mockK3sService: K3sService
+    private lateinit var mockKubernetesService: KubernetesService
     private lateinit var mockEmrService: EMRService
     private lateinit var mockOpenSearchService: OpenSearchService
     private lateinit var mockStressJobService: StressJobService
@@ -102,11 +108,12 @@ class StatusCacheTest : BaseKoinTest() {
                 single { mockClusterStateManager }
                 single { mockEc2InstanceService }
                 single<VpcService> { mockVpcService }
-                factory<K3sService> { mockK3sService }
+                factory<KubernetesService> { mockKubernetesService }
                 single { mockEmrService }
                 single { mockOpenSearchService }
                 single<StressJobService> { mockStressJobService }
                 single { WorkspaceKitScanner(get()) }
+                single<ObjectStore> { S3ObjectStore(get(), get()) }
             },
         )
 
@@ -115,7 +122,7 @@ class StatusCacheTest : BaseKoinTest() {
         mockClusterStateManager = mock()
         mockEc2InstanceService = mock()
         mockVpcService = mock()
-        mockK3sService = mock()
+        mockKubernetesService = mock()
         mockEmrService = mock()
         mockOpenSearchService = mock()
         mockStressJobService = mock()
@@ -407,7 +414,7 @@ class StatusCacheTest : BaseKoinTest() {
     }
 
     @Test
-    fun `s3 section contains fullpath with bucket and cluster prefix`() {
+    fun `s3 section contains fullpath as the store URI of the cluster path`() {
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
 
@@ -417,7 +424,7 @@ class StatusCacheTest : BaseKoinTest() {
         val s3 = Json.parseToJsonElement(result!!).jsonObject
         assertThat(s3["bucket"]?.jsonPrimitive?.content).isEqualTo("test-bucket-abc")
         assertThat(s3["fullpath"]?.jsonPrimitive?.content)
-            .isEqualTo("test-bucket-abc/clusters/test-cluster-test-cluster-id")
+            .isEqualTo("s3://test-bucket-abc/clusters/test-cluster-test-cluster-id")
     }
 
     @Test
@@ -440,9 +447,44 @@ class StatusCacheTest : BaseKoinTest() {
     }
 
     @Test
+    fun `kubernetes pods are listed from the workspace kubeconfig without a control host`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockClusterStateManager.load())
+            .thenReturn(testClusterState.copy(hosts = testClusterState.hosts - ServerType.Control))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(
+            Result.success(
+                listOf(
+                    KubernetesPod(
+                        namespace = "default",
+                        name = "grafana-0",
+                        status = "Running",
+                        ready = "1/1",
+                        restarts = 0,
+                        age = Duration.ofMinutes(5),
+                    ),
+                ),
+            ),
+        )
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val pods = Json.parseToJsonElement(statusCache.getStatus("kubernetes")!!).jsonObject["pods"]!!.jsonArray
+
+        assertThat(pods.map { it.jsonObject["name"]?.jsonPrimitive?.content }).containsExactly("grafana-0")
+    }
+
+    @Test
+    fun `kubernetes is null when the workspace has no kubeconfig`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        assertThat(statusCache.getStatus("kubernetes")).isEqualTo("null")
+    }
+
+    @Test
     fun `accessInfo observability names every backend on the control node`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
 
@@ -460,9 +502,24 @@ class StatusCacheTest : BaseKoinTest() {
     }
 
     @Test
+    fun `accessInfo has an S3 Manager only where the environment has S3`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+
+        fun accessInfo(capabilities: NodeCapabilities): JsonObject {
+            statusCache = StatusCache(refreshIntervalSeconds = 3600, capabilitiesOf = { capabilities })
+            statusCache.forceRefresh()
+            return Json.parseToJsonElement(statusCache.getStatus("accessInfo")!!).jsonObject
+        }
+
+        assertThat(accessInfo(NodeCapabilities.AWS)).containsKey("s3Manager")
+        assertThat(accessInfo(NodeCapabilities.LOCAL_DOCKER)).doesNotContainKey("s3Manager")
+    }
+
+    @Test
     fun `accessInfo lists a running kit's declared NodePort endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
@@ -477,7 +534,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `a stopped kit prints no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
@@ -490,7 +547,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo says why a running kit with an unreadable kit descriptor has no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("broken", "clickhouse")))
         installPackagedKit("clickhouse")
         File(context.workingDirectory, "broken").mkdirs()
@@ -511,13 +568,46 @@ class StatusCacheTest : BaseKoinTest() {
         assertThat(kits["clickhouse"]!!.jsonObject["endpoints"]!!.jsonArray).isNotEmpty()
     }
 
+    @Test
+    fun `on a port-forward cluster accessInfo gives Service DNS names and the commands that forward them`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+        whenever(mockClusterStateManager.load())
+            .thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")).apply { exposure = Exposure.PortForward })
+        installPackagedKit("clickhouse")
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val access = Json.parseToJsonElement(statusCache.getStatus("accessInfo")!!).jsonObject
+        val observability = access["observability"]!!.jsonObject
+        val endpoint =
+            access["kits"]!!
+                .jsonArray
+                .single()
+                .jsonObject["endpoints"]!!
+                .jsonArray
+                .first()
+                .jsonObject
+
+        assertThat(observability["grafana"]?.jsonPrimitive?.content).isEqualTo("http://grafana.default.svc.cluster.local:3000")
+        assertThat(observability["portForwardCommands"]!!.jsonArray.map { it.jsonPrimitive.content })
+            .contains("bin/kubectl port-forward -n default svc/grafana 3000")
+        assertThat(endpoint["address"]?.jsonPrimitive?.content).isEqualTo("http://clickhouse-nodeport.default.svc.cluster.local:8123")
+        assertThat(endpoint["portForwardCommand"]?.jsonPrimitive?.content)
+            .isEqualTo("bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123")
+    }
+
     private fun installPackagedKit(name: String) {
         val kitYaml =
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/${Constants.Kit.CONFIG_FILE}")) {
                 "packaged kit $name not found"
             }.readText()
-        File(context.workingDirectory, name).mkdirs()
-        File(File(context.workingDirectory, name), Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        val kitDir = File(context.workingDirectory, name).apply { mkdirs() }
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        // The rendered NodePort Service, as install writes it; clickhouse's has no template variables.
+        javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/nodeport-service.yaml.template")?.let {
+            File(kitDir, "nodeport-service.yaml").writeText(it.readText())
+        }
     }
 
     @Test

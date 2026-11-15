@@ -6,7 +6,7 @@ Verify issue 971 on a real cluster, built from branch `worktree-issue-971` (PR 9
 
 - 13.2: Grafana applies variables in panel `timeShift` and `timeFrom` on the comparison dashboards.
 - 13.3: the documents iframe renders with `disable_sanitize_html`.
-- 13.4: the browser reaches the documents web server (port 3080), and the signing proxy signs for the account bucket's region.
+- 13.4: the browser reaches the documents on Grafana's own port (3000, through the nginx front), and the signing proxy signs for the account bucket's region.
 - 13.5: `report upload` works, and the Tests dashboard shows the documents.
 - 13.6: a short comparison against a past test.
 - 13.7: live QA of every core and kit dashboard.
@@ -56,7 +56,7 @@ $EDB report upload summary.md notes.md
 Check:
 - `aws s3 ls s3://<account bucket>/reports/default/<name>-<id>/` shows `summary.md`, `summary.html`, `notes.md`, `notes.html` and `index.html`.
 - `report upload index.md` and a name given twice are rejected, and nothing is uploaded.
-- `curl http://<control privateIp>:3080/reports/default/<name>-<id>/index.html` returns the index.  A `PUT`, a path outside `/reports/`, `%0d%0a` and `%3F` paths are refused.
+- `curl http://<control privateIp>:3000/reports/default/<name>-<id>/index.html` returns the index.  A `PUT`, `%0d%0a` and `%3F` paths are refused; a path outside `/reports/` reaches Grafana, never S3.
 - The proxy signs for the account bucket's own region (`aws s3api get-bucket-location`).
 
 ### 4. Tests dashboard (browser)

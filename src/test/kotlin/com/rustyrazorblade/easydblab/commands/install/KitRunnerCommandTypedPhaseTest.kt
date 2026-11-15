@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.KitMetrics
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -14,6 +15,7 @@ import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -78,7 +80,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockMetricsRegistryService).register(any(), any(), any())
+        verify(mockMetricsRegistryService).register(any(), any())
     }
 
     /**
@@ -110,7 +112,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("postgres-duckdb", "start").call()
 
         val targets = argumentCaptor<List<KitMetrics.Scrape>>()
-        verify(mockMetricsRegistryService).register(any(), eq("postgres-duckdb"), targets.capture())
+        verify(mockMetricsRegistryService).register(eq("postgres-duckdb"), targets.capture())
         assertThat(targets.firstValue.associate { it.job to it.port }).isEqualTo(mapOf("static" to 30988, "pods" to 9187))
     }
 
@@ -138,7 +140,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("postgres-duckdb", "start").call()
 
         val targets = argumentCaptor<List<KitMetrics.Scrape>>()
-        verify(mockMetricsRegistryService).register(any(), any(), targets.capture())
+        verify(mockMetricsRegistryService).register(any(), targets.capture())
         assertThat(targets.firstValue.single().podSelector)
             .isEqualTo("cnpg.io/cluster=postgres-duckdb,cnpg.io/instanceRole=primary")
     }
@@ -170,7 +172,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("mydb", "start").call()
 
         val targets = argumentCaptor<List<KitMetrics.Scrape>>()
-        verify(mockMetricsRegistryService).register(any(), eq("mydb"), targets.capture())
+        verify(mockMetricsRegistryService).register(eq("mydb"), targets.capture())
         assertThat(targets.firstValue.single().podSelector).isEmpty()
     }
 
@@ -186,7 +188,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockMetricsRegistryService, never()).register(any(), any(), any())
+        verify(mockMetricsRegistryService, never()).register(any(), any())
     }
 
     @Test
@@ -201,7 +203,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "stop").call()
-        verify(mockMetricsRegistryService).deregister(any(), any())
+        verify(mockMetricsRegistryService).deregister(any())
     }
 
     @Test
@@ -220,12 +222,13 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockGrafanaClient).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient).installDashboard(any(), any())
     }
 
     @Test
     fun `a failure to list the tenants names every skipped dashboard and the cause`() {
-        whenever(mockObjectStore.listFiles(any(), any(), any())).thenThrow(IllegalStateException("S3 Access Denied"))
+        objectStore =
+            mock<ObjectStore>().also { whenever(it.listFiles(any(), any(), any())).thenThrow(IllegalStateException("S3 Access Denied")) }
         val kitDir = File(workingDir, "mydb").also { it.mkdirs() }
         File(kitDir, "overview.json").writeText("{}")
         File(kitDir, "queries.json").writeText("{}")
@@ -249,7 +252,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         assertThat(skipped.dashboards).containsExactly("overview.json", "queries.json")
         assertThat(skipped.reason).contains("S3 Access Denied")
         assertThat(skipped.isError()).isTrue()
-        verify(mockGrafanaClient, never()).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient, never()).installDashboard(any(), any())
     }
 
     @Test
@@ -272,7 +275,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("memcached", "start").call()
 
         val installed = argumentCaptor<JsonObject>()
-        verify(mockGrafanaClient).installDashboard(installed.capture(), any(), eq("memcached"))
+        verify(mockGrafanaClient).installDashboard(installed.capture(), eq("memcached"))
         val current =
             installed.firstValue
                 .getValue("templating")
@@ -331,7 +334,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         command("postgres-duckdb", "start").call()
 
         val installed = argumentCaptor<JsonObject>()
-        verify(mockGrafanaClient, times(2)).installDashboard(installed.capture(), any(), eq("postgres-duckdb"))
+        verify(mockGrafanaClient, times(2)).installDashboard(installed.capture(), eq("postgres-duckdb"))
         assertThat(installed.allValues.map { it["uid"]?.jsonPrimitive?.content })
             .containsExactly("postgres-overview-duckdb", "postgres-duckdb-duckdb")
         val overview = installed.allValues.first().toString()
@@ -459,7 +462,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
 
         assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
 
-        verify(mockMetricsRegistryService).deregister(any(), eq("mydb"))
+        verify(mockMetricsRegistryService).deregister(eq("mydb"))
         verify(mockClusterStateManager).removeRunningWorkload("mydb")
         verify(mockKitHookExecutor).firePostKitStop("mydb")
     }
@@ -478,7 +481,7 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
 
         assertThat(command("mydb", "uninstall").call()).isEqualTo(0)
 
-        verify(mockMetricsRegistryService, never()).deregister(any(), any())
+        verify(mockMetricsRegistryService, never()).deregister(any())
         verify(mockClusterStateManager, never()).removeRunningWorkload(any())
     }
 

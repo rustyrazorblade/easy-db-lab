@@ -8,6 +8,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.rustyrazorblade.easydblab.Constants
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.time.Instant
@@ -42,19 +43,32 @@ class ClusterStateManager(
      * missing field is read as [CniMode.Flannel] rather than filled from the constructor default
      * ([CniMode.Cilium]), which would render Cilium scrape jobs on a Flannel cluster.
      *
-     * @throws IllegalStateException if the file does not exist; other exceptions if it cannot be parsed
+     * @throws IllegalStateException if the file does not exist, or cannot be read or parsed (the
+     *   message names the file; the parser's exception is the cause)
      */
     fun load(): ClusterState {
         check(stateFile.exists()) {
             "No cluster state at ${stateFile.absolutePath}. Run the command from the cluster's workspace, " +
                 "or run 'init' there first."
         }
-        val tree = mapper.readTree(stateFile)
-        val initConfig = tree.get("initConfig")
-        if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
-            initConfig.put(CNI_FIELD, CniMode.Flannel.name)
-        }
-        val state = mapper.treeToValue(tree, ClusterState::class.java)
+        val state =
+            try {
+                val tree = mapper.readTree(stateFile)
+                val initConfig = tree.get("initConfig")
+                if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
+                    initConfig.put(CNI_FIELD, CniMode.Flannel.name)
+                }
+                mapper.treeToValue(tree, ClusterState::class.java)
+            } catch (e: IOException) {
+                throw IllegalStateException(
+                    "Cannot read the cluster state at ${stateFile.absolutePath}: " +
+                        e.message
+                            .orEmpty()
+                            .lines()
+                            .first(),
+                    e,
+                )
+            }
         // The name flows raw into config files, Loki index file names, S3 keys and labels; a
         // hand-edited or pre-rule state must not reach any of them.
         check(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(state.name)) {

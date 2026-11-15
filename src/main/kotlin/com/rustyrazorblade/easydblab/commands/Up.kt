@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.proxy.reachedBySocksTunnel
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
@@ -634,7 +635,9 @@ class Up(
     }
 
     /**
-     * Starts the SOCKS5 proxy to the control node when Tailscale is not active.
+     * Starts the SOCKS5 proxy to the control node when the cluster is reached through it: a
+     * [com.rustyrazorblade.easydblab.configuration.Exposure.Socks] cluster without Tailscale. A
+     * Direct or PortForward cluster never gets a tunnel.
      *
      * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
      * Both are started at the same point so that subsequent K3s setup, kubectl, and
@@ -646,7 +649,7 @@ class Up(
      * tunnel it just started "already running".
      */
     private fun startProxyIfNeeded() {
-        if (workingState.isTailscaleEnabled()) return
+        if (!workingState.reachedBySocksTunnel()) return
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
         log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
         val proxy = socksProxyService.ensureRunning(controlHost)
@@ -789,6 +792,15 @@ class Up(
 
         val result = k3sClusterService.setupCluster(config)
 
+        // Pin the written kubeconfig's context on up's own state, so a later save of that state
+        // keeps it. Every later command targets it, whatever the user's kubectl context is.
+        result.kubeContext?.let { kubeContext ->
+            synchronized(stateLock) {
+                workingState.kubeContext = kubeContext
+                clusterStateManager.save(workingState)
+            }
+        }
+
         if (!result.isSuccessful) {
             result.errors.forEach { (operation, error) ->
                 log.error(error) { "K3s setup failed: $operation" }
@@ -800,15 +812,15 @@ class Up(
         labelNodesWithOrdinals(controlHosts.first())
 
         // Ensure StorageClasses exist for Local PVs
-        k8sService.ensureLocalStorageClass(controlHosts.first()).getOrThrow()
-        k8sService.ensureLocalStorageWfcClass(controlHosts.first()).getOrThrow()
+        k8sService.ensureLocalStorageClass().getOrThrow()
+        k8sService.ensureLocalStorageWfcClass().getOrThrow()
 
         // Bring-up drives the observability stack service directly rather than the
         // `grafana update-config` command: on a redirect cluster that command refuses, but bring-up
         // must still deploy the collectors pointed at the external stack. The service is the shared
         // deploy path; the command is the operator-facing local-stack reconfigure wrapper.
         observabilityStackService
-            .deploy(controlHosts.first())
+            .deploy()
             .getOrElse { exception ->
                 error("Observability stack deployment failed during provisioning: ${exception.message}")
             }
@@ -816,7 +828,7 @@ class Up(
         // Grafana exists only now, and only in local mode: post the Cilium install markers that
         // were recorded on the server-ready hook. A redirect cluster has no local Grafana to mark.
         if (workingState.initConfig?.telemetryRedirect == null) {
-            postCiliumInstallAnnotations(controlHosts.first())
+            postCiliumInstallAnnotations()
         }
     }
 
@@ -824,9 +836,9 @@ class Up(
      * Posts the Cilium install window annotations recorded during K3s bring-up. A failure here is
      * reported, not fatal: the cluster is up and only the dashboard marker is missing.
      */
-    private fun postCiliumInstallAnnotations(controlHost: ClusterHost) {
+    private fun postCiliumInstallAnnotations() {
         ciliumInstallAnnotator
-            .post(controlHost)
+            .post()
             .onSuccess { posted ->
                 posted.forEach { (request, response) ->
                     eventBus.emit(
@@ -852,7 +864,7 @@ class Up(
      */
     private fun labelNodesWithOrdinals(controlHost: ClusterHost) {
         // Label control node with type=control (db and app nodes get this via K3s agent config)
-        k8sService.labelNode(controlHost, controlHost.alias, mapOf("type" to "control")).getOrThrow()
+        k8sService.labelNode(controlHost.alias, mapOf("type" to "control")).getOrThrow()
 
         val dbHosts = workingState.hosts[ServerType.Cassandra] ?: emptyList()
         val appHosts = workingState.hosts[ServerType.Stress] ?: emptyList()
@@ -865,7 +877,7 @@ class Up(
             eventBus.emit(Event.Provision.NodeLabeling(dbHosts.size))
             dbHosts.forEachIndexed { index, host ->
                 k8sService
-                    .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
+                    .labelNode(host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
                     .getOrThrow()
             }
             eventBus.emit(Event.Provision.NodeLabelingComplete)
@@ -875,7 +887,7 @@ class Up(
             eventBus.emit(Event.Provision.NodeLabeling(count = appHosts.size, nodeType = "app"))
             appHosts.forEachIndexed { index, host ->
                 k8sService
-                    .labelNode(controlHost, host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
+                    .labelNode(host.alias, mapOf(Constants.NODE_ORDINAL_LABEL to index.toString()))
                     .getOrThrow()
             }
             eventBus.emit(Event.Provision.NodeLabelingComplete)

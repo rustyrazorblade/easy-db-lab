@@ -4,9 +4,15 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import io.github.oshai.kotlinlogging.KotlinLogging
+
+private val log = KotlinLogging.logger {}
 
 /**
  * Service responsible for ensuring AWS IAM resources are set up
@@ -25,6 +31,7 @@ class AWSResourceSetupService(
     private val aws: AWS,
     private val eventBus: EventBus,
     private val instanceRolePolicies: InstanceRolePolicies,
+    private val errorHandler: ProviderErrorHandler,
 ) {
     companion object {
         // Error messages
@@ -135,21 +142,18 @@ class AWSResourceSetupService(
             aws.checkPermissions()
         } catch (e: Exception) {
             emitCredentialError(e)
-            throw e
+            log.error(e) { "AWS credential validation failed" }
+            // The detailed message above is the report; the executor must not print a second block.
+            // This exception's own message goes to the debug log only, never to the user.
+            throw CommandFailedException("AWS credential validation failed: ${e.message}", e)
         }
     }
 
     private fun emitCredentialError(e: Exception) {
-        when (e) {
-            is software.amazon.awssdk.services.sts.model.StsException -> {
-                if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
-                    handlePermissionError(e)
-                } else {
-                    handleAuthenticationError(e)
-                }
-            }
-            is software.amazon.awssdk.core.exception.SdkServiceException -> handlePermissionError(e)
-            else -> eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
+        when (errorHandler.describe(e)?.kind) {
+            ProviderErrorKind.CREDENTIALS -> handleAuthenticationError(e)
+            ProviderErrorKind.PERMISSION_DENIED -> handlePermissionError(e)
+            ProviderErrorKind.UNAVAILABLE, null -> eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
         }
     }
 
@@ -217,7 +221,7 @@ class AWSResourceSetupService(
      * Handles authentication errors (invalid/missing credentials).
      * Provides guidance for reconfiguring easy-db-lab profile.
      */
-    private fun handleAuthenticationError(exception: software.amazon.awssdk.core.exception.SdkServiceException) {
+    private fun handleAuthenticationError(exception: Exception) {
         eventBus.emit(Event.AwsSetup.AuthenticationError(exception.message ?: "Unknown error"))
 
         // Show required IAM policies
@@ -239,7 +243,7 @@ class AWSResourceSetupService(
      * Handles permission errors (valid credentials but insufficient permissions).
      * Provides detailed IAM policy guidance.
      */
-    private fun handlePermissionError(exception: software.amazon.awssdk.core.exception.SdkServiceException) {
+    private fun handlePermissionError(exception: Exception) {
         eventBus.emit(
             Event.AwsSetup.IamPermissionError(
                 """

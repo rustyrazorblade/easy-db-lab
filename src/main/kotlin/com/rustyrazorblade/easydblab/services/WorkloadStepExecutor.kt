@@ -1,13 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
@@ -45,7 +43,6 @@ class ShellStepFailedException(
  */
 data class StepExecutionContext(
     val kitName: String,
-    val controlHost: ClusterHost,
     val clusterState: ClusterState,
     val variables: Map<String, String>,
     val kitDir: File,
@@ -65,7 +62,7 @@ class WorkloadStepExecutor(
     private val kubectlService: KubectlService,
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
-    private val kitProcessEnvironment: KitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
+    private val kitProcessEnvironment: KitProcessEnvironment,
 ) {
     fun execute(
         steps: List<InstallStep>,
@@ -220,7 +217,6 @@ class WorkloadStepExecutor(
                 is InstallStep.PlatformPvsDelete -> {
                     k8sService
                         .deleteLocalPersistentVolumes(
-                            controlHost = ctx.controlHost,
                             dbName = ctx.kitName,
                         ).getOrThrow()
                     val dbHosts = ctx.clusterState.hosts[ServerType.from(interp(step.nodeType))] ?: emptyList()
@@ -234,7 +230,6 @@ class WorkloadStepExecutor(
                 is InstallStep.ConfigMap -> {
                     k8sService
                         .createConfigMap(
-                            controlHost = ctx.controlHost,
                             namespace = interp(step.namespace),
                             name = interp(step.name),
                             data = step.data.mapValues { (_, v) -> interp(v) },
@@ -249,7 +244,6 @@ class WorkloadStepExecutor(
                     for (host in targetHosts) {
                         k8sService
                             .labelNode(
-                                controlHost = ctx.controlHost,
                                 nodeName = host.alias,
                                 labels = step.labels.mapKeys { (k, _) -> interp(k) }.mapValues { (_, v) -> interp(v) },
                             ).getOrThrow()
@@ -259,7 +253,6 @@ class WorkloadStepExecutor(
                 is InstallStep.Exec -> {
                     k8sService
                         .execInPod(
-                            controlHost = ctx.controlHost,
                             namespace = interp(step.namespace),
                             podName = interp(step.pod),
                             command = step.command.map { interp(it) },
@@ -339,7 +332,6 @@ class WorkloadStepExecutor(
         }
         k8sService
             .createLocalPersistentVolumes(
-                controlHost = ctx.controlHost,
                 config =
                     PersistentVolumeConfig(
                         dbName = ctx.kitName,

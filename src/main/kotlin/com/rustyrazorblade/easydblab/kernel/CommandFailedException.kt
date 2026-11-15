@@ -13,4 +13,5 @@ package com.rustyrazorblade.easydblab.kernel
  */
 class CommandFailedException(
     message: String,
-) : RuntimeException(message)
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)

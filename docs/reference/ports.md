@@ -13,10 +13,12 @@ This page documents the ports used by easy-db-lab and the services it provisions
 
 ## Observability Ports (Control Node)
 
+Mimir, Loki, Tempo, the Pyroscope server and Grafana run in the Kubernetes pod network and reach each other by Service name (for example `mimir.default.svc:9009`).  On an AWS cluster they also publish these ports on the control node, so nodes, redirected clusters and the CLI reach them at the control node's private IP.
+
 | Port | Service |
 |------|---------|
-| 3000 | Grafana |
-| 3080 | Test documents web server (read-only, in the Grafana pod) |
+| 3000 | Grafana, through the nginx front in the Grafana pod, which also serves the test documents under `/reports/` (read-only) |
+| 3001 | Grafana itself (loopback only, in the Grafana pod, behind the front) |
 | 3081 | Test documents signing proxy (loopback only, in the Grafana pod) |
 | 8081 | Grafana image renderer (in the Grafana pod) |
 | 4040 | Pyroscope (continuous profiling) |
@@ -69,6 +71,29 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 
 Every built-in kit's NodePorts, each postgres instance's, and the Hubble UI's 31234 are distinct,
 so any combination of kits can run at once.
+
+## Reaching Services on a Port-Forward Cluster
+
+On a cluster easy-db-lab does not own (`exposure` PortForward), the CLI reaches each Service through
+a Kubernetes port-forward instead of a node address. It binds the forward to `127.0.0.1` only, on a
+local port from 20000-29999, and closes it when the command ends. Grafana has a ClusterIP Service
+(`grafana`, port 3000) for this. A kit's NodePort is forwarded to the Service port behind it.
+
+`status` prints each Service by its DNS name (for example
+`http://grafana.default.svc.cluster.local:3000`), followed by the command that forwards it to your
+machine:
+
+```bash
+bin/kubectl port-forward -n default svc/grafana 3000
+```
+
+A kit endpoint is printed at its Service port, and the command forwards the kit's NodePort on your
+machine to it. For ClickHouse's HTTP endpoint that is
+`http://clickhouse-nodeport.default.svc.cluster.local:8123` and:
+
+```bash
+bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123
+```
 
 ## Server
 

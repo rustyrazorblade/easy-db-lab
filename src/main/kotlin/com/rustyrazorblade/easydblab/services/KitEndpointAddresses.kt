@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.io.File
 
 /**
  * Resolves a kit's declared [KitEndpoint]s to concrete addresses on the cluster.
@@ -52,24 +51,6 @@ object KitEndpointAddresses {
 
     /** Why a running kit shows no endpoints when its descriptor cannot be read. */
     const val UNREADABLE_DESCRIPTOR = "cannot read ${Constants.Kit.CONFIG_FILE}"
-
-    /**
-     * Resolves the endpoints declared in the `kit.yaml` of the installed kit in [kitDir].
-     * Fails, and logs why, when the descriptor cannot be read, so a caller can tell an
-     * unreadable descriptor from a kit that declares no endpoints.
-     */
-    fun resolveInstalled(
-        kitDir: File,
-        hosts: Map<ServerType, List<ClusterHost>>,
-    ): Result<List<Resolved>> =
-        runCatching {
-            installConfigYaml.decodeFromString(
-                KitConfig.serializer(),
-                File(kitDir, Constants.Kit.CONFIG_FILE).readText(),
-            )
-        }.onFailure { e ->
-            log.warn(e) { "Cannot read ${Constants.Kit.CONFIG_FILE} of kit '${kitDir.name}'; its endpoints are not shown" }
-        }.map { config -> resolve(config.endpoints, hosts) }
 
     /** The structured form of one resolved endpoint, as carried by kit events. */
     fun toEndpointAddress(resolved: Resolved): Event.Kit.EndpointAddress =

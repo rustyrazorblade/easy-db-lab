@@ -343,6 +343,7 @@ All scripts and shell steps receive the following environment variables:
 | `EASY_DB_LAB_EXEC` | Path to the `easy-db-lab` binary |
 | `BACKUP_NAME` | First positional argument (backup and restore phases only) |
 | `EDL_KIT_LIB` | Absolute path of the shared kit shell library, `<workspace>/bin/edl-kit-lib.sh` (see [Shared shell library](#shared-shell-library)) |
+| `EDL_NODE_SSH` | `true` when the cluster has the `node-ssh` capability (it reaches its nodes over SSH), else `false`. It comes from the capability set `init` recorded, not from whether the workspace has an `sshConfig`, so `init --capability node-ssh=false` gives `false`. Gate any node check over SSH on it; never read a failed `ssh` as "no SSH" |
 
 Args declared in `kit.yaml` under `args:` are also injected using their `variable` name. For
 example, `--workers` with `variable: WORKERS` becomes `$WORKERS`. An arg the user leaves out that
@@ -450,6 +451,19 @@ The agent pushes OTLP to the collector on the pod's own node; nothing in the col
 changes. Mount `/usr/local/otel` from the host read-only, load the jar through the workload's
 JVM options, and set `OTEL_SERVICE_NAME` (it becomes `job`), `HOST_IP` from `status.hostIP`, and
 `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(HOST_IP):4318`. See `kits/neo4j/statefulset.yaml.template`.
+
+### Delivering the agent without the AMI: an init container
+
+The `/usr/local/otel` host path exists only on the AMI. A kit that must run on any environment
+copies the agent in with an init container instead: the init container runs the pinned, multi-arch
+`ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:<agent version>` image,
+copies `/javaagent.jar` into an `emptyDir`, and the main container mounts that volume and loads the
+jar through its JVM options. The tag must equal `libs.versions.opentelemetry-agent`; the build
+stamps it (see how `build.gradle.kts` fills `@OTEL_AGENT_VERSION@` in the `cassandra-pods`
+StatefulSet template). See `kits/cassandra-pods/statefulset.yaml.template`.
+
+**Reserved NodePorts:** 30942 is the `cassandra-pods` CQL port. Pick a port no other kit uses
+(`BuiltinKitNodePortTest` fails on a duplicate).
 
 **Never write a double underscore in a `.template` file.** `__NAME__` is the install-time
 placeholder syntax, so a literal `__` (e.g. Neo4j's `NEO4J_server_bolt_advertised__address`)
@@ -997,6 +1011,24 @@ spec:
       targetPort: 1234
       nodePort: 30999   # a port no other kit uses; Hubble UI owns 31234
 ```
+
+On a port-forward cluster the CLI reaches an endpoint through the Service it is published on, so
+each endpoint must resolve to one. An endpoint whose NodePort a Service manifest of the kit declares
+needs nothing more: the Service is found by that NodePort, whatever its name. An endpoint on a
+Service the kit does not declare itself (a Helm chart's, or one an operator such as Strimzi creates)
+names it in `kit.yaml`:
+
+```yaml
+endpoints:
+  - name: "Kafka Bootstrap"
+    node-type: db
+    port: 32100
+    type: kafka
+    service: kafka-kafka-external-bootstrap   # the Service Strimzi creates
+    service-port: 9094                        # its port behind the endpoint
+```
+
+`KitEndpointServiceTest` checks that every packaged kit's endpoints resolve this way.
 
 ## Adding a New Kit
 

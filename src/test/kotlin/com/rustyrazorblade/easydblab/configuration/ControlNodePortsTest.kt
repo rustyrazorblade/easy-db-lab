@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
@@ -9,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilde
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -29,15 +32,20 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 /**
- * Every workload that shares the control node's network must listen on its own ports: two that
- * claim one port crash-loop whichever starts second. Mimir, Loki, Tempo and Pyroscope are all
- * dskit processes with the same default gRPC and gossip ports, so the ports set only in their
- * config files count as much as the declared container ports.
+ * Every port a workload holds on the control node must be its own: two that claim one port
+ * crash-loop whichever starts second. A pod on the host network holds every port it listens on,
+ * including the ports set only in its config file (Mimir, Loki, Tempo and Pyroscope are dskit
+ * processes with the same default gRPC and gossip ports). A pod on the pod network holds only the
+ * container ports it publishes with a `hostPort`; on AWS the observability backends and Grafana
+ * are such pods.
  */
 class ControlNodePortsTest : BaseKoinTest() {
     private companion object {
         /** Ports the Pyroscope server opens without its config naming them: dskit's gRPC and gossip defaults. */
         val PYROSCOPE_IMPLICIT_PORTS = setOf(9095, 7946)
+
+        /** The port every OTel collector serves its own Prometheus telemetry on. */
+        const val COLLECTOR_SELF_TELEMETRY_PORT = 8888
     }
 
     override fun additionalTestModules(): List<Module> =
@@ -52,7 +60,7 @@ class ControlNodePortsTest : BaseKoinTest() {
             },
         )
 
-    /** A pod on the host network that may be scheduled on the control node: no node selector, or the control plane's. */
+    /** A pod that may be scheduled on the control node: no node selector, or the control plane's. */
     private fun controlNodePods(resources: List<HasMetadata>): Map<String, PodSpec> =
         resources
             .mapNotNull {
@@ -61,8 +69,7 @@ class ControlNodePortsTest : BaseKoinTest() {
                     is DaemonSet -> it.metadata.name to it.spec.template.spec
                     else -> null
                 }
-            }.filter { (_, pod) -> pod.hostNetwork == true }
-            .filter { (_, pod) ->
+            }.filter { (_, pod) ->
                 pod.nodeSelector.isNullOrEmpty() || pod.nodeSelector.containsKey("node-role.kubernetes.io/control-plane")
             }.toMap()
 
@@ -89,31 +96,38 @@ class ControlNodePortsTest : BaseKoinTest() {
         val tempo = TempoManifestBuilder(templates).buildAllResources()
         val resources =
             mimir + loki + tempo +
-                OtelManifestBuilder(templates).buildAllResources() +
+                OtelManifestBuilder(templates).buildAllResources(NodeCapabilities.AWS) +
+                OtelHostCollectorManifestBuilder(templates).buildAllResources(CniMode.Cilium) +
                 JournaldOtelManifestBuilder(templates).buildAllResources() +
                 EbpfExporterManifestBuilder().buildAllResources() +
                 BeylaManifestBuilder(templates).buildAllResources() +
                 PyroscopeManifestBuilder(templates).buildAllResources() +
-                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2")) +
+                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS) +
                 RegistryManifestBuilder().buildAllResources() +
                 S3ManagerManifestBuilder(templates).buildAllResources() +
                 YaceManifestBuilder(templates).buildAllResources()
 
-        val declared =
-            controlNodePods(resources).mapValues { (_, pod) ->
-                pod.containers
-                    .flatMap { it.ports.orEmpty() }
-                    .map { it.containerPort }
-                    .toSet()
-            }
+        val configured =
+            mapOf(
+                "mimir" to configuredPorts(mimir, MimirManifestBuilder.CONFIG_FILE),
+                "loki" to configuredPorts(loki, LokiManifestBuilder.CONFIG_FILE),
+                "tempo" to configuredPorts(tempo, "tempo.yaml"),
+                "pyroscope" to PYROSCOPE_IMPLICIT_PORTS,
+                // The host collector serves its own telemetry on 8888 without declaring a container port.
+                Constants.OtelCollector.HOST_COLLECTOR_NAME to setOf(COLLECTOR_SELF_TELEMETRY_PORT),
+            )
         val ports =
-            declared.toMutableMap().apply {
-                merge("mimir", configuredPorts(mimir, MimirManifestBuilder.CONFIG_FILE), Set<Int>::plus)
-                merge("loki", configuredPorts(loki, LokiManifestBuilder.CONFIG_FILE), Set<Int>::plus)
-                merge("tempo", configuredPorts(tempo, "tempo.yaml"), Set<Int>::plus)
-                merge("pyroscope", PYROSCOPE_IMPLICIT_PORTS, Set<Int>::plus)
-            }
-        assertThat(ports.keys).contains("mimir", "loki", "tempo", "pyroscope", "otel-collector")
+            controlNodePods(resources)
+                .mapValues { (name, pod) ->
+                    val declared = pod.containers.flatMap { it.ports.orEmpty() }
+                    when (pod.hostNetwork == true) {
+                        true -> declared.map { it.containerPort }.toSet() + configured[name].orEmpty()
+                        false -> declared.mapNotNull { it.hostPort }.toSet()
+                    }
+                }.filterValues { it.isNotEmpty() }
+        assertThat(ports.keys).contains("mimir", "loki", "tempo", "pyroscope", "grafana", Constants.OtelCollector.HOST_COLLECTOR_NAME)
+        // The core collector is on the pod network with no host port, so it claims no port on the node.
+        assertThat(ports.keys).doesNotContain(Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
 
         val claims = ports.flatMap { (workload, set) -> set.map { it to workload } }.groupBy({ it.first }, { it.second })
         assertThat(claims.filterValues { it.size > 1 }).isEmpty()

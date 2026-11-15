@@ -96,7 +96,6 @@ class StressStart : PicoBaseCommand() {
         val started =
             stressJobService
                 .startJob(
-                    controlHost = controlNode,
                     config =
                         StressJobConfig(
                             jobName = fullJobName,

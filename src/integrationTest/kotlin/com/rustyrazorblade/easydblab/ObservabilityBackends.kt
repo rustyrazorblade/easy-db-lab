@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
+import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
@@ -43,8 +44,8 @@ object ObservabilityBackends {
 
     /** Mimir's rendered config, pointed at LocalStack. */
     fun mimirConfig(rendered: String): String {
-        val endpointLine = "    endpoint: s3.\${AWS_REGION}.amazonaws.com"
-        check(rendered.contains(endpointLine)) { "rendered mimir.yaml no longer names the regional S3 endpoint" }
+        val endpointLine = "    endpoint: \${STORE_ENDPOINT}"
+        check(rendered.contains(endpointLine)) { "rendered mimir.yaml no longer names the store endpoint" }
         return rendered.replace(
             endpointLine,
             """
@@ -59,8 +60,8 @@ object ObservabilityBackends {
 
     /** Loki's rendered config, pointed at LocalStack. */
     fun lokiConfig(rendered: String): String {
-        val endpointLine = "      endpoint: s3.\${AWS_REGION}.amazonaws.com"
-        check(rendered.contains(endpointLine)) { "rendered loki.yaml no longer names the regional S3 endpoint" }
+        val endpointLine = "      endpoint: \${STORE_ENDPOINT}"
+        check(rendered.contains(endpointLine)) { "rendered loki.yaml no longer names the store endpoint" }
         return rendered.replace(
             endpointLine,
             """
@@ -75,8 +76,8 @@ object ObservabilityBackends {
 
     /** Tempo's rendered config, pointed at LocalStack. */
     fun tempoConfig(rendered: String): String {
-        val endpointLine = "      endpoint: s3.\${AWS_REGION}.amazonaws.com"
-        check(rendered.contains(endpointLine)) { "rendered tempo.yaml no longer names the regional S3 endpoint" }
+        val endpointLine = "      endpoint: \${STORE_ENDPOINT}"
+        check(rendered.contains(endpointLine)) { "rendered tempo.yaml no longer names the store endpoint" }
         return rendered.replace(
             endpointLine,
             """
@@ -105,9 +106,9 @@ object ObservabilityBackends {
                 cmd.withUser("root")
                 cmd.hostConfig?.withBinds(Bind(volume, Volume(TEMPO_DATA)))
             }.withCopyToContainer(Transferable.of(config), "/etc/tempo/tempo.yaml")
-            .withEnv("S3_BUCKET", bucket)
-            .withEnv("AWS_REGION", SharedLocalStack.region())
-            .withEnv("TRACES_S3_PREFIX", tracesPrefix)
+            .withEnv("STORE_BUCKET", bucket)
+            .withEnv("STORE_REGION", SharedLocalStack.region())
+            .withEnv("TRACES_STORE_PREFIX", tracesPrefix)
             .withEnv("CLUSTER_NAME", clusterName)
             .withCommand("-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true")
             .withExposedPorts(Constants.K8s.TEMPO_PORT, TEMPO_OTLP_HTTP_PORT)
@@ -127,9 +128,9 @@ object ObservabilityBackends {
         MimirWithMemcached()
             .withCreateContainerCmdModifier { cmd -> cmd.hostConfig?.withBinds(Bind(volume, Volume(MIMIR_DATA))) }
             .withCopyToContainer(Transferable.of(config), "/etc/mimir/mimir.yaml")
-            .withEnv("S3_BUCKET", bucket)
-            .withEnv("AWS_REGION", SharedLocalStack.region())
-            .withEnv("METRICS_S3_PREFIX", metricsPrefix)
+            .withEnv("STORE_BUCKET", bucket)
+            .withEnv("STORE_REGION", SharedLocalStack.region())
+            .withEnv("METRICS_STORE_PREFIX", metricsPrefix)
             .withCommand("-config.file=/etc/mimir/mimir.yaml", "-config.expand-env=true")
             .withExposedPorts(Constants.K8s.MIMIR_HTTP_PORT)
             .waitingFor(Wait.forHttp("/ready").forPort(Constants.K8s.MIMIR_HTTP_PORT).withStartupTimeout(STARTUP))
@@ -153,9 +154,9 @@ object ObservabilityBackends {
                 cmd.withUser("root")
                 cmd.hostConfig?.withBinds(Bind(volume, Volume(LOKI_DATA)))
             }.withCopyToContainer(Transferable.of(config), "/etc/loki/loki.yaml")
-            .withEnv("S3_BUCKET", bucket)
-            .withEnv("AWS_REGION", SharedLocalStack.region())
-            .withEnv("LOGS_S3_PREFIX", logsPrefix)
+            .withEnv("STORE_BUCKET", bucket)
+            .withEnv("STORE_REGION", SharedLocalStack.region())
+            .withEnv("LOGS_STORE_PREFIX", logsPrefix)
             .withEnv("TENANT", tenant)
             .withEnv("CLUSTER_NAME", clusterName)
             .withCommand("-config.file=/etc/loki/loki.yaml", "-config.expand-env=true")
@@ -200,19 +201,19 @@ class ContainerObservabilityHttp(
     private val http: HttpClient = HttpClient.newHttpClient()
 
     override fun get(
-        port: Int,
+        target: ServiceTarget,
         pathAndQuery: String,
         timeout: Duration,
-    ): ObservabilityResponse = send(port, pathAndQuery, timeout) { it.GET() }
+    ): ObservabilityResponse = send(target.servicePort, pathAndQuery, timeout) { it.GET() }
 
     override fun post(
-        port: Int,
+        target: ServiceTarget,
         path: String,
         body: String,
         contentType: String,
         timeout: Duration,
     ): ObservabilityResponse =
-        send(port, path, timeout) { it.header("Content-Type", contentType).POST(HttpRequest.BodyPublishers.ofString(body)) }
+        send(target.servicePort, path, timeout) { it.header("Content-Type", contentType).POST(HttpRequest.BodyPublishers.ofString(body)) }
 
     private fun send(
         port: Int,

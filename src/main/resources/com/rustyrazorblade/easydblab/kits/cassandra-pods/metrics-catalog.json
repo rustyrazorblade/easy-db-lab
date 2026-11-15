@@ -1,0 +1,8 @@
+{
+  "workload": "cassandra-pods",
+  "exported_at": "",
+  "common_labels": {
+    "job": ["cassandra"]
+  },
+  "series": []
+}

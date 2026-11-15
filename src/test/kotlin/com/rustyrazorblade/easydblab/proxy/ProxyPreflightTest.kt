@@ -3,10 +3,13 @@ package com.rustyrazorblade.easydblab.proxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -48,6 +51,18 @@ internal class ProxyPreflightTest {
 
         verify(socksProxyService, never()).ensureRunning(any())
         assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null, direct = false))
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Exposure::class, names = ["Direct", "PortForward"])
+    fun `a running cluster not reached by SOCKS starts no tunnel and still records the flag`(exposure: Exposure) {
+        stateManager.save(clusterState(tailscale = false).apply { this.exposure = exposure })
+
+        preflight.ensureTunnel()
+
+        verify(socksProxyService, never()).ensureRunning(any())
+        assertThat(preflight.tunnelForCommand()).isNull()
+        assertThat(envFile.read().tailscaleActive).isFalse()
     }
 
     @Test

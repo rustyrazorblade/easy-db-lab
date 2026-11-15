@@ -1,0 +1,201 @@
+# Mimir on the control node: it writes to the shared store and reads the whole of it (issue 970).
+#
+# The ingester ships every block to S3 about a minute after cutting it and keeps local blocks for 15
+# minutes. The store-gateway answers every query from S3 as well, for every tenant in the account
+# bucket, so other clusters' and past runs' metrics are readable here. It finds blocks through each
+# tenant's bucket index, which only the account compactor writes. No compactor runs in this process,
+# so nothing here can compact, expire, clean up or delete a block, a bucket index, or a tenant.
+#
+# Queries are not sharded, and readers stop opening a block the compactor merged away soon after its
+# deletion mark (issue 988): on this one process both made dashboard loads several times faster.
+# The store-gateway's index, chunks and metadata and the query-frontend's results are cached in the
+# memcached sidecar on 127.0.0.1:11211, and S3 connections stay open for reuse (issue 988).
+#
+# Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets
+# them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion
+# reads comments too, and a malformed one stops the process from starting.
+target: distributor,ingester,querier,query-frontend,query-scheduler,store-gateway
+
+# Native multi-tenancy: every write and query carries the tenant in X-Scope-OrgID. Tenant federation
+# lets one query name several tenants as `a|b`; each series then carries __tenant_id__.
+multitenancy_enabled: true
+tenant_federation:
+  enabled: true
+
+server:
+  http_listen_port: 9009
+  grpc_listen_port: 9097
+  log_level: info
+
+# Mimir writes a small activity log for crash diagnosis; keep it on the data volume rather than
+# the image's working directory.
+activity_tracker:
+  filepath: /data/metrics-activity.log
+
+blocks_storage:
+  backend: s3
+  # The metrics root, mimir, at the top level of the account bucket. Mimir makes one directory per
+  # tenant under it.
+  storage_prefix: mimir
+  s3:
+    bucket_name: easy-db-lab-test
+    endpoint: s3.us-west-2.amazonaws.com
+    region: us-west-2
+    # Keep S3 connections open and reuse them: with the defaults 23% of Mimir's CPU went to new TLS
+    # handshakes with S3 (issue 988). 0 is no limit on idle connections in total.
+    http:
+      idle_conn_timeout: 10m
+      max_idle_connections: 0
+      max_idle_connections_per_host: 1000
+  tsdb:
+    # The head, its WAL and every local block live on the control node's disk (a hostPath), so a
+    # pod restart replays the WAL and keeps the blocks.
+    dir: /data/tsdb
+    # One-minute blocks, so a sample reaches S3 in about 2 minutes and other clusters can read it.
+    # The ingester cuts a range once a sample later than 1.5 ranges past its start arrives, checked
+    # every head_compaction_interval, and the shipper uploads every ship_interval. A 1m range is
+    # experimental and hidden in Mimir 3.2.1, which does not validate it.
+    block_ranges_period: [1m]
+    head_compaction_interval: 15s
+    ship_interval: 15s
+    # A head with no writes for 2 minutes is compacted, so the last partial block still ships.
+    head_compaction_idle_timeout: 2m
+    # Local blocks stay for 15 minutes; older ones are read from S3 through the store-gateway. At 2h
+    # the ingester kept 366 one-minute blocks and a 1h query opened about 160 of them; at 15m it keeps
+    # about 46, its share of Mimir CPU fell from 36% to 10%, and a two-user System Overview load at 1h
+    # from 14.7 s to 10.6 s, with no sample lost (issue 988). Mimir requires this to exceed the block
+    # range and querier.query_store_after, and it must outlast the store-gateway finding a shipped
+    # block (15s ship + 1m bucket index + 1m sync). It removes only local copies already in S3.
+    retention_period: 15m
+    # A graceful stop compacts the head into a block and ships it.
+    flush_blocks_on_shutdown: true
+  bucket_store:
+    # The store-gateway's index headers, on the control node's disk.
+    sync_dir: /data/tsdb-sync
+    # New blocks and tenants appear in queries within a minute of the compactor's index update.
+    sync_interval: 1m
+    ignore_blocks_within: 0
+    # Stop reading a block the compactor merged away soon after its deletion mark, rather than for
+    # up to an hour. With the compactor's 10-minute first level this cut the tiny blocks per read
+    # from ~180 to ~46 (issue 988). They only choose what queries read; the compactor owns deletion.
+    ignore_deletion_mark_delay: 10m
+    ignore_deletion_mark_while_querying_delay: 5m
+    # The store-gateway caches what it reads from S3 in the memcached sidecar, so a dashboard refresh
+    # reads index headers, chunks and bucket metadata from memory instead of S3 again (issue 988).
+    index_cache:
+      backend: memcached
+      memcached:
+        addresses: 127.0.0.1:11211
+    chunks_cache:
+      backend: memcached
+      memcached:
+        addresses: 127.0.0.1:11211
+    metadata_cache:
+      backend: memcached
+      memcached:
+        addresses: 127.0.0.1:11211
+      # Entries that change as new data lands are cached for 30s, under the 1m sync. At the 5m default
+      # for the bucket index the store-gateway saw new blocks only every 5 minutes, the querier's
+      # consistency check failed for them (105 of 2,186 checks on qa971f), and dashboards answered 400
+      # and 422. The tenant list (15m default) hid a tenant another cluster had just started, the
+      # tenant's block list (5m) hid its new blocks, and a meta.json looked up just before its upload
+      # stayed missing for 5m. Immutable objects (meta.json content, block index attributes, chunks
+      # lists) keep their defaults.
+      bucket_index_content_ttl: 30s
+      tenants_list_ttl: 30s
+      tenant_blocks_list_ttl: 30s
+      metafile_doesnt_exist_ttl: 30s
+    bucket_index:
+      # About 10 years: a stopped compactor leaves the index stale, and that must never fail a query.
+      # A tenant with no bucket index returns no stored data rather than an error.
+      max_stale_period: 87600h
+
+# Every ring is in this one process: in memory, one replica.
+querier:
+  # Every query reads the store as well as the ingester, however recent.
+  query_store_after: 0
+  ring:
+    kvstore:
+      store: inmemory
+    instance_addr: 127.0.0.1
+
+ingester:
+  ring:
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    final_sleep: 0s
+    min_ready_duration: 0s
+
+store_gateway:
+  sharding_ring:
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+
+distributor:
+  ring:
+    kvstore:
+      store: inmemory
+    instance_addr: 127.0.0.1
+  ha_tracker:
+    kvstore:
+      store: inmemory
+
+# Mimir starts its gossip listener even though no ring uses it. The pod shares the control node's
+# network, where Pyroscope already holds the default 7946, so it listens on loopback on its own port.
+memberlist:
+  bind_addr: [127.0.0.1]
+  bind_port: 7947
+
+frontend:
+  # The query-scheduler runs in this process.
+  scheduler_address: 127.0.0.1:9097
+  # Query results are cached in the memcached sidecar, so a refresh reuses the parts of a range it
+  # already answered (issue 988). The query engine's range vector splitting cache stays off: Mimir
+  # 3.2.1 refuses to start with it.
+  cache_results: true
+  results_cache:
+    backend: memcached
+    memcached:
+      addresses: 127.0.0.1:11211
+
+frontend_worker:
+  scheduler_address: 127.0.0.1:9097
+
+query_scheduler:
+  # The query-frontend splits each query by day (query sharding is off), and queues up to 14 parts of it
+  # at once (max_query_parallelism). The heaviest dashboard sends about 150 queries in one load, so
+  # a load can queue about 2100 parts, which the 8 querier workers drain slowly. Past this limit the
+  # scheduler answers 429 and the panel fails. The default of 100 fails most of such a dashboard;
+  # 5000 holds two full loads at once.
+  max_outstanding_requests_per_tenant: 5000
+
+limits:
+  # Cached query results expire after 1h: at the 7-day default a result cached while the compactor lagged kept its gap for days.
+  results_cache_ttl: 1h
+  # 0 = every query goes to the ingester, however far back.
+  query_ingesters_within: 0
+  # No query sharding. On one Mimir process it split each query into ~20 parts; turning it off cut
+  # Mimir CPU per System Overview load at 1h from 238 s to 66 s (issue 988).
+  query_sharding_total_shards: 0
+  # The defaults are sized for shared SaaS tenants. Past them Mimir answers the collector's remote
+  # write with a 4xx and the batch is dropped, not retried, so they are set far above what a test
+  # cluster sends.
+  ingestion_rate: 10000000
+  ingestion_burst_size: 20000000
+  max_global_series_per_user: 0
+  max_global_series_per_metric: 0
+  max_global_metadata_per_user: 0
+  max_global_metadata_per_metric: 0
+  max_global_exemplars_per_user: 100000
+  max_label_names_per_series: 100
+  max_label_name_length: 1024
+  max_label_value_length: 16384
+  max_fetched_chunks_per_query: 0
+  max_fetched_series_per_query: 0
+  max_fetched_chunk_bytes_per_query: 0
+  # Scrapes and OTLP pushes from several nodes arrive slightly out of order.
+  out_of_order_time_window: 10m

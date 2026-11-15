@@ -17,7 +17,6 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -80,14 +79,13 @@ class StressInfoTest : BaseKoinTest() {
 
     @Test
     fun `execute runs info command with no args`() {
-        whenever(mockStressJobService.runCommand(any(), any(), any()))
+        whenever(mockStressJobService.runCommand(any(), any()))
             .thenReturn(Result.success("Workload info output"))
 
         val command = StressInfo()
         command.execute()
 
         verify(mockStressJobService).runCommand(
-            eq(testControlHost),
             any(),
             argThat { this == listOf("info") },
         )
@@ -98,7 +96,7 @@ class StressInfoTest : BaseKoinTest() {
 
     @Test
     fun `execute passes additional args`() {
-        whenever(mockStressJobService.runCommand(any(), any(), any()))
+        whenever(mockStressJobService.runCommand(any(), any()))
             .thenReturn(Result.success("KeyValue workload info"))
 
         val command = StressInfo()
@@ -107,14 +105,13 @@ class StressInfoTest : BaseKoinTest() {
 
         verify(mockStressJobService).runCommand(
             any(),
-            any(),
             argThat { this == listOf("info", "KeyValue") },
         )
     }
 
     @Test
     fun `execute fails when runCommand fails`() {
-        whenever(mockStressJobService.runCommand(any(), any(), any()))
+        whenever(mockStressJobService.runCommand(any(), any()))
             .thenReturn(Result.failure(RuntimeException("K8s error")))
 
         val command = StressInfo()
@@ -126,7 +123,7 @@ class StressInfoTest : BaseKoinTest() {
 
     @Test
     fun `execute shows running message`() {
-        whenever(mockStressJobService.runCommand(any(), any(), any()))
+        whenever(mockStressJobService.runCommand(any(), any()))
             .thenReturn(Result.success("output"))
 
         val command = StressInfo()

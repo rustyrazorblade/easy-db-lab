@@ -5,18 +5,23 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.kubernetes.getLocalKubeconfigPath
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
+import com.rustyrazorblade.easydblab.services.access.StatusAddresses
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -26,7 +31,6 @@ import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
-import java.nio.file.Paths
 import java.time.Duration
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -43,12 +47,16 @@ import kotlin.system.exitProcess
  *
  * Periodically fetches live data from AWS, SSH, and Kubernetes,
  * storing the result in memory for instant retrieval via the /status endpoint.
+ *
+ * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
+ *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]); consolidated by #1040.
  */
 class StatusCache(
     private val refreshIntervalSeconds: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS,
     private val autoShutdown: Boolean = false,
     private val vpcName: String? = null,
     private val onShutdown: () -> Unit = { exitProcess(0) },
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
 ) : KoinComponent,
     CachedStatus {
     companion object {
@@ -77,8 +85,9 @@ class StatusCache(
     private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
+    private val objectStore: ObjectStore by inject()
     private val vpcService: VpcService by inject()
-    private val k3sService: K3sService by inject()
+    private val kubernetesService: KubernetesService by inject()
     private val remoteOperationsService: RemoteOperationsService by inject()
     private val emrService: EMRService by inject()
     private val openSearchService: OpenSearchService by inject()
@@ -235,7 +244,7 @@ class StatusCache(
             spark = buildSparkInfo(state),
             opensearch = buildOpenSearchInfo(state),
             s3 = buildS3Info(state),
-            kubernetes = buildKubernetesInfo(state),
+            kubernetes = buildKubernetesInfo(),
             stressJobs = buildStressInfo(state),
             cassandraVersion = buildCassandraVersionInfo(state, instanceStates),
             accessInfo = buildAccessInfo(state),
@@ -374,28 +383,27 @@ class StatusCache(
         val store = ObservabilityStore.from(state)
         return S3Info(
             bucket = requireNotNull(state.s3Bucket) { "s3Bucket is null after isNullOrBlank check" },
-            fullpath = "${state.s3Bucket}/${state.clusterPrefix()}",
+            fullpath = objectStore.uriOf(s3Path),
             paths =
                 S3Paths(
-                    cassandra = s3Path.cassandra().toString(),
-                    clickhouse = s3Path.clickhouse().toString(),
-                    spark = s3Path.spark().toString(),
-                    emrLogs = s3Path.emrLogs().toString(),
-                    traces = "s3://${store.bucket}/${store.tracesPrefix()}",
-                    profiles = "s3://${store.bucket}/${store.profilesPrefix()}",
-                    metrics = "s3://${store.bucket}/${store.metricsPrefix()}/${store.tenant}",
-                    logs = "s3://${store.bucket}/${store.logsPrefix()}",
-                    annotations = store.annotationsRoot().toString(),
+                    cassandra = objectStore.uriOf(s3Path.cassandra()),
+                    clickhouse = objectStore.uriOf(s3Path.clickhouse()),
+                    spark = objectStore.uriOf(s3Path.spark()),
+                    emrLogs = objectStore.uriOf(s3Path.emrLogs()),
+                    traces = objectStore.uriOf(store.tracesRoot()),
+                    profiles = objectStore.uriOf(store.profilesRoot()),
+                    metrics = objectStore.uriOf(store.tenantMetricsRoot()),
+                    logs = objectStore.uriOf(store.logsRoot()),
+                    annotations = objectStore.uriOf(store.annotationsRoot()),
                 ),
         )
     }
 
-    private fun buildKubernetesInfo(state: ClusterState): KubernetesInfo? {
-        val controlHost = state.getControlHost() ?: return null
+    private fun buildKubernetesInfo(): KubernetesInfo? {
         val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
         if (!File(kubeconfigPath).exists()) return null
 
-        val result = k3sService.listPods(controlHost, Paths.get(kubeconfigPath))
+        val result = kubernetesService.listPods()
         return result.fold(
             onSuccess = { pods ->
                 KubernetesInfo(
@@ -420,10 +428,11 @@ class StatusCache(
     }
 
     private fun buildStressInfo(state: ClusterState): StressInfo? {
-        val controlHost = state.getControlHost() ?: return null
+        // Stress jobs run only on a cluster easy-db-lab provisioned, which always has a control node.
+        if (state.getControlHost() == null) return null
         return runCatching {
             stressJobService
-                .listJobs(controlHost)
+                .listJobs()
                 .getOrThrow()
                 .map { job ->
                     StressJobInfo(
@@ -470,23 +479,32 @@ class StatusCache(
 
         val controlIp = controlHost.privateIp
 
+        val statusAddresses = StatusAddresses(state)
+        val addresses = statusAddresses.observability()
         val observability =
             ObservabilityAccess(
-                grafana = "http://$controlIp:${Constants.K8s.GRAFANA_PORT}",
-                mimir = "http://$controlIp:${Constants.K8s.MIMIR_HTTP_PORT}",
-                loki = "http://$controlIp:${Constants.K8s.LOKI_HTTP_PORT}",
-                tempo = "http://$controlIp:${Constants.K8s.TEMPO_PORT}",
-                pyroscope = "http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
+                grafana = addresses.grafana.address,
+                mimir = statusAddresses.service(ClusterServices.MIMIR).address,
+                loki = addresses.loki.address,
+                tempo = addresses.tempo.address,
+                pyroscope = addresses.pyroscope.address,
+                portForwardCommands =
+                    listOf(addresses.grafana, addresses.mimir, addresses.loki, addresses.tempo, addresses.pyroscope)
+                        .mapNotNull { it.hint }
+                        .ifEmpty { null },
             )
 
         val kits = buildKitAccess(state)
 
-        val s3Path = state.s3Path()
         val s3Manager =
-            S3ManagerAccess(
-                ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
-            )
-
+            if (NodeCapability.S3 in capabilitiesOf(state)) {
+                val s3Path = state.s3Path()
+                S3ManagerAccess(
+                    ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
+                )
+            } else {
+                null
+            }
         val registry =
             RegistryAccess(
                 endpoint = "$controlIp:${Constants.K8s.REGISTRY_PORT}",
@@ -510,13 +528,19 @@ class StatusCache(
             .filter { it.name in state.runningKits }
             .sortedBy { it.name }
             .map { kitDir ->
-                val resolved = KitEndpointAddresses.resolveInstalled(kitDir, state.hosts)
+                val resolved = StatusAddresses(state).installedKit(kitDir)
                 KitAccess(
                     name = kitDir.name,
                     endpoints =
                         resolved.getOrDefault(emptyList()).map {
-                            val address = KitEndpointAddresses.toEndpointAddress(it)
-                            KitEndpointAccess(name = address.name, type = address.type, address = address.address)
+                            KitEndpointAccess(
+                                name = it.endpoint.name,
+                                type =
+                                    it.endpoint.type.name
+                                        .lowercase(),
+                                address = it.address.address,
+                                portForwardCommand = it.address.hint,
+                            )
                         },
                     endpointsUnavailable = resolved.exceptionOrNull()?.let { KitEndpointAddresses.UNREADABLE_DESCRIPTOR },
                 )

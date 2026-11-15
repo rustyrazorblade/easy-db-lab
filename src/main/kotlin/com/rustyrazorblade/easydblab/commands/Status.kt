@@ -5,8 +5,11 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -20,8 +23,10 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
+import com.rustyrazorblade.easydblab.services.access.StatusAddresses
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -65,6 +70,10 @@ import java.time.format.DateTimeFormatter
  * by a script for a healthy cluster. See design decision D9 in
  * `openspec/changes/up-fail-fast/design.md`. **No command that mutates state may take this
  * exception.**
+ *
+ * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
+ *   whose default keeps the no-argument construction picocli's factories use
+ *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]); consolidated by #1040.
  */
 @RequireProfileSetup
 @RequiresProxy(tolerateFailure = true)
@@ -73,8 +82,9 @@ import java.time.format.DateTimeFormatter
     description = ["Display full environment status"],
 )
 @Suppress("TooManyFunctions")
-class Status :
-    PicoCommand,
+class Status(
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
+) : PicoCommand,
     KoinComponent {
     private val context: Context by inject()
     private val proxyAvailability: ProxyAvailability by inject()
@@ -94,6 +104,7 @@ class Status :
     private val emrService: EMRService by inject()
     private val openSearchService: OpenSearchService by inject()
     private val stressJobService: StressJobService by inject()
+    private val objectStore: ObjectStore by inject()
     private val workspaceKitScanner: WorkspaceKitScanner by inject()
 
     private data class NodeDetail(
@@ -128,7 +139,8 @@ class Status :
         displayKitsSection()
         renderProxyDependentSection("Stress jobs") { displayStressJobsSection() }
         displayObservabilitySection()
-        displayS3ManagerSection()
+        if (NodeCapability.S3 in capabilitiesOf(clusterState)) displayS3ManagerSection()
+        displayCapabilitiesSection()
         displayCassandraVersionSection()
 
         // A degraded report is still an unsuccessful command: fail after rendering so a script
@@ -391,33 +403,34 @@ class Status :
     }
 
     /**
-     * Display S3 bucket section
+     * Display the object store section: the account bucket, the cluster's path in it and the
+     * observability roots, each spelled by the store adapter ([ObjectStore.uriOf]).
      */
     private fun displayS3BucketSection() {
         if (clusterState.s3Bucket.isNullOrBlank()) {
-            println("\n=== S3 BUCKET ===\n(no S3 bucket configured)")
+            println("\n=== OBJECT STORE ===\n(no object store configured)")
             return
         }
 
-        val dataPath = ClusterS3Path(clusterState.dataBucket)
+        val dataPath = ClusterStoragePath.root(clusterState.dataBucket)
         val store = ObservabilityStore.from(clusterState)
         println(
             """
                 |
-                |=== S3 BUCKET ===
+                |=== OBJECT STORE ===
                 |Bucket:    ${clusterState.s3Bucket}
-                |Fullpath:     ${clusterState.s3Bucket}/${clusterState.clusterPrefix()}
-                |  Cassandra: ${dataPath.cassandra()}
-                |  ClickHouse: ${dataPath.clickhouse()}
-                |  Spark: ${dataPath.spark()}
-                |  EMR Logs: ${dataPath.emrLogs()}
+                |Fullpath:  ${objectStore.uriOf(ClusterStoragePath.from(clusterState))}
+                |  Cassandra: ${objectStore.uriOf(dataPath.cassandra())}
+                |  ClickHouse: ${objectStore.uriOf(dataPath.clickhouse())}
+                |  Spark: ${objectStore.uriOf(dataPath.spark())}
+                |  EMR Logs: ${objectStore.uriOf(dataPath.emrLogs())}
                 |Observability:
                 |  Tenant:    ${store.tenant}
-                |  Traces:    s3://${store.bucket}/${store.tracesPrefix()}
-                |  Profiles:  s3://${store.bucket}/${store.profilesPrefix()}
-                |  Metrics:   s3://${store.bucket}/${store.metricsPrefix()}/${store.tenant}
-                |  Logs:      s3://${store.bucket}/${store.logsPrefix()}
-                |  Annotations: ${store.annotationsRoot()}
+                |  Traces:    ${objectStore.uriOf(store.tracesRoot())}
+                |  Profiles:  ${objectStore.uriOf(store.profilesRoot())}
+                |  Metrics:   ${objectStore.uriOf(store.tenantMetricsRoot())}
+                |  Logs:      ${objectStore.uriOf(store.logsRoot())}
+                |  Annotations: ${objectStore.uriOf(store.annotationsRoot())}
             """.trimMargin(),
         )
     }
@@ -442,10 +455,10 @@ class Status :
             val running = kitDir.name in runningKits
             println("  ${if (running) "✓" else "○"} ${kitDir.name}")
             if (running) {
-                KitEndpointAddresses
-                    .resolveInstalled(kitDir, clusterState.hosts)
-                    .onSuccess { resolved ->
-                        resolved.forEach { println("  " + KitEndpointAddresses.toEndpointAddress(it).displayLine()) }
+                StatusAddresses(clusterState)
+                    .installedKit(kitDir)
+                    .onSuccess { shown ->
+                        shown.forEach { println("  " + it.displayLines()) }
                     }.onFailure { println("    (endpoints unavailable: ${KitEndpointAddresses.UNREADABLE_DESCRIPTOR})") }
             }
         }
@@ -463,7 +476,7 @@ class Status :
 
         val jobs: List<KubernetesJob> =
             try {
-                stressJobService.listJobs(controlHost).getOrThrow()
+                stressJobService.listJobs().getOrThrow()
             } catch (
                 @Suppress("TooGenericExceptionCaught")
                 e: Exception,
@@ -509,18 +522,18 @@ class Status :
             return
         }
 
-        val ip = controlHost.privateIp
-        println(
-            """
-
-Observability:
-  Grafana:         http://$ip:${Constants.K8s.GRAFANA_PORT}
-  Mimir:           http://$ip:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus
-  Loki:            http://$ip:${Constants.K8s.LOKI_HTTP_PORT}
-  Tempo:           http://$ip:${Constants.K8s.TEMPO_PORT}
-  Pyroscope:       http://$ip:${Constants.K8s.PYROSCOPE_PORT}
-""",
-        )
+        val access = StatusAddresses(clusterState).observability()
+        val lines =
+            listOf(
+                "Grafana" to access.grafana,
+                "Mimir" to access.mimir,
+                "Loki" to access.loki,
+                "Tempo" to access.tempo,
+                "Pyroscope" to access.pyroscope,
+            ).joinToString("\n") { (name, shown) ->
+                "  %-16s %s".format("$name:", shown.address) + (shown.hint?.let { "\n  %-16s run: %s".format("", it) } ?: "")
+            }
+        println("\n\nObservability:\n$lines\n")
     }
 
     /**
@@ -543,6 +556,22 @@ Observability:
 S3 Manager:
   Web UI: http://$ip:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/""",
         )
+    }
+
+    /**
+     * Every capability in enum order: present, or absent with the reason the workloads needing it
+     * are skipped. Read from the recorded set, so it shows what `up` will gate on.
+     */
+    private fun displayCapabilitiesSection() {
+        val capabilities = capabilitiesOf(clusterState)
+        val lines =
+            NodeCapability.entries.joinToString("\n") { capability ->
+                when (capability) {
+                    in capabilities -> "  ${capability.serialName}: present"
+                    else -> "  ${capability.serialName}: absent: ${capability.absentReason}"
+                }
+            }
+        println("\n=== CAPABILITIES ===\n$lines")
     }
 
     /**

@@ -9,9 +9,9 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.PrometheusRemoteWrite
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
@@ -199,7 +199,6 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     /** Scaling, on containers: scaling to 0 stops the container gracefully. */
     private inner class ContainerWorkloads : BackendWorkloads {
         override fun scaleDown(
-            controlHost: ClusterHost,
             workload: String,
             timeout: Duration,
         ) {
@@ -212,8 +211,9 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     private val senders =
         object : TelemetrySenders {
             override fun stop(
-                controlHost: ClusterHost,
                 timeout: Duration,
+                onAbsent: (String) -> Unit,
+                onDeleting: (String) -> Unit,
             ) {
                 sendersStopped.incrementAndGet()
             }
@@ -221,12 +221,11 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
 
     private val backups =
         object : GrafanaAnnotationBackupService {
-            override fun backup(
-                controlHost: ClusterHost,
-                clusterState: ClusterState,
-            ): Result<GrafanaAnnotationBackupResult> {
+            override fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult> {
                 annotationBackups.incrementAndGet()
-                return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root(bucket).resolve("grafana/annotations/a.json"), 0))
+                return Result.success(
+                    GrafanaAnnotationBackupResult(ClusterStoragePath.root(bucket).resolve("grafana/annotations/a.json"), 0),
+                )
             }
         }
 
@@ -518,7 +517,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         startTempo()
         val started = Instant.now()
 
-        val report = tempoDrain().flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, Constants.K8s.TEMPO_APP_LABEL))
+        val report = tempoDrain().flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, setOf(Constants.K8s.TEMPO_APP_LABEL)))
 
         assertThat(report).isEqualTo(SignalReport.Traces)
         assertThat(Duration.between(started, Instant.now())).isLessThan(NO_SPAN_DRAIN_WITHIN)

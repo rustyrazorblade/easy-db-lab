@@ -6,9 +6,9 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.providers.ssm.SsmProxyWrapper
-import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
-import com.rustyrazorblade.easydblab.providers.ssm.ssmModule
+import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmProxyWrapper
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSshRoute
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -27,7 +27,7 @@ import java.time.Duration
 internal class SshRouteBindingTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
-            ssmModule,
+            awsClientsModule,
             sshModule,
             module {
                 single<AwsCredentialsProvider> {

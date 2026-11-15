@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -44,7 +45,7 @@ class TempoTailFlushTest {
     private fun drain(
         http: RecordingObservabilityHttp,
         timeout: Duration = Duration.ofSeconds(5),
-        progress: FlushProgress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, "tempo"),
+        progress: FlushProgress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, setOf("tempo")),
     ) = TempoTailFlush(http, remoteOps, FlushTimeouts(tempoDrain = timeout), pollInterval = Duration.ofMillis(10))
         .flush(control, state, progress)
 
@@ -85,19 +86,19 @@ class TempoTailFlushTest {
         val http =
             object : ObservabilityHttp by recorded {
                 override fun get(
-                    port: Int,
+                    target: ServiceTarget,
                     pathAndQuery: String,
                     timeout: Duration,
                 ): ObservabilityResponse {
                     if (failures-- > 0) throw IOException("unexpected end of stream")
-                    return recorded.get(port, pathAndQuery, timeout)
+                    return recorded.get(target, pathAndQuery, timeout)
                 }
             }
         walListing("blocks/acme/01HDONE/meta.json\nblocks/acme/01HDONE/flushed")
 
         val report =
             TempoTailFlush(http, remoteOps, FlushTimeouts(tempoDrain = Duration.ofSeconds(5)), pollInterval = Duration.ofMillis(10))
-                .flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, "tempo"))
+                .flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, setOf("tempo")))
 
         assertThat(report).isEqualTo(SignalReport.Traces)
         assertThat(recorded.calls).hasSize(2)
@@ -106,7 +107,7 @@ class TempoTailFlushTest {
     @Test
     fun `a Tempo still receiving spans times out, reporting live traces and the failure counters`() {
         val http = RecordingObservabilityHttp(*(1..1000).map { metrics(created = it, live = 1) }.toTypedArray())
-        val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, "tempo")
+        val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, setOf("tempo"))
 
         assertThatThrownBy { drain(http, timeout = Duration.ofMillis(200), progress = progress) }
             .hasMessageContaining("still receives or holds traces")
@@ -139,7 +140,7 @@ class TempoTailFlushTest {
     fun `an exposition with neither the live-traces series nor the live store's queue fails the drain, naming both`() {
         val notTempo = ObservabilityResponse(200, "go_goroutines 12\nprocess_open_fds 40")
         val http = RecordingObservabilityHttp(*(1..1000).map { notTempo }.toTypedArray())
-        val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, "tempo")
+        val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, setOf("tempo"))
         walListing("")
 
         assertThatThrownBy { drain(http, timeout = Duration.ofMillis(200), progress = progress) }

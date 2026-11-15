@@ -7,8 +7,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
@@ -27,7 +30,9 @@ import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
 import com.rustyrazorblade.easydblab.services.ResourceManager
@@ -35,6 +40,7 @@ import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -139,7 +145,9 @@ class StatusTest : BaseKoinTest() {
                 single<RemoteOperationsService> { mockRemoteOperationsService }
                 single<EMRService> { mockEmrService }
                 single<StressJobService> { mockStressJobService }
+                single<ObjectStore> { S3ObjectStore(get(), get()) }
                 single<ProxyAvailability> { DefaultProxyAvailability() }
+                single { CommandFailureReporter(get(), emptyList()) }
                 // Real instance: the scanner only reads the filesystem, so faking it would
                 // hide the very rule these tests exercise.
                 single { WorkspaceKitScanner(get()) }
@@ -297,12 +305,13 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute displays S3 bucket section`() {
+    fun `execute displays the object store section with the cluster path as a store URI`() {
         setupBasicClusterStateWithS3Bucket("test-bucket-123")
         Status().execute()
         val output = capturedOutput()
-        assertThat(output).contains("=== S3 BUCKET ===")
-        assertThat(output).contains("test-bucket-123")
+        assertThat(output).contains("=== OBJECT STORE ===")
+        assertThat(output).contains("Bucket:    test-bucket-123")
+        assertThat(output).contains("Fullpath:  s3://test-bucket-123/clusters/test-cluster-test-123")
         assertThat(output).contains("spark")
         assertThat(output).contains("cassandra")
     }
@@ -322,12 +331,12 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute handles missing S3 bucket gracefully`() {
+    fun `execute handles a missing object store gracefully`() {
         setupBasicClusterState()
         Status().execute()
         val output = capturedOutput()
-        assertThat(output).contains("=== S3 BUCKET ===")
-        assertThat(output).contains("(no S3 bucket configured)")
+        assertThat(output).contains("=== OBJECT STORE ===")
+        assertThat(output).contains("(no object store configured)")
     }
 
     // ========== KITS SECTION ==========
@@ -370,6 +379,74 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
+    fun `on an AWS cluster the observability section prints the control node addresses, unchanged by the seam`() {
+        setupBasicClusterState()
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+
+        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+
+        assertThat(capturedOutput()).contains(
+            """
+            Observability:
+              Grafana:         http://10.0.3.100:3000
+              Mimir:           http://10.0.3.100:9009/prometheus
+              Loki:            http://10.0.3.100:3100
+              Tempo:           http://10.0.3.100:3200
+              Pyroscope:       http://10.0.3.100:4040
+            """.trimIndent(),
+        )
+        assertThat(capturedOutput()).doesNotContain("run: bin/kubectl")
+    }
+
+    @Test
+    fun `on a port-forward cluster a kit endpoint names its Service and the command that forwards it`() {
+        setupBasicClusterState(runningKits = setOf("clickhouse"), exposure = Exposure.PortForward)
+        installPackagedKit("clickhouse")
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+
+        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+
+        val output = capturedOutput()
+        assertThat(output).contains("http://clickhouse-nodeport.default.svc.cluster.local:8123")
+        assertThat(output).contains("run: bin/kubectl port-forward -n default svc/clickhouse-nodeport 30123:8123\n")
+        assertThat(output).doesNotContain("svc.cluster.local:30123")
+        assertThat(output).contains("http://grafana.default.svc.cluster.local:3000")
+        assertThat(output).contains("run: bin/kubectl port-forward -n default svc/grafana 3000")
+        assertThat(output).doesNotContain("10.0.1.100:30123")
+    }
+
+    @Test
+    fun `the S3 Manager section appears only where the environment has S3`() {
+        setupBasicClusterStateWithS3Bucket("test-bucket")
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+
+        Status().execute()
+        assertThat(capturedOutput()).contains("S3 Manager:")
+
+        stdout.reset()
+        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+        assertThat(capturedOutput()).doesNotContain("S3 Manager")
+    }
+
+    @Test
+    fun `the capabilities section lists every capability, an absent one with its reason`() {
+        setupBasicClusterState()
+        mockClusterStateManager.load().capabilities = NodeCapability.entries.toSet() - NodeCapability.HOST_PATH
+
+        Status().execute()
+
+        val section = capturedOutput().substringAfter("=== CAPABILITIES ===").lines().filter { it.isNotBlank() }
+        assertThat(section.take(NodeCapability.entries.size)).containsExactlyElementsOf(
+            NodeCapability.entries.map { capability ->
+                when (capability) {
+                    NodeCapability.HOST_PATH -> "  host-path: absent: ${capability.absentReason}"
+                    else -> "  ${capability.serialName}: present"
+                }
+            },
+        )
+    }
+
+    @Test
     fun `a stopped kit prints no endpoints`() {
         // A bucket, because a present kubeconfig also renders the S3 Manager section.
         setupBasicClusterStateWithS3Bucket("test-bucket")
@@ -403,7 +480,12 @@ class StatusTest : BaseKoinTest() {
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/${Constants.Kit.CONFIG_FILE}")) {
                 "packaged kit $name not found"
             }.readText()
-        File(createWorkspaceDir(name), Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        val kitDir = createWorkspaceDir(name)
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        // The rendered NodePort Service, as install writes it; clickhouse's has no template variables.
+        javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/nodeport-service.yaml.template")?.let {
+            File(kitDir, "nodeport-service.yaml").writeText(it.readText())
+        }
     }
 
     @Test
@@ -560,7 +642,10 @@ class StatusTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }
 
-    private fun setupBasicClusterState(runningKits: Set<String> = emptySet()) {
+    private fun setupBasicClusterState(
+        runningKits: Set<String> = emptySet(),
+        exposure: Exposure = Exposure.Socks,
+    ) {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
@@ -571,7 +656,10 @@ class StatusTest : BaseKoinTest() {
                 infrastructureStatus = InfrastructureStatus.UP,
                 createdAt = Instant.parse("2024-01-15T10:00:00Z"),
                 default = NodeState(version = "5.0"),
-            ).also { it.runningKits = runningKits }
+            ).also {
+                it.runningKits = runningKits
+                it.exposure = exposure
+            }
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
     }

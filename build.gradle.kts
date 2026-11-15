@@ -371,6 +371,11 @@ tasks.withType<Test>().configureEach {
 // document every kit.yaml flag. Gradle can't infer that dependency, so without declaring it
 // an edit that drops a flag row would be masked by an up-to-date or cached test result.
 tasks.named<Test>("test") {
+    // Unit tier only. Gradle's 512 MB default worker heap is too small for PackageBoundaryTest, which
+    // holds every main class in ArchUnit's graph (without this it fails with "Java heap space"), on
+    // top of up to forkEvery other classes in the same JVM. The integration tier has no such test.
+    maxHeapSize = "1536m"
+
     inputs
         .file("docs/user-guide/sysbench.md")
         .withPropertyName("sysbenchUserGuide")
@@ -379,6 +384,10 @@ tasks.named<Test>("test") {
         .file("docs/user-guide/clickhouse-benchmark.md")
         .withPropertyName("clickhouseBenchmarkUserGuide")
         .withPathSensitivity(PathSensitivity.RELATIVE)
+
+    // StoreGoldenTest reads and rewrites its golden files under the project, wherever Gradle
+    // runs the test JVM from.
+    systemProperty("easydblab.projectDir", projectDir.absolutePath)
 
     // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
     inputs
@@ -423,6 +432,7 @@ tasks.register("testScripts") {
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
         "testKitShellLib",
+        "testCassandraPodsStart",
         "testClickhouseBenchmarkReport",
         "testClickhouseBenchmarkStart",
         "testClickhouseBenchmarkPrepare",
@@ -976,4 +986,36 @@ tasks.named("jib") {
 tasks.named("jibDockerBuild") {
     dependsOn(copyOtelAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
+}
+
+// The cassandra-pods kit's JMX rules have one source, the file the AMI path also uses. Copy it
+// into the kit's resources at build time, and stamp the OpenTelemetry agent version from the
+// version catalog into the kit's init-container image tag, so the two cannot drift apart.
+tasks.named<ProcessResources>("processResources") {
+    val kitResources = "com/rustyrazorblade/easydblab/kits/cassandra-pods"
+    from("src/main/resources/com/rustyrazorblade/easydblab/configuration/cassandra/cassandra-jmx-rules.yaml") {
+        into(kitResources)
+    }
+    val agentVersion =
+        libs.versions.opentelemetry.agent
+            .get()
+    filesMatching("$kitResources/statefulset.yaml.template") {
+        filter { it.replace("@OTEL_AGENT_VERSION@", agentVersion) }
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    systemProperty(
+        "easydblab.otelAgentVersion",
+        libs.versions.opentelemetry.agent
+            .get(),
+    )
+}
+
+// Unit-test the cassandra-pods kit's start check and UN wait. curl, ssh and kubectl are stubbed.
+tasks.register<Exec>("testCassandraPodsStart") {
+    group = "Verification"
+    description = "Unit-test the cassandra-pods kit start check and UN wait"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cassandra-pods-start.test.sh")
 }

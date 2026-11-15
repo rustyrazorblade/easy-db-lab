@@ -36,13 +36,26 @@ class GrafanaDashboardTreeWriter(
         pyroscopeUrl: String,
         context: DashboardInstallContext,
     ): Int {
-        catalog.dashboards.forEach { dashboard ->
-            val target = root.resolve(dashboard.relativePath)
+        val tree = render(pyroscopeUrl, context)
+        tree.forEach { (relativePath, json) ->
+            val target = root.resolve(relativePath)
             target.parent.createDirectories()
-            target.writeText(render(dashboard, pyroscopeUrl, context))
+            target.writeText(json)
         }
-        return catalog.dashboards.size
+        return tree.size
     }
+
+    /**
+     * Every dashboard rendered, keyed by its path relative to the tree root, in catalog order.
+     *
+     * @param pyroscopeUrl Value substituted for `__PYROSCOPE_URL__`
+     * @param context The cluster the dashboards are installed on, for [DashboardDefaults]
+     * @throws IllegalStateException if a catalog entry is not on the classpath
+     */
+    fun render(
+        pyroscopeUrl: String,
+        context: DashboardInstallContext,
+    ): Map<String, String> = catalog.dashboards.associate { it.relativePath to render(it, pyroscopeUrl, context) }
 
     private fun render(
         dashboard: GrafanaDashboard,

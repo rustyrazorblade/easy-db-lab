@@ -46,7 +46,7 @@ class StressStatus : PicoBaseCommand() {
         // Get stress jobs
         val jobs =
             stressJobService
-                .listJobs(controlNode)
+                .listJobs()
                 .getOrElse { e ->
                     error("Failed to get stress jobs: ${e.message}")
                 }

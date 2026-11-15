@@ -151,7 +151,7 @@ class DefaultCiliumService(
                     // seven separate tokens (which fed cilium install an invalid value).
                     set("hubble.metrics.enabled='{dns,drop,tcp,flow,port-distribution,icmp,http}'")
                     // Agent (9962) and operator (9963) Prometheus endpoints; the OTel collector
-                    // scrapes both (see OtelManifestBuilder.buildCniScrapeJobs).
+                    // scrapes both (see OtelHostCollectorManifestBuilder.buildCniScrapeJobs).
                     set("prometheus.enabled=true")
                     set("operator.prometheus.enabled=true")
                     // Hubble UI as a NodePort so it is reachable on any node's private IP.

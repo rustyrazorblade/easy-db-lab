@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
@@ -61,7 +62,7 @@ class ObservabilityImagePinsTest : BaseKoinTest() {
     private fun observabilityImages(): List<String> {
         val templates: TemplateService = getKoin().get()
         val resources =
-            OtelManifestBuilder(templates).buildAllResources() +
+            OtelManifestBuilder(templates).buildAllResources(NodeCapabilities.AWS) +
                 JournaldOtelManifestBuilder(templates).buildAllResources() +
                 EbpfExporterManifestBuilder().buildAllResources() +
                 BeylaManifestBuilder(templates).buildAllResources() +
@@ -69,7 +70,7 @@ class ObservabilityImagePinsTest : BaseKoinTest() {
                 LokiManifestBuilder(templates).buildAllResources() +
                 TempoManifestBuilder(templates).buildAllResources() +
                 PyroscopeManifestBuilder(templates).buildAllResources() +
-                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2")) +
+                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS) +
                 YaceManifestBuilder(templates).buildAllResources() +
                 KubeStateMetricsManifestBuilder().buildAllResources()
         return podSpecs(resources).flatMap { pod ->

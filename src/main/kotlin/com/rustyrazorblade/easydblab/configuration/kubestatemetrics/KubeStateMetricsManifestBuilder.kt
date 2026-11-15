@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.configuration.kubestatemetrics
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.Placement
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
@@ -20,7 +22,7 @@ import io.fabric8.kubernetes.api.model.rbac.PolicyRuleBuilder
  * pods, and a kit's own exporter sees only itself. It runs on every cluster regardless of CNI so a
  * dashboard can show pod phase, restarts, and node conditions on Flannel and Cilium alike.
  *
- * One replica on the control node, in the pod network (not hostNetwork), fronted by a ClusterIP
+ * One replica, placed by the resolved [Placement] (the control node on AWS), in the pod network (not hostNetwork), fronted by a ClusterIP
  * Service on [Constants.KubeStateMetrics.METRICS_PORT]. The OTel collector finds the pod through
  * Kubernetes pod discovery filtered to its own node, so exactly one collector scrapes it. RBAC is
  * read-only: every rule grants `list` and `watch` and nothing else.
@@ -77,15 +79,16 @@ class KubeStateMetricsManifestBuilder {
     /**
      * Builds all kube-state-metrics resources in apply order.
      *
+     * @param placement where the Deployment runs.
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, Service, Deployment
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(placement: Placement = Placement.CONTROL_NODE): List<HasMetadata> =
         listOf(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
             buildService(),
-            buildDeployment(),
+            buildDeployment(placement),
         )
 
     /** Builds the ServiceAccount the Deployment runs as. */
@@ -161,12 +164,23 @@ class KubeStateMetricsManifestBuilder {
             .build()
 
     /**
-     * Builds the single-replica Deployment pinned to the control node.
+     * Builds the single-replica Deployment, placed by [placement] (the control node on AWS).
      *
      * Pod network, not hostNetwork: the exporter has no reason to bind a node port, and keeping it
      * off the host stack means it cannot collide with anything the control node already listens on.
      */
-    fun buildDeployment() =
+    fun buildDeployment(placement: Placement = Placement.CONTROL_NODE): Deployment {
+        val deployment = buildUnplacedDeployment()
+        return DeploymentBuilder(deployment)
+            .editSpec()
+            .editTemplate()
+            .withSpec(placement.applyTo(deployment.spec.template.spec))
+            .endTemplate()
+            .endSpec()
+            .build()
+    }
+
+    private fun buildUnplacedDeployment(): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(NAME)
@@ -187,12 +201,6 @@ class KubeStateMetricsManifestBuilder {
             .endMetadata()
             .withNewSpec()
             .withServiceAccountName(NAME)
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
             .addToContainers(buildContainer())
             .endSpec()
             .endTemplate()

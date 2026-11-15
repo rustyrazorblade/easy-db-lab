@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -30,7 +31,7 @@ class ShowIamPoliciesTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { AWSResourceSetupService(get<AWS>(), get(), get()) }
+                single { AWSResourceSetupService(get<AWS>(), get(), get(), AwsErrorHandler()) }
             },
         )
 

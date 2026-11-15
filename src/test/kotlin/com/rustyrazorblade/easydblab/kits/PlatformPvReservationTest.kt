@@ -150,7 +150,7 @@ class PlatformPvReservationTest : BaseKoinTest() {
     private companion object {
         /**
          * The variables `kit install` computes rather than reads from arg defaults (the postgres
-         * extension's image, uid and ports); their values do not affect a claim.
+         * extension's image, uid and ports, and a replica count defaulting to the db node count); their values do not affect a claim.
          */
         val INSTALL_TIME_VARS =
             mapOf(
@@ -162,6 +162,7 @@ class PlatformPvReservationTest : BaseKoinTest() {
                 "POST_INIT_SQL" to "[]",
                 "POSTGRES_PORT" to "30432",
                 "METRICS_PORT" to "30987",
+                "CASSANDRA_NODES" to "3",
             )
 
         fun Any?.asMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()

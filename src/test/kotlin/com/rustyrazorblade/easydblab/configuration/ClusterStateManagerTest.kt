@@ -5,6 +5,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.atomic.AtomicBoolean
@@ -116,6 +117,18 @@ class ClusterStateManagerTest {
         assertThatThrownBy { ClusterStateManager(stateFile).load() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
+    }
+
+    @Test
+    fun `a state file that cannot be parsed is refused at load, naming the file`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json").apply { writeText("{ not json") }
+
+        assertThatThrownBy { ClusterStateManager(stateFile).load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(stateFile.absolutePath)
+            .hasCauseInstanceOf(IOException::class.java)
     }
 
     /**

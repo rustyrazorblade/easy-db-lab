@@ -1,22 +1,17 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 interface MetricsRegistryService {
     fun register(
-        controlHost: ClusterHost,
         kitName: String,
         targets: List<KitMetrics.Scrape>,
     ): Result<Unit>
 
-    fun deregister(
-        controlHost: ClusterHost,
-        kitName: String,
-    ): Result<Unit>
+    fun deregister(kitName: String): Result<Unit>
 }
 
 /**
@@ -41,7 +36,6 @@ class DefaultMetricsRegistryService(
     }
 
     override fun register(
-        controlHost: ClusterHost,
         kitName: String,
         targets: List<KitMetrics.Scrape>,
     ): Result<Unit> =
@@ -62,7 +56,6 @@ class DefaultMetricsRegistryService(
                 val configMapName = "$CONFIG_MAP_PREFIX$kitName-$jobName"
                 k8sService
                     .createConfigMap(
-                        controlHost = controlHost,
                         namespace = Constants.K8s.NAMESPACE,
                         name = configMapName,
                         data =
@@ -82,21 +75,17 @@ class DefaultMetricsRegistryService(
                     ).getOrThrow()
             }
 
-            otelSyncService.syncConfigMap(controlHost).getOrThrow()
+            otelSyncService.syncConfigMap().getOrThrow()
             eventBus.emit(Event.Kit.MetricsRegistered(kit = kitName, ports = targets.map { it.port }))
         }.onFailure {
-            deregister(controlHost, kitName)
+            deregister(kitName)
                 .onFailure { e -> log.warn(e) { "Cleanup deregister also failed for $kitName" } }
         }
 
-    override fun deregister(
-        controlHost: ClusterHost,
-        kitName: String,
-    ): Result<Unit> =
+    override fun deregister(kitName: String): Result<Unit> =
         runCatching {
             k8sService
                 .deleteConfigMapsByLabels(
-                    controlHost = controlHost,
                     namespace = Constants.K8s.NAMESPACE,
                     labels =
                         mapOf(
@@ -107,7 +96,7 @@ class DefaultMetricsRegistryService(
                     log.warn { "Could not delete metrics ConfigMaps for $kitName: ${e.message}" }
                 }
 
-            otelSyncService.syncConfigMap(controlHost).getOrThrow()
+            otelSyncService.syncConfigMap().getOrThrow()
             eventBus.emit(Event.Kit.MetricsDeregistered(kit = kitName))
         }
 }

@@ -11,7 +11,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
@@ -97,6 +96,9 @@ class DefaultCommandExecutor(
     // Lazy injection - only resolves when first accessed (defers AWS dependency chain)
     private val backupRestoreService: BackupRestoreService by inject()
 
+    // Lazy for the same reason: the handlers take no profile, but resolving them stays off the startup path.
+    private val failureReporter: CommandFailureReporter by inject()
+
     // Thread-local queue for deferred command factories (supports nested command chains)
     private val scheduledQueue = ThreadLocal.withInitial { ArrayDeque<() -> PicoCommand>() }
 
@@ -120,7 +122,20 @@ class DefaultCommandExecutor(
      * @param command The command to execute
      * @return Exit code (0 for success, non-zero for failure)
      */
-    fun executeTopLevel(command: PicoCommand): Int {
+    fun executeTopLevel(command: PicoCommand): Int =
+        runCatching { runTopLevel(command) }.getOrElse { failure ->
+            // Failures raised outside executeWithLifecycle (state restore, resource cleanup) would
+            // otherwise reach Picocli as a raw stack trace. An Error (out of memory) is not ours to report.
+            if (failure !is Exception) throw failure
+            if (failure is InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw failure
+            }
+            failureReporter.report(failure)
+            Constants.ExitCodes.ERROR
+        }
+
+    private fun runTopLevel(command: PicoCommand): Int {
         // VPC reconstruction from environment variable (if set)
         handleVpcReconstructionFromEnv()
 
@@ -181,17 +196,12 @@ class DefaultCommandExecutor(
             try {
                 checkRequirements(command)
                 command.call()
-            } catch (e: CommandFailedException) {
-                // The command already reported this failure through its own event.
-                log.debug(e) { "Command reported failure" }
-                Constants.ExitCodes.ERROR
+            } catch (e: InterruptedException) {
+                // Ctrl-C or SIGTERM in REPL or server mode: cancellation is not a command failure.
+                Thread.currentThread().interrupt()
+                throw e
             } catch (e: Exception) {
-                log.error(e) { "Command execution failed" }
-                val causeChain =
-                    generateSequence(e as Throwable) { it.cause }
-                        .map { "${it::class.simpleName}: ${it.message}" }
-                        .joinToString("\n  caused by: ")
-                eventBus.emit(Event.Command.ExecutionError(causeChain))
+                failureReporter.report(e)
                 Constants.ExitCodes.ERROR
             }
 

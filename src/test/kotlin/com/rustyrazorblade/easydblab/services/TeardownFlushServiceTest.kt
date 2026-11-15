@@ -2,8 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import io.fabric8.kubernetes.client.KubernetesClientException
 import kotlinx.serialization.SerializationException
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -71,9 +72,15 @@ class TeardownFlushServiceTest {
     private var mirrorFailure: Throwable? = null
     private var sendersFailure: Throwable? = null
 
+    /** The collector whose stop fails after its delete, as one whose pods outlive the deadline. */
+    private var collectorThatDoesNotDrain: String? = null
+
+    /** The collectors with no DaemonSet when the stop runs, as the add-on where pods may not be privileged. */
+    private var absentCollectors: Set<String> = emptySet()
+
     private val mirror =
         object : AnnotationMirror by RecordingAnnotationMirror() {
-            override fun syncAll(controlHost: ClusterHost): Result<Int> {
+            override fun syncAll(): Result<Int> {
                 order += "mirror"
                 return mirrorFailure?.let { Result.failure(it) } ?: Result.success(3)
             }
@@ -82,22 +89,32 @@ class TeardownFlushServiceTest {
     private val senders =
         object : TelemetrySenders {
             override fun stop(
-                controlHost: ClusterHost,
                 timeout: Duration,
+                onAbsent: (String) -> Unit,
+                onDeleting: (String) -> Unit,
             ) {
                 order += "senders stop"
                 sendersFailure?.let { throw it }
+                // As K8sTelemetrySenders does: each collector in order, announced as absent or just
+                // before its delete, and a collector that does not drain ends the stop there.
+                for (name in TelemetrySenders.COLLECTORS) {
+                    if (name in absentCollectors) {
+                        onAbsent(name)
+                        continue
+                    }
+                    onDeleting(name)
+                    if (name == collectorThatDoesNotDrain) error("$name still has 1 pod(s)")
+                }
             }
         }
 
     private val backups =
         object : GrafanaAnnotationBackupService {
-            override fun backup(
-                controlHost: ClusterHost,
-                clusterState: ClusterState,
-            ): Result<GrafanaAnnotationBackupResult> {
+            override fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult> {
                 order += "annotations backup"
-                return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root("acct").resolve("grafana/annotations/x.json"), 2))
+                return Result.success(
+                    GrafanaAnnotationBackupResult(ClusterStoragePath.root("acct").resolve("grafana/annotations/x.json"), 2),
+                )
             }
         }
 
@@ -144,7 +161,7 @@ class TeardownFlushServiceTest {
         assertThat(outcome.backends)
             .containsEntry("loki", BackendState.SCALED_TO_ZERO)
             .containsEntry("mimir", BackendState.SCALED_TO_ZERO)
-            .containsEntry("otel-collector", BackendState.DELETED)
+            .containsAllEntriesOf(TelemetrySenders.COLLECTORS.associateWith { BackendState.DELETED })
         assertThat(events).contains(
             Event.Teardown.TelemetrySendersStopped,
             Event.Teardown.LokiFlushed,
@@ -263,10 +280,8 @@ class TeardownFlushServiceTest {
     fun `a failed annotations backup fails only annotations`() {
         val failingBackups =
             object : GrafanaAnnotationBackupService {
-                override fun backup(
-                    controlHost: ClusterHost,
-                    clusterState: ClusterState,
-                ): Result<GrafanaAnnotationBackupResult> = Result.failure(RuntimeException("S3 refused the upload"))
+                override fun backup(clusterState: ClusterState): Result<GrafanaAnnotationBackupResult> =
+                    Result.failure(RuntimeException("S3 refused the upload"))
             }
 
         val outcome =
@@ -322,6 +337,58 @@ class TeardownFlushServiceTest {
         assertThat(order).doesNotContain("tempo start").contains("loki start", "mimir start")
     }
 
+    /**
+     * The add-on is stopped first; when its pods do not go, the core is never deleted, so the
+     * report must say the core still runs rather than that both were deleted.
+     */
+    @Test
+    fun `an add-on that does not drain reports the core still running`() {
+        collectorThatDoesNotDrain = Constants.OtelCollector.HOST_COLLECTOR_NAME
+
+        val outcome = service().saveTail(control, state, all)
+
+        assertThat(outcome.failed.getValue(TailSignal.TRACES).step).isEqualTo(FlushStep.SENDERS_STOP)
+        assertThat(outcome.backends)
+            .containsEntry(Constants.OtelCollector.HOST_COLLECTOR_NAME, BackendState.DELETED)
+            .containsEntry(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.RUNNING)
+    }
+
+    /** An add-on that was never deployed was not deleted by the save: the report says it is absent. */
+    @Test
+    fun `a collector with no DaemonSet is reported absent, not deleted`() {
+        absentCollectors = setOf(Constants.OtelCollector.HOST_COLLECTOR_NAME)
+
+        val outcome = service().saveTail(control, state, all)
+
+        assertThat(outcome.backends)
+            .containsEntry(Constants.OtelCollector.HOST_COLLECTOR_NAME, BackendState.ABSENT)
+            .containsEntry(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.DELETED)
+    }
+
+    /**
+     * The collector stop runs whatever is pending, so its failure must fail the save even when
+     * traces are not among the pending signals; otherwise `down` would tear down past it.
+     */
+    @Test
+    fun `a failed collector stop fails the save even when traces are not pending`() {
+        sendersFailure = KubernetesClientException("connection refused")
+
+        val outcome = service().saveTail(control, state, all - TailSignal.TRACES)
+
+        val failure = outcome.failed.values.single { it.step == FlushStep.SENDERS_STOP }
+        assertThat(failure).hasMessageContaining("connection refused")
+        assertThat(failure.backends).containsAllEntriesOf(TelemetrySenders.COLLECTORS.associateWith { BackendState.RUNNING })
+    }
+
+    @Test
+    fun `a stop that fails before any delete reports every collector still running`() {
+        sendersFailure = KubernetesClientException("connection refused")
+
+        val outcome = service().saveTail(control, state, all)
+
+        assertThat(outcome.backends).containsAllEntriesOf(TelemetrySenders.COLLECTORS.associateWith { BackendState.RUNNING })
+    }
+
     @Test
     fun `signals already recorded are never run, and a newly saved one is handed over to be recorded`() {
         val recorded = Collections.synchronizedList(mutableListOf<TailSignal>())
@@ -346,5 +413,25 @@ class TeardownFlushServiceTest {
         assertThat(outcome.failed.getValue(TailSignal.LOGS).step).isEqualTo(FlushStep.RECORD_LOGS)
         assertThat(outcome.failed.getValue(TailSignal.METRICS).step).isEqualTo(FlushStep.RECORD_METRICS)
         assertThat(outcome.saved.keys).contains(TailSignal.TRACES, TailSignal.ANNOTATIONS)
+    }
+
+    /** `down` prints each owned workload's state on failure, so every owner is reported on its own. */
+    @Test
+    fun `a step with several workloads reports each one and rejects a workload it does not own`() {
+        val progress = FlushProgress(FlushStep.SENDERS_STOP, setOf("otel-collector", "otel-collector-host"))
+        assertThat(progress.backends).containsOnly(
+            entry("otel-collector", BackendState.RUNNING),
+            entry("otel-collector-host", BackendState.RUNNING),
+        )
+
+        progress.mark("otel-collector-host", BackendState.DELETED)
+
+        assertThat(progress.backends).containsOnly(
+            entry("otel-collector", BackendState.RUNNING),
+            entry("otel-collector-host", BackendState.DELETED),
+        )
+        assertThatThrownBy { progress.mark("loki", BackendState.DELETED) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("loki")
     }
 }

@@ -98,7 +98,7 @@ class PlatformCreatePvsTest : BaseKoinTest() {
                     ),
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)
-        whenever(mockK8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
     }
 
     @Test
@@ -113,7 +113,7 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         command.execute()
 
         val captor = argumentCaptor<PersistentVolumeConfig>()
-        verify(mockK8sService).createLocalPersistentVolumes(any(), captor.capture())
+        verify(mockK8sService).createLocalPersistentVolumes(captor.capture())
 
         val config = captor.firstValue
         assertThat(config.storageClass).isEqualTo(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
@@ -135,29 +135,13 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         command.execute()
 
         val captor = argumentCaptor<PersistentVolumeConfig>()
-        verify(mockK8sService).createLocalPersistentVolumes(any(), captor.capture())
+        verify(mockK8sService).createLocalPersistentVolumes(captor.capture())
 
         val config = captor.firstValue
         assertThat(config.storageClass).isEqualTo(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
         assertThat(config.dbName).isEqualTo("presto")
         assertThat(config.localPath).isEqualTo("/mnt/db1/presto")
         assertThat(config.count).isEqualTo(appHosts.size)
-    }
-
-    @Test
-    fun `passes control host to createLocalPersistentVolumes`() {
-        val command =
-            PlatformCreatePvs().apply {
-                kit = "mydb"
-                size = "50Gi"
-                nodeType = "db"
-            }
-
-        command.execute()
-
-        val hostCaptor = argumentCaptor<ClusterHost>()
-        verify(mockK8sService).createLocalPersistentVolumes(hostCaptor.capture(), any())
-        assertThat(hostCaptor.firstValue.alias).isEqualTo("control0")
     }
 
     @Test

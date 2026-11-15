@@ -16,30 +16,41 @@ import software.amazon.awssdk.services.sts.StsClient
  * Allows injection of mock clients during testing.
  */
 interface AWSClientFactory {
+    companion object {
+        /**
+         * Rejects a blank region, which is the only input `Region.of` refuses. Callers outside the
+         * adapter hold a plain region name, so this is where their bad input fails, before any
+         * client is built. A misspelt region is not detected here, by decision.
+         */
+        fun requireValidRegion(region: String) {
+            Region.of(region)
+        }
+    }
+
     /**
      * Creates an AWS service wrapper with the given credentials.
      *
      * @param accessKey AWS access key
      * @param secret AWS secret key
-     * @param region AWS region
+     * @param region AWS region name, for example us-west-2
      * @return AWS service wrapper
      */
     fun createAWSClient(
         accessKey: String,
         secret: String,
-        region: Region,
+        region: String,
     ): AWS
 
     /**
      * Creates an AWS service wrapper using an AWS profile from ~/.aws/credentials.
      *
      * @param profileName AWS profile name
-     * @param region AWS region
+     * @param region AWS region name, for example us-west-2
      * @return AWS service wrapper
      */
     fun createAWSClientWithProfile(
         profileName: String,
-        region: Region,
+        region: String,
     ): AWS
 
     /**
@@ -47,25 +58,25 @@ interface AWSClientFactory {
      *
      * @param accessKey AWS access key
      * @param secret AWS secret key
-     * @param region AWS region
+     * @param region AWS region name, for example us-west-2
      * @return EC2 client
      */
     fun createEc2Client(
         accessKey: String,
         secret: String,
-        region: Region,
+        region: String,
     ): Ec2Client
 
     /**
      * Creates an EC2 client using an AWS profile from ~/.aws/credentials.
      *
      * @param profileName AWS profile name
-     * @param region AWS region
+     * @param region AWS region name, for example us-west-2
      * @return EC2 client
      */
     fun createEc2ClientWithProfile(
         profileName: String,
-        region: Region,
+        region: String,
     ): Ec2Client
 }
 
@@ -78,41 +89,41 @@ class DefaultAWSClientFactory : AWSClientFactory {
     override fun createAWSClient(
         accessKey: String,
         secret: String,
-        region: Region,
+        region: String,
     ): AWS {
         val credentialsProvider =
             StaticCredentialsProvider.create(
                 AwsBasicCredentials.create(accessKey, secret),
             )
-        return createAWSWithProvider(credentialsProvider, region)
+        return createAWSWithProvider(credentialsProvider, Region.of(region))
     }
 
     override fun createAWSClientWithProfile(
         profileName: String,
-        region: Region,
+        region: String,
     ): AWS {
         val credentialsProvider = ProfileCredentialsProvider.create(profileName)
-        return createAWSWithProvider(credentialsProvider, region)
+        return createAWSWithProvider(credentialsProvider, Region.of(region))
     }
 
     override fun createEc2Client(
         accessKey: String,
         secret: String,
-        region: Region,
+        region: String,
     ): Ec2Client {
         val credentialsProvider =
             StaticCredentialsProvider.create(
                 AwsBasicCredentials.create(accessKey, secret),
             )
-        return createEc2ClientWithProvider(credentialsProvider, region)
+        return createEc2ClientWithProvider(credentialsProvider, Region.of(region))
     }
 
     override fun createEc2ClientWithProfile(
         profileName: String,
-        region: Region,
+        region: String,
     ): Ec2Client {
         val credentialsProvider = ProfileCredentialsProvider.create(profileName)
-        return createEc2ClientWithProvider(credentialsProvider, region)
+        return createEc2ClientWithProvider(credentialsProvider, Region.of(region))
     }
 
     private fun createAWSWithProvider(

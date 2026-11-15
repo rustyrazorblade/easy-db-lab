@@ -5,7 +5,6 @@ import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.nio.file.Path
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -13,43 +12,45 @@ import java.time.format.DateTimeFormatter
 /**
  * Default implementation of KubernetesService using the Fabric8 Kubernetes Client.
  *
- * This service uses a lazy-initialized client that connects through a SOCKS proxy
- * for access to private K3s clusters.
+ * Every operation builds its own client from the address the [locator] gives at that moment and
+ * closes it afterwards. A long-lived holder (the server's status cache, a polling kit probe) therefore
+ * sees a rewritten kubeconfig, a newly pinned context or a new SOCKS proxy port on its next call,
+ * instead of a client frozen at first use.
  *
  * @property clientFactory Factory for creating Kubernetes clients
- * @property kubeconfigPath Path to the kubeconfig file
+ * @property locator Finds the kubeconfig path and pinned context, once per operation
  */
 class DefaultKubernetesService(
     private val clientFactory: KubernetesClientFactory,
-    private val kubeconfigPath: Path,
+    private val locator: KubeApiLocator,
 ) : KubernetesService {
     companion object {
         private val log = KotlinLogging.logger {}
     }
 
-    private val client: KubernetesClient by lazy {
-        clientFactory.createClient(kubeconfigPath)
-    }
+    private fun <T> withClient(block: (KubernetesClient) -> T): T = clientFactory.createClient(locator.locate()).use(block)
 
     override fun listJobs(namespace: String?): Result<List<KubernetesJob>> =
         runCatching {
             log.debug { "Listing jobs${namespace?.let { " in namespace $it" } ?: " across all namespaces"}" }
 
             val jobs =
-                if (namespace != null) {
-                    client
-                        .batch()
-                        .v1()
-                        .jobs()
-                        .inNamespace(namespace)
-                        .list()
-                } else {
-                    client
-                        .batch()
-                        .v1()
-                        .jobs()
-                        .inAnyNamespace()
-                        .list()
+                withClient { client ->
+                    if (namespace != null) {
+                        client
+                            .batch()
+                            .v1()
+                            .jobs()
+                            .inNamespace(namespace)
+                            .list()
+                    } else {
+                        client
+                            .batch()
+                            .v1()
+                            .jobs()
+                            .inAnyNamespace()
+                            .list()
+                    }
                 }
 
             jobs.items.map { it.toKubernetesJob() }
@@ -62,10 +63,12 @@ class DefaultKubernetesService(
             log.debug { "Listing pods${namespace?.let { " in namespace $it" } ?: " across all namespaces"}" }
 
             val pods =
-                if (namespace != null) {
-                    client.pods().inNamespace(namespace).list()
-                } else {
-                    client.pods().inAnyNamespace().list()
+                withClient { client ->
+                    if (namespace != null) {
+                        client.pods().inNamespace(namespace).list()
+                    } else {
+                        client.pods().inAnyNamespace().list()
+                    }
                 }
 
             pods.items.map { it.toKubernetesPod() }
@@ -79,13 +82,13 @@ class DefaultKubernetesService(
     ): Result<List<KubernetesPod>> =
         runCatching {
             log.debug { "Listing pods with selector '$labelSelector' in namespace $namespace" }
-            client
-                .pods()
-                .inNamespace(namespace)
-                .withLabelSelector(labelSelector)
-                .list()
-                .items
-                .map { it.toKubernetesPod() }
+            withClient { client ->
+                client
+                    .pods()
+                    .inNamespace(namespace)
+                    .withLabelSelector(labelSelector)
+                    .list()
+            }.items.map { it.toKubernetesPod() }
         }.onFailure { e ->
             log.warn(e) { "Failed to list pods with selector $labelSelector" }
         }
@@ -94,7 +97,7 @@ class DefaultKubernetesService(
         runCatching {
             log.debug { "Getting cluster nodes" }
 
-            val nodes = client.nodes().list()
+            val nodes = withClient { client -> client.nodes().list() }
             nodes.items.map { it.toKubernetesNode() }
         }.onFailure { e ->
             log.warn(e) { "Failed to get nodes" }
@@ -105,7 +108,7 @@ class DefaultKubernetesService(
             log.debug { "Checking Kubernetes API reachability" }
 
             // Try to list namespaces - a lightweight call that works on any cluster
-            client.namespaces().list()
+            withClient { client -> client.namespaces().list() }
             true
         }.onFailure { e ->
             log.debug(e) { "Kubernetes API not reachable" }

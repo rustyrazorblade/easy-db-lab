@@ -227,7 +227,7 @@ TiDB v8.x ships the OpenTracing API with a **Jaeger UDP reporter** (`[opentracin
 ```
 TiDB pod
   └─ [opentracing] reporter (Jaeger Thrift Compact, UDP)
-       └─ otel-collector.default.svc.cluster.local:6831
+       └─ otel-collector.default.svc:6831
             └─ OTel Collector jaeger receiver
                  └─ OTLP → Tempo
 ```
@@ -243,7 +243,7 @@ The `tidbcluster.yaml.template` configures TiDB's opentracing reporter:
   type = "const"
   param = 1.0
 [opentracing.reporter]
-  local-agent-host-port = "otel-collector.default.svc.cluster.local:6831"
+  local-agent-host-port = "otel-collector.default.svc:6831"
 ```
 
 `type = "const"` with `param = 1.0` means 100% sampling — all SQL requests produce a trace. Reduce `param` (e.g. `0.1` for 10%) on high-throughput clusters to limit Tempo ingestion volume.

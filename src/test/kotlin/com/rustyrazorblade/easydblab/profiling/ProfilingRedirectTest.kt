@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -60,6 +62,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts = mutableMapOf(ServerType.Control to listOf(controlHost)),
             ),
         )
@@ -87,6 +90,21 @@ class ProfilingRedirectTest : BaseKoinTest() {
         val writeUrl = ebpfWriteUrl(telemetryRedirect = null)
 
         assertThat(writeUrl).isEqualTo(localPyroscopeUrl)
+    }
+
+    @Test
+    fun `off owned nodes the eBPF agent writes to the Pyroscope Service, never a node IP`() {
+        val offAws = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE)
+        val alloy =
+            PyroscopeManifestBuilder(templateService)
+                .buildAgentResources(telemetryRedirect = null, hosting = offAws)
+                .filterIsInstance<DaemonSet>()
+                .single()
+                .spec.template.spec.containers
+                .single { it.name == "alloy" }
+
+        assertThat(alloy.env.single { it.name == "PYROSCOPE_WRITE_URL" }.value)
+            .isEqualTo("http://pyroscope.default.svc:4040")
     }
 
     @Test

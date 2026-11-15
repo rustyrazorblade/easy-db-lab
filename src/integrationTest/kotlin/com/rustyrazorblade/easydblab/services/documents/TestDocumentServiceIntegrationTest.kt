@@ -1,8 +1,8 @@
 package com.rustyrazorblade.easydblab.services.documents
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
@@ -56,7 +56,7 @@ class TestDocumentServiceIntegrationTest {
         name: String,
     ): String = "reports/acme/${state.clusterLabelName()}/$name"
 
-    private fun read(key: String): String = objectStore.readContent(ClusterS3Path.fromKey(BUCKET, key))
+    private fun read(key: String): String = objectStore.readContent(ClusterStoragePath.fromKey(BUCKET, key))
 
     private fun contentType(key: String): String =
         s3Client
@@ -124,6 +124,6 @@ class TestDocumentServiceIntegrationTest {
         assertThatThrownBy { service.upload(state, listOf(good, bad)) }
             .isInstanceOf(DocumentsRejectedException::class.java)
             .hasMessageContaining("graph.png")
-        assertThat(objectStore.listFiles(ClusterS3Path.fromKey(BUCKET, "reports/acme/${state.clusterLabelName()}"))).isEmpty()
+        assertThat(objectStore.listFiles(ClusterStoragePath.fromKey(BUCKET, "reports/acme/${state.clusterLabelName()}"))).isEmpty()
     }
 }

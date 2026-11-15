@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
@@ -23,9 +24,9 @@ import com.rustyrazorblade.easydblab.services.ConfigChangeReport
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
 import com.rustyrazorblade.easydblab.services.GrafanaDeployService
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
-import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TenantDirectory
@@ -43,6 +44,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -87,6 +89,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { EbpfExporterManifestBuilder() }
                 single { JournaldOtelManifestBuilder(get()) }
                 single { OtelManifestBuilder(get()) }
+                single { OtelHostCollectorManifestBuilder(get()) }
                 single { PyroscopeManifestBuilder(get()) }
                 single { TempoManifestBuilder(get()) }
                 single { MimirManifestBuilder(get()) }
@@ -121,7 +124,8 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                         get(),
                         get(),
                         get(),
-                        DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())),
+                        get(),
+                        DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore())),
                     )
                 }
             },
@@ -147,23 +151,25 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         whenever(mockConfigMapOps.inAnyNamespace()).thenReturn(mockAnyNsOps)
         whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
-        whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
+        whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
 
         // The service writes the runtime cluster-config ConfigMap before applying the stack; stub it
         // so an unstubbed Result does not NPE inside the deploy path.
-        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
         // Nothing is running yet: every workload reports its configuration as changed.
-        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("control0")))
     }
 
     @Test
-    fun `execute fails when no control nodes exist`() {
+    fun `execute on the AWS control node fails when the state has no control node, naming why it needs one`() {
         val emptyState =
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 hosts = mutableMapOf(),
+                s3Bucket = "acct-bucket",
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(emptyState)
@@ -172,7 +178,8 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No control nodes found")
+            .hasMessageContaining("no control node")
+            .hasMessageContaining("publish their ports on the control node")
     }
 
     @Test
@@ -189,25 +196,25 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
 
         val command = GrafanaUpdateConfig()
         command.execute()
 
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService).deploy(any(), any(), any())
+        verify(mockK8sService, atLeastOnce()).applyResource(any<HasMetadata>())
+        verify(mockDashboardService).deploy(anyOrNull(), any(), any(), any())
 
         // Nothing is force-restarted: a workload rolls only when its configuration hash changes.
-        verify(mockK8sService, never()).rolloutRestartDeployment(any(), any(), any())
-        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any(), any())
+        verify(mockK8sService, never()).rolloutRestartDeployment(any(), any())
+        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any())
 
         // Verify success is gated on the stack reaching Ready
-        verify(mockK8sService).waitForPodsReady(any(), any())
+        verify(mockK8sService).waitForPodsReady(any())
     }
 
     @Test
@@ -224,12 +231,12 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
         // The stack applied and restarted, but a pod never reached Ready (e.g. Grafana CrashLoopBackOff).
-        whenever(mockK8sService.waitForPodsReady(any(), any()))
+        whenever(mockK8sService.waitForPodsReady(any()))
             .thenReturn(
                 Result.failure(
                     IllegalStateException("Pod grafana-xyz container grafana is in CrashLoopBackOff state"),
@@ -258,7 +265,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>()))
+        whenever(mockK8sService.applyResource(any<HasMetadata>()))
             .thenReturn(Result.failure(RuntimeException("server side apply failed")))
 
         val command = GrafanaUpdateConfig()
@@ -282,8 +289,8 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(any(), any(), any()))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
         val command = GrafanaUpdateConfig()
@@ -321,7 +328,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("telemetry-redirect")
 
-        verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService, never()).deploy(any(), any(), any())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+        verify(mockDashboardService, never()).deploy(anyOrNull(), any(), any(), any())
     }
 }

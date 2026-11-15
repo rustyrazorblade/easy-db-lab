@@ -270,7 +270,7 @@ class Down : PicoBaseCommand() {
                     backends = failure.backends.mapValues { it.value.description },
                     stoppedWorkloads =
                         failure.backends
-                            .filterValues { it != BackendState.RUNNING }
+                            .filterValues { it != BackendState.RUNNING && it != BackendState.ABSENT }
                             .keys
                             .toList(),
                 )

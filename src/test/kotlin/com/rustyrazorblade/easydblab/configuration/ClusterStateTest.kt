@@ -785,7 +785,7 @@ class ClusterStateTest {
     }
 
     @Test
-    fun `s3Path extension function should create ClusterS3Path`() {
+    fun `s3Path extension function should create ClusterStoragePath`() {
         val state =
             ClusterState(
                 name = "test-cluster",
@@ -797,7 +797,7 @@ class ClusterStateTest {
         val s3Path = state.s3Path()
 
         assertThat(s3Path.bucket).isEqualTo("easy-db-lab-test-abc12345")
-        assertThat(s3Path.toString()).isEqualTo("s3://easy-db-lab-test-abc12345/clusters/test-cluster-test-id")
+        assertThat(s3Path.toString()).isEqualTo("easy-db-lab-test-abc12345/clusters/test-cluster-test-id")
     }
 
     @Test
@@ -854,5 +854,25 @@ class ClusterStateTest {
         assertThatThrownBy { state.s3Path() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("S3 bucket not configured")
+    }
+
+    @Test
+    fun `a state that records no exposure is reached through SOCKS`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{ "name": "pre-exposure" }""")
+
+        assertThat(ClusterStateManager(stateFile).load().exposure).isEqualTo(Exposure.Socks)
+    }
+
+    @Test
+    fun `a recorded exposure survives a save and load`(
+        @TempDir tempDir: File,
+    ) {
+        val manager = ClusterStateManager(File(tempDir, "state.json"))
+        manager.save(ClusterState(name = "c", versions = mutableMapOf(), exposure = Exposure.PortForward))
+
+        assertThat(manager.load().exposure).isEqualTo(Exposure.PortForward)
     }
 }

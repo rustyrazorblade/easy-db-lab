@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.commands.grafana
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -33,13 +32,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
     override fun execute() {
         requireLocalTelemetryStack("grafana update-config")
 
-        val controlHosts = clusterState.hosts[ServerType.Control]
-        if (controlHosts.isNullOrEmpty()) {
-            error("No control nodes found. Please ensure the environment is running.")
-        }
-        val controlNode = controlHosts.first()
-
-        observabilityStackService.deploy(controlNode).getOrElse { exception ->
+        observabilityStackService.deploy().getOrElse { exception ->
             error("Failed to deploy observability stack: ${exception.message}")
         }
     }

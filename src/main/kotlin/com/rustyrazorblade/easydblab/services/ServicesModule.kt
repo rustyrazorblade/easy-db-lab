@@ -47,6 +47,7 @@ import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
+import org.koin.dsl.binds
 import org.koin.dsl.module
 
 /**
@@ -95,7 +96,17 @@ val servicesModule =
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
         single { K8sClientProvider(get(), get()) }
-        factoryOf(::DefaultK8sService) bind K8sService::class bind K8sPodOperations::class
+        factoryOf(::DefaultK8sService).binds(
+            arrayOf(
+                K8sService::class,
+                K8sManifestOperations::class,
+                K8sJobOperations::class,
+                K8sNamespaceOperations::class,
+                K8sStorageOperations::class,
+                K8sPodOperations::class,
+                K8sReadOperations::class,
+            ),
+        )
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
         // One classpath scan per process: the set of dashboard files cannot change at runtime.
@@ -136,7 +147,7 @@ val servicesModule =
         factory { KitWorkloadProbe(get(), get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
-        factory { ConfigChangeReport(get<K8sService>(), get()) }
+        factory { ConfigChangeReport(get<K8sNamespaceOperations>(), get()) }
         factory { TenantDirectory(get()) }
         factory<TestDocumentService> { DefaultTestDocumentService(get()) }
         factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class

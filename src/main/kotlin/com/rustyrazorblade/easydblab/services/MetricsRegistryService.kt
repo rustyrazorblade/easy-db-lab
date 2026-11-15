@@ -30,7 +30,7 @@ interface MetricsRegistryService {
  * both declaring job "postgres") get separate ConfigMaps and separate OTel scrape jobs.
  */
 class DefaultMetricsRegistryService(
-    private val k8sService: K8sService,
+    private val k8sService: K8sStorageOperations,
     private val otelSyncService: OtelSyncService,
     private val eventBus: EventBus,
 ) : MetricsRegistryService {

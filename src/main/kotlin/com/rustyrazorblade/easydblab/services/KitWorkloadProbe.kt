@@ -28,7 +28,7 @@ sealed interface WorkloadPresence {
  * `start` right after would be refused.
  */
 class KitWorkloadProbe(
-    private val kubeService: K8sService,
+    private val kubeService: K8sReadOperations,
     private val helmService: HelmService,
     private val pollInterval: Duration = Constants.Kit.STOP_WAIT_POLL_INTERVAL,
     private val maxPolls: Int = Constants.Kit.STOP_WAIT_MAX_POLLS,

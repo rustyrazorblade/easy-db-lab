@@ -27,7 +27,7 @@ interface OtelSyncService {
  */
 class DefaultOtelSyncService(
     private val k8sClientProvider: K8sClientProvider,
-    private val k8sService: K8sService,
+    private val k8sService: K8sManifestOperations,
     private val otelManifestBuilder: OtelManifestBuilder,
     private val clusterStateManager: ClusterStateManager,
     private val user: User,

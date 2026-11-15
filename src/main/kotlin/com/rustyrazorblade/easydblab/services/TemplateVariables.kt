@@ -59,6 +59,37 @@ data class TemplateVariables(
         )
 
     companion object {
+        /**
+         * Every variable [toMap] defines, plus the ones the kit runner adds after it (`BACKUP_NAME`).
+         * A command arg may not use one of these names: the cluster value would silently replace
+         * the argument. A test keeps this set equal to the keys of [toMap].
+         */
+        val RESERVED_NAMES: Set<String> =
+            setOf(
+                "CLUSTER_NAME",
+                "BUCKET_NAME",
+                "ACCOUNT_BUCKET",
+                "REGION",
+                "DB_NODE_COUNT",
+                "APP_NODE_COUNT",
+                "CONTROL_HOST",
+                "CONTROL_HOST_PUBLIC",
+                "CONTROL_HOST_PRIVATE",
+                "STORAGE_CLASS_WFC",
+                "KIT_NAME",
+                "STORAGE_SIZE",
+                "KUBECONFIG",
+                "EASY_DB_LAB_EXEC",
+                "DB_NODE_IPS",
+                "APP_NODE_IPS",
+                "RUNNING_KITS",
+                "VPC_CIDR",
+                "OPENSEARCH_ENDPOINT",
+                "PYROSCOPE_URL",
+                "TENANT",
+                "BACKUP_NAME",
+            )
+
         internal fun resolveEasyDbLabExec(fixedPath: File = File("/usr/local/bin/easy-db-lab")): String =
             if (fixedPath.exists()) {
                 fixedPath.absolutePath

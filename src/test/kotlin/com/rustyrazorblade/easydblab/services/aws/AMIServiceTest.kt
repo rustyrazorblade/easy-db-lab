@@ -14,6 +14,10 @@ import org.mockito.kotlin.spy
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.ec2.Ec2Client
+import software.amazon.awssdk.services.ec2.model.DescribeImagesRequest
+import software.amazon.awssdk.services.ec2.model.DescribeImagesResponse
+import software.amazon.awssdk.services.ec2.model.Image
+import software.amazon.awssdk.services.ec2.model.ImageState
 import java.time.Instant
 import com.rustyrazorblade.easydblab.assertions.assertThat as assertThatPruneResult
 
@@ -44,6 +48,35 @@ internal class AMIServiceTest {
                     aws = mockAws,
                 ),
             )
+    }
+
+    @Test
+    fun `listPrivateAMIs carries the EC2 image state, so a pending image is not available`() {
+        fun image(
+            id: String,
+            state: ImageState,
+        ): Image =
+            Image
+                .builder()
+                .imageId(id)
+                .name("test-$id")
+                .architecture("x86_64")
+                .creationDate("2024-01-01T00:00:00.000Z")
+                .ownerId("123456789012")
+                .state(state)
+                .build()
+        doReturn(
+            DescribeImagesResponse
+                .builder()
+                .images(image("ami-ready", ImageState.AVAILABLE), image("ami-new", ImageState.PENDING))
+                .build(),
+        ).whenever(mockEc2Client).describeImages(any<DescribeImagesRequest>())
+
+        val amis = amiService.listPrivateAMIs("test-*").associateBy { it.id }
+
+        assertThat(amis.getValue("ami-ready").isAvailable).isTrue()
+        assertThat(amis.getValue("ami-new").state).isEqualTo("pending")
+        assertThat(amis.getValue("ami-new").isAvailable).isFalse()
     }
 
     @Test
@@ -381,6 +414,7 @@ internal class AMIServiceTest {
                 creationDate = Instant.parse(creationDate),
                 ownerId = ownerId,
                 isPublic = isPublic,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = snapshotIds,
             )
     }

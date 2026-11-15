@@ -73,7 +73,8 @@ class DefaultAMIResolver(
 
         // Auto-resolve based on architecture
         val arch = architecture.lowercase()
-        val amis = findAmisForArchitecture(arch)
+        // An image still being created (`pending`) cannot launch instances, so it is never chosen.
+        val amis = findAmisForArchitecture(arch).filter { it.isAvailable }
 
         if (amis.isEmpty()) {
             return Result.failure(

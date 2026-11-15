@@ -478,6 +478,7 @@ tasks.register("testScripts") {
         "testBaseChronyPoll",
         "testBasePrimaryEniNetwork",
         "testCompactorGate",
+        "testSetupInstanceDataDisk",
     )
 }
 
@@ -517,6 +518,16 @@ tasks.register<Exec>("testBasePrimaryEniNetwork") {
     description = "Unit-test the base AMI primary ENI networkd boot script"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/base/install/edl-primary-eni-network.test.sh")
+}
+
+// Unit-test setup_instance.sh's data disk handling: an unused non-root disk under any device name
+// is mounted at /mnt/db1, and no disk, a failed mount or a mount on the root volume fails setup.
+// The disk and mount tools are stubbed; yq is the real one.
+tasks.register<Exec>("testSetupInstanceDataDisk") {
+    group = "Verification"
+    description = "Unit-test the data disk handling of setup_instance.sh"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/setup-instance-data-disk.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug

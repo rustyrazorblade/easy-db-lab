@@ -85,3 +85,14 @@ class AwsTimeoutException(
     message: String,
     cause: Throwable? = null,
 ) : EasyDBLabException(message, cause)
+
+/**
+ * Thrown when a pod cannot start because the kubelet cannot pull its image. The service that
+ * throws it has already emitted a typed event naming the pod, the image and the kubelet's message,
+ * so a command fails with `CommandFailedException` and does not print the cause again.
+ */
+class ImagePullFailedException(
+    val podName: String,
+    val image: String,
+    message: String,
+) : EasyDBLabException(message)

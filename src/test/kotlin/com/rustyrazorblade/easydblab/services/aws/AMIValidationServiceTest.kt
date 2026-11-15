@@ -309,6 +309,7 @@ class AMIValidationServiceTest {
         creationDate = creationDate,
         ownerId = "123456789012",
         isPublic = false,
+        state = AMI.AVAILABLE_STATE,
         snapshotIds = emptyList(),
     )
 }

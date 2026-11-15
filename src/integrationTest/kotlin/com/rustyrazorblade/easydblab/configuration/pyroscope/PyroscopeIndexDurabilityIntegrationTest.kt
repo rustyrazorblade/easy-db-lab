@@ -65,6 +65,7 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         const val DEFAULT_SAMPLE_LIMIT = 16_000
         const val STACK_DEPTH = 20
         const val FRAMES_PER_LEVEL = 4
+        const val RENDER_BODY_EXCERPT = 500
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -82,6 +83,9 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         )
     private val http = HttpClient.newHttpClient()
     private val containers = mutableListOf<GenericContainer<*>>()
+
+    /** The status and the start of the body of the last render query, for a failed wait to show. */
+    private var lastRender = "no render query sent"
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -216,7 +220,9 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
                 .header(Constants.Observability.TENANT_HEADER, tenant)
                 .GET()
                 .build()
-        val body = http.send(request, HttpResponse.BodyHandlers.ofString()).body()
+        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        val body = response.body()
+        lastRender = "status ${response.statusCode()}, body: ${body.take(RENDER_BODY_EXCERPT)}"
         return Regex("\"numTicks\":(\\d+)")
             .find(body)
             ?.groupValues
@@ -234,7 +240,10 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
             Thread.sleep(POLL.toMillis())
             ticks = cpuTicks(pyroscope, TENANT, service)
         }
-        assertThat(ticks).describedAs("CPU samples tenant $TENANT sees for $service").isPositive()
+        // A render that errors reads as zero ticks, so the last answer is part of the failure.
+        assertThat(ticks)
+            .describedAs("CPU samples tenant $TENANT sees for $service; last render: $lastRender")
+            .isPositive()
     }
 
     private fun keysUnder(prefix: String): List<String> =

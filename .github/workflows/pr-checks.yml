@@ -38,7 +38,7 @@ jobs:
       # (packer/base/install/install_yq.sh is the only place that version is written down).
       - name: Install mikefarah yq
         run: |
-          ARCH=amd64 bash packer/base/install/install_yq.sh
+          ARCH=amd64 EDL_CACHE_LIB=packer/base/install/edl-cache-lib.sh bash packer/base/install/install_yq.sh
           yq --version | grep -q 'mikefarah' || {
             echo "yq on PATH is not mikefarah's Go implementation; the script tests need that one."
             exit 1

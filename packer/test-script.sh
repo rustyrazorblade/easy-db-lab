@@ -92,6 +92,7 @@ DOCKER_OPTS=(
     -v /var/run/docker.sock:/var/run/docker.sock
     -w /home/ubuntu
     --user ubuntu
+    -e EDL_CACHE_LIB=/packer/base/install/edl-cache-lib.sh
 )
 
 if [[ "$KEEP_CONTAINER" == "true" ]]; then

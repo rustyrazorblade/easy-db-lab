@@ -31,6 +31,7 @@ services:
     user: ubuntu
     environment:
       - DEBIAN_FRONTEND=noninteractive
+      - EDL_CACHE_LIB=/packer/base/install/edl-cache-lib.sh
     command: >
       bash -c "
       echo 'Running base provisioning scripts...' &&
@@ -60,6 +61,7 @@ services:
     user: ubuntu
     environment:
       - DEBIAN_FRONTEND=noninteractive
+      - EDL_CACHE_LIB=/packer/base/install/edl-cache-lib.sh
     command: >
       bash -c "
       echo 'Running cassandra provisioning scripts...' &&

@@ -14,12 +14,8 @@ BUILD=$(mktemp -d)
 
 sudo DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends clang llvm libbpf-dev
 
-if [[ -f /usr/local/lib/edl-cache.sh ]]; then
-    # shellcheck disable=SC1091
-    source /usr/local/lib/edl-cache.sh
-else
-    cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
-fi
+# shellcheck disable=SC1090
+source "${EDL_CACHE_LIB:-/usr/local/lib/edl-cache.sh}"
 
 # The sources include maps.bpf.h, which in turn includes bits.bpf.h.
 for h in maps.bpf.h bits.bpf.h; do

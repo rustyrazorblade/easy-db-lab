@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.providers.aws.Cidr
 import com.rustyrazorblade.easydblab.providers.aws.ClusterVpcResources
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
@@ -16,6 +15,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupOperations
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import com.rustyrazorblade.easydblab.providers.aws.withVpcTeardownRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -775,24 +775,19 @@ class EC2VpcService(
         log.info { "Waiting for ${activeEnis.size} network interfaces to clear in $where" }
         eventBus.emit(Event.Infra.NetworkInterfacesClearing(activeEnis.size))
 
-        val startTime = System.currentTimeMillis()
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val remaining = findActive()
-
-            if (remaining.isEmpty()) {
-                log.info { "All network interfaces cleared in $where" }
-                eventBus.emit(Event.Infra.NetworkInterfacesCleared)
-                return
+        pollUntilOrTimeout(
+            what = "network interfaces to clear in $where",
+            timeout = Duration.ofMillis(timeoutMs),
+            interval = pollInterval,
+            done = { remaining -> remaining.isEmpty() },
+        ) {
+            findActive().also { remaining ->
+                log.debug { "Still waiting for ${remaining.size} network interfaces to clear..." }
             }
-
-            log.debug { "Still waiting for ${remaining.size} network interfaces to clear..." }
-            Thread.sleep(pollInterval.toMillis())
         }
 
-        throw AwsTimeoutException(
-            "Timeout waiting for network interfaces to clear in $where after ${timeoutMs}ms",
-        )
+        log.info { "All network interfaces cleared in $where" }
+        eventBus.emit(Event.Infra.NetworkInterfacesCleared)
     }
 
     // ==================== Deletion Methods Implementation ====================
@@ -827,36 +822,30 @@ class EC2VpcService(
         log.info { "Waiting for ${instanceIds.size} instances to terminate..." }
         eventBus.emit(Event.Ec2.InstancesTerminateWaiting)
 
-        val startTime = System.currentTimeMillis()
+        val describeRequest =
+            DescribeInstancesRequest
+                .builder()
+                .instanceIds(instanceIds)
+                .build()
 
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val describeRequest =
-                DescribeInstancesRequest
-                    .builder()
-                    .instanceIds(instanceIds)
-                    .build()
-
-            val reservations = ec2Client.describeInstances(describeRequest).reservations()
-            val instances = reservations.flatMap { it.instances() }
-
-            val allTerminated =
-                instances.all { instance ->
-                    instance.state().name() == InstanceStateName.TERMINATED
-                }
-
-            if (allTerminated) {
-                log.info { "All instances terminated successfully" }
-                eventBus.emit(Event.Ec2.InstancesTerminated)
-                return
-            }
-
-            val pending = instances.count { it.state().name() != InstanceStateName.TERMINATED }
-            log.debug { "Still waiting for $pending instances to terminate..." }
-
-            Thread.sleep(pollInterval.toMillis())
+        pollUntilOrTimeout(
+            what = "instances to terminate",
+            timeout = Duration.ofMillis(timeoutMs),
+            interval = pollInterval,
+            done = { states -> states.all { it == InstanceStateName.TERMINATED } },
+        ) {
+            val states =
+                ec2Client
+                    .describeInstances(describeRequest)
+                    .reservations()
+                    .flatMap { it.instances() }
+                    .map { it.state().name() }
+            log.debug { "Still waiting for ${states.count { it != InstanceStateName.TERMINATED }} instances to terminate..." }
+            states
         }
 
-        throw AwsTimeoutException("Timeout waiting for instances to terminate after ${timeoutMs}ms")
+        log.info { "All instances terminated successfully" }
+        eventBus.emit(Event.Ec2.InstancesTerminated)
     }
 
     override fun detachInternetGateway(
@@ -930,35 +919,25 @@ class EC2VpcService(
         log.info { "Waiting for ${natGatewayIds.size} NAT gateways to be deleted..." }
         eventBus.emit(Event.Infra.NatGatewaysWaiting)
 
-        val startTime = System.currentTimeMillis()
+        val describeRequest =
+            DescribeNatGatewaysRequest
+                .builder()
+                .natGatewayIds(natGatewayIds)
+                .build()
 
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val describeRequest =
-                DescribeNatGatewaysRequest
-                    .builder()
-                    .natGatewayIds(natGatewayIds)
-                    .build()
-
-            val natGateways = ec2Client.describeNatGateways(describeRequest).natGateways()
-
-            val allDeleted =
-                natGateways.all { natGateway ->
-                    natGateway.state() == NatGatewayState.DELETED
-                }
-
-            if (allDeleted) {
-                log.info { "All NAT gateways deleted successfully" }
-                eventBus.emit(Event.Infra.NatGatewaysDeleted)
-                return
-            }
-
-            val pending = natGateways.count { it.state() != NatGatewayState.DELETED }
-            log.debug { "Still waiting for $pending NAT gateways to be deleted..." }
-
-            Thread.sleep(pollInterval.toMillis())
+        pollUntilOrTimeout(
+            what = "NAT gateways to be deleted",
+            timeout = Duration.ofMillis(timeoutMs),
+            interval = pollInterval,
+            done = { states -> states.all { it == NatGatewayState.DELETED } },
+        ) {
+            val states = ec2Client.describeNatGateways(describeRequest).natGateways().map { it.state() }
+            log.debug { "Still waiting for ${states.count { it != NatGatewayState.DELETED }} NAT gateways to be deleted..." }
+            states
         }
 
-        throw AwsTimeoutException("Timeout waiting for NAT gateways to be deleted after ${timeoutMs}ms")
+        log.info { "All NAT gateways deleted successfully" }
+        eventBus.emit(Event.Infra.NatGatewaysDeleted)
     }
 
     override fun deleteRouteTable(routeTableId: RouteTableId) {

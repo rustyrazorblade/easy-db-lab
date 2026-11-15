@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
+import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
@@ -293,54 +294,40 @@ class DefaultStressJobService(
                 .createJob(Constants.Stress.NAMESPACE, job)
                 .getOrThrow()
 
-            // Wait for job completion
-            val output = waitForJobAndGetLogs(jobName)
-
-            // Clean up the job
-            k8sService
-                .deleteJob(Constants.Stress.NAMESPACE, jobName)
-                .onFailure { log.warn { "Failed to clean up command job: $jobName" } }
-
-            output
+            try {
+                waitForJobAndGetLogs(jobName)
+            } finally {
+                k8sService
+                    .deleteJob(Constants.Stress.NAMESPACE, jobName)
+                    .onFailure { log.warn { "Failed to clean up command job: $jobName" } }
+            }
         }
 
     /**
      * Waits for a job to complete and returns its logs.
      */
     private fun waitForJobAndGetLogs(jobName: String): String {
-        val startTime = System.currentTimeMillis()
-        val timeoutMs = JOB_COMPLETION_TIMEOUT_SECONDS * Constants.Time.MILLIS_PER_SECOND
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val jobs =
-                k8sService
-                    .getJobsByLabel(
-                        Constants.Stress.NAMESPACE,
-                        "job-name",
-                        jobName,
-                    ).getOrElse { emptyList() }
-
-            val job = jobs.firstOrNull()
-            if (job != null && (job.status == "Completed" || job.status == "Failed")) {
-                // Get logs from the pod
-                val pods =
-                    k8sService
-                        .getPodsForJob(Constants.Stress.NAMESPACE, jobName)
-                        .getOrElse { emptyList() }
-
-                val pod = pods.firstOrNull()
-                if (pod != null) {
-                    return k8sService
-                        .getPodLogs(Constants.Stress.NAMESPACE, pod.name, null)
-                        .getOrElse { "" }
-                }
-                break
-            }
-
-            Thread.sleep(jobPollInterval.toMillis())
+        pollUntilOrTimeout(
+            what = "stress job $jobName to finish",
+            timeout = Duration.ofSeconds(JOB_COMPLETION_TIMEOUT_SECONDS.toLong()),
+            interval = jobPollInterval,
+            done = { job -> job != null && (job.status == "Completed" || job.status == "Failed") },
+        ) {
+            k8sService
+                .getJobsByLabel(Constants.Stress.NAMESPACE, "job-name", jobName)
+                .getOrElse { emptyList() }
+                .firstOrNull()
         }
 
-        return ""
+        val pod =
+            k8sService
+                .getPodsForJob(Constants.Stress.NAMESPACE, jobName)
+                .getOrElse { emptyList() }
+                .firstOrNull()
+                ?: return ""
+        return k8sService
+            .getPodLogs(Constants.Stress.NAMESPACE, pod.name, null)
+            .getOrElse { "" }
     }
 
     /**

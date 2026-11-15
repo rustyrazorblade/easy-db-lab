@@ -501,6 +501,8 @@ object RetryUtil {
      * @param done whether a look's result ends the poll
      * @param deadline when set, the instant after which no further look is made
      * @param retryExceptions whether an exception other than an interrupt is retried
+     * @param isTransient which exceptions are retried when [retryExceptions] is true; any other
+     *   exception fails the poll at once (default: every exception is transient)
      * @return RetryConfig configured for a fixed-interval poll
      */
     fun <T> createPollUntilRetryConfig(
@@ -509,6 +511,7 @@ object RetryUtil {
         done: (T) -> Boolean,
         deadline: Instant? = null,
         retryExceptions: Boolean = true,
+        isTransient: (Throwable) -> Boolean = { true },
     ): RetryConfig {
         fun beforeDeadline() = deadline == null || Instant.now().isBefore(deadline)
         return RetryConfig
@@ -516,7 +519,7 @@ object RetryUtil {
             .maxAttempts(maxAttempts)
             .intervalFunction { _ -> interval.toMillis() }
             .retryOnResult { result -> !done(result) && beforeDeadline() }
-            .retryOnException { retryExceptions && it !is InterruptedException && beforeDeadline() }
+            .retryOnException { retryExceptions && it !is InterruptedException && isTransient(it) && beforeDeadline() }
             .build()
     }
 }

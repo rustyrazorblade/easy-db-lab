@@ -76,7 +76,7 @@ Services are organized by resource, not by operation type:
 
 - **AMIService** — all AMI operations (list, deregister, prune, validate) in one class
 - **EMRService** — all EMR operations (create, terminate, find, wait) in one class
-- **AwsInfrastructureService** — all VPC infrastructure (create and teardown) in one class. Each teardown step runs under `guarded`, which turns an `SdkException`, an `AwsTimeoutException` (a poll that timed out) and an `IllegalStateException` (a waiter that gave up through `error()`) into an entry in the `TeardownResult` errors. Any other exception is a defect and propagates; never widen the catch to `Exception`.
+- **AwsInfrastructureService** — all VPC infrastructure (create and teardown) in one class. Each teardown step runs under `guarded`, which turns an `SdkException`, an `AwsTimeoutException` (every wait that does not converge, raised by `pollUntilOrTimeout`) and an `IllegalStateException` (a wait that ended on a terminal state, such as a failed EMR cluster) into an entry in the `TeardownResult` errors. Any other exception is a defect and propagates; never widen the catch to `Exception`.
 - **EC2VpcService** — all VPC resource operations; it delegates the security group half of `VpcService` to **EC2SecurityGroupService** by interface delegation, so callers inject one `VpcService`
 
 ## Security Group Rules

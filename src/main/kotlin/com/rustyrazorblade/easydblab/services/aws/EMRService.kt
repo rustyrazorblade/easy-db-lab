@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.providers.aws.ClusterId
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
@@ -11,6 +10,7 @@ import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
+import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.emr.EmrClient
@@ -81,7 +81,7 @@ class EMRService(
         // Use shared EMR cluster states from EMRClusterStates
         private val READY_STATES = EMRClusterStates.READY_STATES.map { ClusterState.fromValue(it) }.toSet()
         private val TERMINAL_STATES = EMRClusterStates.TERMINAL_STATES.map { ClusterState.fromValue(it) }.toSet()
-        private val STARTING_STATES = EMRClusterStates.STARTING_STATES.map { ClusterState.fromValue(it) }.toSet()
+        private val READY_OR_TERMINAL_STATES = READY_STATES + TERMINAL_STATES
 
         /** EMR cluster states that indicate the cluster is active and can be terminated */
         private val ACTIVE_CLUSTER_STATES =
@@ -230,41 +230,29 @@ class EMRService(
         log.info { "Waiting for EMR cluster $clusterId to be ready..." }
         eventBus.emit(Event.Emr.ClusterWaitingNote)
 
-        val startTime = System.currentTimeMillis()
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val status = getClusterStatus(clusterId)
-
-            val clusterState = ClusterState.fromValue(status.state)
-
-            when {
-                clusterState in READY_STATES -> {
-                    log.info { "EMR cluster $clusterId is ready (state: ${status.state})" }
-                    eventBus.emit(Event.Emr.ClusterReady)
-
-                    // Get the full details including master DNS
-                    val details = getClusterDetails(clusterId)
-                    return details
-                }
-                clusterState in TERMINAL_STATES -> {
-                    val message =
-                        "EMR cluster $clusterId failed: ${status.state}" +
-                            (status.stateChangeReason?.let { " - $it" } ?: "")
-                    log.error { message }
-                    error(message)
-                }
-                clusterState in STARTING_STATES -> {
-                    log.debug { "EMR cluster $clusterId is starting (state: ${status.state})" }
-                }
-                else -> {
-                    log.debug { "EMR cluster $clusterId state: ${status.state}" }
-                }
+        val status =
+            pollUntilOrTimeout(
+                what = "EMR cluster $clusterId to be ready",
+                timeout = Duration.ofMillis(timeoutMs),
+                interval = readyPollInterval,
+                done = { ClusterState.fromValue(it.state) in READY_OR_TERMINAL_STATES },
+            ) {
+                getClusterStatus(clusterId).also { log.debug { "EMR cluster $clusterId state: ${it.state}" } }
             }
 
-            Thread.sleep(readyPollInterval.toMillis())
+        if (ClusterState.fromValue(status.state) in TERMINAL_STATES) {
+            val message =
+                "EMR cluster $clusterId failed: ${status.state}" +
+                    (status.stateChangeReason?.let { " - $it" } ?: "")
+            log.error { message }
+            error(message)
         }
 
-        error("Timeout waiting for EMR cluster $clusterId to be ready after ${timeoutMs}ms")
+        log.info { "EMR cluster $clusterId is ready (state: ${status.state})" }
+        eventBus.emit(Event.Emr.ClusterReady)
+
+        // Get the full details including master DNS
+        return getClusterDetails(clusterId)
     }
 
     /**
@@ -347,23 +335,18 @@ class EMRService(
         log.info { "Waiting for EMR cluster $clusterId to terminate..." }
         eventBus.emit(Event.Emr.ClusterTerminateWaiting)
 
-        val startTime = System.currentTimeMillis()
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val status = getClusterStatus(clusterId)
-            val clusterState = ClusterState.fromValue(status.state)
-
-            if (clusterState in TERMINAL_STATES) {
-                log.info { "EMR cluster $clusterId terminated (state: ${status.state})" }
-                eventBus.emit(Event.Emr.ClusterTerminated)
-                return
+        val status =
+            pollUntilOrTimeout(
+                what = "EMR cluster $clusterId to terminate",
+                timeout = Duration.ofMillis(timeoutMs),
+                interval = readyPollInterval,
+                done = { ClusterState.fromValue(it.state) in TERMINAL_STATES },
+            ) {
+                getClusterStatus(clusterId).also { log.debug { "EMR cluster $clusterId state: ${it.state}" } }
             }
 
-            log.debug { "EMR cluster $clusterId state: ${status.state}" }
-            Thread.sleep(readyPollInterval.toMillis())
-        }
-
-        error("Timeout waiting for EMR cluster $clusterId to terminate after ${timeoutMs}ms")
+        log.info { "EMR cluster $clusterId terminated (state: ${status.state})" }
+        eventBus.emit(Event.Emr.ClusterTerminated)
     }
 
     // ==================== Discovery & Bulk Termination ====================
@@ -480,32 +463,19 @@ class EMRService(
         log.info { "Waiting for ${clusterIds.size} EMR clusters to terminate..." }
         eventBus.emit(Event.Emr.ClustersTerminateWaiting)
 
-        val startTime = System.currentTimeMillis()
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val allTerminated =
-                clusterIds.all { clusterId ->
-                    val state = getClusterState(clusterId)
-                    state in TERMINAL_STATES
-                }
-
-            if (allTerminated) {
-                log.info { "All EMR clusters terminated successfully" }
-                eventBus.emit(Event.Emr.ClustersTerminated)
-                return
+        pollUntilOrTimeout(
+            what = "EMR clusters to terminate",
+            timeout = Duration.ofMillis(timeoutMs),
+            interval = terminationPollInterval,
+            done = { states -> states.all { it in TERMINAL_STATES } },
+        ) {
+            clusterIds.map { getClusterState(it) }.also { states ->
+                log.debug { "Still waiting for ${states.count { it !in TERMINAL_STATES }} EMR clusters to terminate..." }
             }
-
-            val pending =
-                clusterIds.count { clusterId ->
-                    val state = getClusterState(clusterId)
-                    state !in TERMINAL_STATES
-                }
-            log.debug { "Still waiting for $pending EMR clusters to terminate..." }
-
-            Thread.sleep(terminationPollInterval.toMillis())
         }
 
-        throw AwsTimeoutException("Timeout waiting for EMR clusters to terminate after ${timeoutMs}ms")
+        log.info { "All EMR clusters terminated successfully" }
+        eventBus.emit(Event.Emr.ClustersTerminated)
     }
 
     /**

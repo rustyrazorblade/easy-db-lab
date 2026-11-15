@@ -80,17 +80,19 @@ class K3sAgentServiceTest : BaseKoinTest() {
             any(),
         )
         assertThat(commandCaptor.firstValue).contains("sudo mkdir -p /etc/rancher/k3s")
-        assertThat(commandCaptor.secondValue).contains("sudo mv /tmp/k3s-config.yaml /etc/rancher/k3s/config.yaml")
-        assertThat(commandCaptor.secondValue).contains("sudo chmod 600 /etc/rancher/k3s/config.yaml")
 
-        // Verify config file upload
-        val destPathCaptor = argumentCaptor<String>()
+        // Verify config file upload: staged, restricted to 0600, then moved into place
+        val stagedCaptor = argumentCaptor<String>()
         verify(mockRemoteOps).upload(
             eq(testHost),
             any(),
-            destPathCaptor.capture(),
+            stagedCaptor.capture(),
         )
-        assertThat(destPathCaptor.firstValue).isEqualTo("/tmp/k3s-config.yaml")
+        assertThat(commandCaptor.secondValue)
+            .isEqualTo(
+                "sudo chmod 0600 ${stagedCaptor.firstValue} && sudo mv ${stagedCaptor.firstValue} /etc/rancher/k3s/config.yaml " +
+                    "|| { rm -f ${stagedCaptor.firstValue}; exit 1; }",
+            )
     }
 
     @Test
@@ -111,11 +113,17 @@ class K3sAgentServiceTest : BaseKoinTest() {
         // Then
         assertThat(result.isSuccess).isTrue()
 
-        // Verify config file was uploaded
-        verify(mockRemoteOps).upload(
+        // Verify config file was uploaded and moved to the k3s config path
+        val stagedCaptor = argumentCaptor<String>()
+        verify(mockRemoteOps).upload(eq(testHost), any(), stagedCaptor.capture())
+        verify(mockRemoteOps).executeRemotely(
             eq(testHost),
+            eq(
+                "sudo chmod 0600 ${stagedCaptor.firstValue} && sudo mv ${stagedCaptor.firstValue} /etc/rancher/k3s/config.yaml " +
+                    "|| { rm -f ${stagedCaptor.firstValue}; exit 1; }",
+            ),
             any(),
-            eq("/tmp/k3s-config.yaml"),
+            any(),
         )
     }
 

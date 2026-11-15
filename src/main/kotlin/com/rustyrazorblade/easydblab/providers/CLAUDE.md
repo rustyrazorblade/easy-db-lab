@@ -40,6 +40,7 @@ providers/
 │   ├── DefaultSSHConnectionProvider.kt
 │   ├── SshRoute.kt        # How each SSH transport reaches a node (DirectSshRoute)
 │   ├── RemoteOperationsService.kt
+│   ├── InstallFile.kt     # RemoteOperationsService.installFile: the one stage-then-sudo-mv sequence (unique staging name, mode, quoted paths)
 │   └── DefaultRemoteOperationsService.kt
 └── ssm/                    # SSM Session Manager SSH transport
     ├── SsmModule.kt

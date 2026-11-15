@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
@@ -49,8 +50,7 @@ class SetupInstance : PicoBaseCommand() {
 
     override fun execute() {
         fun setup(host: Host) {
-            remoteOps.upload(host, Path.of("environment.sh"), "environment.sh")
-            remoteOps.executeRemotely(host, "sudo mv environment.sh /etc/profile.d/stress.sh").text
+            remoteOps.installFile(host, Path.of("environment.sh"), "/etc/profile.d/stress.sh", "0644")
         }
 
         // The OTel Java agent reads these JMX rules at Cassandra startup. They live in the cluster
@@ -58,12 +58,7 @@ class SetupInstance : PicoBaseCommand() {
         // and restart Cassandra - no rebake, no Gradle build.
         fun writeJmxRules(host: Host) {
             remoteOps.executeRemotely(host, "sudo mkdir -p ${Constants.Cassandra.NODE_CONFIG_DIR}").text
-            remoteOps.upload(host, Path.of(Constants.Cassandra.JMX_RULES_FILE), Constants.Cassandra.JMX_RULES_FILE)
-            remoteOps
-                .executeRemotely(
-                    host,
-                    "sudo mv ${Constants.Cassandra.JMX_RULES_FILE} ${Constants.Cassandra.JMX_RULES_PATH}",
-                ).text
+            remoteOps.installFile(host, Path.of(Constants.Cassandra.JMX_RULES_FILE), Constants.Cassandra.JMX_RULES_PATH, "0644")
         }
 
         fun setupStressSystemdEnv(
@@ -85,8 +80,7 @@ class SetupInstance : PicoBaseCommand() {
 
                 // Create directory and upload the file
                 remoteOps.executeRemotely(host, "sudo mkdir -p /etc/cassandra-easy-stress").text
-                remoteOps.upload(host, envFile.toPath(), "stress.env")
-                remoteOps.executeRemotely(host, "sudo mv stress.env /etc/cassandra-easy-stress/stress.env").text
+                remoteOps.installFile(host, envFile.toPath(), "/etc/cassandra-easy-stress/stress.env", "0644")
             } finally {
                 envFile.delete()
             }

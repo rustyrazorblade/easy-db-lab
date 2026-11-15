@@ -5,6 +5,7 @@ import com.charleskorn.kaml.YamlConfiguration
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.SerialName
@@ -12,7 +13,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.io.File
-import java.nio.file.Files
 
 /**
  * Service for managing K3s agent (worker node) lifecycle operations.
@@ -71,7 +71,6 @@ class DefaultK3sAgentService(
 
     private companion object {
         const val CONFIG_FILE_PATH = "/etc/rancher/k3s/config.yaml"
-        const val CONFIG_TEMP_PATH = "/tmp/k3s-config.yaml"
         const val CONFIG_DIR_PATH = "/etc/rancher/k3s"
         const val AGENT_SCRIPT_PATH = "/usr/local/bin/start-k3s-agent.sh"
         const val AGENT_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-agent.sh"
@@ -100,7 +99,7 @@ class DefaultK3sAgentService(
             log.debug { "Starting K3s agent on ${host.alias}" }
 
             // Upload the startup script from classpath resources
-            uploadScript(host, AGENT_SCRIPT_RESOURCE, AGENT_SCRIPT_PATH)
+            remoteOps.installFile(host, AGENT_SCRIPT_RESOURCE, AGENT_SCRIPT_PATH, "0755")
 
             // Read and parse config to get server URL and token
             val configResult =
@@ -174,55 +173,14 @@ class DefaultK3sAgentService(
                     output = false,
                 )
 
-                // Upload config file
-                remoteOps.upload(
-                    host,
-                    tempFile.toPath(),
-                    CONFIG_TEMP_PATH,
-                )
-
-                // Move to final location with proper permissions
-                val moveCommand =
-                    "sudo mv $CONFIG_TEMP_PATH $CONFIG_FILE_PATH && " +
-                        "sudo chmod 600 $CONFIG_FILE_PATH"
-                remoteOps.executeRemotely(
-                    host,
-                    moveCommand,
-                    output = false,
-                )
+                // Upload, move into place and restrict to the owner (mode 0600): the file holds the cluster token
+                remoteOps.installFile(host, tempFile.toPath(), CONFIG_FILE_PATH, "0600")
 
                 log.info { "Successfully configured K3s agent on ${host.alias}" }
             } finally {
                 tempFile.delete()
             }
         }
-
-    /**
-     * Uploads a script from classpath resources to a remote host.
-     */
-    private fun uploadScript(
-        host: Host,
-        resourcePath: String,
-        remotePath: String,
-    ) {
-        val scriptContent =
-            this::class.java.getResourceAsStream(resourcePath)
-                ?: error("Script not found: $resourcePath")
-
-        val remoteFilename = remotePath.substringAfterLast("/")
-        val tempFile = Files.createTempFile("k3s-", "-script.sh")
-        try {
-            scriptContent.use { input ->
-                Files.newOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            remoteOps.upload(host, tempFile, remoteFilename)
-            remoteOps.executeRemotely(host, "sudo mv $remoteFilename $remotePath && sudo chmod +x $remotePath", output = false)
-        } finally {
-            Files.deleteIfExists(tempFile)
-        }
-    }
 
     /**
      * Builds K3s agent configuration YAML content with server URL, token, and optional node labels.

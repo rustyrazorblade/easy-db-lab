@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import io.fabric8.kubernetes.client.utils.Serialization
 import io.github.oshai.kotlinlogging.KLogger
@@ -120,7 +121,7 @@ class DefaultK3sService(
         runCatching {
             log.debug { "Starting K3s server on ${host.alias} (useCustomCni=$useCustomCni)" }
 
-            uploadScript(host, SERVER_SCRIPT_RESOURCE, SERVER_SCRIPT_PATH)
+            remoteOps.installFile(host, SERVER_SCRIPT_RESOURCE, SERVER_SCRIPT_PATH, "0755")
 
             // The pod range must hold one node CIDR per node at 1,000+ nodes; see Constants.K3s.
             val args =
@@ -195,35 +196,4 @@ class DefaultK3sService(
                 tempFile.delete()
             }
         }
-
-    /**
-     * Uploads a script from classpath resources to a remote host.
-     *
-     * @param host The host to upload to
-     * @param resourcePath The classpath resource path
-     * @param remotePath The destination path on the remote host
-     */
-    private fun uploadScript(
-        host: Host,
-        resourcePath: String,
-        remotePath: String,
-    ) {
-        val scriptContent =
-            this::class.java.getResourceAsStream(resourcePath)
-                ?: error("Script not found: $resourcePath")
-
-        val remoteFilename = remotePath.substringAfterLast("/")
-        val tempFile = Files.createTempFile("k3s-", "-script.sh")
-        try {
-            scriptContent.use { input ->
-                Files.newOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            remoteOps.upload(host, tempFile, remoteFilename)
-            remoteOps.executeRemotely(host, "sudo mv $remoteFilename $remotePath && sudo chmod +x $remotePath", output = false)
-        } finally {
-            Files.deleteIfExists(tempFile)
-        }
-    }
 }

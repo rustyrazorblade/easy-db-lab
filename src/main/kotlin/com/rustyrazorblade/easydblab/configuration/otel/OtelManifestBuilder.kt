@@ -4,6 +4,7 @@ import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -514,8 +515,7 @@ class OtelManifestBuilder(
             .endMetadata()
             .withNewSpec()
             .withServiceAccountName(SERVICE_ACCOUNT_NAME)
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
+            .hostNetworked()
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()

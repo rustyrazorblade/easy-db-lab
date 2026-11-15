@@ -1,12 +1,12 @@
 package com.rustyrazorblade.easydblab.configuration.kubestatemetrics
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
-import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBindingBuilder
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBuilder
 import io.fabric8.kubernetes.api.model.rbac.PolicyRule
@@ -167,37 +167,10 @@ class KubeStateMetricsManifestBuilder {
      * off the host stack means it cannot collide with anything the control node already listens on.
      */
     fun buildDeployment() =
-        DeploymentBuilder()
-            .withNewMetadata()
-            .withName(NAME)
-            .withNamespace(NAMESPACE)
-            .addToLabels(APP_NAME_LABEL, NAME)
-            .endMetadata()
-            .withNewSpec()
-            .withReplicas(1)
-            .withNewStrategy()
-            .withType("Recreate")
-            .endStrategy()
-            .withNewSelector()
-            .addToMatchLabels(APP_NAME_LABEL, NAME)
-            .endSelector()
-            .withNewTemplate()
-            .withNewMetadata()
-            .addToLabels(APP_NAME_LABEL, NAME)
-            .endMetadata()
-            .withNewSpec()
-            .withServiceAccountName(NAME)
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
-            .addToContainers(buildContainer())
-            .endSpec()
-            .endTemplate()
-            .endSpec()
-            .build()
+        controlPlaneDeployment(NAME, NAMESPACE, labelKey = APP_NAME_LABEL) {
+            withServiceAccountName(NAME)
+                .addToContainers(buildContainer())
+        }
 
     /**
      * The exporter container. `/livez` answers on the metrics port and `/readyz` on the telemetry

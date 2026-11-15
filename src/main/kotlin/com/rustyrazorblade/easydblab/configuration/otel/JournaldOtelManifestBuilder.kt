@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -87,8 +88,7 @@ class JournaldOtelManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
+            .hostNetworked()
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()

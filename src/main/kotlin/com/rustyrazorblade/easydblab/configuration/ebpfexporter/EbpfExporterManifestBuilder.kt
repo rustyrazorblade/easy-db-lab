@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.ebpfexporter
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
@@ -76,9 +77,8 @@ class EbpfExporterManifestBuilder {
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
+            .hostNetworked()
             .withHostPID(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()

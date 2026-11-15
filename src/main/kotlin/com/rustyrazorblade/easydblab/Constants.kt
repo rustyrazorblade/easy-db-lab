@@ -487,6 +487,16 @@ object Constants {
     // K8s observability configuration
     object K8s {
         const val NAMESPACE = "default"
+
+        /** The label every workload carries to name itself; its Deployment selector matches on it. */
+        const val APP_NAME_LABEL = "app.kubernetes.io/name"
+
+        /** The node label (and toleration key) that marks the control node. */
+        const val CONTROL_PLANE_LABEL = "node-role.kubernetes.io/control-plane"
+
+        /** The DNS policy a pod on the host network needs to keep resolving cluster service names. */
+        const val HOST_NETWORK_DNS_POLICY = "ClusterFirstWithHostNet"
+
         const val MANIFEST_DIR = "k8s"
         const val LOCAL_STORAGE_CLASS = "local-storage"
         const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"

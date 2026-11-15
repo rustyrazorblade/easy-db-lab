@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -16,7 +18,6 @@ import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMount
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.Deployment
-import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
  * Builds all Grafana K8s resources as typed Fabric8 objects.
@@ -115,46 +116,20 @@ class GrafanaManifestBuilder(
     fun buildDeployment(documents: DocumentsBucket): Deployment {
         val clusterName = templateService.buildContextVariables()["CLUSTER_NAME"] ?: "cluster"
 
-        return DeploymentBuilder()
-            .withNewMetadata()
-            .withName(DEPLOYMENT_NAME)
-            .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withReplicas(1)
-            .withNewSelector()
-            .addToMatchLabels("app.kubernetes.io/name", APP_LABEL)
-            .endSelector()
-            .withNewStrategy()
-            .withType("Recreate")
-            .withRollingUpdate(null)
-            .endStrategy()
-            .withNewTemplate()
-            .withNewMetadata()
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
-            .withSecurityContext(
-                PodSecurityContextBuilder()
-                    .withFsGroup(FS_GROUP)
-                    .withRunAsUser(RUN_AS_USER)
-                    .build(),
-            ).withContainers(
-                listOf(buildGrafanaContainer(clusterName), buildImageRendererContainer()) + documentsSidecars.containers(documents),
-            ).withVolumes(buildVolumes() + documentsSidecars.volume())
-            .endSpec()
-            .endTemplate()
-            .endSpec()
-            .build()
+        // Built outside the pod spec block: inside it, `buildVolumes()` is the PodSpecBuilder's own method.
+        val volumes = buildVolumes() + documentsSidecars.volume()
+
+        return controlPlaneDeployment(DEPLOYMENT_NAME, NAMESPACE, appLabel = APP_LABEL) {
+            hostNetworked()
+                .withSecurityContext(
+                    PodSecurityContextBuilder()
+                        .withFsGroup(FS_GROUP)
+                        .withRunAsUser(RUN_AS_USER)
+                        .build(),
+                ).withContainers(
+                    listOf(buildGrafanaContainer(clusterName), buildImageRendererContainer()) + documentsSidecars.containers(documents),
+                ).withVolumes(volumes)
+        }
     }
 
     /**

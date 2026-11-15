@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.compactor
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -11,7 +12,6 @@ import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Volume
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.apps.Deployment
-import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
  * Builds the `account-compactor` Deployment that runs on every cluster's control node, and the
@@ -112,49 +112,23 @@ class CompactorManifestBuilder(
         bucketRegion: String,
     ): Deployment {
         val containers = CompactorContainers(bucketRegion)
-        return DeploymentBuilder()
-            .withNewMetadata()
-            .withName(NAME)
-            .withNamespace(NAMESPACE)
-            .addToLabels(APP_LABEL_KEY, NAME)
-            .endMetadata()
-            .withNewSpec()
-            .withReplicas(1)
-            .withNewSelector()
-            .addToMatchLabels(APP_LABEL_KEY, NAME)
-            .endSelector()
-            .withNewStrategy()
-            .withType("Recreate")
-            .endStrategy()
-            .withNewTemplate()
-            .withNewMetadata()
-            .addToLabels(APP_LABEL_KEY, NAME)
-            .endMetadata()
-            .withNewSpec()
-            .withTerminationGracePeriodSeconds(Constants.Compactor.Lease.TERMINATION_GRACE_SECONDS)
-            .addToNodeSelector("node-role.kubernetes.io/control-plane", "true")
-            .addNewToleration()
-            .withKey("node-role.kubernetes.io/control-plane")
-            .withOperator("Exists")
-            .withEffect("NoSchedule")
-            .endToleration()
-            .withInitContainers(containers.init())
-            .withContainers(listOf(containers.lease()) + containers.compactors())
-            .withVolumes(
-                listOf(
-                    VolumeBuilder()
-                        .withName(CONFIG_VOLUME)
-                        .withNewConfigMap()
-                        .withName(CONFIGMAP_NAME)
-                        .endConfigMap()
-                        .build(),
-                    emptyDir(GATE_VOLUME),
-                    emptyDir(LEASE_VOLUME),
-                    hostPath(AGENT_VOLUME, agentJar.hostPath, "File"),
-                ) + Scratch.entries.map { hostPath(it.volume, it.hostPath, "Directory") },
-            ).endSpec()
-            .endTemplate()
-            .endSpec()
-            .build()
+        return controlPlaneDeployment(NAME, NAMESPACE, labelKey = APP_LABEL_KEY) {
+            withTerminationGracePeriodSeconds(Constants.Compactor.Lease.TERMINATION_GRACE_SECONDS)
+                .withInitContainers(containers.init())
+                .withContainers(listOf(containers.lease()) + containers.compactors())
+                .withVolumes(
+                    listOf(
+                        VolumeBuilder()
+                            .withName(CONFIG_VOLUME)
+                            .withNewConfigMap()
+                            .withName(CONFIGMAP_NAME)
+                            .endConfigMap()
+                            .build(),
+                        emptyDir(GATE_VOLUME),
+                        emptyDir(LEASE_VOLUME),
+                        hostPath(AGENT_VOLUME, agentJar.hostPath, "File"),
+                    ) + Scratch.entries.map { hostPath(it.volume, it.hostPath, "Directory") },
+                )
+        }
     }
 }

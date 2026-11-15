@@ -900,6 +900,13 @@ object Constants {
 
         /** Where [JMX_RULES_FILE] lands on a Cassandra node. */
         const val JMX_RULES_PATH = "$NODE_CONFIG_DIR/$JMX_RULES_FILE"
+
+        /**
+         * How long `status` waits for any db host to report the live Cassandra version over SSH.
+         * A host that does not answer cannot delay the report past this; the report then shows the
+         * cached version.
+         */
+        const val LIVE_VERSION_PROBE_TIMEOUT_SECONDS = 15L
     }
 
     // Cassandra stress testing configuration

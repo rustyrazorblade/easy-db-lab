@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
@@ -39,6 +40,9 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.time.Duration
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * The one status collection that `status` and `/status` both render. These tests pin what the two
@@ -388,5 +392,126 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
             assertThat(it.endpoints).isEmpty()
             assertThat(it.endpointsUnavailable).isEqualTo(KitEndpointAddresses.UNREADABLE_DESCRIPTOR)
         }
+    }
+
+    @Test
+    fun `the independent fetches overlap, so the collection takes about one fetch rather than their sum`() {
+        WorkspaceKubeconfig.file(context.workingDirectory).writeText("kubeconfig")
+        val pause = 600L
+        whenever(ec2.describeInstances(any())).thenAnswer {
+            Thread.sleep(pause)
+            listOf(runningNode())
+        }
+        whenever(vpc.describeSecurityGroup(any())).thenAnswer {
+            Thread.sleep(pause)
+            SecurityGroupDetails("sg-1", "lab-sg", "d", "vpc-1", emptyList(), emptyList())
+        }
+        whenever(stress.listJobs()).thenReturn(Result.success(emptyList<KubernetesJob>()))
+        whenever(emr.getClusterStatus(any())).thenAnswer {
+            Thread.sleep(pause)
+            error("emr down")
+        }
+        whenever(openSearch.describeDomain(any())).thenAnswer {
+            Thread.sleep(pause)
+            error("opensearch down")
+        }
+        whenever(remoteOps.getRemoteVersion(any(), any())).thenAnswer {
+            Thread.sleep(pause)
+            Version.fromString("5.0.9")
+        }
+        val clusterState =
+            state(
+                hosts = mapOf(ServerType.Cassandra to listOf(db())),
+                openSearchDomain = OpenSearchClusterState("dom", "id", state = "Active"),
+                emrCluster = EMRClusterState("j-1", "emr", "m", "RUNNING"),
+            )
+
+        val started = System.nanoTime()
+        val report = collector().collect(clusterState)
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+
+        // Serial would be 5 * 600ms; the version probe waits for EC2, so the floor is 2 * 600ms.
+        assertThat(elapsed).isLessThan(Duration.ofMillis(2200))
+        assertThat(report.response.cassandraVersion).isEqualTo(CassandraVersionInfo("5.0.9", "live"))
+        assertThat(report.response.spark?.state).isEqualTo("RUNNING")
+    }
+
+    @Test
+    fun `a host that does not answer is bounded by the probe timeout and a healthy host still wins`() {
+        val hosts = mapOf(ServerType.Cassandra to listOf(db("db0", "i-db0"), db("db1", "i-db1")))
+        whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode("i-db0"), runningNode("i-db1")))
+        whenever(remoteOps.getRemoteVersion(any(), any())).thenAnswer {
+            val host = it.getArgument<Host>(0)
+            if (host.alias == "db0") Thread.sleep(60_000)
+            Version.fromString("5.0.9")
+        }
+
+        val started = System.nanoTime()
+        val version = ClusterStatusCollector(Duration.ofMillis(2000)).collect(state(hosts = hosts)).response.cassandraVersion
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+
+        assertThat(version).isEqualTo(CassandraVersionInfo("5.0.9", "live"))
+        assertThat(elapsed).isLessThan(Duration.ofMillis(1500))
+    }
+
+    @Test
+    fun `when no host answers within the probe timeout the version falls back to cached`() {
+        val hosts = mapOf(ServerType.Cassandra to listOf(db("db0", "i-db0"), db("db1", "i-db1")))
+        whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode("i-db0"), runningNode("i-db1")))
+        whenever(remoteOps.getRemoteVersion(any(), any())).thenAnswer {
+            Thread.sleep(60_000)
+            Version.fromString("5.0.9")
+        }
+
+        val started = System.nanoTime()
+        val version = ClusterStatusCollector(Duration.ofMillis(500)).collect(state(hosts = hosts)).response.cassandraVersion
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+
+        assertThat(version).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
+        assertThat(elapsed).isLessThan(Duration.ofMillis(5000))
+    }
+
+    @Test
+    fun `an interrupt stops the collection at once, keeps the interrupt flag and leaves no fetch running`() {
+        val running =
+            java.util.concurrent.atomic
+                .AtomicInteger()
+        whenever(ec2.describeInstances(any())).thenAnswer {
+            running.incrementAndGet()
+            try {
+                Thread.sleep(60_000)
+            } finally {
+                running.decrementAndGet()
+            }
+            emptyList<InstanceDetails>()
+        }
+        val hosts = mapOf(ServerType.Cassandra to listOf(db()))
+        val outcome =
+            java.util.concurrent.atomic
+                .AtomicReference<Throwable>()
+        val flagKept =
+            java.util.concurrent.atomic
+                .AtomicBoolean()
+        val caller =
+            Thread {
+                try {
+                    collector().collect(state(hosts = hosts))
+                } catch (e: InterruptedException) {
+                    outcome.set(e)
+                    flagKept.set(Thread.currentThread().isInterrupted)
+                }
+            }
+        caller.start()
+        val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+        while (running.get() == 0 && System.nanoTime() < deadline) Thread.sleep(10)
+        assertThat(running.get()).isEqualTo(1)
+
+        caller.interrupt()
+        caller.join(5000)
+
+        assertThat(caller.isAlive).isFalse()
+        assertThat(outcome.get()).isInstanceOf(InterruptedException::class.java)
+        assertThat(flagKept.get()).isTrue()
+        assertThat(running.get()).isZero()
     }
 }

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.services.LogQl
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
@@ -61,6 +62,8 @@ import java.util.zip.GZIPInputStream
  *   Defaults to [Constants.EMR.FINAL_STDERR_POLL_INTERVAL_MS]; tests inject [Duration.ZERO].
  * @property logsDir Local directory that downloaded EMR logs are saved under. Defaults to
  *   [Constants.EMR.LOCAL_LOGS_DIR] in the working directory; tests inject a temporary directory.
+ * @property jobWaitTimeout How long [waitForJobCompletion] waits for a step to finish. Defaults to
+ *   [Constants.EMR.MAX_POLL_TIMEOUT_MS]; tests inject a short one.
  */
 class EMRSparkService(
     private val emrClient: EmrClient,
@@ -72,6 +75,7 @@ class EMRSparkService(
     private val logIngestionWait: Duration = Duration.ofMillis(Constants.EMR.LOG_INGESTION_WAIT_MS),
     private val finalLogPollInterval: Duration = Duration.ofMillis(Constants.EMR.FINAL_STDERR_POLL_INTERVAL_MS),
     private val logsDir: Path = Paths.get(Constants.EMR.LOCAL_LOGS_DIR),
+    private val jobWaitTimeout: Duration = Duration.ofMillis(Constants.EMR.MAX_POLL_TIMEOUT_MS),
 ) : SparkService {
     private val log = KotlinLogging.logger {}
 
@@ -131,29 +135,22 @@ class EMRSparkService(
         runCatching {
             eventBus.emit(Event.Emr.SparkJobWaiting)
 
-            val startTime = System.currentTimeMillis()
-            var currentStatus: SparkService.JobStatus
             var pollCount = 0
 
-            do {
-                Thread.sleep(pollInterval.toMillis())
-                pollCount++
-
-                // Check for timeout
-                val elapsed = System.currentTimeMillis() - startTime
-                if (elapsed > Constants.EMR.MAX_POLL_TIMEOUT_MS) {
-                    val timeoutMinutes = Constants.EMR.MAX_POLL_TIMEOUT_MS / Constants.Time.MILLIS_PER_MINUTE
-                    error("Job polling timed out after $timeoutMinutes minutes")
+            val currentStatus =
+                pollUntilOrTimeout(
+                    what = "EMR step $stepId to finish",
+                    timeout = jobWaitTimeout,
+                    interval = pollInterval,
+                    done = { it.state in TERMINAL_JOB_STATES },
+                ) {
+                    getJobStatus(clusterId, stepId).getOrThrow().also { status ->
+                        // Log less frequently to reduce noise (every 60 seconds at default 5s interval)
+                        if (++pollCount % Constants.EMR.LOG_INTERVAL_POLLS == 0) {
+                            eventBus.emit(Event.Emr.SparkJobStateUpdate(status.state.toString()))
+                        }
+                    }
                 }
-
-                val statusResult = getJobStatus(clusterId, stepId)
-                currentStatus = statusResult.getOrThrow()
-
-                // Log less frequently to reduce noise (every 60 seconds at default 5s interval)
-                if (pollCount % Constants.EMR.LOG_INTERVAL_POLLS == 0) {
-                    eventBus.emit(Event.Emr.SparkJobStateUpdate(currentStatus.state.toString()))
-                }
-            } while (currentStatus.state !in TERMINAL_JOB_STATES)
 
             when (currentStatus.state) {
                 StepState.COMPLETED -> {

@@ -29,7 +29,11 @@ import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.DataBucketTeardown
 import com.rustyrazorblade.easydblab.services.ExternalIpService
+import com.rustyrazorblade.easydblab.services.TailnetCleanup
+import com.rustyrazorblade.easydblab.services.TailscaleService
+import com.rustyrazorblade.easydblab.services.TeardownPlanner
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
@@ -210,6 +214,13 @@ object TestModules {
             // AwsS3BucketService over the mocked S3 client
             single { AwsS3BucketService(get<S3Client>(), get<AccountIdentity>()) }
             single<S3BucketAdmin> { get<AwsS3BucketService>() }
+
+            // The jobs `down` delegates to, built when the command first asks for one so a test
+            // can still swap the Tailscale service, the bucket service or the user before then
+            single<TailscaleService> { mock() }
+            factory { TailnetCleanup(get(), get(), get()) }
+            factory { DataBucketTeardown(get(), get()) }
+            factory { TeardownPlanner(get()) }
 
             // Published Cassandra builds. Mocked rather than real: resolving it for real would
             // create the account bucket. Its defaults (no builds, no match) are what a profile

@@ -165,6 +165,9 @@ val servicesModule =
                 .build()
         }
         factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
+        factory { TailnetCleanup(get(), get(), get()) }
+        factory { DataBucketTeardown(get(), get()) }
+        factory { TeardownPlanner(get()) }
         singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class
         singleOf(::DefaultLokiQueryService) bind LokiQueryService::class
         factoryOf(::SidecarManifestBuilder)

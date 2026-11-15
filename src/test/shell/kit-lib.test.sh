@@ -298,6 +298,40 @@ test_a_failed_push_returns_0() {
     fail "not one warning on stderr across two failed pushes: ${err}"
 }
 
+test_pyroscope_patch_rejects_a_port_that_is_not_a_number() {
+  start_test "pyroscope patch with a bad port"
+  local bad
+  for bad in 8080x "" -1; do
+    : > "${STUB_STATE}/kubectl.calls"
+    run_lib "edl_patch_pyroscope presto-coordinator coordinator presto lab-1 coordinator 8080 \"${bad}\""
+    [ "${rc}" -ne 0 ] || fail "port '${bad}' exited 0"
+    [ "${err}" = "edl_patch_pyroscope: '${bad}' is not a port number" ] || fail "message for '${bad}': ${err}"
+    grep -q "patch" <<< "$(calls)" && fail "patched with port '${bad}': $(calls)"
+  done
+}
+
+test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options() {
+  start_test "pyroscope patch body"
+  run_lib "PYROSCOPE_URL=http://10.0.0.5:4040 TENANT='a\"b' edl_patch_pyroscope trino-coordinator trino-coordinator trino lab-1 coordinator 8080 9090"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  local patch
+  patch="$(sed -n "s/^patch deployment trino-coordinator --namespace default --type=strategic -p=//p" "${STUB_STATE}/kubectl.calls")"
+  [ -n "${patch}" ] || { fail "no patch call: $(calls)"; return; }
+  [ "$(jq -c "[.spec.template.spec.containers[0].ports[] | [.containerPort, .hostPort]]" <<< "${patch}")" = "[[8080,8080],[9090,9090]]" ] ||
+    fail "ports: $(jq -c "..containers[0].ports" <<< "${patch}")"
+  jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-Dpyroscope.tenant.id=a\"b " ||
+    fail "the tenant was not carried through escaping: ${patch}"
+  jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-Dpyroscope.labels=cluster=lab-1,component=coordinator" ||
+    fail "labels: ${patch}"
+}
+
+test_the_cluster_label_fails_when_cluster_config_has_none() {
+  start_test "cluster label"
+  run_lib "edl_cluster_label"
+  [ "${rc}" -ne 0 ] || fail "exited 0 with no cluster_name"
+  case "${err}" in *"cluster-config has no cluster_name"*) ;; *) fail "message: ${err}" ;; esac
+}
+
 test_sourcing_changes_no_option_and_defines_only_edl_names() {
   start_test "sourcing is side-effect free"
   (
@@ -347,6 +381,9 @@ test_gauges_are_pushed_as_otlp_json_labelled_with_the_kit
 test_a_failed_push_returns_0
 test_sourcing_changes_no_option_and_defines_only_edl_names
 test_a_script_run_outside_easy_db_lab_says_so
+test_pyroscope_patch_rejects_a_port_that_is_not_a_number
+test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options
+test_the_cluster_label_fails_when_cluster_config_has_none
 
 echo "kit-lib (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

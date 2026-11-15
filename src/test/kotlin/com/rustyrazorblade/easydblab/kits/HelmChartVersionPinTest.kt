@@ -13,6 +13,10 @@ import java.io.File
  * `KitWorkloadProbe` decides a helm-runtime kit is gone by looking for pods labelled
  * `app.kubernetes.io/instance=<release>`, which was verified only for these chart versions; an
  * unpinned install would pull whatever the chart repo publishes next and could silently drop it.
+ *
+ * The helm command itself lives in `edl_helm_upgrade_with_catalogs` (edl-kit-lib.sh), so this test
+ * checks that each kit's update-catalogs script pins the version and passes it to that function;
+ * `presto-trino-scripts.test.sh` checks that helm is then run with `--version <the pin>`.
  */
 class HelmChartVersionPinTest : BaseKoinTest() {
     @ParameterizedTest(name = "{0} installs {1} at {3}")
@@ -29,21 +33,9 @@ class HelmChartVersionPinTest : BaseKoinTest() {
         val script =
             BuiltinKitFixture(kitName, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
                 .resource("bin/update-catalogs.sh.template")
-        val installs = helmInstalls(script, chart)
 
         assertThat(Regex("""(?m)^$versionVariable="([^"]+)"$""").find(script)?.groupValues?.get(1))
             .isEqualTo(version)
-        assertThat(installs).isNotEmpty()
-        assertThat(installs).allSatisfy { assertThat(it).contains("--version \"\${$versionVariable}\"") }
+        assertThat(script).contains("$chart \"\${$versionVariable}\"")
     }
-
-    /** Each `helm upgrade --install` command naming [chart], joined across its `\` continuations. */
-    private fun helmInstalls(
-        script: String,
-        chart: String,
-    ): List<String> =
-        script
-            .replace(Regex("""\\\n\s*"""), " ")
-            .lines()
-            .filter { it.contains("helm upgrade --install") && it.contains(chart) }
 }

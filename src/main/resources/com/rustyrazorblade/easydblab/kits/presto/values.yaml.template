@@ -14,3 +14,11 @@ metrics:
   enabled: true
   port: 9090
 
+# Presto's JMX agent attaches the JVM to itself, which sends the JVM a SIGQUIT. The node's default
+# AppArmor profile (containerd's, stacked with the host's) refuses every signal a container sends,
+# so without this the coordinator and the workers crash at startup with
+# "IOException: Permission denied" in JmxAgent9. Applies to both pods.
+securityContext:
+  appArmorProfile:
+    type: Unconfined
+

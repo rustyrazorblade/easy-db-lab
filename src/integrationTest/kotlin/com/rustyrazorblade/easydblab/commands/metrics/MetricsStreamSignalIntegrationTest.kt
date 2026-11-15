@@ -112,25 +112,32 @@ class MetricsStreamSignalIntegrationTest {
     @Test
     fun `the first SIGTERM in the middle of a cycle stops the stream with exit 0 and nothing more`() {
         // The signal comes at once, while the cycle waits on a Mimir that accepted the query.
-        stopsWhileMimirNeverAnswers(signalDelayMs = 0)
+        stopsWhileMimirNeverAnswers(afterRequestSent = false)
     }
 
     @Test
     fun `the first SIGTERM while a query is blocked reading its answer stops the stream before the read timeout`() {
         // A signal right after the connection can land before the query starts to read, and then the
-        // thread's interrupt is seen at once.  Two seconds later the query is blocked in a socket read,
-        // which only a cancelled call can end; the read timeout is 30 s, longer than the exit wait.
-        stopsWhileMimirNeverAnswers(signalDelayMs = QUERY_BLOCKED_MS)
+        // thread's interrupt is seen at once.  Once the whole request has reached Mimir, the query is
+        // at, or a few microseconds from, a blocking socket read, which only a cancelled call can end;
+        // the read timeout is 30 s, longer than the exit wait.
+        stopsWhileMimirNeverAnswers(afterRequestSent = true)
     }
 
-    /** Mimir accepts the query and never answers; the signal comes [signalDelayMs] after the accept. */
-    private fun stopsWhileMimirNeverAnswers(signalDelayMs: Long) {
+    /**
+     * Mimir accepts the query and never answers.  The signal comes right after the accept, or, with
+     * [afterRequestSent], once Mimir has read the request's headers off the socket.
+     */
+    private fun stopsWhileMimirNeverAnswers(afterRequestSent: Boolean) {
         ServerSocket(Constants.K8s.MIMIR_HTTP_PORT, 1, InetAddress.getByName("127.0.0.1")).use { mimir ->
             val accepted = CompletableFuture<Socket>()
             thread(isDaemon = true) { runCatching { accepted.complete(mimir.accept()) } }
             val stream = startStream()
-            accepted.get(STARTUP_SECONDS, TimeUnit.SECONDS).use {
-                Thread.sleep(signalDelayMs)
+            accepted.get(STARTUP_SECONDS, TimeUnit.SECONDS).use { connection ->
+                if (afterRequestSent) {
+                    awaitRequestHeaders(connection)
+                    Thread.sleep(READ_SETTLE_MS)
+                }
                 stream.destroy()
 
                 assertThat(stream.waitFor(EXIT_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
@@ -138,6 +145,13 @@ class MetricsStreamSignalIntegrationTest {
                 assertThat(output.readText()).doesNotContain("metrics stream: published")
             }
         }
+    }
+
+    /** Reads [connection] until the blank line that ends the HTTP request's headers. */
+    private fun awaitRequestHeaders(connection: Socket) {
+        connection.soTimeout = (STARTUP_SECONDS * 1000).toInt()
+        val reader = connection.getInputStream().bufferedReader(Charsets.ISO_8859_1)
+        generateSequence { reader.readLine() }.first { it.isEmpty() }
     }
 
     @Test
@@ -168,7 +182,7 @@ class MetricsStreamSignalIntegrationTest {
         const val EXIT_WAIT_SECONDS = 20L
         const val HELD_WAIT_SECONDS = 15L
         const val STILL_STOPPING_MS = 300L
-        const val QUERY_BLOCKED_MS = 2000L
+        const val READ_SETTLE_MS = 200L
         const val SIGTERM_EXIT = 143
         val POLL: Duration = Duration.ofSeconds(1)
     }

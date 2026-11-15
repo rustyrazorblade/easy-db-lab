@@ -1,0 +1,98 @@
+---
+apiVersion: "batch/v1"
+kind: "Job"
+metadata:
+  labels:
+    app.kubernetes.io/name: "cassandra-easy-stress"
+    easydblab/role: "stress-run"
+    job-name: "stress-golden"
+  name: "stress-golden"
+  namespace: "default"
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "cassandra-easy-stress"
+        easydblab/role: "stress-run"
+        job-name: "stress-golden"
+    spec:
+      containers:
+      - args:
+        - "run"
+        - "KeyValue"
+        - "-d"
+        - "1h"
+        env:
+        - name: "CASSANDRA_CONTACT_POINTS"
+          value: "10.0.1.6,10.0.1.7"
+        - name: "CASSANDRA_PORT"
+          value: "9042"
+        - name: "CASSANDRA_EASY_STRESS_DEFAULT_DC"
+          value: "us-west-2"
+        - name: "CASSANDRA_EASY_STRESS_PROM_PORT"
+          value: "9500"
+        - name: "JDK_JAVA_OPTIONS"
+          value: "-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=cassandra-easy-stress\
+            \ -Dpyroscope.server.address=http://10.0.1.5:4040 -Dpyroscope.format=jfr\
+            \ -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms\
+            \ -Dpyroscope.labels=cluster=test-cluster-golden-cluster-id,job_name=stress-golden\
+            \ -Dpyroscope.tenant.id=acme -javaagent:/usr/local/otel/opentelemetry-javaagent.jar\
+            \ -Dotel.service.name=cassandra-easy-stress -Dotel.resource.attributes=job_name=stress-golden,team=perf,run=42\
+            \ -Dotel.exporter.otlp.endpoint=http://10.0.1.5:4318 -Dotel.metric.export.interval=5s\
+            \ -Dotel.logs.exporter=none -Dotel.traces.sampler=parentbased_traceidratio\
+            \ -Dotel.traces.sampler.arg=0.01"
+        image: "ghcr.io/apache/cassandra-easy-stress:latest"
+        name: "stress"
+        volumeMounts:
+        - mountPath: "/usr/local/pyroscope"
+          name: "pyroscope-agent"
+          readOnly: true
+        - mountPath: "/usr/local/otel"
+          name: "otel-agent"
+          readOnly: true
+      dnsPolicy: "ClusterFirstWithHostNet"
+      hostNetwork: true
+      initContainers:
+      - args:
+        - "--config=/etc/otel/otel-stress-sidecar-config.yaml"
+        env:
+        - name: "K8S_NODE_NAME"
+          valueFrom:
+            fieldRef:
+              fieldPath: "spec.nodeName"
+        - name: "HOST_IP"
+          valueFrom:
+            fieldRef:
+              fieldPath: "status.hostIP"
+        - name: "CLUSTER_NAME"
+          value: "test-cluster-golden-cluster-id"
+        - name: "GOMEMLIMIT"
+          value: "64MiB"
+        - name: "OTEL_RESOURCE_ATTRIBUTES"
+          value: "job_name=stress-golden,team=perf,run=42"
+        - name: "STRESS_PROM_PORT"
+          value: "9500"
+        image: "otel/opentelemetry-collector-contrib:0.161.0"
+        name: "otel-sidecar"
+        restartPolicy: "Always"
+        volumeMounts:
+        - mountPath: "/etc/otel"
+          name: "otel-sidecar-config"
+          readOnly: true
+      nodeSelector:
+        type: "app"
+      restartPolicy: "Never"
+      volumes:
+      - configMap:
+          name: "otel-stress-sidecar-config"
+        name: "otel-sidecar-config"
+      - hostPath:
+          path: "/usr/local/pyroscope"
+          type: "Directory"
+        name: "pyroscope-agent"
+      - hostPath:
+          path: "/usr/local/otel"
+          type: "Directory"
+        name: "otel-agent"
+  ttlSecondsAfterFinished: 86400

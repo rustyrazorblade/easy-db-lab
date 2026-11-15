@@ -223,7 +223,7 @@ Commands should delegate to these services:
 |---------|---------|
 | `CassandraService` | Cassandra lifecycle (start, stop, restart) |
 | `SidecarService` | Cassandra sidecar management |
-| `K8sService` | Kubernetes operations on the workspace cluster (no host argument; includes the read queries `listJobs`, `listPods`, `listPodsByLabel`, `getNodes`, `isReachable`) |
+| `K8sService` | Kubernetes operations on the workspace cluster (no host argument; includes the read queries `listJobs`, `listPods`, `listPodsByLabel`, `getNodes`, `isReachable`). Each sub-interface (`K8sManifestOperations`, `K8sJobOperations`, `K8sNamespaceOperations`, `K8sStorageOperations`, `K8sPodOperations`, `K8sReadOperations`) is also registered in Koin; a service that uses only one injects that one |
 | `K3sService` | K3s cluster management |
 | `StressJobService` | Stress testing jobs on K8s |
 | `HostOperationsService` | Parallel operations across hosts (see below) |

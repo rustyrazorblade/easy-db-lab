@@ -12,6 +12,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
@@ -122,275 +124,6 @@ internal class ClusterBackupServiceTest {
     }
 
     @Nested
-    inner class RestoreKubeconfig {
-        @Test
-        fun `should download kubeconfig file when it exists in S3`() {
-            // Given
-            val localPath = tempDir.toPath().resolve("kubeconfig")
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).kubeconfig()
-
-            whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(true)
-            whenever(mockObjectStore.downloadFile(any(), any(), any()))
-                .thenReturn(ObjectStore.DownloadResult(localPath, 100L))
-
-            // When
-            val result = service.restoreKubeconfig(localPath, clusterState)
-
-            // Then
-            assertThat(result.isSuccess).isTrue()
-            verify(mockObjectStore).downloadFile(eq(expectedS3Path), eq(localPath), eq(true))
-            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.KubeconfigRestored }
-        }
-
-        @Test
-        fun `should return failure when kubeconfig does not exist in S3`() {
-            // Given
-            val localPath = tempDir.toPath().resolve("kubeconfig")
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).kubeconfig()
-
-            whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(false)
-
-            // When
-            val result = service.restoreKubeconfig(localPath, clusterState)
-
-            // Then
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()?.message).contains("does not exist in S3")
-            verify(mockObjectStore, never()).downloadFile(any(), any(), any())
-        }
-
-        @Test
-        fun `should return failure when s3Bucket is not configured`() {
-            // Given
-            val localPath = tempDir.toPath().resolve("kubeconfig")
-            val clusterState =
-                ClusterState(
-                    name = "test-cluster",
-                    versions = mutableMapOf(),
-                    s3Bucket = null,
-                )
-
-            // When
-            val result = service.restoreKubeconfig(localPath, clusterState)
-
-            // Then
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
-            verify(mockObjectStore, never()).downloadFile(any(), any(), any())
-        }
-    }
-
-    @Nested
-    inner class BackupK8sManifests {
-        @Test
-        fun `should upload k8s manifests directory when it exists`() {
-            // Given
-            val k8sDir =
-                File(tempDir, Constants.K8s.MANIFEST_DIR).apply {
-                    mkdirs()
-                    File(this, "deployment.yaml").writeText("apiVersion: apps/v1")
-                    File(this, "service.yaml").writeText("apiVersion: v1")
-                }
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).k8s()
-
-            whenever(mockObjectStore.uploadDirectory(any<Path>(), any(), any()))
-                .thenReturn(ObjectStore.UploadDirectoryResult(expectedS3Path, 2, 100L))
-
-            // When
-            val result = service.backupK8sManifests(k8sDir.toPath(), clusterState)
-
-            // Then
-            assertThat(result.isSuccess).isTrue()
-            verify(mockObjectStore).uploadDirectory(eq(k8sDir.toPath()), eq(expectedS3Path), eq(true))
-            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.K8sManifestsBackedUp }
-        }
-
-        @Test
-        fun `should return failure when directory does not exist`() {
-            // Given
-            val nonExistentPath = tempDir.toPath().resolve("does-not-exist")
-            val clusterState = createClusterState()
-
-            // When
-            val result = service.backupK8sManifests(nonExistentPath, clusterState)
-
-            // Then
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
-            verify(mockObjectStore, never()).uploadDirectory(any<Path>(), any(), any())
-        }
-    }
-
-    @Nested
-    inner class RestoreK8sManifests {
-        @Test
-        fun `should download k8s manifests directory when it exists in S3`() {
-            // Given
-            val localPath = tempDir.toPath().resolve(Constants.K8s.MANIFEST_DIR)
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).k8s()
-
-            whenever(mockObjectStore.directoryExists(expectedS3Path)).thenReturn(true)
-            whenever(mockObjectStore.downloadDirectory(any(), any(), any()))
-                .thenReturn(ObjectStore.DownloadDirectoryResult(localPath, 2, 100L))
-
-            // When
-            val result = service.restoreK8sManifests(localPath, clusterState)
-
-            // Then
-            assertThat(result.isSuccess).isTrue()
-            verify(mockObjectStore).downloadDirectory(eq(expectedS3Path), eq(localPath), eq(true))
-            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.K8sManifestsRestored }
-        }
-
-        @Test
-        fun `should return failure when k8s manifests do not exist in S3`() {
-            // Given
-            val localPath = tempDir.toPath().resolve(Constants.K8s.MANIFEST_DIR)
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).k8s()
-
-            whenever(mockObjectStore.directoryExists(expectedS3Path)).thenReturn(false)
-
-            // When
-            val result = service.restoreK8sManifests(localPath, clusterState)
-
-            // Then
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()?.message).contains("do not exist in S3")
-            verify(mockObjectStore, never()).downloadDirectory(any(), any(), any())
-        }
-    }
-
-    @Nested
-    inner class BackupCassandraPatch {
-        @Test
-        fun `should upload cassandra patch file when it exists`() {
-            // Given
-            val localPatch =
-                File(tempDir, Constants.ConfigPaths.CASSANDRA_PATCH_FILE).apply {
-                    writeText("cassandra:\n  jvm_options: -Xmx4G")
-                }
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).cassandraPatch()
-
-            whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
-                .thenReturn(ObjectStore.UploadResult(expectedS3Path, 50L))
-
-            // When
-            val result = service.backupCassandraPatch(localPatch.toPath(), clusterState)
-
-            // Then
-            assertThat(result.isSuccess).isTrue()
-            verify(mockObjectStore).uploadFile(eq(localPatch), eq(expectedS3Path), eq(true))
-            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.CassandraPatchBackedUp }
-        }
-
-        @Test
-        fun `should return failure when file does not exist`() {
-            // Given
-            val nonExistentPath = tempDir.toPath().resolve("does-not-exist.yaml")
-            val clusterState = createClusterState()
-
-            // When
-            val result = service.backupCassandraPatch(nonExistentPath, clusterState)
-
-            // Then
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
-            assertThat(result.exceptionOrNull()?.message).contains("does not exist")
-            verify(mockObjectStore, never()).uploadFile(any<File>(), any(), any())
-        }
-
-        @Test
-        fun `should return failure when s3Bucket is not configured`() {
-            // Given
-            val localPatch =
-                File(tempDir, Constants.ConfigPaths.CASSANDRA_PATCH_FILE).apply {
-                    writeText("cassandra:\n  jvm_options: -Xmx4G")
-                }
-            val clusterState =
-                ClusterState(
-                    name = "test-cluster",
-                    versions = mutableMapOf(),
-                    s3Bucket = null,
-                )
-
-            // When
-            val result = service.backupCassandraPatch(localPatch.toPath(), clusterState)
-
-            // Then
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
-            verify(mockObjectStore, never()).uploadFile(any<File>(), any(), any())
-        }
-    }
-
-    @Nested
-    inner class RestoreCassandraPatch {
-        @Test
-        fun `should download cassandra patch file when it exists in S3`() {
-            // Given
-            val localPath = tempDir.toPath().resolve(Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).cassandraPatch()
-
-            whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(true)
-            whenever(mockObjectStore.downloadFile(any(), any(), any()))
-                .thenReturn(ObjectStore.DownloadResult(localPath, 50L))
-
-            // When
-            val result = service.restoreCassandraPatch(localPath, clusterState)
-
-            // Then
-            assertThat(result.isSuccess).isTrue()
-            verify(mockObjectStore).downloadFile(eq(expectedS3Path), eq(localPath), eq(true))
-            assertThat(capturedEvents).anyMatch { it.event is Event.Backup.CassandraPatchRestored }
-        }
-
-        @Test
-        fun `should return failure when cassandra patch does not exist in S3`() {
-            // Given
-            val localPath = tempDir.toPath().resolve(Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).cassandraPatch()
-
-            whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(false)
-
-            // When
-            val result = service.restoreCassandraPatch(localPath, clusterState)
-
-            // Then
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()?.message).contains("does not exist in S3")
-            verify(mockObjectStore, never()).downloadFile(any(), any(), any())
-        }
-
-        @Test
-        fun `should return failure when s3Bucket is not configured`() {
-            // Given
-            val localPath = tempDir.toPath().resolve(Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
-            val clusterState =
-                ClusterState(
-                    name = "test-cluster",
-                    versions = mutableMapOf(),
-                    s3Bucket = null,
-                )
-
-            // When
-            val result = service.restoreCassandraPatch(localPath, clusterState)
-
-            // Then
-            assertThat(result.isFailure).isTrue()
-            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
-            verify(mockObjectStore, never()).downloadFile(any(), any(), any())
-        }
-    }
-
-    @Nested
     inner class BackupAll {
         @Test
         fun `should backup kubeconfig, k8s manifests, and cassandra patch when they exist`() {
@@ -496,105 +229,102 @@ internal class ClusterBackupServiceTest {
         }
     }
 
+    /**
+     * One row per backup target the per-target methods used to cover (kubeconfig, k8s manifests,
+     * cassandra patch), now exercised through [ClusterBackupService.backupAll] and
+     * [ClusterBackupService.restoreAll] with only that target present.
+     */
     @Nested
-    inner class ExistsChecks {
-        @Test
-        fun `kubeconfigExistsInS3 should return true when kubeconfig exists`() {
-            // Given
+    inner class SingleTarget {
+        @ParameterizedTest(name = "backupAll uploads only {0} when it is the only file present")
+        @EnumSource(value = BackupTarget::class, names = ["KUBECONFIG", "K8S_MANIFESTS", "CASSANDRA_PATCH"])
+        fun `backupAll uploads only the target that exists`(target: BackupTarget) {
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).kubeconfig()
+            val local = File(tempDir, target.localPath)
+            if (target.isDirectory) {
+                local.mkdirs()
+                File(local, "deployment.yaml").writeText("apiVersion: apps/v1")
+            } else {
+                local.writeText("content")
+            }
+            val expectedS3Path = target.s3PathProvider(ClusterS3Path.from(clusterState))
 
-            whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(true)
+            whenever(mockObjectStore.uploadFile(any<File>(), any(), any()))
+                .thenReturn(ObjectStore.UploadResult(expectedS3Path, 100L))
+            whenever(mockObjectStore.uploadDirectory(any<Path>(), any(), any()))
+                .thenReturn(ObjectStore.UploadDirectoryResult(expectedS3Path, 1, 100L))
 
-            // When
-            val result = service.kubeconfigExistsInS3(clusterState)
+            val result = service.backupAll(tempDir.absolutePath, clusterState)
 
-            // Then
-            assertThat(result).isTrue()
+            assertThat(result.isSuccess).isTrue()
+            assertThat(result.getOrThrow().successfulTargets).containsExactly(target)
+            if (target.isDirectory) {
+                verify(mockObjectStore).uploadDirectory(eq(local.toPath()), eq(expectedS3Path), eq(true))
+                verify(mockObjectStore, never()).uploadFile(any<File>(), any(), any())
+            } else {
+                verify(mockObjectStore).uploadFile(eq(local), eq(expectedS3Path), eq(true))
+                verify(mockObjectStore, never()).uploadDirectory(any<Path>(), any(), any())
+            }
+            assertThat(capturedEvents).anyMatch {
+                (it.event as? Event.Backup.ConfigBackedUp)?.displayName == target.displayName
+            }
         }
 
-        @Test
-        fun `kubeconfigExistsInS3 should return false when s3Bucket is not configured`() {
-            // Given
-            val clusterState =
-                ClusterState(
-                    name = "test-cluster",
-                    versions = mutableMapOf(),
-                    s3Bucket = null,
-                )
+        @ParameterizedTest(name = "backupAll fails for {0} when the S3 bucket is not configured")
+        @EnumSource(value = BackupTarget::class, names = ["KUBECONFIG", "K8S_MANIFESTS", "CASSANDRA_PATCH"])
+        fun `backupAll fails when s3Bucket is not configured`(target: BackupTarget) {
+            val local = File(tempDir, target.localPath)
+            if (target.isDirectory) local.mkdirs() else local.writeText("content")
 
-            // When
-            val result = service.kubeconfigExistsInS3(clusterState)
+            val result = service.backupAll(tempDir.absolutePath, noBucketClusterState())
 
-            // Then
-            assertThat(result).isFalse()
-            verify(mockObjectStore, never()).fileExists(any())
+            assertThat(result.isFailure).isTrue()
+            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
+            verify(mockObjectStore, never()).uploadFile(any<File>(), any(), any())
+            verify(mockObjectStore, never()).uploadDirectory(any<Path>(), any(), any())
         }
 
-        @Test
-        fun `k8sManifestsExistInS3 should return true when manifests exist`() {
-            // Given
+        @ParameterizedTest(name = "restoreAll downloads only {0} when it is the only object in S3")
+        @EnumSource(value = BackupTarget::class, names = ["KUBECONFIG", "K8S_MANIFESTS", "CASSANDRA_PATCH"])
+        fun `restoreAll downloads only the target that exists in S3`(target: BackupTarget) {
             val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).k8s()
+            val s3Path = target.s3PathProvider(ClusterS3Path.from(clusterState))
+            val expectedLocal = File(tempDir, target.localPath).toPath()
 
-            whenever(mockObjectStore.directoryExists(expectedS3Path)).thenReturn(true)
+            if (target.isDirectory) {
+                whenever(mockObjectStore.directoryExists(s3Path)).thenReturn(true)
+                whenever(mockObjectStore.downloadDirectory(any(), any(), any()))
+                    .thenReturn(ObjectStore.DownloadDirectoryResult(expectedLocal, 2, 100L))
+            } else {
+                whenever(mockObjectStore.fileExists(s3Path)).thenReturn(true)
+                whenever(mockObjectStore.downloadFile(any(), any(), any()))
+                    .thenReturn(ObjectStore.DownloadResult(expectedLocal, 100L))
+            }
 
-            // When
-            val result = service.k8sManifestsExistInS3(clusterState)
+            val result = service.restoreAll(tempDir.absolutePath, clusterState)
 
-            // Then
-            assertThat(result).isTrue()
+            assertThat(result.isSuccess).isTrue()
+            assertThat(result.getOrThrow().successfulTargets).containsExactly(target)
+            if (target.isDirectory) {
+                verify(mockObjectStore).downloadDirectory(eq(s3Path), eq(expectedLocal), eq(true))
+                verify(mockObjectStore, never()).downloadFile(any(), any(), any())
+            } else {
+                verify(mockObjectStore).downloadFile(eq(s3Path), eq(expectedLocal), eq(true))
+                verify(mockObjectStore, never()).downloadDirectory(any(), any(), any())
+            }
+            assertThat(capturedEvents).anyMatch {
+                (it.event as? Event.Backup.ConfigRestored)?.displayName == target.displayName
+            }
         }
 
         @Test
-        fun `k8sManifestsExistInS3 should return false when s3Bucket is not configured`() {
-            // Given
-            val clusterState =
-                ClusterState(
-                    name = "test-cluster",
-                    versions = mutableMapOf(),
-                    s3Bucket = null,
-                )
+        fun `restoreAll fails when s3Bucket is not configured`() {
+            val result = service.restoreAll(tempDir.absolutePath, noBucketClusterState())
 
-            // When
-            val result = service.k8sManifestsExistInS3(clusterState)
-
-            // Then
-            assertThat(result).isFalse()
-            verify(mockObjectStore, never()).directoryExists(any())
-        }
-
-        @Test
-        fun `cassandraPatchExistsInS3 should return true when cassandra patch exists`() {
-            // Given
-            val clusterState = createClusterState()
-            val expectedS3Path = ClusterS3Path.from(clusterState).cassandraPatch()
-
-            whenever(mockObjectStore.fileExists(expectedS3Path)).thenReturn(true)
-
-            // When
-            val result = service.cassandraPatchExistsInS3(clusterState)
-
-            // Then
-            assertThat(result).isTrue()
-        }
-
-        @Test
-        fun `cassandraPatchExistsInS3 should return false when s3Bucket is not configured`() {
-            // Given
-            val clusterState =
-                ClusterState(
-                    name = "test-cluster",
-                    versions = mutableMapOf(),
-                    s3Bucket = null,
-                )
-
-            // When
-            val result = service.cassandraPatchExistsInS3(clusterState)
-
-            // Then
-            assertThat(result).isFalse()
-            verify(mockObjectStore, never()).fileExists(any())
+            assertThat(result.isFailure).isTrue()
+            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
+            verify(mockObjectStore, never()).downloadFile(any(), any(), any())
+            verify(mockObjectStore, never()).downloadDirectory(any(), any(), any())
         }
     }
 
@@ -785,6 +515,13 @@ internal class ClusterBackupServiceTest {
             return digest.digest().joinToString("") { "%02x".format(it) }
         }
     }
+
+    private fun noBucketClusterState(): ClusterState =
+        ClusterState(
+            name = "test-cluster",
+            versions = mutableMapOf(),
+            s3Bucket = null,
+        )
 
     private fun createClusterState(): ClusterState =
         ClusterState(

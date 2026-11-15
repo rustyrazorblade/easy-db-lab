@@ -474,6 +474,7 @@ tasks.register("testScripts") {
         "testSysbenchPrepareScript",
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
+        "testPrestoTrinoScripts",
         "testBaseJdkInstall",
         "testBaseChronyPoll",
         "testBasePrimaryEniNetwork",
@@ -546,6 +547,16 @@ tasks.register<Exec>("testPyroscopeKitLabels") {
     description = "Unit-test the Pyroscope labels of the presto and trino kit start scripts"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/pyroscope-kit-labels.test.sh")
+}
+
+// Unit-test the presto and trino kit scripts, which share their steps through edl-kit-lib.sh: the
+// pinned chart version, the catalogs, the coordinator pod replacement, the hostPort patch, stop and
+// uninstall. helm and kubectl are stubbed.
+tasks.register<Exec>("testPrestoTrinoScripts") {
+    group = "Verification"
+    description = "Unit-test the presto and trino kit scripts"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/presto-trino-scripts.test.sh")
 }
 
 // Unit-test the shared kit shell library (configuration/edl-kit-lib.sh): app-node check, pod

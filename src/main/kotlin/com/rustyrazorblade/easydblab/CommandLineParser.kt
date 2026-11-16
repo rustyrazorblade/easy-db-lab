@@ -186,6 +186,10 @@ class CommandLineParser : KoinComponent {
                             currentParseResult.commandSpec().commandLine().usage(System.out)
                             return@IExecutionStrategy 0
                         }
+                        if (currentParseResult.isVersionHelpRequested) {
+                            currentParseResult.commandSpec().commandLine().printVersionHelp(System.out)
+                            return@IExecutionStrategy 0
+                        }
                         val cmd = currentParseResult.commandSpec().userObject()
                         if (cmd is PicoCommand) {
                             // Route ALL commands to CommandExecutor

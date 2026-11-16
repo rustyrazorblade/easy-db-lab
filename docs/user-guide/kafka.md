@@ -21,7 +21,7 @@ easy-db-lab kafka start
 |---|---|---|
 | `--version` | `4.2.0` | Kafka version |
 | `--brokers` | `1` | Number of broker/controller nodes |
-| `--storage-size` | `10Ti` | Persistent volume size per broker |
+| `--storage-size` | ``: `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) | Persistent volume size per broker |
 
 ## Managing Kafka
 

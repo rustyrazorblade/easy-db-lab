@@ -19,7 +19,7 @@ easy-db-lab postgres start
 |---|---|---|
 | `--version` | `17` | PostgreSQL major version (e.g. `17`, `16`) |
 | `--instances` | `1` | Number of PostgreSQL instances; values > 1 deploy a primary and read replicas |
-| `--size` | `10Ti` | Storage size per db node (e.g. `100Gi`) |
+| `--storage-size` | ``: `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) | Storage size per db node (e.g. `100Gi`) |
 
 ## Managing PostgreSQL
 
@@ -36,7 +36,7 @@ easy-db-lab postgres uninstall
 
 ### start
 
-1. Creates PersistentVolumes on db nodes via `platform-pvs`
+1. Creates PersistentVolumes on db nodes through its `kit-storage` step (on local volumes; on a kit StorageClass the cluster provisions them)
 2. Applies the CNPG `Cluster` custom resource
 3. Waits for all pods to reach `Ready`
 4. Applies the NodePort service for external access

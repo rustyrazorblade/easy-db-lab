@@ -26,7 +26,7 @@ within 15 minutes, it prints the pods' recent events and exits non-zero.
 | `--memory` | Memory request and limit per node, such as `4Gi` or `2048Mi` | `4Gi` |
 | `--heap` | JVM heap per node, such as `4G`; must be smaller than `--memory` | half of `--memory` |
 | `--dc` | Datacenter name; the rack is always `rack1` | `dc1` |
-| `--storage-size` | Size of each node's data volume | `10Ti` |
+| `--storage-size` | Size of each node's data volume | ``: `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) |
 
 ## Branch builds with `--image`
 

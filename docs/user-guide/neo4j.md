@@ -18,7 +18,7 @@ easy-db-lab neo4j start
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--version` | Neo4j Community version: 5.6.0 or later 5.x, or a calendar-versioned release (2025.x, 2026.x, and later). The image is `neo4j:<version>-community` | `2026.09.0` |
-| `--storage-size` | Size of the data volume | `10Ti` |
+| `--storage-size` | Size of the data volume | ``: `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) |
 
 ```bash
 easy-db-lab kit install neo4j --version 5.26.0

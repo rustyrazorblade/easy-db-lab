@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  # platform-pvs names the PV data-<kit>-<ordinal>; the StatefulSet's claim takes the same name
+  # kit-storage names the PV data-<kit>-<ordinal>; the StatefulSet's claim takes the same name
   # only when the StatefulSet is named after the kit and its claim template is `data`.
   name: cassandra-pods
   namespace: default

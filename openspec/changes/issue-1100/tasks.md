@@ -41,9 +41,9 @@
 
 ## 7. Docs and specs
 
-- [ ] 7.1 `docs/user-guide/platform-substrate.md`, `docs/development/kits.md` (storage section), kit user guides (sizes, TiDB medium change), `docs/reference/commands.md` (`init` flags, `--storage-size`).
-- [ ] 7.2 Kit specs naming the class: `kafka-kit`, `tidb`, `memcached-kit`, `ignite3`, `postgres`, `clickhouse`, `neo4j-kit`.
-- [ ] 7.3 `configuration/CLAUDE.md`, `create-kit` skill guidance.
+- [x] 7.1 `docs/user-guide/platform-substrate.md`, `docs/development/kits.md` (storage section), kit user guides (sizes, TiDB medium change), `docs/reference/commands.md` (`init` flags, `--storage-size`).
+- [x] 7.2 Kit specs naming the class: `kafka-kit`, `tidb`, `memcached-kit`, `ignite3`, `postgres`, `clickhouse`, `neo4j-kit`.
+- [x] 7.3 `configuration/CLAUDE.md`, `create-kit` skill guidance.
 
 ## 8. Verification
 

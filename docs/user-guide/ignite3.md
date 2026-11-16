@@ -26,6 +26,7 @@ easy-db-lab ignite3 start
 | `--replicas` | Number of Ignite server nodes | db node count |
 | `--storage` | Storage profile (see below) | `aipersist` |
 | `--version` | Apache Ignite 3 Docker image version | `3.0.0` |
+| `--storage-size` | Size of each node's persistence volume | ``: `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) |
 
 ## Storage Profiles
 

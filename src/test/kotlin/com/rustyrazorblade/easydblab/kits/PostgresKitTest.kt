@@ -72,6 +72,12 @@ class PostgresKitTest : BaseKoinTest() {
         assertThat(operator.keepWhileAny).isEqualTo("clusters.postgresql.cnpg.io")
     }
 
+    /** Uninstall removes the instance's local PVs, its `edl-local-<instance>` class and directories. */
+    @Test
+    fun `uninstall releases the instance's db storage`() {
+        assertThat(kit.config.uninstall).contains(InstallStep.KitStorageDelete(nodeType = "db"))
+    }
+
     /**
      * Each postgres instance installs the overview plus its own extension's dashboard. A declared
      * `dashboards` list replaces the scan of `dashboards/`, so a dashboard file left undeclared

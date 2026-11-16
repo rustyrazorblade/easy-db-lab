@@ -78,6 +78,21 @@ class ClickHouseKitTest : BaseKoinTest() {
         val KEEPER_LISTEN_PORTS = listOf(2181, 9444, 9182)
     }
 
+    /**
+     * A fresh install leaves no PVs behind; `start` reserves the kit's volumes, and must do so
+     * before the ClickHouseInstallation's claims exist.
+     */
+    @Test
+    fun `kit storage is reserved on start before the installation is applied, never on install`() {
+        val start = kit.config.start
+        val reserved = start.indexOfFirst { it is InstallStep.KitStorage }
+        val applied = start.indexOfFirst { it is InstallStep.Manifest && it.template == "clickhouseinstallation.yaml" }
+
+        assertThat(kit.config.install.filterIsInstance<InstallStep.KitStorage>()).isEmpty()
+        assertThat(reserved).isNotNegative()
+        assertThat(applied).isGreaterThan(reserved)
+    }
+
     @Test
     fun `start waits for the installation to complete before waiting for the replica pods`() {
         assertThat(runAgainstStub()).isEqualTo(0)

@@ -222,6 +222,55 @@ class KitClaimStorageTest : BaseKoinTest() {
         assertThat(undeclared).isEmpty()
     }
 
+    /**
+     * A kit's local PVs, class and node directories outlive its claims, so `kit uninstall` must
+     * release every pool the kit reserved, and only after the kit's claims are gone: a PV still
+     * bound to a claim is not removed.
+     */
+    @Test
+    fun `every kit releases each storage pool it reserves on uninstall, after deleting its claims`() {
+        val violations =
+            kits().flatMap { kit ->
+                val pools = (kit.install + kit.start).filterIsInstance<InstallStep.KitStorage>().map { it.nodeType }.toSet()
+                val released = kit.uninstall.withIndex().filter { it.value is InstallStep.KitStorageDelete }
+                val firstRelease = released.minOfOrNull { it.index } ?: Int.MAX_VALUE
+                val lastClaimDelete = kit.uninstall.indexOfLast { deletesClaims(it) }
+                pools
+                    .filterNot { pool -> released.any { (it.value as InstallStep.KitStorageDelete).nodeType == pool } }
+                    .map { "${kit.name}: uninstall does not release the $it pool" } +
+                    listOfNotNull(
+                        "${kit.name}: uninstall releases storage before deleting its claims"
+                            .takeIf { lastClaimDelete > firstRelease },
+                    )
+            }
+        assertThat(violations).isEmpty()
+    }
+
+    /**
+     * Strimzi keeps the node pool's claims (`deleteClaim: false`), so Kafka's uninstall deleting
+     * them itself is the only thing that frees its PVs for `kit-storage-delete`.
+     */
+    @Test
+    fun `kafka uninstall deletes the Strimzi claims and then releases the db pool`() {
+        val uninstall = kits().single { it.name == "kafka" }.uninstall
+        val claimDelete =
+            uninstall.indexOfFirst {
+                deletesClaims(it) && it is InstallStep.Shell && "strimzi.io/cluster=kafka" in it.script
+            }
+        val release = uninstall.indexOf(InstallStep.KitStorageDelete(nodeType = "db"))
+
+        assertThat(claimDelete).isNotNegative()
+        assertThat(release).isGreaterThan(claimDelete)
+    }
+
+    private fun deletesClaims(step: InstallStep): Boolean =
+        when (step) {
+            is InstallStep.Delete ->
+                (step.kinds + step.kind).any { it.lowercase() in CLAIM_KINDS }
+            is InstallStep.Shell -> CLAIM_DELETE.containsMatchIn(step.script)
+            else -> false
+        }
+
     @Test
     fun `no kit template names a fixed StorageClass`() {
         val fixed =
@@ -282,6 +331,11 @@ class KitClaimStorageTest : BaseKoinTest() {
         val MANIFEST_KIND = Regex("""(?m)^kind:""")
 
         val TIDB_COMPONENTS = listOf("pd", "tikv", "tiflash")
+
+        val CLAIM_KINDS = setOf("pvc", "persistentvolumeclaim")
+
+        /** A kubectl call in a shell step that deletes claims. */
+        val CLAIM_DELETE = Regex("""kubectl\s+delete\s+(pvc|persistentvolumeclaims?)\b""")
 
         const val KIT_STORAGE_CLASS_PLACEHOLDER = "__KIT_STORAGE_CLASS__"
 

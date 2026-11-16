@@ -8,12 +8,12 @@
 
 ## 2. Per-node building blocks (unit tier, test first)
 
-- [ ] 2.1 `services/bringup/NodeStep` and `StepPolicy`: name, attempts, per-attempt timeout, replaceable flag; built on `RetryUtil` with the checked decorators; never retries `InterruptedException`
-- [ ] 2.2 `JoinLimiter`: fair semaphore of `JOIN_CONCURRENCY`, which also refuses a permit while `ControlPlaneHealth` is unhealthy; tests: never more than the limit in flight with 40 callers; no permit while unhealthy; a permit is given when health returns
-- [ ] 2.3 `SshSessionLimiter`: a semaphore of `HOST_CONCURRENCY` that every SSH step takes for the length of its remote call; test the cap
-- [ ] 2.4 `ControlPlaneHealth` state machine (pure): samples in, healthy/unhealthy out, recovery after `HEALTH_RECOVERY_SAMPLES`, unhealthy deadline; tests at each threshold boundary and for an unreachable sample
-- [ ] 2.5 `ReplacementBudget`: per-node and cluster-wide limits; tests for both limits and the `max(MIN, ceil(n × fraction))` rule at 3, 20, 80 and 1,000 nodes
-- [ ] 2.6 `BringUpProgress`: counts nodes per step from pipeline state changes and emits `BringUpProgress` every interval; test the counts after a scripted sequence
+- [x] 2.1 `services/bringup/NodeStep` and `StepPolicy`: name, attempts, per-attempt timeout, replaceable flag; built on `RetryUtil` with the checked decorators; never retries `InterruptedException`
+- [x] 2.2 `JoinLimiter`: fair semaphore of `JOIN_CONCURRENCY`, which also refuses a permit while `ControlPlaneHealth` is unhealthy; tests: never more than the limit in flight with 40 callers; no permit while unhealthy; a permit is given when health returns
+- [x] 2.3 `SshSessionLimiter`: a semaphore of `HOST_CONCURRENCY` that every SSH step takes for the length of its remote call; test the cap
+- [x] 2.4 `ControlPlaneHealth` state machine (pure): samples in, healthy/unhealthy out, recovery after `HEALTH_RECOVERY_SAMPLES`, unhealthy deadline; tests at each threshold boundary and for an unreachable sample
+- [x] 2.5 `ReplacementBudget`: per-node and cluster-wide limits; tests for both limits and the `max(MIN, ceil(n × fraction))` rule at 3, 20, 80 and 1,000 nodes
+- [x] 2.6 `BringUpProgress`: counts nodes per step from pipeline state changes and emits `BringUpProgress` every interval; test the counts after a scripted sequence
 
 ## 3. Shared watchers
 

@@ -403,7 +403,7 @@ class ClusterStatusCollector(
                 cassandraHosts.filter { host -> instanceStates[host.instanceId]?.state?.uppercase() == RUNNING }
             }
 
-        val answers = if (probeHosts.isEmpty()) emptyList() else collectLiveVersions(probeHosts)
+        val answers = collectLiveVersions(probeHosts)
         if (answers.isNotEmpty()) return liveVersionInfo(answers, probeHosts)
 
         return CassandraVersionInfo(

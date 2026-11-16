@@ -142,7 +142,8 @@ data class StressInfo(
 /**
  * The Cassandra version the cluster runs. [version] is the first answering db host's version;
  * [hosts] has every host's answer, [mixed] says they differ, and [unanswered] names the db hosts
- * that were asked and did not answer within the probe bound (stopped nodes are not asked). A `cached` report has no host answers.
+ * that were asked and did not answer within the probe bound (stopped nodes are not asked). A `cached`
+ * report has no host answers.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable

@@ -207,7 +207,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
         val sts = statefulSet()
         val pvs =
             kit.config.install
-                .filterIsInstance<InstallStep.PlatformPvs>()
+                .filterIsInstance<InstallStep.KitStorage>()
                 .single()
         val claim = sts.spec.volumeClaimTemplates.single()
 
@@ -226,7 +226,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
 
         assertThat(stop.selector).isEqualTo("easydblab/kit=cassandra-pods")
         assertThat(stop.kinds).contains("statefulset", "service", "configmap").doesNotContain("pvc", "persistentvolumeclaim")
-        assertThat(kit.config.uninstall.filterIsInstance<InstallStep.PlatformPvsDelete>()).hasSize(1)
+        assertThat(kit.config.uninstall.filterIsInstance<InstallStep.KitStorageDelete>()).hasSize(1)
         assertThat(kit.config.runtime?.selector).isEqualTo("easydblab/kit=cassandra-pods")
     }
 

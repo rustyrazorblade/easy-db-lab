@@ -75,7 +75,7 @@ install:
     namespace: cnpg-system
 
 start:
-  - type: platform-pvs
+  - type: kit-storage
     node-type: db
   - type: manifest
     template: postgres-cluster.yaml
@@ -111,7 +111,7 @@ stop:
     namespace: default
 
 uninstall:
-  - type: platform-pvs-delete
+  - type: kit-storage-delete
   # postgres and every postgres-<extension> instance run on this one operator; it is removed only
   # once no CNPG Cluster is left.
   - type: helm-uninstall

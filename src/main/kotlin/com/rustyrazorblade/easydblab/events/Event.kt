@@ -1114,15 +1114,19 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("K8s.StorageClassCreated")
-        data object StorageClassCreated : K8s {
-            override fun toDisplayString(): String = "Created local-storage StorageClass"
+        @SerialName("K8s.KitStorageClassCreated")
+        data class KitStorageClassCreated(
+            val storageClass: String,
+        ) : K8s {
+            override fun toDisplayString(): String = "Created StorageClass $storageClass"
         }
 
         @Serializable
-        @SerialName("K8s.StorageClassWfcCreated")
-        data object StorageClassWfcCreated : K8s {
-            override fun toDisplayString(): String = "Created local-storage-wfc StorageClass"
+        @SerialName("K8s.KitStorageClassDeleted")
+        data class KitStorageClassDeleted(
+            val storageClass: String,
+        ) : K8s {
+            override fun toDisplayString(): String = "Deleted StorageClass $storageClass"
         }
     }
 

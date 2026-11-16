@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -111,7 +110,9 @@ sealed interface InstallStep {
     }
 
     /**
-     * Creates the kit's local PersistentVolumes on the [nodeType] nodes' NVMe.
+     * Readies the kit's storage for its claims, as the environment's `KitStorage` says: on owned
+     * nodes the kit's own `edl-local-<kit>` class and its local PVs on the [nodeType] nodes' NVMe; on
+     * a provisioned class only a check that the class reclaims with `Retain`.
      *
      * [storageSize] is the PV capacity; blank means the `STORAGE_SIZE` kit variable. [ifSet]
      * names a kit variable: when it is non-blank and that variable is blank or absent, the step
@@ -119,27 +120,30 @@ sealed interface InstallStep {
      * feature is off.
      */
     @Serializable
-    @SerialName("platform-pvs")
-    data class PlatformPvs(
+    @SerialName("kit-storage")
+    data class KitStorage(
         val count: Int? = null,
         @SerialName("node-type")
         val nodeType: String = "db",
         @SerialName("volume-claim-template-name")
         val volumeClaimTemplateName: String = "data",
-        @SerialName("storage-class")
-        val storageClass: String = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
         @SerialName("storage-size")
         val storageSize: String = "",
         @SerialName("if-set")
         val ifSet: String = "",
     ) : InstallStep
 
+    /**
+     * Releases the kit's storage on explicit uninstall: on owned nodes its local PVs, its class and
+     * its `/mnt/db1/<kit>` directory on the [nodeType] nodes; on a provisioned class nothing.
+     */
     @Serializable
-    @SerialName("platform-pvs-delete")
-    data class PlatformPvsDelete(
+    @SerialName("kit-storage-delete")
+    data class KitStorageDelete(
         @SerialName("node-type")
         val nodeType: String = "db",
     ) : InstallStep
+
 
     @Serializable
     @SerialName("configmap")

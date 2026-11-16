@@ -255,100 +255,53 @@ class DefaultK8sStorageOperations(
         log.info { "PV $pvName claimRef UID cleared, PV should transition to Available for rebinding" }
     }
 
-    override fun ensureLocalStorageClass(): Result<Unit> =
+    override fun ensureKitLocalStorageClass(
+        name: String,
+        clusterId: String,
+    ): Result<Unit> =
         runCatching {
-            log.info { "Ensuring local-storage StorageClass exists" }
-
             clientProvider.createClient().use { client ->
-                val existing =
-                    client
-                        .storage()
-                        .v1()
-                        .storageClasses()
-                        .withName(Constants.K8s.LOCAL_STORAGE_CLASS)
-                        .get()
-
-                if (existing != null) {
-                    if (existing.volumeBindingMode != "Immediate") {
-                        log.info {
-                            "StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS} has binding mode " +
-                                "${existing.volumeBindingMode}, recreating with Immediate"
-                        }
-                        client
-                            .storage()
-                            .v1()
-                            .storageClasses()
-                            .withName(Constants.K8s.LOCAL_STORAGE_CLASS)
-                            .delete()
-                    } else {
-                        log.info { "StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS} already exists" }
-                        return@runCatching
-                    }
-                }
-
-                val storageClass =
-                    StorageClassBuilder()
-                        .withNewMetadata()
-                        .withName(Constants.K8s.LOCAL_STORAGE_CLASS)
-                        .endMetadata()
-                        .withProvisioner("kubernetes.io/no-provisioner")
-                        .withVolumeBindingMode("Immediate")
-                        .withReclaimPolicy("Retain")
-                        .build()
-
-                client
-                    .storage()
-                    .v1()
-                    .storageClasses()
-                    .resource(storageClass)
-                    .create()
-
-                log.info { "Created StorageClass ${Constants.K8s.LOCAL_STORAGE_CLASS}" }
-                eventBus.emit(Event.K8s.StorageClassCreated)
-            }
-        }
-
-    override fun ensureLocalStorageWfcClass(): Result<Unit> =
-        runCatching {
-            log.info { "Ensuring ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS} StorageClass exists" }
-
-            clientProvider.createClient().use { client ->
-                val existing =
-                    client
-                        .storage()
-                        .v1()
-                        .storageClasses()
-                        .withName(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
-                        .get()
-
-                if (existing != null) {
-                    log.info { "StorageClass ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS} already exists" }
+                val classes = client.storage().v1().storageClasses()
+                if (classes.withName(name).get() != null) {
+                    log.info { "StorageClass $name already exists" }
                     return@runCatching
                 }
 
                 val storageClass =
                     StorageClassBuilder()
                         .withNewMetadata()
-                        .withName(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+                        .withName(name)
+                        .addToLabels(Constants.K8s.MANAGED_BY_LABEL, Constants.K8s.MANAGED_BY_VALUE)
+                        .addToLabels(Constants.K8s.CLUSTER_LABEL, clusterId)
                         .endMetadata()
-                        .withProvisioner("kubernetes.io/no-provisioner")
+                        .withProvisioner(NO_PROVISIONER)
+                        // The scheduler picks the pod's node first, so the claim binds that node's PV.
                         .withVolumeBindingMode("WaitForFirstConsumer")
-                        .withReclaimPolicy("Delete")
+                        .withReclaimPolicy("Retain")
                         .build()
 
-                client
-                    .storage()
-                    .v1()
-                    .storageClasses()
-                    .resource(storageClass)
-                    .create()
+                classes.resource(storageClass).create()
+                log.info { "Created StorageClass $name" }
+                eventBus.emit(Event.K8s.KitStorageClassCreated(name))
+            }
+        }
 
-                log.info { "Created StorageClass ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS}" }
-                eventBus.emit(Event.K8s.StorageClassWfcCreated)
+    override fun deleteKitLocalStorageClass(name: String): Result<Unit> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                val deleted =
+                    client
+                        .storage()
+                        .v1()
+                        .storageClasses()
+                        .withName(name)
+                        .delete()
+                if (deleted.isNotEmpty()) eventBus.emit(Event.K8s.KitStorageClassDeleted(name))
             }
         }
 
     override fun storageClassReclaimPolicy(name: String): Result<String?> =
+
         runCatching {
             clientProvider.createClient().use { client ->
                 client
@@ -379,6 +332,9 @@ class DefaultK8sStorageOperations(
     private companion object {
         /** What Kubernetes reclaims with when a StorageClass sets no `reclaimPolicy`. */
         const val DEFAULT_RECLAIM_POLICY = "Delete"
+
+        /** The provisioner of a StorageClass whose PVs are created by hand, as local PVs are. */
+        const val NO_PROVISIONER = "kubernetes.io/no-provisioner"
 
         /** The annotation that marks a cluster's default StorageClass. */
         const val DEFAULT_CLASS_ANNOTATION = "storageclass.kubernetes.io/is-default-class"

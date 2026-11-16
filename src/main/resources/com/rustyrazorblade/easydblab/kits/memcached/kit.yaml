@@ -57,7 +57,7 @@ args:
 # The extstore PV exists only when --extstore-size is set. local-storage ignores capacity; the
 # extstore claim requests the same 10Ti.
 install:
-  - type: platform-pvs
+  - type: kit-storage
     node-type: db
     count: 1
     volume-claim-template-name: data
@@ -114,5 +114,5 @@ uninstall:
     selector: easydblab/kit=memcached
     namespace: default
   # Deletes the extstore PV and its directory on the node; a no-op when extstore was never on.
-  - type: platform-pvs-delete
+  - type: kit-storage-delete
     node-type: db

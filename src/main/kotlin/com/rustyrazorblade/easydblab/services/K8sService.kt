@@ -27,7 +27,7 @@ data class PersistentVolumeConfig(
     val localPath: String,
     val count: Int,
     val storageSize: String,
-    val storageClass: String = Constants.K8s.LOCAL_STORAGE_CLASS,
+    val storageClass: String,
     val namespace: String = "default",
     val volumeClaimTemplateName: String = "data",
     val nodeType: String = ServerType.Cassandra.serverType,
@@ -182,9 +182,17 @@ interface K8sStorageOperations {
 
     fun deleteLocalPersistentVolumes(dbName: String): Result<Unit>
 
-    fun ensureLocalStorageClass(): Result<Unit>
+    /**
+     * Creates the kit-local StorageClass [name] when it is missing: no provisioner,
+     * `WaitForFirstConsumer`, `Retain`, labelled as easy-db-lab's and cluster [clusterId]'s.
+     */
+    fun ensureKitLocalStorageClass(
+        name: String,
+        clusterId: String,
+    ): Result<Unit>
 
-    fun ensureLocalStorageWfcClass(): Result<Unit>
+    /** Deletes the kit-local StorageClass [name]; a class already gone is not an error. */
+    fun deleteKitLocalStorageClass(name: String): Result<Unit>
 
     /**
      * The `reclaimPolicy` of the StorageClass named [name], or null when no such class exists. A

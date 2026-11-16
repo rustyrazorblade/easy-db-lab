@@ -126,7 +126,7 @@ class Neo4jKitTest : BaseKoinTest() {
         val sts = statefulSet()
         val pvs =
             kit.config.install
-                .filterIsInstance<InstallStep.PlatformPvs>()
+                .filterIsInstance<InstallStep.KitStorage>()
                 .single()
         val claim = sts.spec.volumeClaimTemplates.single()
 
@@ -334,7 +334,7 @@ class Neo4jKitTest : BaseKoinTest() {
         assertThat(labelDelete(kit.config.stop).kinds).contains("statefulset", "service", "pod")
         assertThat(labelDelete(kit.config.uninstall).selector).isEqualTo("$KIT_LABEL=neo4j")
         assertThat(labelDelete(kit.config.uninstall).kinds).contains("pvc")
-        assertThat(kit.config.uninstall).anyMatch { it is InstallStep.PlatformPvsDelete }
+        assertThat(kit.config.uninstall).anyMatch { it is InstallStep.KitStorageDelete }
     }
 
     private companion object {

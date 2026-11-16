@@ -135,7 +135,7 @@ install:
     namespace: strimzi
     condition: Available
     timeout: 300s
-  - type: platform-pvs
+  - type: kit-storage
     node-type: db
     volume-claim-template-name: data-0
 
@@ -192,7 +192,7 @@ uninstall:
   - type: shell
     script: |
       kubectl delete pvc -l strimzi.io/cluster=kafka --namespace default --ignore-not-found=true
-  - type: platform-pvs-delete
+  - type: kit-storage-delete
     node-type: db
   - type: helm-uninstall
     release: strimzi-operator

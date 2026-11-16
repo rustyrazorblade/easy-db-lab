@@ -2,10 +2,10 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.KitStorage as EnvironmentKitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
@@ -60,9 +60,9 @@ class WorkloadStepExecutor(
     private val k8sService: K8sService,
     private val helmService: HelmService,
     private val kubectlService: KubectlService,
-    private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
     private val kitProcessEnvironment: KitProcessEnvironment,
+    private val kitStorageProvisioner: KitStorageProvisioner,
 ) {
     fun execute(
         steps: List<InstallStep>,
@@ -200,32 +200,37 @@ class WorkloadStepExecutor(
                     }
                 }
 
-                is InstallStep.PlatformPvs -> {
+                is InstallStep.KitStorage -> {
                     if (step.ifSet.isNotBlank() && ctx.variables[step.ifSet].isNullOrBlank()) {
-                        log.info { "Skipping platform-pvs for ${ctx.kitName}: ${step.ifSet} is not set" }
+                        log.info { "Skipping kit-storage for ${ctx.kitName}: ${step.ifSet} is not set" }
                     } else {
-                        val interpolated =
-                            step.copy(
-                                nodeType = interp(step.nodeType),
-                                volumeClaimTemplateName = interp(step.volumeClaimTemplateName),
-                                storageClass = interp(step.storageClass),
-                            )
-                        createPlatformPvs(interpolated, ctx, interp(step.storageSize))
+                        val storageSize = interp(step.storageSize).ifBlank { ctx.variables["STORAGE_SIZE"].orEmpty() }
+                        require(storageSize.isNotBlank()) {
+                            "kit-storage step needs a storage-size or the STORAGE_SIZE variable"
+                        }
+                        kitStorageProvisioner.provision(
+                            volumes =
+                                KitVolumes(
+                                    kit = ctx.kitName,
+                                    nodeType = interp(step.nodeType),
+                                    volumeClaimTemplateName = interp(step.volumeClaimTemplateName),
+                                    size = storageSize,
+                                    count = step.count,
+                                ),
+                            storage = EnvironmentKitStorage.from(ctx.clusterState),
+                            state = ctx.clusterState,
+                        )
                     }
                 }
 
-                is InstallStep.PlatformPvsDelete -> {
-                    k8sService
-                        .deleteLocalPersistentVolumes(
-                            dbName = ctx.kitName,
-                        ).getOrThrow()
-                    val dbHosts = ctx.clusterState.hosts[ServerType.from(interp(step.nodeType))] ?: emptyList()
-                    val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
-                    for (clusterHost in dbHosts) {
-                        remoteOps.executeRemotely(host = clusterHost.toHost(), command = "sudo rm -rf $dataPath")
-                        log.info { "Deleted data directory $dataPath on ${clusterHost.alias}" }
-                    }
-                }
+                is InstallStep.KitStorageDelete ->
+                    kitStorageProvisioner.release(
+                        kit = ctx.kitName,
+                        nodeType = interp(step.nodeType),
+                        storage = EnvironmentKitStorage.from(ctx.clusterState),
+                        state = ctx.clusterState,
+                    )
+
 
                 is InstallStep.ConfigMap -> {
                     k8sService
@@ -300,49 +305,5 @@ class WorkloadStepExecutor(
         } finally {
             tmpScript.delete()
         }
-    }
-
-    /**
-     * Creates the kit's local PVs with capacity [stepStorageSize], or the `STORAGE_SIZE` variable
-     * when the step declares none. A blank capacity fails the step rather than reaching the API.
-     */
-    private fun createPlatformPvs(
-        step: InstallStep.PlatformPvs,
-        ctx: StepExecutionContext,
-        stepStorageSize: String,
-    ) {
-        val serverType = ServerType.from(step.nodeType)
-        val targetHosts =
-            ctx.clusterState.hosts[serverType]
-                ?: error("No ${step.nodeType} nodes found in cluster state for platform-pvs step")
-        check(targetHosts.isNotEmpty()) { "No ${step.nodeType} nodes found in cluster state for platform-pvs step" }
-        val count = step.count ?: targetHosts.size
-        val storageSize = stepStorageSize.ifBlank { ctx.variables["STORAGE_SIZE"].orEmpty() }
-        require(storageSize.isNotBlank()) {
-            "platform-pvs step needs a storage-size or the STORAGE_SIZE variable"
-        }
-        val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
-        // Ensure the local data directory exists on each target node before creating
-        // the PV objects. platform-pvs-delete removes the directory on uninstall;
-        // without this mkdir, a start after uninstall fails with "path does not exist"
-        // when the pod tries to mount the local PV.
-        for (targetHost in targetHosts) {
-            remoteOps.executeRemotely(host = targetHost.toHost(), command = "sudo mkdir -p $dataPath")
-            log.debug { "Ensured data directory $dataPath exists on ${targetHost.alias}" }
-        }
-        k8sService
-            .createLocalPersistentVolumes(
-                config =
-                    PersistentVolumeConfig(
-                        dbName = ctx.kitName,
-                        localPath = dataPath,
-                        count = count,
-                        storageSize = storageSize,
-                        storageClass = step.storageClass,
-                        namespace = Constants.K8s.NAMESPACE,
-                        volumeClaimTemplateName = step.volumeClaimTemplateName,
-                        nodeType = step.nodeType,
-                    ),
-            ).getOrThrow()
     }
 }

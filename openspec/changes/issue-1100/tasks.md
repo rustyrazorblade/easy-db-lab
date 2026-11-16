@@ -17,10 +17,10 @@
 
 ## 4. kit-storage step
 
-- [ ] 4.1 Test first: `KitStorageProvisioner` under `LocalVolumes` ensures the class, mkdirs `/mnt/db1/<kit>/<vct>` (via `RemoteOperationsService`, verified with `argumentCaptor`) and creates PVs of `edl-local-<kit>`; under `Provisioned` runs the Retain check and creates nothing; delete is a no-op under `Provisioned`.
-- [ ] 4.2 Add `InstallStep.KitStorage` / `KitStorageDelete` (`kit-storage`, `kit-storage-delete`), remove `PlatformPvs` / `PlatformPvsDelete` and their `storage-class` field; move the logic out of `WorkloadStepExecutor` into `KitStorageProvisioner`; `PlatformCreatePvs` reuses it.
-- [ ] 4.3 `DefaultK8sStorageOperations`: `ensureKitLocalStorageClass` / `deleteKitLocalStorageClass` (fabric8, labelled per #1094); PV path includes the claim template.
-- [ ] 4.4 Remove `local-storage` / `local-storage-wfc`, `ensureLocalStorageWfcClass`, the `Up.kt` steps and their events (D9); update `PlatformInfo` to print the resolved kit storage.
+- [x] 4.1 Test first: `KitStorageProvisioner` under `LocalVolumes` ensures the class, mkdirs `/mnt/db1/<kit>/<vct>` (via `RemoteOperationsService`, verified with `argumentCaptor`) and creates PVs of `edl-local-<kit>`; under `Provisioned` runs the Retain check and creates nothing; delete is a no-op under `Provisioned`.
+- [x] 4.2 Add `InstallStep.KitStorage` / `KitStorageDelete` (`kit-storage`, `kit-storage-delete`), remove `PlatformPvs` / `PlatformPvsDelete` and their `storage-class` field; move the logic out of `WorkloadStepExecutor` into `KitStorageProvisioner`; `PlatformCreatePvs` reuses it.
+- [x] 4.3 `DefaultK8sStorageOperations`: `ensureKitLocalStorageClass` / `deleteKitLocalStorageClass` (fabric8, labelled per #1094); PV path includes the claim template.
+- [x] 4.4 Remove `local-storage` / `local-storage-wfc`, `ensureLocalStorageWfcClass`, the `Up.kt` steps and their events (D9); update `PlatformInfo` to print the resolved kit storage.
 
 ## 5. Kits
 

@@ -28,82 +28,97 @@ class DefaultK8sStorageOperationsTest {
     }
 
     @Test
-    fun `ensureLocalStorageWfcClass creates StorageClass with WaitForFirstConsumer and Delete`() {
-        val result = storageOps.ensureLocalStorageWfcClass()
+    fun `ensureKitLocalStorageClass creates a no-provisioner WaitForFirstConsumer Retain class, labelled`() {
+        val result = storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
 
         assertThat(result.isSuccess).isTrue()
 
-        val client = server.createClient()
         val sc =
-            client
+            server
+                .createClient()
                 .storage()
                 .v1()
                 .storageClasses()
-                .withName(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+                .withName("edl-local-kafka")
                 .get()
 
         assertThat(sc).isNotNull()
         assertThat(sc.volumeBindingMode).isEqualTo("WaitForFirstConsumer")
-        assertThat(sc.reclaimPolicy).isEqualTo("Delete")
+        assertThat(sc.reclaimPolicy).isEqualTo("Retain")
         assertThat(sc.provisioner).isEqualTo("kubernetes.io/no-provisioner")
+        assertThat(sc.metadata.labels)
+            .containsEntry(Constants.K8s.MANAGED_BY_LABEL, Constants.K8s.MANAGED_BY_VALUE)
+            .containsEntry(Constants.K8s.CLUSTER_LABEL, "cid-1")
     }
 
     @Test
-    fun `ensureLocalStorageWfcClass is idempotent when StorageClass already exists`() {
-        storageOps.ensureLocalStorageWfcClass()
-        val result = storageOps.ensureLocalStorageWfcClass()
+    fun `ensureKitLocalStorageClass is idempotent when the class already exists`() {
+        storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
+        val result = storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
 
         assertThat(result.isSuccess).isTrue()
-
-        val client = server.createClient()
         val classes =
-            client
+            server
+                .createClient()
                 .storage()
                 .v1()
                 .storageClasses()
                 .list()
                 .items
-                .filter { it.metadata.name == Constants.K8s.LOCAL_STORAGE_WFC_CLASS }
-
+                .filter { it.metadata.name == "edl-local-kafka" }
         assertThat(classes).hasSize(1)
     }
 
     @Test
-    fun `ensureLocalStorageClass creates StorageClass with Immediate and Retain`() {
-        val result = storageOps.ensureLocalStorageClass()
+    fun `deleteKitLocalStorageClass removes only that kit's class and tolerates a missing one`() {
+        storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
+        storageOps.ensureKitLocalStorageClass("edl-local-tidb", "cid-1")
 
-        assertThat(result.isSuccess).isTrue()
+        assertThat(storageOps.deleteKitLocalStorageClass("edl-local-kafka").isSuccess).isTrue()
+        assertThat(storageOps.deleteKitLocalStorageClass("edl-local-kafka").isSuccess).isTrue()
 
-        val client = server.createClient()
-        val sc =
-            client
-                .storage()
-                .v1()
-                .storageClasses()
-                .withName(Constants.K8s.LOCAL_STORAGE_CLASS)
-                .get()
-
-        assertThat(sc).isNotNull()
-        assertThat(sc.volumeBindingMode).isEqualTo("Immediate")
-        assertThat(sc.reclaimPolicy).isEqualTo("Retain")
-    }
-
-    @Test
-    fun `both StorageClasses can coexist`() {
-        storageOps.ensureLocalStorageClass()
-        storageOps.ensureLocalStorageWfcClass()
-
-        val client = server.createClient()
         val names =
-            client
+            server
+                .createClient()
                 .storage()
                 .v1()
                 .storageClasses()
                 .list()
                 .items
                 .map { it.metadata.name }
+        assertThat(names).contains("edl-local-tidb").doesNotContain("edl-local-kafka")
+    }
 
-        assertThat(names).contains(Constants.K8s.LOCAL_STORAGE_CLASS, Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+    @Test
+    fun `defaultStorageClass names the annotated class, or null when none is default`() {
+        val classes =
+            server
+                .createClient()
+                .storage()
+                .v1()
+                .storageClasses()
+        classes
+            .resource(
+                StorageClassBuilder()
+                    .withNewMetadata()
+                    .withName("plain")
+                    .endMetadata()
+                    .withProvisioner("p")
+                    .build(),
+            ).create()
+        assertThat(storageOps.defaultStorageClass().getOrThrow()).isNull()
+
+        classes
+            .resource(
+                StorageClassBuilder()
+                    .withNewMetadata()
+                    .withName("gp3")
+                    .addToAnnotations("storageclass.kubernetes.io/is-default-class", "true")
+                    .endMetadata()
+                    .withProvisioner("p")
+                    .build(),
+            ).create()
+        assertThat(storageOps.defaultStorageClass().getOrThrow()).isEqualTo("gp3")
     }
 
     @Test

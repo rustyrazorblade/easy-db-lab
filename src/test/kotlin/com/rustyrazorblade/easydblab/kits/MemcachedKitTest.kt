@@ -193,7 +193,7 @@ class MemcachedKitTest : BaseKoinTest() {
 
         private fun platformPvs() =
             kit.config.install
-                .filterIsInstance<InstallStep.PlatformPvs>()
+                .filterIsInstance<InstallStep.KitStorage>()
                 .single()
 
         private fun extstoreObjects() = kit.render("memcached-extstore.yaml.template")
@@ -379,7 +379,7 @@ class MemcachedKitTest : BaseKoinTest() {
         fun `uninstall deletes the kit's PVC and its PV`() {
             assertThat(labelDelete(kit.config.uninstall).kinds).contains("pvc")
             assertThat(labelDelete(kit.config.uninstall).selector).isEqualTo("$KIT_LABEL=memcached")
-            assertThat(kit.config.uninstall.last()).isInstanceOf(InstallStep.PlatformPvsDelete::class.java)
+            assertThat(kit.config.uninstall.last()).isInstanceOf(InstallStep.KitStorageDelete::class.java)
         }
     }
 

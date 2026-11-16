@@ -92,7 +92,7 @@ install:
     namespace: kube-system
 
 start:
-  - type: platform-pvs
+  - type: kit-storage
     node-type: db
   - type: manifest
     template: clickhouse-keeper.yaml
@@ -202,7 +202,7 @@ uninstall:
     kind: ClickHouseKeeperInstallation
     name: clickhouse-keeper
     namespace: default
-  - type: platform-pvs-delete
+  - type: kit-storage-delete
   - type: helm-uninstall
     release: clickhouse-operator
     namespace: kube-system

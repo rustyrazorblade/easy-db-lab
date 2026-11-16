@@ -49,7 +49,7 @@ class PlatformPvReservationTest : BaseKoinTest() {
         return resolver
             .listAvailableTemplates()
             .mapNotNull { resolver.loadInstallConfig(resolver.resolve(it)) }
-            .filter { kit -> (kit.install + kit.start).any { it is InstallStep.PlatformPvs } }
+            .filter { kit -> (kit.install + kit.start).any { it is InstallStep.KitStorage } }
     }
 
     /** Every manifest template of [kit], rendered from its arg defaults plus [INSTALL_TIME_VARS]. */
@@ -129,7 +129,7 @@ class PlatformPvReservationTest : BaseKoinTest() {
             kits.flatMap { kit ->
                 val pvNamePrefixes =
                     (kit.install + kit.start)
-                        .filterIsInstance<InstallStep.PlatformPvs>()
+                        .filterIsInstance<InstallStep.KitStorage>()
                         .map { "${it.volumeClaimTemplateName}-${kit.name}-" }
                 val kitClaims = renderedObjects(kit).flatMap { claims(it) }
                 if (kitClaims.isEmpty()) {

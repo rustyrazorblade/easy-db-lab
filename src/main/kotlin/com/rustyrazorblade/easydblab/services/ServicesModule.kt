@@ -143,6 +143,7 @@ val servicesModule =
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
+        factoryOf(::KitStorageProvisioner)
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }

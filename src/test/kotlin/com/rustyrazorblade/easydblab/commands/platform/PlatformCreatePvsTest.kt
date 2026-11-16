@@ -1,12 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.platform
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.KitStorageProvisioner
 import com.rustyrazorblade.easydblab.services.PersistentVolumeConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -16,6 +17,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -80,6 +82,7 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         listOf(
             module {
                 single<K8sService> { mockK8sService }
+                factory { KitStorageProvisioner(get(), get()) }
                 single<ClusterStateManager> { mockClusterStateManager }
             },
         )
@@ -99,10 +102,11 @@ class PlatformCreatePvsTest : BaseKoinTest() {
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)
         whenever(mockK8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.ensureKitLocalStorageClass(any(), any())).thenReturn(Result.success(Unit))
     }
 
     @Test
-    fun `creates PVs on db nodes using local-storage-wfc StorageClass`() {
+    fun `creates PVs on db nodes of the kit's own StorageClass`() {
         val command =
             PlatformCreatePvs().apply {
                 kit = "clickhouse"
@@ -116,9 +120,10 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         verify(mockK8sService).createLocalPersistentVolumes(captor.capture())
 
         val config = captor.firstValue
-        assertThat(config.storageClass).isEqualTo(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+        assertThat(config.storageClass).isEqualTo("edl-local-clickhouse")
         assertThat(config.dbName).isEqualTo("clickhouse")
-        assertThat(config.localPath).isEqualTo("/mnt/db1/clickhouse")
+        assertThat(config.localPath).isEqualTo("/mnt/db1/clickhouse/data")
+        verify(mockK8sService).ensureKitLocalStorageClass(eq("edl-local-clickhouse"), any())
         assertThat(config.storageSize).isEqualTo("100Gi")
         assertThat(config.count).isEqualTo(dbHosts.size)
     }
@@ -138,10 +143,26 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         verify(mockK8sService).createLocalPersistentVolumes(captor.capture())
 
         val config = captor.firstValue
-        assertThat(config.storageClass).isEqualTo(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+        assertThat(config.storageClass).isEqualTo("edl-local-presto")
         assertThat(config.dbName).isEqualTo("presto")
-        assertThat(config.localPath).isEqualTo("/mnt/db1/presto")
+        assertThat(config.localPath).isEqualTo("/mnt/db1/presto/data")
         assertThat(config.count).isEqualTo(appHosts.size)
+    }
+
+    @Test
+    fun `refuses on a cluster whose kits use a provisioned StorageClass`() {
+        val state = mockClusterStateManager.load()
+        whenever(mockClusterStateManager.load()).thenReturn(state.copy(initConfig = InitConfig(kitStorageClass = "retain-x")))
+        val command =
+            PlatformCreatePvs().apply {
+                kit = "mydb"
+                size = "50Gi"
+            }
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("retain-x")
+        verify(mockK8sService, org.mockito.kotlin.never()).createLocalPersistentVolumes(any())
     }
 
     @Test

@@ -78,6 +78,12 @@ class K8sServiceIntegrationTest {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
 
+        /** A class name the PV lifecycle tests share; no StorageClass object backs it. */
+        private const val LIFECYCLE_CLASS = "edl-local-lifecycletest"
+
+        /** The kit-local class the node-pool affinity test creates. */
+        private const val AFFINITY_CLASS = "edl-local-affinitytest"
+
         @Container
         @JvmStatic
         val k3s: K3sContainer =
@@ -377,7 +383,7 @@ class K8sServiceIntegrationTest {
         val pvName = "pv-lifecycle-test"
         val pvcName = "pvc-lifecycle-test"
 
-        // 1. Create a local-storage PV pre-bound to a PVC name (simulating workload start)
+        // 1. Create a local PV pre-bound to a PVC name (simulating workload start)
         val pv =
             PersistentVolumeBuilder()
                 .withNewMetadata()
@@ -387,7 +393,7 @@ class K8sServiceIntegrationTest {
                 .addToCapacity("storage", Quantity("1Gi"))
                 .withAccessModes("ReadWriteOnce")
                 .withPersistentVolumeReclaimPolicy("Retain")
-                .withStorageClassName("local-storage")
+                .withStorageClassName(LIFECYCLE_CLASS)
                 .withNewLocal()
                 .withPath("/tmp/pv-lifecycle-test")
                 .endLocal()
@@ -420,7 +426,7 @@ class K8sServiceIntegrationTest {
                 .endMetadata()
                 .withNewSpec()
                 .withAccessModes("ReadWriteOnce")
-                .withStorageClassName("local-storage")
+                .withStorageClassName(LIFECYCLE_CLASS)
                 .withNewResources()
                 .addToRequests("storage", Quantity("1Gi"))
                 .endResources()
@@ -481,6 +487,7 @@ class K8sServiceIntegrationTest {
                 localPath = "/tmp/recycletest",
                 count = 1,
                 storageSize = "1Gi",
+                storageClass = LIFECYCLE_CLASS,
                 namespace = DEFAULT_NAMESPACE,
                 volumeClaimTemplateName = "data",
             )
@@ -500,7 +507,7 @@ class K8sServiceIntegrationTest {
                 .endMetadata()
                 .withNewSpec()
                 .withAccessModes("ReadWriteOnce")
-                .withStorageClassName("local-storage")
+                .withStorageClassName(LIFECYCLE_CLASS)
                 .withNewResources()
                 .addToRequests("storage", Quantity("1Gi"))
                 .endResources()
@@ -545,7 +552,7 @@ class K8sServiceIntegrationTest {
     @Order(25)
     fun `a db platform PV binds only on a db node with its ordinal, not an app node with the same ordinal`() {
         val storageOps = createStorageOperations()
-        storageOps.ensureLocalStorageWfcClass().getOrThrow()
+        storageOps.ensureKitLocalStorageClass(AFFINITY_CLASS, "test-cluster").getOrThrow()
         val nodeName =
             client
                 .nodes()
@@ -573,12 +580,12 @@ class K8sServiceIntegrationTest {
                         localPath = "/tmp/$kit",
                         count = 1,
                         storageSize = "1Gi",
-                        storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
+                        storageClass = AFFINITY_CLASS,
                         namespace = DEFAULT_NAMESPACE,
                         nodeType = "db",
                     ),
                 ).getOrThrow()
-            createClaimAndConsumer(kit, storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+            createClaimAndConsumer(kit, storageClass = AFFINITY_CLASS)
 
             // The only node is an app node with ordinal 0: the scheduler must not place the pod there.
             Thread.sleep(UNSCHEDULABLE_WAIT_MS)
@@ -589,6 +596,7 @@ class K8sServiceIntegrationTest {
         } finally {
             deleteClaimAndConsumer(kit)
             client.persistentVolumes().withName(pvName).delete()
+            storageOps.deleteKitLocalStorageClass(AFFINITY_CLASS).getOrThrow()
             // Restore what the earlier setup test labelled the node with for the tests that follow.
             unlabelNode(nodeName, labelKeys)
             labelNode(nodeName, originalLabels)
@@ -596,17 +604,18 @@ class K8sServiceIntegrationTest {
     }
 
     /**
-     * Every kit's platform PVs share one storage class, so neo4j's PVC bound postgres-duckdb's PV.
-     * A platform PV carries its kit's label, and a kit's PVC selecting that label binds only its
-     * own kit's PV, even when another kit's PV is Available first.
+     * Two kits' local PVs sit on the same nodes. Each kit's PVs and its claims are of the kit's own
+     * class, `edl-local-<kit>`, so a claim with no selector binds only its own kit's PV, even when
+     * another kit's PV is Available first.
      */
     @Test
     @Order(26)
-    fun `a kit's claim selecting its kit label binds its own PV, not another kit's available PV`() {
+    fun `a kit's claim on its own class binds its own PV, not another kit's available PV`() {
         val storageOps = createStorageOperations()
         val kits = listOf("reservedother", "reservedown")
         kits.forEach { kit ->
             k3s.execInContainer("mkdir", "-p", "/tmp/$kit")
+            storageOps.ensureKitLocalStorageClass("edl-local-$kit", "test-cluster").getOrThrow()
             storageOps
                 .createLocalPersistentVolumes(
                     PersistentVolumeConfig(
@@ -614,36 +623,20 @@ class K8sServiceIntegrationTest {
                         localPath = "/tmp/$kit",
                         count = 1,
                         storageSize = "1Gi",
+                        storageClass = "edl-local-$kit",
                         namespace = DEFAULT_NAMESPACE,
                     ),
                 ).getOrThrow()
         }
         try {
-            val claim =
-                PersistentVolumeClaimBuilder()
-                    .withNewMetadata()
-                    .withName("claim-reservedown")
-                    .withNamespace(DEFAULT_NAMESPACE)
-                    .endMetadata()
-                    .withNewSpec()
-                    .withAccessModes("ReadWriteOnce")
-                    .withStorageClassName(Constants.K8s.LOCAL_STORAGE_CLASS)
-                    .withNewSelector()
-                    .addToMatchLabels(Constants.PV_KIT_LABEL, "reservedown")
-                    .endSelector()
-                    .withNewResources()
-                    .addToRequests("storage", Quantity("1Gi"))
-                    .endResources()
-                    .endSpec()
-                    .build()
-            client.persistentVolumeClaims().resource(claim).create()
-            waitForPvcBound("claim-reservedown", timeoutSeconds = 30)
+            createClaimAndConsumer("reservedown", storageClass = "edl-local-reservedown")
+            waitForPvcBound("data-reservedown-0", timeoutSeconds = 90)
 
             assertThat(
                 client
                     .persistentVolumeClaims()
                     .inNamespace(DEFAULT_NAMESPACE)
-                    .withName("claim-reservedown")
+                    .withName("data-reservedown-0")
                     .get()
                     .spec.volumeName,
             ).isEqualTo("data-reservedown-0")
@@ -655,17 +648,17 @@ class K8sServiceIntegrationTest {
                     .status.phase,
             ).isEqualTo("Available")
         } finally {
-            client
-                .persistentVolumeClaims()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName("claim-reservedown")
-                .delete()
-            kits.forEach { client.persistentVolumes().withName("data-$it-0").delete() }
+            deleteClaimAndConsumer("reservedown")
+            kits.forEach { kit ->
+                client.persistentVolumes().withName("data-$kit-0").delete()
+                storageOps.deleteKitLocalStorageClass("edl-local-$kit").getOrThrow()
+            }
         }
     }
 
     /**
-     * `up` labels each node with a merge patch, not a read-then-write `edit()`, so a kubelet
+     * `up` labels each node with a merge patch
+, not a read-then-write `edit()`, so a kubelet
      * status update between the read and the write cannot fail it with 409 Conflict.
      */
     @Test
@@ -966,9 +959,6 @@ class K8sServiceIntegrationTest {
                 .withNewSpec()
                 .withAccessModes("ReadWriteOnce")
                 .withStorageClassName(storageClass)
-                .withNewSelector()
-                .addToMatchLabels(Constants.PV_KIT_LABEL, kit)
-                .endSelector()
                 .withNewResources()
                 .addToRequests("storage", Quantity("1Gi"))
                 .endResources()

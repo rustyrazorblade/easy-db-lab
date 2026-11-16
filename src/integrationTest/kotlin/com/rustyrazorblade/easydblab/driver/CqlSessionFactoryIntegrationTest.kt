@@ -5,7 +5,7 @@ import com.datastax.oss.driver.api.core.config.DefaultDriverOption
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.CassandraContainer
+import org.testcontainers.cassandra.CassandraContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
@@ -27,7 +27,7 @@ class CqlSessionFactoryIntegrationTest {
 
         @Container
         @JvmStatic
-        val cassandra: CassandraContainer<*> =
+        val cassandra: CassandraContainer =
             CassandraContainer(DockerImageName.parse(CASSANDRA_IMAGE))
                 .withExposedPorts(9042)
     }

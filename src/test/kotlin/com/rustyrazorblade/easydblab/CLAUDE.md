@@ -23,7 +23,7 @@ All tests that need dependency injection should extend `BaseKoinTest`. It provid
 
 | Service | Mock Type |
 |---------|-----------|
-| `AWS` | Real class with mocked clients |
+| `AccountIdentity`, `IamRoles`, `AwsS3BucketService` | Real adapters over mocked STS, IAM and S3 clients |
 | `IamClient`, `S3Client`, `StsClient` | Mockito mocks |
 | `AWSClientFactory`, `AMIValidator` | Mockito mocks |
 | `User` | Test user (region: "us-west-2", email: "test@example.com") |
@@ -154,7 +154,7 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 ├── commands/                # Command tests (mirrors main)
 ├── configuration/           # Configuration tests
 ├── kubernetes/              # K8s tests
-├── mcp/                     # Server tests (MCP, REST, background services)
+├── server/                  # Status cache tests (the REST server itself is tested in src/integrationTest)
 ├── providers/aws/           # AWS provider tests
 ├── services/                # Service tests
 └── ...
@@ -191,4 +191,5 @@ If K3s fails to start with `ContainerLaunchException` inside a nested container 
 - Aim to mock as minimally as possible.  I want to hit real code in tests as much as possible.
 - Prefer using LocalStack over mocking AWS services.  The more code that hits all the code paths the better.
 - Test the K8 configurations with TestContainers, not mocking.
+- **K8s integration tests build the real `K8sClientProvider` from the K3s container's kubeconfig** with `WorkspaceK8s.provider(kubeConfigYaml)` (`src/integrationTest/.../WorkspaceK8s.kt`): it writes the kubeconfig into a temp workspace and binds the provider to it through `Context`, as a command gets it. Never `mock<K8sClientProvider>()`.
 - **All K8s manifest builders MUST be tested in `K8sServiceIntegrationTest`** with K3s TestContainers. See `configuration/CLAUDE.md` for the full testing requirements (apply test, image pull test, no-resource-limits test).

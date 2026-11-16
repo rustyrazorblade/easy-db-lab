@@ -2,10 +2,14 @@
 
 Metrics come from two sources:
 
-- **JMX Exporter** (per broker, port 9404 → NodePort 32404 via kafka-broker-jmx-nodeport service)
-  — scraped from each broker pod's JMX exporter agent
-- **Kafka Exporter** (cluster-wide, port 9308 → NodePort 32309 via kafka-exporter-nodeport service)
-  — Strimzi's kafka-exporter deployment; consumer lag, topic offsets, partition health
+- **JMX Exporter** (`job="kafka-jmx"`, per broker, container port 9404) — scraped from each broker
+  pod's JMX exporter agent
+- **Kafka Exporter** (`job="kafka-exporter"`, cluster-wide, container port 9404) — Strimzi's
+  kafka-exporter deployment; consumer lag, topic offsets, partition health
+
+Both are scraped by pod discovery: each pod once, by the collector on its own node, with
+`instance` = the pod name. The NodePorts 32404 and 32309 still expose the same endpoints for
+manual inspection.
 
 ---
 

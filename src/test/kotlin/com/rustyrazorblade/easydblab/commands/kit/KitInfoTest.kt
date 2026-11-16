@@ -1,9 +1,19 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
+import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitCapability
+import com.rustyrazorblade.easydblab.services.KitCommandScanner
+import com.rustyrazorblade.easydblab.services.KitCommandSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -11,34 +21,97 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.PrintStream
 
 /**
  * Tests for KitInfo command — verifies that kit metadata is correctly read
  * from built-in kit.yaml files and formatted into user-readable output.
  *
- * Calls buildInfoText() and buildCommandList() directly rather than capturing
- * stdout, since KitInfo is a read-only display command that uses println() with
- * no associated events.
+ * Rendering tests call buildInfoText() and buildCommandList() directly, since
+ * KitInfo is a read-only display command that uses println() with no associated
+ * events. The command-execution tests run execute() against a real
+ * ClusterStateManager to cover the in-workspace / no-workspace decision.
  *
  * Behavior tests (command listing, ordering, annotations) use synthetic KitConfig
  * data so they are not coupled to the contents of any specific kit.
  */
 class KitInfoTest : BaseKoinTest() {
+    private val stateFile by lazy { File(tempDir, "state.json") }
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single { TemplateService(get(), get()) }
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
+                single<KitCommandScanner> { DefaultKitCommandScanner() }
+                single { ClusterStateManager(stateFile) }
             },
         )
 
-    private fun buildInfo(kitName: String): String {
+    private fun runKitInfo(kitName: String): String {
+        val stdout = ByteArrayOutputStream()
+        val originalOut = System.out
+        System.setOut(PrintStream(stdout))
+        try {
+            KitInfo().apply { this.kitName = kitName }.execute()
+        } finally {
+            System.setOut(originalOut)
+        }
+        return stdout.toString()
+    }
+
+    private fun buildInfo(
+        kitName: String,
+        hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
+    ): String {
         val resolver = getKoin().get<InstallTemplateResolver>()
         val source = resolver.resolve(kitName)
         val config = resolver.loadInstallConfig(source) ?: error("No kit.yaml for $kitName")
         val templateFiles = resolver.listTemplateFiles(source).map { it.name }
-        return KitInfo.buildInfoText(config, templateFiles)
+        return KitInfo.buildInfoText(config, templateFiles, hosts = hosts)
+    }
+
+    private val dbHosts =
+        mapOf(
+            ServerType.Cassandra to
+                listOf(
+                    ClusterHost(
+                        publicIp = "3.4.5.6",
+                        privateIp = "10.0.2.1",
+                        alias = "db0",
+                        availabilityZone = "us-west-2a",
+                        instanceId = "i-db0",
+                    ),
+                ),
+        )
+
+    // ── Command execution (the cluster-workspace decision in execute()) ─────
+
+    @Test
+    fun `kit info in a cluster workspace resolves endpoints to the node private IP`() {
+        ClusterStateManager(stateFile).save(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                initConfig = InitConfig(region = "us-west-2"),
+                hosts = dbHosts,
+            ),
+        )
+
+        assertThat(runKitInfo("memcached")).contains("10.0.2.1:31211")
+    }
+
+    @Test
+    fun `kit info outside a cluster workspace lists bare ports`() {
+        assertThat(stateFile).doesNotExist()
+
+        val output = runKitInfo("memcached")
+
+        assertThat(output).contains(":31211")
+        assertThat(output).doesNotContain("10.0.2.1")
     }
 
     // ── Kit metadata (reads real kit files, no command-list assertions) ──────
@@ -69,6 +142,29 @@ class KitInfoTest : BaseKoinTest() {
         assertThat(output).contains(":30123")
         assertThat(output).contains("Native")
         assertThat(output).contains(":30900")
+    }
+
+    @Test
+    fun `neo4j info resolves Bolt and HTTP endpoints to the db node private IP`() {
+        val output = buildInfo("neo4j", dbHosts)
+        assertThat(output).contains("10.0.2.1:30687")
+        assertThat(output).contains("http://10.0.2.1:30474")
+    }
+
+    @Test
+    fun `an endpoint with an unknown node type is listed by its bare port`() {
+        val config =
+            KitConfig(
+                name = "mykit",
+                endpoints =
+                    listOf(
+                        KitEndpoint(name = "api", nodeType = "bogus", port = 31999, type = KitEndpoint.EndpointType.HTTP),
+                    ),
+            )
+
+        val output = KitInfo.buildInfoText(config, emptyList(), hosts = dbHosts)
+
+        assertThat(output).contains("api  bogus  :31999  http")
     }
 
     @Test
@@ -167,5 +263,42 @@ class KitInfoTest : BaseKoinTest() {
         val customEntry = commands.find { it.first == "custom-export" }
         assertThat(customEntry).isNotNull
         assertThat(customEntry!!.second).isEqualTo("(script)")
+    }
+
+    // ── Command args (kit-command-args: "kit info lists command args") ─────
+
+    private val startArgsConfig =
+        KitConfig(
+            name = "mykit",
+            args = listOf(KitArgSpec(flag = "--size", variable = "STORAGE_SIZE", default = "10Gi")),
+            commands =
+                mapOf(
+                    "start" to
+                        KitCommandSpec(
+                            args =
+                                listOf(
+                                    KitArgSpec(flag = "--log-level", variable = "LOG_LEVEL", description = "Log level", default = "info"),
+                                    KitArgSpec(flag = "--env", variable = "EXTRA_ENV", description = "Extra setting", repeatable = true),
+                                ),
+                        ),
+                ),
+        )
+
+    @Test
+    fun `start args are listed under start with flag, variable, description and default`() {
+        val lines = KitInfo.buildInfoText(startArgsConfig, emptyList()).lines()
+        val start = lines.indexOfFirst { it.trim() == "start:" }
+        val logLevel = lines.indexOfFirst { "--log-level" in it }
+
+        assertThat(start).isGreaterThan(lines.indexOfFirst { "--size" in it })
+        assertThat(logLevel).isGreaterThan(start)
+        assertThat(lines[logLevel]).contains("LOG_LEVEL", "Log level", "(default: info)")
+    }
+
+    @Test
+    fun `a repeatable command arg is marked repeatable`() {
+        val env = KitInfo.buildInfoText(startArgsConfig, emptyList()).lines().single { "--env" in it }
+
+        assertThat(env).contains("EXTRA_ENV", "Extra setting", "[repeatable]")
     }
 }

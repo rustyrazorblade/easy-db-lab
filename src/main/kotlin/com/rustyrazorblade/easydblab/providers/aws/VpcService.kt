@@ -23,7 +23,7 @@ interface VpcCoreOperations {
      *
      * @param vpcId The VPC ID where the subnet should be created
      * @param name The name to use for the subnet (applied as Name tag)
-     * @param cidr The CIDR block for the subnet (e.g., "10.0.1.0/24")
+     * @param cidr The CIDR block for the subnet (e.g., "10.0.32.0/19")
      * @param tags Additional tags to apply to the subnet
      * @param availabilityZone Optional availability zone for the subnet
      * @return The subnet ID
@@ -97,11 +97,15 @@ interface SecurityGroupOperations {
     /**
      * Adds an ingress rule to a security group if it doesn't already exist.
      *
+     * Emits no event for the rule: the caller reports the outcome, so each rule is reported once.
+     *
      * @param securityGroupId The security group ID
      * @param fromPort The starting port of the range
      * @param toPort The ending port of the range
      * @param cidr The CIDR block to allow traffic from
      * @param protocol The IP protocol (default: "tcp")
+     * @return whether the rule was added or was already present
+     * @throws SecurityGroupNotFoundException if AWS reports the security group does not exist
      */
     fun authorizeSecurityGroupIngress(
         securityGroupId: SecurityGroupId,
@@ -109,7 +113,24 @@ interface SecurityGroupOperations {
         toPort: Int,
         cidr: Cidr,
         protocol: String = "tcp",
-    )
+    ): IngressAuthorization
+
+    /**
+     * Removes the one ingress rule that matches [protocol], [fromPort], [toPort] and [cidr] exactly.
+     *
+     * Any other rule, including another CIDR on the same ports, and every egress rule stay as
+     * they are.
+     *
+     * @return whether the rule was removed or no such rule existed
+     * @throws SecurityGroupNotFoundException if AWS reports the security group does not exist
+     */
+    fun revokeSecurityGroupIngress(
+        securityGroupId: SecurityGroupId,
+        fromPort: Int,
+        toPort: Int,
+        cidr: Cidr,
+        protocol: String = "tcp",
+    ): IngressRevocation
 
     /**
      * Deletes a security group.
@@ -135,6 +156,35 @@ interface SecurityGroupOperations {
     fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails
 }
 
+/** What [SecurityGroupOperations.authorizeSecurityGroupIngress] did with the rule it was given. */
+enum class IngressAuthorization {
+    /** The rule was not on the security group, and it is now. */
+    ADDED,
+
+    /** The security group already had the exact rule; nothing changed. */
+    ALREADY_PRESENT,
+}
+
+/** What [SecurityGroupOperations.revokeSecurityGroupIngress] did with the rule it was given. */
+enum class IngressRevocation {
+    /** The exact rule was on the security group, and it is gone. */
+    REMOVED,
+
+    /** The security group had no exact rule to remove; nothing changed. */
+    NOT_FOUND,
+}
+
+/**
+ * AWS reports that [securityGroupId] does not exist (`InvalidGroup.NotFound`).
+ *
+ * A missing group fails a whole command, not one rule, so it is an exception rather than an
+ * [IngressAuthorization] or [IngressRevocation] value.
+ */
+class SecurityGroupNotFoundException(
+    val securityGroupId: SecurityGroupId,
+    cause: Throwable? = null,
+) : RuntimeException("Security group $securityGroupId does not exist", cause)
+
 /**
  * Operations for discovering VPC resources.
  */
@@ -156,6 +206,11 @@ interface VpcDiscoveryOperations {
      * Gets the Name tag value for a VPC.
      */
     fun getVpcName(vpcId: VpcId): String?
+
+    /**
+     * Gets the primary CIDR block of a VPC, or null when the VPC does not exist.
+     */
+    fun getVpcCidr(vpcId: VpcId): String?
 
     /**
      * Gets all tags on a VPC.
@@ -214,9 +269,39 @@ interface VpcDiscoveryOperations {
 }
 
 /**
+ * The resources of one cluster inside a VPC, found by the cluster's `ClusterId` tag.
+ */
+data class ClusterVpcResources(
+    val instanceIds: List<InstanceId> = emptyList(),
+    val subnetIds: List<SubnetId> = emptyList(),
+    val securityGroupIds: List<SecurityGroupId> = emptyList(),
+    val internetGatewayId: InternetGatewayId? = null,
+    val routeTableIds: List<RouteTableId> = emptyList(),
+)
+
+/**
  * Operations for tearing down VPC resources.
  */
 interface VpcTeardownOperations {
+    /**
+     * Waits for the active network interfaces in [subnetIds] to be cleared, ignoring every other
+     * subnet of the VPC. Used when the VPC is shared and only this cluster's subnets are ours.
+     */
+    fun waitForNetworkInterfacesClearedInSubnets(
+        subnetIds: List<SubnetId>,
+        timeoutMs: Long = VpcService.DEFAULT_ENI_TIMEOUT_MS,
+    )
+
+    /**
+     * Removes every `0.0.0.0/0` route that points at [igwId] from the route tables of [vpcId],
+     * the main route table included. `up` adds that route to the VPC's main route table, which
+     * outlives the cluster in a user-supplied VPC.
+     */
+    fun deleteRoutesToInternetGateway(
+        vpcId: VpcId,
+        igwId: InternetGatewayId,
+    )
+
     /**
      * Terminates EC2 instances.
      */
@@ -276,6 +361,23 @@ interface VpcTeardownOperations {
 }
 
 /**
+ * Operations for discovering what one cluster owns inside a VPC it may share.
+ */
+interface ClusterVpcDiscovery {
+    /**
+     * Finds only what the cluster [clusterId] created in a VPC it shares with others: the
+     * resources that carry its `ClusterId` tag. A user-supplied VPC (`init --vpc`) holds the
+     * user's own resources and other clusters', so teardown must never discover by VPC alone.
+     *
+     * The main route table and the default security group are never reported: they belong to the VPC.
+     */
+    fun findClusterResourcesInVpc(
+        vpcId: VpcId,
+        clusterId: String,
+    ): ClusterVpcResources
+}
+
+/**
  * Service for managing AWS VPC infrastructure resources.
  *
  * This interface provides operations for creating and managing VPC components
@@ -287,7 +389,8 @@ interface VpcService :
     VpcCoreOperations,
     SecurityGroupOperations,
     VpcDiscoveryOperations,
-    VpcTeardownOperations {
+    VpcTeardownOperations,
+    ClusterVpcDiscovery {
     companion object {
         /** Default timeout for waiting on resource termination/deletion (10 minutes) */
         const val DEFAULT_TERMINATION_TIMEOUT_MS = 10 * 60 * 1000L

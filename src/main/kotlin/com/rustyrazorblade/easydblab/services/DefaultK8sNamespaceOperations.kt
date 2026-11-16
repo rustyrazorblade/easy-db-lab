@@ -1,11 +1,15 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
+import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.readiness.Readiness
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -16,7 +20,7 @@ private val log = KotlinLogging.logger {}
  * Implementation of namespace-related K8s operations: observability status,
  * pod readiness, namespace deletion, resource deletion by label, and rollout restarts.
  *
- * @param podPollInterval How long to wait between pod-readiness polls. Defaults to
+ * @param podPollInterval How long to wait between pod-readiness and rollout-status polls. Defaults to
  *   [POD_POLL_INTERVAL_MS] so production timing is unchanged; integration tests inject a tiny
  *   value so they do not busy-wait a live cluster at 5s granularity.
  */
@@ -25,22 +29,22 @@ class DefaultK8sNamespaceOperations(
     private val eventBus: EventBus,
     private val podPollInterval: Duration = Duration.ofMillis(POD_POLL_INTERVAL_MS),
 ) : K8sNamespaceOperations {
-    override fun getObservabilityStatus(controlHost: ClusterHost): Result<String> =
+    override fun getObservabilityStatus(): Result<String> =
         runCatching {
             log.debug { "Getting observability status via SOCKS proxy" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 formatPodStatus(client, Constants.K8s.NAMESPACE)
             }
         }
 
-    override fun deleteObservability(controlHost: ClusterHost): Result<Unit> =
+    override fun deleteObservability(): Result<Unit> =
         runCatching {
             log.debug { "Deleting observability namespace via SOCKS proxy" }
 
             eventBus.emit(Event.K8s.ObservabilityNamespaceDeleting)
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val namespace = client.namespaces().withName(Constants.K8s.NAMESPACE).get()
                 if (namespace != null) {
                     client.namespaces().withName(Constants.K8s.NAMESPACE).delete()
@@ -53,16 +57,13 @@ class DefaultK8sNamespaceOperations(
             eventBus.emit(Event.K8s.ObservabilityNamespaceDeleted)
         }
 
-    override fun waitForPodsReady(
-        controlHost: ClusterHost,
-        timeoutSeconds: Int,
-    ): Result<Unit> =
+    override fun waitForPodsReady(timeoutSeconds: Int): Result<Unit> =
         runCatching {
             log.debug { "Waiting for pods to be ready in ${Constants.K8s.NAMESPACE} namespace" }
 
             eventBus.emit(Event.K8s.ObservabilityPodsWaiting)
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 waitForPodsInNamespace(client, Constants.K8s.NAMESPACE, timeoutSeconds)
             }
 
@@ -70,7 +71,6 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun waitForPodsReady(
-        controlHost: ClusterHost,
         timeoutSeconds: Int,
         namespace: String,
     ): Result<Unit> =
@@ -79,35 +79,69 @@ class DefaultK8sNamespaceOperations(
 
             eventBus.emit(Event.K8s.PodsWaiting(namespace))
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 waitForPodsInNamespace(client, namespace, timeoutSeconds)
             }
 
             eventBus.emit(Event.K8s.PodsReady(namespace))
         }
 
-    override fun getNamespaceStatus(
-        controlHost: ClusterHost,
-        namespace: String,
-    ): Result<String> =
+    override fun waitForNodesRegistered(
+        nodeNames: List<String>,
+        timeout: Duration,
+    ): Result<Unit> =
+        runCatching {
+            if (nodeNames.isEmpty()) return@runCatching
+            eventBus.emit(Event.K8s.NodesRegistering(nodeNames.size))
+            clientProvider.createClient().use { client ->
+                // One list per poll for the whole cluster, not one GET per node; a deadline, not
+                // an attempt count, bounds the wait.
+                val missing =
+                    pollUntil(
+                        operationName = "node-registration",
+                        maxAttempts = Int.MAX_VALUE,
+                        interval = podPollInterval,
+                        deadline = Instant.now().plus(timeout),
+                        done = { it.isEmpty() },
+                    ) {
+                        val registered =
+                            client
+                                .nodes()
+                                .list()
+                                .items
+                                .mapNotNull { it.metadata?.name }
+                                .toSet()
+                        nodeNames.filterNot { it in registered }
+                    }
+                check(missing.isEmpty()) {
+                    "${missing.size} of ${nodeNames.size} node(s) did not register with K3s within " +
+                        "${timeout.toSeconds()}s: " +
+                        missing.joinToString(
+                            ", ",
+                            limit = Constants.Scale.MAX_NAMED_IN_ERROR,
+                            truncated = "and ${missing.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
+                        )
+                }
+            }
+            eventBus.emit(Event.K8s.NodesRegistered(nodeNames.size))
+        }
+
+    override fun getNamespaceStatus(namespace: String): Result<String> =
         runCatching {
             log.debug { "Getting status for namespace $namespace via SOCKS proxy" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 formatPodStatus(client, namespace)
             }
         }
 
-    override fun deleteNamespace(
-        controlHost: ClusterHost,
-        namespace: String,
-    ): Result<Unit> =
+    override fun deleteNamespace(namespace: String): Result<Unit> =
         runCatching {
             log.debug { "Deleting namespace $namespace via SOCKS proxy" }
 
             eventBus.emit(Event.K8s.NamespaceDeleting(namespace))
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val ns = client.namespaces().withName(namespace).get()
                 if (ns != null) {
                     client.namespaces().withName(namespace).delete()
@@ -121,7 +155,6 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun deleteResourcesByLabel(
-        controlHost: ClusterHost,
         namespace: String,
         labelKey: String,
         labelValues: List<String>,
@@ -131,7 +164,7 @@ class DefaultK8sNamespaceOperations(
 
             eventBus.emit(Event.K8s.ResourcesDeleting(labelKey))
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val labelSelector = "$labelKey in (${labelValues.joinToString(",")})"
                 log.debug { "Using label selector: $labelSelector" }
 
@@ -144,13 +177,12 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun rolloutRestartDeployment(
-        controlHost: ClusterHost,
         name: String,
         namespace: String,
     ): Result<Unit> =
         runCatching {
             log.info { "Rolling restart Deployment/$name in namespace $namespace" }
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .apps()
                     .deployments()
@@ -163,35 +195,113 @@ class DefaultK8sNamespaceOperations(
         }
 
     override fun rolloutRestartDaemonSet(
-        controlHost: ClusterHost,
         name: String,
         namespace: String,
     ): Result<Unit> =
         runCatching {
             log.info { "Rolling restart DaemonSet/$name in namespace $namespace" }
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .apps()
                     .daemonSets()
                     .inNamespace(namespace)
                     .withName(name)
-                    .edit { ds ->
-                        val annotations =
-                            ds.spec
-                                ?.template
-                                ?.metadata
-                                ?.annotations
-                                ?.toMutableMap()
-                                ?: mutableMapOf()
-                        annotations["kubectl.kubernetes.io/restartedAt"] = Instant.now().toString()
-                        ds.spec
-                            ?.template
-                            ?.metadata
-                            ?.annotations = annotations
-                        ds
-                    }
+                    .edit { ds -> withRestartedAt(ds, Instant.now()) }
             }
             log.info { "Rolling restart initiated for DaemonSet/$name" }
+        }
+
+    override fun waitForRollouts(
+        workloads: List<WorkloadRef>,
+        namespace: String,
+        timeoutSeconds: Int,
+    ): Result<Unit> =
+        runCatching {
+            if (workloads.isEmpty()) return@runCatching
+            eventBus.emit(Event.K8s.RolloutsWaiting(workloads.map { it.toString() }))
+
+            clientProvider.createClient().use { client ->
+                // Poll until nothing is pending or the deadline passes. The deadline, not an
+                // attempt count, bounds the wait, so a slow API server cannot stretch it.
+                val pending =
+                    pollUntil(
+                        operationName = "rollout-status",
+                        maxAttempts = Int.MAX_VALUE,
+                        interval = podPollInterval,
+                        deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
+                        done = { it.isEmpty() },
+                    ) { pendingRollouts(client, namespace, workloads) }
+                check(pending.isEmpty()) {
+                    "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: ${pending.joinToString("; ")}"
+                }
+            }
+
+            eventBus.emit(Event.K8s.RolloutsComplete(workloads.size))
+        }
+
+    override fun workloadConfigHashes(
+        workloads: List<WorkloadRef>,
+        namespace: String,
+    ): Result<Map<WorkloadRef, String?>> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                workloads.associateWith { ref ->
+                    val template =
+                        when (ref.kind) {
+                            WorkloadKind.Deployment ->
+                                client
+                                    .apps()
+                                    .deployments()
+                                    .inNamespace(namespace)
+                                    .withName(ref.name)
+                                    .get()
+                                    ?.spec
+                                    ?.template
+                            WorkloadKind.DaemonSet ->
+                                client
+                                    .apps()
+                                    .daemonSets()
+                                    .inNamespace(namespace)
+                                    .withName(ref.name)
+                                    .get()
+                                    ?.spec
+                                    ?.template
+                        }
+                    template?.metadata?.annotations?.get(Constants.K8s.CONFIG_HASH_ANNOTATION)
+                }
+            }
+        }
+
+    /** What each unfinished workload is waiting on; empty once every rollout is complete. */
+    private fun pendingRollouts(
+        client: KubernetesClient,
+        namespace: String,
+        workloads: List<WorkloadRef>,
+    ): List<String> =
+        workloads.mapNotNull { ref ->
+            val progress =
+                when (ref.kind) {
+                    WorkloadKind.Deployment ->
+                        client
+                            .apps()
+                            .deployments()
+                            .inNamespace(namespace)
+                            .withName(ref.name)
+                            .get()
+                            ?.let(RolloutStatus::of)
+                    WorkloadKind.DaemonSet ->
+                        client
+                            .apps()
+                            .daemonSets()
+                            .inNamespace(namespace)
+                            .withName(ref.name)
+                            .get()
+                            ?.let(RolloutStatus::of)
+                } ?: RolloutProgress.Pending("$ref not found")
+            when (progress) {
+                RolloutProgress.Complete -> null
+                is RolloutProgress.Pending -> progress.reason.also { log.debug { it } }
+            }
         }
 
     private fun formatPodStatus(
@@ -222,70 +332,93 @@ class DefaultK8sNamespaceOperations(
         return (listOf(header) + lines).joinToString("\n")
     }
 
+    /**
+     * Waits until every pod in [namespace] that awaits readiness is Ready, with one pod list per
+     * poll and one deadline for the whole namespace, so the wait does not grow with the number of
+     * pods (a DaemonSet has one per node). A pod that reaches a failure state fails the wait at
+     * once; a pod that finished (a kit's Job pod) is not awaited.
+     */
     private fun waitForPodsInNamespace(
         client: KubernetesClient,
         namespace: String,
         timeoutSeconds: Int,
     ) {
-        val pods =
+        val initial =
             client
                 .pods()
                 .inNamespace(namespace)
                 .list()
-
-        if (pods.items.isEmpty()) {
+                .items
+        if (initial.isEmpty()) {
             log.warn { "No pods found in $namespace namespace" }
             return
         }
+        initial.filterNot(K8sPodUtils::awaitsReadiness).forEach { pod ->
+            log.info { "Skipping pod ${pod.metadata?.name}: finished in phase ${pod.status?.phase}" }
+        }
+        val awaited = initial.filter(K8sPodUtils::awaitsReadiness).mapNotNull { it.metadata?.name }.toSet()
+        log.info { "Waiting for ${awaited.size} pods: ${awaited.joinToString(", ")}" }
 
-        val podNames = pods.items.mapNotNull { it.metadata?.name }
-        log.info { "Waiting for ${podNames.size} pods: ${podNames.joinToString(", ")}" }
-
-        for (podName in podNames) {
-            val deadline = System.currentTimeMillis() + timeoutSeconds * Constants.Time.MILLIS_PER_SECOND
-            var lastLoggedState = ""
-
-            while (System.currentTimeMillis() < deadline) {
-                val pod =
+        var lastStates = emptyMap<String, String>()
+        val outcome =
+            pollUntil<PodsPoll>(
+                operationName = "pods-ready-$namespace",
+                maxAttempts = Int.MAX_VALUE,
+                interval = podPollInterval,
+                deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
+                done = { it is PodsPoll.Failed || (it is PodsPoll.Pending && it.states.isEmpty()) },
+            ) {
+                val pods =
                     client
                         .pods()
                         .inNamespace(namespace)
-                        .withName(podName)
-                        .get() ?: break
-
-                K8sPodUtils.checkForPodFailure(pod)
-
-                val isReady =
-                    pod.status?.conditions?.any {
-                        it.type == "Ready" && it.status == "True"
-                    } == true
-
-                if (isReady) {
-                    log.info { "Pod $podName is ready" }
-                    break
+                        .list()
+                        .items
+                        .filter { it.metadata?.name in awaited }
+                val failure = pods.firstNotNullOfOrNull(K8sPodUtils::failureOf)
+                if (failure != null) {
+                    PodsPoll.Failed(failure)
+                } else {
+                    val pending = pods.filter { K8sPodUtils.awaitsReadiness(it) && !Readiness.isPodReady(it) }
+                    val states = pending.associate { (it.metadata?.name ?: "unknown") to describePodState(it) }
+                    states.filter { (name, state) -> lastStates[name] != state }.forEach { (name, state) ->
+                        log.info { "Pod $name: $state" }
+                    }
+                    lastStates = states
+                    PodsPoll.Pending(states)
                 }
+            }
 
-                val currentState = describePodState(pod)
-                if (currentState != lastLoggedState) {
-                    log.info { "Pod $podName: $currentState" }
-                    lastLoggedState = currentState
-                }
-
-                val remaining = (deadline - System.currentTimeMillis()) / Constants.Time.MILLIS_PER_SECOND
-                if (remaining <= 0) {
+        when (outcome) {
+            is PodsPoll.Failed -> error(outcome.reason)
+            is PodsPoll.Pending ->
+                if (outcome.states.isNotEmpty()) {
                     logPvcStatus(client, namespace)
                     error(
-                        "Timed out waiting for [$timeoutSeconds] seconds for pod $podName. " +
-                            "Last state: $currentState",
+                        "Timed out waiting for [$timeoutSeconds] seconds for ${outcome.states.size} pod(s): " +
+                            outcome.states.entries.joinToString("; ") { (name, state) -> "$name ($state)" },
                     )
                 }
-
-                Thread.sleep(podPollInterval.toMillis())
-            }
         }
     }
 
-    private fun describePodState(pod: io.fabric8.kubernetes.api.model.Pod): String {
+    /**
+     * One look at a namespace's awaited pods: a pod failed for good, which ends the wait at once,
+     * or the state of each pod not Ready yet (none left means the wait is done).
+     */
+    private sealed interface PodsPoll {
+        /** A container is in a terminal failure state; [reason] names the pod, container and why. */
+        data class Failed(
+            val reason: String,
+        ) : PodsPoll
+
+        /** The pods not Ready yet, by name, with their state. */
+        data class Pending(
+            val states: Map<String, String>,
+        ) : PodsPoll
+    }
+
+    private fun describePodState(pod: Pod): String {
         val phase = pod.status?.phase ?: "Unknown"
         val parts = mutableListOf("phase=$phase")
 
@@ -492,3 +625,29 @@ class DefaultK8sNamespaceOperations(
 }
 
 private const val POD_POLL_INTERVAL_MS = 5000L
+
+/** The pod-template annotation whose change makes a workload controller roll its pods. */
+internal const val RESTARTED_AT_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
+
+/**
+ * [ds] with its pod template stamped [RESTARTED_AT_ANNOTATION] = [at], as `kubectl rollout restart`
+ * does. A template without metadata gets it; a DaemonSet with no pod template at all cannot be
+ * restarted, and fails rather than being edited into a no-op.
+ */
+internal fun withRestartedAt(
+    ds: DaemonSet,
+    at: Instant,
+): DaemonSet {
+    checkNotNull(ds.spec?.template) {
+        "DaemonSet ${ds.metadata?.namespace}/${ds.metadata?.name} has no pod template to restart"
+    }
+    return DaemonSetBuilder(ds)
+        .editSpec()
+        .editTemplate()
+        .editOrNewMetadata()
+        .addToAnnotations(RESTARTED_AT_ANNOTATION, at.toString())
+        .endMetadata()
+        .endTemplate()
+        .endSpec()
+        .build()
+}

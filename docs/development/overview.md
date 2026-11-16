@@ -22,7 +22,7 @@ repo needs only a single JDK (21 or newer).
 
 ## Local Configuration (.env)
 
-Both `bin/easy-db-lab` and `bin/end-to-end-test` automatically load a `.env` file from the project root if one exists. This is the recommended way to set per-developer configuration without modifying committed scripts.
+`bin/easy-db-lab` automatically loads a `.env` file from the project root if one exists. This is the recommended way to set per-developer configuration without modifying committed scripts.
 
 ### Setup
 
@@ -91,5 +91,6 @@ Commands (PicoCLI) → Services → External Systems (K8s, AWS, Filesystem)
 
 - **Commands** (`commands/`): Lightweight PicoCLI execution units
 - **Services** (`services/`, `providers/`): Business logic layer
+- **Kernel** (`kernel/`): Types both layers share, such as the `PicoCommand` interface. It keeps commands and services from depending on each other.
 
 For more details, see the project's `CLAUDE.md` file.

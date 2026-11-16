@@ -1,10 +1,14 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
 import com.rustyrazorblade.easydblab.commands.install.BaseInstallCommand
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
+import com.rustyrazorblade.easydblab.services.KitCommandSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
@@ -14,6 +18,7 @@ import picocli.CommandLine.Parameters
  * configurable args, exposed endpoints, available lifecycle commands, and hooks.
  *
  * Analogous to `brew info` or `apt show` — lets users inspect a kit before installing.
+ * Run inside a cluster workspace, each endpoint is resolved to its node's private IP.
  * Uses println() directly because this is a read-only display command with no
  * associated domain events.
  */
@@ -38,7 +43,8 @@ class KitInfo : BaseInstallCommand() {
                 ?: error("No kit.yaml found for '$kitName'")
         val templateFiles = resolver.listTemplateFiles(source).map { it.name }
         val annotatedCommands = scanner.forKit(kitName).map { it.name to it.description }
-        println(buildInfoText(config, templateFiles, annotatedCommands))
+        val hosts = if (clusterStateManager.exists()) clusterState.hosts else emptyMap()
+        println(buildInfoText(config, templateFiles, annotatedCommands, hosts))
     }
 
     companion object {
@@ -66,22 +72,20 @@ class KitInfo : BaseInstallCommand() {
         ): List<Pair<String, String>> {
             val result = mutableListOf<Pair<String, String>>()
 
-            // Known lifecycle phases from config declarations or bin scripts
-            val phases = listOf("start", "stop", "backup", "restore", "uninstall", "status")
-            for (phase in phases) {
-                val present =
-                    when (phase) {
-                        "start" -> config.start.isNotEmpty() || phase in scriptCommandNames
-                        "stop" -> config.stop.isNotEmpty() || phase in scriptCommandNames
-                        "backup" -> config.backup.isNotEmpty() || phase in scriptCommandNames
-                        "restore" -> config.restore.isNotEmpty() || phase in scriptCommandNames
-                        "uninstall" -> config.uninstall.isNotEmpty() || phase in scriptCommandNames
-                        // status is provided by the kit runner for every installed kit
-                        "status" -> true
-                        else -> phase in scriptCommandNames
-                    }
-                if (present) result.add(phase to (phaseDescriptions[phase] ?: "(script)"))
+            // Known lifecycle phases from config declarations or bin scripts, in this order
+            val declaredSteps =
+                listOf(
+                    "start" to config.start,
+                    "stop" to config.stop,
+                    "backup" to config.backup,
+                    "restore" to config.restore,
+                    "uninstall" to config.uninstall,
+                )
+            for ((phase, steps) in declaredSteps) {
+                if (steps.isNotEmpty() || phase in scriptCommandNames) result.add(phase to (phaseDescriptions[phase] ?: "(script)"))
             }
+            // status is provided by the kit runner for every installed kit
+            result.add("status" to (phaseDescriptions["status"] ?: "(script)"))
 
             // Remaining script commands not covered by the known phases above
             val covered = result.map { it.first }.toSet()
@@ -107,6 +111,7 @@ class KitInfo : BaseInstallCommand() {
             config: KitConfig,
             templateFiles: List<String>,
             annotatedCommands: List<Pair<String, String>> = emptyList(),
+            hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
         ): String {
             val scriptCommandNames =
                 templateFiles
@@ -135,10 +140,11 @@ class KitInfo : BaseInstallCommand() {
                     appendLine("Args:")
                     appendArgs(config.args)
                 }
+                appendCommandArgs(config.commands)
                 if (config.endpoints.isNotEmpty()) {
                     appendLine()
                     appendLine("Endpoints:")
-                    appendEndpoints(config.endpoints)
+                    appendEndpoints(config.endpoints, hosts)
                 }
                 if (commands.isNotEmpty()) {
                     appendLine()
@@ -156,8 +162,12 @@ class KitInfo : BaseInstallCommand() {
             }.trimEnd()
         }
 
-        private fun StringBuilder.appendArgs(args: List<KitArgSpec>) {
+        private fun StringBuilder.appendArgs(
+            args: List<KitArgSpec>,
+            indent: String = "  ",
+        ) {
             val flagWidth = args.maxOf { "${it.flag} ${it.type.name}".length }
+            val variableWidth = args.maxOf { it.variable.length }
             for (arg in args) {
                 val flagCol = "${arg.flag} ${arg.type.name}".padEnd(flagWidth)
                 val detail =
@@ -165,18 +175,46 @@ class KitInfo : BaseInstallCommand() {
                         append(arg.description)
                         if (arg.default.isNotEmpty()) append("  (default: ${arg.default})")
                         if (arg.required) append("  [required]")
+                        if (arg.repeatable) append("  [repeatable]")
                     }
-                appendLine("  $flagCol  $detail")
+                appendLine("$indent$flagCol  ${arg.variable.padEnd(variableWidth)}  $detail")
             }
         }
 
-        private fun StringBuilder.appendEndpoints(endpoints: List<KitEndpoint>) {
+        /** Lists the args of each command that declares any, grouped under the command name. */
+        private fun StringBuilder.appendCommandArgs(commands: Map<String, KitCommandSpec>) {
+            val withArgs = commands.filterValues { it.args.isNotEmpty() }.toSortedMap()
+            if (withArgs.isEmpty()) return
+            appendLine()
+            appendLine("Command args:")
+            for ((name, spec) in withArgs) {
+                appendLine("  $name:")
+                appendArgs(spec.args, indent = "    ")
+            }
+        }
+
+        /**
+         * Lists each endpoint once per host of its node type, at the host's private IP.
+         * With no such host in [hosts] (no cluster yet, or none of that node type) the
+         * endpoint is listed by its bare NodePort.
+         */
+        private fun StringBuilder.appendEndpoints(
+            endpoints: List<KitEndpoint>,
+            hosts: Map<ServerType, List<ClusterHost>>,
+        ) {
             val nameWidth = endpoints.maxOf { it.name.length }
             val nodeTypeWidth = endpoints.maxOf { it.nodeType.length }
             for (ep in endpoints) {
-                appendLine(
-                    "  ${ep.name.padEnd(nameWidth)}  ${ep.nodeType.padEnd(nodeTypeWidth)}  :${ep.port}  ${ep.type.name.lowercase()}",
-                )
+                val addresses =
+                    KitEndpointAddresses
+                        .privateIps(ep.nodeType, hosts)
+                        .map { ep.formatUrl(it) }
+                        .ifEmpty { listOf(":${ep.port}") }
+                for (address in addresses) {
+                    appendLine(
+                        "  ${ep.name.padEnd(nameWidth)}  ${ep.nodeType.padEnd(nodeTypeWidth)}  $address  ${ep.type.name.lowercase()}",
+                    )
+                }
             }
         }
 

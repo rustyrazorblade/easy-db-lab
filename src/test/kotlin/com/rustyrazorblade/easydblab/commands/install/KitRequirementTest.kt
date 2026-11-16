@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -58,7 +59,7 @@ class KitRequirementTest : BaseKoinTest() {
 
     @BeforeEach
     fun setup() {
-        workingDir = get<com.rustyrazorblade.easydblab.Context>().workingDirectory
+        workingDir = get<Context>().workingDirectory
         capturedEvents.clear()
         eventBus = get()
         eventBus.addListener(

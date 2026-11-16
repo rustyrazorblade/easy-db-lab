@@ -40,6 +40,13 @@ variable "ssh_private_key_file" {
   default = ""
 }
 
+# "session_manager" when the profile tunnels SSH over SSM Session Manager (its `ssm` SSH transport),
+# so the build needs no inbound port 22 from this machine. Empty keeps Packer's default interface.
+variable "ssh_interface" {
+  type    = string
+  default = ""
+}
+
 locals {
   timestamp = regex_replace(timestamp(), "[- TZ:]", "")
   version = var.release_version != "" ? var.release_version : local.timestamp
@@ -66,6 +73,8 @@ source "amazon-ebs" "ubuntu" {
   ssh_username         = "ubuntu"
   ssh_keypair_name     = var.ssh_keypair_name
   ssh_private_key_file = var.ssh_private_key_file
+  # null leaves the argument unset, so direct-transport builds keep Packer's own default.
+  ssh_interface        = var.ssh_interface != "" ? var.ssh_interface : null
 
   # Use permanent VPC infrastructure created by PackerInfrastructureService
   vpc_filter {
@@ -86,6 +95,12 @@ source "amazon-ebs" "ubuntu" {
     filters = {
       "tag:Name" = "easy-db-lab-packer-sg"
     }
+  }
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
   }
 
   run_tags = {
@@ -157,9 +172,26 @@ build {
     script = "install/install_bcc.sh"
   }
 
+  # Compile the ebpf_exporter program overrides against this kernel's BTF and install the
+  # objects under /usr/local/lib/ebpf_exporter/ (see install/ebpf/README.md).
+  provisioner "file" {
+    source      = "install/ebpf"
+    destination = "/tmp/ebpf"
+  }
+  provisioner "shell" {
+    script = "install/install_ebpf_programs.sh"
+  }
+
   # install k3s (disabled, not auto-started)
   provisioner "shell" {
     script = "install/install_k3s.sh"
+  }
+
+  # install the kubelet ECR image credential provider so every node pulls ECR images
+  # using its instance role (no per-pod imagePullSecrets)
+  provisioner "shell" {
+    environment_vars = ["ARCH=${var.arch}"]
+    script           = "install/install_ecr_credential_provider.sh"
   }
 
   # install tailscale (disabled, not auto-started)
@@ -185,12 +217,33 @@ build {
     script = "install/install_cilium_cli.sh"
   }
 
+  # Upload the primary ENI boot script; configure_cilium_eni_networkd.sh installs it from /tmp.
+  provisioner "file" {
+    source      = "install/edl-primary-eni-network"
+    destination = "/tmp/edl-primary-eni-network"
+  }
+
+  # Keep the primary ENI managed, matched by its IMDS MAC through a boot-time unit that writes
+  # /run/systemd/network/05-cilium-eni-primary.network, and leave every other ENA link (Cilium's
+  # secondary ENIs) unmanaged by systemd-networkd so the OS does not DHCP them and hijack host
+  # routing (see the script header for the full rationale). Inert on Flannel; must be baked in
+  # because the ENIs are attached at runtime.
+  provisioner "shell" {
+    script = "install/configure_cilium_eni_networkd.sh"
+  }
+
+  # Poll the Amazon Time Sync Service every 8 s instead of the image's 16 s, so the kernel's
+  # clock error bound grows half as far between polls (see the script header).
+  provisioner "shell" {
+    script = "install/configure_chrony_poll.sh"
+  }
+
   # install OpenTelemetry Java agent for workload instrumentation
   provisioner "shell" {
     script = "install/install_otel_agent.sh"
   }
 
-  # Installs all supported JDKs (8/11/17/21 + debug symbols) for the Cassandra versions we
+  # Installs all supported JDKs (8/11/17/21/25 + debug symbols) for the Cassandra versions we
   # support. The hundreds of MB of -dbg packages come from the apt archive cache restored above.
   provisioner "shell" {
     environment_vars = [
@@ -223,6 +276,35 @@ build {
   # Save the warm apt archive cache back to S3 for the next build
   provisioner "shell" {
     script = "install/save_s3_cache.sh"
+  }
+
+  # Final image cleanup: prune build cruft so it is not baked into the AMI and to shrink
+  # the EBS snapshot. This MUST run AFTER save_s3_cache.sh above (which calls apt_cache_save),
+  # otherwise the warm apt archive cache would be stripped before it is persisted to S3,
+  # slowing future builds. First we log a pre-prune inventory, then prune system caches/logs
+  # and the surgical set of home-dir build leftovers. Runtime paths (.local/cqlsh,
+  # .config/htoprc, .ssh, shell dotfiles) are deliberately left untouched.
+  provisioner "shell" {
+    inline = [
+      "echo '=== image cleanup: pre-prune inventory ==='",
+      "ls -la /home/ubuntu || true",
+      "sudo du -sh /var/cache/apt/archives /var/lib/apt/lists /tmp /var/tmp /var/log /home/ubuntu/.cache 2>/dev/null || true",
+      "df -h / || true",
+      "echo '=== image cleanup: pruning ==='",
+      # System caches and logs
+      "sudo apt-get clean",
+      "sudo rm -rf /var/cache/apt/archives/*.deb /var/lib/apt/lists/*",
+      "sudo rm -rf /tmp/* /var/tmp/*",
+      "sudo find /var/log -type f -exec truncate -s 0 {} +",
+      # Home-dir build leftovers (surgical; tolerate absence). The base build uploads aliases.sh
+      # to the home dir before moving it to /etc/profile.d, so remove any stray copy here.
+      "rm -rf /home/ubuntu/aliases.sh",
+      "rm -rf /home/ubuntu/.cache /home/ubuntu/.wget-hsts /home/ubuntu/.bash_history /home/ubuntu/.m2 /home/ubuntu/.sudo_as_admin_successful /home/ubuntu/.lesshst",
+      # Discard the now-freed blocks so EBS excludes them from the snapshot (this is what
+      # actually shrinks the snapshot and cuts AMI-creation time). -av prints bytes trimmed
+      # per filesystem for verification. No `|| true`: a fstrim failure must surface.
+      "sudo fstrim -av",
+    ]
   }
 }
 

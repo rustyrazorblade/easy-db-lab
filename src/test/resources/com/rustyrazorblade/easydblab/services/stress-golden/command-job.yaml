@@ -1,0 +1,30 @@
+---
+apiVersion: "batch/v1"
+kind: "Job"
+metadata:
+  labels:
+    app.kubernetes.io/name: "cassandra-easy-stress"
+    easydblab/role: "stress-command"
+    job-name: "cmd-1700000000"
+  name: "cmd-1700000000"
+  namespace: "default"
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "cassandra-easy-stress"
+        easydblab/role: "stress-command"
+        job-name: "cmd-1700000000"
+    spec:
+      containers:
+      - args:
+        - "list"
+        image: "ghcr.io/apache/cassandra-easy-stress:latest"
+        name: "stress"
+      dnsPolicy: "ClusterFirstWithHostNet"
+      hostNetwork: true
+      nodeSelector:
+        type: "app"
+      restartPolicy: "Never"
+  ttlSecondsAfterFinished: 300

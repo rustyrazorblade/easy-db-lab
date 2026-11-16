@@ -88,6 +88,8 @@ easy-db-lab spark submit \
 
 When `--jar` is a local path, it is automatically uploaded to the cluster's S3 bucket before submission. When it is an `s3://` URI, it is used directly.
 
+When a job submitted with `--wait` fails, the command waits up to 7 minutes for EMR to upload the step's final `stderr`. EMR uploads a running step's logs every few minutes and once more after the step ends, so an earlier copy can end before the exception. The command then shows the last lines of the final copy. If the final copy does not arrive in time, the command prints the S3 path where it will appear; fetch it later with `easy-db-lab spark status --step-id <step-id> --logs`.
+
 ### Using a JAR Already on S3
 
 If your JAR is already on S3 (e.g., from a CI pipeline or a previous upload), pass the S3 URI directly:
@@ -143,21 +145,43 @@ Without `--step-id`, shows the status of the most recent job.
 Options:
 
 - `--step-id` - EMR step ID to check
-- `--logs` - Download step logs (stdout, stderr)
+- `--verbose` - Show detailed step information (equivalent to `aws emr describe-step`)
+- `--logs` - Download the step's `stderr.gz` from the EMR log path in S3, save it under `logs/<cluster-id>/<step-id>/`, and print it. If EMR has not uploaded the log yet, the command says so and prints the S3 path where it will appear.
 
 ## Retrieving Logs
 
-Download logs for a Spark job:
+Query a Spark job's logs from Loki, scoped to the current cluster:
 
 ```bash
 easy-db-lab spark logs --step-id <step-id>
 ```
 
-Logs are automatically decompressed and include:
+Without `--step-id`, shows the logs of the most recent job. The step's name is its job's name, and the
+job's lines are the ones whose `service_name` is `spark-<job-name>`; if a job name was run more than
+once within `--since`, every run's lines are returned.
 
-- `stdout.gz` - Standard output
-- `stderr.gz` - Standard error
-- `controller.gz` - EMR controller logs
+- `--step-id` - EMR step whose job's logs to show
+- `--limit`, `-n` - Maximum number of lines (default: 100)
+- `--since` - Time range, e.g. `1h`, `30m`, `1d` (default: `1d`)
+
+Every line from an EMR node also carries the label `source="emr"`, so
+`easy-db-lab logs query --source emr` shows all of them.
+
+The collector on each EMR node also sends the log files that EMR and YARN write on the node:
+
+| Files | Node |
+|-------|------|
+| YARN container `stdout`, `stderr` and `syslog`, `/var/log/hadoop-yarn/containers/application_*/container_*/` | every node |
+| Step logs (`controller`, `stderr`, `stdout`, `syslog`), `/mnt/var/log/hadoop/steps/<step-id>/` | primary |
+| Bootstrap action logs, `/emr/instance-controller/log/bootstrap-actions/<n>/` | every node |
+
+These lines have `source="emr"`, the node's `node_role` (`spark-master` or `spark-worker`), its
+`host_name` and the cluster label, and the file path in `log_file_path`. A driver that fails before
+its Java agent sends anything still leaves its exception in the step's `stderr`:
+
+```bash
+easy-db-lab logs query --source emr --grep NoSuchMethodError
+```
 
 ## Architecture
 
@@ -166,7 +190,7 @@ When Spark is enabled, easy-db-lab provisions:
 - **EMR Cluster**: Managed Spark cluster with master and worker nodes
 - **S3 Integration**: Logs stored at `s3://<bucket>/spark/emr-logs/`
 - **IAM Roles**: Service and job flow roles for EMR operations
-- **Observability**: Each EMR node runs an OTel Collector (host metrics, OTLP forwarding), OTel Java Agent (auto-instrumentation for logs/metrics/traces), and Pyroscope Java Agent (continuous CPU/allocation/lock profiling). All telemetry flows to the control node's observability stack.
+- **Observability**: Each EMR node runs an OTel Collector (host metrics, the node's EMR and YARN log files, OTLP forwarding), OTel Java Agent (auto-instrumentation for logs/metrics/traces), and Pyroscope Java Agent (continuous CPU/allocation/lock profiling). All telemetry flows to the control node's observability stack.
 
 ### Timeouts and Polling
 

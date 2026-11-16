@@ -40,8 +40,7 @@ class ExecStop : PicoBaseCommand() {
     var serverType: ServerType? = null
 
     override fun execute() {
-        val cleanName = name.removeSuffix(".service").removePrefix("edl-exec-")
-        val unitName = "edl-exec-$cleanName"
+        val unitName = execUnitName(name.removeSuffix(".service").removePrefix(EXEC_UNIT_PREFIX))
         val types = serverType?.let { listOf(it) } ?: listOf(ServerType.Cassandra, ServerType.Stress, ServerType.Control)
 
         for (type in types) {

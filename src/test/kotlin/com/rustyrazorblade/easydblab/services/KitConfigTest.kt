@@ -1,8 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 
 class KitConfigTest {
     private fun parse(yaml: String): KitConfig = installConfigYaml.decodeFromString(KitConfig.serializer(), yaml)
@@ -12,7 +16,7 @@ class KitConfigTest {
         val config = parse("name: mydb")
         assertThat(config.name).isEqualTo("mydb")
         assertThat(config.description).isEmpty()
-        assertThat(config.collisionCheck).isFalse()
+        assertThat(config.collisionCheck).isEqualTo(CollisionCheck.NONE)
         assertThat(config.args).isEmpty()
     }
 
@@ -28,7 +32,73 @@ class KitConfigTest {
         val config = parse(yaml)
         assertThat(config.name).isEqualTo("clickhouse")
         assertThat(config.description).isEqualTo("Install ClickHouse kit")
-        assertThat(config.collisionCheck).isTrue()
+        assertThat(config.collisionCheck.guards(Constants.Kit.PHASE_START)).isTrue()
+    }
+
+    /**
+     * `collision-check` is a boolean or a map of phase to boolean (typed-install-steps: "Collision
+     * detection is configurable per phase"). The boolean keeps its meaning for every existing kit:
+     * `true` refuses a second `install` and a `start` while the kit runs.
+     */
+    @Nested
+    inner class CollisionCheckForms {
+        private fun collisionCheck(value: String): CollisionCheck = parse("name: mydb\ncollision-check: $value").collisionCheck
+
+        private fun guardedPhases(check: CollisionCheck): List<String> =
+            listOf(Constants.Kit.PHASE_INSTALL, Constants.Kit.PHASE_START, Constants.Kit.PHASE_STOP, Constants.Kit.PHASE_UNINSTALL)
+                .filter { check.guards(it) }
+
+        @Test
+        fun `true guards install and start`() {
+            assertThat(guardedPhases(collisionCheck("true"))).containsExactly(Constants.Kit.PHASE_INSTALL, Constants.Kit.PHASE_START)
+        }
+
+        @Test
+        fun `false guards nothing`() {
+            assertThat(guardedPhases(collisionCheck("false"))).isEmpty()
+        }
+
+        @Test
+        fun `a phase map guards the phases set to true and no other`() {
+            assertThat(guardedPhases(collisionCheck("{start: true, install: false}"))).containsExactly(Constants.Kit.PHASE_START)
+            assertThat(guardedPhases(collisionCheck("{install: true}"))).containsExactly(Constants.Kit.PHASE_INSTALL)
+        }
+
+        @Test
+        fun `a phase map in block style decodes like the flow style`() {
+            val config =
+                parse(
+                    """
+                    name: mydb
+                    collision-check:
+                      start: true
+                      install: false
+                    """.trimIndent(),
+                )
+
+            assertThat(guardedPhases(config.collisionCheck)).containsExactly(Constants.Kit.PHASE_START)
+        }
+
+        @Test
+        fun `every form writes back to kit yaml and reads back the same`() {
+            val forms = listOf(CollisionCheck.NONE, CollisionCheck.ENABLED, CollisionCheck(setOf(Constants.Kit.PHASE_START)))
+
+            assertThat(forms).allSatisfy { form ->
+                val yaml = installConfigYaml.encodeToString(KitConfig.serializer(), KitConfig(name = "mydb", collisionCheck = form))
+                assertThat(parse(yaml).collisionCheck).isEqualTo(form)
+            }
+        }
+
+        @Test
+        fun `a phase that has no collision check is rejected`() {
+            assertThatThrownBy { collisionCheck("{stop: true}") }.hasStackTraceContaining("stop")
+        }
+
+        @Test
+        fun `a value that is neither a boolean nor a phase map is rejected`() {
+            assertThatThrownBy { collisionCheck("sometimes") }.hasStackTraceContaining("collision-check")
+            assertThatThrownBy { collisionCheck("{start: maybe}") }.hasStackTraceContaining("start")
+        }
     }
 
     @Test
@@ -351,6 +421,57 @@ class KitConfigTest {
     }
 
     @Test
+    fun `parses a delete step that selects by label`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                stop:
+                  - type: delete
+                    kinds: [deployment, pod]
+                    selector: easydblab/kit=mydb
+                    namespace: mynamespace
+                """.trimIndent(),
+            )
+        val step = config.stop.single() as InstallStep.Delete
+        assertThat(step.kinds).containsExactly("deployment", "pod")
+        assertThat(step.selector).isEqualTo("easydblab/kit=mydb")
+        assertThat(step.namespace).isEqualTo("mynamespace")
+    }
+
+    @Test
+    fun `a delete step must name one object or select by label, not both or neither`() {
+        val both =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                kind: Deployment
+                name: myapp
+                kinds: [pod]
+                selector: easydblab/kit=mydb
+            """.trimIndent()
+        val selectorWithoutKinds =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                selector: easydblab/kit=mydb
+            """.trimIndent()
+        val neither =
+            """
+            name: mydb
+            stop:
+              - type: delete
+                namespace: default
+            """.trimIndent()
+
+        for (yaml in listOf(both, selectorWithoutKinds, neither)) {
+            assertThatThrownBy { parse(yaml) }.hasStackTraceContaining("delete step")
+        }
+    }
+
+    @Test
     fun `parses platform-pvs step`() {
         val config =
             parse(
@@ -536,6 +657,38 @@ class KitConfigTest {
             )
         val metrics = config.metrics[0] as KitMetrics.Scrape
         assertThat(metrics.job).isEmpty()
+    }
+
+    @Test
+    fun `parses scrape pod-selector for pod discovery`() {
+        val config =
+            parse(
+                """
+                name: tidb
+                metrics:
+                  - type: scrape
+                    job: tikv
+                    pod-selector: "app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb"
+                    port: 20180
+                """.trimIndent(),
+            )
+        val metrics = config.metrics[0] as KitMetrics.Scrape
+        assertThat(metrics.podSelector).isEqualTo("app.kubernetes.io/component=tikv,app.kubernetes.io/instance=tidb")
+    }
+
+    @Test
+    fun `scrape pod-selector defaults to empty string`() {
+        val config =
+            parse(
+                """
+                name: clickhouse
+                metrics:
+                  - type: scrape
+                    port: 9363
+                """.trimIndent(),
+            )
+        val metrics = config.metrics[0] as KitMetrics.Scrape
+        assertThat(metrics.podSelector).isEmpty()
     }
 
     @Test
@@ -1124,6 +1277,41 @@ class KitConfigTest {
         assertThat(config.args.single().capability).isEmpty()
     }
 
+    @Test
+    fun `kit-ref endpoints list parses to endpoint types`() {
+        val config =
+            parse(
+                """
+                name: clickhouse-benchmark
+                args:
+                  - flag: --target
+                    variable: TARGET
+                    type: kit-ref
+                    endpoints: [native, http]
+                """.trimIndent(),
+            )
+        assertThat(config.args.single().endpoints).containsExactly(
+            KitEndpoint.EndpointType.NATIVE,
+            KitEndpoint.EndpointType.HTTP,
+        )
+    }
+
+    @Test
+    fun `unknown type in the endpoints list fails at parse`() {
+        assertThatThrownBy {
+            parse(
+                """
+                name: clickhouse-benchmark
+                args:
+                  - flag: --target
+                    variable: TARGET
+                    type: kit-ref
+                    endpoints: [nativ]
+                """.trimIndent(),
+            )
+        }.hasMessageContaining("nativ")
+    }
+
     // -------------------------------------------------------------------------
     // commands map deserialization (kit-command-args)
     // -------------------------------------------------------------------------
@@ -1247,6 +1435,116 @@ class KitConfigTest {
             KitArgSpec.ArgType.STRING,
         )
     }
+
+    /** The kit runner lays cluster-state variables over command args, so a clash would drop the arg's value. */
+    @Nested
+    inner class ReservedCommandArgNames {
+        @ParameterizedTest
+        @ValueSource(strings = ["CLUSTER_NAME", "DB_NODE_IPS", "KUBECONFIG", "BACKUP_NAME", "TENANT"])
+        fun `a command arg named like a cluster variable is rejected, naming the arg and the variable`(variable: String) {
+            assertThatThrownBy {
+                parse(
+                    """
+                    name: mydb
+                    commands:
+                      start:
+                        args:
+                          - flag: --pick
+                            variable: $variable
+                    """.trimIndent(),
+                )
+            }.hasMessageContaining("--pick").hasMessageContaining(variable)
+        }
+
+        @Test
+        fun `a command arg with an unreserved name loads`() {
+            val config =
+                parse(
+                    """
+                    name: mydb
+                    commands:
+                      start:
+                        args:
+                          - flag: --pick
+                            variable: PICK
+                    """.trimIndent(),
+                )
+
+            assertThat(
+                config.commands
+                    .getValue("start")
+                    .args
+                    .single()
+                    .variable,
+            ).isEqualTo("PICK")
+        }
+    }
+
+    /**
+     * A repeatable arg joins its values with a newline, and `resolved-args.env` stores one
+     * `KEY=VALUE` per line, so only a string command arg may repeat.
+     */
+    @Nested
+    inner class RepeatableArgs {
+        @Test
+        fun `a repeatable string command arg loads`() {
+            val config =
+                parse(
+                    """
+                    name: mydb
+                    commands:
+                      start:
+                        args:
+                          - flag: --env
+                            variable: EXTRA_ENV
+                            repeatable: true
+                    """.trimIndent(),
+                )
+
+            assertThat(
+                config.commands
+                    .getValue("start")
+                    .args
+                    .single()
+                    .repeatable,
+            ).isTrue()
+        }
+
+        @Test
+        fun `a repeatable top-level install arg is rejected, naming the arg`() {
+            assertThatThrownBy {
+                parse(
+                    """
+                    name: mydb
+                    args:
+                      - flag: --env
+                        variable: EXTRA_ENV
+                        repeatable: true
+                    """.trimIndent(),
+                )
+            }.hasMessageContaining("--env")
+        }
+
+        @Test
+        fun `a repeatable int or boolean arg is rejected, naming the arg`() {
+            for (type in listOf("int", "boolean")) {
+                assertThatThrownBy {
+                    parse(
+                        """
+                        name: mydb
+                        commands:
+                          start:
+                            args:
+                              - flag: --count
+                                variable: COUNT
+                                type: $type
+                                repeatable: true
+                        """.trimIndent(),
+                    )
+                }.describedAs(type).hasMessageContaining("--count")
+            }
+        }
+    }
 }
 
 /**
@@ -1302,8 +1600,27 @@ class KitEndpointToTargetVarsTest {
     }
 
     @Test
-    fun `native and cql endpoints produce no vars`() {
-        assertThat(endpoint(KitEndpoint.EndpointType.NATIVE).toTargetVars("10.0.0.5", sqlCap)).isEmpty()
+    fun `native endpoint produces TARGET_NATIVE vars`() {
+        val vars = endpoint(KitEndpoint.EndpointType.NATIVE, port = 30900, database = "default").toTargetVars("10.0.1.5", sqlCap)
+        assertThat(vars).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "TARGET_NATIVE_HOST" to "10.0.1.5",
+                "TARGET_NATIVE_PORT" to "30900",
+                "TARGET_NATIVE_USER" to "bench",
+                "TARGET_NATIVE_DATABASE" to "default",
+            ),
+        )
+    }
+
+    @Test
+    fun `native endpoint on a target with no sql capability has an empty user`() {
+        val vars = endpoint(KitEndpoint.EndpointType.NATIVE, port = 30900).toTargetVars("10.0.1.5", null)
+        assertThat(vars).containsEntry("TARGET_NATIVE_USER", "")
+    }
+
+    @Test
+    fun `https and cql endpoints produce no vars`() {
+        assertThat(endpoint(KitEndpoint.EndpointType.HTTPS).toTargetVars("10.0.0.5", sqlCap)).isEmpty()
         assertThat(endpoint(KitEndpoint.EndpointType.CQL).toTargetVars("10.0.0.5", sqlCap)).isEmpty()
     }
 

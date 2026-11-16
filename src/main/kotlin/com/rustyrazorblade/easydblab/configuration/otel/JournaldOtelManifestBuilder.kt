@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -28,7 +29,7 @@ class JournaldOtelManifestBuilder(
         private const val CONFIGMAP_NAME = "fluent-bit-journald-config"
         private const val CONFIG_DATA_KEY = "fluent-bit-journald.yaml"
         private const val SEVERITY_MAPPER_KEY = "severity-mapper.lua"
-        private const val IMAGE = "fluent/fluent-bit:latest"
+        private const val IMAGE = "fluent/fluent-bit:5.1.2"
         private const val HTTP_PORT = 2020
         private const val LIVENESS_INITIAL_DELAY = 10
         private const val LIVENESS_PERIOD = 30
@@ -87,8 +88,7 @@ class JournaldOtelManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
+            .hostNetworked()
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()

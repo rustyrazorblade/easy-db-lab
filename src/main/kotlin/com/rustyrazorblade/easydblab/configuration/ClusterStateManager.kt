@@ -3,10 +3,15 @@ package com.rustyrazorblade.easydblab.configuration
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.rustyrazorblade.easydblab.Constants
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
+import java.util.UUID
 
 /**
  * Manages persistence of ClusterState to/from disk.
@@ -32,14 +37,51 @@ class ClusterStateManager(
 
     /**
      * Load cluster state from the configured file.
+     *
+     * A saved [InitConfig] that records no `cni` predates Cilium, so its cluster runs Flannel. The
+     * missing field is read as [CniMode.Flannel] rather than filled from the constructor default
+     * ([CniMode.Cilium]), which would render Cilium scrape jobs on a Flannel cluster.
+     *
      * @throws Exception if file doesn't exist or can't be parsed
      */
-    fun load(): ClusterState = mapper.readValue(stateFile, ClusterState::class.java)
+    fun load(): ClusterState {
+        val tree = mapper.readTree(stateFile)
+        val initConfig = tree.get("initConfig")
+        if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
+            initConfig.put(CNI_FIELD, CniMode.Flannel.name)
+        }
+        val state = mapper.treeToValue(tree, ClusterState::class.java)
+        // The name flows raw into config files, Loki index file names, S3 keys and labels; a
+        // hand-edited or pre-rule state must not reach any of them.
+        check(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(state.name)) {
+            "Invalid cluster name '${state.name}' in state.json: a cluster name must match " +
+                Constants.Observability.CLUSTER_NAME_PATTERN
+        }
+        return state
+    }
 
     /**
      * Save cluster state to the configured file.
+     *
+     * The state is written to a temp file in the same directory, which is then renamed over the
+     * state file in one atomic step. `down` records a signal while other threads load the state, and
+     * a reader must see the old file or the new one, never a half-written one. The temp file takes
+     * the state file's permissions, or those of any new file when there is none yet, so a save never
+     * changes them.
      */
-    fun save(state: ClusterState) = mapper.writerWithDefaultPrettyPrinter().writeValue(stateFile, state)
+    fun save(state: ClusterState) {
+        val target = stateFile.absoluteFile.toPath()
+        val temp = Files.createFile(target.resolveSibling("${target.fileName}.${UUID.randomUUID()}.tmp"))
+        try {
+            if (Files.exists(target) && "posix" in target.fileSystem.supportedFileAttributeViews()) {
+                Files.setPosixFilePermissions(temp, Files.getPosixFilePermissions(target))
+            }
+            mapper.writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), state)
+            Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            Files.deleteIfExists(temp)
+        }
+    }
 
     /**
      * Check if the state file exists.
@@ -70,5 +112,10 @@ class ClusterStateManager(
         state.runningKits = state.runningKits - name
         state.lastAccessedAt = Instant.now()
         save(state)
+    }
+
+    private companion object {
+        /** The [InitConfig] field that records the cluster's CNI. */
+        const val CNI_FIELD = "cni"
     }
 }

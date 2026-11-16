@@ -5,25 +5,19 @@ import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
 
 /**
- * Parent command for metrics operations.
+ * Parent command for live metrics.
  *
- * This command provides a unified interface for managing VictoriaMetrics:
- * - Backup metrics data to S3
- *
- * VictoriaMetrics runs on the control node and stores metrics from all nodes
- * in the cluster via OpenTelemetry.
- *
- * Available sub-commands:
- * - backup: Backup VictoriaMetrics data to S3
+ * `metrics stream` publishes chosen metrics from the cluster's Mimir to Redis every 5 seconds, for a
+ * live display such as a stream overlay.  `metrics list` prints the names it accepts, so a caller
+ * (or Claude Code, from a test plan) can choose them.
  */
 @Command(
     name = "metrics",
-    description = ["Manage VictoriaMetrics observability data"],
+    description = ["Stream live cluster metrics to Redis"],
     mixinStandardHelpOptions = true,
     subcommands = [
-        MetricsBackup::class,
-        MetricsImport::class,
-        MetricsLs::class,
+        MetricsStream::class,
+        MetricsList::class,
     ],
 )
 class Metrics : Runnable {

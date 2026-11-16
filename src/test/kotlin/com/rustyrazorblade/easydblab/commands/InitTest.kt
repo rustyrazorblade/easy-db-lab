@@ -1,43 +1,82 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
+import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
 class InitTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockEc2InstanceService: EC2InstanceService
     private lateinit var outputHandler: BufferedOutputHandler
+    private lateinit var mockInfrastructureService: AwsInfrastructureService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single { mockInfrastructureService }
+                single { mockEc2InstanceService }
                 single { TemplateService(get(), get()) }
+                single<CommandExecutor> {
+                    object : CommandExecutor {
+                        override fun <T : PicoCommand> execute(commandFactory: () -> T): Int = nestedFailure ?: commandFactory().call()
+
+                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) = Unit
+                    }
+                }
             },
         )
+
+    /** When set, the exit code every nested command reports instead of running. */
+    private var nestedFailure: Int? = null
 
     @BeforeEach
     fun setupMocks() {
         mockClusterStateManager = mock()
+        mockEc2InstanceService = mock()
+        mockInfrastructureService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         whenever(mockClusterStateManager.exists()).thenReturn(false)
+        // Default: every instance type is x86_64 with instance store.
+        whenever(mockEc2InstanceService.describeInstanceType(any()))
+            .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
     }
 
     @AfterEach
@@ -45,6 +84,151 @@ class InitTest : BaseKoinTest() {
         File("setup_instance.sh").delete()
         File("cassandra").deleteRecursively()
         File("k8s").deleteRecursively()
+    }
+
+    /**
+     * `init --clean` deletes `state.json`, the only local record of the cluster's VPC, so it asks
+     * AWS first and refuses while the cluster has infrastructure.
+     */
+    @Nested
+    inner class CleanGuard {
+        private val workspaceFile: File get() = File(context.workingDirectory, "sshConfig")
+
+        private fun clusterWithVpc() {
+            whenever(mockClusterStateManager.exists()).thenReturn(true)
+            whenever(mockClusterStateManager.load())
+                .thenReturn(ClusterState(name = "lab", versions = mutableMapOf()).apply { vpcId = "vpc-live" })
+        }
+
+        @Test
+        fun `init --clean with live infrastructure is refused, names the VPC and instances, and deletes nothing`() {
+            clusterWithVpc()
+            workspaceFile.writeText("Host db0")
+            whenever(mockInfrastructureService.teardownVpc("vpc-live", true)).thenReturn(
+                TeardownResult.success(
+                    DiscoveredResources(vpcId = "vpc-live", instanceIds = listOf("i-aaa", "i-bbb"), subnetIds = listOf("subnet-1")),
+                ),
+            )
+            val events = mutableListOf<Event>()
+            getKoin().get<EventBus>().addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+
+            assertThatThrownBy { Init().apply { clean = true }.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(events.filterIsInstance<Event.Setup.CleanRefusedLiveInfrastructure>())
+                .containsExactly(Event.Setup.CleanRefusedLiveInfrastructure("vpc-live", listOf("i-aaa", "i-bbb"), 1))
+            assertThat(outputHandler.errors.joinToString("\n") { it.first })
+                .contains("vpc-live", "i-aaa", "i-bbb", "easy-db-lab down")
+            assertThat(workspaceFile).exists()
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
+        fun `init --clean proceeds when AWS shows nothing left for the cluster`() {
+            clusterWithVpc()
+            workspaceFile.writeText("Host db0")
+            whenever(mockInfrastructureService.teardownVpc("vpc-live", true))
+                .thenReturn(TeardownResult.success(DiscoveredResources(vpcId = "vpc-live")))
+
+            Init().apply { clean = true }.execute()
+
+            assertThat(workspaceFile).doesNotExist()
+            verify(mockClusterStateManager).save(any())
+        }
+    }
+
+    /** The workspace `bin/` belongs to the tool wrappers, so `init` refuses a directory that already has one. */
+    @Nested
+    inner class BinDirectory {
+        private val bin: File get() = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY)
+
+        @Test
+        fun `a directory with a bin directory is refused and nothing is written`() {
+            bin.mkdirs()
+            val before =
+                context.workingDirectory
+                    .list()
+                    .orEmpty()
+                    .toList()
+
+            assertThatThrownBy { Init().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertRefusedAndUntouched(before)
+        }
+
+        @Test
+        fun `a directory with a bin file is refused and nothing is written`() {
+            bin.writeText("not a directory")
+            val before =
+                context.workingDirectory
+                    .list()
+                    .orEmpty()
+                    .toList()
+
+            assertThatThrownBy { Init().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertRefusedAndUntouched(before)
+        }
+
+        @Test
+        fun `init --clean in a workspace whose bin holds only the wrappers and the marker succeeds`() {
+            ToolWrapperInstaller().install(context.workingDirectory)
+            val command = Init().apply { clean = true }
+
+            command.execute()
+
+            assertThat(bin).doesNotExist()
+            verify(mockClusterStateManager).save(any())
+        }
+
+        @Test
+        fun `init --clean keeps a kubectl of its own in a bin without the marker, and is refused`() {
+            bin.mkdirs()
+            val own = File(bin, "kubectl").apply { writeText("#!/bin/sh\necho mine\n") }
+            val command = Init().apply { clean = true }
+
+            assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(own).hasContent("#!/bin/sh\necho mine\n")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
+        fun `init --clean with a foreign file in bin is refused`() {
+            ToolWrapperInstaller().install(context.workingDirectory)
+            File(bin, "my-script").writeText("#!/bin/sh\n")
+            val command = Init().apply { clean = true }
+
+            assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(File(bin, "my-script")).exists()
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        private fun assertRefusedAndUntouched(entriesBefore: List<String>) {
+            assertThat(context.workingDirectory.list()).containsExactlyInAnyOrderElementsOf(entriesBefore)
+            assertThat(File("setup_instance.sh")).doesNotExist()
+            verify(mockClusterStateManager, never()).save(any())
+            assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("already has a bin/").contains("new, empty directory")
+        }
+    }
+
+    @Test
+    fun `a failed clean fails init before any state is saved`() {
+        nestedFailure = Constants.ExitCodes.ERROR
+        val command = Init()
+        command.clean = true
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        verify(mockClusterStateManager, never()).save(any())
     }
 
     @Nested
@@ -79,6 +263,42 @@ class InitTest : BaseKoinTest() {
 
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
+        }
+
+        @Test
+        fun `execute fails with a CIDR inside the K3s pod range, naming the range`() {
+            val command = Init()
+            command.clean = true
+            command.cidr = "10.230.0.0/16"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining(Constants.K3s.CLUSTER_CIDR)
+                .hasMessageContaining(Constants.K3s.SERVICE_CIDR)
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+
+        @Test
+        fun `execute fails with a CIDR smaller than a 25, before anything is saved`() {
+            val command = Init()
+            command.clean = true
+            command.cidr = "10.0.0.0/26"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("/25 or larger")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+
+        @Test
+        fun `execute fails with more than eight availability zones`() {
+            val command = Init()
+            command.clean = true
+            command.azs = listOf("a", "b", "c", "d", "e", "f", "g", "h", "i")
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("at most 8 availability zones")
         }
     }
 
@@ -145,14 +365,18 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `execute extracts resource files`() {
+        fun `execute extracts resource files into the workspace, not the process working directory`() {
             val command = Init()
             command.clean = true
             command.execute()
 
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("Writing setup_instance.sh")
-            assertThat(File("setup_instance.sh")).exists()
+            assertThat(File(context.workingDirectory, "setup_instance.sh")).exists()
+            assertThat(File(context.workingDirectory, Constants.Cassandra.JMX_RULES_FILE)).exists()
+            // The test JVM runs in the source checkout, which is never the workspace.
+            assertThat(File("setup_instance.sh")).doesNotExist()
+            assertThat(File(Constants.Cassandra.JMX_RULES_FILE)).doesNotExist()
         }
 
         @Test
@@ -180,6 +404,345 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class NamespacedPrecedence {
+        @Test
+        fun `namespaced db instance-type wins over legacy alias regardless of order`() {
+            val namespacedFirst = Init()
+            picocli.CommandLine(namespacedFirst).parseArgs(
+                "--db.instance-type",
+                "arm.big",
+                "--instance",
+                "legacy.small",
+            )
+            assertThat(namespacedFirst.resolvedDbInstanceType).isEqualTo("arm.big")
+
+            val legacyFirst = Init()
+            picocli.CommandLine(legacyFirst).parseArgs(
+                "--instance",
+                "legacy.small",
+                "--db.instance-type",
+                "arm.big",
+            )
+            assertThat(legacyFirst.resolvedDbInstanceType).isEqualTo("arm.big")
+        }
+
+        @Test
+        fun `namespaced app count wins over legacy alias regardless of order`() {
+            val namespacedFirst = Init()
+            picocli.CommandLine(namespacedFirst).parseArgs("--app.count", "7", "--app", "2")
+            assertThat(namespacedFirst.resolvedAppCount).isEqualTo(7)
+
+            val legacyFirst = Init()
+            picocli.CommandLine(legacyFirst).parseArgs("--app", "2", "--app.count", "7")
+            assertThat(legacyFirst.resolvedAppCount).isEqualTo(7)
+        }
+
+        @Test
+        fun `legacy alias sets the value when the namespaced option is absent`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--cassandra", "5", "--stress-instance", "z1.big")
+            assertThat(command.resolvedDbCount).isEqualTo(5)
+            assertThat(command.resolvedAppInstanceType).isEqualTo("z1.big")
+        }
+
+        @Test
+        fun `defaults are used when neither namespaced nor legacy is set`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs()
+            assertThat(command.resolvedDbCount).isEqualTo(command.cassandraInstances)
+            assertThat(command.resolvedAppCount).isEqualTo(command.stressInstances)
+            assertThat(command.resolvedDbInstanceType).isEqualTo(command.instanceType)
+            assertThat(command.resolvedAppInstanceType).isEqualTo(command.stressInstanceType)
+        }
+    }
+
+    /**
+     * Every node writes its data under `/mnt/db1`, so every node type needs a data disk
+     * (instance-storage-validation). `--ebs.type` adds an EBS volume to db nodes only, so control
+     * and app nodes need instance store.
+     */
+    @Nested
+    inner class DataDiskStorage {
+        private fun withStore(vararg typesWithStore: String) {
+            whenever(mockEc2InstanceService.describeInstanceType(any())).thenAnswer { call ->
+                InstanceTypeCapabilities(
+                    hasInstanceStore = call.getArgument<String>(0) in typesWithStore,
+                    supportedArchitectures = listOf("x86_64"),
+                )
+            }
+        }
+
+        private fun assertNothingSaved() = verify(mockClusterStateManager, never()).save(any())
+
+        @Test
+        fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
+            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 2
+            command.stressInstanceType = "c5.2xlarge"
+            command.ebsType = "gp3"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("app")
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `a control instance type without instance store fails, naming the node type and instance type`() {
+            withStore("i4i.xlarge", "c6id.2xlarge")
+            val command = Init()
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("control")
+                .hasMessageContaining(Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `a db instance type without instance store fails without an ebs type and passes with one`() {
+            withStore("c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val noEbs = Init()
+            noEbs.clean = true
+            noEbs.instanceType = "c5.2xlarge"
+
+            assertThatThrownBy { noEbs.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("The db instance type c5.2xlarge")
+                .hasMessageContaining("instance store")
+                .hasMessageContaining("--ebs.type")
+            assertNothingSaved()
+
+            val withEbs = Init()
+            withEbs.clean = true
+            withEbs.instanceType = "c5.2xlarge"
+            withEbs.ebsType = "gp3"
+            withEbs.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.instanceType == "c5.2xlarge" })
+        }
+
+        @Test
+        fun `an app instance type without instance store fails even with no app nodes`() {
+            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 0
+            command.stressInstanceType = "c5.2xlarge"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `the default db, control and app instance types pass`() {
+            withStore("i4i.xlarge", "c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 1
+
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.stressInstances == 1 })
+        }
+    }
+
+    @Nested
+    inner class ArchitectureDerivation {
+        @Test
+        fun `derives each group architecture independently from its resolved instance type`() {
+            whenever(mockEc2InstanceService.describeInstanceType("arm.db"))
+                .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("arm64")))
+            whenever(mockEc2InstanceService.describeInstanceType("x86.app"))
+                .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
+
+            val command = Init()
+            command.clean = true
+            command.instanceType = "arm.db"
+            command.stressInstanceType = "x86.app"
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    initConfig?.dbArch == "ARM64" &&
+                        initConfig?.appArch == "AMD64" &&
+                        initConfig?.controlArch == "AMD64"
+                },
+            )
+        }
+
+        @Test
+        fun `fails fast when the instance type is unknown in the region naming the type and region`() {
+            whenever(mockEc2InstanceService.describeInstanceType("bogus.type"))
+                .thenThrow(IllegalStateException("Instance type 'bogus.type' not found in region us-west-2"))
+
+            val command = Init()
+            command.clean = true
+            command.instanceType = "bogus.type"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("bogus.type")
+                .hasMessageContaining("us-west-2")
+
+            // No cluster state saved with instance config when derivation fails.
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(
+                argThat { initConfig != null },
+            )
+        }
+    }
+
+    @Nested
+    inner class CniSelection {
+        @Test
+        fun `execute persists Cilium as the default cni when --cni is omitted`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Cilium },
+            )
+        }
+
+        @Test
+        fun `--cni flannel selects Flannel`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--cni=flannel")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Flannel },
+            )
+        }
+    }
+
+    @Nested
+    inner class Tenant {
+        @Test
+        fun `the tenant defaults to default`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { tenant() == "default" })
+        }
+
+        @Test
+        fun `--tenant is persisted in the init configuration`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", "acme")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.tenant == "acme" })
+        }
+
+        /** Names at the edges of `^[a-z][a-z0-9_-]{0,62}$` are accepted, not just rejected past them. */
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                // 63 characters: the longest allowed.
+                "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc",
+                "a_b-c9",
+                "z",
+            ],
+        )
+        fun `a valid tenant at the edge of the rule is saved`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", name)
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { tenant() == name })
+        }
+
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                "Acme",
+                "1acme",
+                "",
+                // 64 characters: one past the limit.
+                "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd",
+            ],
+        )
+        fun `an invalid tenant fails before anything is saved, naming the rule`(tenant: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", tenant)
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("^[a-z][a-z0-9_-]{0,62}$")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        /** A Loki tenant named `index` would put its chunks under Loki's index path. */
+        @Test
+        fun `the reserved tenant index fails before anything is saved, naming it`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", "index")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("'index' is reserved")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+    }
+
+    @Nested
+    inner class ClusterName {
+        /** 40 characters is the longest name the rule allows. */
+        @ParameterizedTest
+        @ValueSource(strings = ["abcdefghijabcdefghijabcdefghijabcdefghij", "lab-1", "z"])
+        fun `a valid cluster name at the edge of the rule is saved`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(name)
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { this.name == name })
+        }
+
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                "My/Cluster",
+                "db:1",
+                "Lab",
+                "1lab",
+                "lab_1",
+                // 41 characters: one past the limit.
+                "abcdefghijabcdefghijabcdefghijabcdefghijk",
+            ],
+        )
+        fun `an invalid cluster name fails before anything is saved, naming the rule`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(name)
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+    }
+
+    @Nested
     inner class ExistingVpc {
         @Test
         fun `execute sets existing VPC ID when provided`() {
@@ -195,6 +758,64 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager, atLeastOnce()).save(
                 argThat { vpcId == "vpc-existing123" },
             )
+        }
+
+        @Test
+        fun `a VPC given with --vpc is recorded as the user's, and a VPC that up creates is not`() {
+            val supplied =
+                Init().apply {
+                    clean = true
+                    existingVpcId = "vpc-existing123"
+                }
+            supplied.execute()
+            verify(mockClusterStateManager, atLeastOnce()).save(argThat { vpcId == "vpc-existing123" && vpcSupplied })
+
+            val own = Init().apply { clean = true }
+            own.execute()
+            verify(mockClusterStateManager, atLeastOnce()).save(argThat { vpcId == null && !vpcSupplied })
+        }
+    }
+
+    @Nested
+    inner class TelemetryRedirectOptions {
+        @Test
+        fun `a per-signal override lands on its own signal and leaves the other three derived`() {
+            // A transposed override — logs written to the traces field, say — would compile and
+            // pass a laxer test. Asserting all four endpoints at once pins each override to its own
+            // signal and the rest to the base-host derivation.
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--redirect-telemetry",
+                "10.0.0.9",
+                "--redirect-logs-endpoint",
+                "http://logs.example.com:1234/insert/opentelemetry",
+            )
+
+            val redirect = command.resolvedTelemetryRedirect!!
+            assertThat(redirect.logs).isEqualTo("http://logs.example.com:1234/insert/opentelemetry")
+            assertThat(redirect.metrics).isEqualTo("http://10.0.0.9:9009/api/v1/push")
+            assertThat(redirect.traces).isEqualTo("10.0.0.9:4320")
+            assertThat(redirect.profiles).isEqualTo("http://10.0.0.9:4040")
+        }
+
+        @Test
+        fun `execute fails fast naming a malformed override signal and provisions nothing`() {
+            // The traces endpoint is a bare host:port; a URL with a scheme is malformed. Init must
+            // abort before any cluster state is written, naming the offending signal.
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--redirect-telemetry",
+                "10.0.0.9",
+                "--redirect-traces-endpoint",
+                "http://10.0.0.9:4320",
+            )
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("traces")
+
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -13,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -21,8 +23,11 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import picocli.CommandLine
+import java.io.ByteArrayInputStream
 
 class DownCommandTest : BaseKoinTest() {
     private lateinit var mockTeardownService: AwsInfrastructureService
@@ -283,10 +288,72 @@ class DownCommandTest : BaseKoinTest() {
             command.autoApprove = true
             command.execute()
 
-            val output = outputHandler.messages.joinToString("\n")
-            assertThat(output).contains("completed with errors")
-            assertThat(output).contains("Failed to delete SG")
-            assertThat(output).contains("Timeout on instance")
+            // Teardown failures are errors, so they go to stderr, not the progress output.
+            val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+            assertThat(errorOutput).contains("completed with errors")
+            assertThat(errorOutput).contains("Failed to delete SG")
+            assertThat(errorOutput).contains("Timeout on instance")
+            assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("completed with errors")
         }
+    }
+
+    /**
+     * `down`'s exit status must reflect whether the infrastructure was actually removed, so a
+     * script driving it can tell a failed or declined teardown from a successful one.
+     */
+    @Nested
+    inner class ExitCode {
+        @Test
+        fun `a teardown that completes with errors exits non-zero`() {
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(true)))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(false)))
+                .thenReturn(TeardownResult.failure(listOf("Failed to delete SG")))
+
+            val exitCode = Down().apply { autoApprove = true }.call()
+
+            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        }
+
+        @Test
+        fun `a teardown the user declines at the prompt exits non-zero`() {
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(true)))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+
+            val originalIn = System.`in`
+            val exitCode =
+                try {
+                    System.setIn(ByteArrayInputStream("no\n".toByteArray()))
+                    Down().call()
+                } finally {
+                    System.setIn(originalIn)
+                }
+
+            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+            verify(mockTeardownService, never()).teardownVpc("vpc-test123", false)
+            assertThat(outputHandler.messages.joinToString("\n")).contains("Teardown cancelled by user")
+        }
+
+        @Test
+        fun `a successful teardown exits zero`() {
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(true)))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+            whenever(mockTeardownService.teardownVpc(eq("vpc-test123"), eq(false)))
+                .thenReturn(TeardownResult.success(testDiscoveredResources))
+
+            val exitCode = Down().apply { autoApprove = true }.call()
+
+            assertThat(exitCode).isEqualTo(0)
+        }
+    }
+
+    /**
+     * `down` never schedules the owner's data for deletion, so the option that set the expiry is gone.
+     */
+    @Test
+    fun `retention-days is an unknown option`() {
+        assertThatThrownBy { CommandLine(Down()).parseArgs("--retention-days", "1") }
+            .isInstanceOf(CommandLine.UnmatchedArgumentException::class.java)
+            .hasMessageContaining("--retention-days")
     }
 }

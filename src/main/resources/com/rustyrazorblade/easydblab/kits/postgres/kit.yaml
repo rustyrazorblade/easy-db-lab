@@ -4,13 +4,32 @@ description: Deploy PostgreSQL via the CloudNativePG operator
 version: "1.0.0"
 collision-check: true
 metrics:
+  # Pod discovery on this instance's primary, the pod the metrics NodePort selected, scraped once
+  # by the collector on its node with instance = the pod name. A static job on the NodePort was
+  # run by every collector, duplicating the series once per node. Port is CNPG's metrics
+  # container port, the same for every instance; ${KIT_NAME} is the instance name. No fixed job:
+  # the job is the instance name (postgres, postgres-duckdb, ...), as for every other kit.
   - type: scrape
-    port: 30987
+    port: 9187
     path: /metrics
-    job: postgres
+    pod-selector: "cnpg.io/cluster=${KIT_NAME},cnpg.io/instanceRole=primary"
+# Every instance installs the overview; an extension instance adds only its own extension's
+# dashboard. An instance other than plain postgres installs them under uids of its own, so it
+# never moves plain postgres's dashboards into its folder.
+dashboards:
+  - path: dashboards/postgres.json
+  - path: dashboards/duckdb.json
+    extension: duckdb
+  - path: dashboards/postgis.json
+    extension: postgis
+  - path: dashboards/timescaledb.json
+    extension: timescaledb
 runtime:
   type: pods
-  selector: "cnpg.io/podRole=instance"
+  # Scoped to this instance: postgres and postgres-<extension> run side by side, and the start
+  # collision check must not mistake one for the other. CNPG labels each instance pod with its
+  # Cluster, which is named after the kit instance.
+  selector: "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance"
   namespace: default
 endpoints:
   - name: "PostgreSQL"
@@ -63,10 +82,11 @@ start:
   - type: shell
     script: |
       echo "Waiting for PostgreSQL instance pods to be created..."
-      until kubectl get pods -l cnpg.io/podRole=instance -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      # Scoped to this instance's Cluster: postgres and postgres-<extension> run side by side.
+      until kubectl get pods -l "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance" -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
       echo "Pods found, waiting for Ready..."
       kubectl wait --for=condition=Ready pods \
-        -l cnpg.io/podRole=instance \
+        -l "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance" \
         --namespace default \
         --timeout=300s
   - type: manifest
@@ -92,9 +112,12 @@ stop:
 
 uninstall:
   - type: platform-pvs-delete
+  # postgres and every postgres-<extension> instance run on this one operator; it is removed only
+  # once no CNPG Cluster is left.
   - type: helm-uninstall
     release: cnpg-operator
     namespace: cnpg-system
+    keep-while-any: clusters.postgresql.cnpg.io
 
 capabilities:
   - type: sql

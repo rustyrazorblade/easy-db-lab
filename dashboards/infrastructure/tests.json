@@ -1,0 +1,501 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "${logs_datasource}"
+        },
+        "enable": true,
+        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\" | label_format cluster_name=`{{regexReplaceAll \"^(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$\" .cluster \"$1\"}}`",
+        "hide": false,
+        "iconColor": "green",
+        "instant": false,
+        "name": "easy-db-lab markers",
+        "tagKeys": "tags",
+        "textFormat": "",
+        "titleFormat": "{{cluster_name}}"
+      }
+    ]
+  },
+  "description": "Every test (cluster) of the tenant the Metrics picker selects, with its window, links to its dashboards, and its documents. A test's window is its first and last `up` sample in Mimir within Lookback, so torn-down clusters are listed too.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "One row per cluster with `up` samples within Lookback. Start and End are the first and last `up` sample, found at the Resolution step, so the window is the whole life of the cluster. Click a cluster for its dashboards, a comparison with the current cluster, or its documents.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cluster"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cluster_name"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Cluster"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "System Overview",
+                    "url": "/d/system-overview/system-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}"
+                  },
+                  {
+                    "title": "Cassandra Overview",
+                    "url": "/d/1e7b6436-9a13-44cf-bdae-7528a9a7f537/cassandra-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}"
+                  },
+                  {
+                    "title": "Compare with the current cluster",
+                    "url": "/d/c09599ec-8d87-4fe5-9346-9e85c41d33af/cluster-comparison?var-baseline_cluster=${__data.fields.cluster}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}&${doc_tenant:queryparam}&${lookback:queryparam}"
+                  },
+                  {
+                    "title": "Show documents",
+                    "url": "/d/tests/tests?var-cluster=${__data.fields.cluster}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Start|End"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurationms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "window_start|window_end"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * min by (cluster) (min_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * (min by (cluster) (min_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])) - $resolution), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * (max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])) + $resolution), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "D"
+        }
+      ],
+      "title": "Tests",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "Duration",
+            "binary": {
+              "left": "Value #B",
+              "operator": "-",
+              "right": "Value #A"
+            },
+            "mode": "binary",
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Duration": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "cluster": 6
+            },
+            "renameByName": {
+              "Value #A": "Start",
+              "Value #B": "End",
+              "Value #C": "window_start",
+              "Value #D": "window_end"
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "string",
+                "targetField": "window_start"
+              },
+              {
+                "destinationType": "string",
+                "targetField": "window_end"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": true,
+                "field": "Start"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "description": "The documents of the selected test, `reports/<doc_tenant>/<cluster>/index.html` in the account bucket, served read-only by the documents web server on the control node. Upload them with `easy-db-lab report upload FILE...`. A test that has none shows \"No documents yet\".",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 2,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${cluster}/index.html\" width=\"100%\" height=\"696\"></iframe>",
+        "mode": "html"
+      },
+      "title": "Documents: ${cluster:text}",
+      "type": "text"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "tests"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Logs",
+        "multi": false,
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Traces",
+        "multi": false,
+        "name": "traces_datasource",
+        "options": [],
+        "query": "tempo",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "allowCustomValue": true,
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(count by (cluster) (last_over_time(up[$lookback])))",
+        "description": "The selected test, whose documents the Documents panel shows. A row's Show documents link selects it.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Test",
+        "multi": false,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 3,
+          "query": "query_result(count by (cluster) (last_over_time(up[$lookback])))",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "180d",
+          "value": "180d"
+        },
+        "description": "How far back to look for tests.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Lookback",
+        "multi": false,
+        "name": "lookback",
+        "options": [
+          {
+            "selected": false,
+            "text": "7d",
+            "value": "7d"
+          },
+          {
+            "selected": false,
+            "text": "30d",
+            "value": "30d"
+          },
+          {
+            "selected": false,
+            "text": "90d",
+            "value": "90d"
+          },
+          {
+            "selected": true,
+            "text": "180d",
+            "value": "180d"
+          },
+          {
+            "selected": false,
+            "text": "365d",
+            "value": "365d"
+          }
+        ],
+        "query": "7d,30d,90d,180d,365d",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "5m",
+          "value": "300"
+        },
+        "description": "The step, in seconds, at which a test's first and last up sample is found. A finer step is more exact and costs more.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Resolution",
+        "multi": false,
+        "name": "resolution",
+        "options": [
+          {
+            "selected": false,
+            "text": "1m",
+            "value": "60"
+          },
+          {
+            "selected": true,
+            "text": "5m",
+            "value": "300"
+          },
+          {
+            "selected": false,
+            "text": "15m",
+            "value": "900"
+          },
+          {
+            "selected": false,
+            "text": "1h",
+            "value": "3600"
+          }
+        ],
+        "query": "1m : 60,5m : 300,15m : 900,1h : 3600",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "description": "The tenant folder the documents are read from. The installer lists every tenant and selects the cluster's own; set it with the pickers.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Documents tenant",
+        "multi": false,
+        "name": "doc_tenant",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Tests",
+  "uid": "tests",
+  "version": 1,
+  "weekStart": ""
+}

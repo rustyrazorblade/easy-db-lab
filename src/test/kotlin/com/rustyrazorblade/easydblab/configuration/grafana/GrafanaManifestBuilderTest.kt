@@ -15,11 +15,11 @@ import org.mockito.kotlin.whenever
 /**
  * Tests for GrafanaManifestBuilder.
  *
- * Uses real TemplateService (never mocked per project convention) to verify
- * dashboard JSON loading and template variable substitution.
+ * Uses real TemplateService (never mocked per project convention).
  */
 class GrafanaManifestBuilderTest : BaseKoinTest() {
     private lateinit var builder: GrafanaManifestBuilder
+    private val documents = DocumentsBucket("acct-bucket", "eu-west-1")
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager
 
@@ -49,26 +49,43 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         builder = GrafanaManifestBuilder(templateService)
     }
 
-    @Test
-    fun `buildDashboardConfigMap preserves Grafana built-in variables`() {
-        val configMap = builder.buildDashboardConfigMap(GrafanaDashboard.CLICKHOUSE)
-        val json = configMap.data[GrafanaDashboard.CLICKHOUSE.jsonFileName]!!
+    private fun grafanaContainer() =
+        builder
+            .buildDeployment(documents)
+            .spec.template.spec.containers
+            .first { it.name == "grafana" }
 
-        assertThat(json).contains("\$__rate_interval")
+    @Test
+    fun `the provisioning ConfigMap carries the dashboard tree provider config`() {
+        // The shape of that config is pinned in GrafanaDashboardProvisioningConfigTest; here only
+        // that the ConfigMap ships it unchanged under the key Grafana mounts.
+        val yaml = builder.buildDashboardProvisioningConfigMap().data["dashboards.yaml"]
+
+        assertThat(yaml).isEqualTo(GrafanaDashboardProvisioningConfig.forDashboardTree().toYaml())
     }
 
     @Test
-    fun `buildDeployment includes grafana and image renderer containers`() {
-        val deployment = builder.buildDeployment()
-        val containers = deployment.spec.template.spec.containers
+    fun `the home dashboard resolves inside the copied tree`() {
+        // GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH is the home dashboard's place in the tree,
+        // the same path the catalog insists on. Left pointing anywhere else, Grafana opens on an
+        // empty page.
+        val homePath = grafanaContainer().env.first { it.name == "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" }.value
 
-        assertThat(containers).hasSize(2)
-        assertThat(containers.map { it.name }).containsExactly("grafana", "grafana-image-renderer")
+        assertThat(homePath).isEqualTo("/var/lib/grafana/dashboards/infrastructure/system-overview.json")
+    }
+
+    @Test
+    fun `buildAllResources is the provisioning ConfigMap, the documents web server ConfigMap and the Deployment`() {
+        // Dashboards reach Grafana as files on the hostPath, not as K8s objects, so nothing here
+        // may vary with the catalog's contents.
+        val names = builder.buildAllResources(documents).map { it.metadata.name }
+
+        assertThat(names).containsExactly("grafana-dashboards-config", "grafana-documents-web", "grafana")
     }
 
     @Test
     fun `buildDeployment rendering env vars reference correct ports`() {
-        val deployment = builder.buildDeployment()
+        val deployment = builder.buildDeployment(documents)
         val containers = deployment.spec.template.spec.containers
         val grafanaContainer = containers.first { it.name == "grafana" }
         val rendererContainer = containers.first { it.name == "grafana-image-renderer" }
@@ -87,55 +104,48 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         // Listing it in GF_INSTALL_PLUGINS makes the boot-time install fail
         // ("cannot install a Core plugin") and Grafana CrashLoopBackOffs. Only externally
         // distributed plugins may appear here.
-        val deployment = builder.buildDeployment()
-        val grafanaContainer =
-            deployment.spec.template.spec.containers
-                .first { it.name == "grafana" }
         val plugins =
-            grafanaContainer.env
+            grafanaContainer()
+                .env
                 .first { it.name == "GF_INSTALL_PLUGINS" }
                 .value
                 .split(",")
 
         assertThat(plugins).doesNotContain("grafana-pyroscope-datasource")
-        assertThat(plugins).contains(
-            "grafana-clickhouse-datasource",
-            "victoriametrics-logs-datasource",
-            "grafana-polystat-panel",
-        )
+        // Loki is a core datasource too; the VictoriaLogs plugin went with VictoriaLogs.
+        assertThat(plugins).containsExactlyInAnyOrder("grafana-clickhouse-datasource", "grafana-polystat-panel")
     }
 
     @Test
-    fun `buildDeployment includes volume mounts for all dashboards`() {
-        val deployment = builder.buildDeployment()
-        val container =
-            deployment.spec.template.spec.containers
-                .first()
-
-        GrafanaDashboard.entries.forEach { dashboard ->
-            val mount = container.volumeMounts.find { it.name == dashboard.volumeName }
-            assertThat(mount)
-                .describedAs("Volume mount for ${dashboard.name}")
-                .isNotNull
-            assertThat(mount!!.mountPath).isEqualTo(dashboard.mountPath)
-            assertThat(mount.readOnly).isTrue()
-        }
-    }
-
-    @Test
-    fun `buildDeployment includes volumes for all dashboards with correct optional flag`() {
-        val deployment = builder.buildDeployment()
+    fun `buildDeployment mounts the data hostPath that holds the dashboard tree and nothing per dashboard`() {
+        val deployment = builder.buildDeployment(documents)
         val volumes = deployment.spec.template.spec.volumes
+        val mounts = grafanaContainer().volumeMounts
 
-        GrafanaDashboard.entries.forEach { dashboard ->
-            val volume = volumes.find { it.name == dashboard.volumeName }
-            assertThat(volume)
-                .describedAs("Volume for ${dashboard.name}")
-                .isNotNull
-            assertThat(volume!!.configMap.name).isEqualTo(dashboard.configMapName)
-            assertThat(volume.configMap.optional)
-                .describedAs("Optional flag for ${dashboard.name}")
-                .isEqualTo(dashboard.optional)
-        }
+        val data = volumes.first { it.name == "data" }
+        assertThat(data.hostPath.path).isEqualTo(GrafanaManifestBuilder.GRAFANA_DATA_PATH)
+        assertThat(mounts.first { it.name == "data" }.mountPath).isEqualTo("/var/lib/grafana")
+
+        assertThat(volumes.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data", "documents-web-config")
+        assertThat(mounts.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data")
+    }
+
+    @Test
+    fun `Grafana lets a Text panel hold the documents iframe`() {
+        val env = grafanaContainer().env.associate { it.name to it.value }
+
+        // Grafana reads disable_sanitize_html from [panels]; the [security] spelling has no effect.
+        assertThat(env).containsEntry("GF_PANELS_DISABLE_SANITIZE_HTML", "true").doesNotContainKey("GF_SECURITY_DISABLE_SANITIZE_HTML")
+    }
+
+    @Test
+    fun `the pod runs the documents proxy and web server beside Grafana and the renderer`() {
+        val containers =
+            builder
+                .buildDeployment(documents)
+                .spec.template.spec.containers
+
+        assertThat(containers.map { it.name })
+            .containsExactly("grafana", "grafana-image-renderer", "documents-sigv4-proxy", "documents-web")
     }
 }

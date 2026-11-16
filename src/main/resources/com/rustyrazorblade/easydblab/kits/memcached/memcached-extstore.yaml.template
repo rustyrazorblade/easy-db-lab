@@ -1,0 +1,102 @@
+# Applied by the start step instead of memcached.yaml when --extstore-size is set.
+# The claim binds by name to the local PV that install's platform-pvs step creates on the db
+# node's NVMe (data-memcached-0), so it can never take another kit's PV in the same storage class.
+# local-storage ignores the requested size, so the request only has to fit the PV's capacity.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: memcached-extstore
+  namespace: default
+  labels:
+    app: memcached
+    easydblab/kit: memcached
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: __STORAGE_CLASS_WFC__
+  volumeName: data-memcached-0
+  resources:
+    requests:
+      storage: 10Ti
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memcached
+  namespace: default
+  labels:
+    app: memcached
+    easydblab/kit: memcached
+spec:
+  replicas: 1
+  # Two memcached processes must never share one extstore file, so the old pod is gone before
+  # the new one starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: memcached
+  template:
+    metadata:
+      labels:
+        app: memcached
+        easydblab/kit: memcached
+    spec:
+      # The PV directory is created by root on the node; the image runs memcached as the memcache
+      # user (uid and gid 11211), which needs group write access to create the extstore file.
+      securityContext:
+        fsGroup: 11211
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: type
+                    operator: In
+                    values:
+                      - db
+      containers:
+        - name: memcached
+          image: memcached:1.6-alpine
+          imagePullPolicy: IfNotPresent
+          # The start step publishes the -o option string (ext_path plus the tuning options that
+          # were set) in this ConfigMap; Kubernetes expands $(EXTSTORE_OPTIONS) in the args.
+          env:
+            - name: EXTSTORE_OPTIONS
+              valueFrom:
+                configMapKeyRef:
+                  name: memcached-extstore-options
+                  key: EXTSTORE_OPTIONS
+          # The image entrypoint prepends `memcached` when the first arg is a flag.
+          args:
+            - -m
+            - "__MEMORY_MB__"
+            - -o
+            - "$(EXTSTORE_OPTIONS)"
+          ports:
+            - name: memcached
+              containerPort: 11211
+          readinessProbe:
+            tcpSocket:
+              port: 11211
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 11211
+            periodSeconds: 10
+          volumeMounts:
+            - name: extstore
+              mountPath: /data
+        - name: memcached-exporter
+          image: prom/memcached-exporter:v0.15.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --memcached.address=localhost:11211
+            - --web.listen-address=:9150
+          ports:
+            - name: metrics
+              containerPort: 9150
+      volumes:
+        - name: extstore
+          persistentVolumeClaim:
+            claimName: memcached-extstore

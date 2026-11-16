@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
@@ -23,7 +22,6 @@ import java.util.Locale
  * - `spark jobs` - Lists the 10 most recent jobs
  * - `spark jobs --limit 20` - Lists the 20 most recent jobs
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "jobs",

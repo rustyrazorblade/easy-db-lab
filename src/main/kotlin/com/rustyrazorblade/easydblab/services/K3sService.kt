@@ -1,18 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils
+import io.fabric8.kubernetes.client.utils.Serialization
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -79,40 +74,6 @@ interface K3sService : SystemDServiceManager {
         host: Host,
         localPath: Path,
     ): Result<Unit>
-
-    /**
-     * Lists Kubernetes jobs from the K3s cluster.
-     *
-     * This method handles the complete connection chain:
-     * 1. Establishes SOCKS proxy to the control node
-     * 2. Creates proxied Kubernetes client
-     * 3. Lists all jobs across namespaces
-     *
-     * @param controlHost The control node running K3s
-     * @param kubeconfigPath Local path to the kubeconfig file
-     * @return Result containing list of jobs or an error
-     */
-    fun listJobs(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesJob>>
-
-    /**
-     * Lists Kubernetes pods from the K3s cluster.
-     *
-     * This method handles the complete connection chain:
-     * 1. Establishes SOCKS proxy to the control node
-     * 2. Creates proxied Kubernetes client
-     * 3. Lists all pods across namespaces
-     *
-     * @param controlHost The control node running K3s
-     * @param kubeconfigPath Local path to the kubeconfig file
-     * @return Result containing list of pods or an error
-     */
-    fun listPods(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesPod>>
 }
 
 /**
@@ -142,10 +103,6 @@ class DefaultK3sService(
         const val SERVER_SCRIPT_PATH = "/usr/local/bin/start-k3s-server.sh"
     }
 
-    private val yamlMapper =
-        ObjectMapper(YAMLFactory())
-            .registerKotlinModule()
-
     /**
      * Starts the K3s server service using the pre-installed startup script.
      *
@@ -164,9 +121,16 @@ class DefaultK3sService(
         runCatching {
             log.debug { "Starting K3s server on ${host.alias} (useCustomCni=$useCustomCni)" }
 
-            uploadScript(host, SERVER_SCRIPT_RESOURCE, SERVER_SCRIPT_PATH)
+            remoteOps.installFile(host, SERVER_SCRIPT_RESOURCE, SERVER_SCRIPT_PATH, "0755")
 
-            val args = if (useCustomCni) "--flannel-backend=none" else ""
+            // The pod range must hold one node CIDR per node at 1,000+ nodes; see Constants.K3s.
+            val args =
+                listOfNotNull(
+                    "--flannel-backend=none".takeIf { useCustomCni },
+                    "--cluster-cidr=${Constants.K3s.CLUSTER_CIDR}",
+                    "--service-cidr=${Constants.K3s.SERVICE_CIDR}",
+                    "--kube-controller-manager-arg=node-cidr-mask-size=${Constants.K3s.NODE_CIDR_MASK_SIZE}",
+                ).joinToString(" ")
             remoteOps.executeRemotely(
                 host,
                 "sudo $SERVER_SCRIPT_PATH $args".trim(),
@@ -213,80 +177,23 @@ class DefaultK3sService(
                     tempFile.toPath(),
                 )
 
-                // Parse YAML
-                val kubeconfigMap = yamlMapper.readValue(tempFile, Map::class.java) as Map<String, Any>
+                // Parse kubeconfig into fabric8's typed model (no untyped map diving)
+                val kubeConfig = KubeConfigUtils.parseConfig(tempFile)
 
                 // Modify server URL from 127.0.0.1 to control node's private IP
                 val newServerUrl = Constants.K3s.DEFAULT_SERVER_URL.replace("127.0.0.1", host.private)
 
-                @Suppress("UNCHECKED_CAST")
-                val clusters = kubeconfigMap["clusters"] as? List<Map<String, Any>>
-                clusters?.firstOrNull()?.let { cluster ->
-                    val clusterData = cluster["cluster"] as? MutableMap<String, Any>
-                    clusterData?.put("server", newServerUrl)
-                }
+                val cluster =
+                    kubeConfig.clusters.firstOrNull()?.cluster
+                        ?: error("Kubeconfig downloaded from ${host.alias} contains no clusters")
+                cluster.server = newServerUrl
 
                 // Write modified kubeconfig to local path
-                yamlMapper.writeValue(localPath.toFile(), kubeconfigMap)
+                Files.writeString(localPath, Serialization.asYaml(kubeConfig))
 
                 log.info { "Successfully configured kubeconfig at $localPath with server URL $newServerUrl" }
             } finally {
                 tempFile.delete()
             }
         }
-
-    override fun listJobs(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesJob>> =
-        runCatching {
-            kubernetesService(controlHost, kubeconfigPath).listJobs().getOrThrow()
-        }
-
-    override fun listPods(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): Result<List<KubernetesPod>> =
-        runCatching {
-            kubernetesService(controlHost, kubeconfigPath).listPods().getOrThrow()
-        }
-
-    private fun kubernetesService(
-        controlHost: ClusterHost,
-        kubeconfigPath: Path,
-    ): DefaultKubernetesService {
-        val clientFactory = ProxiedKubernetesClientFactory()
-        return DefaultKubernetesService(clientFactory, kubeconfigPath)
-    }
-
-    /**
-     * Uploads a script from classpath resources to a remote host.
-     *
-     * @param host The host to upload to
-     * @param resourcePath The classpath resource path
-     * @param remotePath The destination path on the remote host
-     */
-    private fun uploadScript(
-        host: Host,
-        resourcePath: String,
-        remotePath: String,
-    ) {
-        val scriptContent =
-            this::class.java.getResourceAsStream(resourcePath)
-                ?: error("Script not found: $resourcePath")
-
-        val remoteFilename = remotePath.substringAfterLast("/")
-        val tempFile = Files.createTempFile("k3s-", "-script.sh")
-        try {
-            scriptContent.use { input ->
-                Files.newOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            remoteOps.upload(host, tempFile, remoteFilename)
-            remoteOps.executeRemotely(host, "sudo mv $remoteFilename $remotePath && sudo chmod +x $remotePath", output = false)
-        } finally {
-            Files.deleteIfExists(tempFile)
-        }
-    }
 }

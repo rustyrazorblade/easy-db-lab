@@ -1,0 +1,218 @@
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  labels:
+    app.kubernetes.io/name: "grafana"
+  name: "grafana-dashboards-config"
+  namespace: "default"
+data:
+  dashboards.yaml: |-
+    apiVersion: 1
+    providers:
+    - name: "dashboards"
+      orgId: 1
+      type: "file"
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: "/var/lib/grafana/dashboards"
+        foldersFromFilesStructure: true
+---
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  labels:
+    app.kubernetes.io/name: "grafana"
+  name: "grafana-documents-web"
+  namespace: "default"
+data:
+  nginx.conf: |
+    # The read-only documents web server in the Grafana pod.
+    #
+    # The browser loads a test's documents from here, the same way it reaches Grafana. Only GET requests
+    # for paths under /reports/ go on, to the signing proxy on loopback, which reads the account bucket
+    # with the instance role. nginx decodes and normalizes the path first, so /reports/../mimir/ is
+    # /mimir/ and is refused. A decoded path must then hold only the document name characters, so an
+    # encoded line break cannot split the request and an encoded "?" cannot add a query. proxy_pass
+    # names a fixed URI with no variables, so nginx re-encodes the path itself, and the query string is
+    # cleared, so a request cannot name another bucket or an S3 sub-resource.
+    worker_processes 1;
+    pid /tmp/nginx.pid;
+    error_log /dev/stderr warn;
+
+    events {
+        worker_connections 256;
+    }
+
+    http {
+        access_log /dev/stdout;
+        server_tokens off;
+        client_body_temp_path /tmp/client_temp;
+        proxy_temp_path /tmp/proxy_temp;
+        fastcgi_temp_path /tmp/fastcgi_temp;
+        uwsgi_temp_path /tmp/uwsgi_temp;
+        scgi_temp_path /tmp/scgi_temp;
+
+        server {
+            listen 3080;
+
+            location /reports/ {
+                if ($request_method != GET) {
+                    return 405;
+                }
+                if ($uri !~ "^/reports/[A-Za-z0-9._/-]+$") {
+                    return 400;
+                }
+                set $args "";
+                proxy_http_version 1.1;
+                proxy_pass http://127.0.0.1:3081/acct/reports/;
+            }
+
+            location / {
+                return 404;
+            }
+        }
+    }
+---
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  labels:
+    app.kubernetes.io/name: "grafana"
+  name: "grafana"
+  namespace: "default"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "grafana"
+  strategy:
+    type: "Recreate"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "grafana"
+    spec:
+      containers:
+      - env:
+        - name: "GF_INSTALL_PLUGINS"
+          value: "grafana-clickhouse-datasource,grafana-polystat-panel"
+        - name: "GF_SECURITY_ADMIN_USER"
+          value: "admin"
+        - name: "GF_SECURITY_ADMIN_PASSWORD"
+          value: "admin"
+        - name: "GF_USERS_ALLOW_SIGN_UP"
+          value: "false"
+        - name: "GF_AUTH_ANONYMOUS_ENABLED"
+          value: "true"
+        - name: "GF_USERS_DEFAULT_ORG_NAME"
+          value: "Main Org."
+        - name: "GF_AUTH_ANONYMOUS_ORG_NAME"
+          value: "Main Org."
+        - name: "GF_AUTH_ANONYMOUS_ORG_ROLE"
+          value: "Admin"
+        - name: "GF_AUTH_DISABLE_LOGIN_FORM"
+          value: "false"
+        - name: "GF_AUTH_BASIC_ENABLED"
+          value: "true"
+        - name: "GF_BRANDING_APP_TITLE"
+          value: "test-golden-cluster"
+        - name: "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH"
+          value: "/var/lib/grafana/dashboards/infrastructure/system-overview.json"
+        - name: "GF_RENDERING_SERVER_URL"
+          value: "http://localhost:8081/render"
+        - name: "GF_RENDERING_CALLBACK_URL"
+          value: "http://localhost:3000/"
+        - name: "GF_RENDERING_RENDERER_TOKEN"
+          value: "easydblab-renderer"
+        - name: "GF_PANELS_DISABLE_SANITIZE_HTML"
+          value: "true"
+        image: "grafana/grafana:13.2.2"
+        livenessProbe:
+          httpGet:
+            path: "/api/health"
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        name: "grafana"
+        ports:
+        - containerPort: 3000
+          hostPort: 3000
+          protocol: "TCP"
+        readinessProbe:
+          httpGet:
+            path: "/api/health"
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: "/etc/grafana/provisioning/datasources"
+          name: "datasources"
+          readOnly: true
+        - mountPath: "/etc/grafana/provisioning/dashboards"
+          name: "dashboards-config"
+          readOnly: true
+        - mountPath: "/var/lib/grafana"
+          name: "data"
+      - env:
+        - name: "AUTH_TOKEN"
+          value: "easydblab-renderer"
+        image: "grafana/grafana-image-renderer:v5.12.4"
+        name: "grafana-image-renderer"
+        ports:
+        - containerPort: 8081
+          protocol: "TCP"
+      - args:
+        - "--name"
+        - "s3"
+        - "--region"
+        - "us-west-2"
+        - "--host"
+        - "s3.us-west-2.amazonaws.com"
+        - "--port"
+        - "127.0.0.1:3081"
+        image: "public.ecr.aws/aws-observability/aws-sigv4-proxy:1.13"
+        name: "documents-sigv4-proxy"
+        ports:
+        - containerPort: 3081
+          protocol: "TCP"
+      - image: "nginxinc/nginx-unprivileged:1.30.5-alpine"
+        name: "documents-web"
+        ports:
+        - containerPort: 3080
+          hostPort: 3080
+          protocol: "TCP"
+        volumeMounts:
+        - mountPath: "/etc/nginx/nginx.conf"
+          name: "documents-web-config"
+          readOnly: true
+          subPath: "nginx.conf"
+      dnsPolicy: "ClusterFirstWithHostNet"
+      hostNetwork: true
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      securityContext:
+        fsGroup: 472
+        runAsUser: 472
+      tolerations:
+      - effect: "NoSchedule"
+        key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+      volumes:
+      - configMap:
+          name: "grafana-datasources"
+        name: "datasources"
+      - configMap:
+          name: "grafana-dashboards-config"
+        name: "dashboards-config"
+      - hostPath:
+          path: "/mnt/db1/grafana"
+          type: "DirectoryOrCreate"
+        name: "data"
+      - configMap:
+          name: "grafana-documents-web"
+        name: "documents-web-config"

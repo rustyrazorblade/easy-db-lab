@@ -1,0 +1,128 @@
+# The client listeners of the first FerrosaDB pod (ordinal 0) on fixed NodePorts of every node.
+# Drivers that discover peers (CQL through system.peers) reach the other pods from there.
+# Internode traffic (17000) has no NodePort.
+# FerrosaDB CQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: ferrosa-cql-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+spec:
+  type: NodePort
+  selector:
+    easydblab/ferrosa-ordinal: "0"
+  ports:
+    - name: cql
+      port: 9042
+      targetPort: 9042
+      nodePort: 30942
+---
+# FerrosaDB console, /metrics and /readyz
+apiVersion: v1
+kind: Service
+metadata:
+  name: ferrosa-console-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+spec:
+  type: NodePort
+  selector:
+    easydblab/ferrosa-ordinal: "0"
+  ports:
+    - name: console
+      port: 9090
+      targetPort: 9090
+      nodePort: 30909
+---
+# FerrosaDB Bolt
+apiVersion: v1
+kind: Service
+metadata:
+  name: ferrosa-bolt-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+spec:
+  type: NodePort
+  selector:
+    easydblab/ferrosa-ordinal: "0"
+  ports:
+    - name: bolt
+      port: 7687
+      targetPort: 7687
+      nodePort: 30787
+---
+# FerrosaDB graph HTTP API
+apiVersion: v1
+kind: Service
+metadata:
+  name: ferrosa-graph-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+spec:
+  type: NodePort
+  selector:
+    easydblab/ferrosa-ordinal: "0"
+  ports:
+    - name: graph
+      port: 7474
+      targetPort: 7474
+      nodePort: 30747
+---
+# FerrosaDB SPARQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: ferrosa-sparql-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+spec:
+  type: NodePort
+  selector:
+    easydblab/ferrosa-ordinal: "0"
+  ports:
+    - name: sparql
+      port: 8080
+      targetPort: 8080
+      nodePort: 30880
+---
+# FerrosaDB Postgres wire stub
+apiVersion: v1
+kind: Service
+metadata:
+  name: ferrosa-postgres-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+spec:
+  type: NodePort
+  selector:
+    easydblab/ferrosa-ordinal: "0"
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      nodePort: 30532
+---
+# FerrosaDB Arrow Flight
+apiVersion: v1
+kind: Service
+metadata:
+  name: ferrosa-flight-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+spec:
+  type: NodePort
+  selector:
+    easydblab/ferrosa-ordinal: "0"
+  ports:
+    - name: flight
+      port: 8815
+      targetPort: 8815
+      nodePort: 30815

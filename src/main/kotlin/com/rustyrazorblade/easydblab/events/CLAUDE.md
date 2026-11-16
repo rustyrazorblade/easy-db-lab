@@ -7,54 +7,69 @@ This package implements the structured event bus system for all user-facing outp
 ```
 Command/Service → eventBus.emit(Event.Domain.Type(...)) → EventBus → EventListeners
                                                                     ├── ConsoleEventListener (stdout/stderr)
-                                                                    ├── McpEventListener (MCP status buffer)
-                                                                    └── RedisEventListener (pub/sub, optional)
+                                                                    └── RedisEventListener (pub/sub, optional, best effort)
+
+metrics stream → RedisSamplePublisher → RedisPublisher (Metrics.Sample only; never through the bus)
 ```
+
+The console and, when `EASY_DB_LAB_REDIS_URL` is set, Redis are the only destinations.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `Event.kt` | Sealed interface hierarchy with ~230+ concrete event types across 28 domain interfaces |
+| `Event.kt` | Sealed interface hierarchy: one sealed sub-interface per domain (listed below), each holding that domain's concrete event types |
 | `EventBus.kt` | Central dispatcher: `emit(event)` → wraps in `EventEnvelope` → dispatches to listeners |
 | `EventContext.kt` | Stack-based `ThreadLocal` for tracking current command name |
 | `EventEnvelope.kt` | Wraps `Event` + timestamp + commandName; serializable to JSON |
 | `EventListener.kt` | Interface: `onEvent(envelope)`, `close()` |
 | `ConsoleEventListener.kt` | Writes `event.toDisplayString()` to stdout (or stderr for errors) |
-| `McpEventListener.kt` | Buffers envelopes for MCP `get_server_status` tool |
-| `RedisEventListener.kt` | Publishes JSON envelopes to Redis pub/sub (conditional on env var) |
+| `RedisEventListener.kt` | Publishes JSON envelopes to Redis pub/sub (conditional on env var); best effort after startup |
+| `RedisEndpoint.kt` | Parses `EASY_DB_LAB_REDIS_URL` (`redis://host:port/channel`) into host, port and channel, with the default channel. Only `redis://` with no user name or password is accepted (the connection uses no TLS and no auth); `url` is redacted anyway. An unusable value throws `RedisConfigurationException`, which `Main` reports like `RedisUnavailableException` (both are `RedisStartupException`) |
+| `RedisPublisher.kt` | The one Redis connection of the process; its constructor pings and throws `RedisUnavailableException`, whose message names `EASY_DB_LAB_REDIS_URL` and the URL |
+| `RedisConfiguration.kt` | `NotConfigured` or `Configured(endpoint)`, read once from the environment (Koin singleton) |
+| `InvalidMetricName.kt` | One bad `--metrics` entry (position, value, reason), carried by `Metrics.InvalidNames` |
 
 ## Event Hierarchy
 
 Events are organized by domain as sealed sub-interfaces of `Event`:
 
-- `Event.Cassandra.*` — Database lifecycle (start, stop, restart)
+- `Event.Cassandra.*` — Database lifecycle (start, stop, restart). `VersionList` (from `cassandra list`) carries `partial` (version to the nodes that have it), `unreachable` (node to error) and `nodes`; it is an error event when any node is unreachable. `UseSideEffects` (before `cassandra use` starts: the hosts `cassandra.patch.yaml` is re-applied to, and the `--java` override) and `UseConfigNotApplied` (an error: the version switched but the config download or update failed)
+- `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
 - `Event.K3s.*` — K3s cluster management
-- `Event.K8s.*` — Kubernetes operations
+- `Event.Cilium.*` — Cilium CNI operations
+- `Event.K8s.*` — Kubernetes operations, including `NodesRegistering` / `NodesRegistered` (the count of nodes `up` waits on to register with K3s)
 - `Event.Infra.*` — AWS infrastructure (VPC, subnet, security group)
 - `Event.Ec2.*` — EC2 instance operations
 - `Event.Emr.*` — EMR/Spark operations
 - `Event.OpenSearch.*` — OpenSearch domain management
 - `Event.S3.*` — S3 object store operations
-- `Event.Grafana.*` — Grafana dashboard deployment
+- `Event.Grafana.*` — Grafana dashboard deployment, and `CompactorAgentPrepared` (the compactor agent jar's host path, and whether it was uploaded)
 - `Event.Backup.*` — Backup/restore operations
 - `Event.Registry.*` — Container registry operations
 - `Event.Tailscale.*` — Tailscale VPN operations
 - `Event.AwsSetup.*` — AWS resource setup (IAM roles, etc.)
-- `Event.Stress.*` — Stress testing operations
+- `Event.Stress.*` — Stress testing operations. `JobStarted` (from `cassandra stress start`, once the pod runs) carries `host`, the alias of the node the stress pod runs on. `JobCompleted(jobName, host, outcome, durationSeconds)` comes only from `metrics stream`: once for each job it saw running that has finished; `outcome` is `StressJobOutcome`, `succeeded` or `failed` on the wire
 - `Event.Service.*` — SystemD service management
-- `Event.Provision.*` — Cluster provisioning orchestration
+- `Event.Provision.*` — Cluster provisioning orchestration, including the pre-launch capacity checks: `LaunchCapacityVerified`, and the errors `VcpuQuotaInsufficient`, `NetworkInterfaceQuotaInsufficient`, `SubnetAddressesInsufficient` (each with needed, available and shortBy), `InstanceTypeNotOffered`, `TooManyAvailabilityZones` and `LaunchDryRunRefused` (AWS's code and message); `VcpuQuotaNotChecked` names a type whose family has its own quota. `InstanceCapacityShortage` (an error; node role, instance type and availability zone) replaces `InfrastructureFailure` when a launch fails with `InsufficientInstanceCapacity`
 - `Event.Command.*` — Command execution and general command output
 - `Event.Status.*` — Cluster status display sections
-- `Event.Teardown.*` — Cluster teardown lifecycle
+- `Event.Teardown.*` — Cluster teardown lifecycle, including `DryRunPreview` (the resources `down --dry-run` would delete) and `DryRunDeviceRemovalPreview` (the tailnet device it would remove when the VPC is already gone), and the errors `DataBucketMetricsDisableFailed` (bucket and AWS reason; the data-bucket request-metric teardown failed) and `DataBucketDiscoveryFailed` (reason; `down --all` could not list data buckets). `ClusterStateUpdateFailed` (reason; `down` removed the infrastructure but could not read or write state.json). A bucket whose delete throws is reported as `S3.DataBucketKept`
 - `Event.Ami.*` — AMI pruning, listing, validation
-- `Event.ClickHouse.*` — ClickHouse deployment and status
 - `Event.Docker.*` — Container lifecycle operations
-- `Event.Mcp.*` — MCP tool execution
-- `Event.Logs.*` — Log query and backup operations
-- `Event.Metrics.*` — Metrics backup and import
-- `Event.Setup.*` — Profile setup and initialization
+- `Event.Logs.*` — Log queries (`logs query`)
+- `Event.Metrics.*` — `metrics stream`: `Sample` (name, entity, value; published straight to Redis by `RedisSamplePublisher`, never through the bus or to the console), `MetricFailing` (an error: a metric started failing, once per run of failures), `MetricRecovered`, `RedisReconnected` (Redis failed and came back; the URL, the reason and the samples the cycle dropped), and the errors that stop the command: `InvalidNames`, `RedisNotConfigured`, `RedisLost`, `NoRunningCluster`
+- `Event.Setup.*` — Profile setup and initialization, including `CleanRefusedLiveInfrastructure` (an error: `init --clean` found live AWS infrastructure for the workspace's cluster and refused; the VPC ID, the instance IDs and a count of the other resources)
 - `Event.Ssh.*` — SSH remote command execution
+- `Event.Platform.*` — Platform substrate operations (StorageClass, PVs, info)
+- `Event.Install.*` — Kit scaffold generation
+- `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, `Kit.ShellStepFailed` for a shell step that exited non-zero with its exit code and last output lines (carried as data only: the output was already streamed, so the console line does not repeat it), metrics registration, hooks, requirements, `Kit.HelmReleaseKept` when a `helm-uninstall` step keeps an operator another kit instance still uses, `Kit.CollisionDetected` when a collision-checked kit is started while already running, `Kit.StopIncomplete` when its pods outlive the wait after `stop` or `uninstall` (its `phase` field names which), `Kit.StopUnverified` when the cluster cannot be queried during that wait, and `Kit.LoadFailed` (an error: a kit whose `kit.yaml` could not be loaded at startup was skipped; its kit name, the file and the error)) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
+- `Event.Cleanup.*` — Per-node kit cleanup progress and completion
+- `Event.Server.*` — The REST status server: `Ready` (the `/status` and `/swagger` URLs, once it is bound) and `InfrastructureGone` (shutdown when the cluster's VPC no longer exists). There is no MCP domain.
+- `Event.Sql.*` — Shared SQL query results, used by every SQL kit command
+- `Event.Proxy.*` — The SOCKS5 tunnel as `socks start` and `socks stop` manage it: `TunnelReady` (the port, and whether a running tunnel was reused; `up` emits it too for the tunnel it starts or reuses), `TunnelNotNeeded` (a Tailscale cluster), `NoRunningCluster` (an error: nothing to tunnel to), `TunnelStopped` (the PID), `TunnelStopFailed` (an error: the verified tunnel process did not end; it stays recorded), `NoTunnelRunning` (nothing recorded, or the recorded PID is gone or now another process's, and no orphaned ssh of it runs). `down` reports the same stop as `Teardown.Socks5ProxyStopped` or `Teardown.Socks5ProxyStopFailed`. `ProcessSocksProxyService` itself emits `TunnelReplaced` (a recorded tunnel failed the reuse check and a new one started: the old port, the new port, and a `ReplaceReason` of `gateway-changed`, `unreachable`, `process-gone`, `pid-reused` (a live process holds the recorded PID but is not the tunnel script) or `ssh-config-changed`; its text tells the user to change the browser's SOCKS port) and `SupersededTunnelStopFailed` (an error: the tunnel being replaced did not stop; its PID and port), for every caller of `ensureRunning`
+- `Event.Report.*` — Test documents: `DocumentsUploaded` (each stored document's name and S3 URI, and the rebuilt index's URI), from `report upload`
+- `Event.Ingress.*` — SSH ingress rules that `ingress allow` and `ingress revoke` change, one event per CIDR (canonical, e.g. `203.0.113.7/32`; `detected` is true for this machine's detected public IP): `RuleAdded`, `RuleAlreadyPresent`, `RuleRemoved`, and the errors `RuleNotFound` (revoke found no rule), `RuleChangeFailed` (AWS refused one CIDR; `action` `allow`/`revoke` and AWS's reason). One error per precondition that stops the command before any rule changes: `InvalidCidrs` (every bad value and its reason), `PublicIpDetectionFailed`, `NotInWorkspace`, `NoSecurityGroupInState`, `SecurityGroupNotFound`. `up` keeps reporting its own rules as `Infra.SecurityGroupRuleConfigured`, which `AwsInfrastructureService` emits once per rule it adds; the provider emits no rule event
 - `Event.Message` / `Event.Error` — Generic types (kept for tests only, zero production usage)
 
 ## Adding New Events
@@ -94,7 +109,11 @@ Uses kotlinx.serialization with `classDiscriminator = "type"`. All events serial
 
 ## Redis Integration
 
-Set `EASY_DB_LAB_REDIS_URL=redis://host:port/channel` to enable Redis pub/sub. Events are published as JSON envelopes. If Redis is unavailable at startup, the tool fails fast with a connection error.
+Set `EASY_DB_LAB_REDIS_URL=redis://host:port/channel` to enable Redis pub/sub. Events are published as JSON envelopes.
+
+- **At startup** `Main` builds the `EventBus` right after Koin starts. `RedisPublisher` pings Redis then; when Redis does not answer, `Main` prints the `RedisUnavailableException` message (it names `EASY_DB_LAB_REDIS_URL` and the URL) and exits 1 before any command runs (`StartupRedisCheck`).
+- **After startup** `RedisEventListener` is best effort for every command: a failed publish is logged and the event dropped, and the command keeps running.
+- **`Metrics.Sample`** never goes through the bus. `metrics stream` publishes it through `RedisSamplePublisher` on the same shared `RedisPublisher`, so samples never reach the console and the stream sees a Redis failure directly.
 
 ## Migration Status
 

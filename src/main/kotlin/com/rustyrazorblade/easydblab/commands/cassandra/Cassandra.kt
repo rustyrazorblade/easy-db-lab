@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.Profiler
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.Stress
 import picocli.CommandLine.Command
 import picocli.CommandLine.Model.CommandSpec
@@ -10,8 +11,10 @@ import picocli.CommandLine.Spec
  *
  * This command groups subcommands for Cassandra cluster management and tooling including:
  * - Cluster lifecycle: start, stop, restart
+ * - Local builds: build (build a branch and publish it to S3)
  * - Configuration: use, list, download-config, write-config, update-config
  * - Stress testing: stress (with nested subcommands)
+ * - Profiling: profiling (runtime async-profiler control)
  *
  * Note: The 'down' command is a top-level command (easy-db-lab down) since it tears down
  * the entire cluster infrastructure, not just Cassandra.
@@ -21,10 +24,13 @@ import picocli.CommandLine.Spec
     description = ["Cassandra cluster management and tooling operations"],
     mixinStandardHelpOptions = true,
     subcommands = [
+        CassandraBuild::class,
+        CassandraInstall::class,
         Cql::class,
         DownloadConfig::class,
         ListVersions::class,
         Nodetool::class,
+        Profiler::class,
         Restart::class,
         Start::class,
         Stop::class,

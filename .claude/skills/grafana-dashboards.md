@@ -2,63 +2,48 @@
 name: grafana-dashboards
 description: Use when doing any work with Grafana dashboards - creating, modifying, debugging, or deploying, including editing any .json file in the dashboards/ directory. Covers the full architecture, file locations, naming conventions, deployment pipeline, and design principles.
 triggers:
-  - pattern: "dashboards/*.json"
+  - pattern: "dashboards/**/*.json"
 ---
 
 # Grafana Dashboards
 
 ## Architecture Overview
 
-Dashboards are standalone JSON files stored as classpath resources. They are loaded by `GrafanaManifestBuilder` (Fabric8), which builds typed ConfigMap objects with `__KEY__` template variable substitution. The `GrafanaDashboard` enum is the single source of truth for dashboard metadata. Grafana loads dashboards via file-based provisioning from mounted ConfigMap volumes.
-
-```
-JSON resource files → GrafanaManifestBuilder (Fabric8 ConfigMaps + Deployment)
-                          ↓
-           GrafanaUpdateConfig command applies to K8s
-                          ↓
-           Grafana pod mounts ConfigMap volumes → file-based provisioning
-```
+Core dashboards are standalone JSON files in the top-level `dashboards/<folder>/` tree, discovered from the classpath at runtime and copied by `grafana update-config` onto the control node's Grafana hostPath, where one file provider makes one Grafana folder per directory. There is no registry to edit and no K8s object per dashboard. The mechanism is described once, in [`dashboards/CLAUDE.md`](../../dashboards/CLAUDE.md).
 
 ## Key Files and Locations
 
 | What | Path |
 |------|------|
-| Dashboard JSON files | `src/main/resources/.../configuration/grafana/dashboards/*.json` |
-| Dashboard enum (registry) | `src/main/kotlin/.../configuration/grafana/GrafanaDashboard.kt` |
-| Manifest builder | `src/main/kotlin/.../configuration/grafana/GrafanaManifestBuilder.kt` |
+| Dashboard JSON files | `dashboards/<folder>/*.json` (top-level; folders `cassandra`, `infrastructure`, `observability`, `opensearch`) |
+| Dashboard model | `src/main/kotlin/.../configuration/grafana/GrafanaDashboard.kt` (data class, derives the tree and classpath paths from folder + file) |
+| Discovery | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardCatalog.kt` (ClassGraph scan of `dashboards/`) |
+| Tree writer | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardTreeWriter.kt` (catalog → local `<folder>/<file>` tree) |
+| Tree uploader | `src/main/kotlin/.../services/GrafanaDashboardTreeUploader.kt` (SSH copy onto the control node hostPath) |
+| Provisioning YAML | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardProvisioningConfig.kt` (single `foldersFromFilesStructure` provider) |
+| Manifest builder | `src/main/kotlin/.../configuration/grafana/GrafanaManifestBuilder.kt` (provisioning ConfigMap + Deployment) |
 | Datasource config | `src/main/kotlin/.../configuration/grafana/GrafanaDatasourceConfig.kt` |
-| Dashboard service | `src/main/kotlin/.../services/GrafanaDashboardService.kt` |
+| Deploy service | `src/main/kotlin/.../services/GrafanaDeployService.kt` (datasources, tree upload, K8s apply) |
+| Grafana HTTP client | `src/main/kotlin/.../services/GrafanaClient.kt` (dashboard install, folders, annotations) |
+| Install-time pass | `src/main/kotlin/.../configuration/grafana/DashboardDefaults.kt` (picker, cluster and `doc_tenant` defaults) |
 | Deploy command | `src/main/kotlin/.../commands/grafana/GrafanaUpdateConfig.kt` |
 | Parent command | `src/main/kotlin/.../commands/grafana/Grafana.kt` |
 
 ## Existing Dashboards
 
-Defined in the `GrafanaDashboard` enum:
-
-| Enum Entry | ConfigMap Name | JSON Resource |
-|------------|---------------|---------------|
-| `SYSTEM` | `grafana-dashboard-system` | `dashboards/system-overview.json` |
-| `S3` | `grafana-dashboard-s3` | `dashboards/s3-cloudwatch.json` |
-| `EMR` | `grafana-dashboard-emr` | `dashboards/emr.json` |
-| `OPENSEARCH` | `grafana-dashboard-opensearch` | `dashboards/opensearch.json` |
-| `STRESS` | `grafana-dashboard-stress` | `dashboards/stress.json` |
-| `CLICKHOUSE` | `grafana-dashboard-clickhouse` | `dashboards/clickhouse.json` |
-| `CLICKHOUSE_LOGS` | `grafana-dashboard-clickhouse-logs` | `dashboards/clickhouse-logs.json` |
-| `PROFILING` | `grafana-dashboard-profiling` | `dashboards/profiling.json` |
-| `CASSANDRA_CONDENSED` | `grafana-dashboard-cassandra-condensed` | `dashboards/cassandra-condensed.json` |
-| `CASSANDRA_OVERVIEW` | `grafana-dashboard-cassandra-overview` | `dashboards/cassandra-overview.json` |
+Run `find dashboards -name '*.json' | sort` for the current list. The Grafana folder is the directory name verbatim. `infrastructure/system-overview.json` is the home dashboard and must exist at exactly that path.
 
 ## Available Datasources
 
 | Name | `type` value | `uid` value | Port |
 |------|-------------|-------------|------|
-| VictoriaMetrics | `prometheus` | `VictoriaMetrics` | 8428 |
-| VictoriaLogs | `victoriametrics-logs-datasource` | `victorialogs` | 9428 |
+| Mimir | `prometheus` | `mimir` | 9009 (PromQL under `/prometheus`) |
+| Loki | `loki` | `loki` | 3100 (LogQL) |
 | ClickHouse | `grafana-clickhouse-datasource` | (auto) | 9000 |
 | Tempo | `tempo` | `tempo` | 3200 |
 | Pyroscope | `grafana-pyroscope-datasource` | `pyroscope` | 4040 |
 
-Datasources are created at runtime by `GrafanaDatasourceConfig.create()` and applied as a ConfigMap by `GrafanaDashboardService`.
+Datasources are created at runtime by `GrafanaDatasourceConfig.create()` and applied as a ConfigMap by `GrafanaDeployService`. Dashboards name `mimir`, `loki` and `tempo` only through the pickers `${metrics_datasource}`, `${logs_datasource}` and `${traces_datasource}`; see [`dashboards/CLAUDE.md`](../../dashboards/CLAUDE.md).
 
 ---
 
@@ -66,29 +51,13 @@ Datasources are created at runtime by `GrafanaDatasourceConfig.create()` and app
 
 ### Step 1: Create the JSON file
 
-**Location:** `src/main/resources/com/rustyrazorblade/easydblab/configuration/grafana/dashboards/{name}.json`
+**Location:** `dashboards/<folder>/{name}.json`, where `<folder>` is the Grafana folder it belongs in (`cassandra`, `infrastructure`, `observability`, `opensearch`; make a new directory for a new folder). Never at the root of `dashboards/` — discovery rejects that.
 
-The JSON file is a standard Grafana dashboard export. Use `__KEY__` template variables for dynamic values (see Template Variables section below).
+The JSON must carry a top-level `uid`. The same file name may exist in two folders.
 
-### Step 2: Add enum entry to GrafanaDashboard
+### Step 2: There is no step 2
 
-**File:** `src/main/kotlin/.../configuration/grafana/GrafanaDashboard.kt`
-
-```kotlin
-MY_DASHBOARD(
-    configMapName = "grafana-dashboard-my-dashboard",
-    volumeName = "dashboard-my-dashboard",
-    mountPath = "/var/lib/grafana/dashboards/my-dashboard",
-    jsonFileName = "my-dashboard.json",
-    resourcePath = "dashboards/my-dashboard.json",
-    optional = true,  // true for non-core dashboards
-),
-```
-
-The enum entry is all that's needed — `GrafanaManifestBuilder` automatically:
-- Creates a ConfigMap with the JSON content
-- Adds a volume mount in the Grafana Deployment
-- Applies `__KEY__` template substitution
+The file is discovered at runtime and copied to the control node with the rest of the tree. Grafana's single file provider files it into a folder named after its directory.
 
 ### Step 3: Verify and Deploy
 
@@ -101,7 +70,7 @@ The enum entry is all that's needed — `GrafanaManifestBuilder` automatically:
 
 ## Modifying an Existing Dashboard
 
-1. Edit the JSON file directly in `dashboards/`
+1. Edit the JSON file directly in `dashboards/<folder>/`
 2. Run `./gradlew :test` to verify compilation
 3. Deploy with `easy-db-lab grafana update-config`
 
@@ -113,10 +82,15 @@ The enum entry is all that's needed — `GrafanaManifestBuilder` automatically:
 
 `GrafanaUpdateConfig.execute()` does:
 1. Creates the cluster-config ConfigMap (control node IP, region, S3 bucket, etc.)
-2. Applies all Fabric8-built observability resources (OTel, Victoria, Tempo, Vector, Beyla, ebpf_exporter, Registry, S3 Manager, Pyroscope)
-3. Calls `GrafanaDashboardService.uploadDashboards()` which:
-   - Builds all Grafana resources via `GrafanaManifestBuilder` (dashboard ConfigMaps, datasource ConfigMap, provisioner ConfigMap, Deployment)
-   - Applies each resource to K8s via `k8sService.applyResource()`
+2. Applies all Fabric8-built observability resources (OTel, Mimir, Loki, Tempo, Vector, Beyla, ebpf_exporter, Registry, S3 Manager, Pyroscope)
+3. Prepares `/mnt/db1/grafana` on the control node (mkdir, chown 472)
+4. Calls `GrafanaDeployService.deploy()` which:
+   - Creates the datasource ConfigMap
+   - Copies the dashboard tree to `/mnt/db1/grafana/dashboards` on the control node via `GrafanaDashboardTreeUploader` (see [`dashboards/CLAUDE.md`](../../dashboards/CLAUDE.md) for the staging and rename swap)
+   - Builds the provisioning ConfigMap and Deployment via `GrafanaManifestBuilder` and applies each via `k8sService.applyResource()`
+5. Restarts the observability workloads and waits for them to become Ready
+
+`grafana install <path> --folder=<name>` is the one-off path: it applies the same install-time pass (`DashboardDefaults`), POSTs the dashboard to the Grafana HTTP API, and does not touch the copied tree.
 
 ---
 
@@ -173,7 +147,7 @@ Reference the variable in panel expressions as `$quantile` or `${quantile}`.
 { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "title": "Section Name", "type": "row" }
 ```
 
-**VictoriaMetrics (Prometheus) timeseries panel:**
+**Mimir (Prometheus) timeseries panel:**
 ```json
 {
   "type": "timeseries",
@@ -242,7 +216,7 @@ Hardware/OS panels should filter to the node type that is the subject of the das
 - **Database dashboard** → `host_name=~"db.*"`
 - **App/stress dashboard** → `host_name=~"app.*"`
 
-Note: `node_role` label does **not** exist in this stack. Use `host_name` prefix matching only.
+Note: `node_role` exists on Cassandra JVM series (`db`), on the stress sidecar, and on Spark series, because each of those sources declares it as an OTel resource attribute. It does **not** exist on every series, so `host_name` prefix matching is still the portable filter. Check the label on the metric before you rely on it.
 
 Application-level metrics (e.g. `cassandra-easy-stress` throughput) can appear in a database dashboard — they describe the workload against the db nodes and belong in the Cluster Overview section.
 
@@ -268,64 +242,63 @@ Put the most specific label first — cluster is secondary since single-cluster 
 
 Never `{{cluster}} — {{host_name}}`.
 
-### MAAC Metric Types
+### Cassandra Metric Types
 
-Cassandra metrics from the MAAC exporter are **summaries** (they have a `quantile` label, not `le` buckets). This means:
+Cassandra metrics come from the OpenTelemetry Java Agent inside the Cassandra JVM, under `job="cassandra"`. Percentiles are **gauges**, one metric per percentile. There is no `quantile` label and there are no `le` buckets:
 
 - `histogram_quantile()` does **not** work on them — there are no `_bucket` series
-- Use `{quantile="0.99"}` directly to select a pre-computed percentile
-- `_count` and `_sum` suffixes are available for computing rates and means
+- Select a percentile by metric name, e.g. `cassandra_client_request_latency_p99_microseconds`
+- The percentiles are pre-aggregated per node, so they cannot be re-aggregated into a cluster p99. Show the spread with `max by (cluster)` and `min by (cluster)` instead.
+- Latency is in **microseconds**, matching `nodetool proxyhistograms`. The series name ends `_microseconds`.
+- Each node also carries a `cassandra_build` label naming the build it runs, so `sum by (cassandra_build)` splits a mixed-version cluster.
+
+Metrics written before the agent replaced MAAC use `org_apache_cassandra_metrics_*` and `job="cassandra-maac"`. Nothing translates between the two, so a query spanning that change returns two disjoint sets of series.
 
 ---
 
-## Querying VictoriaMetrics Directly
+## Querying Mimir Directly
 
 Always verify metric names and label values against the live cluster before adding or modifying panels. Get the control node IP from `easy-db-lab status` or the cluster state file.
 
-**Base URL:** `http://<control-ip>:8428`
+**Base URL:** `http://<control-ip>:9009/prometheus`. Mimir is multi-tenant: every request sends the cluster's tenant (`default` unless the cluster was initialized with `--tenant`) in `X-Scope-OrgID`, or Mimir refuses it.
 
 ### Discover available metrics
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/label/__name__/values" | python3 -c "
-import json, sys
-names = json.load(sys.stdin)['data']
-for n in sorted(n for n in names if 'keyword' in n.lower()):
-    print(n)
-"
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/label/__name__/values" \
+  | jq -r '.data[] | select(test("keyword"; "i"))'
 ```
 
 ### Check labels on a metric
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/query?query=my_metric_name" | python3 -c "
-import json, sys
-results = json.load(sys.stdin)['data']['result']
-print(f'Series: {len(results)}')
-if results:
-    print(json.dumps(results[0]['metric'], indent=2))
-"
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/query" \
+  --data-urlencode 'query=my_metric_name' \
+  | jq '"Series: \(.data.result | length)", .data.result[0].metric'
 ```
 
 ### Check unique values for a label
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/label/host_name/values" | python3 -c "
-import json, sys; print(json.load(sys.stdin)['data'])
-"
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/label/host_name/values" | jq '.data'
 ```
 
 ### Spot-check a PromQL expression
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/query?query=rate(my_metric%7Bjob%3D%22cassandra-maac%22%7D%5B1m%5D)" | python3 -c "
-import json, sys
-r = json.load(sys.stdin)
-results = r['data']['result']
-print(f'{len(results)} series')
-for s in results[:3]:
-    print(s['metric'].get('host_name'), s['value'])
-"
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/query" \
+  --data-urlencode 'query=rate(my_metric{job="cassandra"}[1m])' \
+  | jq -r '"\(.data.result | length) series", (.data.result[:3][] | "\(.metric.host_name) \(.value)")'
+```
+
+### Spot-check a LogQL query
+
+Loki takes the same tenant header. Every stream selector is scoped by cluster, and at least one matcher must be unable to match an empty value:
+
+```bash
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={cluster="<cluster>", service_name="cassandra"}' --data-urlencode 'limit=5' \
+  | jq -r '.data.result[].values[][1]'
 ```
 
 ### JSON manipulation
@@ -355,14 +328,14 @@ d['panels'].sort(key=lambda p: (p['gridPos']['y'], p['gridPos']['x']))
 
 ### Dashboard not appearing in Grafana
 
-1. **Check enum entry** — Is the dashboard registered in `GrafanaDashboard` enum? This is the single source of truth.
-2. **Check JSON resource path** — Does the `resourcePath` in the enum match the actual file location under `dashboards/`?
-3. **Check deployment was applied** — Run `grafana update-config` to reapply all resources.
+1. **Check the file location** — Is it at `dashboards/<folder>/<name>.json`, exactly one directory deep? A file at the root or nested deeper fails discovery, and `GrafanaDashboardCatalogTest` fails on it too.
+2. **Check the build picked it up** — `ls build/resources/main/dashboards/<folder>/` after `./gradlew installDist`.
+3. **Check the tree reached the node** — `ssh control0 ls /mnt/db1/grafana/dashboards/<folder>/` after `grafana update-config`; the provider re-reads it every 10 seconds.
 
 ### Dashboard appears but shows no data
 
 1. **Check datasource** — Verify the `"uid"` in panel datasource matches an available datasource (see table above).
-2. **Check metric names** — Query VictoriaMetrics API: `curl http://<control-ip>:8428/api/v1/label/__name__/values`
+2. **Check metric names** — Query Mimir: `curl -H "X-Scope-OrgID: <tenant>" http://<control-ip>:9009/prometheus/api/v1/label/__name__/values`
 3. **Check job label** — Verify `{job="..."}` matches what OTel is scraping. Check the OTel collector config for the `job_name`.
 4. **Check scrape interval** — If a job runs shorter than the scrape interval, metrics may never be collected.
 

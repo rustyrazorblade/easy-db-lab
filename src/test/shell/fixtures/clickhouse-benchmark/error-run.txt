@@ -1,0 +1,115 @@
+Loaded 2 queries.
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+
+Queries executed: 7 (23.333333333333332%).
+
+localhost:9000, queries: 4, errors: 3, QPS: 3.068, RPS: 15339105.921, MiB/s: 117.028, result RPS: 3.068, result MiB/s: 0.000.
+
+0%		0.208 sec.	
+10%		0.208 sec.	
+20%		0.266 sec.	
+30%		0.266 sec.	
+40%		0.266 sec.	
+50%		0.325 sec.	
+60%		0.325 sec.	
+70%		0.325 sec.	
+80%		0.325 sec.	
+90%		0.327 sec.	
+95%		0.327 sec.	
+99%		0.327 sec.	
+99.9%		0.327 sec.	
+99.99%		0.327 sec.	
+
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+
+Queries executed: 17 (56.666666666666664%).
+
+localhost:9000, queries: 5, errors: 5, QPS: 4.838, RPS: 24192461.677, MiB/s: 184.574, result RPS: 4.838, result MiB/s: 0.000.
+
+0%		0.160 sec.	
+10%		0.160 sec.	
+20%		0.171 sec.	
+30%		0.171 sec.	
+40%		0.182 sec.	
+50%		0.182 sec.	
+60%		0.182 sec.	
+70%		0.185 sec.	
+80%		0.185 sec.	
+90%		0.194 sec.	
+95%		0.194 sec.	
+99%		0.194 sec.	
+99.9%		0.194 sec.	
+99.99%		0.194 sec.	
+
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+
+Queries executed: 27 (90%).
+
+localhost:9000, queries: 5, errors: 5, QPS: 4.420, RPS: 22098163.935, MiB/s: 168.596, result RPS: 4.420, result MiB/s: 0.000.
+
+0%		0.135 sec.	
+10%		0.135 sec.	
+20%		0.152 sec.	
+30%		0.152 sec.	
+40%		0.198 sec.	
+50%		0.198 sec.	
+60%		0.198 sec.	
+70%		0.254 sec.	
+80%		0.254 sec.	
+90%		0.285 sec.	
+95%		0.285 sec.	
+99%		0.285 sec.	
+99.9%		0.285 sec.	
+99.99%		0.285 sec.	
+
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))
+
+
+Queries executed: 30 (100%).
+
+localhost:9000, queries: 15, errors: 15, QPS: 3.951, RPS: 19754000.352, MiB/s: 150.711, result RPS: 3.951, result MiB/s: 0.000.
+
+0%		0.135 sec.	
+10%		0.152 sec.	
+20%		0.165 sec.	
+30%		0.171 sec.	
+40%		0.185 sec.	
+50%		0.194 sec.	
+60%		0.198 sec.	
+70%		0.254 sec.	
+80%		0.266 sec.	
+90%		0.325 sec.	
+95%		0.325 sec.	
+99%		0.327 sec.	
+99.9%		0.327 sec.	
+99.99%		0.327 sec.	
+
+

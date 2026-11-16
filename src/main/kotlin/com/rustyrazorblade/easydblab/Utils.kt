@@ -58,7 +58,7 @@ object Utils {
                 System.console()?.readPassword()?.let { String(it) }
                     ?: error("Unable to read password from console")
             } else {
-                (readLine() ?: default).trim()
+                (readlnOrNull() ?: default).trim()
             }
 
         if (line.equals("")) {

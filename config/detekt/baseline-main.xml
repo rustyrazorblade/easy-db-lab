@@ -25,10 +25,6 @@
     <ID>HasPlatformType:TempoManifestBuilder.kt$TempoManifestBuilder$@Suppress("LongMethod") fun buildDeployment()</ID>
     <ID>HasPlatformType:TempoManifestBuilder.kt$TempoManifestBuilder$fun buildConfigMap()</ID>
     <ID>HasPlatformType:TempoManifestBuilder.kt$TempoManifestBuilder$fun buildService()</ID>
-    <ID>HasPlatformType:VictoriaManifestBuilder.kt$VictoriaManifestBuilder$fun buildLogsDeployment()</ID>
-    <ID>HasPlatformType:VictoriaManifestBuilder.kt$VictoriaManifestBuilder$fun buildLogsService()</ID>
-    <ID>HasPlatformType:VictoriaManifestBuilder.kt$VictoriaManifestBuilder$fun buildMetricsDeployment()</ID>
-    <ID>HasPlatformType:VictoriaManifestBuilder.kt$VictoriaManifestBuilder$fun buildMetricsService()</ID>
     <ID>HasPlatformType:YaceManifestBuilder.kt$YaceManifestBuilder$fun buildConfigMap()</ID>
     <ID>HasPlatformType:YaceManifestBuilder.kt$YaceManifestBuilder$fun buildDeployment()</ID>
     <ID>LongMethod:DefaultK8sNamespaceOperations.kt$DefaultK8sNamespaceOperations$private fun deleteBySelector( client: KubernetesClient, namespace: String, labelSelector: String, )</ID>

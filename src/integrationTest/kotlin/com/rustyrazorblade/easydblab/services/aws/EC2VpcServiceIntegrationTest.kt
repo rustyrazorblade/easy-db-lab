@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -11,12 +12,13 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import software.amazon.awssdk.services.ec2.Ec2Client
 import java.time.Duration
+import kotlin.random.Random
 
 /**
  * Integration tests for EC2VpcService using LocalStack.
  *
  * Tests verify that VPC resource creation, idempotent find-or-create patterns,
- * security group ingress rules, route tables, and tag operations work correctly
+ * route tables, and tag operations work correctly
  * through real AWS SDK API calls against a LocalStack EC2 endpoint.
  *
  * Uses the JVM-wide [SharedLocalStack] EC2 backend, shared with the other EC2
@@ -80,7 +82,7 @@ class EC2VpcServiceIntegrationTest {
                 vpcService.findOrCreateSubnet(
                     vpcId,
                     "test-subnet",
-                    "10.0.1.0/24",
+                    "10.0.0.0/19",
                     emptyMap(),
                 )
 
@@ -91,8 +93,8 @@ class EC2VpcServiceIntegrationTest {
         fun `should return existing subnet on second call`() {
             val vpcId = vpcService.createVpc("test-subnet-idempotent", "10.0.0.0/16", emptyMap())
 
-            val first = vpcService.findOrCreateSubnet(vpcId, "idem-subnet", "10.0.1.0/24", emptyMap())
-            val second = vpcService.findOrCreateSubnet(vpcId, "idem-subnet", "10.0.1.0/24", emptyMap())
+            val first = vpcService.findOrCreateSubnet(vpcId, "idem-subnet", "10.0.0.0/19", emptyMap())
+            val second = vpcService.findOrCreateSubnet(vpcId, "idem-subnet", "10.0.0.0/19", emptyMap())
 
             assertThat(first).isEqualTo(second)
         }
@@ -124,84 +126,11 @@ class EC2VpcServiceIntegrationTest {
     }
 
     @Nested
-    inner class FindOrCreateSecurityGroup {
-        @Test
-        fun `should create security group`() {
-            val vpcId = vpcService.createVpc("test-sg-create", "10.0.0.0/16", emptyMap())
-
-            val sgId =
-                vpcService.findOrCreateSecurityGroup(
-                    vpcId,
-                    "test-sg",
-                    "Test SG",
-                    emptyMap(),
-                )
-
-            assertThat(sgId).startsWith("sg-")
-        }
-
-        @Test
-        fun `should return existing SG on second call`() {
-            val vpcId = vpcService.createVpc("test-sg-idempotent", "10.0.0.0/16", emptyMap())
-
-            val first = vpcService.findOrCreateSecurityGroup(vpcId, "idem-sg", "Test", emptyMap())
-            val second = vpcService.findOrCreateSecurityGroup(vpcId, "idem-sg", "Test", emptyMap())
-
-            assertThat(first).isEqualTo(second)
-        }
-    }
-
-    @Nested
-    inner class AuthorizeSecurityGroupIngress {
-        @Test
-        fun `should add ingress rule and verify via describe`() {
-            val vpcId = vpcService.createVpc("test-sg-ingress", "10.0.0.0/16", emptyMap())
-            val sgId = vpcService.findOrCreateSecurityGroup(vpcId, "ingress-sg", "Test", emptyMap())
-
-            vpcService.authorizeSecurityGroupIngress(sgId, 22, 22, "0.0.0.0/0", "tcp")
-
-            val details = vpcService.describeSecurityGroup(sgId)
-            assertThat(details.inboundRules).anyMatch {
-                it.fromPort == 22 && it.toPort == 22 && it.protocol == "TCP"
-            }
-        }
-
-        @Test
-        fun `should be idempotent when adding same rule twice`() {
-            val vpcId = vpcService.createVpc("test-sg-ingress-idem", "10.0.0.0/16", emptyMap())
-            val sgId = vpcService.findOrCreateSecurityGroup(vpcId, "ingress-idem-sg", "Test", emptyMap())
-
-            vpcService.authorizeSecurityGroupIngress(sgId, 9042, 9042, "10.0.0.0/8", "tcp")
-            // Second call should not throw
-            vpcService.authorizeSecurityGroupIngress(sgId, 9042, 9042, "10.0.0.0/8", "tcp")
-
-            val details = vpcService.describeSecurityGroup(sgId)
-            val matchingRules =
-                details.inboundRules.filter {
-                    it.fromPort == 9042 && it.toPort == 9042
-                }
-            assertThat(matchingRules).hasSize(1)
-        }
-
-        @Test
-        fun `should add multiple different rules`() {
-            val vpcId = vpcService.createVpc("test-sg-multi-rules", "10.0.0.0/16", emptyMap())
-            val sgId = vpcService.findOrCreateSecurityGroup(vpcId, "multi-rules-sg", "Test", emptyMap())
-
-            vpcService.authorizeSecurityGroupIngress(sgId, 22, 22, "0.0.0.0/0", "tcp")
-            vpcService.authorizeSecurityGroupIngress(sgId, 9042, 9042, "10.0.0.0/8", "tcp")
-
-            val details = vpcService.describeSecurityGroup(sgId)
-            assertThat(details.inboundRules).hasSize(2)
-        }
-    }
-
-    @Nested
     inner class EnsureRouteTable {
         @Test
         fun `should create default route to internet gateway`() {
             val vpcId = vpcService.createVpc("test-route", "10.0.0.0/16", emptyMap())
-            val subnetId = vpcService.findOrCreateSubnet(vpcId, "route-subnet", "10.0.1.0/24", emptyMap())
+            val subnetId = vpcService.findOrCreateSubnet(vpcId, "route-subnet", "10.0.0.0/19", emptyMap())
             val igwId = vpcService.findOrCreateInternetGateway(vpcId, "route-igw", emptyMap())
 
             // Should not throw
@@ -211,7 +140,7 @@ class EC2VpcServiceIntegrationTest {
         @Test
         fun `should be idempotent when called twice`() {
             val vpcId = vpcService.createVpc("test-route-idem", "10.0.0.0/16", emptyMap())
-            val subnetId = vpcService.findOrCreateSubnet(vpcId, "route-idem-subnet", "10.0.1.0/24", emptyMap())
+            val subnetId = vpcService.findOrCreateSubnet(vpcId, "route-idem-subnet", "10.0.0.0/19", emptyMap())
             val igwId = vpcService.findOrCreateInternetGateway(vpcId, "route-idem-igw", emptyMap())
 
             vpcService.ensureRouteTable(vpcId, subnetId, igwId)
@@ -313,10 +242,63 @@ class EC2VpcServiceIntegrationTest {
 
             val existingCidrs = vpcService.listAllVpcCidrs()
             val selected =
-                com.rustyrazorblade.easydblab.network.CidrBlock
-                    .selectAvailable(existingCidrs)
+                CidrBlock
+                    .selectAvailable(existingCidrs, Random.Default)
 
             assertThat(existingCidrs).doesNotContain(selected.value)
+        }
+    }
+
+    @Nested
+    inner class ClusterScopedDiscovery {
+        @Test
+        fun `finds only the resources tagged with the cluster, not the user's or another cluster's`() {
+            val vpcId = vpcService.createVpc("test-shared-vpc", "10.20.0.0/16", emptyMap())
+            val mine = mapOf("ClusterId" to "cluster-mine")
+            val other = mapOf("ClusterId" to "cluster-other")
+            val mySubnet = vpcService.findOrCreateSubnet(vpcId, "mine-subnet", "10.20.0.0/24", mine)
+            vpcService.findOrCreateSubnet(vpcId, "other-subnet", "10.20.1.0/24", other)
+            vpcService.findOrCreateSubnet(vpcId, "user-subnet", "10.20.2.0/24", emptyMap())
+            val mySg = vpcService.findOrCreateSecurityGroup(vpcId, "mine-sg", "mine", mine)
+            vpcService.findOrCreateSecurityGroup(vpcId, "user-sg", "user", emptyMap())
+            val myIgw = vpcService.findOrCreateInternetGateway(vpcId, "mine-igw", mine)
+
+            val found = vpcService.findClusterResourcesInVpc(vpcId, "cluster-mine")
+
+            assertThat(found.subnetIds).containsExactly(mySubnet)
+            assertThat(found.securityGroupIds).containsExactly(mySg)
+            assertThat(found.internetGatewayId).isEqualTo(myIgw)
+            // The main route table carries the cluster's tag after `up` but belongs to the VPC.
+            vpcService.ensureRouteTable(vpcId, mySubnet, myIgw, mine)
+            assertThat(vpcService.findClusterResourcesInVpc(vpcId, "cluster-mine").routeTableIds).isEmpty()
+            assertThat(vpcService.findClusterResourcesInVpc(vpcId, "no-such-cluster").subnetIds).isEmpty()
+        }
+
+        @Test
+        fun `waiting for a subnet's interfaces returns at once when it has none, and for no subnets at all`() {
+            val vpcId = vpcService.createVpc("test-eni-wait-vpc", "10.22.0.0/16", emptyMap())
+            val subnet = vpcService.findOrCreateSubnet(vpcId, "eni-subnet", "10.22.0.0/24", emptyMap())
+
+            vpcService.waitForNetworkInterfacesClearedInSubnets(listOf(subnet), 1_000)
+            vpcService.waitForNetworkInterfacesClearedInSubnets(emptyList(), 1_000)
+        }
+
+        @Test
+        fun `deleting the routes to a gateway leaves the route tables in place`() {
+            val vpcId = vpcService.createVpc("test-route-vpc", "10.21.0.0/16", emptyMap())
+            val subnet = vpcService.findOrCreateSubnet(vpcId, "route-subnet", "10.21.0.0/24", emptyMap())
+            val igw = vpcService.findOrCreateInternetGateway(vpcId, "route-igw", emptyMap())
+            vpcService.ensureRouteTable(vpcId, subnet, igw)
+
+            fun routeTables() = ec2Client.describeRouteTables { it.filters({ f -> f.name("vpc-id").values(vpcId) }) }.routeTables()
+
+            fun routesToIgw() = routeTables().flatMap { it.routes() }.filter { it.gatewayId() == igw }
+            assertThat(routesToIgw()).hasSize(1)
+
+            vpcService.deleteRoutesToInternetGateway(vpcId, igw)
+
+            assertThat(routesToIgw()).isEmpty()
+            assertThat(routeTables()).isNotEmpty()
         }
     }
 }

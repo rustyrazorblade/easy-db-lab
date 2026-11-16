@@ -41,12 +41,18 @@ variable "ssh_private_key_file" {
   default = ""
 }
 
+# "session_manager" when the profile tunnels SSH over SSM Session Manager (its `ssm` SSH transport),
+# so the build needs no inbound port 22 from this machine. Empty keeps Packer's default interface.
+variable "ssh_interface" {
+  type    = string
+  default = ""
+}
+
 
 locals {
   timestamp = regex_replace(timestamp(), "[- TZ:]", "")
   base_version = var.release_version != "" ? var.release_version : "*"
   version = var.release_version != "" ? var.release_version : local.timestamp
-  ami_groups = var.release_version != "" ? ["all"] : []
   instance_type = var.arch == "amd64" ? "c6i.2xlarge" : "c8g.2xlarge"
 
 
@@ -54,7 +60,6 @@ locals {
 
 source "amazon-ebs" "ubuntu" {
   ami_name      = "rustyrazorblade/images/easy-db-lab-cassandra-${var.arch}-${local.version}"
-  ami_groups    = local.ami_groups
   instance_type = local.instance_type
   region        = "${var.region}"
   # Instance profile so the build can read/write the account S3 download/apt cache.
@@ -64,6 +69,8 @@ source "amazon-ebs" "ubuntu" {
       name                = "rustyrazorblade/images/easy-db-lab-base-${var.arch}-${local.base_version}"
       root-device-type    = "ebs"
       virtualization-type = "hvm"
+      # A parallel base bake can register a newer base AMI that is still pending; skip it.
+      state = "available"
     }
     most_recent = true
     owners      = ["self"]
@@ -71,6 +78,8 @@ source "amazon-ebs" "ubuntu" {
   ssh_username         = "ubuntu"
   ssh_keypair_name     = var.ssh_keypair_name
   ssh_private_key_file = var.ssh_private_key_file
+  # null leaves the argument unset, so direct-transport builds keep Packer's own default.
+  ssh_interface        = var.ssh_interface != "" ? var.ssh_interface : null
 
   # Use permanent VPC infrastructure created by PackerInfrastructureService
   vpc_filter {
@@ -91,6 +100,12 @@ source "amazon-ebs" "ubuntu" {
     filters = {
       "tag:Name" = "easy-db-lab-packer-sg"
     }
+  }
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
   }
 
   run_tags = {
@@ -146,7 +161,10 @@ build {
   }
   provisioner "shell" {
     inline = [
+      "rm -fv bin-cassandra/*.test.sh",
       "sudo mv -v bin-cassandra/* /usr/local/bin/",
+      # Test scripts live next to the script under test but have no business on a node.
+      "sudo rm -f /usr/local/bin/*.test.sh",
       "sudo chmod +x /usr/local/bin/*",
       "ls /usr/local/bin",
       "rmdir bin-cassandra"
@@ -188,6 +206,12 @@ build {
     destination = "/tmp/cassandra.in.sh"
   }
 
+  # Sourced by cassandra.in.sh on every Cassandra start to pick the AxonOps agent.
+  provisioner "file" {
+    source = "lib/edl-cassandra-agents.sh"
+    destination = "/tmp/edl-cassandra-agents.sh"
+  }
+
   provisioner "shell" {
     environment_vars = [
       # we need this to be set because install_cassandra checks for it and exits if it's not there
@@ -202,26 +226,9 @@ build {
     script = "install/install_pyroscope_agent.sh"
   }
 
-  # install MAAC (Management API for Apache Cassandra) metrics agent
-  provisioner "shell" {
-    script = "install/install_maac.sh"
-  }
-
-  # instal axonops
+  # install axonops, including /etc/sudoers.d/axonops (validated with visudo)
   provisioner "shell" {
     script = "install/install_axon.sh"
-  }
-
-  provisioner "file" {
-    source = "axonops-sudoers"
-    destination = "axonops-sudoers"
-  }
-
-  provisioner "shell" {
-    inline = [
-      "sudo chown root:root axonops-sudoers",
-      "sudo mv axonops-sudoers /etc/sudoers.d/axonops",
-    ]
   }
 
   provisioner "file" {
@@ -262,6 +269,34 @@ build {
   provisioner "shell" {
     inline = [
       ". /usr/local/lib/edl-cache.sh && apt_cache_save",
+    ]
+  }
+
+  # Final image cleanup: prune build cruft so it is not baked into the AMI and to shrink
+  # the EBS snapshot. This MUST run AFTER apt_cache_save above, otherwise the warm apt
+  # archive cache would be stripped before it is persisted to S3, slowing future builds.
+  # First we log a pre-prune inventory, then prune system caches/logs and the surgical set
+  # of home-dir build leftovers. Runtime paths (.local/cqlsh, .config/htoprc, .ssh, shell
+  # dotfiles) are deliberately left untouched.
+  provisioner "shell" {
+    inline = [
+      "echo '=== image cleanup: pre-prune inventory ==='",
+      "ls -la /home/ubuntu || true",
+      "sudo du -sh /var/cache/apt/archives /var/lib/apt/lists /tmp /var/tmp /var/log /home/ubuntu/.cache 2>/dev/null || true",
+      "df -h / || true",
+      "echo '=== image cleanup: pruning ==='",
+      # System caches and logs
+      "sudo apt-get clean",
+      "sudo rm -rf /var/cache/apt/archives/*.deb /var/lib/apt/lists/*",
+      "sudo rm -rf /tmp/* /var/tmp/*",
+      "sudo find /var/log -type f -exec truncate -s 0 {} +",
+      # Home-dir build leftovers (surgical; tolerate absence)
+      "rm -rf /home/ubuntu/cassandra /home/ubuntu/bin-cassandra /home/ubuntu/cassandra_versions.yaml /home/ubuntu/services /home/ubuntu/aliases.sh",
+      "rm -rf /home/ubuntu/.cache /home/ubuntu/.wget-hsts /home/ubuntu/.bash_history /home/ubuntu/.m2 /home/ubuntu/.sudo_as_admin_successful /home/ubuntu/.lesshst",
+      # Discard the now-freed blocks so EBS excludes them from the snapshot (this is what
+      # actually shrinks the snapshot and cuts AMI-creation time). -av prints bytes trimmed
+      # per filesystem for verification. No `|| true`: a fstrim failure must surface.
+      "sudo fstrim -av",
     ]
   }
 }

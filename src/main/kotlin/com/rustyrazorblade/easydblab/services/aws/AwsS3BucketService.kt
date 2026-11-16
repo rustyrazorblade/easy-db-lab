@@ -6,9 +6,30 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
+import com.rustyrazorblade.easydblab.providers.aws.withS3BucketPolicyRetry
+import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.resilience4j.retry.Retry
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.BucketAlreadyExistsException
+import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest
+import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
+import software.amazon.awssdk.services.s3.model.DeleteBucketRequest
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.MetricsConfiguration
+import software.amazon.awssdk.services.s3.model.MetricsFilter
+import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
+import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest
+import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.S3Exception
+import software.amazon.awssdk.services.s3.model.Tag
+import software.amazon.awssdk.services.s3.model.Tagging
 import java.util.UUID
 
 /**
@@ -20,15 +41,15 @@ data class DataBucketConfig(
 )
 
 /**
- * Service for S3 bucket administration operations.
- *
- * Wraps low-level S3 operations from [AWS] to provide a clean service-layer
- * interface for commands. Commands should use this service instead of
- * accessing [AWS] directly for bucket operations.
+ * The one S3 bucket adapter, on [S3Client]: the [S3BucketAdmin] operations plus the account-bucket
+ * and per-cluster data-bucket workflows built from them. Commands use this service for bucket work;
+ * nothing else holds the S3 client for bucket administration.
  */
 class AwsS3BucketService(
-    private val aws: AWS,
-) : KoinComponent {
+    private val s3Client: S3Client,
+    private val accountIdentity: AccountIdentity,
+) : S3BucketAdmin,
+    KoinComponent {
     private val eventBus: EventBus by inject()
     private val userConfigProvider: UserConfigProvider by inject()
     private val context: Context by inject()
@@ -39,7 +60,7 @@ class AwsS3BucketService(
      *
      * This lets profiles that predate (or never completed) bucket setup migrate automatically —
      * `up` and the AMI build path call this so the bucket (and the S3 build cache it backs) come
-     * online without re-running `setup-profile`.
+     * online without re-running `profile setup`.
      */
     fun ensureAccountBucket(user: User): String {
         if (user.s3Bucket.isNotBlank()) {
@@ -47,9 +68,9 @@ class AwsS3BucketService(
         }
         eventBus.emit(Event.Setup.S3BucketCreating)
         val bucketName = "easy-db-lab-${UUID.randomUUID()}"
-        aws.createS3Bucket(bucketName)
-        aws.putS3BucketPolicy(bucketName)
-        aws.tagS3Bucket(
+        createBucket(bucketName)
+        putBucketPolicy(bucketName)
+        tagBucket(
             bucketName,
             mapOf(
                 "Profile" to context.profile,
@@ -63,81 +84,165 @@ class AwsS3BucketService(
         return bucketName
     }
 
-    /**
-     * Creates an S3 bucket with the specified name.
-     * Idempotent - will succeed even if bucket already exists and is owned by you.
-     */
-    fun createBucket(bucketName: String): String = aws.createS3Bucket(bucketName)
+    override fun createBucket(bucketName: String): String {
+        requireValidBucketName(bucketName)
 
-    /**
-     * Applies an S3 bucket policy granting access to all easy-db-lab IAM roles.
-     */
-    fun putBucketPolicy(bucketName: String) = aws.putS3BucketPolicy(bucketName)
+        try {
+            s3Client.createBucket(CreateBucketRequest.builder().bucket(bucketName).build())
+            log.info { "Created S3 bucket: $bucketName" }
+        } catch (e: BucketAlreadyOwnedByYouException) {
+            log.info { "S3 bucket already exists and is owned by you: $bucketName" }
+        } catch (e: BucketAlreadyExistsException) {
+            log.info { "S3 bucket already exists: $bucketName" }
+        } catch (e: S3Exception) {
+            log.error(e) { "Failed to create S3 bucket: $bucketName - ${e.message}" }
+            throw e
+        }
 
-    /**
-     * Applies tags to an existing S3 bucket.
-     */
-    fun tagBucket(
+        return bucketName
+    }
+
+    override fun putBucketPolicy(bucketName: String) {
+        requireValidBucketName(bucketName)
+
+        val bucketPolicy = AWSPolicy.Inline.S3BucketPolicy(accountIdentity.getAccountId(), bucketName).toJson()
+        val request =
+            PutBucketPolicyRequest
+                .builder()
+                .bucket(bucketName)
+                .policy(bucketPolicy)
+                .build()
+
+        try {
+            // The policy references the just-created IAM roles as principals. IAM is eventually
+            // consistent, so S3 may briefly reject the policy with "Invalid principal in policy"
+            // until the roles propagate. Retry with backoff so this resolves itself.
+            withS3BucketPolicyRetry("put-bucket-policy") {
+                s3Client.putBucketPolicy(request)
+            }
+            log.info { "\u2713 Applied S3 bucket policy granting access to all 3 IAM roles: $bucketName" }
+        } catch (e: S3Exception) {
+            log.error(e) { "Failed to apply S3 bucket policy: $bucketName - ${e.message}" }
+            val isPrincipalPropagation =
+                e.awsErrorDetails()?.errorCode() == "MalformedPolicy" ||
+                    e.message?.contains("Invalid principal") == true
+            if (isPrincipalPropagation) {
+                throw IllegalStateException(
+                    "Could not apply the S3 bucket policy because the easy-db-lab IAM roles are not yet " +
+                        "visible to S3 (IAM propagation delay). Wait a moment and re-run profile setup.",
+                    e,
+                )
+            }
+            throw e
+        }
+    }
+
+    override fun tagBucket(
         bucketName: String,
         tags: Map<String, String>,
-    ) = aws.tagS3Bucket(bucketName, tags)
+    ) {
+        requireValidBucketName(bucketName)
 
-    /**
-     * Enables S3 request metrics on a bucket for CloudWatch monitoring.
-     */
-    fun enableBucketRequestMetrics(
+        val s3Tags =
+            tags.map { (key, value) ->
+                Tag
+                    .builder()
+                    .key(key)
+                    .value(value)
+                    .build()
+            }
+        val request =
+            PutBucketTaggingRequest
+                .builder()
+                .bucket(bucketName)
+                .tagging(Tagging.builder().tagSet(s3Tags).build())
+                .build()
+
+        s3Client.putBucketTagging(request)
+        log.info { "\u2713 Applied tags to S3 bucket: $bucketName (${tags.keys.joinToString(", ")})" }
+    }
+
+    override fun enableBucketRequestMetrics(
         bucketName: String,
-        prefix: String? = null,
+        prefix: String?,
         configId: String,
-    ) = aws.enableBucketRequestMetrics(bucketName, prefix, configId)
+    ) {
+        val metricsConfigBuilder = MetricsConfiguration.builder().id(configId)
+        if (prefix != null) {
+            metricsConfigBuilder.filter(MetricsFilter.builder().prefix(prefix).build())
+        }
 
-    /**
-     * Disables S3 request metrics on a bucket.
-     */
-    fun disableBucketRequestMetrics(
+        val request =
+            PutBucketMetricsConfigurationRequest
+                .builder()
+                .bucket(bucketName)
+                .id(configId)
+                .metricsConfiguration(metricsConfigBuilder.build())
+                .build()
+
+        val retry = Retry.of("s3-enable-bucket-metrics", RetryUtil.createAwsRetryConfig<Unit>())
+        Retry
+            .decorateRunnable(retry) {
+                s3Client.putBucketMetricsConfiguration(request)
+                log.info { "Enabled S3 request metrics on bucket: $bucketName (prefix: ${prefix ?: "whole-bucket"})" }
+            }.run()
+    }
+
+    override fun disableBucketRequestMetrics(
         bucketName: String,
         configId: String,
-    ) = aws.disableBucketRequestMetrics(bucketName, configId)
+    ) {
+        val request =
+            DeleteBucketMetricsConfigurationRequest
+                .builder()
+                .bucket(bucketName)
+                .id(configId)
+                .build()
 
-    /**
-     * Sets an S3 lifecycle expiration rule on a prefix within a bucket.
-     */
-    fun setLifecycleExpirationRule(
-        bucketName: String,
-        prefix: String,
-        days: Int,
-    ) = aws.setLifecycleExpirationRule(bucketName, prefix, days)
+        try {
+            val retry = Retry.of("s3-disable-bucket-metrics", RetryUtil.createAwsRetryConfig<Unit>())
+            Retry
+                .decorateRunnable(retry) {
+                    s3Client.deleteBucketMetricsConfiguration(request)
+                }.run()
+            log.info { "Disabled S3 request metrics on bucket: $bucketName (configId: $configId)" }
+        } catch (e: S3Exception) {
+            if (e.statusCode() == Constants.HttpStatus.NOT_FOUND) {
+                log.info { "No metrics configuration found on bucket: $bucketName for configId: $configId (already disabled)" }
+            } else {
+                throw e
+            }
+        }
+    }
 
-    /**
-     * Finds an S3 bucket by a specific tag key-value pair.
-     */
-    fun findBucketByTag(
-        tagKey: String,
-        tagValue: String,
-    ): String? = aws.findS3BucketByTag(tagKey, tagValue)
+    override fun findDataBuckets(): List<String> =
+        s3Client
+            .listBuckets()
+            .buckets()
+            .filter { it.name().startsWith(Constants.S3.DATA_BUCKET_PREFIX) }
+            .mapNotNull { bucket ->
+                try {
+                    val taggingRequest = GetBucketTaggingRequest.builder().bucket(bucket.name()).build()
+                    val hasTag =
+                        s3Client.getBucketTagging(taggingRequest).tagSet().any {
+                            it.key() == Constants.Vpc.TAG_KEY && it.value() == Constants.Vpc.TAG_VALUE
+                        }
+                    if (hasTag) bucket.name() else null
+                } catch (e: S3Exception) {
+                    log.debug { "Could not get tags for bucket ${bucket.name()}: ${e.message}" }
+                    null
+                }
+            }
 
-    /**
-     * Attaches an inline S3 access policy to an IAM role.
-     */
-    fun attachS3Policy(roleName: String) = aws.attachS3Policy(roleName)
-
-    /**
-     * Finds all per-cluster data buckets (easy-db-lab-data-*) tagged with easy_cass_lab.
-     */
-    fun findDataBuckets(): List<String> = aws.findDataBuckets()
-
-    /**
-     * Deletes an S3 bucket. Returns true if deleted, false if non-empty or error.
-     */
-    fun deleteEmptyBucket(bucketName: String): Boolean = aws.deleteS3Bucket(bucketName)
-
-    /**
-     * Sets a lifecycle expiration rule on an entire bucket (no prefix filter).
-     */
-    fun setFullBucketLifecycleExpiration(
-        bucketName: String,
-        days: Int,
-    ) = aws.setFullBucketLifecycleExpiration(bucketName, days)
+    override fun deleteEmptyBucket(bucketName: String): Result<Unit> =
+        try {
+            s3Client.deleteBucket(DeleteBucketRequest.builder().bucket(bucketName).build())
+            log.info { "Deleted S3 bucket: $bucketName" }
+            Result.success(Unit)
+        } catch (e: S3Exception) {
+            log.warn { "Could not delete bucket $bucketName: ${e.message}" }
+            Result.failure(e)
+        }
 
     /**
      * Creates and fully configures a per-cluster data bucket.
@@ -171,15 +276,24 @@ class AwsS3BucketService(
     }
 
     /**
-     * Tears down a per-cluster data bucket by disabling metrics and setting lifecycle expiration.
+     * Tears down a per-cluster data bucket by disabling its request metrics. The bucket's objects
+     * are the owner's data, so no expiry is set and nothing is deleted.
      */
     fun teardownDataBucket(
         bucketName: String,
         metricsConfigId: String,
-        retentionDays: Int,
     ) {
         disableBucketRequestMetrics(bucketName, metricsConfigId)
-        setFullBucketLifecycleExpiration(bucketName, retentionDays)
-        eventBus.emit(Event.S3.DataBucketExpiring(bucketName, retentionDays))
+    }
+
+    private companion object {
+        private val log = KotlinLogging.logger {}
+        private val BUCKET_NAME = Regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$")
+
+        fun requireValidBucketName(bucketName: String) {
+            require(bucketName.matches(BUCKET_NAME)) {
+                "Invalid S3 bucket name: $bucketName. Must be lowercase, 3-63 chars, alphanumeric and hyphens only."
+            }
+        }
     }
 }

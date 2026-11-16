@@ -12,12 +12,15 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 
 class PlatformCreatePvsTest : BaseKoinTest() {
@@ -98,7 +101,7 @@ class PlatformCreatePvsTest : BaseKoinTest() {
                     ),
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)
-        whenever(mockK8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
     }
 
     @Test
@@ -113,7 +116,7 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         command.execute()
 
         val captor = argumentCaptor<PersistentVolumeConfig>()
-        verify(mockK8sService).createLocalPersistentVolumes(any(), captor.capture())
+        verify(mockK8sService).createLocalPersistentVolumes(captor.capture())
 
         val config = captor.firstValue
         assertThat(config.storageClass).isEqualTo(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
@@ -135,29 +138,13 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         command.execute()
 
         val captor = argumentCaptor<PersistentVolumeConfig>()
-        verify(mockK8sService).createLocalPersistentVolumes(any(), captor.capture())
+        verify(mockK8sService).createLocalPersistentVolumes(captor.capture())
 
         val config = captor.firstValue
         assertThat(config.storageClass).isEqualTo(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
         assertThat(config.dbName).isEqualTo("presto")
         assertThat(config.localPath).isEqualTo("/mnt/db1/presto")
         assertThat(config.count).isEqualTo(appHosts.size)
-    }
-
-    @Test
-    fun `passes control host to createLocalPersistentVolumes`() {
-        val command =
-            PlatformCreatePvs().apply {
-                kit = "mydb"
-                size = "50Gi"
-                nodeType = "db"
-            }
-
-        command.execute()
-
-        val hostCaptor = argumentCaptor<ClusterHost>()
-        verify(mockK8sService).createLocalPersistentVolumes(hostCaptor.capture(), any())
-        assertThat(hostCaptor.firstValue.alias).isEqualTo("control0")
     }
 
     @Test
@@ -174,25 +161,19 @@ class PlatformCreatePvsTest : BaseKoinTest() {
             .hasMessageContaining("Invalid node-type")
     }
 
-    @Test
-    fun `fails when no control node is found`() {
-        val stateWithoutControl =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts = mapOf(ServerType.Cassandra to dbHosts),
-            )
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithoutControl)
-
+    @ParameterizedTest
+    @ValueSource(strings = ["../escape", "a/b", "-lead", "has space", ""])
+    fun `rejects a kit name that is not a plain identifier before touching the cluster`(name: String) {
         val command =
             PlatformCreatePvs().apply {
-                kit = "mydb"
+                kit = name
                 size = "50Gi"
                 nodeType = "db"
             }
 
         assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No control node found")
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("--kit")
+        verifyNoInteractions(mockK8sService)
     }
 }

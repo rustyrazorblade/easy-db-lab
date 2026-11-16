@@ -1,9 +1,7 @@
 package com.rustyrazorblade.easydblab.output
 
 import com.github.dockerjava.api.model.Frame
-import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.channels.Channel
 
 /**
  * Interface for handling output from the application.
@@ -39,39 +37,6 @@ interface OutputHandler {
      * Called when output handling is complete.
      */
     fun close()
-}
-
-/**
- * Sealed interface representing all types of output events that can be sent through a Channel.
- * This enables type-safe, async processing of output from Docker containers and other sources.
- */
-sealed interface OutputEvent {
-    /**
-     * Event representing Docker container frame output (stdout/stderr).
-     */
-    data class FrameEvent(
-        val frame: Frame,
-    ) : OutputEvent
-
-    /**
-     * Event representing a generic message (e.g., status updates).
-     */
-    data class MessageEvent(
-        val message: String,
-    ) : OutputEvent
-
-    /**
-     * Event representing an error message with optional throwable.
-     */
-    data class ErrorEvent(
-        val message: String,
-        val throwable: Throwable? = null,
-    ) : OutputEvent
-
-    /**
-     * Event indicating that output handling is complete.
-     */
-    data object CloseEvent : OutputEvent
 }
 
 /**
@@ -329,138 +294,5 @@ class CompositeOutputHandler(
                 handlers.toList() // Copy for safe iteration
             }
         currentHandlers.forEach { it.close() }
-    }
-}
-
-/**
- * Output handler that sends all output events to a Kotlin Channel for async processing.
- * This enables reactive processing of Docker container output using coroutines.
- *
- * The handler uses `trySend()` to avoid blocking the calling thread. If the channel
- * is closed or full, a warning is logged but execution continues.
- *
- * Example usage:
- * ```kotlin
- * val outputChannel = Channel<OutputEvent>(capacity = Channel.UNLIMITED)
- * val channelHandler = ChannelOutputHandler(outputChannel)
- *
- * // Use with Docker or other systems
- * val docker = Docker(context, dockerClient, userIdProvider)
- *
- * // Process events asynchronously
- * launch {
- *     for (event in outputChannel) {
- *         when (event) {
- *             is OutputEvent.FrameEvent -> handleFrame(event.frame)
- *             is OutputEvent.MessageEvent -> handleMessage(event.message)
- *             is OutputEvent.ErrorEvent -> handleError(event.message, event.throwable)
- *             is OutputEvent.CloseEvent -> break
- *         }
- *     }
- * }
- * ```
- *
- * @param channel The Channel to send output events to
- */
-class ChannelOutputHandler(
-    private val channel: Channel<OutputEvent>,
-) : OutputHandler {
-    companion object {
-        private val log = KotlinLogging.logger {}
-    }
-
-    override fun handleFrame(frame: Frame) {
-        val event = OutputEvent.FrameEvent(frame)
-        sendEvent(event)
-    }
-
-    override fun handleMessage(message: String) {
-        val event = OutputEvent.MessageEvent(message)
-        sendEvent(event)
-    }
-
-    override fun handleError(
-        message: String,
-        throwable: Throwable?,
-    ) {
-        val event = OutputEvent.ErrorEvent(message, throwable)
-        sendEvent(event)
-    }
-
-    override fun close() {
-        val event = OutputEvent.CloseEvent
-        sendEvent(event)
-        log.debug { "Closing channel output handler" }
-    }
-
-    private fun sendEvent(event: OutputEvent) {
-        val result = channel.trySend(event)
-        if (result.isFailure) {
-            log.warn { "Failed to send event to channel: $event" }
-        }
-    }
-}
-
-/**
- * Output handler that filters frame events and sends periodic docker activity updates.
- * Drops individual frame events to reduce noise, but sends a progress message every 100 frames.
- * All other event types (MessageEvent, ErrorEvent, CloseEvent) are passed through unchanged.
- *
- * This handler is designed for MCP streaming where frame-by-frame output would be too verbose,
- * but users still need to know that Docker containers are actively running.
- *
- * @param channel The Channel to send filtered output events to
- */
-class FilteringChannelOutputHandler(
-    private val channel: Channel<OutputEvent>,
-) : OutputHandler {
-    companion object {
-        private val log = KotlinLogging.logger {}
-    }
-
-    private var frameCount = 0
-
-    /**
-     * Reset the frame count to 0.
-     * This should be called before each new tool execution to ensure frame counting starts fresh.
-     */
-    fun resetFrameCount() {
-        frameCount = 0
-    }
-
-    override fun handleFrame(frame: Frame) {
-        frameCount++
-        if (frameCount % Constants.Docker.FRAME_REPORTING_INTERVAL == 0) {
-            val activityMessage = "Docker container activity: $frameCount frames processed"
-            val event = OutputEvent.MessageEvent(activityMessage)
-            sendEvent(event)
-        }
-        // Drop individual frame events - don't send to channel
-    }
-
-    override fun handleMessage(message: String) {
-        val event = OutputEvent.MessageEvent(message)
-        sendEvent(event)
-    }
-
-    override fun handleError(
-        message: String,
-        throwable: Throwable?,
-    ) {
-        val event = OutputEvent.ErrorEvent(message, throwable)
-        sendEvent(event)
-    }
-
-    override fun close() {
-        val event = OutputEvent.CloseEvent
-        sendEvent(event)
-        log.debug { "Closing filtering channel output handler" }
-    }
-
-    private fun sendEvent(event: OutputEvent) {
-        val result = channel.trySend(event)
-        if (result.isFailure) {
-            log.warn { "Failed to send event to channel: $event" }
-        }
     }
 }

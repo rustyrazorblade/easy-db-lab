@@ -1,12 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
+import com.rustyrazorblade.easydblab.kubernetes.imagePullFailure
 import io.fabric8.kubernetes.api.model.DeletionPropagation
+import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -22,14 +23,13 @@ class DefaultK8sJobOperations(
     private val eventBus: EventBus,
 ) : K8sJobOperations {
     override fun createJob(
-        controlHost: ClusterHost,
         namespace: String,
         jobYaml: String,
     ): Result<String> =
         runCatching {
             log.info { "Creating K8s job in namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 ManifestApplier.applyYaml(client, jobYaml)
 
                 val yamlLines = jobYaml.lines()
@@ -44,14 +44,13 @@ class DefaultK8sJobOperations(
         }
 
     override fun createJob(
-        controlHost: ClusterHost,
         namespace: String,
-        job: io.fabric8.kubernetes.api.model.batch.v1.Job,
+        job: Job,
     ): Result<String> =
         runCatching {
             log.info { "Creating K8s job '${job.metadata?.name}' in namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .batch()
                     .v1()
@@ -70,14 +69,13 @@ class DefaultK8sJobOperations(
         }
 
     override fun deleteJob(
-        controlHost: ClusterHost,
         namespace: String,
         jobName: String,
     ): Result<Unit> =
         runCatching {
             log.info { "Deleting job $jobName from namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 client
                     .batch()
                     .v1()
@@ -94,7 +92,6 @@ class DefaultK8sJobOperations(
         }
 
     override fun getJobsByLabel(
-        controlHost: ClusterHost,
         namespace: String,
         labelKey: String,
         labelValue: String,
@@ -102,7 +99,7 @@ class DefaultK8sJobOperations(
         runCatching {
             log.debug { "Getting jobs with label $labelKey=$labelValue in namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val jobs =
                     client
                         .batch()
@@ -145,14 +142,13 @@ class DefaultK8sJobOperations(
         }
 
     override fun getPodsForJob(
-        controlHost: ClusterHost,
         namespace: String,
         jobName: String,
     ): Result<List<KubernetesPod>> =
         runCatching {
             log.debug { "Getting pods for job $jobName in namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val pods =
                     client
                         .pods()
@@ -181,13 +177,14 @@ class DefaultK8sJobOperations(
                         ready = "$readyContainers/$totalContainers",
                         restarts = restarts,
                         age = age,
+                        nodeName = pod.spec?.nodeName.orEmpty(),
+                        imagePullFailure = pod.imagePullFailure(),
                     )
                 }
             }
         }
 
     override fun getPodLogs(
-        controlHost: ClusterHost,
         namespace: String,
         podName: String,
         tailLines: Int?,
@@ -195,7 +192,7 @@ class DefaultK8sJobOperations(
         runCatching {
             log.debug { "Getting logs for pod $podName in namespace $namespace" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val logRequest =
                     client
                         .pods()

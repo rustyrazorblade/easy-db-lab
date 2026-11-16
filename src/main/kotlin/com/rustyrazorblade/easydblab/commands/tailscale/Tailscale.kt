@@ -16,12 +16,12 @@ import picocli.CommandLine.Spec
  * - status: Show Tailscale connection status
  *
  * Prerequisites:
- * - Tailscale OAuth credentials configured via setup-profile or CLI args
+ * - Tailscale OAuth credentials configured via profile setup or CLI args
  * - A running cluster with a control node
  *
  * Usage:
  * ```
- * # Start Tailscale (uses credentials from setup-profile)
+ * # Start Tailscale (uses credentials from profile setup)
  * easy-db-lab tailscale start
  *
  * # Start with explicit credentials

@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 class ContextFactory(
     private val baseDirectory: File = resolveEasyDbLabUserDir(),
     private val workingDirectory: File = File(System.getProperty("user.dir")),
+    private val appHome: String? = System.getProperty("easydblab.apphome"),
 ) {
     private val contextCache = ConcurrentHashMap<String, Context>()
 
@@ -34,7 +35,7 @@ class ContextFactory(
             } else {
                 File(baseDirectory, key)
             }
-        return Context(contextDir, workingDirectory = workingDirectory)
+        return Context(contextDir, workingDirectory = workingDirectory, appHome = appHome)
     }
 
     /**

@@ -23,6 +23,19 @@ PYROSCOPE_JAR="$PYROSCOPE_DIR/pyroscope.jar"
 
 echo "=== Installing OTel and Pyroscope agents ==="
 
+# Determine this node's role so master and worker telemetry can be filtered
+# independently in Grafana. EMR writes node facts to /mnt/var/lib/info/instance.json
+# (a stable, long-standing path) with an "isMaster" boolean. We grep rather than use
+# jq because jq is not guaranteed present on EMR AMIs, and a missing-jq failure under
+# `set -e` would abort the entire bootstrap and prevent the cluster from starting.
+INSTANCE_INFO="/mnt/var/lib/info/instance.json"
+if grep -Eq '"isMaster"[[:space:]]*:[[:space:]]*true' "$INSTANCE_INFO" 2>/dev/null; then
+  NODE_ROLE="spark-master"
+else
+  NODE_ROLE="spark-worker"
+fi
+echo "Detected node role: $NODE_ROLE"
+
 # Create directories
 sudo mkdir -p "$OTEL_DIR" "$PYROSCOPE_DIR"
 
@@ -47,8 +60,11 @@ echo "Writing OTel Collector config to $COLLECTOR_CONFIG"
 sudo tee "$COLLECTOR_CONFIG" > /dev/null << 'CONFIGEOF'
 __OTEL_COLLECTOR_CONFIG__
 CONFIGEOF
-# Note: __CONTROL_NODE_IP__ is resolved at upload time by TemplateService
-echo "OTel Collector config written"
+# Note: __CONTROL_NODE_IP__ is resolved at upload time by TemplateService.
+# __NODE_ROLE__ is left unresolved on purpose and patched here, per-node, so the
+# collector tags every metric/log/trace it processes with this node's role.
+sudo sed -i "s/__NODE_ROLE__/$NODE_ROLE/g" "$COLLECTOR_CONFIG"
+echo "OTel Collector config written (node_role=$NODE_ROLE)"
 
 # --- OTel Collector systemd service ---
 echo "Creating otel-collector systemd service"

@@ -7,25 +7,37 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
+import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HelmService
+import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
+import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
+import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
+import com.rustyrazorblade.easydblab.services.installConfigYaml
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import picocli.CommandLine
 import java.io.File
 
 class KitRunnerCommandFactoryTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
-    private val mockGrafanaDashboardService: GrafanaDashboardService = mock()
+    private val mockGrafanaClient: GrafanaClient = mock()
     private val mockWorkloadStepExecutor: WorkloadStepExecutor = mock()
     private val mockMetricsRegistryService: MetricsRegistryService = mock()
     private val mockHelmService: HelmService = mock()
@@ -41,7 +53,8 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single<GrafanaDashboardService> { mockGrafanaDashboardService }
+                single<GrafanaClient> { mockGrafanaClient }
+                single { DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())) }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<HelmService> { mockHelmService }
@@ -444,6 +457,168 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         assertThat(optionNames).containsExactlyInAnyOrder("--help", "--version", "--name")
     }
 
+    // -------------------------------------------------------------------------
+    // arg parsing and recording (kit-command-args: shared arg-option builder)
+    // -------------------------------------------------------------------------
+
+    /** Writes a kit whose `start` command declares [argsYaml], and returns its parsed values for [cliArgs]. */
+    private fun startArgValues(
+        argsYaml: String,
+        vararg cliArgs: String,
+    ): Map<String, String> {
+        writeKitYaml(
+            "name: mydb\ncommands:\n  start:\n    args:\n" + argsYaml.trimIndent().prependIndent("      ") +
+                "\nstart:\n  - type: shell\n    script: echo start\n",
+        )
+        val group = factory.buildKitGroup("mydb", kitDir)
+        group.parseArgs("start", *cliArgs)
+        val startCl = group.subcommands.getValue("start")
+        return (startCl.commandSpec.userObject() as KitRunnerCommand).runtimeArgValues.toMap()
+    }
+
+    @Test
+    fun `a kit yaml that fails validation fails the build, naming the kit and the problem`() {
+        writeKitYaml("name: mydb\nargs:\n  - flag: --env\n    variable: EXTRA_ENV\n    repeatable: true\n")
+
+        assertThatThrownBy { factory.buildKitGroup("mydb", kitDir) }
+            .isInstanceOf(ConfigurationException::class.java)
+            .hasMessageContaining("mydb")
+            .hasMessageContaining("'--env' is a top-level install arg and cannot be repeatable")
+    }
+
+    @Test
+    fun `a kit yaml that does not parse fails the build, naming the kit and the file`() {
+        writeKitYaml("name: mydb\nstart: [\n")
+
+        assertThatThrownBy { factory.buildKitGroup("mydb", kitDir) }
+            .isInstanceOf(ConfigurationException::class.java)
+            .hasMessageContaining("mydb")
+            .hasMessageContaining(File(kitDir, Constants.Kit.CONFIG_FILE).path)
+    }
+
+    @Test
+    fun `an unset optional arg with no default is recorded as an empty string, never null`() {
+        val values = startArgValues("- flag: --image\n  variable: IMAGE")
+
+        assertThat(values).containsEntry("IMAGE", "")
+        assertThat(values).doesNotContainValue("null")
+    }
+
+    @Test
+    fun `a given optional arg is recorded verbatim`() {
+        assertThat(startArgValues("- flag: --image\n  variable: IMAGE", "--image", "repo/img:1"))
+            .containsEntry("IMAGE", "repo/img:1")
+    }
+
+    @Test
+    fun `an omitted arg with a default injects the default`() {
+        assertThat(startArgValues("- flag: --log-level\n  variable: LOG_LEVEL\n  default: info"))
+            .containsEntry("LOG_LEVEL", "info")
+    }
+
+    @Test
+    fun `an explicit empty arg overrides its default`() {
+        assertThat(startArgValues("- flag: --log-level\n  variable: LOG_LEVEL\n  default: info", "--log-level", ""))
+            .containsEntry("LOG_LEVEL", "")
+    }
+
+    @Test
+    fun `an omitted boolean arg is false and a given one is true`() {
+        val arg = "- flag: --heap-profile\n  variable: HEAP_PROFILE\n  type: boolean"
+
+        assertThat(startArgValues(arg)).containsEntry("HEAP_PROFILE", "false")
+        assertThat(startArgValues(arg, "--heap-profile")).containsEntry("HEAP_PROFILE", "true")
+    }
+
+    /** One row per way a repeatable arg is given; each row is its own test. */
+    @TestFactory
+    fun `a repeatable arg holds its values in order, one per line, and falls back to its default`(): List<DynamicTest> {
+        val plain = "- flag: --env\n  variable: EXTRA_ENV\n  repeatable: true"
+        val withDefault = "$plain\n  default: X=0"
+        val cases =
+            listOf(
+                Triple("every value in order", plain to listOf("--env", "A=1", "--env", "B=2"), "A=1\nB=2"),
+                Triple("the attached form keeps an equals sign", plain to listOf("--env=A=1", "--env=B=x=y"), "A=1\nB=x=y"),
+                Triple("one value", plain to listOf("--env", "A=1"), "A=1"),
+                Triple("none given and no default is an empty string", plain to emptyList(), ""),
+                Triple("the default stands alone when none are given", withDefault to emptyList(), "X=0"),
+                Triple("given values replace the default", withDefault to listOf("--env", "A=1", "--env", "B=2"), "A=1\nB=2"),
+            )
+        return cases.map { (name, input, expected) ->
+            DynamicTest.dynamicTest(name) {
+                val (arg, argv) = input
+                assertThat(startArgValues(arg, *argv.toTypedArray())).containsEntry("EXTRA_ENV", expected)
+            }
+        }
+    }
+
+    @Test
+    fun `a second parse of the same command keeps no value from the first`() {
+        writeKitYaml(
+            "name: mydb\ncommands:\n  start:\n    args:\n" +
+                "      - flag: --env\n        variable: EXTRA_ENV\n        repeatable: true\n        default: X=0\n" +
+                "start:\n  - type: shell\n    script: echo start\n",
+        )
+        val group = factory.buildKitGroup("mydb", kitDir)
+        val start =
+            group.subcommands
+                .getValue("start")
+                .commandSpec
+                .userObject() as KitRunnerCommand
+
+        group.parseArgs("start", "--env", "A=1")
+        assertThat(start.runtimeArgValues).containsEntry("EXTRA_ENV", "A=1")
+        group.parseArgs("start")
+        assertThat(start.runtimeArgValues).containsEntry("EXTRA_ENV", "X=0")
+    }
+
+    @Test
+    fun `a repeatable arg with no value is a parse error`() {
+        val arg = "- flag: --env\n  variable: EXTRA_ENV\n  repeatable: true"
+
+        assertThatThrownBy { startArgValues(arg, "--env") }
+            .isInstanceOf(CommandLine.MissingParameterException::class.java)
+            .hasMessageContaining("--env")
+    }
+
+    /** kit-command-args: "An exported shell variable does not leak into an unset arg". */
+    @Test
+    fun `an unset repeatable arg overwrites an exported shell variable of the same name`() {
+        val values = startArgValues("- flag: --env\n  variable: EXTRA_ENV\n  repeatable: true")
+        File(kitDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
+        val builder = ProcessBuilder("true").also { it.environment()["EXTRA_ENV"] = "LEAKED=1" }
+
+        KitProcessEnvironment(ToolWrapperInstaller()).applyTo(builder, kitDir, values)
+
+        assertThat(builder.environment()).containsEntry("EXTRA_ENV", "")
+    }
+
+    /**
+     * Every sysbench and kafka command arg has a default, so a command run with no flags still
+     * hands each script exactly its declared defaults, as it did before the shared builder.
+     */
+    @Test
+    fun `sysbench and kafka commands still inject their declared defaults`() {
+        for (kit in listOf("sysbench", "kafka")) {
+            val yaml =
+                requireNotNull(javaClass.classLoader.getResource("com/rustyrazorblade/easydblab/kits/$kit/kit.yaml")).readText()
+            val config = installConfigYaml.decodeFromString(KitConfig.serializer(), yaml)
+            val dir = File(kitDir, kit).also { File(it, "bin").mkdirs() }
+            File(dir, Constants.Kit.CONFIG_FILE).writeText(yaml)
+            config.commands.keys.forEach { File(dir, "bin/$it.sh").writeText("#!/bin/sh\n") }
+            val group = factory.buildKitGroup(kit, dir)
+
+            for ((name, spec) in config.commands) {
+                val cl = group.subcommands.getValue(name)
+                group.parseArgs(name)
+
+                assertThat((cl.commandSpec.userObject() as KitRunnerCommand).runtimeArgValues)
+                    .describedAs("$kit $name")
+                    .isEqualTo(spec.args.associate { it.variable to it.default })
+            }
+        }
+    }
+
     @Test
     fun `no capabilities block produces no extra subcommands`() {
         writeKitYaml(
@@ -457,5 +632,75 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
 
         val groupCl = factory.buildKitGroup("mydb", kitDir)
         assertThat(groupCl.subcommands.keys).doesNotContain("sql")
+    }
+
+    // -------------------------------------------------------------------------
+    // unset args and boolean arity (kit-command-args)
+    // -------------------------------------------------------------------------
+
+    private val benchYaml =
+        """
+        name: bench
+        commands:
+          start:
+            args:
+              - flag: --queries
+                variable: QUERIES
+              - flag: --settings
+                variable: SETTINGS
+              - flag: --randomize
+                variable: RANDOMIZE
+                type: boolean
+                default: "true"
+              - flag: --continue-on-errors
+                variable: CONTINUE_ON_ERRORS
+                type: boolean
+                default: "false"
+        """.trimIndent()
+
+    /** Parses [args] into the bench kit's `start` command and returns the values it recorded. */
+    private fun parseStart(vararg args: String): KitRunnerCommand {
+        writeKitYaml(benchYaml)
+        File(File(kitDir, "bin").also { it.mkdirs() }, "start.sh").writeText("#!/bin/sh\n")
+        val groupCl = factory.buildKitGroup("bench", kitDir)
+        groupCl.parseArgs("start", *args)
+        return groupCl.subcommands
+            .getValue("start")
+            .commandSpec
+            .userObject() as KitRunnerCommand
+    }
+
+    @Test
+    fun `an unset arg with no default is recorded as an empty string, never null`() {
+        val command = parseStart()
+
+        assertThat(command.runtimeArgValues).containsEntry("QUERIES", "")
+        assertThat(command.runtimeArgValues).doesNotContainValue("null")
+    }
+
+    @Test
+    fun `an unset arg overwrites an exported shell variable of the same name`() {
+        val command = parseStart()
+        File(kitDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
+        val builder = ProcessBuilder("true").also { it.environment()["SETTINGS"] = "host=x" }
+
+        KitProcessEnvironment(ToolWrapperInstaller()).applyTo(builder, kitDir, command.runtimeArgValues)
+
+        assertThat(builder.environment()).containsEntry("SETTINGS", "")
+    }
+
+    @Test
+    fun `a bare boolean flag records true over a false default`() {
+        assertThat(parseStart("--continue-on-errors").runtimeArgValues).containsEntry("CONTINUE_ON_ERRORS", "true")
+    }
+
+    @Test
+    fun `a boolean flag given false with an equals sign records false`() {
+        assertThat(parseStart("--randomize=false").runtimeArgValues).containsEntry("RANDOMIZE", "false")
+    }
+
+    @Test
+    fun `a boolean flag given false as a separate value records false`() {
+        assertThat(parseStart("--randomize", "false").runtimeArgValues).containsEntry("RANDOMIZE", "false")
     }
 }

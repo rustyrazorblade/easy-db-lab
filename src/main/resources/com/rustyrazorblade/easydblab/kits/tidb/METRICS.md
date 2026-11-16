@@ -2,14 +2,24 @@
 
 TiDB exposes Prometheus metrics across four components, each with its own scrape target:
 
-| Component | Job label   | NodePort | Description                              |
-|-----------|-------------|----------|------------------------------------------|
-| TiDB SQL  | `tidb-sql`  | 31080    | SQL layer — connections, queries, errors |
-| PD        | `pd`        | 32379    | Placement Driver — TSO, region scheduling |
-| TiKV      | `tikv`      | 32180    | Row storage engine (RocksDB + Raft)      |
-| TiFlash   | `tiflash`   | 32234    | Columnar storage engine (MPP)            |
+| Component | Job label   | Scrape target       | Description                              |
+|-----------|-------------|---------------------|------------------------------------------|
+| TiDB SQL  | `tidb-sql`  | pod SD, port 10080  | SQL layer — connections, queries, errors |
+| PD        | `pd`        | pod SD, port 2379   | Placement Driver — TSO, region scheduling |
+| TiKV      | `tikv`      | pod SD, port 20180  | Row storage engine (RocksDB + Raft)      |
+| TiFlash   | `tiflash`   | pod SD, port 8234   | Columnar storage engine (MPP)            |
 
-All metrics also carry `cluster=<cluster-name>`.
+All metrics also carry `cluster=<cluster-name>`. Every component is scraped by pod discovery, so
+each pod is scraped once, by the collector on its own node, and `instance` is the pod name.
+
+### TiKV `instance` = store identity
+
+TiKV is scraped **per pod** via Prometheus pod service discovery, not through a shared NodePort.
+Each collector scrapes only the TiKV pod on its own node (one store per db node), so every TiKV
+series carries `instance=<pod-name>` (e.g. `tidb-tikv-0`) — a stable per-store identity. This is
+what makes per-store attribution possible: leader hotspots, per-store CPU, per-store compaction,
+and RocksDB engine size all break down by `instance`. A NodePort would load-balance each scrape
+across all stores, collapsing them into an indistinguishable node-port `instance`.
 
 ---
 
@@ -250,7 +260,7 @@ TiDB registers itself as **`TiDB`** (capital T) in Tempo. Tag search is case-sen
 
 ### In Grafana
 
-Once traces are flowing, TiDB log rows in any VictoriaLogs panel automatically show a **"View Trace in Tempo"** button when a log entry contains a `trace_id` field. This is configured globally on the VictoriaLogs datasource via `derivedFields` in `GrafanaDatasourceConfig.kt` — no per-dashboard configuration needed.
+Once traces are flowing, TiDB log rows in any Loki panel automatically show a **"View Trace in Tempo"** button when a log entry contains a `trace_id` field. This is configured globally on the Loki datasource via `derivedFields` in `GrafanaDatasourceConfig.kt` — no per-dashboard configuration needed.
 
 ---
 

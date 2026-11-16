@@ -1,10 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.NodeBuilder
+import io.fabric8.kubernetes.client.dsl.base.PatchContext
+import io.fabric8.kubernetes.client.dsl.base.PatchType
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
 
@@ -18,14 +20,11 @@ class DefaultK8sManifestOperations(
     private val clientProvider: K8sClientProvider,
     private val eventBus: EventBus,
 ) : K8sManifestOperations {
-    override fun applyManifests(
-        controlHost: ClusterHost,
-        manifestPath: Path,
-    ): Result<Unit> =
+    override fun applyManifests(manifestPath: Path): Result<Unit> =
         runCatching {
             log.info { "Applying K8s manifests from $manifestPath via SOCKS proxy" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 eventBus.emit(Event.K8s.ManifestsApplying)
 
                 val pathFile = manifestPath.toFile()
@@ -56,14 +55,11 @@ class DefaultK8sManifestOperations(
             }
         }
 
-    override fun applyManifestFromResources(
-        controlHost: ClusterHost,
-        resourcePath: String,
-    ): Result<Unit> =
+    override fun applyManifestFromResources(resourcePath: String): Result<Unit> =
         runCatching {
             log.info { "Applying K8s manifest from resources: $resourcePath" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 val resourceStream =
                     this::class.java.getResourceAsStream("/com/rustyrazorblade/easydblab/commands/$resourcePath")
                         ?: error("Resource not found: $resourcePath")
@@ -90,29 +86,23 @@ class DefaultK8sManifestOperations(
             eventBus.emit(Event.K8s.ManifestApplied(resourcePath))
         }
 
-    override fun applyYaml(
-        controlHost: ClusterHost,
-        yamlContent: String,
-    ): Result<Unit> =
+    override fun applyYaml(yamlContent: String): Result<Unit> =
         runCatching {
             log.info { "Applying YAML content via SOCKS proxy" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 ManifestApplier.applyYaml(client, yamlContent)
                 log.info { "YAML content applied successfully" }
             }
         }
 
-    override fun applyResource(
-        controlHost: ClusterHost,
-        resource: HasMetadata,
-    ): Result<Unit> =
+    override fun applyResource(resource: HasMetadata): Result<Unit> =
         runCatching {
             val kind = resource.kind ?: "Unknown"
             val name = resource.metadata?.name ?: "unknown"
             log.info { "Applying $kind/$name via server-side apply" }
 
-            clientProvider.createClient(controlHost).use { client ->
+            clientProvider.createClient().use { client ->
                 try {
                     client
                         .resource(resource)
@@ -149,26 +139,24 @@ class DefaultK8sManifestOperations(
     }
 
     override fun labelNode(
-        controlHost: ClusterHost,
         nodeName: String,
         labels: Map<String, String>,
     ): Result<Unit> =
         runCatching {
             log.info { "Labeling node $nodeName with labels: $labels" }
 
-            clientProvider.createClient(controlHost).use { client ->
-                val node =
-                    client.nodes().withName(nodeName).get()
-                        ?: error("Node $nodeName not found")
+            clientProvider.createClient().use { client ->
+                checkNotNull(client.nodes().withName(nodeName).get()) { "Node $nodeName not found" }
 
-                val existingLabels = node.metadata.labels ?: mutableMapOf()
-                val updatedLabels = existingLabels.toMutableMap()
-                updatedLabels.putAll(labels)
-
-                client.nodes().withName(nodeName).edit { n ->
-                    n.metadata.labels = updatedLabels
-                    n
-                }
+                // A merge patch carries no resourceVersion. `edit()` patches the version it read, and
+                // the kubelet's status updates in between make the API server refuse it with 409 Conflict.
+                val patch =
+                    NodeBuilder()
+                        .withNewMetadata()
+                        .addToLabels(labels)
+                        .endMetadata()
+                        .build()
+                client.nodes().withName(nodeName).patch(PatchContext.of(PatchType.STRATEGIC_MERGE), patch)
 
                 log.info { "Labeled node $nodeName" }
             }

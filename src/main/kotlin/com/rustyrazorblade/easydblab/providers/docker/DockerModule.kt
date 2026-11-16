@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.DefaultUserIdProvider
 import com.rustyrazorblade.easydblab.Docker
 import com.rustyrazorblade.easydblab.UserIdProvider
+import com.rustyrazorblade.easydblab.containers.PackerImage
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
@@ -16,6 +17,7 @@ import org.koin.dsl.module
  * - DockerClientProvider as a singleton (expensive to create)
  * - UserIdProvider as a singleton (stateless utility)
  * - Docker instances as factory (new instance per injection with state)
+ * - PackerImage as factory, given the Docker instance it pulls or builds with
  */
 val dockerModule =
     module {
@@ -33,6 +35,9 @@ val dockerModule =
                 userIdProvider = get(),
             )
         }
+
+        // The image Packer runs in, chosen by SSH transport - factory, bound to the caller's Docker
+        factory { (docker: Docker) -> PackerImage(docker) }
 
         // Docker instances with specific output handlers
         factory(named("dockerWithLogger")) { (context: Context) ->

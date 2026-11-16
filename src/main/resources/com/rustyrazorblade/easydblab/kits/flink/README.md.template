@@ -56,5 +56,5 @@ easy-db-lab kit install flink --version 1.20 --taskmanagers 3 --task-slots 4
 ## Metrics & profiling
 
 Flink's Prometheus reporter exposes JobManager and TaskManager metrics on `:9249`, scraped
-into VictoriaMetrics. System-level CPU/alloc profiling is captured automatically by the
+into Mimir. System-level CPU/alloc profiling is captured automatically by the
 cluster's eBPF profiler — no per-kit setup required.

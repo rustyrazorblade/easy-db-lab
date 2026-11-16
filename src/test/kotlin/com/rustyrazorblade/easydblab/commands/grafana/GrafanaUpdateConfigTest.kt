@@ -4,21 +4,35 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentInstaller
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.CompactorStage
+import com.rustyrazorblade.easydblab.services.ConfigChangeReport
+import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
+import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
+import com.rustyrazorblade.easydblab.services.GrafanaDeployService
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.TenantDirectory
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -35,8 +49,10 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.nio.file.Files
 
 /**
  * Test suite for GrafanaUpdateConfig command.
@@ -45,7 +61,7 @@ import org.mockito.kotlin.whenever
  * mocked K8sService to verify the full observability stack is applied.
  */
 class GrafanaUpdateConfigTest : BaseKoinTest() {
-    private lateinit var mockDashboardService: GrafanaDashboardService
+    private lateinit var mockDashboardService: GrafanaDeployService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockK8sService: K8sService
     private lateinit var mockK8sClientProvider: K8sClientProvider
@@ -63,29 +79,10 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single {
-                    mock<GrafanaDashboardService>().also {
-                        mockDashboardService = it
-                    }
-                }
-
-                single {
-                    mock<ClusterStateManager>().also {
-                        mockClusterStateManager = it
-                    }
-                }
-
-                single {
-                    mock<K8sService>().also {
-                        mockK8sService = it
-                    }
-                }
-
-                single {
-                    mock<K8sClientProvider>().also {
-                        mockK8sClientProvider = it
-                    }
-                }
+                single { mock<GrafanaDeployService>().also { mockDashboardService = it } }
+                single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
+                single { mock<K8sService>().also { mockK8sService = it } }
+                single { mock<K8sClientProvider>().also { mockK8sClientProvider = it } }
 
                 // Real TemplateService — never mock configuration classes
                 single { TemplateService(get(), get()) }
@@ -97,10 +94,51 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { OtelManifestBuilder(get()) }
                 single { PyroscopeManifestBuilder(get()) }
                 single { TempoManifestBuilder(get()) }
-                single { VictoriaManifestBuilder() }
+                single { MimirManifestBuilder(get()) }
+                single { LokiManifestBuilder(get()) }
                 single { RegistryManifestBuilder() }
                 single { S3ManagerManifestBuilder(get()) }
                 single { YaceManifestBuilder(get()) }
+                single { KubeStateMetricsManifestBuilder() }
+                single { ConfigChangeReport(get<K8sService>(), get()) }
+
+                // Real service under test — the command is a thin wrapper over it. RemoteOperationsService,
+                // User, and EventBus come from BaseKoinTest's core mocks via get().
+                single<ObservabilityStackService> {
+                    DefaultObservabilityStackService(
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())),
+                        CompactorStage(
+                            CompactorManifestBuilder(get()),
+                            CompactorAgentInstaller(get(), get()),
+                            bucketRegion = { "us-west-2" },
+                            agentJar = {
+                                CompactorAgentJarFile(
+                                    Files.writeString(tempDir.toPath().resolve("compactor-lease.jar"), "agent"),
+                                )
+                            },
+                        ),
+                    )
+                }
             },
         )
 
@@ -124,7 +162,14 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         whenever(mockConfigMapOps.inAnyNamespace()).thenReturn(mockAnyNsOps)
         whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
-        whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
+        whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
+
+        // The service writes the runtime cluster-config ConfigMap before applying the stack; stub it
+        // so an unstubbed Result does not NPE inside the deploy path.
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any()))
+            .thenReturn(Result.success(Unit))
+        // Nothing is running yet: every workload reports its configuration as changed.
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
     }
 
     @Test
@@ -151,6 +196,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -158,25 +204,25 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
 
         val command = GrafanaUpdateConfig()
         command.execute()
 
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
-        verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService).uploadDashboards(any())
+        verify(mockK8sService, atLeastOnce()).applyResource(any<HasMetadata>())
+        verify(mockDashboardService).deploy(any(), any(), any())
 
-        // Verify observability workloads were restarted
-        verify(mockK8sService, atLeastOnce()).rolloutRestartDeployment(any(), any(), any())
-        verify(mockK8sService, atLeastOnce()).rolloutRestartDaemonSet(any(), any(), any())
+        // Nothing is force-restarted: a workload rolls only when its configuration hash changes.
+        verify(mockK8sService, never()).rolloutRestartDeployment(any(), any())
+        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any())
 
         // Verify success is gated on the stack reaching Ready
-        verify(mockK8sService).waitForPodsReady(any(), any())
+        verify(mockK8sService).waitForPodsReady(any())
     }
 
     @Test
@@ -185,6 +231,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -192,12 +239,12 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
         // The stack applied and restarted, but a pod never reached Ready (e.g. Grafana CrashLoopBackOff).
-        whenever(mockK8sService.waitForPodsReady(any(), any()))
+        whenever(mockK8sService.waitForPodsReady(any()))
             .thenReturn(
                 Result.failure(
                     IllegalStateException("Pod grafana-xyz container grafana is in CrashLoopBackOff state"),
@@ -218,6 +265,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -225,7 +273,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>()))
+        whenever(mockK8sService.applyResource(any<HasMetadata>()))
             .thenReturn(Result.failure(RuntimeException("server side apply failed")))
 
         val command = GrafanaUpdateConfig()
@@ -241,6 +289,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -248,8 +297,8 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             )
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
-        whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any()))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
         val command = GrafanaUpdateConfig()
@@ -257,5 +306,37 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Failed to upload dashboards")
+    }
+
+    @Test
+    fun `execute refuses on a telemetry-redirect cluster`() {
+        // A redirect cluster has no local Grafana or backends to reconfigure, so the operator-facing
+        // reconfigure command must refuse rather than apply anything or upload dashboards.
+        val redirectState =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
+                hosts =
+                    mutableMapOf(
+                        ServerType.Control to listOf(testControlHost),
+                    ),
+                initConfig =
+                    InitConfig(
+                        region = "us-west-2",
+                        telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9"),
+                    ),
+            )
+
+        whenever(mockClusterStateManager.load()).thenReturn(redirectState)
+
+        val command = GrafanaUpdateConfig()
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("telemetry-redirect")
+
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+        verify(mockDashboardService, never()).deploy(any(), any(), any())
     }
 }

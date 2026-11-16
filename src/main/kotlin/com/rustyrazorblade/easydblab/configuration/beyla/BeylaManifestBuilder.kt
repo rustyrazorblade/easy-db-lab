@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.beyla
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -26,7 +27,7 @@ class BeylaManifestBuilder(
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "beyla"
         private const val CONFIGMAP_NAME = "beyla-config"
-        private const val IMAGE = "grafana/beyla:2.8.1"
+        private const val IMAGE = "grafana/beyla:3.36.0"
     }
 
     /**
@@ -81,9 +82,8 @@ class BeylaManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withHostNetwork(true)
+            .hostNetworked()
             .withHostPID(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()

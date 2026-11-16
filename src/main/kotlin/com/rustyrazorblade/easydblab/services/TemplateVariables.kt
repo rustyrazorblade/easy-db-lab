@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import java.io.File
 
 /**
@@ -29,6 +30,8 @@ data class TemplateVariables(
     val runningKits: String,
     val vpcCidr: String,
     val opensearchEndpoint: String,
+    val pyroscopeUrl: String,
+    val tenant: String,
 ) {
     fun toMap(): Map<String, String> =
         mapOf(
@@ -51,9 +54,42 @@ data class TemplateVariables(
             "RUNNING_KITS" to runningKits,
             "VPC_CIDR" to vpcCidr,
             "OPENSEARCH_ENDPOINT" to opensearchEndpoint,
+            "PYROSCOPE_URL" to pyroscopeUrl,
+            "TENANT" to tenant,
         )
 
     companion object {
+        /**
+         * Every variable [toMap] defines, plus the ones the kit runner adds after it (`BACKUP_NAME`).
+         * A command arg may not use one of these names: the cluster value would silently replace
+         * the argument. A test keeps this set equal to the keys of [toMap].
+         */
+        val RESERVED_NAMES: Set<String> =
+            setOf(
+                "CLUSTER_NAME",
+                "BUCKET_NAME",
+                "ACCOUNT_BUCKET",
+                "REGION",
+                "DB_NODE_COUNT",
+                "APP_NODE_COUNT",
+                "CONTROL_HOST",
+                "CONTROL_HOST_PUBLIC",
+                "CONTROL_HOST_PRIVATE",
+                "STORAGE_CLASS_WFC",
+                "KIT_NAME",
+                "STORAGE_SIZE",
+                "KUBECONFIG",
+                "EASY_DB_LAB_EXEC",
+                "DB_NODE_IPS",
+                "APP_NODE_IPS",
+                "RUNNING_KITS",
+                "VPC_CIDR",
+                "OPENSEARCH_ENDPOINT",
+                "PYROSCOPE_URL",
+                "TENANT",
+                "BACKUP_NAME",
+            )
+
         internal fun resolveEasyDbLabExec(fixedPath: File = File("/usr/local/bin/easy-db-lab")): String =
             if (fixedPath.exists()) {
                 fixedPath.absolutePath
@@ -91,6 +127,10 @@ data class TemplateVariables(
                 // fallback because templates using VPC_CIDR only execute post-up
                 vpcCidr = state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR,
                 opensearchEndpoint = state.openSearchDomain?.endpoint.orEmpty(),
+                // Where a kit's Pyroscope agent ships profiles: the control node's server, or the
+                // external stack on a redirect cluster. Every write carries the cluster's tenant.
+                pyroscopeUrl = pyroscopeIngestBaseUrl(controlHost?.privateIp.orEmpty(), state.initConfig?.telemetryRedirect),
+                tenant = state.tenant(),
             )
         }
     }

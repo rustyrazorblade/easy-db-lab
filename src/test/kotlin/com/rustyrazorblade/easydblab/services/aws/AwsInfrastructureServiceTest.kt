@@ -1,20 +1,34 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
+import com.rustyrazorblade.easydblab.providers.aws.ClusterVpcResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
+import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRule
+import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Tests for AwsInfrastructureService.
@@ -27,6 +41,7 @@ class AwsInfrastructureServiceTest {
     private lateinit var emrService: EMRService
     private lateinit var openSearchService: OpenSearchService
     private lateinit var service: AwsInfrastructureService
+    private val eventBus = EventBus()
 
     @BeforeEach
     fun setup() {
@@ -38,10 +53,109 @@ class AwsInfrastructureServiceTest {
                 vpcService = vpcService,
                 emrService = emrService,
                 openSearchService = openSearchService,
-                eventBus =
-                    com.rustyrazorblade.easydblab.events
-                        .EventBus(),
+                eventBus = eventBus,
             )
+    }
+
+    /**
+     * A VPC supplied with `init --vpc` belongs to the user and may hold other clusters. Teardown
+     * removes only what carries this cluster's ClusterId tag and never the VPC.
+     */
+    @Nested
+    inner class TeardownClusterInSuppliedVpc {
+        private val vpcId = "vpc-supplied"
+        private val clusterId = "cluster-b"
+
+        private fun clusterOwned(igw: String? = "igw-b") =
+            ClusterVpcResources(
+                instanceIds = listOf("i-b1", "i-b2"),
+                subnetIds = listOf("subnet-b"),
+                securityGroupIds = listOf("sg-b"),
+                internetGatewayId = igw,
+                routeTableIds = listOf("rtb-b"),
+            )
+
+        @BeforeEach
+        fun stubDiscovery() {
+            whenever(vpcService.getVpcName(vpcId)).thenReturn("user-vpc")
+            whenever(vpcService.findClusterResourcesInVpc(vpcId, clusterId)).thenReturn(clusterOwned())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
+        }
+
+        @Test
+        fun `removes only the cluster's tagged resources and never deletes the VPC`() {
+            val result = service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            assertThat(result.success).isTrue()
+            verify(vpcService).terminateInstances(listOf("i-b1", "i-b2"))
+            verify(vpcService).revokeSecurityGroupRules("sg-b")
+            verify(vpcService).deleteSecurityGroup("sg-b")
+            verify(vpcService).deleteRouteTable("rtb-b")
+            verify(vpcService).deleteSubnet("subnet-b")
+            verify(vpcService).detachInternetGateway("igw-b", vpcId)
+            verify(vpcService).deleteInternetGateway("igw-b")
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @Test
+        fun `discovers by cluster tag, never by VPC membership`() {
+            service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            verify(vpcService, never()).findInstancesInVpc(any())
+            verify(vpcService, never()).findSubnetsInVpc(any())
+            verify(vpcService, never()).findSecurityGroupsInVpc(any())
+            verify(vpcService, never()).findInternetGatewayByVpc(any())
+            verify(vpcService, never()).findRouteTablesInVpc(any())
+            verify(vpcService, never()).findNatGatewaysInVpc(any())
+            // EMR clusters and OpenSearch domains are looked for in the cluster's own subnets only.
+            verify(emrService).findClustersInVpc(vpcId, listOf("subnet-b"))
+            verify(openSearchService).findDomainsInVpc(listOf("subnet-b"))
+        }
+
+        @Test
+        fun `waits only for the cluster's own subnets to drain and removes the route to its gateway`() {
+            service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            verify(vpcService).waitForNetworkInterfacesClearedInSubnets(eq(listOf("subnet-b")), any())
+            verify(vpcService, never()).waitForNetworkInterfacesCleared(any(), any())
+            verify(vpcService).deleteRoutesToInternetGateway(vpcId, "igw-b")
+        }
+
+        @Test
+        fun `a failed subnet delete is reported and the VPC is still kept`() {
+            whenever(vpcService.deleteSubnet("subnet-b")).thenThrow(SdkClientException.create("DependencyViolation"))
+
+            val result = service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            assertThat(result.success).isFalse()
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @Test
+        fun `dry run lists the cluster's resources, deletes nothing and says the VPC is kept`() {
+            val result = service.teardownClusterInSuppliedVpc(vpcId, clusterId, dryRun = true)
+
+            assertThat(result.success).isTrue()
+            val previewed = result.resourcesDeleted.single()
+            assertThat(previewed.ownsVpc).isFalse()
+            assertThat(previewed.instanceIds).containsExactly("i-b1", "i-b2")
+            assertThat(previewed.summary()).contains("kept")
+            verify(vpcService, never()).terminateInstances(any())
+            verify(vpcService, never()).deleteSubnet(any())
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @Test
+        fun `a cluster with nothing left in the VPC succeeds without touching it`() {
+            whenever(vpcService.findClusterResourcesInVpc(vpcId, clusterId)).thenReturn(ClusterVpcResources())
+
+            val result = service.teardownClusterInSuppliedVpc(vpcId, clusterId)
+
+            assertThat(result.success).isTrue()
+            verify(vpcService, never()).deleteVpc(any())
+            verify(vpcService, never()).deleteRoutesToInternetGateway(any(), any())
+        }
     }
 
     @Nested
@@ -125,7 +239,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emrIds)
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(emrService.terminateClusters(emrIds))
-                .thenThrow(RuntimeException("EMR termination failed"))
+                .thenThrow(SdkClientException.create("EMR termination failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -152,7 +266,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.terminateInstances(instanceIds))
-                .thenThrow(RuntimeException("Instance termination failed"))
+                .thenThrow(SdkClientException.create("Instance termination failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -177,7 +291,7 @@ class AwsInfrastructureServiceTest {
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             // Security group deletion fails - non-critical
             whenever(vpcService.deleteSecurityGroup("sg-1"))
-                .thenThrow(RuntimeException("SG deletion failed"))
+                .thenThrow(SdkClientException.create("SG deletion failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -250,7 +364,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(domains)
             whenever(openSearchService.waitForDomainDeleted("test-os"))
-                .thenThrow(RuntimeException("Timeout waiting for domain deletion"))
+                .thenThrow(SdkClientException.create("Timeout waiting for domain deletion"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -274,7 +388,7 @@ class AwsInfrastructureServiceTest {
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(domains)
             // First domain delete fails
             whenever(openSearchService.deleteDomain("test-os-1"))
-                .thenThrow(RuntimeException("Delete failed"))
+                .thenThrow(SdkClientException.create("Delete failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -323,7 +437,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.deleteNatGateway("nat-1"))
-                .thenThrow(RuntimeException("NAT deletion failed"))
+                .thenThrow(SdkClientException.create("NAT deletion failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -369,7 +483,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.deleteRouteTable("rtb-1"))
-                .thenThrow(RuntimeException("Route table deletion failed"))
+                .thenThrow(SdkClientException.create("Route table deletion failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -391,7 +505,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.deleteSubnet("subnet-1"))
-                .thenThrow(RuntimeException("Subnet deletion failed"))
+                .thenThrow(SdkClientException.create("Subnet deletion failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -414,7 +528,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.detachInternetGateway(igwId, vpcId))
-                .thenThrow(RuntimeException("IGW detach failed"))
+                .thenThrow(SdkClientException.create("IGW detach failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -436,7 +550,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.deleteVpc(vpcId))
-                .thenThrow(RuntimeException("VPC deletion failed"))
+                .thenThrow(SdkClientException.create("VPC deletion failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -458,7 +572,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.revokeSecurityGroupRules("sg-1"))
-                .thenThrow(RuntimeException("Revoke failed"))
+                .thenThrow(SdkClientException.create("Revoke failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -508,7 +622,7 @@ class AwsInfrastructureServiceTest {
                 object : EventListener {
                     override fun onEvent(envelope: EventEnvelope) {
                         if (envelope.event.toDisplayString().startsWith("\nTearing down")) {
-                            throw RuntimeException("Unexpected event listener failure")
+                            error("Unexpected event listener failure")
                         }
                     }
 
@@ -543,7 +657,7 @@ class AwsInfrastructureServiceTest {
             whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
             whenever(vpcService.waitForNetworkInterfacesCleared(vpcId))
-                .thenThrow(RuntimeException("ENI timeout"))
+                .thenThrow(SdkClientException.create("ENI timeout"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -570,11 +684,11 @@ class AwsInfrastructureServiceTest {
             whenever(openSearchService.findDomainsInVpc(any())).thenReturn(domains)
             // All three critical Phase 1 tasks fail
             whenever(emrService.terminateClusters(emrIds))
-                .thenThrow(RuntimeException("EMR failed"))
+                .thenThrow(SdkClientException.create("EMR failed"))
             whenever(vpcService.terminateInstances(instanceIds))
-                .thenThrow(RuntimeException("EC2 failed"))
+                .thenThrow(SdkClientException.create("EC2 failed"))
             whenever(openSearchService.deleteDomain("test-os"))
-                .thenThrow(RuntimeException("OpenSearch failed"))
+                .thenThrow(SdkClientException.create("OpenSearch failed"))
 
             val result = service.teardownVpc(vpcId, dryRun = false)
 
@@ -640,13 +754,13 @@ class AwsInfrastructureServiceTest {
             whenever(vpcService.getVpcName("vpc-1")).thenReturn("test-cluster-1")
             setupEmptyResourcesFor("vpc-1")
             whenever(vpcService.deleteVpc("vpc-1"))
-                .thenThrow(RuntimeException("VPC-1 deletion failed"))
+                .thenThrow(SdkClientException.create("VPC-1 deletion failed"))
 
             // Setup vpc-2 with a VPC deletion error
             whenever(vpcService.getVpcName("vpc-2")).thenReturn("test-cluster-2")
             setupEmptyResourcesFor("vpc-2")
             whenever(vpcService.deleteVpc("vpc-2"))
-                .thenThrow(RuntimeException("VPC-2 deletion failed"))
+                .thenThrow(SdkClientException.create("VPC-2 deletion failed"))
 
             val result = service.teardownAllTagged(dryRun = false)
 
@@ -781,7 +895,171 @@ class AwsInfrastructureServiceTest {
         }
     }
 
+    @Nested
+    inner class EnsureReusableInfrastructure {
+        @Test
+        fun `an existing VPC gets its subnet in the requested availability zone`() {
+            val vpcId = "vpc-packer"
+            val packer = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
+            val config = packer.copy(subnets = packer.subnets.map { it.copy(availabilityZone = "us-east-1b") })
+            whenever(vpcService.findVpcByName(InfrastructureConfig.PACKER_VPC_NAME)).thenReturn(vpcId)
+            whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn("sg-1")
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any())).thenReturn(IngressAuthorization.ADDED)
+
+            val infrastructure = service.ensureReusableInfrastructure(config)
+
+            verify(vpcService).findOrCreateSubnet(eq(vpcId), any(), any(), any(), eq("us-east-1b"))
+            assertThat(infrastructure.subnetIds).containsExactly("subnet-1")
+        }
+    }
+
+    @Nested
+    inner class SetupVpcNetworking {
+        private val securityGroupId = "sg-cluster"
+        private val vpcCidr = "10.42.0.0/16"
+
+        private val networkingConfig =
+            VpcNetworkingConfig(
+                vpcId = "vpc-1",
+                clusterName = "test",
+                clusterId = "id-1",
+                region = "us-west-2",
+                availabilityZones = listOf("a"),
+                isOpen = false,
+                vpcCidr = vpcCidr,
+            )
+
+        @BeforeEach
+        fun stubNetworking() {
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
+            whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn(securityGroupId)
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any()))
+                .thenReturn(IngressAuthorization.ADDED)
+        }
+
+        @Test
+        fun `reports each rule it adds once, with the same port descriptions as before`() {
+            val events = recordEvents()
+
+            service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
+
+            assertThat(events.ruleConfiguredLines()).containsExactly(
+                "Configured security group ingress rule for port 22",
+                "Configured security group ingress rule for ports 0-65535",
+                "Configured security group ingress rule for ports 0-65535",
+                "Configured security group ingress rule for all ICMP types",
+            )
+        }
+
+        @Test
+        fun `reports nothing for a rule the security group already has`() {
+            whenever(vpcService.authorizeSecurityGroupIngress(eq(securityGroupId), eq(22), eq(22), any(), any()))
+                .thenReturn(IngressAuthorization.ALREADY_PRESENT)
+            val events = recordEvents()
+
+            service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
+
+            assertThat(events.ruleConfiguredLines()).doesNotContain("Configured security group ingress rule for port 22")
+            assertThat(events.ruleConfiguredLines()).hasSize(3)
+        }
+
+        @Test
+        fun `security group allows ICMP of every type from within the VPC`() {
+            service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
+
+            val protocols = argumentCaptor<String>()
+            val fromPorts = argumentCaptor<Int>()
+            val toPorts = argumentCaptor<Int>()
+            val cidrs = argumentCaptor<String>()
+            verify(vpcService, atLeastOnce()).authorizeSecurityGroupIngress(
+                eq(securityGroupId),
+                fromPorts.capture(),
+                toPorts.capture(),
+                cidrs.capture(),
+                protocols.capture(),
+            )
+            val rules =
+                protocols.allValues.indices.map { i ->
+                    listOf(protocols.allValues[i], fromPorts.allValues[i], toPorts.allValues[i], cidrs.allValues[i])
+                }
+
+            assertThat(rules).contains(listOf("icmp", -1, -1, vpcCidr))
+        }
+    }
+
+    @Nested
+    inner class ReusableInfrastructureRules {
+        private val packerSgId = "sg-packer"
+
+        @BeforeEach
+        fun stubExistingPackerVpc() {
+            whenever(vpcService.findVpcByName(any())).thenReturn("vpc-packer")
+            whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn(packerSgId)
+        }
+
+        @Test
+        fun `the Packer path reports its SSH rule when it adds it`() {
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any()))
+                .thenReturn(IngressAuthorization.ADDED)
+            val events = recordEvents()
+
+            service.ensurePackerInfrastructure(22, "203.0.113.7/32")
+
+            assertThat(events.ruleConfiguredLines()).containsExactly("Configured security group ingress rule for port 22")
+        }
+
+        @Test
+        fun `the Packer path reports nothing when its SSH rule is already there`() {
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any()))
+                .thenReturn(IngressAuthorization.ALREADY_PRESENT)
+            val events = recordEvents()
+
+            service.ensurePackerInfrastructure(22, "203.0.113.7/32")
+
+            assertThat(events.ruleConfiguredLines()).isEmpty()
+        }
+
+        @Test
+        fun `a new VPC reports a TCP range rule as a port range`() {
+            whenever(vpcService.findVpcByName(any())).thenReturn(null)
+            whenever(vpcService.createVpc(any(), any(), any())).thenReturn("vpc-new")
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any()))
+                .thenReturn(IngressAuthorization.ADDED)
+            val config =
+                InfrastructureConfig
+                    .forPacker(22, "203.0.113.7/32")
+                    .copy(securityGroupRules = listOf(SecurityGroupRule(9000, 9100, "10.0.0.0/16")))
+            val events = recordEvents()
+
+            service.ensureReusableInfrastructure(config)
+
+            assertThat(events.ruleConfiguredLines()).containsExactly("Configured security group ingress rule for ports 9000-9100")
+        }
+    }
+
     // Helper methods
+
+    private fun recordEvents(): List<Event> {
+        val events = CopyOnWriteArrayList<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return events
+    }
+
+    private fun List<Event>.ruleConfiguredLines(): List<String> =
+        filterIsInstance<Event.Infra.SecurityGroupRuleConfigured>().map { it.toDisplayString() }
 
     private fun setupEmptyVpcMocks(vpcId: String) {
         whenever(vpcService.getVpcName(vpcId)).thenReturn("test-vpc")
@@ -797,5 +1075,90 @@ class AwsInfrastructureServiceTest {
         whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
         whenever(emrService.findClustersInVpc(eq(vpcId), any())).thenReturn(emptyList())
         whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
+    }
+
+    /**
+     * Each teardown step handles the failures AWS calls and waiters really throw: an SDK error,
+     * a poll that timed out, and a waiter that gave up through `error()`.  Any other exception is a
+     * defect and must not be swallowed into the error list.
+     */
+    @Nested
+    inner class StepFailureTypes {
+        private val vpcId = "vpc-types"
+
+        @BeforeEach
+        fun stubDiscovery() {
+            whenever(vpcService.getVpcName(vpcId)).thenReturn("test-vpc")
+            whenever(vpcService.findInstancesInVpc(vpcId)).thenReturn(listOf("i-1"))
+            whenever(vpcService.findSubnetsInVpc(vpcId)).thenReturn(listOf("subnet-1"))
+            whenever(vpcService.findSecurityGroupsInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findNatGatewaysInVpc(vpcId)).thenReturn(emptyList())
+            whenever(vpcService.findInternetGatewayByVpc(vpcId)).thenReturn(null)
+            whenever(vpcService.findRouteTablesInVpc(vpcId)).thenReturn(emptyList())
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
+        }
+
+        @ParameterizedTest
+        @MethodSource("com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureServiceTest#handledFailures")
+        fun `a failed instance wait is reported and stops teardown before the networking phase`(failure: Exception) {
+            doAnswer { throw failure }.whenever(vpcService).waitForInstancesTerminated(any(), any())
+
+            val result = service.teardownVpc(vpcId, dryRun = false)
+
+            assertThat(result.success).isFalse()
+            assertThat(result.errors).anyMatch { it.contains("Failed to terminate instances") }
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @ParameterizedTest
+        @MethodSource("com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureServiceTest#handledFailures")
+        fun `a failed subnet delete is reported and the VPC delete is still attempted`(failure: Exception) {
+            doAnswer { throw failure }.whenever(vpcService).deleteSubnet("subnet-1")
+
+            val result = service.teardownVpc(vpcId, dryRun = false)
+
+            assertThat(result.errors).anyMatch { it.contains("Failed to delete subnet subnet-1") }
+            verify(vpcService).deleteVpc(vpcId)
+        }
+
+        @ParameterizedTest
+        @MethodSource("com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureServiceTest#handledFailures")
+        fun `a network interface wait that fails is reported and teardown goes on`(failure: Exception) {
+            doAnswer { throw failure }.whenever(vpcService).waitForNetworkInterfacesCleared(vpcId)
+
+            val result = service.teardownVpc(vpcId, dryRun = false)
+
+            assertThat(result.errors).anyMatch { it.contains("network interfaces") }
+            verify(vpcService).deleteVpc(vpcId)
+        }
+
+        @Test
+        fun `an unrelated exception from a networking step is not swallowed`() {
+            whenever(vpcService.deleteSubnet("subnet-1")).thenThrow(IllegalArgumentException("a defect"))
+
+            assertThatThrownBy { service.teardownVpc(vpcId, dryRun = false) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessage("a defect")
+        }
+
+        @Test
+        fun `an unrelated exception from a parallel step is not swallowed`() {
+            whenever(vpcService.terminateInstances(any())).thenThrow(IllegalArgumentException("a defect"))
+
+            assertThatThrownBy { service.teardownVpc(vpcId, dryRun = false) }
+                .hasRootCauseInstanceOf(IllegalArgumentException::class.java)
+        }
+    }
+
+    companion object {
+        /** The failure types a teardown step handles. */
+        @JvmStatic
+        fun handledFailures(): List<Exception> =
+            listOf(
+                SdkClientException.create("sdk failure"),
+                AwsTimeoutException("poll timed out"),
+                IllegalStateException("waiter gave up"),
+            )
     }
 }

@@ -1,19 +1,29 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.rustyrazorblade.easydblab.annotations.McpCommand
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
-import com.rustyrazorblade.easydblab.commands.converters.PicoArchConverter
+import com.rustyrazorblade.easydblab.commands.converters.PicoCniModeConverter
+import com.rustyrazorblade.easydblab.commands.converters.PicoPositionalClusterNameConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.LiveInfrastructureLookup
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.DataDiskRequirement
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -49,7 +59,6 @@ import kotlin.system.exitProcess
  * @see Up for infrastructure provisioning
  * @see Down for tearing down infrastructure
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "init",
@@ -58,25 +67,46 @@ import kotlin.system.exitProcess
 class Init : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
+    private val ec2InstanceService: EC2InstanceService by inject()
+    private val infrastructureService: AwsInfrastructureService by inject()
+    private val liveInfrastructure by lazy { LiveInfrastructureLookup(clusterStateManager, infrastructureService) }
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
         private const val DEFAULT_EBS_SIZE_GB = 256
+
+        /** Control node instance type. Kept in sync with [InitConfig] control defaults. */
+        const val DEFAULT_CONTROL_INSTANCE_TYPE = "m5d.xlarge"
+
+        /** Classpath directory holding the OTel agent's Cassandra JMX rule files. */
+        private const val CASSANDRA_RESOURCE_DIR = "/com/rustyrazorblade/easydblab/configuration/cassandra"
 
         @JsonIgnore val log = KotlinLogging.logger {}
     }
 
     @Option(
         names = ["--db", "--cassandra", "-c"],
-        description = ["Number of database instances"],
+        description = ["Legacy alias for --db.count. Number of database instances"],
     )
     var cassandraInstances = DEFAULT_CASSANDRA_INSTANCE_COUNT
 
     @Option(
+        names = ["--db.count"],
+        description = ["Number of database instances. Takes precedence over the legacy --db/--cassandra/-c alias"],
+    )
+    var dbCount: Int? = null
+
+    @Option(
         names = ["--app", "--stress", "-s"],
-        description = ["Number of application instances"],
+        description = ["Legacy alias for --app.count. Number of application instances"],
     )
     var stressInstances = 0
+
+    @Option(
+        names = ["--app.count"],
+        description = ["Number of application instances. Takes precedence over the legacy --app/--stress/-s alias"],
+    )
+    var appCount: Int? = null
 
     @Option(
         names = ["--up"],
@@ -86,19 +116,42 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--instance", "-i"],
-        description = ["Instance Type. Set EASY_DB_LAB_INSTANCE_TYPE to set a default."],
+        description = [
+            "Legacy alias for --db.instance-type. Database instance type. " +
+                "Set EASY_DB_LAB_INSTANCE_TYPE to set a default.",
+        ],
     )
     var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: "i4i.xlarge"
 
     @Option(
+        names = ["--db.instance-type"],
+        description = [
+            "Database instance type. Takes precedence over the legacy --instance/-i alias.",
+        ],
+    )
+    var dbInstanceType: String? = null
+
+    @Option(
         names = ["--stress-instance", "-si", "--si"],
-        description = ["Stress Instance Type. Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default."],
+        description = [
+            "Legacy alias for --app.instance-type. Application (stress) instance type. " +
+                "Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default.",
+        ],
     )
     var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: "c6id.2xlarge"
 
     @Option(
+        names = ["--app.instance-type"],
+        description = [
+            "Application (stress) instance type. " +
+                "Takes precedence over the legacy --stress-instance/-si alias.",
+        ],
+    )
+    var appInstanceType: String? = null
+
+    @Option(
         names = ["--azs", "--az", "-z"],
-        description = ["Limit to specified availability zones"],
+        description = ["Limit to specified availability zones (at most 8)"],
         converter = [PicoAZConverter::class],
     )
     var azs: List<String> = listOf()
@@ -157,12 +210,14 @@ class Init : PicoBaseCommand() {
     )
     var name = "test"
 
+    /** Never holds a value: its converter throws, so `--name` fails at parse time naming the positional form. */
     @Option(
-        names = ["--arch", "-a", "--cpu"],
-        description = ["CPU architecture"],
-        converter = [PicoArchConverter::class],
+        names = ["--name"],
+        hidden = true,
+        converter = [PicoPositionalClusterNameConverter::class],
+        description = ["Not an option. The cluster name is positional: init <name>"],
     )
-    var arch: Arch = Arch.AMD64
+    var misplacedName: String? = null
 
     @Mixin
     var spark = SparkInitMixin()
@@ -198,24 +253,127 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--cidr"],
-        description = ["VPC CIDR block (e.g. 10.2.0.0/16). Must be /20 or larger. Omit to auto-select a non-conflicting block."],
+        description = [
+            "VPC CIDR block (e.g. 10.2.0.0/16). Must be /25 or larger; it is split into eight equal subnets. " +
+                "Omit to auto-select a non-conflicting block.",
+        ],
     )
     var cidr: String? = null
 
     @Option(
-        names = ["--cilium"],
-        description = ["Install Cilium CNI instead of the default Flannel CNI"],
+        names = ["--cni"],
+        description = [
+            "Pod-network CNI: 'cilium' (default) uses Cilium ENI native routing (no encapsulation); " +
+                "'flannel' uses K3s's built-in Flannel overlay.",
+        ],
+        converter = [PicoCniModeConverter::class],
     )
-    var cilium = false
+    var cni: CniMode = CniMode.Cilium
+
+    @Option(
+        names = ["--tenant"],
+        description = [
+            "Observability tenant the cluster's traces, profiles, metrics, logs and annotations " +
+                "belong to (default: default). Must match ^[a-z][a-z0-9_-]{0,62}$.",
+        ],
+    )
+    var tenant: String = Constants.Observability.DEFAULT_TENANT
+
+    @Option(
+        names = ["--redirect-telemetry"],
+        description = [
+            "Ship all telemetry to an external observability stack at this base host instead of " +
+                "standing up local backends. The four signal endpoints are derived from the host " +
+                "and the known stack ports; override any with the --redirect-*-endpoint options.",
+        ],
+    )
+    var redirectTelemetry: String? = null
+
+    @Option(
+        names = ["--redirect-metrics-endpoint"],
+        description = ["Override the derived metrics remote-write URL for --redirect-telemetry."],
+    )
+    var redirectMetricsEndpoint: String? = null
+
+    @Option(
+        names = ["--redirect-logs-endpoint"],
+        description = ["Override the derived logs OTLP ingest URL for --redirect-telemetry."],
+    )
+    var redirectLogsEndpoint: String? = null
+
+    @Option(
+        names = ["--redirect-traces-endpoint"],
+        description = ["Override the derived Tempo OTLP endpoint (host:port) for --redirect-telemetry."],
+    )
+    var redirectTracesEndpoint: String? = null
+
+    @Option(
+        names = ["--redirect-profiles-endpoint"],
+        description = ["Override the derived Pyroscope ingest base URL for --redirect-telemetry."],
+    )
+    var redirectProfilesEndpoint: String? = null
+
+    /**
+     * The telemetry redirect target built from the redirect options, or null in local mode
+     * (`--redirect-telemetry` not supplied). The four endpoints derive from the base host and the
+     * known stack ports; per-signal overrides replace individual derived values.
+     */
+    @get:JsonIgnore
+    val resolvedTelemetryRedirect: TelemetryRedirect?
+        get() =
+            redirectTelemetry?.let { host ->
+                TelemetryRedirect.fromBaseHost(
+                    baseHost = host,
+                    metricsOverride = redirectMetricsEndpoint,
+                    logsOverride = redirectLogsEndpoint,
+                    tracesOverride = redirectTracesEndpoint,
+                    profilesOverride = redirectProfilesEndpoint,
+                )
+            }
+
+    /**
+     * Resolved number of database instances: the namespaced `--db.count` when supplied, otherwise
+     * the legacy `--db`/`--cassandra`/`-c` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedDbCount: Int get() = dbCount ?: cassandraInstances
+
+    /**
+     * Resolved number of application instances: the namespaced `--app.count` when supplied,
+     * otherwise the legacy `--app`/`--stress`/`-s` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedAppCount: Int get() = appCount ?: stressInstances
+
+    /**
+     * Resolved database instance type: the namespaced `--db.instance-type` when supplied, otherwise
+     * the legacy `--instance`/`-i` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedDbInstanceType: String get() = dbInstanceType ?: instanceType
+
+    /**
+     * Resolved application instance type: the namespaced `--app.instance-type` when supplied,
+     * otherwise the legacy `--stress-instance`/`-si` alias (or its default). Namespaced always wins.
+     */
+    @get:JsonIgnore
+    val resolvedAppInstanceType: String get() = appInstanceType ?: stressInstanceType
 
     override fun execute() {
         validateParameters()
 
-        if (!clean) {
+        if (clean) {
+            refuseLiveInfrastructure()
+            eventBus.emit(Event.Setup.CleaningExistingConfig)
+            // Execute Clean immediately with full lifecycle; a failed clean fails init.
+            runNested(commandExecutor, Clean())
+        } else {
             checkExistingFiles()
         }
+        // After the cleanup, which removes a bin/ that holds only easy-db-lab's wrappers.
+        refuseExistingBin()
 
-        val clusterState = prepareEnvironment()
+        val clusterState = createClusterState()
 
         eventBus.emit(Event.Setup.InitializingDirectory)
 
@@ -225,6 +383,7 @@ class Init : PicoBaseCommand() {
         if (vpc != null) {
             eventBus.emit(Event.Setup.ExistingVpc(vpc))
             clusterState.vpcId = vpc
+            clusterState.vpcSupplied = true
             clusterStateManager.save(clusterState)
         }
 
@@ -242,12 +401,41 @@ class Init : PicoBaseCommand() {
     }
 
     private fun validateParameters() {
-        require(cassandraInstances > 0) { "Number of Cassandra instances must be positive" }
-        require(stressInstances >= 0) { "Number of stress instances cannot be negative" }
+        require(resolvedDbCount > 0) { "Number of database instances must be positive" }
+        require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
         require(ebsSize > 0) { "EBS size must be positive" }
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
-        cidr?.let { CidrBlock(it) }
+        cidr?.let { CidrBlock(it) }?.let { block ->
+            require(!block.overlapsK3sRanges()) {
+                "CIDR $block overlaps K3s's pod range ${Constants.K3s.CLUSTER_CIDR} or service range " +
+                    "${Constants.K3s.SERVICE_CIDR}; node and pod addresses would collide. Pick another block."
+            }
+        }
+        require(azs.size <= Constants.Vpc.MAX_AVAILABILITY_ZONES) {
+            "A cluster can use at most ${Constants.Vpc.MAX_AVAILABILITY_ZONES} availability zones, " +
+                "because the VPC is split into ${Constants.Vpc.MAX_AVAILABILITY_ZONES} subnets; got ${azs.size}: " +
+                azs.joinToString(",")
+        }
+        require(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(name)) {
+            "Invalid cluster name '$name': a cluster name must match ${Constants.Observability.CLUSTER_NAME_PATTERN} " +
+                "(start with a lowercase letter; then lowercase letters, digits or '-'; at most 40 characters)."
+        }
+        require(Regex(Constants.Observability.TENANT_PATTERN).matches(tenant)) {
+            "Invalid tenant '$tenant': a tenant must match ${Constants.Observability.TENANT_PATTERN} " +
+                "(start with a lowercase letter; then lowercase letters, digits, '_' or '-'; at most 63 characters)."
+        }
+        require(tenant != Constants.Observability.RESERVED_TENANT) {
+            "Invalid tenant '$tenant': '${Constants.Observability.RESERVED_TENANT}' is reserved " +
+                "(a Loki tenant with that name would collide with Loki's index path)."
+        }
+        resolvedTelemetryRedirect?.validate()?.let { offending ->
+            require(offending.isEmpty()) {
+                "Telemetry redirect endpoints are missing or malformed for: " +
+                    "${offending.joinToString(", ")}. Fix the base host or the matching " +
+                    "--redirect-*-endpoint override."
+            }
+        }
     }
 
     private fun checkExistingFiles() {
@@ -271,27 +459,82 @@ class Init : PicoBaseCommand() {
         }
     }
 
-    private fun prepareEnvironment(): ClusterState {
-        if (clean) {
-            eventBus.emit(Event.Setup.CleaningExistingConfig)
-            // Execute Clean immediately with full lifecycle
-            commandExecutor.execute { Clean() }
-        }
+    /**
+     * `--clean` deletes `state.json`, the only local record of the cluster's VPC. Ask AWS first,
+     * and refuse while the cluster still has resources: they would keep running with no workspace
+     * pointing at them. Nothing has been deleted when this throws.
+     */
+    private fun refuseLiveInfrastructure() {
+        val live = liveInfrastructure.find() ?: return
+        eventBus.emit(
+            Event.Setup.CleanRefusedLiveInfrastructure(live.vpcId, live.instanceIds, live.nonInstanceResourceCount()),
+        )
+        throw CommandFailedException("The cluster in ${context.workingDirectory.absolutePath} still has infrastructure in ${live.vpcId}")
+    }
 
+    /**
+     * Refuses a directory that already has a `bin/`, before anything is written. The workspace
+     * `bin/` holds easy-db-lab's tool wrappers, and this is what keeps a source checkout or a
+     * project directory from being used as a workspace.
+     *
+     * @throws CommandFailedException after reporting [Event.Setup.WorkspaceHasBinDirectory]
+     */
+    private fun refuseExistingBin() {
+        if (!File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY).exists()) return
+        eventBus.emit(Event.Setup.WorkspaceHasBinDirectory(context.workingDirectory.absolutePath))
+        throw CommandFailedException("${context.workingDirectory.absolutePath} already has a bin/")
+    }
+
+    private fun createClusterState(): ClusterState {
         val state =
             ClusterState(
                 name = name,
                 versions = mutableMapOf(),
-                initConfig = InitConfig.fromInit(this, userConfig.region),
+                initConfig =
+                    InitConfig.fromInit(
+                        init = this,
+                        region = userConfig.region,
+                        dbArch = nodeArch(ServerType.Cassandra, resolvedDbInstanceType),
+                        appArch = nodeArch(ServerType.Stress, resolvedAppInstanceType),
+                        controlArch = nodeArch(ServerType.Control, DEFAULT_CONTROL_INSTANCE_TYPE),
+                    ),
                 tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
             )
         clusterStateManager.save(state)
         return state
     }
 
+    /**
+     * Derives the CPU architecture of an instance type from its EC2 `SupportedArchitectures`.
+     *
+     * Fails fast (before any provisioning) if the instance type is unknown in the region or its
+     * architectures do not resolve to a single [Arch] — the architecture is never defaulted.
+     */
+    private fun deriveArch(capabilities: InstanceTypeCapabilities): Arch = Arch.fromEc2(capabilities.supportedArchitectures)
+
+    /**
+     * Reads [instanceType] once, checks that a [serverType] node of it has a data disk (see
+     * [DataDiskRequirement]), and returns its architecture. Every node type is checked, whatever
+     * the node count, as the instance-storage-validation spec requires.
+     */
+    private fun nodeArch(
+        serverType: ServerType,
+        instanceType: String,
+    ): Arch {
+        val capabilities = ec2InstanceService.describeInstanceType(instanceType)
+        DataDiskRequirement.check(serverType, instanceType, capabilities.hasInstanceStore, ebsConfigured = ebsType != "NONE")
+        return deriveArch(capabilities)
+    }
+
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)
         extractResourceFile("setup_instance.sh", "setup_instance.sh")
+        // The OTel agent's JMX rules live in the workspace so an operator can edit them and push
+        // them again with `setup-instances`, without a Gradle rebuild.
+        extractResourceFile(
+            "$CASSANDRA_RESOURCE_DIR/${Constants.Cassandra.JMX_RULES_FILE}",
+            Constants.Cassandra.JMX_RULES_FILE,
+        )
     }
 
     private fun extractResourceFile(
@@ -300,7 +543,8 @@ class Init : PicoBaseCommand() {
     ) {
         this::class.java.getResourceAsStream(resourceName).use { stream ->
             requireNotNull(stream) { "Resource $resourceName not found" }
-            File(targetFileName).outputStream().use { output -> stream.copyTo(output) }
+            // Into the workspace, which is not always the process working directory (Server, Repl).
+            File(context.workingDirectory, targetFileName).outputStream().use { output -> stream.copyTo(output) }
         }
     }
 

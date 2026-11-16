@@ -48,10 +48,10 @@ class PlatformCreatePvs : PicoBaseCommand() {
     var pvcTemplateName: String = "data"
 
     override fun execute() {
+        require(Constants.Kit.NAME_PATTERN.matches(kit)) {
+            "Invalid --kit '$kit': use letters, digits, hyphens or underscores, and start with a letter or digit"
+        }
         val serverType = ServerType.from(nodeType)
-        val controlHost =
-            clusterState.getControlHost()
-                ?: error("No control node found. Is the cluster running?")
         val targetHosts = clusterState.hosts[serverType].orEmpty()
         check(targetHosts.isNotEmpty()) { "No $nodeType nodes found in cluster state." }
 
@@ -59,7 +59,6 @@ class PlatformCreatePvs : PicoBaseCommand() {
 
         k8sService
             .createLocalPersistentVolumes(
-                controlHost = controlHost,
                 config =
                     PersistentVolumeConfig(
                         dbName = kit,
@@ -69,6 +68,7 @@ class PlatformCreatePvs : PicoBaseCommand() {
                         storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
                         namespace = Constants.K8s.NAMESPACE,
                         volumeClaimTemplateName = pvcTemplateName,
+                        nodeType = nodeType,
                     ),
             ).getOrElse { exception ->
                 error("Failed to create PVs for $kit: ${exception.message}")

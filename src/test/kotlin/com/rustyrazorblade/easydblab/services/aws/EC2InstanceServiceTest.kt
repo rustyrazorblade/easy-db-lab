@@ -4,7 +4,10 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
@@ -16,16 +19,20 @@ import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesResponse
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse
+import software.amazon.awssdk.services.ec2.model.HttpTokensState
 import software.amazon.awssdk.services.ec2.model.Instance
 import software.amazon.awssdk.services.ec2.model.InstanceState
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
-import software.amazon.awssdk.services.ec2.model.InstanceStorageInfo
 import software.amazon.awssdk.services.ec2.model.InstanceTypeInfo
 import software.amazon.awssdk.services.ec2.model.Placement
+import software.amazon.awssdk.services.ec2.model.ProcessorInfo
 import software.amazon.awssdk.services.ec2.model.Reservation
+import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse
 import software.amazon.awssdk.services.ec2.model.Tag
+import software.amazon.awssdk.services.ec2.paginators.DescribeInstanceTypesIterable
+import software.amazon.awssdk.services.ec2.paginators.DescribeInstancesIterable
 
 internal class EC2InstanceServiceTest {
     private val mockEc2Client: Ec2Client = mock()
@@ -34,7 +41,18 @@ internal class EC2InstanceServiceTest {
             mockEc2Client,
             com.rustyrazorblade.easydblab.events
                 .EventBus(),
+            region = "us-west-2",
         )
+
+    init {
+        // The paginators are the SDK's own loops over describeInstances and describeInstanceTypes; the stubs below answer them.
+        whenever(mockEc2Client.describeInstancesPaginator(any<DescribeInstancesRequest>())).thenAnswer {
+            DescribeInstancesIterable(mockEc2Client, it.getArgument(0))
+        }
+        whenever(mockEc2Client.describeInstanceTypesPaginator(any<DescribeInstanceTypesRequest>())).thenAnswer {
+            DescribeInstanceTypesIterable(mockEc2Client, it.getArgument(0))
+        }
+    }
 
     @Test
     fun `findInstancesByClusterId should return empty map when no instances found`() {
@@ -275,11 +293,11 @@ internal class EC2InstanceServiceTest {
         // 3 subnets representing 3 AZs
         val subnets = listOf("subnet-a", "subnet-b", "subnet-c")
 
-        // Config with startIndex=1 (simulating adding to existing cluster with 1 instance)
+        // Config with ordinals 1 and 2 (simulating adding to existing cluster with 1 instance)
         val config =
             InstanceCreationConfig(
                 serverType = ServerType.Cassandra,
-                count = 2,
+                indexes = listOf(1, 2), // Adding instances starting from index 1
                 instanceType = "m5.large",
                 amiId = "ami-123",
                 keyName = "test-key",
@@ -289,7 +307,6 @@ internal class EC2InstanceServiceTest {
                 ebsConfig = null,
                 tags = mapOf("easy_cass_lab" to "1"),
                 clusterName = "test-cluster",
-                startIndex = 1, // Adding instances starting from index 1
             )
 
         // Mock runInstances to return a valid response
@@ -318,7 +335,7 @@ internal class EC2InstanceServiceTest {
 
         val capturedRequests = requestCaptor.allValues
 
-        // With startIndex=1:
+        // With ordinals 1 and 2:
         // - First instance (instanceIndex=1): subnet[1 % 3] = subnet-b
         // - Second instance (instanceIndex=2): subnet[2 % 3] = subnet-c
         assertThat(capturedRequests[0].subnetId()).isEqualTo("subnet-b")
@@ -326,15 +343,15 @@ internal class EC2InstanceServiceTest {
     }
 
     @Test
-    fun `createInstances should wrap around AZs correctly with startIndex`() {
+    fun `createInstances should wrap around AZs correctly from a later ordinal`() {
         // 3 subnets representing 3 AZs
         val subnets = listOf("subnet-a", "subnet-b", "subnet-c")
 
-        // Config with startIndex=3 (simulating adding to cluster with 3 existing instances)
+        // Config with ordinals 3 and 4 (simulating adding to cluster with 3 existing instances)
         val config =
             InstanceCreationConfig(
                 serverType = ServerType.Cassandra,
-                count = 2,
+                indexes = listOf(3, 4), // Adding instances starting from index 3
                 instanceType = "m5.large",
                 amiId = "ami-123",
                 keyName = "test-key",
@@ -344,7 +361,6 @@ internal class EC2InstanceServiceTest {
                 ebsConfig = null,
                 tags = mapOf("easy_cass_lab" to "1"),
                 clusterName = "test-cluster",
-                startIndex = 3, // Adding instances starting from index 3
             )
 
         val mockInstance =
@@ -371,11 +387,100 @@ internal class EC2InstanceServiceTest {
 
         val capturedRequests = requestCaptor.allValues
 
-        // With startIndex=3:
+        // With ordinals 3 and 4:
         // - First instance (instanceIndex=3): subnet[3 % 3] = subnet-a (wraps around)
         // - Second instance (instanceIndex=4): subnet[4 % 3] = subnet-b
         assertThat(capturedRequests[0].subnetId()).isEqualTo("subnet-a")
         assertThat(capturedRequests[1].subnetId()).isEqualTo("subnet-b")
+    }
+
+    @ParameterizedTest
+    @EnumSource(ServerType::class)
+    fun `createInstances requires IMDSv2 with hop limit 2 for every node type`(serverType: ServerType) {
+        // The non-hostNetwork cilium-operator can schedule on a db or app node and must reach
+        // IMDS (two hops from inside a pod) to obtain credentials for ENI allocation. Previously
+        // only Control nodes received hop limit 2, which deadlocked ENI IPAM.
+        val config =
+            InstanceCreationConfig(
+                serverType = serverType,
+                indexes = listOf(0),
+                instanceType = "m5.large",
+                amiId = "ami-123",
+                keyName = "test-key",
+                securityGroupId = "sg-123",
+                subnetIds = listOf("subnet-a"),
+                iamInstanceProfile = "test-profile",
+                ebsConfig = null,
+                tags = mapOf("easy_cass_lab" to "1"),
+                clusterName = "test-cluster",
+            )
+
+        val mockInstance =
+            Instance
+                .builder()
+                .instanceId("i-test")
+                .publicIpAddress("1.2.3.4")
+                .privateIpAddress("10.0.0.1")
+                .placement(Placement.builder().availabilityZone("us-east-1a").build())
+                .build()
+
+        whenever(mockEc2Client.runInstances(any<RunInstancesRequest>()))
+            .thenReturn(RunInstancesResponse.builder().instances(mockInstance).build())
+
+        ec2InstanceService.createInstances(config)
+
+        val requestCaptor = argumentCaptor<RunInstancesRequest>()
+        verify(mockEc2Client).runInstances(requestCaptor.capture())
+
+        val metadataOptions = requestCaptor.firstValue.metadataOptions()
+        assertThat(metadataOptions).isNotNull
+        assertThat(metadataOptions.httpPutResponseHopLimit()).isEqualTo(2)
+        assertThat(metadataOptions.httpTokens()).isEqualTo(HttpTokensState.REQUIRED)
+    }
+
+    /**
+     * YACE finds a cluster's EBS volumes by their `ClusterId` tag, like its instances. The
+     * volumes created with an instance carried no tags, so the EBS job found none.
+     */
+    @Test
+    fun `createInstances tags the volumes it launches with the instance's tags`() {
+        val config =
+            InstanceCreationConfig(
+                serverType = ServerType.Cassandra,
+                indexes = listOf(0),
+                instanceType = "m5.large",
+                amiId = "ami-123",
+                keyName = "test-key",
+                securityGroupId = "sg-123",
+                subnetIds = listOf("subnet-a"),
+                iamInstanceProfile = "test-profile",
+                ebsConfig = null,
+                tags = mapOf("easy_cass_lab" to "1", "ClusterId" to "c-1"),
+                clusterName = "test-cluster",
+            )
+        val instance =
+            Instance
+                .builder()
+                .instanceId("i-test")
+                .placement(Placement.builder().availabilityZone("us-west-2a").build())
+                .build()
+        whenever(mockEc2Client.runInstances(any<RunInstancesRequest>()))
+            .thenReturn(RunInstancesResponse.builder().instances(instance).build())
+
+        ec2InstanceService.createInstances(config)
+
+        val requestCaptor = argumentCaptor<RunInstancesRequest>()
+        verify(mockEc2Client).runInstances(requestCaptor.capture())
+        val specs =
+            requestCaptor.firstValue.tagSpecifications().associate { spec ->
+                spec.resourceType() to
+                    spec.tags().associate { it.key() to it.value() }
+            }
+        assertThat(specs.keys).containsExactlyInAnyOrder(ResourceType.INSTANCE, ResourceType.VOLUME)
+        assertThat(specs.getValue(ResourceType.VOLUME))
+            .containsEntry("ClusterId", "c-1")
+            .containsEntry("easy_cass_lab", "1")
+            .isEqualTo(specs.getValue(ResourceType.INSTANCE))
     }
 
     @Test
@@ -394,33 +499,58 @@ internal class EC2InstanceServiceTest {
     }
 
     @Test
-    fun `hasInstanceStore should return true for instance type with instance store`() {
+    fun `describeInstanceType resolves a type not present in the SDK enum via an instance-type filter`() {
+        // A type the SDK's InstanceType enum does not know about. Routing it through
+        // InstanceType.fromValue would yield UNKNOWN_TO_SDK_VERSION and a "[null]" API error.
+        val newType = "x99.someday.metal"
         val typeInfo =
             InstanceTypeInfo
                 .builder()
-                .instanceType("i3.xlarge")
+                .instanceType(newType)
                 .instanceStorageSupported(true)
-                .instanceStorageInfo(InstanceStorageInfo.builder().totalSizeInGB(950L).build())
-                .build()
+                .processorInfo(
+                    ProcessorInfo.builder().supportedArchitecturesWithStrings("arm64").build(),
+                ).build()
 
-        val response =
-            DescribeInstanceTypesResponse
-                .builder()
-                .instanceTypes(typeInfo)
-                .build()
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(DescribeInstanceTypesResponse.builder().instanceTypes(typeInfo).build())
 
-        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>())).thenReturn(response)
+        val result = ec2InstanceService.describeInstanceType(newType)
 
-        assertThat(ec2InstanceService.hasInstanceStore("i3.xlarge")).isTrue()
+        assertThat(result.hasInstanceStore).isTrue()
+        assertThat(result.supportedArchitectures).containsExactly("arm64")
+
+        // Verify the request used an instance-type filter carrying the raw string,
+        // not the SDK's InstanceType enum.
+        val captor = argumentCaptor<DescribeInstanceTypesRequest>()
+        verify(mockEc2Client).describeInstanceTypes(captor.capture())
+        val request = captor.firstValue
+        assertThat(request.instanceTypes()).isEmpty()
+        assertThat(request.filters()).anySatisfy { filter ->
+            assertThat(filter.name()).isEqualTo("instance-type")
+            assertThat(filter.values()).containsExactly(newType)
+        }
     }
 
     @Test
-    fun `hasInstanceStore should return false for instance type without instance store`() {
+    fun `describeInstanceType throws naming the type and region when the result is empty`() {
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(DescribeInstanceTypesResponse.builder().instanceTypes(emptyList()).build())
+
+        assertThatThrownBy { ec2InstanceService.describeInstanceType("bogus.type") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("bogus.type")
+            .hasMessageContaining("us-west-2")
+    }
+
+    @Test
+    fun `describeInstanceType reports no instance store for a type without local storage`() {
         val typeInfo =
             InstanceTypeInfo
                 .builder()
                 .instanceType("c5.2xlarge")
                 .instanceStorageSupported(false)
+                .processorInfo(ProcessorInfo.builder().supportedArchitecturesWithStrings("x86_64").build())
                 .build()
 
         val response =
@@ -431,7 +561,75 @@ internal class EC2InstanceServiceTest {
 
         whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>())).thenReturn(response)
 
-        assertThat(ec2InstanceService.hasInstanceStore("c5.2xlarge")).isFalse()
+        val result = ec2InstanceService.describeInstanceType("c5.2xlarge")
+
+        assertThat(result.hasInstanceStore).isFalse()
+        assertThat(result.supportedArchitectures).containsExactly("x86_64")
+    }
+
+    @Test
+    fun `describeInstanceType follows nextToken past an empty first page to find the type`() {
+        // EC2 applies the instance-type filter per page, so a common type can sit behind an empty
+        // first page that still carries a nextToken. Reading only the first page would misreport
+        // the type as "not found" — the bug this reproduces.
+        val emptyFirstPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .nextToken("page-2-token")
+                .build()
+        val matchingTypeInfo =
+            InstanceTypeInfo
+                .builder()
+                .instanceType("i4i.xlarge")
+                .instanceStorageSupported(true)
+                .processorInfo(ProcessorInfo.builder().supportedArchitecturesWithStrings("x86_64").build())
+                .build()
+        val secondPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(matchingTypeInfo)
+                .build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(emptyFirstPage, secondPage)
+
+        val result = ec2InstanceService.describeInstanceType("i4i.xlarge")
+
+        assertThat(result.hasInstanceStore).isTrue()
+        assertThat(result.supportedArchitectures).containsExactly("x86_64")
+
+        // Two pages fetched; the second request carried the first page's nextToken.
+        val captor = argumentCaptor<DescribeInstanceTypesRequest>()
+        verify(mockEc2Client, times(2)).describeInstanceTypes(captor.capture())
+        assertThat(captor.firstValue.nextToken()).isNull()
+        assertThat(captor.secondValue.nextToken()).isEqualTo("page-2-token")
+    }
+
+    @Test
+    fun `describeInstanceType throws only after exhausting all pages without a match`() {
+        val firstEmptyPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .nextToken("page-2-token")
+                .build()
+        val lastEmptyPage =
+            DescribeInstanceTypesResponse
+                .builder()
+                .instanceTypes(emptyList())
+                .build()
+
+        whenever(mockEc2Client.describeInstanceTypes(any<DescribeInstanceTypesRequest>()))
+            .thenReturn(firstEmptyPage, lastEmptyPage)
+
+        assertThatThrownBy { ec2InstanceService.describeInstanceType("nonexistent.type") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("nonexistent.type")
+            .hasMessageContaining("us-west-2")
+
+        // The error is raised only after both pages are consulted, not on the empty first page.
+        verify(mockEc2Client, times(2)).describeInstanceTypes(any<DescribeInstanceTypesRequest>())
     }
 
     private fun createInstance(

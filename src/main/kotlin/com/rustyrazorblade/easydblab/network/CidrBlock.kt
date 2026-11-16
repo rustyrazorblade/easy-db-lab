@@ -1,18 +1,28 @@
 package com.rustyrazorblade.easydblab.network
 
 import com.rustyrazorblade.easydblab.Constants
+import kotlin.random.Random
 
 /**
  * A value class representing a CIDR block for VPC networking.
  *
- * Provides validation and subnet calculation for VPC CIDR blocks.
- * The CIDR block must be /20 or larger to support /24 subnets for availability zones.
+ * Provides validation and subnet calculation for VPC CIDR blocks.  The value is parsed strictly by
+ * [Ipv4Cidr], so it is in network form with no host bits set.  It must name its prefix length
+ * explicitly.
+ *
+ * The VPC is split into [Constants.Vpc.MAX_AVAILABILITY_ZONES] equal subnets, one per availability
+ * zone, each three bits longer than the VPC prefix (eight /19s for a /16).  The split is fixed;
+ * it does not depend on how many zones a cluster uses.  The subnets are large because Cilium's ENI
+ * IPAM takes pod IPs from the same subnets as the nodes, so a cluster of 1,000+ nodes needs
+ * thousands of addresses per zone.  The VPC prefix must be /25 or larger, so each subnet is at
+ * least /28, the smallest subnet AWS allows.  No lower bound is enforced here; AWS itself rejects
+ * a VPC larger than /16.
  *
  * Example usage:
  * ```
  * val cidr = CidrBlock("172.16.0.0/16")
- * val subnet0 = cidr.subnetCidr(0)  // "172.16.1.0/24"
- * val subnet1 = cidr.subnetCidr(1)  // "172.16.2.0/24"
+ * val subnet0 = cidr.subnetCidr(0)  // "172.16.0.0/19"
+ * val subnet1 = cidr.subnetCidr(1)  // "172.16.32.0/19"
  * ```
  */
 @JvmInline
@@ -20,9 +30,12 @@ value class CidrBlock(
     val value: String,
 ) {
     init {
-        require(isValidCidr(value)) { "Invalid CIDR: $value" }
+        require('/' in value) { "Invalid CIDR: $value has no prefix length; a VPC CIDR needs one, for example /16" }
+        Ipv4Cidr.parse(value).getOrThrow()
         require(prefixLength <= MAX_PREFIX_LENGTH) {
-            "CIDR prefix must be /$MAX_PREFIX_LENGTH or larger to support /24 subnets, got /$prefixLength"
+            "CIDR prefix must be /$MAX_PREFIX_LENGTH or larger, so it splits into " +
+                "${Constants.Vpc.MAX_AVAILABILITY_ZONES} subnets of at least /$MIN_SUBNET_PREFIX_LENGTH; " +
+                "got /$prefixLength"
         }
     }
 
@@ -30,30 +43,48 @@ value class CidrBlock(
      * The prefix length (e.g., 16 for /16, 20 for /20).
      */
     val prefixLength: Int
-        get() = value.substringAfter("/").toInt()
+        get() = cidr.prefixLength
 
     /**
      * The network address without the prefix (e.g., "10.0.0.0" from "10.0.0.0/16").
      */
     val networkAddress: String
-        get() = value.substringBefore("/")
+        get() = cidr.address
+
+    /** The parsed form, which owns the address arithmetic. */
+    private val cidr: Ipv4Cidr
+        get() = Ipv4Cidr.parse(value).getOrThrow()
 
     /**
-     * Generates a /24 subnet CIDR for the given index within this VPC CIDR.
+     * Returns the subnet CIDR for the availability zone at [index].
      *
-     * The subnet is created by taking the first two octets of the VPC CIDR
-     * and using (index + 1) as the third octet.
+     * The VPC is split into [Constants.Vpc.MAX_AVAILABILITY_ZONES] equal subnets whose prefix is
+     * the VPC prefix plus three; [Ipv4Cidr.subnet] computes the block.
      *
-     * @param index Zero-based index (0 → .1.0/24, 1 → .2.0/24, etc.)
-     * @return Subnet CIDR string (e.g., "10.0.1.0/24")
+     * @param index Zero-based availability-zone index, 0 to 7 (for a /16: 0 → x.y.0.0/19,
+     *   1 → x.y.32.0/19, ..., 7 → x.y.224.0/19)
+     * @return Subnet CIDR string (e.g., "10.0.32.0/19")
+     * @throws IllegalArgumentException if [index] is negative or names a ninth or later zone
      */
     fun subnetCidr(index: Int): String {
-        require(index >= 0) { "Subnet index must be non-negative" }
-        require(index < MAX_SUBNET_INDEX) { "Subnet index must be less than $MAX_SUBNET_INDEX" }
-
-        val octets = networkAddress.split(".").map { it.toInt() }
-        return "${octets[0]}.${octets[1]}.${index + 1}.0/$SUBNET_PREFIX_LENGTH"
+        require(index >= 0) { "Subnet index must be non-negative, got $index" }
+        require(index < Constants.Vpc.MAX_AVAILABILITY_ZONES) {
+            "A cluster can use at most ${Constants.Vpc.MAX_AVAILABILITY_ZONES} availability zones, " +
+                "because the VPC is split into ${Constants.Vpc.MAX_AVAILABILITY_ZONES} subnets; " +
+                "subnet index $index is out of range"
+        }
+        return cidr.subnet(prefixLength + SUBNET_PREFIX_DELTA, index).value
     }
+
+    /** How many addresses each of the VPC's subnets ([subnetCidr]) spans, AWS's reserved five included. */
+    fun subnetAddressCount(): Long = 1L shl (ADDRESS_BITS - prefixLength - SUBNET_PREFIX_DELTA)
+
+    /**
+     * Whether this block shares any address with K3s's pod range ([Constants.K3s.CLUSTER_CIDR])
+     * or service range ([Constants.K3s.SERVICE_CIDR]). A VPC on either would put node IPs and
+     * pod or ClusterIP addresses in the same space.
+     */
+    fun overlapsK3sRanges(): Boolean = K3S_RANGES.any { cidr.overlaps(it) }
 
     override fun toString(): String = value
 
@@ -61,78 +92,59 @@ value class CidrBlock(
         /** Default CIDR block for VPCs */
         val DEFAULT = CidrBlock(Constants.Vpc.DEFAULT_CIDR)
 
-        /** Maximum prefix length that can support /24 subnets */
-        private const val MAX_PREFIX_LENGTH = 20
+        /**
+         * Bits added to the VPC prefix to split it into [Constants.Vpc.MAX_AVAILABILITY_ZONES]
+         * (2^3 = 8) equal subnets.
+         */
+        private const val SUBNET_PREFIX_DELTA = 3
 
-        /** Prefix length for subnets */
-        private const val SUBNET_PREFIX_LENGTH = 24
+        /** The smallest subnet AWS allows. */
+        private const val MIN_SUBNET_PREFIX_LENGTH = 28
 
-        /** Maximum subnet index (third octet can be 1-254) */
-        private const val MAX_SUBNET_INDEX = 254
+        /** The longest VPC prefix whose eight subnets are each still at least /28. */
+        private const val MAX_PREFIX_LENGTH = MIN_SUBNET_PREFIX_LENGTH - SUBNET_PREFIX_DELTA
 
-        /** Valid range for octets */
-        private const val MIN_OCTET = 0
-        private const val MAX_OCTET = 255
-
-        /** Valid range for prefix length */
-        private const val MIN_PREFIX = 0
-        private const val MAX_PREFIX = 32
-
-        /** Number of octets in an IPv4 address */
-        private const val IPV4_OCTET_COUNT = 4
+        private const val ADDRESS_BITS = 32
 
         /** Maximum second octet value when scanning for available 10.X.0.0/16 blocks */
         private const val MAX_SECOND_OCTET = 254
 
         /**
-         * Selects the first available `10.X.0.0/16` CIDR not already used by an existing VPC.
+         * Selects a random `10.X.0.0/16` CIDR not already used by an existing VPC.
          *
-         * Scans second octets 0–254 in order and returns the first that does not appear in any
-         * of the provided CIDR strings. Only `10.x.x.x` CIDRs in [existingCidrs] are considered.
+         * Picks uniformly among the second octets 0–254 that do not appear in any of the provided
+         * CIDR strings, so two workspaces running `up` at the same moment are unlikely to choose
+         * the same block. Only `10.x.x.x` CIDRs in [existingCidrs] are considered. A block inside
+         * K3s's pod or service range ([overlapsK3sRanges]) is never picked.
          *
-         * @param existingCidrs CIDR blocks of all VPCs already present in the region
+         * @param existingCidrs CIDR blocks of all VPCs already present in the region, plus any
+         *   block the caller wants excluded (e.g. one whose VPC creation just failed)
+         * @param random source of randomness; tests inject a seeded one
          * @throws IllegalStateException if all second octets 0–254 are occupied
          */
-        fun selectAvailable(existingCidrs: List<String>): CidrBlock {
+        fun selectAvailable(
+            existingCidrs: List<String>,
+            random: Random,
+        ): CidrBlock {
             val usedOctets =
                 existingCidrs
                     .filter { it.startsWith("10.") }
                     .mapNotNull { it.split(".").getOrNull(1)?.toIntOrNull() }
                     .toSet()
-            val secondOctet =
-                (0..MAX_SECOND_OCTET).firstOrNull { it !in usedOctets }
-                    ?: error(
-                        "No available CIDR blocks in 10.x.0.0/16 range — all second octets 0–254 are in use",
-                    )
+            val freeOctets =
+                (0..MAX_SECOND_OCTET)
+                    .filterNot { it in usedOctets }
+                    .filterNot { CidrBlock("10.$it.0.0/16").overlapsK3sRanges() }
+            check(freeOctets.isNotEmpty()) {
+                "No available CIDR blocks in 10.x.0.0/16 range — every second octet 0–254 is in use " +
+                    "or inside K3s's pod range ${Constants.K3s.CLUSTER_CIDR} or service range ${Constants.K3s.SERVICE_CIDR}"
+            }
+            val secondOctet = freeOctets.random(random)
             return CidrBlock("10.$secondOctet.0.0/16")
         }
 
-        /**
-         * Validates whether a string is a valid IPv4 CIDR block.
-         *
-         * @param cidr The CIDR string to validate
-         * @return true if valid, false otherwise
-         */
-        fun isValidCidr(cidr: String): Boolean {
-            if (!cidr.contains("/")) return false
-
-            val parts = cidr.split("/")
-            if (parts.size != 2) return false
-
-            val (address, prefixStr) = parts
-
-            // Validate prefix
-            val prefix = prefixStr.toIntOrNull() ?: return false
-            if (prefix < MIN_PREFIX || prefix > MAX_PREFIX) return false
-
-            // Validate IP address
-            val octets = address.split(".")
-            if (octets.size != IPV4_OCTET_COUNT) return false
-
-            return octets.all { octet ->
-                val value = octet.toIntOrNull() ?: return false
-                value in MIN_OCTET..MAX_OCTET
-            }
-        }
+        /** K3s's pod and service ranges, which no VPC block may overlap. */
+        private val K3S_RANGES =
+            listOf(Constants.K3s.CLUSTER_CIDR, Constants.K3s.SERVICE_CIDR).map { Ipv4Cidr.parse(it).getOrThrow() }
     }
 }

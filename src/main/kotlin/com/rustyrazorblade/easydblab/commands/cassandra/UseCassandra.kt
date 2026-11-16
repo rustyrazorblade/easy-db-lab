@@ -1,13 +1,14 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.rustyrazorblade.easydblab.annotations.McpCommand
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -19,14 +20,13 @@ import picocli.CommandLine.Parameters
 import kotlin.system.exitProcess
 
 /**
- * Use a Cassandra version (3.0, 3.11, 4.0, 4.1).
+ * Switch the active Cassandra version.
  */
-@McpCommand
 @RequireProfileSetup
 @TriggerBackup
 @Command(
     name = "use",
-    description = ["Use a Cassandra version (3.0, 3.11, 4.0, 4.1)"],
+    description = ["Switch the active Cassandra version"],
 )
 class UseCassandra : PicoBaseCommand() {
     private val hostOperationsService: HostOperationsService by inject()
@@ -42,7 +42,7 @@ class UseCassandra : PicoBaseCommand() {
 
     @Option(
         names = ["--java", "-j"],
-        description = ["Java Version Override, 8, 11 or 17 accepted"],
+        description = ["Java Version Override, 8, 11, 17, 21 or 25 accepted"],
     )
     var javaVersion = ""
 
@@ -56,9 +56,20 @@ class UseCassandra : PicoBaseCommand() {
             exitProcess(1)
         }
 
-        val cassandraHosts = state.getHosts(ServerType.Cassandra)
+        val targeted = hostOperationsService.filteredHosts(state.hosts, ServerType.Cassandra, hosts.hostList)
+        require(targeted.isNotEmpty()) {
+            "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'"
+        }
         eventBus.emit(
-            Event.Cassandra.UsingVersion(version, cassandraHosts.size, "$hosts"),
+            Event.Cassandra.UsingVersion(version, targeted.size, hosts.hostList),
+        )
+
+        eventBus.emit(
+            Event.Cassandra.UseSideEffects(
+                patchFile = Constants.ConfigPaths.CASSANDRA_PATCH_FILE,
+                hosts = targeted.map { it.alias },
+                javaVersion = javaVersion.ifBlank { null },
+            ),
         )
 
         hostOperationsService.withHosts(state.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
@@ -72,11 +83,19 @@ class UseCassandra : PicoBaseCommand() {
 
         clusterStateManager.save(state)
 
-        commandExecutor.execute { DownloadConfig() }
-
-        // make sure we only apply to the filtered hosts
-        commandExecutor.execute {
-            UpdateConfig().apply { this.hosts = this@UseCassandra.hosts }
+        // Both steps are limited to the targeted hosts: each host's config directory is the one of the
+        // version it now runs, and on a mixed-version cluster that is not the first host's version.
+        // The executor reports a failed step as an exit code, never as an exception, so a step that
+        // failed is checked here. The symlink switch above has already happened.
+        val failedStep =
+            when {
+                commandExecutor.execute { DownloadConfig().apply { this.hosts = this@UseCassandra.hosts } } != 0 -> "download-config"
+                commandExecutor.execute { UpdateConfig().apply { this.hosts = this@UseCassandra.hosts } } != 0 -> "update-config"
+                else -> null
+            }
+        if (failedStep != null) {
+            eventBus.emit(Event.Cassandra.UseConfigNotApplied(version, failedStep, targeted.map { it.alias }))
+            throw CommandFailedException("cassandra use: $failedStep failed after the version switch")
         }
 
         eventBus.emit(Event.Cassandra.ConfigUpdateHint(version))

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.Init
+import com.rustyrazorblade.easydblab.services.TailSignal
 import java.time.Instant
 import java.util.UUID
 
@@ -26,7 +27,14 @@ data class ClusterHost(
     val instanceId: String = "",
 ) {
     /** Converts to the legacy [Host] type used by SSH/remote operations. */
-    fun toHost(): Host = Host(public = publicIp, private = privateIp, alias = alias, availabilityZone = availabilityZone)
+    fun toHost(): Host =
+        Host(
+            public = publicIp,
+            private = privateIp,
+            alias = alias,
+            availabilityZone = availabilityZone,
+            instanceId = instanceId,
+        )
 }
 
 /**
@@ -36,6 +44,21 @@ enum class InfrastructureStatus {
     UP,
     DOWN,
     UNKNOWN,
+}
+
+/**
+ * Container Network Interface (CNI) selection for the K3s pod network.
+ *
+ * The datapath is mutually exclusive by construction — a cluster runs exactly one CNI.
+ * [Cilium] is the default: Cilium in ENI IPAM native-routing mode, where pods receive
+ * VPC-routable secondary IPs so cross-AZ traffic is routed by the VPC without encapsulation.
+ * [Flannel] selects K3s's built-in VXLAN-overlay CNI instead (`--cni=flannel`). A saved state
+ * that records no CNI predates Cilium and is read as [Flannel]. Modeled as an enum rather
+ * than a boolean so future datapaths can be added without another flag.
+ */
+enum class CniMode {
+    Cilium,
+    Flannel,
 }
 
 /**
@@ -73,6 +96,36 @@ data class InfrastructureState(
 )
 
 /**
+ * The signals a pre-teardown save has already put in S3 and that must not be saved again.
+ *
+ * Only [TailSignal.LOGS] and [TailSignal.METRICS] are ever recorded, each the moment its flush
+ * succeeds: those flushes leave Loki and Mimir stopped and cannot run twice. A `down` re-run after
+ * an interrupted or failed save skips them and saves the rest again. `up` clears the record, since
+ * the backends it starts take data the record does not cover.
+ *
+ * [saveCompletedAt] is set once every signal of a save succeeded. The infrastructure teardown starts
+ * right after it, and no operation but `down` is supported on the cluster from then on, so the
+ * record cannot go stale: a `down` re-run after a teardown that failed part-way skips the whole save,
+ * without the SOCKS tunnel to a control node that may be gone, and goes straight to the teardown.
+ *
+ * @property signals each recorded signal and when its save finished.
+ * @property saveCompletedAt when a save of every signal succeeded, or null while any signal is unsaved.
+ */
+data class TailFlushRecord(
+    val signals: Map<TailSignal, SavedSignal> = emptyMap(),
+    val saveCompletedAt: Instant? = null,
+)
+
+/**
+ * One signal a pre-teardown save put in S3.
+ *
+ * @property completedAt when its flush finished.
+ */
+data class SavedSignal(
+    val completedAt: Instant,
+)
+
+/**
  * Configuration from Init command to preserve cluster setup parameters
  * All fields have defaults to ensure backward compatibility with older state files
  */
@@ -94,7 +147,9 @@ data class InitConfig(
     val controlInstances: Int = 1,
     val controlInstanceType: String = "m5d.xlarge",
     val tags: Map<String, String> = mapOf(),
-    val arch: String = "AMD64",
+    val dbArch: String = "AMD64",
+    val appArch: String = "AMD64",
+    val controlArch: String = "AMD64",
     val sparkEnabled: Boolean = false,
     val sparkMasterInstanceType: String = "m5.xlarge",
     val sparkWorkerInstanceType: String = "m5.xlarge",
@@ -106,26 +161,42 @@ data class InitConfig(
     val opensearchVersion: String = "2.11",
     val opensearchEbsSize: Int = 100,
     val cidr: String? = null,
-    val ciliumEnabled: Boolean = false,
+    val cni: CniMode = CniMode.Cilium,
+    // Life-of-cluster telemetry redirect target. Null means local mode (the unchanged default):
+    // the cluster stands up its own observability backends. Non-null means all four signals ship
+    // to the external stack these endpoints describe and no local backends are stood up.
+    val telemetryRedirect: TelemetryRedirect? = null,
+    // The observability tenant the cluster's data belongs to. Fixed at init; a state file written
+    // before tenants existed has no field and reads as the default tenant.
+    val tenant: String = Constants.Observability.DEFAULT_TENANT,
 ) {
     companion object {
         /**
          * Factory method to create InitConfig from an Init command instance.
          * Encapsulates the transformation logic in a single location.
          *
+         * Architectures are derived from each group's resolved instance type and passed in, rather
+         * than read from a user flag — the architecture is a property of the instance type.
+         *
          * @param init The Init command instance containing user-specified configuration
          * @param region The AWS region from user configuration
+         * @param dbArch Architecture derived from the resolved database instance type
+         * @param appArch Architecture derived from the resolved application instance type
+         * @param controlArch Architecture derived from the control instance type
          * @return A new InitConfig with values from the Init command
          */
         fun fromInit(
             init: Init,
             region: String,
+            dbArch: Arch,
+            appArch: Arch,
+            controlArch: Arch,
         ): InitConfig =
             InitConfig(
-                cassandraInstances = init.cassandraInstances,
-                stressInstances = init.stressInstances,
-                instanceType = init.instanceType,
-                stressInstanceType = init.stressInstanceType,
+                cassandraInstances = init.resolvedDbCount,
+                stressInstances = init.resolvedAppCount,
+                instanceType = init.resolvedDbInstanceType,
+                stressInstanceType = init.resolvedAppInstanceType,
                 azs = init.azs,
                 ami = init.ami,
                 region = region,
@@ -137,9 +208,11 @@ data class InitConfig(
                 ebsOptimized = init.ebsOptimized,
                 open = init.open,
                 controlInstances = 1,
-                controlInstanceType = "m5d.xlarge",
+                controlInstanceType = Init.DEFAULT_CONTROL_INSTANCE_TYPE,
                 tags = init.tags,
-                arch = init.arch.name,
+                dbArch = dbArch.name,
+                appArch = appArch.name,
+                controlArch = controlArch.name,
                 sparkEnabled = init.spark.enable,
                 sparkMasterInstanceType = init.spark.masterInstanceType,
                 sparkWorkerInstanceType = init.spark.workerInstanceType,
@@ -151,7 +224,9 @@ data class InitConfig(
                 opensearchVersion = init.opensearch.version,
                 opensearchEbsSize = init.opensearch.ebsSize,
                 cidr = init.cidr,
-                ciliumEnabled = init.cilium,
+                cni = init.cni,
+                telemetryRedirect = init.resolvedTelemetryRedirect,
+                tenant = init.tenant,
             )
     }
 }
@@ -180,6 +255,9 @@ data class ClusterState(
     var hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
     // VPC ID for the cluster - the core resource that contains all infrastructure
     var vpcId: String? = null,
+    // True when the VPC came from `init --vpc`: it belongs to the user, so `down` never deletes it
+    // and removes only the resources this cluster created in it.
+    var vpcSupplied: Boolean = false,
     // EMR cluster state for Spark jobs
     var emrCluster: EMRClusterState? = null,
     // OpenSearch domain state
@@ -195,6 +273,9 @@ data class ClusterState(
     var backupHashes: Map<String, String> = emptyMap(),
     // Tailscale auth key ID for cleanup on teardown
     var tailscaleAuthKeyId: String? = null,
+    // Tailnet node ID of the control node, recorded by `tailscale start` so `down` deletes exactly
+    // this cluster's device (every cluster's control node registers under the same hostname)
+    var tailscaleDeviceId: String? = null,
     // Counter for stress job naming and port assignment
     var stressJobCounter: Int = 0,
     // Whether Tailscale was active on the local machine at init time.
@@ -202,6 +283,8 @@ data class ClusterState(
     var tailscaleActive: Boolean = false,
     // Names of kits that are currently started (K8s kits + EC2 services like cassandra)
     var runningKits: Set<String> = emptySet(),
+    // The signals a pre-teardown save already put in S3, so a re-run of `down` skips them; cleared by `up`
+    var tailFlush: TailFlushRecord? = null,
 ) {
     /**
      * Returns true when the db nodes are provisioned with Cassandra hosts.
@@ -256,10 +339,12 @@ data class ClusterState(
     }
 
     /**
-     * Mark infrastructure as UP
+     * Mark infrastructure as UP. The backends `up` starts take data a recorded tail save does not
+     * cover, so the record is cleared and the next `down` saves every signal again.
      */
     fun markInfrastructureUp() {
         this.infrastructureStatus = InfrastructureStatus.UP
+        this.tailFlush = null
         this.lastAccessedAt = Instant.now()
     }
 
@@ -273,6 +358,26 @@ data class ClusterState(
 
     /** Returns the cluster prefix path for S3: "clusters/{name}-{clusterId}". No trailing slash. */
     fun clusterPrefix(): String = "${Constants.S3.CLUSTERS_PREFIX}/$name-$clusterId"
+
+    /**
+     * The observability tenant this cluster's data belongs to. A state with no init configuration,
+     * or one written before tenants existed, belongs to the default tenant.
+     *
+     * @throws IllegalStateException if state.json holds a tenant that breaks
+     *   [Constants.Observability.TENANT_PATTERN] or is [Constants.Observability.RESERVED_TENANT].
+     *   `init` checks it, but the value goes into JVM options
+     *   and S3 keys, so a hand-edited one is refused here too.
+     */
+    fun tenant(): String {
+        val tenant = initConfig?.tenant ?: Constants.Observability.DEFAULT_TENANT
+        check(Regex(Constants.Observability.TENANT_PATTERN).matches(tenant)) {
+            "Invalid tenant '$tenant' in state.json: a tenant must match ${Constants.Observability.TENANT_PATTERN}"
+        }
+        check(tenant != Constants.Observability.RESERVED_TENANT) {
+            "Invalid tenant '$tenant' in state.json: '${Constants.Observability.RESERVED_TENANT}' is reserved"
+        }
+        return tenant
+    }
 
     /** Returns the S3 metrics config ID: "edl-{name}-{clusterId}", truncated to API limit. */
     fun metricsConfigId(): String = "edl-$name-$clusterId".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)

@@ -4,6 +4,7 @@ import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.CqlSessionBuilder
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader
+import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.net.InetSocketAddress
 import java.time.Duration
@@ -54,7 +55,7 @@ open class DefaultCqlSessionFactory : CqlSessionFactory {
     companion object {
         private val log = KotlinLogging.logger {}
         private const val DEFAULT_PORT = 9042
-        private const val DEFAULT_PROXY_HOST = "127.0.0.1"
+        private const val DEFAULT_PROXY_HOST = Constants.Proxy.TUNNEL_LISTEN_ADDRESS
         private const val CONNECTION_TIMEOUT_SECONDS = 30L
         private const val REQUEST_TIMEOUT_SECONDS = 60L
     }

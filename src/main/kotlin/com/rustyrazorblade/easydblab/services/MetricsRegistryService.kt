@@ -30,7 +30,7 @@ interface MetricsRegistryService {
  * both declaring job "postgres") get separate ConfigMaps and separate OTel scrape jobs.
  */
 class DefaultMetricsRegistryService(
-    private val k8sService: K8sService,
+    private val k8sService: K8sStorageOperations,
     private val otelSyncService: OtelSyncService,
     private val eventBus: EventBus,
 ) : MetricsRegistryService {
@@ -62,7 +62,6 @@ class DefaultMetricsRegistryService(
                 val configMapName = "$CONFIG_MAP_PREFIX$kitName-$jobName"
                 k8sService
                     .createConfigMap(
-                        controlHost = controlHost,
                         namespace = Constants.K8s.NAMESPACE,
                         name = configMapName,
                         data =
@@ -72,6 +71,7 @@ class DefaultMetricsRegistryService(
                                 put("port", target.port.toString())
                                 put("path", target.path)
                                 if (target.username.isNotBlank()) put("username", target.username)
+                                if (target.podSelector.isNotBlank()) put("pod-selector", target.podSelector)
                             },
                         labels =
                             mapOf(
@@ -95,7 +95,6 @@ class DefaultMetricsRegistryService(
         runCatching {
             k8sService
                 .deleteConfigMapsByLabels(
-                    controlHost = controlHost,
                     namespace = Constants.K8s.NAMESPACE,
                     labels =
                         mapOf(

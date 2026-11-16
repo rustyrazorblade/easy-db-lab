@@ -1,3 +1,8 @@
+---
+name: cluster-ops
+description: Spin up, configure, test, or tear down an easy-db-lab cluster through the full lifecycle (build, init, up, configure the database, install workloads, tear down).
+---
+
 # Cluster Operations Skill
 
 Use this skill when the user asks to spin up, configure, test, or tear down an easy-db-lab cluster. It covers the full lifecycle: build → init → up → configure Cassandra → install workloads → tear down.
@@ -32,7 +37,7 @@ easy-db-lab init [OPTIONS] [CLUSTER_NAME]
 | `--instance, -i` | r3.2xlarge | EC2 instance type for db nodes |
 | `--stress-instance, -si` | c7i.2xlarge | EC2 instance type for app nodes |
 | `--clean` | false | Wipe existing local config before init |
-| `--cidr` | 10.0.0.0/16 | VPC CIDR (must be /20 or larger) |
+| `--cidr` | 10.0.0.0/16 | VPC CIDR (must be /25 or larger; must not overlap 10.224.0.0/12 or 10.240.0.0/16) |
 | `--tag key=value` | — | Tag EC2 instances |
 | `--ebs.type` | NONE | EBS volume type (NONE, gp2, gp3, io1, io2) |
 | `--ebs.size` | 256 | EBS volume size in GB |
@@ -217,13 +222,10 @@ easy-db-lab cassandra update-config
 easy-db-lab cassandra start
 ```
 
-### Run a subset of e2e steps
-```bash
-bin/end-to-end-test --list-steps          # see all steps with numbers
-bin/end-to-end-test --start-step 13       # resume from step 13
-bin/end-to-end-test --cassandra --presto  # only Cassandra and Presto steps
-bin/end-to-end-test --no-teardown         # keep cluster alive after run
-```
+### Run an end-to-end test
+Lab test plans run through the `/easy-db-lab:plan` and `/easy-db-lab:run` skills, and branch
+verification through `/agent-test`. Each runs in its own workspace under `clusters/`, never in the
+repository root: `init` refuses a directory that already has a `bin/`.
 
 ---
 

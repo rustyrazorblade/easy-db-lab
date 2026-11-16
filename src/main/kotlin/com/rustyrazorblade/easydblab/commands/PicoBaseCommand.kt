@@ -2,9 +2,13 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.CommandExecutor
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -39,6 +43,43 @@ abstract class PicoBaseCommand :
 
     /** Convenience property to get the current ClusterState. */
     protected val clusterState by lazy { clusterStateManager.load() }
+
+    /**
+     * Refuses to run a command that depends on the local observability stack when the cluster is in
+     * telemetry-redirect mode. A redirect cluster has no local Mimir, Loki, Tempo,
+     * Pyroscope, or Grafana — that data lives on the external stack — so a command that reads or
+     * reconfigures those backends has nothing here to act on. It refuses cleanly rather than failing
+     * later with an opaque connection error.
+     *
+     * @param commandName the user-facing command name, used in the message (e.g. "metrics ls").
+     */
+    protected fun requireLocalTelemetryStack(commandName: String) {
+        if (clusterState.initConfig?.telemetryRedirect != null) {
+            eventBus.emit(Event.Provision.RedirectCommandUnavailable(commandName))
+            error("$commandName is unavailable on a telemetry-redirect cluster.")
+        }
+    }
+
+    /**
+     * Runs [nested] through [executor] with its full lifecycle, and fails this command when it
+     * exits non-zero. The executor has already printed the nested command's own error, so the
+     * failure emits only [Event.Command.NestedCommandFailed], naming both commands, and throws
+     * [CommandFailedException].
+     */
+    protected fun runNested(
+        executor: CommandExecutor,
+        nested: PicoCommand,
+    ) {
+        val exitCode = executor.execute { nested }
+        if (exitCode != 0) {
+            val nestedName = commandName(nested) ?: nested::class.java.simpleName
+            val ownName = commandName(this) ?: this::class.java.simpleName
+            eventBus.emit(Event.Command.NestedCommandFailed(command = ownName, nested = nestedName, exitCode = exitCode))
+            throw CommandFailedException("$ownName failed: $nestedName exited with code $exitCode")
+        }
+    }
+
+    private fun commandName(command: PicoCommand): String? = command::class.java.getAnnotation(Command::class.java)?.name
 
     /**
      * Wraps the PicoCommand lifecycle with EventContext push/pop.

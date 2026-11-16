@@ -38,7 +38,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Active SQL connections to TiDB",
       "fieldConfig": {
         "defaults": {
@@ -51,12 +51,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 0, "y": 1 },
       "id": 2,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tidb_server_connections)", "legendFormat": "Connections", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(sum by (cluster) (tidb_server_connections{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Connections", "refId": "A" }],
       "title": "Active Connections",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Total number of Raft regions",
       "fieldConfig": {
         "defaults": {
@@ -69,12 +69,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 4, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"region_count\"}", "legendFormat": "Regions", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"region_count\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Regions", "refId": "A" }],
       "title": "Region Count",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Number of TiKV stores currently up",
       "fieldConfig": {
         "defaults": {
@@ -87,12 +87,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 8, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"store_up_count\"}", "legendFormat": "Stores Up", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"store_up_count\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Stores Up", "refId": "A" }],
       "title": "Stores Up",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Number of TiKV stores currently down — should be 0",
       "fieldConfig": {
         "defaults": {
@@ -105,12 +105,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 12, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"store_down_count\"}", "legendFormat": "Stores Down", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"store_down_count\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Stores Down", "refId": "A" }],
       "title": "Stores Down",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Percentage of cluster storage used",
       "fieldConfig": {
         "defaults": {
@@ -123,12 +123,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 16, "y": 1 },
       "id": 6,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "100 * pd_cluster_status{type=\"storage_size\"} / pd_cluster_status{type=\"storage_capacity\"}", "legendFormat": "Storage Used %", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(100 * max by (cluster) (pd_cluster_status{cluster=~\"$cluster\", type=\"storage_size\"}) / max by (cluster) (pd_cluster_status{cluster=~\"$cluster\", type=\"storage_capacity\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Storage Used %", "refId": "A" }],
       "title": "Storage Used %",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "DDL job queue depth",
       "fieldConfig": {
         "defaults": {
@@ -141,7 +141,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 20, "y": 1 },
       "id": 7,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tidb_ddl_waiting_jobs)", "legendFormat": "Waiting DDL Jobs", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(sum by (cluster) (tidb_ddl_waiting_jobs{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Waiting DDL Jobs", "refId": "A" }],
       "title": "DDL Waiting Jobs",
       "type": "stat"
     },
@@ -154,7 +154,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of SQL statements executed per second, broken down by statement type",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -163,12 +163,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 9 },
       "id": 9,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_executor_statement_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tidb_executor_statement_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "Statement Rate by Type",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of SQL execution errors per second",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -177,12 +177,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 9 },
       "id": 10,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_server_execute_error_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tidb_server_execute_error_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "Execution Error Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Active SQL connections over time",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -191,12 +191,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 16 },
       "id": 11,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum(tidb_server_connections)", "legendFormat": "Connections", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(sum by (cluster) (tidb_server_connections{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Connections", "refId": "A" }],
       "title": "Active Connections Over Time",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of critical (non-recoverable) errors",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -205,12 +205,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 16 },
       "id": 12,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_server_critical_error_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tidb_server_critical_error_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "Critical Error Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "50th and 99th percentile query handle duration — key latency signal for the SQL layer",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "s" },
@@ -220,14 +220,14 @@
       "id": 35,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "histogram_quantile(0.99, sum by (le, instance) (rate(tidb_server_handle_query_duration_seconds_bucket[5m])))", "legendFormat": "p99 {{instance}}", "refId": "A" },
-        { "expr": "histogram_quantile(0.50, sum by (le, instance) (rate(tidb_server_handle_query_duration_seconds_bucket[5m])))", "legendFormat": "p50 {{instance}}", "refId": "B" }
+        { "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, instance) (rate(tidb_server_handle_query_duration_seconds_bucket{cluster=~\"$cluster\"}[5m]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} p99 {{instance}}", "refId": "A" },
+        { "expr": "label_replace(histogram_quantile(0.50, sum by (cluster, le, instance) (rate(tidb_server_handle_query_duration_seconds_bucket{cluster=~\"$cluster\"}[5m]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} p50 {{instance}}", "refId": "B" }
       ],
       "title": "Query Latency (p50/p99)",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Plan cache hit and miss rates — high miss rate means the optimizer re-plans frequently, adding CPU overhead",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -237,14 +237,14 @@
       "id": 36,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "rate(tidb_server_plan_cache_total[5m])", "legendFormat": "hits {{type}}", "refId": "A" },
-        { "expr": "rate(tidb_server_plan_cache_miss_total[5m])", "legendFormat": "misses {{type}}", "refId": "B" }
+        { "expr": "label_replace(rate(tidb_server_plan_cache_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} hits {{type}}", "refId": "A" },
+        { "expr": "label_replace(rate(tidb_server_plan_cache_miss_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} misses {{type}}", "refId": "B" }
       ],
       "title": "Plan Cache Hit/Miss Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of queries offloaded to the TiFlash MPP engine — rising rate confirms HTAP pushdown is working",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -253,12 +253,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 30 },
       "id": 37,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_server_tiflash_query_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tidb_server_tiflash_query_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "TiFlash Offload Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Region errors returned to the SQL layer from TiKV — auto-retried but indicate TiKV instability or leader election churn",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -267,7 +267,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 30 },
       "id": 38,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_tikvclient_region_err_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tidb_tikvclient_region_err_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "TiKV Client Region Errors",
       "type": "timeseries"
     },
@@ -280,7 +280,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Number of TiKV stores currently up",
       "fieldConfig": {
         "defaults": {
@@ -293,12 +293,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 0, "y": 39 },
       "id": 14,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"store_up_count\"}", "legendFormat": "Stores Up", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"store_up_count\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Stores Up", "refId": "A" }],
       "title": "Stores Up",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Number of TiKV stores currently down — alert if > 0",
       "fieldConfig": {
         "defaults": {
@@ -311,12 +311,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 4, "y": 39 },
       "id": 15,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"store_down_count\"}", "legendFormat": "Stores Down", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"store_down_count\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Stores Down", "refId": "A" }],
       "title": "Stores Down",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Total cluster storage capacity in bytes",
       "fieldConfig": {
         "defaults": {
@@ -329,12 +329,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 8, "y": 39 },
       "id": 16,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"storage_capacity\"}", "legendFormat": "Capacity", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"storage_capacity\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Capacity", "refId": "A" }],
       "title": "Storage Capacity",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Currently used cluster storage in bytes",
       "fieldConfig": {
         "defaults": {
@@ -347,12 +347,12 @@
       "gridPos": { "h": 3, "w": 4, "x": 12, "y": 39 },
       "id": 17,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"storage_size\"}", "legendFormat": "Storage Used", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"storage_size\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Storage Used", "refId": "A" }],
       "title": "Storage Used",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TSO operations per second — timestamp oracle throughput",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -361,12 +361,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 42 },
       "id": 18,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(pd_cluster_tso[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(pd_cluster_tso{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "TSO Operations Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Region count over time",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -376,14 +376,14 @@
       "id": 19,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "pd_cluster_status{type=\"region_count\"}", "legendFormat": "Regions", "refId": "A" },
-        { "expr": "pd_cluster_status{type=\"leader_count\"}", "legendFormat": "Leaders", "refId": "B" }
+        { "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"region_count\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Regions", "refId": "A" },
+        { "expr": "label_replace(pd_cluster_status{cluster=~\"$cluster\", type=\"leader_count\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Leaders", "refId": "B" }
       ],
       "title": "Region and Leader Count Over Time",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TSO clock skew in milliseconds",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" },
@@ -392,12 +392,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 49 },
       "id": 20,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "pd_cluster_tso_gap_millionseconds", "legendFormat": "{{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_cluster_tso_gap_millionseconds{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{instance}}", "refId": "A" }],
       "title": "TSO Clock Skew",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of scheduling operators created by PD (balance-region, balance-leader, etc.) — a spike indicates active rebalancing",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -406,12 +406,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 56 },
       "id": 39,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(pd_schedule_operators_count_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(pd_schedule_operators_count_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "Scheduling Operator Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Regions in each health state — elevated missing-peer or extra-peer counts indicate replication issues",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -420,12 +420,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 56 },
       "id": 40,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "pd_regions_status", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_regions_status{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "Region Health States",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Regions pending each PD checker (replica, merge, split) — a growing count indicates scheduling backlog",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -434,12 +434,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 63 },
       "id": 41,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "pd_checker_region_list", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_checker_region_list{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "Checker Region List",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Hot region and store counts by type — elevated values indicate uneven load distribution",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -448,7 +448,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 63 },
       "id": 42,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "pd_hotspot_status", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(pd_hotspot_status{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}}", "refId": "A" }],
       "title": "Hotspot Status",
       "type": "timeseries"
     },
@@ -461,7 +461,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Missing Raft leaders per store — should be 0",
       "fieldConfig": {
         "defaults": {
@@ -474,12 +474,12 @@
       "gridPos": { "h": 3, "w": 12, "x": 0, "y": 71 },
       "id": 22,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tikv_raftstore_leader_missing)", "legendFormat": "Missing Leaders", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(sum by (cluster) (tikv_raftstore_leader_missing{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Missing Leaders", "refId": "A" }],
       "title": "Missing Raft Leaders",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Hibernated Raft peers (idle regions conserving resources)",
       "fieldConfig": {
         "defaults": {
@@ -492,12 +492,12 @@
       "gridPos": { "h": 3, "w": 12, "x": 12, "y": 71 },
       "id": 23,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tikv_raftstore_hibernated_peer_state)", "legendFormat": "Hibernated Peers", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(sum by (cluster) (tikv_raftstore_hibernated_peer_state{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Hibernated Peers", "refId": "A" }],
       "title": "Hibernated Raft Peers",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Local read requests served by TiKV follower read without going through Raft",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -506,12 +506,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 74 },
       "id": 24,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_raftstore_local_read_executed_requests_total[5m])", "legendFormat": "{{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tikv_raftstore_local_read_executed_requests_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{instance}}", "refId": "A" }],
       "title": "Local Read Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of Raft admin commands (splits, merges, config changes)",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -520,12 +520,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 74 },
       "id": 25,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_raftstore_admin_cmd_total[5m])", "legendFormat": "{{type}} {{status}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tikv_raftstore_admin_cmd_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{status}}", "refId": "A" }],
       "title": "Raft Admin Command Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Data size per RocksDB column family (default, write, lock)",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" },
@@ -534,12 +534,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 81 },
       "id": 43,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tikv_engine_size_bytes", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(tikv_engine_size_bytes{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{instance}}", "refId": "A" }],
       "title": "Engine Size by Column Family",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes waiting for RocksDB compaction — elevated value indicates I/O backpressure that will cause write stalls",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" },
@@ -548,12 +548,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 81 },
       "id": 44,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tikv_engine_pending_compaction_bytes", "legendFormat": "{{cf}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(tikv_engine_pending_compaction_bytes{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{cf}} {{instance}}", "refId": "A" }],
       "title": "Pending Compaction Bytes",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Write stall time rate (µs/s) — any non-zero value means RocksDB compaction is blocking incoming writes",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -562,12 +562,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 88 },
       "id": 45,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_engine_stall_micro_seconds_total[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tikv_engine_stall_micro_seconds_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{instance}}", "refId": "A" }],
       "title": "Write Stall Rate (µs/s)",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes read and written through the RocksDB storage engine",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
@@ -576,12 +576,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 88 },
       "id": 46,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_engine_flow_bytes_total[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tikv_engine_flow_bytes_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{instance}}", "refId": "A" }],
       "title": "Engine I/O Throughput",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "SST file count at L0 per column family — high L0 count (>10) indicates compaction lag and impending write stalls",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -590,12 +590,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 95 },
       "id": 47,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tikv_engine_num_files_at_level{level=\"0\"}", "legendFormat": "{{cf}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(tikv_engine_num_files_at_level{cluster=~\"$cluster\", level=\"0\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{cf}} {{instance}}", "refId": "A" }],
       "title": "L0 SST File Count",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rows and keys scanned by coprocessor push-down queries — high scanned/returned ratio indicates full scans",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -604,7 +604,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 95 },
       "id": 48,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_coprocessor_scan_details_total[5m])", "legendFormat": "{{req}} {{tag}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tikv_coprocessor_scan_details_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{req}} {{tag}} {{instance}}", "refId": "A" }],
       "title": "Coprocessor Scan Rate",
       "type": "timeseries"
     },
@@ -617,7 +617,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Currently active MPP (Massively Parallel Processing) tasks",
       "fieldConfig": {
         "defaults": {
@@ -630,12 +630,12 @@
       "gridPos": { "h": 3, "w": 24, "x": 0, "y": 103 },
       "id": 27,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tiflash_mpp_task_monitor)", "legendFormat": "Active MPP Tasks", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(sum by (cluster) (tiflash_mpp_task_monitor{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Active MPP Tasks", "refId": "A" }],
       "title": "Active MPP Tasks",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Active MPP task count over time",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -644,12 +644,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 106 },
       "id": 28,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum(tiflash_mpp_task_monitor)", "legendFormat": "Active MPP Tasks", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(sum by (cluster) (tiflash_mpp_task_monitor{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Active MPP Tasks", "refId": "A" }],
       "title": "MPP Task Count",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TiFlash request units consumed per second",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -658,12 +658,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 106 },
       "id": 29,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tiflash_compute_request_unit_total[5m])", "legendFormat": "{{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tiflash_compute_request_unit_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{instance}}", "refId": "A" }],
       "title": "Request Unit Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Data exchange bytes per second between TiFlash MPP nodes",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
@@ -672,12 +672,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 113 },
       "id": 30,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tiflash_exchange_data_bytes_total[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tiflash_exchange_data_bytes_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{instance}}", "refId": "A" }],
       "title": "MPP Exchange Bytes Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TiFlash coprocessor request errors per second",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -686,12 +686,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 113 },
       "id": 31,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tiflash_coprocessor_request_error_total[5m])", "legendFormat": "{{reason}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tiflash_coprocessor_request_error_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{reason}} {{instance}}", "refId": "A" }],
       "title": "Coprocessor Error Rate",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TiFlash process RSS memory usage broken down by type",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" },
@@ -700,12 +700,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 120 },
       "id": 32,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tiflash_process_rss_by_type_bytes", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(tiflash_process_rss_by_type_bytes{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{instance}}", "refId": "A" }],
       "title": "TiFlash Memory by Type",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes read and written at the TiFlash columnar storage layer — shows actual I/O load for HTAP queries",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
@@ -714,12 +714,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 127 },
       "id": 49,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tiflash_storage_throughput_bytes", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(tiflash_storage_throughput_bytes{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{instance}}", "refId": "A" }],
       "title": "Storage Throughput (Bytes)",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rows read and written at the TiFlash columnar storage layer — useful for understanding scan amplification",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -728,12 +728,12 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 127 },
       "id": 50,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tiflash_storage_throughput_rows", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(tiflash_storage_throughput_rows{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{instance}}", "refId": "A" }],
       "title": "Storage Throughput (Rows)",
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes replicated from TiKV to TiFlash via Raft — shows the throughput of the row-to-columnar replication pipeline",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
@@ -742,7 +742,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 134 },
       "id": 51,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tiflash_raft_throughput_bytes_total[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(rate(tiflash_raft_throughput_bytes_total{cluster=~\"$cluster\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{type}} {{instance}}", "refId": "A" }],
       "title": "Raft Replication Throughput",
       "type": "timeseries"
     },
@@ -755,12 +755,20 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
       "description": "Log stream from TiDB pods",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 142 },
       "id": 34,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showTime": true, "wrapLogMessage": true },
-      "targets": [{ "expr": "k8s.app.instance:tidb", "refId": "A" }],
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "{cluster=~\"$cluster\"} | k8s_app_instance=~\".*tidb.*\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
       "title": "TiDB Logs",
       "type": "logs"
     },
@@ -773,7 +781,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of traced operations by span name — shows which TiKV gRPC calls and SQL executor paths are active",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -784,8 +792,8 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "rate(traces_spanmetrics_calls_total{service_name=\"TiDB\"}[5m])",
-          "legendFormat": "{{span_name}}",
+          "expr": "label_replace(rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=\"TiDB\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{span_name}}",
           "refId": "A"
         }
       ],
@@ -793,7 +801,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "99th percentile span duration by operation — trace-derived latency breakdown per TiKV call and SQL executor phase",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" },
@@ -804,8 +812,8 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le, span_name) (rate(traces_spanmetrics_duration_milliseconds_bucket{service_name=\"TiDB\"}[5m])))",
-          "legendFormat": "{{span_name}}",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, span_name) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", service_name=\"TiDB\"}[5m]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{span_name}}",
           "refId": "A"
         }
       ],
@@ -821,7 +829,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "tempo", "uid": "tempo" },
+      "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
       "description": "Recent traces from the TiDB SQL layer — click any row to open the full trace in Tempo",
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 161 },
@@ -832,7 +840,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "tempo", "uid": "tempo" },
+          "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
           "limit": 20,
           "query": "{ resource.service.name = \"TiDB\" }",
           "queryType": "traceql",
@@ -851,7 +859,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "tempo", "uid": "tempo" },
+      "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
       "description": "Service topology derived from distributed traces — nodes are services, edges are calls with request rate and error rate",
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 15, "w": 24, "x": 0, "y": 172 },
@@ -859,7 +867,7 @@
       "options": {},
       "targets": [
         {
-          "datasource": { "type": "tempo", "uid": "tempo" },
+          "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
           "queryType": "serviceMap",
           "refId": "A",
           "serviceMapQuery": "{}"
@@ -869,23 +877,72 @@
       "type": "nodeGraph"
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 36,
   "style": "dark",
   "tags": ["tidb", "htap"],
   "templating": {
     "list": [
       {
-        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Logs",
         "multi": false,
-        "name": "datasource",
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Traces",
+        "multi": false,
+        "name": "traces_datasource",
+        "options": [],
+        "query": "tempo",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+        "definition": "label_values(up, cluster)",
+        "description": "Clusters of this tenant, for the logs panels. All is .+ because Loki refuses a stream selector that matches an empty value.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": { "qryType": 1, "query": "label_values(up, cluster)", "refId": "PrometheusVariableQueryEditor-VariableQuery" },
+        "refresh": 2,
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       }
     ]
   },

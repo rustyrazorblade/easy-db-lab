@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.ssh
 
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.scp.client.CloseableScpClient
@@ -12,6 +13,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.charset.Charset
 import java.nio.file.Path
+import java.rmi.RemoteException
 import java.util.ArrayDeque
 
 /**
@@ -44,6 +46,14 @@ class SSHClient(
     private val eventBus: EventBus by inject()
     private val log = KotlinLogging.logger {}
 
+    companion object {
+        /** How much of a failed command's output to keep in the exception message. */
+        private const val MAX_FAILURE_OUTPUT_LINES = 50
+
+        /** Stands in for anything belonging to a command marked secret. */
+        private const val HIDDEN = "[hidden]"
+    }
+
     // Synchronization lock to ensure thread-safe access to the session
     // This allows multiple SSHClient instances (different hosts) to operate in parallel
     // while serializing operations on the same session (same host)
@@ -69,22 +79,66 @@ class SSHClient(
         synchronized(operationLock) {
             require(command.isNotBlank()) { "Command cannot be blank" }
 
-            // Create connection for this host
+            // Every sink below — the debug log, the emitted event, the returned Response and the
+            // thrown exception — is redacted here rather than at each call site. A remote command
+            // legitimately carries a git URL with an embedded token, and the remote side echoes it
+            // straight back; a per-call-site convention only has to be forgotten once to leak it.
             if (!secret) {
-                log.debug { "Executing remote command: $command" }
+                log.debug { "Executing remote command: ${redactUrlCredentials(command)}" }
             } else {
                 log.debug { "Executing remote command: [hidden]" }
             }
 
+            // Own both streams so a non-zero exit still yields whatever the command said before it
+            // failed — MINA's RemoteException carries only "Remote command failed (N): <command>",
+            // and the command's own error message is the only thing that explains the failure.
+            val stdoutStream = ByteArrayOutputStream()
             val stderrStream = ByteArrayOutputStream()
-            val result = session.executeRemoteCommand(command, stderrStream, Charset.defaultCharset())
+            try {
+                session.executeRemoteCommand(command, stdoutStream, stderrStream, Charset.defaultCharset())
+            } catch (e: RemoteException) {
+                throw remoteCommandFailure(command, secret, stdoutStream, stderrStream, e)
+            }
+
+            val result = redactUrlCredentials(stdoutStream.toString(Charset.defaultCharset()))
 
             if (output) {
                 eventBus.emit(Event.Ssh.CommandOutput(result))
             }
 
-            return@synchronized Response(result, stderrStream.toString())
+            return@synchronized Response(result, redactUrlCredentials(stderrStream.toString(Charset.defaultCharset())))
         }
+
+    private fun remoteCommandFailure(
+        command: String,
+        secret: Boolean,
+        stdoutStream: ByteArrayOutputStream,
+        stderrStream: ByteArrayOutputStream,
+        failure: RemoteException,
+    ): RemoteCommandFailedException {
+        if (secret) {
+            // A secret command routinely echoes its own argument back on failure — a usage line,
+            // an error naming the key — so none of its output can be repeated.
+            return RemoteCommandFailedException(
+                command = HIDDEN,
+                stdout = HIDDEN,
+                stderr = HIDDEN,
+                summary = "Remote command failed on $remoteAddress: $HIDDEN",
+            )
+        }
+        return RemoteCommandFailedException(
+            command = redactUrlCredentials(command),
+            stdout = tail(stdoutStream.toString(Charset.defaultCharset())),
+            stderr = tail(stderrStream.toString(Charset.defaultCharset())),
+            summary = "$remoteAddress: ${redactUrlCredentials(failure.message ?: "Remote command failed: $command")}",
+        )
+    }
+
+    /** Keeps a failure message readable when the command spewed (e.g. a replayed ant build log). */
+    private fun tail(text: String): String =
+        redactUrlCredentials(
+            text.lines().takeLast(MAX_FAILURE_OUTPUT_LINES).joinToString("\n"),
+        )
 
     /**
      * Upload a file to a remote host

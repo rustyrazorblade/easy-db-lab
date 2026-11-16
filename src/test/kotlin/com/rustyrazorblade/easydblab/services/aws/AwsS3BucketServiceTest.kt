@@ -13,6 +13,7 @@ import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.s3.S3Client
@@ -48,8 +49,6 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
                         whenever(it.putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>()))
                             .thenReturn(null)
                         whenever(it.deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>()))
-                            .thenReturn(null)
-                        whenever(it.putBucketLifecycleConfiguration(any<PutBucketLifecycleConfigurationRequest>()))
                             .thenReturn(null)
                     }
                 }
@@ -110,30 +109,10 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `teardownDataBucket disables metrics and sets lifecycle`() {
-        service.teardownDataBucket("data-bucket", "metrics-id", 7)
+    fun `teardownDataBucket disables metrics and sets no expiry on the owner's data`() {
+        service.teardownDataBucket("data-bucket", "metrics-id")
 
         verify(mockS3Client).deleteBucketMetricsConfiguration(any<DeleteBucketMetricsConfigurationRequest>())
-        verify(mockS3Client).putBucketLifecycleConfiguration(any<PutBucketLifecycleConfigurationRequest>())
-    }
-
-    @Test
-    fun `teardownDataBucket emits expiring event`() {
-        val emitted = mutableListOf<Event>()
-        eventBus.addListener(
-            object : EventListener {
-                override fun onEvent(envelope: EventEnvelope) {
-                    emitted.add(envelope.event)
-                }
-
-                override fun close() = Unit
-            },
-        )
-
-        service.teardownDataBucket("data-bucket", "metrics-id", 3)
-
-        assertThat(emitted).containsExactly(
-            Event.S3.DataBucketExpiring("data-bucket", 3),
-        )
+        verify(mockS3Client, never()).putBucketLifecycleConfiguration(any<PutBucketLifecycleConfigurationRequest>())
     }
 }

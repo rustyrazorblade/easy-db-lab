@@ -157,8 +157,8 @@ class AwsInfrastructureServiceIntegrationTest {
         @Test
         fun `should discover subnets in VPC`() {
             val vpcId = createVpc("test-discover-subnets")
-            val subnet1 = createSubnet(vpcId, "10.0.1.0/24")
-            val subnet2 = createSubnet(vpcId, "10.0.2.0/24")
+            val subnet1 = createSubnet(vpcId, "10.0.0.0/19")
+            val subnet2 = createSubnet(vpcId, "10.0.32.0/19")
 
             val resources = service.discoverResources(vpcId)
 
@@ -213,8 +213,8 @@ class AwsInfrastructureServiceIntegrationTest {
         fun `should not discover resources from a different VPC`() {
             val vpc1 = createVpc("test-isolation-1", "10.1.0.0/16")
             val vpc2 = createVpc("test-isolation-2", "10.2.0.0/16")
-            val subnet1 = createSubnet(vpc1, "10.1.1.0/24")
-            createSubnet(vpc2, "10.2.1.0/24")
+            val subnet1 = createSubnet(vpc1, "10.1.0.0/19")
+            createSubnet(vpc2, "10.2.0.0/19")
 
             val resources = service.discoverResources(vpc1)
 
@@ -226,7 +226,7 @@ class AwsInfrastructureServiceIntegrationTest {
         @Test
         fun `should discover all resource types together`() {
             val vpcId = createVpc("test-discover-all")
-            val subnet = createSubnet(vpcId, "10.0.1.0/24")
+            val subnet = createSubnet(vpcId, "10.0.0.0/19")
             val sgId = createSecurityGroup(vpcId, "test-all-sg")
             val igwId = createAndAttachInternetGateway(vpcId)
 

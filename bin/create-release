@@ -110,6 +110,10 @@ echo "Current version: $current_version, next version: $new_version.  Enter to c
 read
 
 if [ "$DEBUG" = false ]; then
+  # build-image bakes from build/install/easy-db-lab/packer/, which distTar does
+  # not produce. Without this, the bake ships the previous installDist copy and
+  # still reports success.
+  gw installDist
   bin/easy-db-lab build-image --release
   echo "Press enter to continue"
   read
@@ -138,7 +142,7 @@ if [ "$DEBUG" = false ]; then
   (
   cd $RRB_HOMEBREW_REPO
   git commit -am "Version bump to $current_version"
-  git push
+  git push origin main
   )
 fi
 

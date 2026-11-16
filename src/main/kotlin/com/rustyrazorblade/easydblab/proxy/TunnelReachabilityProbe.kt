@@ -1,9 +1,11 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
+import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger {}
 
@@ -43,26 +45,43 @@ fun interface TunnelReachabilityProbe {
  * listener → ssh tunnel → control node → onward TCP to a private IP → bytes back.
  */
 class SocksTunnelReachabilityProbe(
-    private val connectTimeoutMs: Int,
+    private val attemptTimeoutMs: Int,
 ) : TunnelReachabilityProbe {
+    /**
+     * One attempt takes at most [attemptTimeoutMs] in all. The JDK bounds the connect, the SOCKS5
+     * handshake and the CONNECT reply by the connect timeout; the banner read then gets only what is
+     * left of the same budget, not a full timeout of its own.
+     */
     override fun isReachable(
         localSocksPort: Int,
         targetHost: String,
         targetPort: Int,
     ): Boolean =
         try {
-            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", localSocksPort))
+            val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(attemptTimeoutMs.toLong())
+            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, localSocksPort))
             Socket(proxy).use { socket ->
-                socket.soTimeout = connectTimeoutMs
-                socket.connect(InetSocketAddress(targetHost, targetPort), connectTimeoutMs)
-                // Read the SSH banner to prove bytes flow BACK through the tunnel, not just that the
-                // SOCKS CONNECT setup succeeded. sshd sends "SSH-2.0-..." immediately on connect.
-                val buf = ByteArray(SSH_BANNER_PREFIX.length)
-                val read = socket.getInputStream().read(buf)
-                read >= SSH_BANNER_PREFIX.length && String(buf, 0, SSH_BANNER_PREFIX.length) == SSH_BANNER_PREFIX
+                socket.connect(InetSocketAddress(targetHost, targetPort), attemptTimeoutMs)
+                val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
+                // A soTimeout of 0 means no timeout, so a spent budget ends the attempt here.
+                remainingMs > 0 && readsSshBanner(socket, remainingMs.toInt())
             }
         } catch (e: Exception) {
             log.debug(e) { "SOCKS tunnel probe to $targetHost:$targetPort via 127.0.0.1:$localSocksPort failed" }
             false
         }
+
+    /**
+     * Reads the SSH banner within [timeoutMs], to prove bytes flow BACK through the tunnel, not just
+     * that the SOCKS CONNECT setup succeeded. sshd sends "SSH-2.0-..." immediately on connect.
+     */
+    private fun readsSshBanner(
+        socket: Socket,
+        timeoutMs: Int,
+    ): Boolean {
+        socket.soTimeout = timeoutMs
+        val buf = ByteArray(SSH_BANNER_PREFIX.length)
+        val read = socket.getInputStream().read(buf)
+        return read >= SSH_BANNER_PREFIX.length && String(buf, 0, SSH_BANNER_PREFIX.length) == SSH_BANNER_PREFIX
+    }
 }

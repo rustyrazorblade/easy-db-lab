@@ -1,0 +1,191 @@
+## MODIFIED Requirements
+
+### Requirement: Runtime Version Installation
+
+The system MUST support installing an additional Cassandra version onto an already-provisioned,
+running cluster without rebuilding the AMI, via `cassandra install <version>`.
+
+The system MUST support both existing install mechanisms for a version: downloading a tarball from
+a `url:` (including an official release resolved from a version prefix when no `url:` is set), and
+cloning a git `url:`+`branch:` and building it with `ant`. The same mechanism MUST be used whether
+the version is installed at AMI bake time or via `cassandra install` at runtime — one
+implementation, not two kept in sync by hand.
+
+The system MUST resolve a version's install parameters (`java`, `python`, `url`/`branch`,
+`ant_flags`) from a declared `cassandra_versions.yaml` entry (including profile-local extras) by
+default, and MUST allow those parameters to be supplied directly via CLI options instead, without
+requiring any yaml declaration.
+
+The system MUST support targeting all Cassandra nodes or a `--hosts`-filtered subset, matching the
+targeting mechanism `cassandra use` already provides.
+
+The system MUST write the resolved version's install parameters into the targeted node's
+`/etc/cassandra_versions.yaml` before installing, so that `cassandra use` for that version
+succeeds afterward without further changes.
+
+The system MUST treat installing an already-installed version as a safe no-op — no re-download,
+no re-build, no error.
+
+The system MUST report success or failure per targeted host, and MUST fail the overall command
+when any targeted host fails to install, without leaving other hosts partially configured beyond
+what each host's own install actually completed.
+
+A `cassandra_versions.yaml` entry MAY declare `lazy: true`. Such an entry MUST be skipped by the
+AMI bake-time install process (no download/clone/build time spent at bake), while still being
+written into the resulting AMI's `/etc/cassandra_versions.yaml` so `cassandra install` can resolve
+it later without the operator re-specifying its fields.
+
+The system MUST fetch a version that has a tarball `url:` (or a tarball given with `cassandra install --url`) from its origin on every install, at AMI bake time and at runtime.  It MUST NOT read that tarball from the S3 download cache, and it MUST NOT write it to the cache.  The contents of such a URL can change under the same name (for example, a nightly build), so a cached copy can be an old build.  When the URL is `s3://...`, the system MUST copy it directly from S3.  When the download fails, the system MUST fail with its existing download error and MUST NOT fall back to a cached copy.  An official release resolved from a version prefix does not change upstream, so the system MAY fetch it through the S3 download cache.
+
+#### Scenario: Install from a declared git branch entry
+
+- **GIVEN** a `cassandra_versions.yaml` entry for a version not yet present on the targeted node(s),
+  with a git `url:` and `branch:`
+- **WHEN** the user runs `cassandra install <version>`
+- **THEN** the branch is cloned and built with `ant` on each targeted node
+- **AND** the built artifact lands at `/usr/local/cassandra/<version>`
+- **AND** the command reports success per targeted host.
+
+#### Scenario: Install from a declared tarball entry
+
+- **GIVEN** a `cassandra_versions.yaml` entry for a version not yet present, with a tarball `url:`
+- **WHEN** the user runs `cassandra install <version>`
+- **THEN** the tarball is downloaded and extracted to `/usr/local/cassandra/<version>` on each
+  targeted node.
+
+#### Scenario: Install an official release with no `url:` declared
+
+- **GIVEN** a `cassandra_versions.yaml` entry for a version prefix (e.g. `5.0`) with no `url:` set
+- **WHEN** the user runs `cassandra install <version>`
+- **THEN** the latest matching official release tarball is resolved, downloaded, and extracted to
+  `/usr/local/cassandra/<version>` on each targeted node.
+
+#### Scenario: Install via CLI flags with no yaml declaration
+
+- **GIVEN** a version with no entry anywhere in `cassandra_versions.yaml` or the profile's extras
+  directory
+- **WHEN** the user runs `cassandra install <version> --url <tarball-or-git-url> [--branch <b>]
+  --java <j>`
+- **THEN** the version installs using the supplied parameters exactly as if they had come from a
+  declared entry
+- **AND** `--python` defaults to `3.11.9` when not supplied.
+
+#### Scenario: Targeting a host subset
+
+- **GIVEN** a cluster with multiple Cassandra nodes
+- **WHEN** the user runs `cassandra install <version> --hosts <subset>`
+- **THEN** only the targeted nodes have `/etc/cassandra_versions.yaml` updated and the version
+  installed
+- **AND** untargeted nodes are unaffected.
+
+#### Scenario: Installed version becomes usable
+
+- **GIVEN** a version successfully installed via `cassandra install`
+- **WHEN** the user runs `cassandra use <version>` on the same node afterward
+- **THEN** it succeeds unchanged, using the `java`/`python` fields written by install.
+
+#### Scenario: Re-running install for an already-installed version is a no-op
+
+- **GIVEN** a version already installed on a node, declared there with the same parameters being
+  requested
+- **WHEN** the user runs `cassandra install <version>` again against that node
+- **THEN** the command does not error, does not re-download or re-build, and reports the version as
+  already present.
+
+#### Scenario: Re-running install with parameters the installed build contradicts
+
+- **GIVEN** a version already installed on a node, declared there with `java: 11`
+- **WHEN** the user runs `cassandra install <version> --java 17` against that node
+- **THEN** nothing on that node is changed — neither the on-disk install nor its declaration
+- **AND** the host is reported with the fields that disagree (`java: declared 11, requested 17`)
+- **AND** the command exits non-zero.
+
+Rationale: the bits on disk were built against the declared JDK, so recording them as a Java 17
+build would make every later `cassandra use` select the wrong JDK. Changing the JDK an existing
+build runs under is `cassandra use --java`'s job.
+
+#### Scenario: Repairing an installed-but-undeclared version
+
+- **GIVEN** a version present on disk at `/usr/local/cassandra/<version>` but absent from that
+  node's `/etc/cassandra_versions.yaml`
+- **WHEN** the user runs `cassandra install <version>` against that node
+- **THEN** the resolved entry is added to the node's version list so `cassandra use` can find its
+  `java`/`python`
+- **AND** the on-disk install is not re-downloaded or re-built
+- **AND** the command reports the version as already present and does not error.
+
+#### Scenario: A credential in `--url` is not persisted or echoed
+
+- **GIVEN** a `--url` whose userinfo carries a token (e.g. `https://<token>@github.com/owner/repo.git`)
+- **WHEN** `cassandra install <version> --url <that-url> --branch <branch>` runs
+- **THEN** the entry written to the node's `/etc/cassandra_versions.yaml` contains no `url`/`branch`
+  field at all
+- **AND** the token does not appear in any log line, error message, or emitted event, whether the
+  install succeeds or fails.
+
+#### Scenario: Install failure is reported per host, loudly
+
+- **GIVEN** a version whose install fails on one targeted node (bad branch, unreachable/404 tarball
+  URL, or ant build failure) while succeeding on another
+- **WHEN** `cassandra install <version>` completes
+- **THEN** the command exits non-zero
+- **AND** the failure is reported against the specific host it occurred on, naming the version and
+  the failure reason
+- **AND** the successful host's install is left in place — no rollback of a host that already
+  succeeded.
+
+#### Scenario: Lazy entries are skipped at bake time but installable afterward
+
+- **GIVEN** a `cassandra_versions.yaml` entry with `lazy: true`
+- **WHEN** a new AMI is baked
+- **THEN** the bake-time install process does not download, clone, or build that version
+- **AND** the entry still appears in the resulting AMI's `/etc/cassandra_versions.yaml`
+- **AND** `cassandra install <that-version>` succeeds against a cluster running that AMI without
+  the operator re-specifying `url`/`branch`/`java`/`ant_flags`.
+
+#### Scenario: `cassandra list` distinguishes declared-but-uninstalled versions
+
+- **GIVEN** a `cassandra_versions.yaml` entry with `lazy: true` that has not been installed on the
+  queried node
+- **WHEN** the user runs `cassandra list`
+- **THEN** that version is shown, marked distinguishably from versions actually installed on the
+  node.
+
+#### Scenario: A stale cache object for a URL version is ignored
+
+- **GIVEN** a version with a tarball `url:` whose origin now serves a newer nightly build
+- **AND** the S3 download cache holds an older tarball for that version
+- **WHEN** the version is installed at AMI bake time or with `cassandra install`
+- **THEN** the tarball is downloaded from the URL and the newer nightly build is installed
+- **AND** the S3 download cache is not read and not written for that tarball
+- **AND** the install log shows one `direct download (not cached): <url>` line for that tarball.
+
+#### Scenario: A URL version is not written to a cold cache
+
+- **GIVEN** a version with a tarball `url:` and an S3 download cache that holds no object for it
+- **WHEN** the version is installed
+- **THEN** the tarball is downloaded from the URL
+- **AND** no object for that tarball is written to the S3 download cache.
+
+#### Scenario: A failed URL download does not fall back to the cache
+
+- **GIVEN** a version with a tarball `url:` whose download fails
+- **AND** the S3 download cache holds a tarball for that version
+- **WHEN** the version is installed
+- **THEN** the install fails with the existing "Failed to download version" error
+- **AND** the cached tarball is not read.
+
+#### Scenario: Released versions still use the cache
+
+- **GIVEN** a version prefix (e.g. `5.0`) with no `url:` set and an S3 download cache configured
+- **WHEN** the version is installed
+- **THEN** the latest matching official release tarball is fetched through the S3 download cache, under a key named for the full release number
+- **AND** the install log shows a `cache hit:` or `cache miss:` line for that release.
+
+#### Scenario: An s3 URL is copied directly from S3
+
+- **GIVEN** a version with a tarball `url:` of the form `s3://...`
+- **WHEN** the version is installed
+- **THEN** the tarball is copied directly from that S3 location
+- **AND** the S3 download cache is not read and not written for that tarball
+- **AND** the install log shows one `direct download (not cached): <url>` line for that tarball.

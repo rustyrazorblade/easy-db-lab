@@ -11,6 +11,7 @@ import picocli.CommandLine.Spec
     subcommands = [
         PlatformCreatePvs::class,
         PlatformInfo::class,
+        PlatformCni::class,
     ],
 )
 class Platform : Runnable {

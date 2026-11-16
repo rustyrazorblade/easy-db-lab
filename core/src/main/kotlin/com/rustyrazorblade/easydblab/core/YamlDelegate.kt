@@ -15,9 +15,9 @@ import kotlin.reflect.KProperty
 class YamlDelegate(val ignoreUnknown : Boolean = false) {
     operator fun getValue(thisRef: Any?, property: KProperty<*>) : ObjectMapper {
         if(ignoreUnknown) {
-            return com.rustyrazorblade.easydblab.core.YamlDelegate.Companion.yaml.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            return yaml.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
         }
-        return com.rustyrazorblade.easydblab.core.YamlDelegate.Companion.yaml
+        return yaml
     }
 
     companion object {

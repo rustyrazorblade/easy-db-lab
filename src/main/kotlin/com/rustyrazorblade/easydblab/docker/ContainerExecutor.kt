@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.docker
 
 import com.github.dockerjava.api.async.ResultCallback
 import com.github.dockerjava.api.command.InspectContainerResponse
+import com.github.dockerjava.api.exception.NotFoundException
 import com.github.dockerjava.api.model.Frame
 import com.rustyrazorblade.easydblab.DockerClientInterface
 import com.rustyrazorblade.easydblab.DockerException
@@ -11,6 +12,7 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.IOException
@@ -25,10 +27,13 @@ import kotlin.concurrent.thread
  * @param pollInterval How long to wait between container-state polls while waiting for completion.
  *   Defaults to [CONTAINER_POLLING_INTERVAL] so production timing is unchanged; tests inject a tiny
  *   value so they do not busy-wait a real container at 1s granularity.
+ * @param retryConfig the retry policy for starting and removing a container; tests pass the
+ *   production policy with a short backoff
  */
 class ContainerExecutor(
     private val dockerClient: DockerClientInterface,
     private val pollInterval: Duration = CONTAINER_POLLING_INTERVAL,
+    private val retryConfig: RetryConfig = RetryUtil.createDockerRetryConfig<Unit>(),
 ) : KoinComponent {
     private val eventBus: EventBus by inject()
 
@@ -41,7 +46,9 @@ class ContainerExecutor(
     /**
      * Start a container and wait for it to complete.
      *
-     * Uses retry logic for transient Docker API failures.
+     * Retries transient Docker API failures (socket errors and Docker API errors) with the checked
+     * decorator, since a socket error is a checked IOException once it is unwrapped. A container
+     * that does not exist (a 404) fails at once, as a [DockerException].
      *
      * @param containerId The ID of the container to start
      * @param maxWaitTime Maximum time to wait (default: 10 minutes)
@@ -51,13 +58,12 @@ class ContainerExecutor(
         containerId: String,
         maxWaitTime: Duration = DEFAULT_MAX_WAIT_TIME,
     ): InspectContainerResponse.ContainerState {
-        val retryConfig = RetryUtil.createDockerRetryConfig<Unit>()
         val retry = Retry.of("docker-start-$containerId", retryConfig)
 
         try {
             Retry
-                .decorateRunnable(retry) {
-                    dockerClient.startContainer(containerId)
+                .decorateCheckedRunnable(retry) {
+                    surfacingTransportIo { dockerClient.startContainer(containerId) }
                 }.run()
             eventBus.emit(Event.Docker.ContainerStarting(containerId))
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
@@ -73,6 +79,15 @@ class ContainerExecutor(
         }
 
         return waitForContainerToComplete(containerId, maxWaitTime)
+    }
+
+    /**
+     * Runs a Docker API [call], rethrowing a socket error as the IOException it is. docker-java's
+     * HTTP transport wraps one in a bare RuntimeException, which the Docker retry policy would
+     * otherwise fail fast on instead of retrying.
+     */
+    private fun surfacingTransportIo(call: () -> Unit) {
+        runCatching(call).onFailure { e -> throw (e as? RuntimeException)?.cause as? IOException ?: e }
     }
 
     /**
@@ -106,20 +121,26 @@ class ContainerExecutor(
     /**
      * Remove a container and its volumes.
      *
-     * Uses retry logic for transient Docker API failures.
+     * Retries transient Docker API failures. A container that is already gone (a 404) counts as
+     * removed: nothing is retried and no error is reported.
      *
      * @param containerId The ID of the container to remove
      */
     @Suppress("TooGenericExceptionCaught")
     fun removeContainer(containerId: String) {
-        val retryConfig = RetryUtil.createDockerRetryConfig<Unit>()
         val retry = Retry.of("docker-remove-$containerId", retryConfig)
 
         try {
             Retry
-                .decorateRunnable(retry) {
-                    dockerClient.removeContainer(containerId, true)
+                .decorateCheckedRunnable(retry) {
+                    surfacingTransportIo { dockerClient.removeContainer(containerId, true) }
                 }.run()
+        } catch (e: NotFoundException) {
+            // Already gone: the removal has nothing left to do.
+            log.debug(e) { "Container $containerId was already removed" }
+        } catch (e: IOException) {
+            log.error(e) { "IO error while removing container $containerId" }
+            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
         } catch (e: DockerException) {
             log.error(e) { "Docker error while removing container $containerId" }
             eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))

@@ -3,7 +3,7 @@
 This tutorial walks you through creating a database cluster from scratch, covering initialization, infrastructure provisioning, and database configuration. The examples below use Cassandra, but the same infrastructure supports [ClickHouse](clickhouse.md), [OpenSearch](opensearch.md), and [Spark](spark.md).
 
 ```admonish note title="Prerequisites"
-Before starting, ensure you've completed the [Setup](../getting-started/setup.md) process by running `easy-db-lab setup-profile`.
+Before starting, ensure you've completed the [Setup](../getting-started/setup.md) process by running `easy-db-lab profile setup`.
 ```
 
 ## Part 1: Initialize Your Cluster
@@ -18,23 +18,27 @@ This creates a 3-node Cassandra cluster by default.
 
 ### Init Options
 
+The database and application node groups use a namespaced `--db.*` / `--app.*`
+scheme. Every older flag still works as an **alias** with its established
+default; when both a namespaced option and its legacy alias are given for the
+same setting, **the namespaced option wins**, regardless of order.
+
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--db`, `--cassandra`, `-c` | Number of Cassandra instances | 3 |
-| `--app`, `--stress`, `-s` | Number of stress/application instances | 0 |
-| `--instance`, `-i` | Cassandra instance type | r3.2xlarge |
-| `--stress-instance`, `-si` | Stress instance type | c7i.2xlarge |
-| `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all available |
-| `--arch`, `-a` | CPU architecture (AMD64, ARM64) | AMD64 |
+| `--db.count` (alias `--db`, `--cassandra`, `-c`) | Number of database instances | 3 |
+| `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
+| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
+| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
+| `--azs`, `-z` | Availability zones (e.g., `a,b,c`), at most 8 | `a,b,c` |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
 | `--ebs.iops` | EBS IOPS (gp3 only) | 0 |
 | `--ebs.throughput` | EBS throughput (gp3 only) | 0 |
 | `--until` | When instances can be deleted | tomorrow |
 | `--tag` | Custom tags (key=value, repeatable) | - |
-| `--vpc` | Use existing VPC ID | - |
+| `--vpc` | Use an existing VPC ID. The VPC is yours: `down` removes only the instances, subnets, security group, internet gateway and default route this cluster created in it (found by the cluster's `ClusterId` tag), and never deletes the VPC or anything else in it | - |
 | `--up` | Auto-provision after init | false |
-| `--clean` | Remove existing config first | false |
+| `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
 
 ### Examples
 
@@ -54,8 +58,14 @@ easy-db-lab init prod-test --db 5 --ebs.type gp3 --ebs.size 500 --ebs.iops 3000
 ```
 
 **ARM64 cluster for Graviton instances:**
+The architecture is derived automatically from the instance type — no flag needed.
 ```bash
-easy-db-lab init my-cluster --arch ARM64 --instance r7g.2xlarge
+easy-db-lab init my-cluster --db.instance-type r7g.2xlarge
+```
+
+**Mixed-architecture cluster (arm64 database, x86_64 application):**
+```bash
+easy-db-lab init my-cluster --db.instance-type r7g.2xlarge --app.instance-type c6id.2xlarge
 ```
 
 **Initialize and provision in one step:**
@@ -66,15 +76,19 @@ easy-db-lab init my-cluster --up
 
 ### Storage Requirements
 
-Database instances need a data disk separate from the root volume. This can come from either:
+Every node needs a data disk separate from the 20 GB root volume. Each node mounts it at `/mnt/db1` and keeps its data there: databases and kit volumes on db nodes, the observability backends on the control node, and on every node the K3s data directory (pulled images) and pod logs.
+
+A db node's data disk can come from either:
 
 - **Instance store (local NVMe)** — Instance types with a `d` suffix (e.g., `i3.xlarge`, `m5d.xlarge`, `c5d.2xlarge`) include local NVMe storage and require no extra configuration.
 - **EBS volumes** — Attach an EBS volume using `--ebs.type` for any other instance type.
 
-If the selected instance type has no instance store and `--ebs.type` is not specified, `up` will fail. For example:
+`--ebs.type` adds a volume to db nodes only, so the control and app instance types must have instance store. The defaults (`m5d.xlarge` control, `c6id.2xlarge` app) do.
+
+`init` fails, naming the node type and the instance type, when a db instance type has no instance store and `--ebs.type` is not specified, or when the control or app instance type has no instance store. `up` also fails, naming the host, if a node's setup finds no data disk or cannot mount it at `/mnt/db1`. For example, a db instance type with no instance store needs an EBS volume:
 
 ```bash
-easy-db-lab init my-cluster --instance c5.2xlarge --ebs.type gp3 --ebs.size 200
+easy-db-lab init my-cluster --db.instance-type c5.2xlarge --ebs.type gp3 --ebs.size 200
 ```
 
 ## Part 2: Launch Infrastructure
@@ -151,7 +165,9 @@ This command:
 - Downloads configuration files to your local directory
 - Applies any existing patch configuration
 
-Available versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, trunk
+`cassandra use` accepts any installed version. Run `easy-db-lab cassandra list` to see them.
+This includes a build published by `cassandra build`. See [Custom Builds](installing-cassandra.md#custom-builds),
+or run `easy-db-lab help cassandra-builds`.
 
 ### Step 2: Customize Configuration (Optional)
 

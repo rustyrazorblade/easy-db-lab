@@ -1,5 +1,11 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -57,6 +63,38 @@ class AWSpolicyTest {
             assertThat(json).doesNotContain(""""Principal":""")
         }
 
+        /**
+         * The cluster must not be able to delete dashboards or test documents: the instance role is
+         * denied deletes under grafana/ and reports/. The compacted roots are left out because the
+         * lease-holding account compactor runs with this role and removes the sources it merged;
+         * pyroscope/ is left out because Pyroscope v2 compaction does the same.
+         */
+        @Test
+        fun `S3AccessWildcard denies deletes only under grafana and reports`() {
+            val statements =
+                Json
+                    .parseToJsonElement(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson())
+                    .jsonObject
+                    .getValue("Statement")
+                    .jsonArray
+                    .map { it.jsonObject }
+            val deny = statements.single { it.getValue("Effect").jsonPrimitive.content == "Deny" }
+
+            fun values(key: String) =
+                when (val element = deny.getValue(key)) {
+                    is JsonArray -> element.map { it.jsonPrimitive.content }
+                    else -> listOf(element.jsonPrimitive.content)
+                }
+
+            assertThat(values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
+            assertThat(values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::easy-db-lab-*/grafana/*",
+                "arn:aws:s3:::easy-db-lab-*/reports/*",
+            )
+            // Only deletes are denied: the cluster still reads the documents and the owner uploads them.
+            assertThat(statements.toString()).doesNotContain("s3:PutObject")
+        }
+
         @Test
         fun `S3BucketPolicy should generate valid policy with multiple principals`() {
             val policy = AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket")
@@ -73,7 +111,71 @@ class AWSpolicyTest {
             assertThat(json).contains(""""arn:aws:s3:::test-bucket"""")
             assertThat(json).contains(""""arn:aws:s3:::test-bucket/*"""")
         }
+
+        /** The EMR roles are denied deletes under the compacted roots; the instance role, which runs the compactor, is not. */
+        @Test
+        fun `S3BucketPolicy denies only the EMR roles deletes under the compacted roots`() {
+            val deny = statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket").toJson()).single { it.effect() == "Deny" }
+
+            assertThat(deny.values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
+            assertThat(deny.values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::test-bucket/mimir/*",
+                "arn:aws:s3:::test-bucket/loki/*",
+                "arn:aws:s3:::test-bucket/tempo/*",
+            )
+            assertThat(deny.getValue("Principal").jsonObject.values("AWS")).containsExactlyInAnyOrder(
+                "arn:aws:iam::123456789012:role/EasyDBLabEMRServiceRole",
+                "arn:aws:iam::123456789012:role/EasyDBLabEMREC2Role",
+            )
+        }
     }
+
+    /** The compactor runs in the cluster with the instance role, so there is no compactor user policy. */
+    @Test
+    fun `the user policies are the four easy-db-lab policies, with the account substituted`() {
+        val policies = AWSPolicy.UserIAM.loadAll("123456789012")
+
+        assertThat(policies.map { it.name }).containsExactly("EasyDBLabEC2", "EasyDBLabIAM", "EasyDBLabEMR", "EasyDBLabOpenSearch")
+        assertThat(policies).allSatisfy { assertThat(it.body).doesNotContain("ACCOUNT_ID") }
+    }
+
+    /**
+     * `up` reads these before it launches anything (`LaunchCapacityPreflight`); none of them acts
+     * on a tagged resource, so the tagged `ec2:*` grant does not cover them.
+     */
+    @Test
+    fun `the EC2 policy grants every read the pre-launch capacity checks make, on any resource`() {
+        val ec2 = AWSPolicy.UserIAM.loadAll("123456789012").single { it.name == "EasyDBLabEC2" }
+        val untagged =
+            statements(ec2.body)
+                .filter { it.effect() == "Allow" && "Condition" !in it && it.values("Resource") == listOf("*") }
+                .flatMap { it.values("Action") }
+
+        assertThat(untagged).contains(
+            "ec2:DescribeInstanceTypes",
+            "ec2:DescribeInstanceTypeOfferings",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DescribeInstances",
+            "ec2:DescribeSubnets",
+            "servicequotas:GetServiceQuota",
+        )
+    }
+
+    private fun statements(json: String): List<JsonObject> =
+        Json
+            .parseToJsonElement(json)
+            .jsonObject
+            .getValue("Statement")
+            .jsonArray
+            .map { it.jsonObject }
+
+    private fun JsonObject.effect(): String = getValue("Effect").jsonPrimitive.content
+
+    private fun JsonObject.values(key: String): List<String> =
+        when (val element = getValue(key)) {
+            is JsonArray -> element.map { it.jsonPrimitive.content }
+            else -> listOf(element.jsonPrimitive.content)
+        }
 
     @Nested
     inner class IamPolicyDocumentSerialization {

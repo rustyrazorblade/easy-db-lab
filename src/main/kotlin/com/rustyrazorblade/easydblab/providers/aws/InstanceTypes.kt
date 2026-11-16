@@ -7,7 +7,9 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
  * Configuration for creating EC2 instances.
  *
  * @property serverType The type of server (Cassandra, Stress, Control)
- * @property count Number of instances to create
+ * @property indexes the ordinal of each instance to create, ascending: ordinal `i` is named
+ *   `<serverType><i>` and goes to subnet `i % subnetIds.size`. They are the ordinals missing from
+ *   the instances that exist, so a re-run fills the gaps an interrupted `up` left.
  * @property instanceType EC2 instance type (e.g., "r3.2xlarge")
  * @property amiId AMI ID to launch instances from
  * @property keyName SSH key pair name
@@ -17,11 +19,10 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
  * @property ebsConfig Optional EBS volume configuration for additional storage
  * @property tags Tags to apply to instances
  * @property clusterName Name of the cluster for tagging and identification
- * @property startIndex Starting index for instance alias numbering (default 0)
  */
 data class InstanceCreationConfig(
     val serverType: ServerType,
-    val count: Int,
+    val indexes: List<Int>,
     val instanceType: String,
     val amiId: String,
     val keyName: String,
@@ -31,8 +32,10 @@ data class InstanceCreationConfig(
     val ebsConfig: EBSConfig?,
     val tags: Map<String, String>,
     val clusterName: String,
-    val startIndex: Int = 0,
-)
+) {
+    /** How many instances this launch creates. */
+    val count: Int get() = indexes.size
+}
 
 /**
  * Configuration for EBS volumes attached to instances.
@@ -79,6 +82,8 @@ data class CreatedInstance(
  * @property privateIp Private IP address (may be null if terminated)
  * @property availabilityZone AWS availability zone
  * @property instanceType EC2 instance type (e.g., "r3.2xlarge")
+ * @property name the instance's alias: its `Name` tag, or the alias its launch tags derive when
+ *   that tag never landed; null when it has neither
  */
 data class InstanceDetails(
     val instanceId: InstanceId,
@@ -87,6 +92,7 @@ data class InstanceDetails(
     val privateIp: String?,
     val availabilityZone: String,
     val instanceType: String? = null,
+    val name: String? = null,
 )
 
 /**

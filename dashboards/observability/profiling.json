@@ -1,0 +1,315 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Pyroscope UI",
+      "tooltip": "Open Pyroscope native UI",
+      "type": "link",
+      "url": "__PYROSCOPE_URL__"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 5,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "Cassandra runs one async-profiler session per JVM, so only one mode runs at a time. **These panels are mutually exclusive by design.**\n\n- The **default** session starts at cluster up: `-e cpu --alloc 512k --lock 10ms`. It fills CPU, Memory Allocation, Lock Contention and Mutex Contention. Wall Clock stays empty.\n- A **wall-clock** session fills Wall Clock. Memory Allocation, Lock Contention and Mutex Contention stay empty. CPU keeps data, because Pyroscope routes runnable-thread wall samples into `process_cpu` as well.\n\nEmpty panels for the mode that is not running are expected. They do not mean the dashboard or the pipeline is broken. Run `easy-db-lab cassandra profile status` to see what each node is actually running.\n\nTo switch modes:\n\n```\neasy-db-lab cassandra profile stop\neasy-db-lab cassandra profile start -- -e wall -i 100ms\n```\n\nNever combine a CPU event and wall-clock sampling in one recording. It corrupts the CPU sample weights silently. See the [profiling guide](https://rustyrazorblade.github.io/easy-db-lab/user-guide/profiling.html).",
+        "mode": "markdown"
+      },
+      "title": "One profiling mode at a time",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Populated by a CPU session (`-e cpu`). A wall-clock session also feeds this panel, because Pyroscope routes runnable-thread wall samples into `process_cpu`.",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "id": 1,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
+          "queryType": "both",
+          "refId": "A",
+          "groupBy": [
+            "hostname"
+          ]
+        }
+      ],
+      "title": "CPU Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Wall-clock time, for finding I/O and blocking. Populated only by a wall session (`-e wall`), which cannot run alongside a CPU event. Empty means no wall session is running.",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "profileTypeId": "wall:wall:nanoseconds:wall:nanoseconds",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
+          "queryType": "both",
+          "refId": "A",
+          "groupBy": [
+            "hostname"
+          ]
+        }
+      ],
+      "title": "Wall Clock Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Populated by `--alloc <n>`, which runs alongside a CPU event. Empty during a wall-clock session.",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "profileTypeId": "memory:alloc_in_new_tlab_bytes:bytes:space:bytes",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
+          "queryType": "both",
+          "refId": "A",
+          "groupBy": [
+            "hostname"
+          ]
+        }
+      ],
+      "title": "Memory Allocation Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Populated by `--lock <t>`, which runs alongside a CPU event. Empty during a wall-clock session.",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 67
+      },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "profileTypeId": "block:contentions:count:block:count",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
+          "queryType": "both",
+          "refId": "A",
+          "groupBy": [
+            "hostname"
+          ]
+        }
+      ],
+      "title": "Lock Contention Flame Graph",
+      "type": "flamegraph"
+    },
+    {
+      "datasource": {
+        "type": "grafana-pyroscope-datasource",
+        "uid": "pyroscope"
+      },
+      "description": "Populated by `--lock <t>`, which runs alongside a CPU event. Empty during a wall-clock session.",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 87
+      },
+      "id": 4,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-pyroscope-datasource",
+            "uid": "pyroscope"
+          },
+          "profileTypeId": "mutex:delay:nanoseconds:mutex:count",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
+          "queryType": "both",
+          "refId": "A",
+          "groupBy": [
+            "hostname"
+          ]
+        }
+      ],
+      "title": "Mutex Contention Flame Graph",
+      "type": "flamegraph"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "profiling",
+    "pyroscope",
+    "flamegraph"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every profile query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-pyroscope-datasource",
+          "uid": "pyroscope"
+        },
+        "definition": "label_values({cluster=~\"${cluster:regex}\"}, service_name)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Application",
+        "multi": false,
+        "name": "application",
+        "options": [],
+        "query": {
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"${cluster:regex}",
+          "refId": "PyroscopeVariableQueryEditor-VariableQuery",
+          "type": "labelValue",
+          "labelName": "service_name"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "grafana-pyroscope-datasource",
+          "uid": "pyroscope"
+        },
+        "definition": "label_values({cluster=~\"${cluster:regex}\",service_name=\"$application\"}, hostname)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Hostname",
+        "multi": true,
+        "name": "hostname",
+        "options": [],
+        "query": {
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"${cluster:regex}\",service_name=\"$application",
+          "refId": "PyroscopeVariableQueryEditor-VariableQuery",
+          "type": "labelValue",
+          "labelName": "hostname"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Profiling",
+  "uid": "profiling",
+  "version": 1,
+  "weekStart": ""
+}

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -17,7 +16,6 @@ import picocli.CommandLine.Mixin
 /**
  * Restart cassandra on all nodes.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

@@ -1,8 +1,11 @@
 package com.rustyrazorblade.easydblab.providers
 
+import com.github.dockerjava.api.exception.InternalServerErrorException
+import com.github.dockerjava.api.exception.NotFoundException
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import io.github.resilience4j.core.functions.Either
 import org.apache.sshd.common.SshException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
@@ -181,6 +184,15 @@ class RetryUtilTest {
             assertThat(config.exceptionPredicate.test(dockerException)).isTrue()
         }
 
+        /** A 404 means the container does not exist; no retry makes it appear. */
+        @Test
+        fun `createDockerRetryConfig does not retry a docker-java NotFoundException`() {
+            val config = RetryUtil.createDockerRetryConfig<Unit>()
+
+            assertThat(config.exceptionPredicate.test(NotFoundException("No such container: c1"))).isFalse()
+            assertThat(config.exceptionPredicate.test(InternalServerErrorException("daemon busy"))).isTrue()
+        }
+
         @Test
         fun `createDockerRetryConfig should not retry on other exceptions`() {
             val config = RetryUtil.createDockerRetryConfig<Unit>()
@@ -238,12 +250,12 @@ class RetryUtilTest {
         }
 
         @Test
-        fun `createSshConnectionRetryConfig should retry on IOException`() {
+        fun `createSshConnectionRetryConfig fails fast on an IOException that is not an ssh connection failure`() {
             val config = RetryUtil.createSshConnectionRetryConfig()
 
-            val ioException = IOException("Network unreachable")
+            val ioException = IOException("No such file")
 
-            assertThat(config.exceptionPredicate.test(ioException)).isTrue()
+            assertThat(config.exceptionPredicate.test(ioException)).isFalse()
         }
 
         @Test
@@ -260,10 +272,11 @@ class RetryUtilTest {
             val config = RetryUtil.createSshConnectionRetryConfig()
 
             // The interval function should return the same value for all attempts
-            val intervalFunction = config.intervalFunction
-            val delay1 = intervalFunction.apply(1)
-            val delay2 = intervalFunction.apply(2)
-            val delay3 = intervalFunction.apply(3)
+            val intervalFunction = config.getIntervalBiFunction<Unit>()
+            val ignored = Either.right<Throwable, Unit>(Unit)
+            val delay1 = intervalFunction.apply(1, ignored)
+            val delay2 = intervalFunction.apply(2, ignored)
+            val delay3 = intervalFunction.apply(3, ignored)
 
             assertThat(delay1).isEqualTo(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS)
             assertThat(delay2).isEqualTo(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS)
@@ -342,10 +355,11 @@ class RetryUtilTest {
         fun `createVpcTeardownRetryConfig should use exponential backoff with 5s base`() {
             val config = RetryUtil.createVpcTeardownRetryConfig<Unit>()
 
-            val intervalFunction = config.intervalFunction
-            val delay1 = intervalFunction.apply(1)
-            val delay2 = intervalFunction.apply(2)
-            val delay3 = intervalFunction.apply(3)
+            val intervalFunction = config.getIntervalBiFunction<Unit>()
+            val ignored = Either.right<Throwable, Unit>(Unit)
+            val delay1 = intervalFunction.apply(1, ignored)
+            val delay2 = intervalFunction.apply(2, ignored)
+            val delay3 = intervalFunction.apply(3, ignored)
 
             assertThat(delay1).isEqualTo(Constants.Retry.VPC_TEARDOWN_BACKOFF_BASE_MS) // 5s
             assertThat(delay2).isEqualTo(Constants.Retry.VPC_TEARDOWN_BACKOFF_BASE_MS * 2) // 10s

@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -179,5 +181,79 @@ class UserConfigProviderTest : BaseKoinTest() {
 
         // The fix ensures createInteractively is called even for existing complete configs
         // This test passes if no exception is thrown and the config is loaded correctly
+    }
+
+    @Test
+    fun `a profile written before the SSH transport existed reads as direct`() {
+        userConfigFile.writeText(
+            """
+            email: test@example.com
+            region: us-west-2
+            keyName: test-key
+            awsProfile: ""
+            awsAccessKey: TEST_ACCESS_KEY
+            awsSecret: TEST_SECRET
+            """.trimIndent(),
+        )
+
+        assertThat(userConfigProvider.getUserConfig().sshTransport).isEqualTo(SshTransport.Direct)
+    }
+
+    @Test
+    fun `the SSH transport is saved in lowercase and read back`() {
+        val user =
+            User(
+                email = "test@example.com",
+                region = "us-west-2",
+                keyName = "test-key",
+                awsProfile = "",
+                awsAccessKey = "TEST_ACCESS_KEY",
+                awsSecret = "TEST_SECRET",
+                sshTransport = SshTransport.Ssm,
+            )
+
+        userConfigProvider.saveUserConfig(user)
+        userConfigProvider.clearCache()
+
+        assertThat(userConfigFile.readText()).contains("sshTransport: \"ssm\"")
+        assertThat(userConfigProvider.getUserConfig().sshTransport).isEqualTo(SshTransport.Ssm)
+    }
+
+    @Test
+    fun `a hand-edited transport is read the way the setup prompt would accept it`() {
+        userConfigFile.writeText(
+            """
+            email: test@example.com
+            region: us-west-2
+            keyName: test-key
+            awsProfile: ""
+            awsAccessKey: TEST_ACCESS_KEY
+            awsSecret: TEST_SECRET
+            sshTransport: SSM
+            """.trimIndent(),
+        )
+
+        assertThat(userConfigProvider.getUserConfig().sshTransport).isEqualTo(SshTransport.Ssm)
+    }
+
+    @Test
+    fun `an unknown transport fails the load and names the bad value and the choices`() {
+        userConfigFile.writeText(
+            """
+            email: test@example.com
+            region: us-west-2
+            keyName: test-key
+            awsProfile: ""
+            awsAccessKey: TEST_ACCESS_KEY
+            awsSecret: TEST_SECRET
+            sshTransport: tunnel
+            """.trimIndent(),
+        )
+
+        assertThatThrownBy { userConfigProvider.getUserConfig() }
+            .rootCause()
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("'tunnel'")
+            .hasMessageContaining("direct, ssm")
     }
 }

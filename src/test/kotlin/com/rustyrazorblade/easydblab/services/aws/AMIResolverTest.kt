@@ -55,6 +55,27 @@ class AMIResolverTest {
         }
 
         @Test
+        fun `a pending AMI newer than an available one is not chosen`() {
+            val available = createAmi("ami-available", "2024-01-01T10:00:00Z")
+            val pending = createAmi("ami-pending", "2024-01-15T10:00:00Z", state = "pending")
+            whenever(amiService.listPrivateAMIs(any(), any())).thenReturn(listOf(pending, available))
+
+            val result = resolver.resolveAmiId("", "amd64")
+
+            assertThat(result.getOrNull()).isEqualTo("ami-available")
+        }
+
+        @Test
+        fun `only pending AMIs fails with no AMI found`() {
+            whenever(amiService.listPrivateAMIs(any(), any()))
+                .thenReturn(listOf(createAmi("ami-pending", "2024-01-15T10:00:00Z", state = "pending")))
+
+            val result = resolver.resolveAmiId("", "amd64")
+
+            assertThat(result.exceptionOrNull()).isInstanceOf(NoAmiFoundException::class.java)
+        }
+
+        @Test
         fun `should select most recent AMI when multiple exist`() {
             val olderAmi = createAmi("ami-older", "2024-01-01T10:00:00Z")
             val newerAmi = createAmi("ami-newer", "2024-01-15T10:00:00Z")
@@ -179,6 +200,7 @@ class AMIResolverTest {
         id: String,
         creationDate: String,
         architecture: String = "amd64",
+        state: String = AMI.AVAILABLE_STATE,
     ): AMI =
         AMI(
             id = id,
@@ -188,5 +210,6 @@ class AMIResolverTest {
             ownerId = "123456789012",
             isPublic = false,
             snapshotIds = emptyList(),
+            state = state,
         )
 }

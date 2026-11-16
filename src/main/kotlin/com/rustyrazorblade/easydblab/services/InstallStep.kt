@@ -25,11 +25,19 @@ sealed interface InstallStep {
         val valuesFile: String = "",
     ) : InstallStep
 
+    /**
+     * Removes the Helm [release] from [namespace]. When [keepWhileAny] names a resource type
+     * (e.g. `clusters.postgresql.cnpg.io`), the release is kept while any object of that type is
+     * left in any namespace: one operator can serve several kit instances, and uninstalling one
+     * must not remove the operator the others still run on.
+     */
     @Serializable
     @SerialName("helm-uninstall")
     data class HelmUninstall(
         val release: String,
         val namespace: String = "default",
+        @SerialName("keep-while-any")
+        val keepWhileAny: String = "",
     ) : InstallStep
 
     @Serializable
@@ -67,16 +75,49 @@ sealed interface InstallStep {
         val timeout: String = "300s",
     ) : InstallStep
 
+    /**
+     * Deletes Kubernetes objects in [namespace] (default `default`), in one of two forms.
+     *
+     * - By name: [kind] and [name] name one object. [ignoreNotFound] decides whether a missing
+     *   object fails the step.
+     * - By label: [selector] is a label selector and [kinds] the kinds it applies to. Every object
+     *   of those kinds the selector matches is deleted; nothing matching is not an error and prints
+     *   nothing, while a failed cluster query fails the step.
+     *
+     * A step that mixes the two forms, or has neither, is rejected when `kit.yaml` loads.
+     */
     @Serializable
     @SerialName("delete")
     data class Delete(
-        val kind: String,
-        val name: String,
+        val kind: String = "",
+        val name: String = "",
+        val kinds: List<String> = emptyList(),
+        val selector: String = "",
         val namespace: String? = null,
         @SerialName("ignore-not-found")
         val ignoreNotFound: Boolean = true,
-    ) : InstallStep
+    ) : InstallStep {
+        /** True for the by-label form. */
+        val bySelector: Boolean get() = selector.isNotBlank()
 
+        init {
+            val byName = kind.isNotBlank() && name.isNotBlank() && kinds.isEmpty() && selector.isBlank()
+            val byLabel = bySelector && kinds.isNotEmpty() && kind.isBlank() && name.isBlank()
+            require(byName || byLabel) {
+                "delete step needs either kind and name, or selector and kinds (got kind='$kind', name='$name', " +
+                    "kinds=$kinds, selector='$selector')"
+            }
+        }
+    }
+
+    /**
+     * Creates the kit's local PersistentVolumes on the [nodeType] nodes' NVMe.
+     *
+     * [storageSize] is the PV capacity; blank means the `STORAGE_SIZE` kit variable. [ifSet]
+     * names a kit variable: when it is non-blank and that variable is blank or absent, the step
+     * does nothing, so a kit whose volume is optional (memcached extstore) creates no PV when the
+     * feature is off.
+     */
     @Serializable
     @SerialName("platform-pvs")
     data class PlatformPvs(
@@ -87,6 +128,10 @@ sealed interface InstallStep {
         val volumeClaimTemplateName: String = "data",
         @SerialName("storage-class")
         val storageClass: String = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
+        @SerialName("storage-size")
+        val storageSize: String = "",
+        @SerialName("if-set")
+        val ifSet: String = "",
     ) : InstallStep
 
     @Serializable

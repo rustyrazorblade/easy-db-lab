@@ -50,6 +50,8 @@ interface ObjectStore {
     /**
      * Downloads a file from cloud storage to local filesystem with retry logic.
      *
+     * A file already at [localPath] is replaced with the object's current content.
+     *
      * @param remotePath The cloud storage path to download from
      * @param localPath The local path to save to
      * @param showProgress If true, displays download progress to user via OutputHandler
@@ -67,11 +69,14 @@ interface ObjectStore {
      *
      * @param remotePath The cloud storage path to list (acts as prefix)
      * @param recursive If true, lists all objects under prefix; if false, only immediate children
+     * @param startAfter When not empty, only keys that sort after this full key are listed. Keys
+     *   are listed in order, so the listing skips everything before it.
      * @return List of FileInfo for files under the prefix
      */
     fun listFiles(
         remotePath: ClusterS3Path,
         recursive: Boolean = true,
+        startAfter: String = "",
     ): List<FileInfo>
 
     /**

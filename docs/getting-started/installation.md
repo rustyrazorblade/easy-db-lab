@@ -17,7 +17,7 @@
 - **IAM Permissions**: Permissions to create EC2, IAM, S3, and optionally EMR resources
 
 ```admonish tip
-Run `easy-db-lab show-iam-policies` to see the exact IAM policies required with your account ID populated. See [Setup](setup.md#getting-iam-policies) for details.
+Run `easy-db-lab show-iam-policies` to see the exact IAM policies required with your account ID populated. See [Setup](setup.md#step-2-getting-iam-policies) for details.
 ```
 
 ### Optional
@@ -47,7 +47,7 @@ The built distribution will be in `build/distributions/`.
 Run the interactive setup to configure your profile:
 
 ```bash
-easy-db-lab setup-profile
+easy-db-lab profile setup
 ```
 
 See the [Setup Guide](setup.md) for detailed instructions.

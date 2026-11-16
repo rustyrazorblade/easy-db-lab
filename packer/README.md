@@ -20,6 +20,46 @@ This directory contains packer configurations and testing tools for building eas
 ./gradlew testPackerScript -Pscript=cassandra/install/install_cassandra_easy_stress.sh
 ```
 
+## Shell Unit Tests (no Docker)
+
+Scripts whose value is in their *decisions* rather than their side effects have unit tests that
+stub `sudo`/`curl`/`git`/`dpkg` and assert on what would have run. They need no Docker and no
+network:
+
+```shell
+# Run them all
+./gradlew testCassandraScripts
+
+# Or individually
+./gradlew testCassandraInstallScript   # bin/install-cassandra-version
+./gradlew testCassandraInstallLoop     # the bake-time version loop in install_cassandra.sh
+./gradlew testCassandraUseScript       # bin/use-cassandra
+
+# The base AMI JDK install (base/install/install_jdks.sh); not part of testCassandraScripts
+./gradlew testBaseJdkInstall
+
+# The base AMI chrony poll (base/install/configure_chrony_poll.sh)
+./gradlew testBaseChronyPoll
+```
+
+Each test lives next to its script as `<script>.test.sh` and also runs in CI
+(`.github/workflows/packer-test.yml`). This is the tier to extend when changing argument handling,
+already-installed short-circuits, or JDK selection — the Docker tiers above are for scripts that
+must actually install something.
+
+## Scripts Invoked At Runtime, Not Just At Bake Time
+
+`cassandra/bin/` holds scripts the AMI build puts on the node's `PATH` and which the CLI then
+invokes over SSH against a *running* cluster:
+
+- `install-cassandra-version` — one install code path shared by the bake-time loop and
+  `easy-db-lab cassandra install <version>`
+- `use-cassandra` — selects the active version, called by `easy-db-lab cassandra use`
+
+Their flags and output are a contract with Kotlin callers in
+`src/main/kotlin/com/rustyrazorblade/easydblab/commands/cassandra/`. Changing them without updating
+the caller breaks a CLI command, not just a build.
+
 ### Using test-script.sh Directly
 
 ```shell
@@ -67,6 +107,26 @@ To manually rebuild:
 docker build -t easy-db-lab-packer-test .
 ```
 
+## Base AMI networking (Cilium ENI mode)
+
+Cilium ENI native-routing requires the OS to leave Cilium's runtime-attached secondary ENIs alone, while it keeps the primary ENI managed.  `base/install/configure_cilium_eni_networkd.sh` sets this up.  No file names a NIC or a PCI slot: the primary's name differs per instance family (`ens5` on c7gd and c6id, `ens52` on c8gd and m8gd, `enp39s0` on i7i).
+
+- **The primary ENI, by its IMDS MAC.**  The script installs `/usr/local/sbin/edl-primary-eni-network` (from `base/install/edl-primary-eni-network`) and enables `edl-primary-eni-network.service`.  On every boot, after `cloud-init-local` and before `systemd-networkd`, the unit reads the primary MAC from `.ds."meta-data".mac` in `/run/cloud-init/instance-data.json` and writes `/run/systemd/network/05-cilium-eni-primary.network` with `PermanentMACAddress=<mac>` and `DHCP=ipv4`.  If it cannot read a valid MAC, it prints one line to the console and exits 1; it never guesses.
+- **The 05 file lives only under `/run`.**  `/run` is a tmpfs, so the file is never captured into an AMI.  The cassandra AMI is baked on an instance launched from the base AMI, so an `/etc` file would carry the bake instance's MAC into it.  A file of the same name in `/etc` would also override the `/run` one, so the bake removes it and the boot script refuses to run while it exists.
+- **Every other ENA link is unmanaged.**  `/etc/systemd/network/06-cilium-eni-unmanaged.network` matches `Driver=ena` and sets `Unmanaged=yes`, so Cilium owns every ENA link that the 05 file does not claim, under any name.
+- **No cloud-init hotplug.**  `/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg` removes `hotplug` from cloud-init's `updates.network.when`, so an ENI attach no longer re-renders `/etc/netplan/50-cloud-init.yaml`.  That rendering would list every pod IP as a static address on the primary and DHCP the new ENI.
+- **cloud-init configures only the primary NIC.**  `/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg` sets `datasource: Ec2: apply_full_imds_network_config: false`.  cloud-init treats every EC2 boot as a new instance.  In its default full mode it runs `dhcpcd --persistent` on each non-primary NIC to learn that NIC's gateway for policy routing, then kills `dhcpcd`.  The lease address and a `proto dhcp` default route stay on each Cilium secondary and sort ahead of the primary's route, so a reboot breaks host egress and SSM.  With the option off, cloud-init renders plain DHCP for one fallback NIC and never runs that DHCP.  The primary is still matched by its MAC through the `/run` 05 file, which sorts ahead of `10-netplan-*`.  Cilium keeps its own per-ENI routing tables.
+
+Without these files, the OS DHCPs a new ENI and adds a competing default route.  That multi-homes the host and breaks IMDS, egress and the kubelet.  On Flannel, the 05 file gives the only ENA link normal DHCP and the rest is inert.
+
+On a real bake instance the script runs the boot script once, runs `networkctl reload`, and fails the bake unless `networkctl status` names the `/run` 05 file for the primary link.  It also loads cloud-init's config through cloud-init's own loader (`stages.Init().read_cfg()`) and fails the bake unless `datasource.Ec2.apply_full_imds_network_config` is `False`.  `cloud-init query merged_system_cfg` cannot do this check: it reads the boot snapshot in `instance-data.json`, which predates the 91 file.  `./gradlew testPackerBase` runs the static checks in Docker, and `./gradlew testBasePrimaryEniNetwork` tests the boot script without Docker.
+
+## Base AMI clock sync
+
+Ubuntu's EC2 image polls the Amazon Time Sync Service every 16 s (`minpoll 4 maxpoll 4` in `/etc/chrony/conf.d/00-cpc.conf`). Between polls the kernel's clock error bound (`maxerror`) grows at 500 ppm, so it reaches about 8 ms before each update.  That is too much for databases that use the bound for correctness.
+
+`base/install/configure_chrony_poll.sh` sets `minpoll 3 maxpoll 3` (8 s) on every Time Sync source line (`169.254.169.123` and `fd00:ec2::123`) and keeps the other options on the line.  The bake fails if the image has no Time Sync source.  The script is covered by `./gradlew testBaseChronyPoll`.
+
 ## Documentation
 
 See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
@@ -84,6 +144,7 @@ packer/
 │   └── install/            # Base installation scripts
 ├── cassandra/              # Cassandra AMI configuration
 │   ├── cassandra.pkr.hcl  # Packer config for Cassandra image
+│   ├── bin/                # Scripts placed on the node's PATH, also called at runtime
 │   └── install/            # Cassandra installation scripts
 ├── Dockerfile              # Test environment (mimics Ubuntu 24.04 AMI)
 ├── docker-compose.yml      # Test orchestration

@@ -119,13 +119,22 @@ Options:
 ## Test Environment Details
 
 ### Base Image
-- **OS**: Ubuntu 24.04 (noble)
-- **Matches**: Packer source AMI `ubuntu/images/*ubuntu-noble-24.04-amd64-server-*`
+- **OS**: Ubuntu 26.04 (resolute)
+- **Matches**: Packer source AMI `ubuntu/images/*ubuntu-resolute-26.04-${arch}-server-*`
 
 ### Pre-installed Software
 - Java 8, 11, 17 (JDK versions)
-- sudo, curl, wget, git
+- sudo (sudo-rs, the 26.04 default, same as the AMI), curl, wget, git
 - build-essential and common tools
+
+### Sudoers Validation
+
+`install_axon.sh` is the only thing that writes `/etc/sudoers.d/axonops`. It validates the file
+with `visudo -cf` and fails the build if the file is rejected. sudo-rs rejects wildcard command
+arguments that classic sudo (macOS, older Ubuntu) accepts, so the check only means something
+against the AMI's own sudo. `./gradlew testAxonSudoers` rebuilds this image and runs
+`cassandra/install/install_axon.test.sh` in it. No network is needed. `./gradlew testPacker`
+includes it.
 
 ### Users
 - **ubuntu**: Primary user (matches packer SSH user)

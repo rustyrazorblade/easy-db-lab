@@ -2,12 +2,16 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.AxonOpsWorkbenchConfig
 import com.rustyrazorblade.easydblab.configuration.ClusterConfigWriter
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Path
@@ -18,6 +22,8 @@ import java.nio.file.Path
  * This service handles the creation of:
  * - SSH config file for connecting to cluster nodes
  * - Environment shell script with cluster aliases and metadata
+ * - The tool wrappers in `bin/` and the Tailscale flag in the proxy env file, which `env.sh` and kit
+ *   shell steps use to reach the cluster
  * - Stress environment variables for cassandra-easy-stress
  * - AxonOps Workbench configuration for GUI access
  */
@@ -37,7 +43,8 @@ interface ClusterConfigurationService {
     ): Result<Unit>
 
     /**
-     * Writes SSH config and environment files.
+     * Writes SSH config and environment files, the tool wrappers, and the cluster's Tailscale flag
+     * in the proxy env file.
      *
      * @param workingDirectory Directory to write configuration files to
      * @param clusterState Current cluster state with host information
@@ -87,10 +94,14 @@ interface ClusterConfigurationService {
  * Default implementation of ClusterConfigurationService.
  *
  * @property userConfigProvider Provider for user configuration including SSH key path
+ * @property sshRoute supplies each host's `ProxyCommand` when the profile's SSH transport needs one
+ * @property workspaceShellTools writes the tool wrappers and the Tailscale flag
  */
 class DefaultClusterConfigurationService(
     private val userConfigProvider: UserConfigProvider,
     private val eventBus: EventBus,
+    private val sshRoute: SshRoute,
+    private val workspaceShellTools: WorkspaceShellTools = WorkspaceShellTools(ToolWrapperInstaller()),
 ) : ClusterConfigurationService {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -118,9 +129,17 @@ class DefaultClusterConfigurationService(
         userConfig: User,
     ) {
         val sshKeyPath = userConfigProvider.sshKeyPath
+        // Built before the file is opened, so a host that cannot be routed fails the write instead of
+        // leaving a half-written sshConfig behind.
+        val proxyCommands = proxyCommandsFor(clusterState.hosts)
         val sshConfigFile = File(workingDirectory.toFile(), SSH_CONFIG_FILE)
         sshConfigFile.bufferedWriter().use { writer ->
-            ClusterConfigWriter.writeSshConfig(writer, sshKeyPath, clusterState.hosts)
+            ClusterConfigWriter.writeSshConfig(
+                writer,
+                sshKeyPath,
+                clusterState.hosts,
+                proxyCommands,
+            )
         }
 
         val envFile = File(workingDirectory.toFile(), ENV_FILE)
@@ -129,9 +148,21 @@ class DefaultClusterConfigurationService(
                 writer,
                 clusterState.hosts,
                 clusterState.clusterLabelName(),
+                proxyCommands,
             )
         }
+
+        // env.sh puts bin/ on PATH, and a Tailscale cluster never starts a tunnel that would
+        // record anything, so both are written here, where every cluster passes.
+        workspaceShellTools.prepare(workingDirectory.toFile(), clusterState.isTailscaleEnabled())
     }
+
+    /** The `ProxyCommand` for each host alias whose route needs one; empty under the direct transport. */
+    private fun proxyCommandsFor(hosts: Map<ServerType, List<ClusterHost>>): Map<String, String> =
+        hosts.values
+            .flatten()
+            .mapNotNull { host -> sshRoute.proxyCommand(host.toHost())?.let { host.alias to it } }
+            .toMap()
 
     override fun writeStressEnvironmentVariables(
         workingDirectory: Path,

@@ -64,16 +64,16 @@ curl \
 
 ```promql
 # All metrics from Spark nodes
-{node_role="spark"}
+{node_role=~"spark-.*"}
 
 # JVM metrics only
-{node_role="spark", __name__=~"jvm_.*"}
+{node_role=~"spark-.*", __name__=~"jvm_.*"}
 
 # List distinct JVM metric names
-group({node_role="spark", __name__=~"jvm_.*"}) by (__name__)
+group({node_role=~"spark-.*", __name__=~"jvm_.*"}) by (__name__)
 
 # Filesystem usage (raw)
-system_filesystem_usage_bytes{state="used", node_role="spark", mountpoint="/"}
+system_filesystem_usage_bytes{state="used", node_role=~"spark-.*", mountpoint="/"}
 ```
 
 ## JFR Format Reference

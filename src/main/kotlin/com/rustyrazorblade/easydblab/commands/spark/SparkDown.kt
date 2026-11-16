@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -17,7 +16,6 @@ import picocli.CommandLine.Command
  * Prerequisites:
  * - An EMR cluster must exist in the cluster state
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "down",

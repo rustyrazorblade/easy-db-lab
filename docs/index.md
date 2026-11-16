@@ -11,14 +11,14 @@ If you're looking for tools to help manage Cassandra in *production* environment
 ## Quick Start
 
 1. [Install easy-db-lab](getting-started/installation.md)
-2. [Set up your profile](getting-started/setup.md) - Run `easy-db-lab setup-profile`
+2. [Set up your profile](getting-started/setup.md) - Run `easy-db-lab profile setup`
 3. [Follow the tutorial](user-guide/tutorial.md)
 
 ## Features
 
 ### Database Support
 
-- **[Apache Cassandra](user-guide/installing-cassandra.md)**: Versions 3.0, 3.11, 4.0, 4.1, 5.0, and trunk builds. Includes custom build support, Cassandra Sidecar, and integration with cassandra-easy-stress for benchmarking.
+- **[Apache Cassandra](user-guide/installing-cassandra.md)**: Released versions and branch builds that ship in the AMI, plus custom builds from a local source tree. Includes Cassandra Sidecar and integration with cassandra-easy-stress for benchmarking.
 - **[ClickHouse](user-guide/clickhouse.md)**: Sharded clusters with configurable replication, distributed tables, and S3-tiered storage.
 - **[TiDB](user-guide/tidb.md)**: MySQL-compatible HTAP clusters deployed via the TiDB Operator, with TiKV row storage for OLTP and TiFlash columnar storage for analytics.
 - **[Trino](user-guide/install-trino.md)**: Distributed SQL query engine with federation support for querying across data sources.
@@ -42,8 +42,8 @@ If you're looking for tools to help manage Cassandra in *production* environment
 
 ### Monitoring and Observability
 
-- **[VictoriaMetrics](user-guide/victoria-metrics.md)**: Time-series database for metrics storage
-- **[VictoriaLogs](user-guide/victoria-logs.md)**: Centralized log aggregation
+- **[Mimir](user-guide/mimir.md)**: Metrics storage, written to S3 so metrics outlive the cluster
+- **[Loki](user-guide/loki.md)**: Log storage, written to S3 so logs outlive the cluster
 - **Tempo**: Distributed trace storage with trace-to-metrics correlation
 - **[Pyroscope](user-guide/profiling.md)**: Continuous profiling of database and system processes
 - **[Grafana](user-guide/monitoring.md)**: Pre-configured dashboards for Cassandra, ClickHouse, and system metrics

@@ -1,10 +1,15 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
+import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.HostOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
@@ -19,6 +24,8 @@ import picocli.CommandLine.Option
     description = ["Download JVM and YAML config files"],
 )
 class DownloadConfig : PicoBaseCommand() {
+    private val hostOperationsService: HostOperationsService by inject()
+
     @Mixin
     var hosts = HostsMixin()
 
@@ -30,34 +37,62 @@ class DownloadConfig : PicoBaseCommand() {
     }
 
     override fun execute() {
-        val cassandraHosts = clusterState.getHosts(ServerType.Cassandra)
+        val targeted = hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
+        require(targeted.isNotEmpty()) {
+            "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'"
+        }
 
-        // Currently using first host - consider adding --host option for specific node selection
-        val host = cassandraHosts.first()
-        val resolvedVersion = remoteOps.getRemoteVersion(host, version)
+        // One download per distinct version among the targeted hosts, from the first host that runs
+        // it: update-config looks for the directory of each host's own version, so a cluster that
+        // runs a custom build on one node needs a directory for that build as well as the stock one.
+        targeted
+            .map { it.toHost() }
+            .map { host -> host to remoteOps.getRemoteVersion(host, version) }
+            .distinctBy { (_, resolved) -> resolved.localDir }
+            .forEach { (host, resolved) -> download(host, resolved) }
+    }
 
+    private fun download(
+        host: Host,
+        resolvedVersion: Version,
+    ) {
+        require(resolvedVersion.versionString.isNotBlank()) {
+            "${host.alias} reports no active version (is /usr/local/cassandra/current set?)"
+        }
         logger.info {
             "Original version: $version.  Resolved version: ${resolvedVersion.versionString}. "
         }
-        val localDir = resolvedVersion.localDir.toFile()
+        // Resolved against the workspace, where every other command looks for it, not the JVM's cwd.
+        val localDir =
+            context.workingDirectory
+                .toPath()
+                .resolve(resolvedVersion.localDir)
+                .toFile()
 
-        // Don't overwrite.
-        // Future enhancement: Add --force flag to overwrite and support
-        // node-specific configurations
-        if (!localDir.exists()) {
+        // Never overwrite: the directory may hold the operator's own edits. Say so, because
+        // otherwise the command finishes silently having changed nothing.
+        if (localDir.exists()) {
+            eventBus.emit(Event.Cassandra.ConfigDownloadSkipped(resolvedVersion.localDir.toString()))
+        } else {
             localDir.mkdirs()
 
-            remoteOps.downloadDirectory(
-                host,
-                remoteDir = "${resolvedVersion.path}/conf",
-                localDir = localDir,
-                excludeFilters =
-                    listOf(
-                        "cassandra*.yaml",
-                        "axonenv*",
-                        "cassandra-rackdc.properties",
-                    ),
-            )
+            runCatching {
+                remoteOps.downloadDirectory(
+                    host,
+                    remoteDir = "${resolvedVersion.path}/conf",
+                    localDir = localDir,
+                    excludeFilters =
+                        listOf(
+                            "cassandra*.yaml",
+                            "axonenv*",
+                            "cassandra-rackdc.properties",
+                        ),
+                )
+            }.onFailure {
+                // An empty directory left behind would pass for a finished download on the next run,
+                // and update-config would then upload nothing.
+                localDir.deleteRecursively()
+            }.getOrThrow()
         }
     }
 }

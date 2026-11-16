@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.SidecarService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -21,6 +22,8 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -44,7 +47,7 @@ class StartTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
+            versions = mutableMapOf("db0" to "5.0"),
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(
@@ -137,5 +140,83 @@ class StartTest : BaseKoinTest() {
 
         val output = outputHandler.messages.joinToString("\n")
         assertThat(output).contains("axon-agent")
+    }
+
+    @Test
+    fun `execute fails fast naming nodes without a version`() {
+        // db0 has a version, db1 does not — start must abort before touching any node.
+        val db1 =
+            ClusterHost(
+                publicIp = "54.1.2.4",
+                privateIp = "10.0.1.2",
+                alias = "db1",
+                availabilityZone = "us-west-2a",
+                instanceId = "i-db1",
+            )
+        val stateMissingVersion =
+            testClusterState.copy(
+                versions = mutableMapOf("db0" to "5.0"),
+                hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(stateMissingVersion)
+
+        val command = Start()
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("db1")
+            .hasMessageContaining("cassandra use")
+
+        // Fail-fast: no node was started.
+        verify(mockCassandraService, never()).start(any(), any())
+    }
+
+    @Test
+    fun `execute proceeds when every node has a version`() {
+        val db1 =
+            ClusterHost(
+                publicIp = "54.1.2.4",
+                privateIp = "10.0.1.2",
+                alias = "db1",
+                availabilityZone = "us-west-2a",
+                instanceId = "i-db1",
+            )
+        val stateAllVersions =
+            testClusterState.copy(
+                versions = mutableMapOf("db0" to "5.0", "db1" to "5.0"),
+                hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(stateAllVersions)
+
+        val command = Start()
+        command.execute()
+
+        // Both nodes started.
+        verify(mockCassandraService, times(2)).start(any(), eq(true))
+    }
+
+    @Test
+    fun `execute only requires versions for hosts targeted by the filter`() {
+        // db1 has no version, but --hosts targets db0 only, so start must proceed.
+        val db1 =
+            ClusterHost(
+                publicIp = "54.1.2.4",
+                privateIp = "10.0.1.2",
+                alias = "db1",
+                availabilityZone = "us-west-2a",
+                instanceId = "i-db1",
+            )
+        val state =
+            testClusterState.copy(
+                versions = mutableMapOf("db0" to "5.0"),
+                hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        val command = Start()
+        command.hosts.hostList = "db0"
+        command.execute()
+
+        verify(mockCassandraService).start(any(), eq(true))
     }
 }

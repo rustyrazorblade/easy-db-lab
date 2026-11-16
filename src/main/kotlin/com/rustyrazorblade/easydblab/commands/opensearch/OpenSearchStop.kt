@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.opensearch
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
@@ -16,7 +15,6 @@ import picocli.CommandLine.Option
  * This command deletes the AWS-managed OpenSearch domain associated with
  * the current cluster. The deletion is permanent and all data will be lost.
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "stop",

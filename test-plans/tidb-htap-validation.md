@@ -2,7 +2,7 @@
 
 ## Objective
 
-Validate end-to-end observability for the TiDB HTAP kit on a live AWS cluster: confirm all four component metrics scrape jobs (tidb-sql, tikv, pd, tiflash) are flowing into VictoriaMetrics, OTLP traces are landing in Tempo, and container logs are visible in VictoriaLogs. Run SQL queries via the MySQL endpoint — including a TiFlash columnar query — to confirm the cluster is functional. Export the metrics catalog and use it to create Grafana dashboards for TiDB.
+Validate end-to-end observability for the TiDB HTAP kit on a live AWS cluster: confirm all four component metrics scrape jobs (tidb-sql, tikv, pd, tiflash) are flowing into Mimir, OTLP traces are landing in Tempo, and container logs are visible in Loki. Run SQL queries via the MySQL endpoint — including a TiFlash columnar query — to confirm the cluster is functional. Export the metrics catalog and use it to create Grafana dashboards for TiDB.
 
 ## Cluster Name
 
@@ -51,11 +51,13 @@ $EDB tidb status
 
 ### 5. Verify metrics are flowing — all 4 jobs
 
-SSH to the control node and query VictoriaMetrics directly to confirm each scrape job is active and returning data. Replace `<CONTROL_PRIVATE_IP>` with the value from `$EDB ip --private control0`.
+Query Mimir directly to confirm each scrape job is active and returning data. Replace `<CONTROL_PRIVATE_IP>` with the value from `$EDB ip --private control0`. Mimir, Loki and Tempo return nothing to a query without the cluster's tenant in `X-Scope-OrgID`; `TENANT` is `init --tenant`, `default` if none was given.
 
 ```bash
 # Check all 4 scrape targets are up
-curl -s "http://<CONTROL_PRIVATE_IP>:8428/api/v1/query?query=up{job=~'tidb-sql|tikv|pd|tiflash'}" | jq '.data.result[] | {job: .metric.job, value: .value[1]}'
+TENANT=${TENANT:-default}
+curl -sG -H "X-Scope-OrgID: $TENANT" "http://<CONTROL_PRIVATE_IP>:9009/prometheus/api/v1/query" \
+  --data-urlencode "query=up{job=~'tidb-sql|tikv|pd|tiflash'}" | jq '.data.result[] | {job: .metric.job, value: .value[1]}'
 ```
 
 Expected: 4 results, each with `value: "1"`.
@@ -65,17 +67,19 @@ Expected: 4 results, each with `value: "1"`.
 Check Tempo has received spans from the TiDB SQL layer (OTLP pushed via the ClusterIP service).
 
 ```bash
-curl -s "http://<CONTROL_PRIVATE_IP>:3200/api/search?tags=service.name%3DTiDB" | jq '.traces | length'
+curl -s -H "X-Scope-OrgID: ${TENANT:-default}" "http://<CONTROL_PRIVATE_IP>:3200/api/search?tags=service.name%3DTiDB" | jq '.traces | length'
 ```
 
 Expected: a non-zero trace count.
 
 Note: TiDB reports itself as `TiDB` (capital T). Tempo tag search is case-sensitive — `tidb` returns zero results.
 
-### 7. Verify logs are flowing into VictoriaLogs
+### 7. Verify logs are flowing into Loki
 
 ```bash
-curl -s "http://<CONTROL_PRIVATE_IP>:9428/select/logsql/query?query=k8s.container.name:%22tidb%22&limit=5" | jq '.hits | length'
+curl -sG -H "X-Scope-OrgID: ${TENANT:-default}" "http://<CONTROL_PRIVATE_IP>:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={k8s_container_name="tidb"}' --data-urlencode 'limit=5' \
+  | jq '[.data.result[].values[]] | length'
 ```
 
 Expected: log entries from the `tidb` container.
@@ -109,10 +113,10 @@ Expected: query succeeds and returns rows routed through TiFlash.
 
 ### 9. Export the metrics catalog
 
-Dump all metric names currently stored in VictoriaMetrics to a catalog file for dashboard authoring.
+Dump all metric names currently stored in Mimir to a catalog file for dashboard authoring.
 
 ```bash
-curl -s "http://<CONTROL_PRIVATE_IP>:8428/api/v1/label/__name__/values" \
+curl -s -H "X-Scope-OrgID: ${TENANT:-default}" "http://<CONTROL_PRIVATE_IP>:9009/prometheus/api/v1/label/__name__/values" \
   | jq -r '.data[]' \
   | grep -E '^(tidb|tikv|pd|tiflash)' \
   | sort > tidb-metrics-catalog.txt

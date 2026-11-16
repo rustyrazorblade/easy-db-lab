@@ -6,14 +6,28 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kubernetes.ImagePullFailure
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import io.fabric8.kubernetes.api.model.batch.v1.Job
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
  * Tests for DefaultStressJobService Job building.
@@ -73,6 +87,32 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                     .EventBus(),
                 getKoin().get(),
             )
+    }
+
+    /**
+     * An ECR stress image pulls through the node's kubelet ECR credential provider (stress-testing:
+     * "Custom ECR stress image pulls with no pull secret"), so the job carries no pull secret and
+     * building it creates no Secret.
+     */
+    @Test
+    fun `an ECR stress image gets no image pull secret and no Secret`() {
+        val job =
+            service.buildJob(
+                StressJobConfig(
+                    jobName = "stress-ecr",
+                    image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/stress:dev",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
+            )
+
+        assertThat(job.spec.template.spec.imagePullSecrets).isEmpty()
+        assertThat(
+            job.spec.template.spec.containers
+                .single { it.name == "stress" }
+                .image,
+        ).isEqualTo("123456789012.dkr.ecr.us-west-2.amazonaws.com/stress:dev")
+        verify(mockK8sService, never()).applyResource(any())
     }
 
     @Test
@@ -135,7 +175,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val sidecar =
             job.spec.template.spec.initContainers
                 .first { it.name == "otel-sidecar" }
-        assertThat(sidecar.image).isEqualTo("otel/opentelemetry-collector-contrib:latest")
+        assertThat(sidecar.image).isEqualTo("otel/opentelemetry-collector-contrib:0.161.0")
         assertThat(sidecar.args).containsExactly("--config=/etc/otel/otel-stress-sidecar-config.yaml")
 
         // Check env vars
@@ -155,9 +195,12 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val hostIpEnv = sidecar.env.first { it.name == "HOST_IP" }
         assertThat(hostIpEnv.valueFrom.fieldRef.fieldPath).isEqualTo("status.hostIP")
 
+        // CLUSTER_NAME is injected directly from cluster state (issue #733) so the stress job no
+        // longer depends on a `cluster-config` ConfigMap that may not exist yet.
+        val clusterStateManager: ClusterStateManager = getKoin().get()
         val clusterNameEnv = sidecar.env.first { it.name == "CLUSTER_NAME" }
-        assertThat(clusterNameEnv.valueFrom.configMapKeyRef.name).isEqualTo("cluster-config")
-        assertThat(clusterNameEnv.valueFrom.configMapKeyRef.key).isEqualTo("cluster_name")
+        assertThat(clusterNameEnv.valueFrom).isNull()
+        assertThat(clusterNameEnv.value).isEqualTo(clusterStateManager.load().clusterLabelName())
 
         val goMemLimitEnv = sidecar.env.first { it.name == "GOMEMLIMIT" }
         assertThat(goMemLimitEnv.value).isEqualTo("64MiB")
@@ -192,6 +235,26 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(sidecar.volumeMounts[0].name).isEqualTo("otel-sidecar-config")
         assertThat(sidecar.volumeMounts[0].mountPath).isEqualTo("/etc/otel")
         assertThat(sidecar.volumeMounts[0].readOnly).isTrue()
+    }
+
+    @Test
+    fun `buildJob with an ECR image attaches no image pull secret`() {
+        val ecrImage = "123456789012.dkr.ecr.us-west-2.amazonaws.com/cassandra-easy-stress:latest"
+        val job =
+            service.buildJob(
+                StressJobConfig(
+                    jobName = "stress-test-ecr",
+                    image = ecrImage,
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
+            )
+
+        assertThat(
+            job.spec.template.spec.containers
+                .map { it.image },
+        ).contains(ecrImage)
+        assertThat(job.spec.template.spec.imagePullSecrets).isNullOrEmpty()
     }
 
     @Test
@@ -252,6 +315,22 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a stress run and a command job carry different role labels on the job and its pods`() {
+        val run =
+            service.buildJob(
+                StressJobConfig(jobName = "stress-1", image = "img", contactPoints = "10.0.1.6", args = listOf("run", "KeyValue")),
+            )
+        val command = service.buildCommandJob(jobName = "cmd-1", image = "img", args = listOf("list"))
+
+        listOf(run.metadata.labels, run.spec.template.metadata.labels).forEach {
+            assertThat(it[Constants.Stress.ROLE_LABEL_KEY]).isEqualTo(Constants.Stress.ROLE_RUN)
+        }
+        listOf(command.metadata.labels, command.spec.template.metadata.labels).forEach {
+            assertThat(it[Constants.Stress.ROLE_LABEL_KEY]).isEqualTo(Constants.Stress.ROLE_COMMAND)
+        }
+    }
+
+    @Test
     fun `buildJob should include custom tags in OTEL_RESOURCE_ATTRIBUTES`() {
         val job =
             service.buildJob(
@@ -288,7 +367,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `sidecar otel config resource should include resourcedetection processor`() {
+    fun `sidecar otel config resource should include the resource_detection processor`() {
         val templateService: TemplateService = getKoin().get()
         val config =
             templateService
@@ -296,9 +375,9 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                     DefaultStressJobService::class.java,
                     "/com/rustyrazorblade/easydblab/configuration/cassandra/otel-stress-sidecar-config.yaml",
                 ).substitute()
-        assertThat(config).contains("resourcedetection")
+        assertThat(config).contains("resource_detection")
         assertThat(config).contains("detectors: [env]")
-        assertThat(config).contains("processors: [resourcedetection, batch]")
+        assertThat(config).contains("processors: [resource_detection, batch]")
     }
 
     @Test
@@ -396,7 +475,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildJob should set JAVA_TOOL_OPTIONS with pyroscope agent config`() {
+    fun `buildJob should set JDK_JAVA_OPTIONS with pyroscope agent config`() {
         val job =
             service.buildJob(
                 StressJobConfig(
@@ -410,7 +489,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val stress =
             job.spec.template.spec.containers
                 .first { it.name == "stress" }
-        val javaToolOptions = stress.env.first { it.name == "JAVA_TOOL_OPTIONS" }.value
+        val javaToolOptions = stress.env.first { it.name == "JDK_JAVA_OPTIONS" }.value
 
         assertThat(javaToolOptions).contains("-javaagent:/usr/local/pyroscope/pyroscope.jar")
         assertThat(javaToolOptions).contains("-Dpyroscope.application.name=cassandra-easy-stress")
@@ -419,6 +498,327 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.event=cpu")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.alloc=512k")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.lock=10ms")
-        assertThat(javaToolOptions).contains("-Dpyroscope.labels=cluster=test-cluster,job_name=stress-test-123")
+        // The cluster label is <name>-<id>, the value every other signal carries, so the profiling
+        // dashboards' cluster filter matches these profiles.
+        val cluster = getKoin().get<ClusterStateManager>().load().clusterLabelName()
+        assertThat(javaToolOptions).contains("-Dpyroscope.labels=cluster=$cluster,job_name=stress-test-123")
+        assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=default")
+    }
+
+    /**
+     * The stress JVM is the only source of client spans on the whole cluster.
+     *
+     * Cassandra has no OTel server-side instrumentation, so nothing on the server side can emit a
+     * trace. If these flags are wrong, Tempo receives nothing, spanmetrics generates nothing, and
+     * every RED panel is empty — with no error anywhere to say why.
+     */
+    @Test
+    fun `buildJob should load the OTel agent alongside Pyroscope`() {
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        assertThat(javaToolOptions).contains("-javaagent:/usr/local/otel/opentelemetry-javaagent.jar")
+        assertThat(javaToolOptions).contains("-Dotel.service.name=cassandra-easy-stress")
+        // Two agents in one JVM: adding OTel must not cost the profiling already there.
+        assertThat(javaToolOptions).contains("-javaagent:/usr/local/pyroscope/pyroscope.jar")
+    }
+
+    @Test
+    fun `buildJob should export OTLP to the collector's HTTP port, not its gRPC port`() {
+        // The agent's default protocol is http/protobuf, served on 4318. Sent at 4317 — the gRPC
+        // port — every export fails with "HttpExporter - Failed to export" and no span arrives.
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        assertThat(javaToolOptions).contains("-Dotel.exporter.otlp.endpoint=http://10.0.1.5:${Constants.K8s.OTEL_HTTP_PORT}")
+        assertThat(javaToolOptions).doesNotContain("4317")
+    }
+
+    @Test
+    fun `buildJob should give spans the same identity as the sidecar's metrics`() {
+        // Same helper as the sidecar's OTEL_RESOURCE_ATTRIBUTES, so a trace and the stress metrics
+        // from one run line up on job_name and tags.
+        // Just the agent's attribute list. Pyroscope's own -Dpyroscope.labels sits in the same
+        // string and legitimately carries cluster=, so asserting over the whole thing would pass
+        // for the wrong reason.
+        val resourceAttributes =
+            javaToolOptionsOf(stressJobConfig(tags = mapOf("variant" to "baseline")))
+                .substringAfter("-Dotel.resource.attributes=")
+                .substringBefore(" ")
+
+        assertThat(resourceAttributes).contains("job_name=stress-test-123")
+        assertThat(resourceAttributes).contains("variant=baseline")
+        // The cluster label is NOT set here. The collector's traces pipeline stamps it with
+        // resource/cluster, so every span producer gets it rather than each carrying its own copy.
+        assertThat(resourceAttributes).doesNotContain("cluster=")
+    }
+
+    @Test
+    fun `buildJob samples the stress JVM's traces at the fixed ratio`() {
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig()).split(" ")
+
+        assertThat(javaToolOptions).contains(
+            "-Dotel.traces.sampler=parentbased_traceidratio",
+            "-Dotel.traces.sampler.arg=${Constants.Stress.TRACE_SAMPLE_RATIO}",
+        )
+    }
+
+    @Test
+    fun `buildJob should not export logs twice, and should keep metrics on`() {
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        // The pod's stdout already reaches VictoriaLogs via the collector's filelog receiver.
+        assertThat(javaToolOptions).contains("-Dotel.logs.exporter=none")
+        // The sidecar scrapes only cassandra-easy-stress's own counters, so the agent's JVM metrics
+        // are the only view of whether the load generator itself is the bottleneck.
+        assertThat(javaToolOptions).doesNotContain("-Dotel.metrics.exporter=none")
+    }
+
+    @Test
+    fun `buildJob should mount the OTel agent from the host, read-only`() {
+        // The jar is installed by the base AMI at /usr/local/otel and reaches the pod exactly as
+        // the Pyroscope jar does. The job's nodeSelector pins it to a type=app node, where that
+        // path exists.
+        val spec =
+            service
+                .buildJob(stressJobConfig())
+                .spec.template.spec
+        val mount =
+            spec.containers
+                .first { it.name == "stress" }
+                .volumeMounts
+                .first { it.name == "otel-agent" }
+        val volume = spec.volumes.first { it.name == "otel-agent" }
+
+        assertThat(mount.mountPath).isEqualTo("/usr/local/otel")
+        assertThat(mount.readOnly).isTrue()
+        assertThat(volume.hostPath.path).isEqualTo("/usr/local/otel")
+        assertThat(volume.hostPath.type).isEqualTo("Directory")
+    }
+
+    @Test
+    fun `buildJob points the Pyroscope agent at the external stack on a redirect cluster`() {
+        // On a redirect cluster the control node runs no Pyroscope server. The stress job's agent
+        // must ship to the external stack, not to a control-node address with nothing listening.
+        val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
+        val clusterStateManager: ClusterStateManager = getKoin().get()
+        whenever(clusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
+                hosts =
+                    mapOf(
+                        ServerType.Control to
+                            listOf(
+                                ClusterHost(
+                                    publicIp = "54.123.45.67",
+                                    privateIp = "10.0.1.5",
+                                    alias = "control0",
+                                    availabilityZone = "us-west-2a",
+                                    instanceId = "i-control123",
+                                ),
+                            ),
+                    ),
+                initConfig = InitConfig(telemetryRedirect = redirect, tenant = "acme"),
+            ),
+        )
+
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        assertThat(javaToolOptions).contains("-Dpyroscope.server.address=${redirect.profiles}")
+        assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=acme")
+        assertThat(javaToolOptions)
+            .describedAs("a redirect cluster must not point the stress agent at the control node")
+            .doesNotContain("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
+    }
+
+    private fun stressJobConfig(tags: Map<String, String> = emptyMap()) =
+        StressJobConfig(
+            jobName = "stress-test-123",
+            image = "ghcr.io/apache/cassandra-easy-stress:latest",
+            contactPoints = "10.0.1.6",
+            args = listOf("run", "KeyValue"),
+            tags = tags,
+        )
+
+    private fun javaToolOptionsOf(config: StressJobConfig): String =
+        service
+            .buildJob(config)
+            .spec.template.spec.containers
+            .first { it.name == "stress" }
+            .env
+            .first { it.name == "JDK_JAVA_OPTIONS" }
+            .value
+}
+
+/**
+ * Characterizes how `startJob` waits for the job's pod: it polls the job's pods until the first
+ * one is Running or Succeeded, retrying every other outcome — no pod yet, a pod in another phase,
+ * a Failed pod, a failed query — up to the attempt budget, and fails with the last outcome's
+ * message. Runs with a zero poll interval.
+ */
+class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
+    private val k8sService: K8sService = mock()
+    private val events = mutableListOf<Event>()
+
+    private val controlHost =
+        ClusterHost(publicIp = "54.1.2.3", privateIp = "10.0.1.5", alias = "control0", availabilityZone = "us-west-2a")
+
+    private val config =
+        StressJobConfig(
+            jobName = "stress-wait",
+            image = "ghcr.io/apache/cassandra-easy-stress:latest",
+            contactPoints = "10.0.1.6",
+            args = listOf("run", "KeyValue"),
+        )
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                single<ClusterStateManager> {
+                    mock<ClusterStateManager>().also {
+                        whenever(it.load()).thenReturn(
+                            ClusterState(
+                                name = "test-cluster",
+                                versions = mutableMapOf(),
+                                infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
+                                hosts = mapOf(ServerType.Control to listOf(controlHost)),
+                            ),
+                        )
+                    }
+                }
+                single { TemplateService(get(), get()) }
+            },
+        )
+
+    private fun service(): DefaultStressJobService {
+        val eventBus =
+            EventBus().also { bus ->
+                bus.addListener(
+                    object : EventListener {
+                        override fun onEvent(envelope: EventEnvelope) {
+                            events.add(envelope.event)
+                        }
+
+                        override fun close() = Unit
+                    },
+                )
+            }
+        return DefaultStressJobService(
+            k8sService = k8sService,
+            clusterStateManager = getKoin().get(),
+            eventBus = eventBus,
+            templateService = getKoin().get(),
+            podReadyPollInterval = Duration.ZERO,
+        )
+    }
+
+    private fun pod(
+        phase: String,
+        nodeName: String = "app0",
+    ) = KubernetesPod(
+        namespace = "stress",
+        name = "stress-wait-abc",
+        status = phase,
+        ready = "0/1",
+        restarts = 0,
+        age = Duration.ZERO,
+        nodeName = nodeName,
+    )
+
+    @BeforeEach
+    fun stubJobCreation() {
+        whenever(k8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.createJob(any(), any<Job>())).thenReturn(Result.success("stress-wait"))
+    }
+
+    @Test
+    fun `returns the job name and reports the pod once it is Running`() {
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(
+            Result.success(emptyList()),
+            Result.failure(IllegalStateException("connection reset")),
+            Result.success(listOf(pod("Pending"))),
+            Result.success(listOf(pod("Running"))),
+        )
+
+        assertThat(service().startJob(config).getOrThrow().jobName).isEqualTo("stress-wait")
+        assertThat(events.filterIsInstance<Event.Stress.PodStatus>())
+            .containsExactly(Event.Stress.PodStatus("stress-wait-abc", "Running"))
+        verify(k8sService, times(4)).getPodsForJob(any(), any())
+    }
+
+    @Test
+    fun `returns the node the running pod was scheduled on as the host`() {
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Running", nodeName = "app3"))))
+
+        assertThat(service().startJob(config).getOrThrow()).isEqualTo(StartedStressJob("stress-wait", "app3"))
+    }
+
+    @Test
+    fun `a Succeeded pod also ends the wait`() {
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Succeeded"))))
+
+        assertThat(service().startJob(config).getOrThrow().jobName).isEqualTo("stress-wait")
+    }
+
+    @Test
+    fun `fails naming the job when no pod is ever created`() {
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(emptyList()))
+
+        val result = service().startJob(config)
+
+        assertThat(result.exceptionOrNull()).hasMessage("No pods created yet for job stress-wait")
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
+    }
+
+    @Test
+    fun `fails naming the pod's phase when it never runs`() {
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Pending"))))
+
+        val result = service().startJob(config)
+
+        assertThat(result.exceptionOrNull()).hasMessage("Pod stress-wait-abc is Pending, waiting for Running")
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
+    }
+
+    @Test
+    fun `a Failed pod is polled again, and fails the wait when it stays Failed`() {
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.success(listOf(pod("Failed"))))
+
+        val result = service().startJob(config)
+
+        assertThat(result.exceptionOrNull()).hasMessage("Pod stress-wait-abc failed")
+        verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any())
+    }
+
+    @Test
+    fun `an image that cannot be pulled fails at once, naming the pod, the image and the kubelet message`() {
+        val failure =
+            ImagePullFailure(
+                container = "stress",
+                image = "123.dkr.ecr.us-west-2.amazonaws.com/stress:missing",
+                reason = "ImagePullBackOff",
+                message = "manifest unknown",
+            )
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(
+            Result.success(listOf(pod("Pending").copy(imagePullFailure = failure))),
+        )
+
+        val result = service().startJob(config)
+
+        assertThat(result.exceptionOrNull())
+            .hasMessageContaining("stress-wait-abc")
+            .hasMessageContaining(failure.image)
+            .hasMessageContaining("manifest unknown")
+        val failed = events.filterIsInstance<Event.Stress.ImagePullFailed>().single()
+        assertThat(failed).isEqualTo(
+            Event.Stress.ImagePullFailed("stress-wait-abc", "stress", failure.image, "ImagePullBackOff", "manifest unknown"),
+        )
+        assertThat(failed.isError()).isTrue()
+        assertThat(events.filterIsInstance<Event.Stress.PodStatus>()).isEmpty()
+        verify(k8sService, times(1)).getPodsForJob(any(), any())
+    }
+
+    private companion object {
+        const val POD_READY_MAX_ATTEMPTS = 10
     }
 }

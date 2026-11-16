@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Installs every JDK required by the Cassandra versions we support (8, 11, 17, 21) plus their
+# Installs every JDK required by the Cassandra versions we support (8, 11, 17, 21, 25) plus their
 # debug-symbol packages.
 #
 # apt's verbose output is redirected to a log file rather than streamed over SSH. This is the
@@ -10,11 +10,13 @@
 # quiet lets packer's keepalive hold the connection for the duration.
 #
 # Env vars (set by the Packer provisioner):
-#   ARCH  dpkg architecture suffix used in the JVM paths (e.g. amd64, arm64)
+#   ARCH             dpkg architecture suffix used in the JVM paths (e.g. amd64, arm64)
+#   JDK_INSTALL_LOG  where the apt output goes; overridable only so install_jdks.test.sh can keep it
+#                    in its sandbox
 set -euo pipefail
 
 ARCH="${ARCH:?ARCH must be set}"
-LOG=/tmp/jdk-install.log
+LOG="${JDK_INSTALL_LOG:-/tmp/jdk-install.log}"
 
 # On failure, surface the tail of the captured log (since it isn't streamed live).
 trap 'echo "=== JDK install FAILED — tail of ${LOG} ==="; tail -50 "${LOG}" 2>/dev/null || true' ERR
@@ -22,7 +24,8 @@ trap 'echo "=== JDK install FAILED — tail of ${LOG} ==="; tail -50 "${LOG}" 2>
 PACKAGES="openjdk-8-jdk openjdk-8-dbg \
           openjdk-11-jdk openjdk-11-dbg \
           openjdk-17-jdk openjdk-17-dbg \
-          openjdk-21-jdk openjdk-21-dbg"
+          openjdk-21-jdk openjdk-21-dbg \
+          openjdk-25-jdk openjdk-25-dbg"
 
 echo "Installing JDKs (verbose output -> ${LOG} to keep the packer SSH stream quiet)..."
 sudo apt-get update >>"${LOG}" 2>&1

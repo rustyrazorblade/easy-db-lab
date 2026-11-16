@@ -1,0 +1,895 @@
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  labels:
+    app.kubernetes.io/name: "account-compactor"
+  name: "account-compactor-config"
+  namespace: "default"
+data:
+  mimir.yaml: |
+    # Mimir on the control node: it writes to the shared store and reads the whole of it (issue 970).
+    #
+    # The ingester ships every block to S3 about a minute after cutting it and keeps local blocks for 15
+    # minutes. The store-gateway answers every query from S3 as well, for every tenant in the account
+    # bucket, so other clusters' and past runs' metrics are readable here. It finds blocks through each
+    # tenant's bucket index, which only the account compactor writes. No compactor runs in this process,
+    # so nothing here can compact, expire, clean up or delete a block, a bucket index, or a tenant.
+    #
+    # Queries are not sharded, and readers stop opening a block the compactor merged away soon after its
+    # deletion mark (issue 988): on this one process both made dashboard loads several times faster.
+    # The store-gateway's index, chunks and metadata and the query-frontend's results are cached in the
+    # memcached sidecar on 127.0.0.1:11211, and S3 connections stay open for reuse (issue 988).
+    #
+    # Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets
+    # them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion
+    # reads comments too, and a malformed one stops the process from starting.
+    target: distributor,ingester,querier,query-frontend,query-scheduler,store-gateway
+
+    # Native multi-tenancy: every write and query carries the tenant in X-Scope-OrgID. Tenant federation
+    # lets one query name several tenants as `a|b`; each series then carries __tenant_id__.
+    multitenancy_enabled: true
+    tenant_federation:
+      enabled: true
+
+    server:
+      http_listen_port: 9009
+      grpc_listen_port: 9097
+      log_level: info
+
+    # Mimir writes a small activity log for crash diagnosis; keep it on the data volume rather than
+    # the image's working directory.
+    activity_tracker:
+      filepath: /data/metrics-activity.log
+
+    blocks_storage:
+      backend: s3
+      # The metrics root, mimir, at the top level of the account bucket. Mimir makes one directory per
+      # tenant under it.
+      storage_prefix: ${METRICS_S3_PREFIX}
+      s3:
+        bucket_name: ${S3_BUCKET}
+        endpoint: s3.${AWS_REGION}.amazonaws.com
+        region: ${AWS_REGION}
+        # Keep S3 connections open and reuse them: with the defaults 23% of Mimir's CPU went to new TLS
+        # handshakes with S3 (issue 988). 0 is no limit on idle connections in total.
+        http:
+          idle_conn_timeout: 10m
+          max_idle_connections: 0
+          max_idle_connections_per_host: 1000
+      tsdb:
+        # The head, its WAL and every local block live on the control node's disk (a hostPath), so a
+        # pod restart replays the WAL and keeps the blocks.
+        dir: /data/tsdb
+        # One-minute blocks, so a sample reaches S3 in about 2 minutes and other clusters can read it.
+        # The ingester cuts a range once a sample later than 1.5 ranges past its start arrives, checked
+        # every head_compaction_interval, and the shipper uploads every ship_interval. A 1m range is
+        # experimental and hidden in Mimir 3.2.1, which does not validate it.
+        block_ranges_period: [1m]
+        head_compaction_interval: 15s
+        ship_interval: 15s
+        # A head with no writes for 2 minutes is compacted, so the last partial block still ships.
+        head_compaction_idle_timeout: 2m
+        # Local blocks stay for 15 minutes; older ones are read from S3 through the store-gateway. At 2h
+        # the ingester kept 366 one-minute blocks and a 1h query opened about 160 of them; at 15m it keeps
+        # about 46, its share of Mimir CPU fell from 36% to 10%, and a two-user System Overview load at 1h
+        # from 14.7 s to 10.6 s, with no sample lost (issue 988). Mimir requires this to exceed the block
+        # range and querier.query_store_after, and it must outlast the store-gateway finding a shipped
+        # block (15s ship + 1m bucket index + 1m sync). It removes only local copies already in S3.
+        retention_period: 15m
+        # A graceful stop compacts the head into a block and ships it.
+        flush_blocks_on_shutdown: true
+      bucket_store:
+        # The store-gateway's index headers, on the control node's disk.
+        sync_dir: /data/tsdb-sync
+        # New blocks and tenants appear in queries within a minute of the compactor's index update.
+        sync_interval: 1m
+        ignore_blocks_within: 0
+        # Stop reading a block the compactor merged away soon after its deletion mark, rather than for
+        # up to an hour. With the compactor's 10-minute first level this cut the tiny blocks per read
+        # from ~180 to ~46 (issue 988). They only choose what queries read; the compactor owns deletion.
+        ignore_deletion_mark_delay: 10m
+        ignore_deletion_mark_while_querying_delay: 5m
+        # The store-gateway caches what it reads from S3 in the memcached sidecar, so a dashboard refresh
+        # reads index headers, chunks and bucket metadata from memory instead of S3 again (issue 988).
+        index_cache:
+          backend: memcached
+          memcached:
+            addresses: 127.0.0.1:11211
+        chunks_cache:
+          backend: memcached
+          memcached:
+            addresses: 127.0.0.1:11211
+        metadata_cache:
+          backend: memcached
+          memcached:
+            addresses: 127.0.0.1:11211
+          # Entries that change as new data lands are cached for 30s, under the 1m sync. At the 5m default
+          # for the bucket index the store-gateway saw new blocks only every 5 minutes, the querier's
+          # consistency check failed for them (105 of 2,186 checks on qa971f), and dashboards answered 400
+          # and 422. The tenant list (15m default) hid a tenant another cluster had just started, the
+          # tenant's block list (5m) hid its new blocks, and a meta.json looked up just before its upload
+          # stayed missing for 5m. Immutable objects (meta.json content, block index attributes, chunks
+          # lists) keep their defaults.
+          bucket_index_content_ttl: 30s
+          tenants_list_ttl: 30s
+          tenant_blocks_list_ttl: 30s
+          metafile_doesnt_exist_ttl: 30s
+        bucket_index:
+          # About 10 years: a stopped compactor leaves the index stale, and that must never fail a query.
+          # A tenant with no bucket index returns no stored data rather than an error.
+          max_stale_period: 87600h
+
+    # Every ring is in this one process: in memory, one replica.
+    querier:
+      # Every query reads the store as well as the ingester, however recent.
+      query_store_after: 0
+      ring:
+        kvstore:
+          store: inmemory
+        instance_addr: 127.0.0.1
+
+    ingester:
+      ring:
+        kvstore:
+          store: inmemory
+        replication_factor: 1
+        instance_addr: 127.0.0.1
+        final_sleep: 0s
+        min_ready_duration: 0s
+
+    store_gateway:
+      sharding_ring:
+        kvstore:
+          store: inmemory
+        replication_factor: 1
+        instance_addr: 127.0.0.1
+
+    distributor:
+      ring:
+        kvstore:
+          store: inmemory
+        instance_addr: 127.0.0.1
+      ha_tracker:
+        kvstore:
+          store: inmemory
+
+    # Mimir starts its gossip listener even though no ring uses it. The pod shares the control node's
+    # network, where Pyroscope already holds the default 7946, so it listens on loopback on its own port.
+    memberlist:
+      bind_addr: [127.0.0.1]
+      bind_port: 7947
+
+    frontend:
+      # The query-scheduler runs in this process.
+      scheduler_address: 127.0.0.1:9097
+      # Query results are cached in the memcached sidecar, so a refresh reuses the parts of a range it
+      # already answered (issue 988). The query engine's range vector splitting cache stays off: Mimir
+      # 3.2.1 refuses to start with it.
+      cache_results: true
+      results_cache:
+        backend: memcached
+        memcached:
+          addresses: 127.0.0.1:11211
+
+    frontend_worker:
+      scheduler_address: 127.0.0.1:9097
+
+    query_scheduler:
+      # The query-frontend splits each query by day (query sharding is off), and queues up to 14 parts of it
+      # at once (max_query_parallelism). The heaviest dashboard sends about 150 queries in one load, so
+      # a load can queue about 2100 parts, which the 8 querier workers drain slowly. Past this limit the
+      # scheduler answers 429 and the panel fails. The default of 100 fails most of such a dashboard;
+      # 5000 holds two full loads at once.
+      max_outstanding_requests_per_tenant: 5000
+
+    limits:
+      # Cached query results expire after 1h: at the 7-day default a result cached while the compactor lagged kept its gap for days.
+      results_cache_ttl: 1h
+      # 0 = every query goes to the ingester, however far back.
+      query_ingesters_within: 0
+      # No query sharding. On one Mimir process it split each query into ~20 parts; turning it off cut
+      # Mimir CPU per System Overview load at 1h from 238 s to 66 s (issue 988).
+      query_sharding_total_shards: 0
+      # The defaults are sized for shared SaaS tenants. Past them Mimir answers the collector's remote
+      # write with a 4xx and the batch is dropped, not retried, so they are set far above what a test
+      # cluster sends.
+      ingestion_rate: 10000000
+      ingestion_burst_size: 20000000
+      max_global_series_per_user: 0
+      max_global_series_per_metric: 0
+      max_global_metadata_per_user: 0
+      max_global_metadata_per_metric: 0
+      max_global_exemplars_per_user: 100000
+      max_label_names_per_series: 100
+      max_label_name_length: 1024
+      max_label_value_length: 16384
+      max_fetched_chunks_per_query: 0
+      max_fetched_series_per_query: 0
+      max_fetched_chunk_bytes_per_query: 0
+      # Scrapes and OTLP pushes from several nodes arrive slightly out of order.
+      out_of_order_time_window: 10m
+  loki.yaml: |
+    # Loki on the control node: a single binary (target: all) with its compactor idle (issue 967, D5).
+    #
+    # `target: all` is the only way one process both writes and reads the S3 index: a target list that
+    # names the ingester makes the index shipper write-only. `all` includes the compactor, so compaction
+    # is pushed ten years out, retention is off, and deletion is disabled (the delete API is not served: it answers 404).
+    # Nothing in this process compacts or deletes a chunk or an index file.
+    #
+    # Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets
+    # them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion
+    # reads comments too, and a malformed one stops the process from starting.
+    target: all
+
+    # Native multi-tenancy: every write and query carries the tenant in X-Scope-OrgID.
+    auth_enabled: true
+
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9098
+      log_level: info
+
+    common:
+      # /loki is a hostPath on the control node: the WAL, the index head and the uploader's name
+      # survive a pod restart.
+      path_prefix: /loki
+      replication_factor: 1
+      ring:
+        kvstore:
+          store: inmemory
+        instance_addr: 127.0.0.1
+      storage:
+        s3:
+          bucketnames: ${S3_BUCKET}
+          endpoint: s3.${AWS_REGION}.amazonaws.com
+          region: ${AWS_REGION}
+
+    storage_config:
+      # Chunks land under <prefix>/<tenant>/ and index tables under <prefix>/index/.
+      object_prefix: ${LOGS_S3_PREFIX}
+      tsdb_shipper:
+        active_index_directory: /loki/tsdb-index
+        cache_location: /loki/tsdb-cache
+        # Read side: re-list the index in S3 every minute, so other clusters' uploads become readable
+        # soon after they land. The index itself uploads on Loki's fixed 15-minute rotation.
+        resync_interval: 1m
+
+    # A permanent contract of the shared store: every cluster, past and future, must read the same
+    # periods. New periods may only be appended, never edited or removed.
+    schema_config:
+      configs:
+        - from: "2026-01-01"
+          store: tsdb
+          object_store: s3
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+    ingester:
+      wal:
+        enabled: true
+        dir: /loki/wal
+        # A graceful stop flushes every chunk in memory to S3.
+        flush_on_shutdown: true
+      # Flush a chunk once it spans an hour, so a stream that keeps writing reaches S3 within about an hour.
+      # This also sets the per-stream out-of-order window to 30 minutes (half this age): a line more
+      # than 30 minutes older than its stream's newest line is rejected. The window is wide so that a
+      # slow Loki restart does not drop logs. The annotation mirror is not affected: each annotation is
+      # a stream of its own.
+      max_chunk_age: 1h
+      lifecycler:
+        # The ingester's name is part of every index file it uploads, so each file names its tenant and
+        # cluster, and two clusters in one tenant never write the same file.
+        id: ${TENANT}.${CLUSTER_NAME}
+
+    querier:
+      # One query may name several tenants as `a|b`.
+      multi_tenant_queries_enabled: true
+
+    compactor:
+      working_directory: /loki/compactor
+      # The compactor waits one full interval before its first run: ten years is never.
+      compaction_interval: 87600h
+      retention_enabled: false
+
+    limits_config:
+      # Retention and deletion are off, and the compactor never runs (see above). Only the lease-holding
+      # account compactor deletes under loki/, and only the sources it merged.
+      retention_period: 0s
+      deletion_mode: disabled
+      # Accept a year-old line (a backdated annotation, a replayed log) and a day into the future.
+      reject_old_samples: true
+      reject_old_samples_max_age: 8760h
+      creation_grace_period: 24h
+      # Every OTLP resource attribute but these four stays structured metadata. `source` is moved onto
+      # the resource by the collector so it can be a label.
+      otlp_config:
+        resource_attributes:
+          attributes_config:
+            - action: index_label
+              attributes:
+                - cluster
+                - host.name
+                - node_role
+                - source
+      # The defaults are sized for shared SaaS tenants; past them Loki answers a push with a 4xx and
+      # the collector drops the batch. They are set far above what a test cluster sends.
+      ingestion_rate_mb: 64
+      ingestion_burst_size_mb: 128
+      per_stream_rate_limit: 32MB
+      per_stream_rate_limit_burst: 64MB
+      max_global_streams_per_user: 0
+      max_label_names_per_series: 30
+      max_label_value_length: 16384
+      max_query_series: 100000
+      max_entries_limit_per_query: 100000
+      max_query_length: 0
+  tempo-backend.yaml: |
+    # Tempo 3.0.3's backend-scheduler and backend-worker in the account compactor (issue 970).
+    #
+    # Tempo 3 runs one target per process, so the account-compactor pod runs this file twice: once as the scheduler
+    # (-target=backend-scheduler) and once as the worker (-target=backend-worker, with its own ports).
+    # The worker compacts every tenant's blocks under the traces root of the account bucket.
+    #
+    # Compaction is on; retention and every other deletion path are off. Tempo has no "retention off"
+    # once compaction runs, and a zero block retention makes every block eligible for deletion at once,
+    # so an unreachable retention (100 years) is the off switch. Do not add a per-tenant retention
+    # override.
+    #
+    # Dollar-brace values are read from the environment (-config.expand-env=true); the
+    # account-compactor Deployment sets them. Never write a dollar-brace in a comment here: the expansion reads
+    # comments too.
+    multitenancy_enabled: true
+
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9096
+
+    # The scheduler and the worker are separate processes in one task, so each gossips on its own port.
+    memberlist:
+      bind_addr: [127.0.0.1]
+      bind_port: 7948
+
+    backend_scheduler:
+      local_work_path: /var/tempo/scheduler
+      provider:
+        retention:
+          # Retention jobs are scheduled at most once every 10 years; the worker's block retention
+          # makes each one a no-op anyway.
+          interval: 87600h
+
+    backend_worker:
+      backend_scheduler_addr: 127.0.0.1:9096
+      ring:
+        kvstore:
+          store: inmemory
+        instance_addr: 127.0.0.1
+      compaction:
+        block_retention: 876000h
+
+    storage:
+      trace:
+        backend: s3
+        # Never delete a tenant directory, even one that holds no block.
+        empty_tenant_deletion_enabled: false
+        wal:
+          path: /var/tempo/wal
+        s3:
+          bucket: ${S3_BUCKET}
+          endpoint: s3.${AWS_REGION}.amazonaws.com
+          region: ${AWS_REGION}
+          prefix: ${TRACES_S3_PREFIX}
+
+    overrides:
+      defaults:
+        global:
+          # 0 = no per-trace size limit, so compaction never drops spans of a large trace.
+          max_bytes_per_trace: 0
+  compactor-gate.sh: |
+    #!/bin/sh
+    #
+    # The account compactor's gate: runs one compactor binary only while this pod holds the store lease.
+    #
+    # Usage: busybox sh compactor-gate.sh -- <binary> [args...]
+    #
+    # The lease container writes the time until which the lease is valid, in epoch seconds, to
+    # GATE_VALID_UNTIL, and removes the file when it loses the lease. This gate:
+    #   1. waits until that time is later than now;
+    #   2. starts the binary as its child;
+    #   3. reads the file every LEASE_GATE_POLL_SECONDS. When the time is not later than now, or the file
+    #      is gone, it sends SIGTERM, waits LEASE_GATE_GRACE_SECONDS, sends SIGKILL, and goes back to 1;
+    #   4. starts the binary again when it exits while the lease is valid;
+    #   5. on SIGTERM (the pod stopping) passes it to the binary, waits for it, and exits 0. The gate is
+    #      PID 1 in its container, and the kernel ignores SIGTERM to PID 1 without a handler.
+    #
+    # Because the time only moves while the agent renews, a dead or hung agent stops the binary too.
+    #
+    # The compactor images are distroless: no applet is on PATH. Only shell builtins run bare; date and
+    # sleep run as explicit busybox applets ($BB, copied into the pod by the init container).
+
+    set -u
+
+    BB="${GATE_BUSYBOX:-/gate/bin/busybox}"
+    VALID_UNTIL="${GATE_VALID_UNTIL:-/lease/valid-until}"
+    # The tests replace the kernel's uptime with a clock they move; the pod never sets this.
+    UPTIME="${GATE_UPTIME:-/proc/uptime}"
+
+    if [ -z "${LEASE_GATE_POLL_SECONDS:-}" ] || [ -z "${LEASE_GATE_GRACE_SECONDS:-}" ]; then
+      echo "compactor-gate: LEASE_GATE_POLL_SECONDS and LEASE_GATE_GRACE_SECONDS must be set" >&2
+      exit 2
+    fi
+    POLL="${LEASE_GATE_POLL_SECONDS}"
+    GRACE="${LEASE_GATE_GRACE_SECONDS}"
+
+    if [ "${1:-}" = "--" ]; then
+      shift
+    fi
+    if [ "$#" = 0 ]; then
+      echo "compactor-gate: no binary to run" >&2
+      exit 2
+    fi
+    NAME="$1"
+
+    child=""
+    # The last file content that did not parse, so it is logged once, not on every poll.
+    unparsed=""
+
+    log() {
+      echo "compactor-gate [${NAME}]: $*"
+    }
+
+    # The wall clock, for the valid-until comparison only: the agent writes that time on this node's
+    # wall clock.
+    now() {
+      "${BB}" date +%s
+    }
+
+    # Whole seconds since boot, from the kernel's monotonic clock, read with the builtin `read`. A
+    # wall-clock step (NTP) never moves it, so the grace measured on it is never stretched.
+    uptime_s() {
+      up_s=""
+      read -r up_s _ < "${UPTIME}"
+      echo "${up_s%%.*}"
+    }
+
+    # True when the file holds a whole number of seconds later than now. Read with the builtin `read`,
+    # so a half-written or garbage file is simply not valid.
+    lease_valid() {
+      [ -f "${VALID_UNTIL}" ] || return 1
+      until_s=""
+      read -r until_s < "${VALID_UNTIL}" 2>/dev/null || [ -n "${until_s}" ] || return 1
+      case "${until_s}" in
+        '' | *[!0-9]*)
+          if [ "${until_s}" != "${unparsed}" ]; then
+            log "${VALID_UNTIL} does not hold a whole number of seconds; the lease is not valid"
+            unparsed="${until_s}"
+          fi
+          return 1
+          ;;
+      esac
+      unparsed=""
+      [ "${until_s}" -gt "$(now)" ]
+    }
+
+    # True while the child runs. `kill -0` alone also answers for a zombie, so ask the shell's job
+    # table first: `jobs` reaps a child that has exited.
+    child_running() {
+      [ -n "${child}" ] || return 1
+      jobs > /dev/null 2>&1
+      kill -0 "${child}" 2>/dev/null
+    }
+
+    # Sleeps $1 seconds in the background and waits for it, so a SIGTERM to the gate interrupts it.
+    pause() {
+      "${BB}" sleep "$1" &
+      wait "$!" 2>/dev/null
+      kill "$!" 2>/dev/null
+    }
+
+    # Stops the child: SIGTERM, up to the grace for it to exit, then SIGKILL. The lease's margin
+    # assumes SIGKILL comes the grace after SIGTERM, so the grace is measured on the uptime: not
+    # counted in sleeps (a starved gate's `sleep 1` takes longer), and not on the wall clock (a
+    # backward step would stretch it).
+    stop_child() {
+      [ -n "${child}" ] || return 0
+      kill -TERM "${child}" 2>/dev/null
+      term_at="$(uptime_s)"
+      while child_running && [ $(($(uptime_s) - term_at)) -lt "${GRACE}" ]; do
+        pause 1
+      done
+      if child_running; then
+        log "still running ${GRACE}s after SIGTERM; sending SIGKILL"
+        kill -KILL "${child}" 2>/dev/null
+      fi
+      wait "${child}" 2>/dev/null
+      child=""
+    }
+
+    on_term() {
+      log "SIGTERM: stopping the compactor"
+      stop_child
+      exit 0
+    }
+    trap on_term TERM INT
+
+    waiting=0
+    while true; do
+      if ! lease_valid; then
+        if [ "${waiting}" = 0 ]; then
+          log "waiting for the lease: ${VALID_UNTIL} is missing or not later than now"
+          waiting=1
+        fi
+        pause "${POLL}"
+        continue
+      fi
+      waiting=0
+      "$@" &
+      child=$!
+      log "lease valid until ${until_s}; started pid ${child}"
+      while child_running; do
+        if ! lease_valid; then
+          log "lease not valid; stopping the compactor"
+          stop_child
+          break
+        fi
+        pause "${POLL}"
+      done
+      if [ -n "${child}" ]; then
+        # Some shells (dash, ash) already reaped the child in `jobs`, and then `wait` answers 127.
+        wait "${child}" 2>/dev/null
+        status=$?
+        case "${status}" in
+          127) log "the compactor exited; starting it again while the lease is valid" ;;
+          *) log "the compactor exited with status ${status}; starting it again while the lease is valid" ;;
+        esac
+        child=""
+        pause "${POLL}"
+      fi
+    done
+---
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  labels:
+    app.kubernetes.io/name: "account-compactor"
+  name: "account-compactor"
+  namespace: "default"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "account-compactor"
+  strategy:
+    type: "Recreate"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "account-compactor"
+    spec:
+      containers:
+      - command:
+        - "java"
+        - "-jar"
+        - "/agent/compactor-lease.jar"
+        env:
+        - name: "AWS_REGION"
+          value: "eu-west-1"
+        - name: "S3_BUCKET"
+          valueFrom:
+            configMapKeyRef:
+              key: "s3_bucket"
+              name: "cluster-config"
+        - name: "CLUSTER_LABEL"
+          valueFrom:
+            configMapKeyRef:
+              key: "cluster_name"
+              name: "cluster-config"
+        - name: "POD_NAME"
+          valueFrom:
+            fieldRef:
+              fieldPath: "metadata.name"
+        - name: "LEASE_DIR"
+          value: "/lease"
+        - name: "SCRATCH_DIRS"
+          value: "/scratch/mimir:/scratch/loki:/scratch/tempo"
+        - name: "LEASE_TTL_SECONDS"
+          value: "120"
+        - name: "LEASE_RENEW_INTERVAL_SECONDS"
+          value: "15"
+        - name: "LEASE_RENEW_DEADLINE_SECONDS"
+          value: "60"
+        - name: "LEASE_STANDBY_POLL_SECONDS"
+          value: "15"
+        - name: "LEASE_GATE_POLL_SECONDS"
+          value: "1"
+        - name: "LEASE_GATE_GRACE_SECONDS"
+          value: "20"
+        image: "eclipse-temurin:21-jre"
+        name: "lease"
+        readinessProbe:
+          exec:
+            command:
+            - "test"
+            - "-f"
+            - "/lease/ready"
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: "/lease"
+          name: "lease"
+          readOnly: false
+        - mountPath: "/agent/compactor-lease.jar"
+          name: "agent-jar"
+          readOnly: true
+        - mountPath: "/scratch/mimir"
+          name: "mimir-scratch"
+          readOnly: false
+        - mountPath: "/scratch/loki"
+          name: "loki-scratch"
+          readOnly: false
+        - mountPath: "/scratch/tempo"
+          name: "tempo-scratch"
+          readOnly: false
+      - args:
+        - "-config.file=/config/mimir.yaml"
+        - "-config.expand-env=true"
+        - "-target=compactor"
+        - "-compactor.cleanup-interval=1m"
+        - "-compactor.partial-block-deletion-delay=0"
+        - "-compactor.blocks-retention-period=0"
+        - "-compactor.block-ranges=10m,2h,12h,24h"
+        - "-compactor.compaction-interval=5m"
+        - "-compactor.first-level-compaction-wait-period=2m"
+        - "-compactor.data-dir=/data/compactor"
+        - "-compactor.ring.store=inmemory"
+        - "-compactor.ring.instance-addr=127.0.0.1"
+        command:
+        - "/gate/bin/busybox"
+        - "sh"
+        - "/config/compactor-gate.sh"
+        - "--"
+        - "/bin/mimir"
+        env:
+        - name: "AWS_REGION"
+          value: "eu-west-1"
+        - name: "S3_BUCKET"
+          valueFrom:
+            configMapKeyRef:
+              key: "s3_bucket"
+              name: "cluster-config"
+        - name: "METRICS_S3_PREFIX"
+          value: "mimir"
+        - name: "LOGS_S3_PREFIX"
+          value: "loki"
+        - name: "TRACES_S3_PREFIX"
+          value: "tempo"
+        - name: "TENANT"
+          value: "compactor"
+        - name: "CLUSTER_NAME"
+          value: "compactor"
+        - name: "GATE_BUSYBOX"
+          value: "/gate/bin/busybox"
+        - name: "GATE_VALID_UNTIL"
+          value: "/lease/valid-until"
+        - name: "LEASE_GATE_POLL_SECONDS"
+          value: "1"
+        - name: "LEASE_GATE_GRACE_SECONDS"
+          value: "20"
+        image: "grafana/mimir:3.2.1"
+        name: "mimir-compactor"
+        volumeMounts:
+        - mountPath: "/config"
+          name: "config"
+          readOnly: true
+        - mountPath: "/gate/bin"
+          name: "gate-bin"
+          readOnly: true
+        - mountPath: "/lease"
+          name: "lease"
+          readOnly: true
+        - mountPath: "/data"
+          name: "mimir-scratch"
+          readOnly: false
+      - args:
+        - "-config.file=/config/loki.yaml"
+        - "-config.expand-env=true"
+        - "-target=compactor"
+        - "-compactor.compaction-interval=10m"
+        - "-compactor.retention-enabled=false"
+        command:
+        - "/gate/bin/busybox"
+        - "sh"
+        - "/config/compactor-gate.sh"
+        - "--"
+        - "/usr/bin/loki"
+        env:
+        - name: "AWS_REGION"
+          value: "eu-west-1"
+        - name: "S3_BUCKET"
+          valueFrom:
+            configMapKeyRef:
+              key: "s3_bucket"
+              name: "cluster-config"
+        - name: "METRICS_S3_PREFIX"
+          value: "mimir"
+        - name: "LOGS_S3_PREFIX"
+          value: "loki"
+        - name: "TRACES_S3_PREFIX"
+          value: "tempo"
+        - name: "TENANT"
+          value: "compactor"
+        - name: "CLUSTER_NAME"
+          value: "compactor"
+        - name: "GATE_BUSYBOX"
+          value: "/gate/bin/busybox"
+        - name: "GATE_VALID_UNTIL"
+          value: "/lease/valid-until"
+        - name: "LEASE_GATE_POLL_SECONDS"
+          value: "1"
+        - name: "LEASE_GATE_GRACE_SECONDS"
+          value: "20"
+        image: "grafana/loki:3.7.8"
+        name: "loki-compactor"
+        volumeMounts:
+        - mountPath: "/config"
+          name: "config"
+          readOnly: true
+        - mountPath: "/gate/bin"
+          name: "gate-bin"
+          readOnly: true
+        - mountPath: "/lease"
+          name: "lease"
+          readOnly: true
+        - mountPath: "/loki"
+          name: "loki-scratch"
+          readOnly: false
+      - args:
+        - "-config.file=/config/tempo-backend.yaml"
+        - "-config.expand-env=true"
+        - "-target=backend-scheduler"
+        command:
+        - "/gate/bin/busybox"
+        - "sh"
+        - "/config/compactor-gate.sh"
+        - "--"
+        - "/tempo"
+        env:
+        - name: "AWS_REGION"
+          value: "eu-west-1"
+        - name: "S3_BUCKET"
+          valueFrom:
+            configMapKeyRef:
+              key: "s3_bucket"
+              name: "cluster-config"
+        - name: "METRICS_S3_PREFIX"
+          value: "mimir"
+        - name: "LOGS_S3_PREFIX"
+          value: "loki"
+        - name: "TRACES_S3_PREFIX"
+          value: "tempo"
+        - name: "TENANT"
+          value: "compactor"
+        - name: "CLUSTER_NAME"
+          value: "compactor"
+        - name: "GATE_BUSYBOX"
+          value: "/gate/bin/busybox"
+        - name: "GATE_VALID_UNTIL"
+          value: "/lease/valid-until"
+        - name: "LEASE_GATE_POLL_SECONDS"
+          value: "1"
+        - name: "LEASE_GATE_GRACE_SECONDS"
+          value: "20"
+        image: "grafana/tempo:3.0.3"
+        name: "tempo-backend-scheduler"
+        volumeMounts:
+        - mountPath: "/config"
+          name: "config"
+          readOnly: true
+        - mountPath: "/gate/bin"
+          name: "gate-bin"
+          readOnly: true
+        - mountPath: "/lease"
+          name: "lease"
+          readOnly: true
+        - mountPath: "/var/tempo"
+          name: "tempo-scratch"
+          readOnly: false
+      - args:
+        - "-config.file=/config/tempo-backend.yaml"
+        - "-config.expand-env=true"
+        - "-target=backend-worker"
+        - "-server.http-listen-port=3201"
+        - "-server.grpc-listen-port=9095"
+        - "-memberlist.bind-port=7949"
+        command:
+        - "/gate/bin/busybox"
+        - "sh"
+        - "/config/compactor-gate.sh"
+        - "--"
+        - "/tempo"
+        env:
+        - name: "AWS_REGION"
+          value: "eu-west-1"
+        - name: "S3_BUCKET"
+          valueFrom:
+            configMapKeyRef:
+              key: "s3_bucket"
+              name: "cluster-config"
+        - name: "METRICS_S3_PREFIX"
+          value: "mimir"
+        - name: "LOGS_S3_PREFIX"
+          value: "loki"
+        - name: "TRACES_S3_PREFIX"
+          value: "tempo"
+        - name: "TENANT"
+          value: "compactor"
+        - name: "CLUSTER_NAME"
+          value: "compactor"
+        - name: "GATE_BUSYBOX"
+          value: "/gate/bin/busybox"
+        - name: "GATE_VALID_UNTIL"
+          value: "/lease/valid-until"
+        - name: "LEASE_GATE_POLL_SECONDS"
+          value: "1"
+        - name: "LEASE_GATE_GRACE_SECONDS"
+          value: "20"
+        image: "grafana/tempo:3.0.3"
+        name: "tempo-backend-worker"
+        volumeMounts:
+        - mountPath: "/config"
+          name: "config"
+          readOnly: true
+        - mountPath: "/gate/bin"
+          name: "gate-bin"
+          readOnly: true
+        - mountPath: "/lease"
+          name: "lease"
+          readOnly: true
+        - mountPath: "/var/tempo"
+          name: "tempo-scratch"
+          readOnly: false
+      initContainers:
+      - command:
+        - "/bin/busybox"
+        - "cp"
+        - "/bin/busybox"
+        - "/gate/bin/busybox"
+        image: "busybox:1.37.0-musl"
+        name: "gate-busybox"
+        volumeMounts:
+        - mountPath: "/gate/bin"
+          name: "gate-bin"
+          readOnly: false
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      terminationGracePeriodSeconds: 60
+      tolerations:
+      - effect: "NoSchedule"
+        key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+      volumes:
+      - configMap:
+          name: "account-compactor-config"
+        name: "config"
+      - emptyDir: {}
+        name: "gate-bin"
+      - emptyDir: {}
+        name: "lease"
+      - hostPath:
+          path: "/mnt/db1/compactor/agent/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.jar"
+          type: "File"
+        name: "agent-jar"
+      - hostPath:
+          path: "/mnt/db1/compactor/mimir"
+          type: "Directory"
+        name: "mimir-scratch"
+      - hostPath:
+          path: "/mnt/db1/compactor/loki"
+          type: "Directory"
+        name: "loki-scratch"
+      - hostPath:
+          path: "/mnt/db1/compactor/tempo"
+          type: "Directory"
+        name: "tempo-scratch"

@@ -119,7 +119,7 @@ Restarts the service on the specified host using `sudo systemctl restart <servic
 This method is marked `open` and can be overridden for custom restart logic (e.g., CassandraService uses a custom restart script).
 
 ### isRunning(host: Host): Result&lt;Boolean&gt;
-Checks if the service is active using `sudo systemctl is-active <service-name>`.
+Checks if the service is active using `sudo systemctl is-active <service-name> || true`. `is-active` exits non-zero for a service that is not active, and a non-zero exit fails the remote command, so the printed state decides; an SSH failure still fails.
 
 Returns `true` if the service is active, `false` otherwise.
 

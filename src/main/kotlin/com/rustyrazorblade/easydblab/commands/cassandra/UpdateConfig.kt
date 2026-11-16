@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.databind.node.ObjectNode
-import com.rustyrazorblade.easydblab.annotations.McpCommand
+import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -15,15 +15,14 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
+import java.io.File
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.inputStream
 
 /**
  * Upload the cassandra.yaml fragment to all nodes and apply to cassandra.yaml.
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(
@@ -47,26 +46,56 @@ class UpdateConfig : PicoBaseCommand() {
     @Option(names = ["--restart", "-r"], description = ["Restart cassandra after patching"])
     var restart = false
 
+    /**
+     * Each targeted host's version, after checking that the config directory of every one of them is
+     * in the workspace. Every host is checked before any is changed: a missing directory used to
+     * surface only after the patch had been applied, as a bare "Local directory does not exist", and
+     * on a multi-host run it left the hosts before it patched and the rest not.
+     */
+    private fun versionsWithLocalConfig(): Map<String, Version> {
+        val versions =
+            hostOperationsService
+                .filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
+                .associate { it.alias to remoteOps.getRemoteVersion(it.toHost(), version) }
+        require(versions.isNotEmpty()) { "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'" }
+        val missing = versions.filterValues { !File(context.workingDirectory, it.versionString).isDirectory }
+        check(missing.isEmpty()) {
+            "No local config directory for " +
+                missing.entries.joinToString("; ") { (alias, v) -> "${v.versionString}, the version $alias runs" } +
+                ". Create it with: easy-db-lab cassandra download-config --hosts ${missing.keys.joinToString(",")}"
+        }
+        return versions
+    }
+
     override fun execute() {
+        val versions = versionsWithLocalConfig()
+
         // upload the patch file
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
-            eventBus.emit(Event.Cassandra.ConfigFileUploading(file, "$it"))
+            val resolvedVersion = versions.getValue(it.alias)
 
-            val yaml = context.yaml.readTree(Path.of(file).inputStream())
+            eventBus.emit(Event.Cassandra.ConfigFileUploading(file, it.alias))
+
+            val yaml =
+                context.yaml.readTree(
+                    context.workingDirectory
+                        .toPath()
+                        .resolve(file)
+                        .inputStream(),
+                )
             (yaml as ObjectNode)
                 .put("listen_address", it.private)
                 .put("rpc_address", it.private)
                 .put("broadcast_rpc_address", it.private)
 
-            eventBus.emit(Event.Cassandra.ConfigPatching("$it"))
+            eventBus.emit(Event.Cassandra.ConfigPatching(it.alias))
             val tmp = Files.createTempFile("easydblab", "yaml")
             context.yaml.writeValue(tmp.toFile(), yaml)
 
             // call the patch command on the server
             remoteOps.upload(it, tmp, file)
             tmp.deleteExisting()
-            val resolvedVersion = remoteOps.getRemoteVersion(it, version)
 
             // Execute patch-config and handle errors.
             // Check stdout for the success marker — stderr may contain sudo warnings (e.g. sudoers
@@ -85,7 +114,7 @@ class UpdateConfig : PicoBaseCommand() {
             // Create a temporary directory on the remote filesystem using mktemp
             val tempDir =
                 remoteOps.executeRemotely(it, "mktemp -d -t easydblab.XXXXXX").text.trim()
-            eventBus.emit(Event.Cassandra.TempDirCreated(tempDir, "$it"))
+            eventBus.emit(Event.Cassandra.TempDirCreated(tempDir, it.alias))
 
             // Upload files to the temporary directory first
             eventBus.emit(Event.Cassandra.ConfigFilesUploading(tempDir))
@@ -95,7 +124,7 @@ class UpdateConfig : PicoBaseCommand() {
             remoteOps.executeRemotely(it, "sudo mkdir -p ${resolvedVersion.conf}").text
 
             // Copy files from temp directory to the final location
-            eventBus.emit(Event.Cassandra.ConfigFilesCopying("$it", resolvedVersion.conf))
+            eventBus.emit(Event.Cassandra.ConfigFilesCopying(it.alias, resolvedVersion.conf))
             remoteOps.executeRemotely(it, "sudo cp -R $tempDir/* ${resolvedVersion.conf}/").text
 
             // Change ownership of all files
@@ -108,13 +137,11 @@ class UpdateConfig : PicoBaseCommand() {
             // Clean up the temporary directory
             remoteOps.executeRemotely(it, "rm -rf $tempDir").text
 
-            eventBus.emit(Event.Cassandra.ConfigUpdated("$it"))
+            eventBus.emit(Event.Cassandra.ConfigUpdated(it.alias))
         }
 
         if (restart) {
-            commandExecutor.execute {
-                Restart().apply { this.hosts = this@UpdateConfig.hosts }
-            }
+            runNested(commandExecutor, Restart().apply { this.hosts = this@UpdateConfig.hosts })
         }
     }
 }

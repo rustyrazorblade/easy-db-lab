@@ -8,7 +8,7 @@
     "from": "now-1h",
     "to": "now"
   },
-  "refresh": "15s",
+  "refresh": "",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "liveNow": false,
@@ -16,21 +16,21 @@
     {
       "title": "PostgreSQL Overview",
       "type": "link",
-      "url": "/d/postgres-overview",
+      "url": "/d/postgres-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     },
     {
       "title": "DuckDB Analytics",
       "type": "link",
-      "url": "/d/postgres-duckdb",
+      "url": "/d/postgres-duckdb?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     },
     {
       "title": "PostGIS Geospatial",
       "type": "link",
-      "url": "/d/postgres-postgis",
+      "url": "/d/postgres-postgis?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     }
@@ -60,19 +60,58 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Metrics",
         "multi": false,
-        "name": "datasource",
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+        "definition": "label_values(cnpg_collector_up{cluster=~\"$cluster\", job=\"postgres\",k8s_app_instance=\"postgres-timescaledb\"}, instance)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Instance",
+        "multi": false,
+        "name": "instance",
+        "options": [],
+        "query": { "query": "label_values(cnpg_collector_up{cluster=~\"$cluster\", job=\"postgres\",k8s_app_instance=\"postgres-timescaledb\"}, instance)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -97,7 +136,7 @@
       "description": "Time-series workloads are append-dominant. High commit rate with low rollback rate is the ideal pattern.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -137,11 +176,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": true,
-          "legendFormat": "__auto"
+          "legendFormat": "{{cluster_name}}"
         }
       ]
     },
@@ -152,7 +191,7 @@
       "description": "TimescaleDB's chunk-based storage generates predictable WAL bursts as new time-chunks are filled.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -192,11 +231,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
+          "expr": "label_replace(rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": true,
-          "legendFormat": "__auto"
+          "legendFormat": "{{cluster_name}}"
         }
       ]
     },
@@ -207,7 +246,7 @@
       "description": "Time-series queries for recent data should stay in cache. Low hit ratio suggests the working set exceeds shared_buffers.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -255,11 +294,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[5m])), 1)",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])) / clamp_min(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])) + sum by (cluster) (rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])), 1), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": true,
-          "legendFormat": "__auto"
+          "legendFormat": "{{cluster_name}}"
         }
       ]
     },
@@ -270,7 +309,7 @@
       "description": "TimescaleDB grows quickly with continuous time-series ingestion. Size reflects chunks across all hypertables.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -310,11 +349,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "max(cnpg_pg_database_size_bytes{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"})",
+          "expr": "label_replace(max by (cluster) (cnpg_pg_database_size_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": true,
-          "legendFormat": "__auto"
+          "legendFormat": "{{cluster_name}}"
         }
       ]
     },
@@ -325,7 +364,7 @@
       "description": "Time-series ingestion produces sustained WAL writes. Each chunk fill and chunk creation appears as a write spike.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -356,10 +395,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
-          "legendFormat": "WAL bytes/s"
+          "expr": "label_replace(rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} WAL bytes/s"
         }
       ]
     },
@@ -370,7 +409,7 @@
       "description": "Append-only time-series should show commits >> rollbacks. Elevated rollbacks indicate transaction conflicts or chunk creation contention.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -401,18 +440,18 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "commits/s"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} commits/s"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "rollbacks/s"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_rollback_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} rollbacks/s"
         }
       ]
     },
@@ -436,7 +475,7 @@
       "description": "Recent-data queries should show near-100% cache hits. Drops indicate background chunk aging pushing hot data out of cache.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -467,10 +506,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m])), 1)",
-          "legendFormat": "hit ratio"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / clamp_min(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) + sum by (cluster) (rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), 1), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} hit ratio"
         }
       ]
     },
@@ -481,7 +520,7 @@
       "description": "TimescaleDB's continuous chunk writes trigger background checkpoints. High checkpoint frequency indicates write pressure.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -512,18 +551,18 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_pg_stat_checkpointer_buffers_written_total{job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
-          "legendFormat": "buffers written/s"
+          "expr": "label_replace(rate(cnpg_pg_stat_checkpointer_buffers_written_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} buffers written/s"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{job=\"postgres\",server_port=\"30989\",host_name=\"db0\"}[2m])",
-          "legendFormat": "bgwriter clean/s"
+          "expr": "label_replace(rate(cnpg_pg_stat_bgwriter_buffers_clean_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} bgwriter clean/s"
         }
       ]
     },
@@ -547,7 +586,7 @@
       "description": "Time-series workloads are insert-dominant. Updates and deletes on hypertable chunks are rare (chunk immutability). Elevated updates suggest non-hypertable workloads.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -578,26 +617,26 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "inserts/s"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_inserted_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} inserts/s"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_updated_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "updates/s"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_updated_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} updates/s"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted_total{job=\"postgres\",server_port=\"30989\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "deletes/s"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_deleted_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} deletes/s"
         }
       ]
     }

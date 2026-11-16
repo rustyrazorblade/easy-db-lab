@@ -13,7 +13,7 @@ Dashboard JSON files SHALL live in a top-level `dashboards/` directory at the pr
 #### Scenario: Dashboard files exist at project root
 
 - **WHEN** a developer looks at the project structure
-- **THEN** all Grafana dashboard JSON files SHALL be located in the `dashboards/` directory
+- **THEN** all Grafana dashboard JSON files SHALL be located in the `dashboards/<folder>/` tree, one subdirectory per Grafana folder
 
 #### Scenario: Dashboards are included in the JAR classpath
 
@@ -38,4 +38,4 @@ A GitHub Actions workflow SHALL publish all dashboard JSON files as a zip archiv
 #### Scenario: Zip contains only dashboard JSON files
 
 - **WHEN** the dashboards zip is downloaded and extracted
-- **THEN** it SHALL contain only the JSON files from the `dashboards/` directory with no extra directory nesting
+- **THEN** it SHALL contain only the JSON files from the `dashboards/` tree, keeping the folder subdirectories and nothing above them

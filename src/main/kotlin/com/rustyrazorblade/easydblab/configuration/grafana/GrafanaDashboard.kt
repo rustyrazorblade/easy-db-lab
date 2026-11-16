@@ -1,106 +1,38 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 /**
- * Registry of all Grafana dashboards.
- *
- * Each entry defines the metadata needed to build a K8s ConfigMap and wire it
- * into the Grafana deployment as a volume mount. Adding a new dashboard requires
- * only a new enum entry and a JSON file in the top-level `dashboards/` directory.
- *
- * @property configMapName K8s ConfigMap name
- * @property volumeName Volume name in the Grafana Deployment spec
- * @property mountPath Where Grafana reads the dashboard JSON inside the container
- * @property jsonFileName File name used as the ConfigMap data key and classpath resource path
- * @property optional Whether the volume mount uses optional: true (for dashboards that may not exist)
+ * Root of the dashboard tree inside the Grafana container. The single provisioning provider
+ * sweeps it, and every core dashboard sits at `$GRAFANA_DASHBOARD_ROOT/<folder>/<file>.json`.
+ * It is the hostPath [GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH] seen from inside.
  */
-enum class GrafanaDashboard(
-    val configMapName: String,
-    val volumeName: String,
-    val mountPath: String,
+const val GRAFANA_DASHBOARD_ROOT = "/var/lib/grafana/dashboards"
+
+/**
+ * Classpath directory holding the dashboard folders. Gradle copies the top-level `dashboards/`
+ * tree here (see `processResources` in `build.gradle.kts`), so a file at
+ * `dashboards/<folder>/<name>.json` in the repo is `dashboards/<folder>/<name>.json` on the
+ * classpath as well.
+ */
+const val GRAFANA_DASHBOARD_RESOURCE_BASE = "dashboards"
+
+/**
+ * One core Grafana dashboard: a JSON file in a folder directory under `dashboards/`.
+ *
+ * Nothing here is declared by hand. [GrafanaDashboardCatalog] discovers every instance from the
+ * classpath, and the tree copied to the control node keeps exactly this `<folder>/<file>` layout,
+ * so adding a dashboard is dropping a JSON file into a folder directory and nothing else. Where
+ * the JSON is read from is the catalog's knowledge ([GrafanaDashboardCatalog.resourcePathOf]),
+ * not the dashboard's.
+ *
+ * @property folder Grafana folder the dashboard is filed under: the directory name, verbatim. Kits
+ *   install their own dashboards into a folder named exactly after the kit, so a core dashboard
+ *   for the same engine must use the same string to land beside them.
+ * @property jsonFileName File name, used as the classpath resource name and the name in the tree
+ */
+data class GrafanaDashboard(
+    val folder: String,
     val jsonFileName: String,
-    val optional: Boolean = false,
 ) {
-    SYSTEM(
-        configMapName = "grafana-dashboard-system",
-        volumeName = "dashboard-system",
-        mountPath = "/var/lib/grafana/dashboards/system",
-        jsonFileName = "system-overview.json",
-    ),
-    S3(
-        configMapName = "grafana-dashboard-s3",
-        volumeName = "dashboard-s3",
-        mountPath = "/var/lib/grafana/dashboards/s3",
-        jsonFileName = "s3-cloudwatch.json",
-        optional = true,
-    ),
-    EMR(
-        configMapName = "grafana-dashboard-emr",
-        volumeName = "dashboard-emr",
-        mountPath = "/var/lib/grafana/dashboards/emr",
-        jsonFileName = "emr.json",
-        optional = true,
-    ),
-    OPENSEARCH(
-        configMapName = "grafana-dashboard-opensearch",
-        volumeName = "dashboard-opensearch",
-        mountPath = "/var/lib/grafana/dashboards/opensearch",
-        jsonFileName = "opensearch.json",
-        optional = true,
-    ),
-    STRESS(
-        configMapName = "grafana-dashboard-stress",
-        volumeName = "dashboard-stress",
-        mountPath = "/var/lib/grafana/dashboards/stress",
-        jsonFileName = "stress.json",
-        optional = true,
-    ),
-    CLICKHOUSE(
-        configMapName = "grafana-dashboard-clickhouse",
-        volumeName = "dashboard-clickhouse",
-        mountPath = "/var/lib/grafana/dashboards/clickhouse",
-        jsonFileName = "clickhouse.json",
-        optional = true,
-    ),
-    CLICKHOUSE_LOGS(
-        configMapName = "grafana-dashboard-clickhouse-logs",
-        volumeName = "dashboard-clickhouse-logs",
-        mountPath = "/var/lib/grafana/dashboards/clickhouse-logs",
-        jsonFileName = "clickhouse-logs.json",
-        optional = true,
-    ),
-    PROFILING(
-        configMapName = "grafana-dashboard-profiling",
-        volumeName = "dashboard-profiling",
-        mountPath = "/var/lib/grafana/dashboards/profiling",
-        jsonFileName = "profiling.json",
-        optional = true,
-    ),
-    CASSANDRA_OVERVIEW(
-        configMapName = "grafana-dashboard-cassandra-overview",
-        volumeName = "dashboard-cassandra-overview",
-        mountPath = "/var/lib/grafana/dashboards/cassandra-overview",
-        jsonFileName = "cassandra-overview.json",
-        optional = true,
-    ),
-    LOG_INVESTIGATION(
-        configMapName = "grafana-dashboard-log-investigation",
-        volumeName = "dashboard-log-investigation",
-        mountPath = "/var/lib/grafana/dashboards/log-investigation",
-        jsonFileName = "log-investigation.json",
-        optional = true,
-    ),
-    CLUSTER_COMPARISON(
-        configMapName = "grafana-dashboard-cluster-comparison",
-        volumeName = "dashboard-cluster-comparison",
-        mountPath = "/var/lib/grafana/dashboards/cluster-comparison",
-        jsonFileName = "cluster-comparison.json",
-        optional = true,
-    ),
-    TEMPO(
-        configMapName = "grafana-dashboard-tempo",
-        volumeName = "dashboard-tempo",
-        mountPath = "/var/lib/grafana/dashboards/tempo",
-        jsonFileName = "tempo.json",
-        optional = true,
-    ),
+    /** Path of the JSON relative to the tree root, on the classpath and on the control node alike. */
+    val relativePath: String get() = "$folder/$jsonFileName"
 }

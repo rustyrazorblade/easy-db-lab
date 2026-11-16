@@ -1,0 +1,221 @@
+package com.rustyrazorblade.easydblab.services
+
+import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
+import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.events.EventBus
+import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.PodBuilder
+import io.fabric8.kubernetes.api.model.batch.v1.Job
+import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
+import io.fabric8.kubernetes.client.KubernetesClient
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
+import org.mockito.kotlin.any
+import java.time.Duration
+import java.util.concurrent.TimeUnit
+
+/**
+ * Proves [DefaultK8sNamespaceOperations.waitForPodsReady] against a real K3s cluster.
+ *
+ * The bug it guards: the observability readiness gate waits on every pod in the namespace, and a
+ * kit's stress Job leaves a pod there in phase Succeeded, or Failed when the run failed. A finished
+ * Job pod is never Ready, so `grafana update-config` and `up` timed out on it after applying a
+ * healthy stack.
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class PodReadinessWaitIntegrationTest {
+    companion object {
+        private const val NAMESPACE = "readiness-wait"
+        private const val IMAGE = SharedK3s.BUSYBOX_IMAGE
+        private const val JOB_TIMEOUT_SECONDS = 180L
+        private const val WAIT_TIMEOUT_SECONDS = 20
+        private const val LONG_WAIT_TIMEOUT_SECONDS = 600
+        private const val FAIL_FAST_LIMIT_SECONDS = 30L
+        private const val PENDING_WAIT_TIMEOUT_SECONDS = 3
+    }
+
+    private val controlHost =
+        ClusterHost(
+            publicIp = "1.2.3.4",
+            privateIp = "10.0.0.1",
+            alias = "control0",
+            availabilityZone = "us-west-2a",
+            instanceId = "i-test",
+        )
+
+    private lateinit var client: KubernetesClient
+    private lateinit var ops: DefaultK8sNamespaceOperations
+
+    @BeforeAll
+    fun setup() {
+        SharedK3s.createNamespace(NAMESPACE)
+        client = SharedK3s.client()
+        // Each operation closes the client it is handed, so every call gets a fresh one.
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
+        ops = DefaultK8sNamespaceOperations(clientProvider, EventBus(), podPollInterval = Duration.ofMillis(500))
+    }
+
+    @AfterAll
+    fun tearDown() {
+        client.close()
+    }
+
+    private fun job(
+        name: String,
+        command: String,
+    ): Job =
+        JobBuilder()
+            .withNewMetadata()
+            .withName(name)
+            .withNamespace(NAMESPACE)
+            .endMetadata()
+            .withNewSpec()
+            .withBackoffLimit(0)
+            .withNewTemplate()
+            .withNewSpec()
+            .withRestartPolicy("Never")
+            .addNewContainer()
+            .withName(name)
+            .withImage(IMAGE)
+            // Preloaded into K3s; never pulling makes a missing preload fail fast, not flake.
+            .withImagePullPolicy("Never")
+            .withCommand("sh", "-c", command)
+            .endContainer()
+            .endSpec()
+            .endTemplate()
+            .endSpec()
+            .build()
+
+    /** Runs a Job to its end, as [finished] reports it, and returns the phases of its pods. */
+    private fun runJob(
+        name: String,
+        command: String,
+        finished: (Job?) -> Boolean,
+    ): List<String?> {
+        client.resource(job(name, command)).create()
+        client
+            .batch()
+            .v1()
+            .jobs()
+            .inNamespace(NAMESPACE)
+            .withName(name)
+            .waitUntilCondition(finished, JOB_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        return client
+            .pods()
+            .inNamespace(NAMESPACE)
+            .withLabel("job-name", name)
+            .list()
+            .items
+            .map { it.status?.phase }
+    }
+
+    private fun awaitNamespaceReady() {
+        ops.waitForPodsReady(WAIT_TIMEOUT_SECONDS, NAMESPACE).getOrElse { e ->
+            throw AssertionError("${e.message}\n${clusterDiagnostics(client, NAMESPACE)}", e)
+        }
+    }
+
+    @Test
+    fun `a pod that ran to completion does not hold up the namespace readiness wait`() {
+        val phases = runJob("stress", "true") { it?.status?.succeeded == 1 }
+        assertThat(phases).containsExactly(K8sPodUtils.SUCCEEDED_PHASE)
+
+        awaitNamespaceReady()
+    }
+
+    /**
+     * A pod stuck pulling an image that does not exist will never become Ready. The wait must
+     * fail within a few polls naming the BackOff, not retry the failure until its deadline: at
+     * 1,000 nodes the deadline is over half an hour.
+     */
+    @Test
+    fun `a pod that cannot pull its image fails the wait at once, long before the deadline`() {
+        val namespace = "readiness-wait-backoff"
+        SharedK3s.createNamespace(namespace)
+        val unpullable =
+            PodBuilder()
+                .withNewMetadata()
+                .withName("unpullable")
+                .withNamespace(namespace)
+                .endMetadata()
+                .withNewSpec()
+                .addNewContainer()
+                .withName("unpullable")
+                .withImage("easy-db-lab.invalid/no-such-image:never")
+                .endContainer()
+                .endSpec()
+                .build()
+        client.resource(unpullable).create()
+        client
+            .pods()
+            .inNamespace(namespace)
+            .withName("unpullable")
+            .waitUntilCondition(::isBackingOff, JOB_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+
+        val started = System.nanoTime()
+        val result = ops.waitForPodsReady(LONG_WAIT_TIMEOUT_SECONDS, namespace)
+        val waited = Duration.ofNanos(System.nanoTime() - started)
+
+        assertThat(result.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("unpullable")
+            .hasMessageFindingMatch("ErrImagePull|ImagePullBackOff")
+        assertThat(waited).isLessThan(Duration.ofSeconds(FAIL_FAST_LIMIT_SECONDS))
+        client.namespaces().withName(namespace).delete()
+    }
+
+    /**
+     * A pod no node can take stays Pending without a terminal reason, so only the deadline ends the
+     * wait; the failure then names the pod and its phase, which is what the operator debugs from.
+     */
+    @Test
+    fun `a pod that stays Pending times out naming the pod and its state`() {
+        val namespace = "readiness-wait-pending"
+        SharedK3s.createNamespace(namespace)
+        val unschedulable =
+            PodBuilder()
+                .withNewMetadata()
+                .withName("unschedulable")
+                .withNamespace(namespace)
+                .endMetadata()
+                .withNewSpec()
+                .withNodeSelector<String, String>(mapOf("easydblab/no-such-node" to "true"))
+                .addNewContainer()
+                .withName("unschedulable")
+                .withImage(IMAGE)
+                .withImagePullPolicy("Never")
+                .withCommand("sleep", "3600")
+                .endContainer()
+                .endSpec()
+                .build()
+        client.resource(unschedulable).create()
+
+        val result = ops.waitForPodsReady(PENDING_WAIT_TIMEOUT_SECONDS, namespace)
+
+        assertThat(result.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Timed out")
+            .hasMessageContaining("unschedulable (phase=Pending")
+        client.namespaces().withName(namespace).delete()
+    }
+
+    private fun isBackingOff(pod: Pod?): Boolean =
+        pod
+            ?.status
+            ?.containerStatuses
+            .orEmpty()
+            .any { it.state?.waiting?.reason in K8sPodUtils.TERMINAL_FAILURE_REASONS }
+
+    @Test
+    fun `a Job pod that failed does not hold up the namespace readiness wait`() {
+        val phases = runJob("stress-failed", "exit 1") { it?.status?.failed == 1 }
+        assertThat(phases).containsExactly(K8sPodUtils.FAILED_PHASE)
+
+        awaitNamespaceReady()
+    }
+}

@@ -1,0 +1,294 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "${logs_datasource}"
+      },
+      "description": "Log lines per interval by the level Loki detects, counting exactly the lines the Logs panel shows: every filter (cluster, source, service, severity, search) applies.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${logs_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, detected_level) (count_over_time({cluster=~\"$cluster\", source=~\"$source\", service_name=~\"$service\"} | detected_level=~\"$severity\" |~ \"(?i)$search\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{detected_level}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Log volume",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "${logs_datasource}"
+      },
+      "gridPos": {
+        "h": 24,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 1,
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${logs_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "{cluster=~\"$cluster\", source=~\"$source\", service_name=~\"$service\"} | detected_level=~\"$severity\" |~ \"(?i)$search\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs",
+      "type": "logs",
+      "links": [
+        {
+          "title": "System Overview",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${cluster:queryparam}",
+          "targetBlank": false
+        }
+      ]
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "logs",
+    "investigation",
+    "otel"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Logs",
+        "multi": false,
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".+",
+        "description": "Clusters of this tenant. All is .+ because Loki refuses a stream selector that matches an empty value.",
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "${logs_datasource}"
+        },
+        "definition": "label_values({cluster=~\"$cluster\"}, service_name)",
+        "query": {
+          "label": "service_name",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{cluster=~\"$cluster\"}",
+          "type": 1
+        },
+        "hide": 0,
+        "refresh": 2,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "sort": 1,
+        "options": [],
+        "current": {}
+      },
+      {
+        "name": "source",
+        "label": "Source",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "${logs_datasource}"
+        },
+        "definition": "label_values({cluster=~\"$cluster\"}, source)",
+        "query": {
+          "label": "source",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{cluster=~\"$cluster\"}",
+          "type": 1
+        },
+        "hide": 0,
+        "refresh": 2,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "sort": 1,
+        "options": [],
+        "current": {}
+      },
+      {
+        "name": "severity",
+        "label": "Severity",
+        "description": "The level Loki detects on every line (detected_level).",
+        "type": "custom",
+        "query": "error,warn,info,debug,trace,unknown",
+        "hide": 0,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "options": [],
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "search",
+        "label": "Search",
+        "description": "Case-insensitive regular expression every line must match.",
+        "type": "textbox",
+        "hide": 0,
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": "",
+          "value": ""
+        },
+        "query": ""
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "${logs_datasource}"
+        },
+        "filters": [],
+        "hide": 0,
+        "name": "Filters",
+        "type": "adhoc"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Log Investigation",
+  "uid": "log-investigation",
+  "version": 1,
+  "weekStart": ""
+}

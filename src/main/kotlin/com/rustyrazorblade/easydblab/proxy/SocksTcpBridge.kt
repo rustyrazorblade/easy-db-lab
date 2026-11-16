@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.Closeable
 import java.io.IOException
@@ -74,7 +75,7 @@ class SocksTcpBridge(
 
     private fun handleConnection(inbound: Socket) {
         liveSockets.add(inbound)
-        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
+        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, socksPort))
         val outbound = Socket(proxy)
         try {
             outbound.connect(InetSocketAddress.createUnresolved(targetHost, targetPort))

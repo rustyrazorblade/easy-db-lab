@@ -17,6 +17,9 @@ spec:
         type: persistent-claim
         size: __STORAGE_SIZE__
         class: local-storage-wfc
+        # Binds only this kit's platform PVs; every kit's PVs share the storage class.
+        selector:
+          app.kubernetes.io/name: __KIT_NAME__
         deleteClaim: true
 ---
 apiVersion: kafka.strimzi.io/v1

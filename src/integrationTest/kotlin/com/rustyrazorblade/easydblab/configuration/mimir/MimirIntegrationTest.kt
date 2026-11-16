@@ -1,0 +1,291 @@
+package com.rustyrazorblade.easydblab.configuration.mimir
+
+import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.ObservabilityBackends
+import com.rustyrazorblade.easydblab.PrometheusRemoteWrite
+import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.services.TemplateService
+import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.koin.core.module.Module
+import org.koin.dsl.module
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
+import org.testcontainers.DockerClientFactory
+import org.testcontainers.Testcontainers
+import org.testcontainers.containers.GenericContainer
+import software.amazon.awssdk.core.sync.ResponseTransformer
+import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
+import java.net.URI
+import java.net.URLEncoder
+import java.net.http.HttpRequest
+import java.time.Duration
+import java.util.UUID
+
+/**
+ * Runs Mimir at the image the cluster deploys, with the configuration the cluster renders, against
+ * S3 (LocalStack). Mimir writes every block to S3 and reads its ingester and, through the
+ * store-gateway, the store.
+ * The test proves:
+ *
+ * - a sample written while the cluster keeps writing is in a block under `mimir/<tenant>/` within
+ *   about three minutes, with no flush and no shutdown: blocks are one minute long and ship every
+ *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 10m out-of-order window;
+ * - after the head is compacted into a block, the block lands under `mimir/<tenant>/`
+ *   and the samples are still answered, now from the local block;
+ * - after a SIGKILL and a restart on the same data volume, every sample written before the kill is
+ *   still answered: the WAL replays and the local block is kept;
+ * - the set of objects in the bucket only grows: nothing Mimir runs deletes an object.
+ */
+class MimirIntegrationTest : BaseKoinTest() {
+    private companion object {
+        const val METRIC = "edl_it_probe"
+        val BLOCK_WAIT: Duration = Duration.ofMinutes(3)
+
+        /** How soon a sample must be in S3 while the cluster keeps writing: the spec's "about 3 minutes". */
+        val UPLOAD_WITHIN: Duration = Duration.ofMinutes(3).plusSeconds(30)
+        val POLL: Duration = Duration.ofSeconds(2)
+
+        /** How long a written sample may take to be answered; the sample carries the host's clock, the query Docker's. */
+        val ANSWER_WITHIN: Duration = Duration.ofSeconds(30)
+    }
+
+    private val s3 = SharedLocalStack.s3Client()
+    private val docker = DockerClientFactory.instance().client()
+    private val bucket = "mimir-it-${UUID.randomUUID().toString().take(8)}"
+    private val volume = "mimir-data-${UUID.randomUUID().toString().take(8)}"
+    private val containers = mutableListOf<GenericContainer<*>>()
+    private val objectSnapshots = mutableListOf<Set<String>>()
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                single {
+                    mock<ClusterStateManager>().also {
+                        whenever(it.load()).thenReturn(ClusterState(name = "mimir-it", versions = mutableMapOf()))
+                    }
+                }
+                single { TemplateService(get(), get()) }
+            },
+        )
+
+    @BeforeEach
+    fun prepare() {
+        SharedLocalStack.createBucketIfMissing(s3, bucket)
+        Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
+        docker.createVolumeCmd().withName(volume).exec()
+    }
+
+    @AfterEach
+    fun cleanUp() {
+        containers.forEach { it.stop() }
+        runCatching { docker.removeVolumeCmd(volume).exec() }
+    }
+
+    private fun startMimir(): GenericContainer<*> {
+        val rendered = MimirManifestBuilder(getKoin().get()).buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
+        return ObservabilityBackends
+            .startMimir(ObservabilityBackends.mimirConfig(rendered), volume, bucket, Constants.Observability.METRICS_ROOT)
+            .also { containers.add(it) }
+    }
+
+    private fun url(mimir: GenericContainer<*>): String = ObservabilityBackends.baseUrl(mimir, Constants.K8s.MIMIR_HTTP_PORT)
+
+    private fun write(
+        mimir: GenericContainer<*>,
+        tenant: String,
+        cluster: String,
+        value: Double,
+        timestampMillis: Long = System.currentTimeMillis(),
+    ) {
+        val body =
+            PrometheusRemoteWrite.body(
+                listOf(
+                    PrometheusRemoteWrite.Series(
+                        labels = mapOf("__name__" to METRIC, "cluster" to cluster),
+                        value = value,
+                        timestampMillis = timestampMillis,
+                    ),
+                ),
+            )
+        val response =
+            ObservabilityBackends.send(
+                HttpRequest
+                    .newBuilder(URI("${url(mimir)}/api/v1/push"))
+                    .header("Content-Type", "application/x-protobuf")
+                    .header("Content-Encoding", "snappy")
+                    .header("X-Prometheus-Remote-Write-Version", "0.1.0")
+                    .header(Constants.Observability.TENANT_HEADER, tenant)
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                    .build(),
+            )
+        assertThat(response.statusCode()).describedAs(response.body()).isEqualTo(200)
+    }
+
+    /** The result vector of an instant PromQL [query] for [tenant]. */
+    private fun query(
+        mimir: GenericContainer<*>,
+        tenant: String,
+        query: String,
+    ): List<JsonObject> {
+        val encoded = URLEncoder.encode(query, Charsets.UTF_8)
+        val response = ObservabilityBackends.get("${url(mimir)}/prometheus/api/v1/query?query=$encoded", tenant)
+        assertThat(response.statusCode()).describedAs(response.body()).isEqualTo(200)
+        return Json
+            .parseToJsonElement(response.body())
+            .jsonObject
+            .getValue("data")
+            .jsonObject
+            .getValue("result")
+            .jsonArray
+            .map { it.jsonObject }
+    }
+
+    private fun labels(series: JsonObject): Map<String, String> =
+        series.getValue("metric").jsonObject.mapValues { it.value.jsonPrimitive.content }
+
+    /** The number of samples of the tenant's probe series in the last hour. */
+    private fun samples(
+        mimir: GenericContainer<*>,
+        tenant: String,
+    ): Int =
+        query(mimir, tenant, "count_over_time($METRIC[1h])")
+            .sumOf {
+                it
+                    .getValue("value")
+                    .jsonArray[1]
+                    .jsonPrimitive.content
+                    .toDouble()
+                    .toInt()
+            }
+
+    /**
+     * The tenant's sample count once it is [expected], or the last count after [ANSWER_WITHIN]. A
+     * sample is stamped with the host's clock and the query runs at Docker's, so the count is read
+     * until it arrives rather than once at a moment.
+     */
+    private fun awaitSamples(
+        mimir: GenericContainer<*>,
+        tenant: String,
+        expected: Int,
+    ): Int {
+        val config =
+            RetryConfig
+                .custom<Int>()
+                .maxAttempts((ANSWER_WITHIN.toMillis() / POLL.toMillis()).toInt())
+                .waitDuration(POLL)
+                .retryOnResult { it != expected }
+                .build()
+        return Retry.of("mimir-samples", config).executeSupplier { samples(mimir, tenant) }
+    }
+
+    private fun objectKeys(): Set<String> =
+        s3
+            .listObjectsV2Paginator(ListObjectsV2Request.builder().bucket(bucket).build())
+            .contents()
+            .map { it.key() }
+            .toSet()
+            .also { objectSnapshots.add(it) }
+
+    private fun blockMetas(tenant: String): List<String> =
+        objectKeys().filter { it.startsWith("${Constants.Observability.METRICS_ROOT}/$tenant/") && it.endsWith("/meta.json") }
+
+    private fun awaitBlock(tenant: String) {
+        val deadline = System.nanoTime() + BLOCK_WAIT.toNanos()
+        while (blockMetas(tenant).isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(POLL.toMillis())
+        }
+        assertThat(blockMetas(tenant)).describedAs("blocks under ${Constants.Observability.METRICS_ROOT}/$tenant/").isNotEmpty()
+    }
+
+    /** Compacts every tenant's head into a block and ships it, without waiting for the next cut. */
+    private fun compactHead(mimir: GenericContainer<*>) {
+        val response =
+            ObservabilityBackends.send(
+                HttpRequest
+                    .newBuilder(URI("${url(mimir)}/ingester/flush?wait=true"))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build(),
+            )
+        assertThat(response.statusCode()).describedAs(response.body()).isIn(200, 204)
+    }
+
+    /** The `minTime` and `maxTime` (exclusive) of the block whose `meta.json` is at [key]. */
+    private fun blockRange(key: String): LongRange {
+        val meta =
+            Json
+                .parseToJsonElement(
+                    s3
+                        .getObject(
+                            GetObjectRequest
+                                .builder()
+                                .bucket(bucket)
+                                .key(key)
+                                .build(),
+                            ResponseTransformer.toBytes(),
+                        ).asUtf8String(),
+                ).jsonObject
+        return meta.getValue("minTime").jsonPrimitive.long until meta.getValue("maxTime").jsonPrimitive.long
+    }
+
+    /**
+     * A cluster writes all the time, so the test keeps writing too, and never flushes or stops Mimir:
+     * the block must come from the 1-minute range cut and the 15-second ship alone.
+     */
+    @Test
+    fun `a sample reaches a block in S3 within about three minutes while the cluster keeps writing`() {
+        val mimir = startMimir()
+        val firstSample = System.currentTimeMillis()
+        write(mimir, "acme", "lab-a", 0.0, firstSample)
+
+        val deadline = System.nanoTime() + UPLOAD_WITHIN.toNanos()
+        var holding = emptyList<String>()
+        var value = 1.0
+        while (holding.isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(POLL.toMillis())
+            write(mimir, "acme", "lab-a", value++)
+            holding = blockMetas("acme").filter { firstSample in blockRange(it) }
+        }
+
+        assertThat(holding)
+            .describedAs("a block under ${Constants.Observability.METRICS_ROOT}/acme/ holding the first sample, within $UPLOAD_WITHIN")
+            .isNotEmpty()
+    }
+
+    @Test
+    fun `samples stay queryable after head compaction and a SIGKILL, and no object is ever deleted`() {
+        val first = startMimir()
+        write(first, "a", "lab-a", 1.0)
+
+        // The head becomes a block, which ships under the tenant's directory, and is still read locally.
+        compactHead(first)
+        awaitBlock("a")
+        assertThat(awaitSamples(first, "a", 1)).describedAs("read from the local block after head compaction").isEqualTo(1)
+
+        // A sample only in the WAL survives a kill with no shutdown at all.
+        write(first, "a", "lab-a", 2.0)
+        objectKeys()
+        docker.killContainerCmd(first.containerId).withSignal("KILL").exec()
+        val second = startMimir()
+        assertThat(awaitSamples(second, "a", 2)).describedAs("the block and the replayed WAL, after SIGKILL").isEqualTo(2)
+
+        objectKeys()
+        objectSnapshots.zipWithNext().forEach { (earlier, later) ->
+            assertThat(later).describedAs("objects only accumulate").containsAll(earlier)
+        }
+    }
+}

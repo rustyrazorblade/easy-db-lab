@@ -3,24 +3,33 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.ExternalIpService
+import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
-import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
+import com.rustyrazorblade.easydblab.services.aws.AccountCapacity
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.BucketRegion
+import com.rustyrazorblade.easydblab.services.aws.CompactorLeaseReader
 import com.rustyrazorblade.easydblab.services.aws.DefaultAMIResolver
 import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.DefaultSshIngressService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
+import com.rustyrazorblade.easydblab.services.aws.Ec2AccountCapacity
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
+import com.rustyrazorblade.easydblab.services.aws.SshIngressService
 import org.koin.dsl.module
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
@@ -29,11 +38,11 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
-import software.amazon.awssdk.services.ecr.EcrClient
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
 import software.amazon.awssdk.services.sts.StsClient
 
 /**
@@ -53,7 +62,8 @@ private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOv
  * - EmrClient: AWS EMR client for Elastic MapReduce (Spark) cluster management
  * - S3Client: AWS S3 client for object storage operations
  * - StsClient: AWS STS client for credential validation
- * - AWS: AWS service wrapper for lab environment operations
+ * - ServiceQuotasClient: Service Quotas client for the pre-launch quota checks
+ * - AccountIdentity, IamRoles, S3BucketAdmin: account, IAM and S3 bucket operations, each a small interface
  * - AMIService: AMI lifecycle management (CRUD, pruning, validation)
  * - AMIValidator: AMI validation interface (implemented by AMIService)
  * - VpcService: Generic VPC infrastructure management
@@ -146,7 +156,7 @@ val awsModule =
 
         single {
             val overrideConfig = createClientOverrideConfig()
-            EcrClient
+            ServiceQuotasClient
                 .builder()
                 .region(get<Region>())
                 .credentialsProvider(get<AwsCredentialsProvider>())
@@ -155,13 +165,19 @@ val awsModule =
         }
 
         // Provide AWS service as singleton
-        single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
+        single<AccountIdentity> { StsAccountIdentity(get<StsClient>()) }
+        single<IamRoles> { AwsIamRoles(get<IamClient>(), get<AccountIdentity>()) }
+
+        // The account facts `up` checks before it launches anything, and the checks themselves
+        single<AccountCapacity> { Ec2AccountCapacity(get<Ec2Client>(), get<ServiceQuotasClient>()) }
+        single { LaunchCapacityPreflight(get(), get()) }
 
         // Provide EC2InstanceService as singleton
         single {
             EC2InstanceService(
                 get<Ec2Client>(),
                 get<EventBus>(),
+                region = get<Region>().id(),
             )
         }
 
@@ -170,7 +186,7 @@ val awsModule =
             AMIService(
                 get<Ec2Client>(),
                 get<EventBus>(),
-                get<AWS>(),
+                get<AccountIdentity>(),
             )
         }
 
@@ -195,11 +211,24 @@ val awsModule =
             )
         }
 
+        // SSH ingress rules on the workspace cluster's security group (ingress allow / revoke)
+        single<SshIngressService> {
+            DefaultSshIngressService(
+                get<ClusterStateManager>(),
+                get<ExternalIpService>(),
+                get<VpcService>(),
+            )
+        }
+
         // Provide AWSResourceSetupService as singleton
+        single { InstanceRolePolicies(get()) }
+
         single {
             AWSResourceSetupService(
-                get<AWS>(),
+                get<AccountIdentity>(),
+                get<IamRoles>(),
                 get<EventBus>(),
+                get<InstanceRolePolicies>(),
             )
         }
 
@@ -220,7 +249,7 @@ val awsModule =
                 get<EmrClient>(),
                 get<ObjectStore>(),
                 get<ClusterStateManager>(),
-                get<VictoriaLogsService>(),
+                get<LokiQueryService>(),
                 get<EventBus>(),
             )
         }
@@ -237,13 +266,15 @@ val awsModule =
         single {
             OpenSearchService(
                 get<OpenSearchClient>(),
-                get<AWS>(),
+                get<IamRoles>(),
+                get<AccountIdentity>(),
                 get<EventBus>(),
             )
         }
 
-        // Provide AwsS3BucketService as singleton
-        single { AwsS3BucketService(get<AWS>()) }
+        // The one S3 bucket adapter, also bound as its S3BucketAdmin contract
+        single { AwsS3BucketService(get<S3Client>(), get<AccountIdentity>()) }
+        single<S3BucketAdmin> { get<AwsS3BucketService>() }
 
         // Provide AMIResolver as singleton
         single<AMIResolver> {
@@ -252,4 +283,23 @@ val awsModule =
 
         // Provide InstanceSpecFactory as singleton
         single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
+
+        factory { BucketRegion(get()) }
+        factory {
+            val bucketRegion = get<BucketRegion>()
+            val credentials = get<AwsCredentialsProvider>()
+            CompactorLeaseReader(
+                regionOf = bucketRegion::of,
+                leaseIn =
+                    CompactorLeaseReader.fromS3 { region ->
+                        S3Client
+                            .builder()
+                            .region(Region.of(region))
+                            .credentialsProvider(credentials)
+                            .overrideConfiguration(createClientOverrideConfig())
+                            .build()
+                    },
+            )
+        }
+        factory { AccountBucketSetup(get(), get(), get(), get(), get()) }
     }

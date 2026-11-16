@@ -73,7 +73,6 @@ assets_version = "3.0.2"
 - [Docker](development/docker.md)
 - [Publishing](development/publishing.md)
 - [Testing](development/testing.md)
-- [End-to-End Testing](development/end-to-end-testing.md)
 - [Spark](development/spark.md)
 - [SOCKS Proxy Architecture](development/socks-proxy.md)
 - [Fabric8 Server-Side Apply](development/fabric8-server-side-apply.md)

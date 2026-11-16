@@ -1,0 +1,67 @@
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  labels:
+    app.kubernetes.io/name: "registry"
+  name: "registry"
+  namespace: "default"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "registry"
+  strategy:
+    type: "Recreate"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "registry"
+    spec:
+      containers:
+      - env:
+        - name: "REGISTRY_HTTP_TLS_CERTIFICATE"
+          value: "/certs/registry.crt"
+        - name: "REGISTRY_HTTP_TLS_KEY"
+          value: "/certs/registry.key"
+        image: "registry:2"
+        livenessProbe:
+          httpGet:
+            path: "/v2/"
+            port: 5000
+            scheme: "HTTPS"
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        name: "registry"
+        ports:
+        - containerPort: 5000
+          hostPort: 5000
+          protocol: "TCP"
+        readinessProbe:
+          httpGet:
+            path: "/v2/"
+            port: 5000
+            scheme: "HTTPS"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: "/var/lib/registry"
+          name: "data"
+        - mountPath: "/certs"
+          name: "certs"
+          readOnly: true
+      dnsPolicy: "ClusterFirstWithHostNet"
+      hostNetwork: true
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+      - effect: "NoSchedule"
+        key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+      volumes:
+      - emptyDir: {}
+        name: "data"
+      - hostPath:
+          path: "/opt/registry/certs"
+          type: "Directory"
+        name: "certs"

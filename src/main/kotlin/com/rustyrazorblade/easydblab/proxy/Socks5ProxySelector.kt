@@ -25,7 +25,7 @@ class Socks5ProxySelector : ProxySelector() {
     override fun select(uri: URI?): List<Proxy> {
         val port = System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()
         return if (port != null) {
-            listOf(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port)))
+            listOf(Proxy(Proxy.Type.SOCKS, InetSocketAddress(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, port)))
         } else {
             listOf(Proxy.NO_PROXY)
         }

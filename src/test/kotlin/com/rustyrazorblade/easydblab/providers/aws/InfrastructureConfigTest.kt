@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
@@ -101,8 +102,8 @@ class InfrastructureConfigTest {
                 )
 
             assertThat(config.vpcCidr).isEqualTo(Constants.Vpc.DEFAULT_CIDR)
-            assertThat(config.subnets[0].cidr).isEqualTo(Constants.Vpc.subnetCidr(0))
-            assertThat(config.subnets[1].cidr).isEqualTo(Constants.Vpc.subnetCidr(1))
+            assertThat(config.subnets[0].cidr).isEqualTo("10.0.0.0/19")
+            assertThat(config.subnets[1].cidr).isEqualTo("10.0.32.0/19")
         }
 
         @Test
@@ -146,9 +147,22 @@ class InfrastructureConfigTest {
                 )
 
             assertThat(config.vpcCidr).isEqualTo(customCidr)
-            assertThat(config.subnets[0].cidr).isEqualTo("172.16.1.0/24")
-            assertThat(config.subnets[1].cidr).isEqualTo("172.16.2.0/24")
-            assertThat(config.subnets[2].cidr).isEqualTo("172.16.3.0/24")
+            assertThat(config.subnets[0].cidr).isEqualTo("172.16.0.0/19")
+            assertThat(config.subnets[1].cidr).isEqualTo("172.16.32.0/19")
+            assertThat(config.subnets[2].cidr).isEqualTo("172.16.64.0/19")
+        }
+
+        @Test
+        fun `fails fast when more than eight availability zones are given`() {
+            assertThatThrownBy {
+                InfrastructureConfig.forCluster(
+                    clusterName = "test-cluster",
+                    availabilityZones = listOf("a", "b", "c", "d", "e", "f", "g", "h", "i").map { "us-east-1$it" },
+                    sshCidrs = listOf("0.0.0.0/0"),
+                    sshPort = 22,
+                )
+            }.isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("at most 8 availability zones")
         }
 
         @Test
@@ -189,6 +203,7 @@ class InfrastructureConfigTest {
 
             assertThat(config.subnets).hasSize(1)
             assertThat(config.subnets[0].name).isEqualTo("easy-db-lab-packer-subnet")
+            assertThat(config.subnets[0].cidr).isEqualTo("10.0.0.0/19")
         }
 
         @Test
@@ -250,8 +265,8 @@ class InfrastructureConfigTest {
     inner class SubnetConfig {
         @Test
         fun `should have optional availability zone`() {
-            val withAz = SubnetConfig(name = "subnet-1", cidr = "10.0.1.0/24", availabilityZone = "us-west-2a")
-            val withoutAz = SubnetConfig(name = "subnet-2", cidr = "10.0.2.0/24")
+            val withAz = SubnetConfig(name = "subnet-1", cidr = "10.0.0.0/19", availabilityZone = "us-west-2a")
+            val withoutAz = SubnetConfig(name = "subnet-2", cidr = "10.0.32.0/19")
 
             assertThat(withAz.availabilityZone).isEqualTo("us-west-2a")
             assertThat(withoutAz.availabilityZone).isNull()

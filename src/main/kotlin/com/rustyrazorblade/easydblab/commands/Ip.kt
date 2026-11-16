@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -22,7 +22,6 @@ import picocli.CommandLine.Parameters
  *   easy-db-lab ip db0 --public  # Returns public IP
  *   easy-db-lab ip db0 --private # Returns private IP
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "ip",

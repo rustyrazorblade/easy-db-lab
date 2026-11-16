@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
@@ -20,7 +19,6 @@ import java.io.File
  * environment initialization. It supports both S3 JAR paths and local JAR files (which are
  * automatically uploaded to S3).
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "submit",

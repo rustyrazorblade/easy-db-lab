@@ -20,6 +20,15 @@
 #                  which is in the 3.6-3.13 range cqlsh 5.0+ supports.
 #   TARBALL        path (relative to build context) to the
 #                  apache-cassandra-<version>-bin.tar.gz to inject.
+#
+# OCI provenance build args (see the LABEL block below and issue #767). The
+# workflow resolves each of these and passes them so `docker inspect` traces the
+# image back to the exact Cassandra source commit:
+#   OCI_REVISION   git SHA of the built Cassandra source ref.
+#   OCI_SOURCE     source repo URL (https://github.com/<repo>).
+#   OCI_VERSION    resolved Cassandra base.version (e.g. 6.0-alpha2).
+#   OCI_CREATED    RFC-3339 build timestamp.
+#   OCI_REF_NAME   the source ref (e.g. cassandra-6.0).
 
 ARG BASE_IMAGE=eclipse-temurin:17-jre-noble
 
@@ -89,6 +98,26 @@ VOLUME /var/lib/cassandra
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 ENTRYPOINT ["docker-entrypoint.sh"]
+
+# Standard OCI image labels (issue #767). Placed last so the per-build values
+# (revision, created timestamp) never invalidate the cache of the expensive apt
+# and tarball-extraction layers above. The dynamic values are wired in from the
+# build-cassandra-ref workflow via --build-arg.
+ARG OCI_REVISION
+ARG OCI_SOURCE=https://github.com/apache/cassandra
+ARG OCI_VERSION
+ARG OCI_CREATED
+ARG OCI_REF_NAME
+LABEL org.opencontainers.image.title="Apache Cassandra" \
+      org.opencontainers.image.description="Apache Cassandra built from source by easy-db-lab" \
+      org.opencontainers.image.url="https://cassandra.apache.org" \
+      org.opencontainers.image.documentation="https://cassandra.apache.org/doc/latest/" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="${OCI_SOURCE}" \
+      org.opencontainers.image.revision="${OCI_REVISION}" \
+      org.opencontainers.image.version="${OCI_VERSION}" \
+      org.opencontainers.image.created="${OCI_CREATED}" \
+      org.opencontainers.image.ref.name="${OCI_REF_NAME}"
 
 # 7000: intra-node communication
 # 7001: TLS intra-node communication

@@ -3,15 +3,17 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
-import org.apache.sshd.common.SshException
 import software.amazon.awssdk.awscore.exception.AwsServiceException
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.IOException
+import java.net.BindException
+import java.time.Duration
+import java.time.Instant
 
 /**
  * Utility for creating standardized retry configurations for remote service operations.
@@ -80,7 +82,8 @@ object RetryUtil {
      *
      * EC2 instance operations require special handling due to AWS eventual consistency:
      * - Higher retry count (5 attempts) to handle propagation delays after instance creation
-     * - Retries on 400 errors with "does not exist" message (instance not yet visible)
+     * - Retries on InvalidInstanceID.NotFound (instance not yet visible). Matched on the error
+     *   code: the message reads "does not exist" for one id and "do not exist" for several
      * - Retries on 5xx server errors
      * - Does NOT retry on other 4xx client errors (e.g., permission errors)
      *
@@ -98,9 +101,8 @@ object RetryUtil {
             }.retryOnException { throwable ->
                 when {
                     throwable !is AwsServiceException -> false
-                    // Retry on "does not exist" errors - eventual consistency after instance creation
-                    throwable.statusCode() == Constants.HttpStatus.BAD_REQUEST &&
-                        throwable.message?.contains("does not exist") == true -> {
+                    // Instance not visible yet - eventual consistency after instance creation
+                    throwable.awsErrorDetails()?.errorCode() == Constants.AWS.EC2_INSTANCE_NOT_FOUND -> {
                         log.warn { "Instance not yet visible (eventual consistency) - will retry" }
                         true
                     }
@@ -113,6 +115,55 @@ object RetryUtil {
                     else -> false
                 }
             }.build()
+
+    /**
+     * Creates retry configuration for the EC2 calls `up` makes per batch of new instances
+     * (RunInstances, CreateTags) at 1,000-node scale.
+     *
+     * - Retries `RequestLimitExceeded`: EC2 throttles a burst of launch and tag calls, and a
+     *   1,000-node `up` makes hundreds. The SDK's own few retries are not enough for that
+     * - Retries `InvalidInstanceID.NotFound`: a tag on an instance RunInstances just returned can
+     *   fail until EC2 sees it
+     * - Retries 5xx server errors
+     * - Nothing else: a capacity, quota or permission error does not clear by waiting
+     *
+     * A retried RunInstances is safe only because its request carries a client token: EC2
+     * answers a repeat with the instances the first call launched instead of launching more.
+     *
+     * Exponential backoff from [backoffBase], capped at [Constants.Scale.THROTTLE_BACKOFF_MAX_MS],
+     * up to [Constants.Scale.THROTTLE_MAX_ATTEMPTS] attempts
+     *
+     * @param backoffBase the first wait; tests pass a short one
+     * @return RetryConfig for EC2 calls that AWS throttles at scale
+     */
+    fun <T> createEc2ThrottleRetryConfig(
+        backoffBase: Duration = Duration.ofMillis(Constants.Scale.THROTTLE_BACKOFF_BASE_MS),
+    ): RetryConfig =
+        RetryConfig
+            .custom<T>()
+            .maxAttempts(Constants.Scale.THROTTLE_MAX_ATTEMPTS)
+            .intervalFunction { attemptCount ->
+                minOf(backoffBase.toMillis() * (1L shl (attemptCount - 1)), Constants.Scale.THROTTLE_BACKOFF_MAX_MS)
+            }.retryOnException { throwable ->
+                val code = (throwable as? AwsServiceException)?.awsErrorDetails()?.errorCode()
+                when {
+                    throwable !is AwsServiceException -> false
+                    // AWS sends this as a 500, but waiting does not create capacity: fail fast.
+                    code == Constants.AWS.EC2_INSUFFICIENT_CAPACITY -> false
+                    code == EC2_THROTTLED || code == Constants.AWS.EC2_INSTANCE_NOT_FOUND -> {
+                        log.warn { "EC2 $code - will retry" }
+                        true
+                    }
+                    throwable.statusCode() >= Constants.HttpStatus.SERVER_ERROR_MIN -> {
+                        log.warn { "AWS service error ${throwable.statusCode()} - will retry" }
+                        true
+                    }
+                    else -> false
+                }
+            }.build()
+
+    /** EC2's error code for a throttled request. */
+    private const val EC2_THROTTLED = "RequestLimitExceeded"
 
     /**
      * Creates retry configuration for standard AWS operations (S3, EC2, EMR, etc.).
@@ -149,8 +200,12 @@ object RetryUtil {
      *
      * Docker operations (start, inspect, remove containers):
      * - Standard retry count (3 attempts)
-     * - Retries on IOException (network/socket issues)
-     * - Retries on DockerException (API errors)
+     * - Retries on IOException (network/socket issues). docker-java's HTTP transport wraps a socket
+     *   error in a bare RuntimeException; callers unwrap it (see ContainerExecutor) and run the
+     *   call with resilience4j's checked decorators, which are the only ones that see an IOException
+     * - Retries on DockerException (API errors), except docker-java's 404 NotFoundException: the
+     *   container or image does not exist, and no retry makes it appear
+     * - Fails fast on everything else
      *
      * Exponential backoff: 1s, 2s, 4s
      *
@@ -173,6 +228,8 @@ object RetryUtil {
                         log.warn { "Docker error - will retry: ${throwable.message}" }
                         true
                     }
+                    // A 404: the container or image does not exist, and no retry makes it appear.
+                    is com.github.dockerjava.api.exception.NotFoundException -> false
                     is com.github.dockerjava.api.exception.DockerException -> {
                         log.warn { "Docker API error - will retry: ${throwable.message}" }
                         true
@@ -211,33 +268,98 @@ object RetryUtil {
      * - High retry count (30 attempts) to accommodate boot time
      * - Fixed 10-second delay between attempts (not exponential)
      * - Total wait time: approximately 5 minutes
-     * - Retries on SshException (connection refused, timeout)
-     * - Retries on IOException (network errors)
+     * - Retries on SshException: MINA reports a refused or timed-out connection, and a failed
+     *   key exchange or auth while the node is still booting, as SshException
+     * - Retries on SsmForwardNotReadyException: under the `ssm` SSH transport, a fresh node's SSM
+     *   agent has not registered yet (`TargetNotConnected`)
+     * - Fails fast on every other exception, any other IOException included: it will not clear by
+     *   waiting
      *
-     * Fixed interval: 10 seconds between attempts
+     * SshException is checked, so the caller must decorate with resilience4j's
+     * `decorateCheckedRunnable`/`decorateCheckedSupplier`; the plain decorators catch only
+     * RuntimeException and would never see it.
      *
+     * @param interval the fixed wait between attempts; tests pass a short one
      * @return RetryConfig configured for SSH connection operations
      */
-    fun createSshConnectionRetryConfig(): RetryConfig =
+    fun createSshConnectionRetryConfig(
+        interval: Duration = Duration.ofMillis(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS),
+    ): RetryConfig =
         RetryConfig
             .custom<Unit>()
             .maxAttempts(Constants.Retry.MAX_SSH_CONNECTION_RETRIES)
-            .intervalFunction { _ ->
-                // Fixed 10-second delay for SSH boot-up waiting
-                Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS
-            }.retryOnException { throwable ->
-                when (throwable) {
-                    is SshException -> {
-                        log.debug { "SSH not ready - will retry: ${throwable.message}" }
-                        true
-                    }
-                    is IOException -> {
-                        log.debug { "IO error during SSH connection - will retry: ${throwable.message}" }
-                        true
-                    }
-                    else -> false
-                }
-            }.build()
+            .intervalFunction { _ -> interval.toMillis() }
+            .retryOnException(::isSshNotReady)
+            .build()
+
+    /**
+     * Creates retry configuration for polling a check that returns a boolean until it is `true`.
+     *
+     * The check returns a boolean, not an exception: `false` means the awaited state has not
+     * arrived yet, so the retry is on the result. When the attempts run out the last result,
+     * `false`, is returned. The interval is a parameter so tests can run every attempt without
+     * sleeping. Used for the pre-K3s probe of the control node over the tailnet
+     * ([Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS]) and for the final stderr EMR uploads
+     * for a failed step ([Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS]).
+     *
+     * Fixed interval: [retryInterval] between attempts, up to [maxAttempts] attempts
+     *
+     * @param maxAttempts how many times to run the check
+     * @param retryInterval how long to wait between checks
+     * @return RetryConfig configured for the poll
+     */
+    fun createBooleanPollRetryConfig(
+        maxAttempts: Int,
+        retryInterval: Duration,
+    ): RetryConfig =
+        RetryConfig
+            .custom<Boolean>()
+            .maxAttempts(maxAttempts)
+            .intervalFunction { _ -> retryInterval.toMillis() }
+            .retryOnResult { done -> !done }
+            .build()
+
+    /**
+     * Creates retry configuration for creating a VPC on an auto-selected CIDR.
+     *
+     * Each attempt picks a new random unused block, excluding the ones already tried, so there is
+     * nothing to wait for between attempts; transient AWS errors are already retried with backoff
+     * inside `createVpc`. Only AWS failures ([SdkException]) are retried — running out of free
+     * blocks is final.
+     *
+     * No wait, up to [Constants.Vpc.CIDR_AUTO_SELECT_MAX_ATTEMPTS] attempts
+     *
+     * @return RetryConfig configured for VPC creation on an auto-selected CIDR
+     */
+    fun createVpcAutoCidrRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<Any>()
+            .maxAttempts(Constants.Vpc.CIDR_AUTO_SELECT_MAX_ATTEMPTS)
+            .waitDuration(Duration.ZERO)
+            .retryExceptions(SdkException::class.java)
+            .build()
+
+    /**
+     * Creates retry configuration for starting a local listener whose port can be taken between
+     * choosing it and binding it — the SOCKS5 proxy's `ssh -D`, when two workspaces start a proxy
+     * at the same moment.
+     *
+     * Retries only on [BindException]: the caller selects a new port on every attempt, so a
+     * collision is resolved by the next one. Any other failure is not a port collision and is not
+     * retried.
+     *
+     * Fixed interval: [Constants.Proxy.PORT_BIND_RETRY_INTERVAL_MS] between attempts, up to
+     * [Constants.Proxy.PORT_BIND_MAX_ATTEMPTS] attempts
+     *
+     * @return RetryConfig configured for a local port bind collision
+     */
+    fun createLocalPortBindRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<Any>()
+            .maxAttempts(Constants.Proxy.PORT_BIND_MAX_ATTEMPTS)
+            .waitDuration(Duration.ofMillis(Constants.Proxy.PORT_BIND_RETRY_INTERVAL_MS))
+            .retryExceptions(BindException::class.java)
+            .build()
 
     /**
      * Creates retry configuration for S3 log retrieval with eventual consistency.
@@ -357,74 +479,47 @@ object RetryUtil {
                 }
             }.build()
 
-    // ==================== Helper Functions ====================
-
     /**
-     * Executes an operation with standard AWS retry logic.
+     * Creates retry configuration for polling a condition at a fixed interval.
      *
-     * This is a convenience function that wraps the common pattern of:
-     * 1. Creating an AWS retry config
-     * 2. Creating a Retry instance
-     * 3. Decorating and executing the operation
+     * - A result for which [done] is false is retried, [interval] apart, up to [maxAttempts]
+     *   looks; after the last look that result is returned, not thrown
+     * - Any exception from a look but an interrupt is treated as transient (a dropped API call, a
+     *   SOCKS hiccup during a wait that lasts minutes) and retried within the same budget; the poll
+     *   fails only when the last look throws. That includes checked ones such as OkHttp's
+     *   IOException, so run it with resilience4j's checked decorators, as [pollUntil] does
+     * - With [retryExceptions] false no exception is retried: the look itself decides which
+     *   failures mean "not done yet" (the SSH readiness wait returns the hosts still pending and
+     *   throws only a failure that waiting cannot fix)
+     * - An InterruptedException ends the poll at once in either mode: the thread was asked to stop
      *
-     * @param operationName Name of the operation for logging and metrics
-     * @param operation The operation to execute with retry logic
-     * @return The result of the operation
+     * - When [deadline] is set, nothing is retried once it has passed, so the wait is bounded by the
+     *   wall clock rather than by how long each look takes
+     *
+     * @param maxAttempts the most looks to make
+     * @param interval how long to wait between looks
+     * @param done whether a look's result ends the poll
+     * @param deadline when set, the instant after which no further look is made
+     * @param retryExceptions whether an exception other than an interrupt is retried
+     * @param isTransient which exceptions are retried when [retryExceptions] is true; any other
+     *   exception fails the poll at once (default: every exception is transient)
+     * @return RetryConfig configured for a fixed-interval poll
      */
-    fun <T> withAwsRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retryConfig = createAwsRetryConfig<T>()
-        val retry = Retry.of(operationName, retryConfig)
-        return Retry.decorateSupplier(retry, operation).get()
-    }
-
-    /**
-     * Executes an operation with EC2 instance retry logic (handles eventual consistency).
-     *
-     * @param operationName Name of the operation for logging and metrics
-     * @param operation The operation to execute with retry logic
-     * @return The result of the operation
-     */
-    fun <T> withEc2InstanceRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retryConfig = createEC2InstanceRetryConfig<T>()
-        val retry = Retry.of(operationName, retryConfig)
-        return Retry.decorateSupplier(retry, operation).get()
-    }
-
-    /**
-     * Executes an operation with VPC teardown retry logic (handles DependencyViolation).
-     *
-     * @param operationName Name of the operation for logging and metrics
-     * @param operation The operation to execute with retry logic
-     * @return The result of the operation
-     */
-    fun <T> withVpcTeardownRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retryConfig = createVpcTeardownRetryConfig<T>()
-        val retry = Retry.of(operationName, retryConfig)
-        return Retry.decorateSupplier(retry, operation).get()
-    }
-
-    /**
-     * Executes an operation with S3 bucket policy retry logic (handles IAM eventual consistency).
-     *
-     * @param operationName Name of the operation for logging and metrics
-     * @param operation The operation to execute with retry logic
-     * @return The result of the operation
-     */
-    fun <T> withS3BucketPolicyRetry(
-        operationName: String,
-        operation: () -> T,
-    ): T {
-        val retryConfig = createS3BucketPolicyRetryConfig<T>()
-        val retry = Retry.of(operationName, retryConfig)
-        return Retry.decorateSupplier(retry, operation).get()
+    fun <T> createPollUntilRetryConfig(
+        maxAttempts: Int,
+        interval: Duration,
+        done: (T) -> Boolean,
+        deadline: Instant? = null,
+        retryExceptions: Boolean = true,
+        isTransient: (Throwable) -> Boolean = { true },
+    ): RetryConfig {
+        fun beforeDeadline() = deadline == null || Instant.now().isBefore(deadline)
+        return RetryConfig
+            .custom<T>()
+            .maxAttempts(maxAttempts)
+            .intervalFunction { _ -> interval.toMillis() }
+            .retryOnResult { result -> !done(result) && beforeDeadline() }
+            .retryOnException { retryExceptions && it !is InterruptedException && isTransient(it) && beforeDeadline() }
+            .build()
     }
 }

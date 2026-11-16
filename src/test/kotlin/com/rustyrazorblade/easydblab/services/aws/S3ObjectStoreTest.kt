@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
-import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -20,7 +19,6 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
-import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Path
 
 /**
@@ -109,31 +107,7 @@ class S3ObjectStoreTest : BaseKoinTest() {
     }
 
     @Test
-    fun `downloadFile returns result when file already exists`(
-        @TempDir tempDir: Path,
-    ) {
-        val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")
-        val localPath = tempDir.resolve("existing.jar")
-        val existingContent = "existing content"
-        localPath.toFile().writeText(existingContent)
-
-        objectStore = get()
-
-        val fileAlreadyExists = FileAlreadyExistsException(localPath.toString())
-        val ioException = java.io.IOException("Failed to write", fileAlreadyExists)
-        val sdkException = SdkClientException.builder().cause(ioException).build()
-
-        whenever(mockS3Client.getObject(any<GetObjectRequest>(), any<Path>()))
-            .thenThrow(sdkException)
-
-        val result = objectStore.downloadFile(s3Path, localPath, showProgress = false)
-
-        assertThat(result.localPath).isEqualTo(localPath)
-        assertThat(result.fileSize).isEqualTo(existingContent.length.toLong())
-    }
-
-    @Test
-    fun `downloadFile rethrows SdkClientException without FileAlreadyExistsException`(
+    fun `downloadFile rethrows SdkClientException`(
         @TempDir tempDir: Path,
     ) {
         val s3Path = ClusterS3Path.root("test-bucket").spark().resolve("test.jar")

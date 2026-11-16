@@ -1,9 +1,13 @@
 server:
   workers: __WORKERS__
-
-additionalConfigProperties:
-  - "web-ui.authentication.type=FIXED"
-  - "web-ui.user=trino"
+  # web-ui.* properties are coordinator-only (the web UI runs only on the
+  # coordinator). Placing them in the shared `additionalConfigProperties` sends
+  # them to workers too, which reject the unused properties and crash on startup
+  # (exit 100). coordinatorExtraConfig is appended only to the coordinator's
+  # config.properties, keeping the workers clean.
+  coordinatorExtraConfig: |
+    web-ui.authentication.type=FIXED
+    web-ui.user=trino
 
 image:
   tag: "__VERSION__"

@@ -3,9 +3,7 @@
 ## Purpose
 
 Persist Grafana's data across pod restarts and provide a `grafana install <path>` command that uploads a dashboard JSON file to the running Grafana instance.
-
 ## Requirements
-
 ### Requirement: Grafana data persists across pod restarts
 Grafana's data volume SHALL use a `hostPath` mount at `/mnt/db1/grafana` on the control node instead of `emptyDir`. The directory SHALL be created by `grafana update-config` before the Deployment is applied.
 
@@ -18,11 +16,16 @@ Grafana's data volume SHALL use a `hostPath` mount at `/mnt/db1/grafana` on the 
 - **THEN** `/mnt/db1/grafana` is created on the control node via SSH before the Grafana Deployment is applied
 
 ### Requirement: grafana install command uploads a dashboard JSON
-The `grafana install <path>` command SHALL read a dashboard JSON file and upload it to the running Grafana instance via `POST /api/dashboards/db` with `overwrite: true`.
+The `grafana install <path>` command SHALL read a dashboard JSON file, apply the same install-time pass that `up` and kit `start` apply (datasource picker defaults, `cluster`, `baseline_cluster` and `candidate_cluster` defaults, `doc_tenant` options and default, and the documents host), using the cluster state of the workspace, and upload the result to the running Grafana instance via `POST /api/dashboards/db` with `overwrite: true`.
 
 #### Scenario: Successful dashboard install
-- **WHEN** `grafana install ./dashboards/clickhouse.json` is run against a cluster with Grafana running
+- **WHEN** `grafana install ./dashboards/opensearch/opensearch.json` is run against a cluster with Grafana running
 - **THEN** the dashboard is visible in Grafana and an `Event.Grafana.DashboardInstalled` event is emitted with the dashboard title
+
+#### Scenario: Install applies the install-time pass
+- **WHEN** `grafana install` installs a dashboard with a `cluster` variable and pickers on cluster `lab-<id>`
+- **THEN** the installed dashboard's `cluster` defaults to `lab-<id>` and its pickers show the cluster's own tenant
+- **AND** the installed dashboard matches what `up` installs for the same file
 
 #### Scenario: Re-running install is idempotent
 - **WHEN** `grafana install <path>` is run twice with the same file
@@ -35,3 +38,4 @@ The `grafana install <path>` command SHALL read a dashboard JSON file and upload
 #### Scenario: Grafana returns an error
 - **WHEN** the Grafana API returns a non-2xx response
 - **THEN** the command fails with the HTTP status and response body in the error message
+

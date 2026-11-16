@@ -39,7 +39,7 @@ class AWSCredentialsManager(
 
         val contents =
             buildString {
-                appendLine("[default]")
+                appendLine("[${Constants.AWS.CREDENTIALS_FILE_PROFILE}]")
                 appendLine("aws_access_key_id=${credentials.accessKeyId()}")
                 appendLine("aws_secret_access_key=${credentials.secretAccessKey()}")
                 if (credentials is AwsSessionCredentials) {

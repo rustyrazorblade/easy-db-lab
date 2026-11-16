@@ -1,1 +1,0 @@
-axonops ALL=NOPASSWD: /sbin/service cassandra *, /usr/bin/systemctl * cassandra*

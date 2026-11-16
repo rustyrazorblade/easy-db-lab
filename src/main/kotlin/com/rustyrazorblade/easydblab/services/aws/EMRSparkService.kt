@@ -8,10 +8,12 @@ import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
+import com.rustyrazorblade.easydblab.services.LogQl
+import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkJobRequest
 import com.rustyrazorblade.easydblab.services.SparkService
-import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.emr.EmrClient
@@ -24,10 +26,12 @@ import software.amazon.awssdk.services.emr.model.ListStepsRequest
 import software.amazon.awssdk.services.emr.model.StepCancellationOption
 import software.amazon.awssdk.services.emr.model.StepConfig
 import software.amazon.awssdk.services.emr.model.StepState
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Duration
+import java.time.Instant
 import java.util.zip.GZIPInputStream
 
 /**
@@ -52,17 +56,26 @@ import java.util.zip.GZIPInputStream
  * @property clusterStateManager Manager for cluster state persistence
  * @property pollInterval Delay between job-status polls. Defaults to [Constants.EMR.POLL_INTERVAL_MS]
  *   so production timing is unchanged; tests inject [Duration.ZERO] to poll without waiting.
- * @property logIngestionWait Pause before querying Victoria Logs on failure, allowing logs to be
+ * @property logIngestionWait Pause before querying Loki on failure, allowing logs to be
  *   ingested. Defaults to [Constants.EMR.LOG_INGESTION_WAIT_MS]; tests inject [Duration.ZERO].
+ * @property finalLogPollInterval Delay between checks for the final stderr of a failed step.
+ *   Defaults to [Constants.EMR.FINAL_STDERR_POLL_INTERVAL_MS]; tests inject [Duration.ZERO].
+ * @property logsDir Local directory that downloaded EMR logs are saved under. Defaults to
+ *   [Constants.EMR.LOCAL_LOGS_DIR] in the working directory; tests inject a temporary directory.
+ * @property jobWaitTimeout How long [waitForJobCompletion] waits for a step to finish. Defaults to
+ *   [Constants.EMR.MAX_POLL_TIMEOUT_MS]; tests inject a short one.
  */
 class EMRSparkService(
     private val emrClient: EmrClient,
     private val objectStore: ObjectStore,
     private val clusterStateManager: ClusterStateManager,
-    private val victoriaLogsService: VictoriaLogsService,
+    private val lokiQueryService: LokiQueryService,
     private val eventBus: EventBus,
     private val pollInterval: Duration = Duration.ofMillis(Constants.EMR.POLL_INTERVAL_MS),
     private val logIngestionWait: Duration = Duration.ofMillis(Constants.EMR.LOG_INGESTION_WAIT_MS),
+    private val finalLogPollInterval: Duration = Duration.ofMillis(Constants.EMR.FINAL_STDERR_POLL_INTERVAL_MS),
+    private val logsDir: Path = Paths.get(Constants.EMR.LOCAL_LOGS_DIR),
+    private val jobWaitTimeout: Duration = Duration.ofMillis(Constants.EMR.MAX_POLL_TIMEOUT_MS),
 ) : SparkService {
     private val log = KotlinLogging.logger {}
 
@@ -122,29 +135,22 @@ class EMRSparkService(
         runCatching {
             eventBus.emit(Event.Emr.SparkJobWaiting)
 
-            val startTime = System.currentTimeMillis()
-            var currentStatus: SparkService.JobStatus
             var pollCount = 0
 
-            do {
-                Thread.sleep(pollInterval.toMillis())
-                pollCount++
-
-                // Check for timeout
-                val elapsed = System.currentTimeMillis() - startTime
-                if (elapsed > Constants.EMR.MAX_POLL_TIMEOUT_MS) {
-                    val timeoutMinutes = Constants.EMR.MAX_POLL_TIMEOUT_MS / Constants.Time.MILLIS_PER_MINUTE
-                    error("Job polling timed out after $timeoutMinutes minutes")
+            val currentStatus =
+                pollUntilOrTimeout(
+                    what = "EMR step $stepId to finish",
+                    timeout = jobWaitTimeout,
+                    interval = pollInterval,
+                    done = { it.state in TERMINAL_JOB_STATES },
+                ) {
+                    getJobStatus(clusterId, stepId).getOrThrow().also { status ->
+                        // Log less frequently to reduce noise (every 60 seconds at default 5s interval)
+                        if (++pollCount % Constants.EMR.LOG_INTERVAL_POLLS == 0) {
+                            eventBus.emit(Event.Emr.SparkJobStateUpdate(status.state.toString()))
+                        }
+                    }
                 }
-
-                val statusResult = getJobStatus(clusterId, stepId)
-                currentStatus = statusResult.getOrThrow()
-
-                // Log less frequently to reduce noise (every 60 seconds at default 5s interval)
-                if (pollCount % Constants.EMR.LOG_INTERVAL_POLLS == 0) {
-                    eventBus.emit(Event.Emr.SparkJobStateUpdate(currentStatus.state.toString()))
-                }
-            } while (currentStatus.state !in TERMINAL_JOB_STATES)
 
             when (currentStatus.state) {
                 StepState.COMPLETED -> {
@@ -165,7 +171,6 @@ class EMRSparkService(
             }
         }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun handleFailedJob(
         clusterId: String,
         stepId: String,
@@ -174,21 +179,63 @@ class EMRSparkService(
         val s3Bucket = clusterStateManager.load().s3Bucket ?: "UNKNOWN_BUCKET"
         val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
 
-        displayFailureDetails(clusterId, stepId, currentStatus)
-        queryVictoriaLogs(stepId)
-        downloadAndDisplayLogs(clusterId, stepId, s3Bucket, emrLogsPath)
+        val stepDetails = getStepDetails(clusterId, stepId).getOrNull()
+        displayFailureDetails(stepId, currentStatus, stepDetails)
+        queryStepLogs(stepId)
+        val stderrPath = stepLogPath(clusterId, stepId, SparkService.LogType.STDERR)
+        if (awaitFinalStderr(stepId, stderrPath, stepDetails?.endTime)) {
+            downloadAndDisplayLogs(clusterId, stepId, s3Bucket, emrLogsPath)
+        } else {
+            eventBus.emit(Event.Emr.StepStderrNotFinal(stepId, stderrPath.toUri(), finalStderrMaxWait().seconds))
+        }
 
         val errorMessage = "Job failed: ${currentStatus.failureDetails ?: "Unknown reason"}"
         log.error { errorMessage }
         error(errorMessage)
     }
 
-    private fun displayFailureDetails(
+    /**
+     * Waits, bounded by [Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS] checks [finalLogPollInterval]
+     * apart, until the step's `stderr.gz` in S3 is a copy EMR uploaded after the step ended.
+     * Returns whether it arrived; a copy uploaded earlier can stop short of the exception.
+     */
+    private fun awaitFinalStderr(
+        stepId: String,
+        stderrPath: ClusterS3Path,
+        stepEnd: Instant?,
+    ): Boolean {
+        eventBus.emit(Event.Emr.StepStderrWaiting(stepId, finalStderrMaxWait().seconds))
+        val retry =
+            Retry.of(
+                "emr-final-step-stderr",
+                RetryUtil.createBooleanPollRetryConfig(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS, finalLogPollInterval),
+            )
+        return Retry
+            .decorateSupplier(retry) { StepStderrReadiness.isFinal(objectStore.getFileInfo(stderrPath), stepEnd) }
+            .get()
+    }
+
+    private fun finalStderrMaxWait(): Duration = finalLogPollInterval.multipliedBy(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS.toLong())
+
+    private fun stepLogPath(
         clusterId: String,
         stepId: String,
+        logType: SparkService.LogType,
+    ): ClusterS3Path =
+        clusterStateManager
+            .load()
+            .s3Path()
+            .emrLogs()
+            .resolve(clusterId)
+            .resolve("steps")
+            .resolve(stepId)
+            .resolve(logType.filename)
+
+    private fun displayFailureDetails(
+        stepId: String,
         currentStatus: SparkService.JobStatus,
+        stepDetails: SparkService.StepDetails?,
     ) {
-        val stepDetails = getStepDetails(clusterId, stepId).getOrNull()
         if (stepDetails != null) {
             eventBus.emit(stepDetails.toEvent())
         } else {
@@ -204,18 +251,17 @@ class EMRSparkService(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
-    private fun queryVictoriaLogs(stepId: String) {
+    private fun queryStepLogs(stepId: String) {
         println("\n=== Step Logs ===")
         try {
             Thread.sleep(logIngestionWait.toMillis())
 
             // Query using OTel Java agent log attributes (service.name) instead of defunct step_id tag
             // The Java agent tags logs with service.name=spark-<job-name>
-            val query = """service.name:~"spark-.*""""
+            val query = LogQl.sparkJobs(clusterStateManager.load().clusterLabelName())
 
-            victoriaLogsService
-                .query(query = query, timeRange = "1h", limit = Constants.EMR.MAX_LOG_LINES)
+            lokiQueryService
+                .query(logql = query, since = "1h", limit = Constants.EMR.MAX_LOG_LINES)
                 .onSuccess { logs ->
                     if (logs.isEmpty()) {
                         println("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId")
@@ -227,14 +273,24 @@ class EMRSparkService(
                     eventBus.emit(Event.Emr.SparkLogError(e.message ?: "Unknown error"))
                     println("Try: easy-db-lab spark logs --step-id $stepId")
                 }
-        } catch (e: Exception) {
-            log.warn { "Failed to query Victoria Logs: ${e.message}" }
-            eventBus.emit(Event.Emr.SparkLogQueryFailed)
-            println("Try: easy-db-lab spark logs --step-id $stepId")
+        } catch (e: IOException) {
+            // The cluster state could not be read or parsed.
+            reportLokiQueryFailure(stepId, e)
+        } catch (e: IllegalStateException) {
+            // The cluster state holds an invalid cluster name.
+            reportLokiQueryFailure(stepId, e)
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
+    private fun reportLokiQueryFailure(
+        stepId: String,
+        e: Exception,
+    ) {
+        log.warn { "Failed to query Loki: ${e.message}" }
+        eventBus.emit(Event.Emr.SparkLogQueryFailed)
+        println("Try: easy-db-lab spark logs --step-id $stepId")
+    }
+
     private fun downloadAndDisplayLogs(
         clusterId: String,
         stepId: String,
@@ -253,16 +309,11 @@ class EMRSparkService(
             """.trimMargin()
 
         eventBus.emit(Event.Emr.DownloadingStepLogsHeader)
-        try {
-            downloadStepLogs(clusterId, stepId)
-                .onFailure { e ->
-                    eventBus.emit(Event.Emr.SparkLogDownloadFailed(e.message ?: "Unknown error"))
-                    println(manualDebugCommands)
-                }
-        } catch (e: Exception) {
-            log.warn { "Failed to download step logs: ${e.message}" }
-            println(manualDebugCommands)
-        }
+        downloadStepLogs(clusterId, stepId)
+            .onFailure { e ->
+                eventBus.emit(Event.Emr.SparkLogDownloadFailed(e.message ?: "Unknown error"))
+                println(manualDebugCommands)
+            }
     }
 
     override fun getJobStatus(
@@ -464,7 +515,7 @@ class EMRSparkService(
                     .resolve(logType.filename)
 
             // Create local logs directory: ./logs/{cluster-id}/{step-id}/
-            val localLogsDir = Paths.get("logs", clusterId, stepId)
+            val localLogsDir = logsDir.resolve(clusterId).resolve(stepId)
             Files.createDirectories(localLogsDir)
 
             val localGzFile = localLogsDir.resolve(logType.filename)
@@ -485,6 +536,19 @@ class EMRSparkService(
             Files.readString(localLogFile)
         }
 
+    override fun fetchStepStderr(
+        clusterId: String,
+        stepId: String,
+    ): Result<SparkService.StepStderr> =
+        runCatching {
+            val stderrPath = stepLogPath(clusterId, stepId, SparkService.LogType.STDERR)
+            if (objectStore.getFileInfo(stderrPath) == null) {
+                SparkService.StepStderr.NotUploaded(stderrPath.toUri())
+            } else {
+                SparkService.StepStderr.Available(getStepLogs(clusterId, stepId, SparkService.LogType.STDERR).getOrThrow())
+            }
+        }
+
     override fun downloadAllLogs(stepId: String): Result<Path> =
         runCatching {
             val clusterState = clusterStateManager.load()
@@ -492,7 +556,7 @@ class EMRSparkService(
             val emrLogsPath = s3Path.emrLogs()
 
             // Save to logs/emr/<step-id>/
-            val localLogsDir = Paths.get("logs", "emr", stepId)
+            val localLogsDir = logsDir.resolve("emr").resolve(stepId)
             Files.createDirectories(localLogsDir)
 
             eventBus.emit(Event.Emr.EmrLogsDownloading(emrLogsPath.toUri()))
@@ -511,7 +575,7 @@ class EMRSparkService(
             val clusterState = clusterStateManager.load()
             val s3Path = clusterState.s3Path()
 
-            val localLogsDir = Paths.get("logs", clusterId, stepId)
+            val localLogsDir = logsDir.resolve(clusterId).resolve(stepId)
             Files.createDirectories(localLogsDir)
             eventBus.emit(Event.Emr.StepLogsDownloading(localLogsDir.toString()))
 
@@ -639,8 +703,8 @@ class EMRSparkService(
     ): Map<String, String> {
         val otelVars =
             mapOf(
-                "OTEL_SERVICE_NAME" to "spark-$jobName",
-                "PYROSCOPE_APPLICATION_NAME" to "spark-$jobName",
+                "OTEL_SERVICE_NAME" to Constants.EMR.SERVICE_NAME_PREFIX + jobName,
+                "PYROSCOPE_APPLICATION_NAME" to Constants.EMR.SERVICE_NAME_PREFIX + jobName,
             )
 
         return otelVars + envVars

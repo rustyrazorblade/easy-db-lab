@@ -5,8 +5,7 @@ package com.rustyrazorblade.easydblab.events
  *
  * Implementations handle events in domain-specific ways:
  * - [ConsoleEventListener] renders events to stdout/stderr
- * - McpEventListener streams structured events to MCP clients
- * - RedisEventListener publishes events to Redis pub/sub
+ * - [RedisEventListener] publishes events to Redis pub/sub, best effort after startup
  */
 interface EventListener {
     /**

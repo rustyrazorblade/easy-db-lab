@@ -1,9 +1,11 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.reason
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import java.io.IOException
 import java.nio.file.Path
 
 /**
@@ -34,18 +36,32 @@ interface KubernetesClientFactory {
  * stays direct.
  */
 class ProxiedKubernetesClientFactory : KubernetesClientFactory {
+    /**
+     * @throws IOException naming [kubeconfigPath] when the file cannot be read; the cause is kept, so a
+     *   missing file is still recognised as a cluster that was never reached ([ClusterReach])
+     * @throws IllegalStateException naming [kubeconfigPath] when its content is not a usable kubeconfig
+     */
     override fun createClient(kubeconfigPath: Path): KubernetesClient {
-        val kubeconfigContent = kubeconfigPath.toFile().readText()
-        val config = Config.fromKubeconfig(kubeconfigContent)
+        val kubeconfigContent =
+            try {
+                kubeconfigPath.toFile().readText()
+            } catch (e: IOException) {
+                throw IOException("Cannot read the kubeconfig at $kubeconfigPath: ${e.reason()}", e)
+            }
+        return try {
+            val config = Config.fromKubeconfig(kubeconfigContent)
 
-        System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
-            config.httpsProxy = socksProxyUrl(port)
+            System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
+                config.httpsProxy = socksProxyUrl(port)
+            }
+            config.applyClusterClientTimeouts()
+
+            KubernetesClientBuilder()
+                .withConfig(config)
+                .build()
+        } catch (e: RuntimeException) {
+            throw IllegalStateException("The kubeconfig at $kubeconfigPath is not usable: ${e.reason()}", e)
         }
-        config.applyClusterClientTimeouts()
-
-        return KubernetesClientBuilder()
-            .withConfig(config)
-            .build()
     }
 }
 

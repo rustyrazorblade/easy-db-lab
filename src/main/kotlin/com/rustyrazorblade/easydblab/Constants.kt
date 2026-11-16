@@ -206,6 +206,9 @@ object Constants {
         /** How long a registered node has to become Ready: its Cilium agent and image pulls. */
         const val NODE_READY_TIMEOUT_SECONDS = 600L
 
+        /** How long a replacement waits for EC2 to report the old instance out of pending and running. */
+        const val REPLACEMENT_TERMINATE_TIMEOUT_SECONDS = 600L
+
         /** One attempt of a node's registry TLS step. */
         const val REGISTRY_TLS_TIMEOUT_SECONDS = 120L
 

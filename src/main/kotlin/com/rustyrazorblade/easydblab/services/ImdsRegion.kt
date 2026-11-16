@@ -26,7 +26,10 @@ object ImdsRegion {
     fun parse(output: String): String {
         val region = output.trim()
         if (!REGION_PATTERN.matches(region)) {
-            throw CommandFailedException("Could not read the AWS region from instance metadata, got: '$region'")
+            throw CommandFailedException(
+                "Could not read the AWS region from instance metadata, got: '$region'. " +
+                    "An empty answer means the IMDSv2 token request, the identity document request or yq failed on the node.",
+            )
         }
         return region
     }

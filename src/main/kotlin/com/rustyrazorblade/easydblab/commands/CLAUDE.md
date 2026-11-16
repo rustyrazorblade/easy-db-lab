@@ -173,7 +173,20 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
 
 ## Annotations
 
-- `@RequireProfileSetup` — require AWS profile configuration before execution
+- `@RequiresCapability(vararg capabilities, alternative)` — the command works only where the
+  target environment has every listed `NodeCapability`. `checkRequirements` checks it first, after
+  the proxy and before the profile: a missing one emits `Event.Environment.CommandUnavailable`
+  (the command path, the environment's display name, the missing capabilities, the `alternative`
+  when not blank) and fails with `CommandFailedException`. Every AWS-only command carries
+  `AWS_ACCOUNT` (`cassandra use` and `cassandra install` also `NODE_SSH`, with
+  `Constants.ClusterContract.CASSANDRA_KIT_ALTERNATIVE`). The help-only parent groups (`spark`,
+  `aws`, ...) are not commands the executor runs, so they carry nothing.
+- `@RequireProfileSetup` — require AWS profile configuration before execution, but only when the
+  target environment has `AWS_ACCOUNT` (`services/EnvironmentRequirements`). The target is the
+  environment the command declares through `kernel/DeclaresEnvironment` (`init`), else the recorded
+  one, else `Ec2K3s` outside a workspace. A command in a local workspace therefore never prompts
+  for a profile, and nothing it builds may load `User` before it needs AWS
+  (`LocalWorkspaceNeedsNoProfileTest`).
 - `@RequireSSHKey` — require SSH key to be available
 - `@RequireDocker` — require a Docker daemon to be reachable before execution
 - `@RequiresProxy` — command's execution path reaches the private K8s API (Fabric8, via

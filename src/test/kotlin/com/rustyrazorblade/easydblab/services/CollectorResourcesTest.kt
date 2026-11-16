@@ -25,7 +25,7 @@ class CollectorResourcesTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<ClusterStateManager> { on { load() } doReturn state } }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

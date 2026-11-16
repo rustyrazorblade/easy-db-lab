@@ -109,8 +109,9 @@ The `helm-repo`, `helm`, `helm-uninstall`, `namespace`, `manifest`, `manifest-ur
   steps get (the `<workspace>/bin` wrappers first on `PATH`, `KUBECONFIG` set to the workspace
   `kubeconfig`). **`helm` and `kubectl` must be installed on the host**, as `shell` steps already
   require. A missing tool fails the step with a message that names it. Nothing is skipped. The CLI
-  binds the AWS form by default; a test harness rebinds `ClusterTooling` to the local form, and
-  there is no user-facing switch until #1040 selects the form per environment.
+  picks the form from the workspace's recorded environment: the control node for an EC2 + K3s
+  cluster (and outside a workspace), the local process for a K3s in Docker workspace or a
+  Kubernetes cluster you bring. There is no switch to set.
 
 On a local run, helm keeps its state under `<workspace>/.helm/` (`config/`, `cache/` and `data/`),
 not in your `~/.config/helm`, so a `helm-repo` step adds the repository to the workspace only.

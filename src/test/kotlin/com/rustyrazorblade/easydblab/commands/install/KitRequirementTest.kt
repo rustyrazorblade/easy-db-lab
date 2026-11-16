@@ -51,7 +51,7 @@ class KitRequirementTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
                 single<InstallTemplateResolver> { mockResolver }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
             },

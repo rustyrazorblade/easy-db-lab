@@ -21,8 +21,7 @@ import java.io.File
  * container port serve the metrics, so each scrape is checked against the Service it replaced.
  */
 class NodePortKitScrapeTest : BaseKoinTest() {
-    private fun fixture(kit: String) =
-        BuiltinKitFixture(kit, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+    private fun fixture(kit: String) = BuiltinKitFixture(kit, TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
 
     @ParameterizedTest
     @MethodSource("kitServiceTemplates")

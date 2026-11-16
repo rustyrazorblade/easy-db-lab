@@ -51,7 +51,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

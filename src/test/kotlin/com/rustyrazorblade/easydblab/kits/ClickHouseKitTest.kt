@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
  */
 class ClickHouseKitTest : BaseKoinTest() {
     private val kit by lazy {
-        BuiltinKitFixture("clickhouse", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        BuiltinKitFixture("clickhouse", TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
     }
 
     private val stubDir by lazy { File(tempDir, "stub").also { it.mkdirs() } }

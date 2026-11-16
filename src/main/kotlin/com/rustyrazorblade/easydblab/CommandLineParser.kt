@@ -184,7 +184,7 @@ class CommandLineParser : KoinComponent {
                             // Route ALL commands to CommandExecutor
                             // Profile check is handled by @RequireProfileSetup annotation in CommandExecutor
                             val executor = get<CommandExecutor>() as DefaultCommandExecutor
-                            return@IExecutionStrategy executor.executeTopLevel(cmd)
+                            return@IExecutionStrategy executor.executeTopLevel(cmd, currentParseResult.commandPath())
                         }
                     }
 

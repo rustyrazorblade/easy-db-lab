@@ -100,7 +100,7 @@ private fun utcSeconds(instant: Instant): String = DateTimeFormatter.ISO_INSTANT
  *
  * @param eventBus where the replacement of a recorded tunnel is reported
  * @param verifyAttempts how many times a fresh tunnel is probed before it counts as failed; the
- *   SSH route supplies it, because a tunnel over SSM Session Manager takes far longer to come up
+ *   SSH route supplies it when a tunnel starts, because a tunnel over SSM Session Manager takes far longer to come up
  * @param connectFailureHint the SSH route's sentence on why ssh may never connect, added to the
  *   failure of a fresh tunnel whose ssh was still connecting when the verify window ended; it is
  *   asked for when that failure is built, so it reflects the cluster state at that time
@@ -112,7 +112,7 @@ class ProcessSocksProxyService(
     private val verifyDelay: Duration = Duration.ofMillis(VERIFY_DELAY_MS),
     private val processLauncher: SshProcessLauncher = DefaultSshProcessLauncher,
     private val portSelector: LocalPortSelector = LoopbackPortSelector(),
-    private val verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
+    private val verifyAttempts: () -> Int = { Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS },
     private val envFile: ProxyEnvFile = ProxyEnvFile(context.workingDirectory),
     private val tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
     private val clock: Clock = Clock.systemUTC(),
@@ -667,7 +667,8 @@ class ProcessSocksProxyService(
     ) {
         // Each probe can run to its own timeout, so the wait is measured, never derived from the delay.
         val started = clock.instant()
-        repeat(verifyAttempts) { attempt ->
+        val attempts = verifyAttempts()
+        repeat(attempts) { attempt ->
             // A dead ssh (e.g. a changed host key kills it in ~50ms) will never open the tunnel;
             // stop immediately instead of waiting out the remaining attempts.
             if (!process.isAlive) {
@@ -677,8 +678,8 @@ class ProcessSocksProxyService(
                 log.debug { "SOCKS5 tunnel reachable end-to-end on port $port (attempt ${attempt + 1})" }
                 return
             }
-            log.debug { "SOCKS5 tunnel not reachable yet (attempt ${attempt + 1}/$verifyAttempts)" }
-            if (attempt < verifyAttempts - 1) {
+            log.debug { "SOCKS5 tunnel not reachable yet (attempt ${attempt + 1}/$attempts)" }
+            if (attempt < attempts - 1) {
                 Thread.sleep(verifyDelay.toMillis())
             }
         }

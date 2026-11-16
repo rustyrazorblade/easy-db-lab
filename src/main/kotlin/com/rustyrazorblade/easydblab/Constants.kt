@@ -643,6 +643,10 @@ object Constants {
 
         /** The datacenter name of a cluster with no cloud region to name it after. */
         const val LOCAL_DATACENTER = "dc1"
+
+        /** What to use for a Cassandra version switch or install where there are no AWS nodes to SSH into. */
+        const val CASSANDRA_KIT_ALTERNATIVE =
+            "run Cassandra as the cassandra-pods kit ('easy-db-lab kit install cassandra-pods') and choose the image there"
     }
 
     // `init --local`: K3s in Docker on this machine

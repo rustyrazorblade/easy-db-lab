@@ -42,7 +42,7 @@ val proxyModule =
                 get(),
                 get(),
                 get(),
-                verifyAttempts = route.tunnelVerifyAttempts,
+                verifyAttempts = { route.tunnelVerifyAttempts },
                 envFile = get(),
                 // Read when a failure is reported, so it reflects the workspace's state at that time.
                 connectFailureHint = { route.tunnelConnectFailureHint(sshOpenToAll = isSshOpenToAll(clusterStateManager)) },

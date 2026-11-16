@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.commands.ingress
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.SshCidrMixin
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.aws.AllowOutcome
@@ -19,6 +21,7 @@ import picocli.CommandLine.Mixin
  * per CIDR and exits non-zero when any CIDR fails or a precondition is not met.
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "allow",
     description = ["Allow SSH to the cluster from an IPv4 address or CIDR (default: this machine's public IP)"],

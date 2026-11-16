@@ -56,7 +56,7 @@ class TemplateServiceTest : BaseKoinTest() {
         mockClusterStateManager = getKoin().get()
     }
 
-    private fun createService() = TemplateService(mockClusterStateManager, getKoin().get())
+    private fun createService() = TemplateService(mockClusterStateManager)
 
     private fun setupClusterState(
         bucketName: String? = "my-test-bucket",
@@ -93,7 +93,7 @@ class TemplateServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the store backend falls back to the profile's region when the cluster records none`() {
+    fun `the store backend uses the init default region when the cluster records none`() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "easy-db-lab-x"),
         )

@@ -53,7 +53,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
                         mockClusterStateManager = it
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

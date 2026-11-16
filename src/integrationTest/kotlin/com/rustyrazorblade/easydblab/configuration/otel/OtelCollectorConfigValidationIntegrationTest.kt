@@ -43,7 +43,7 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
                         )
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

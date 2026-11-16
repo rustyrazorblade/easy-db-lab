@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.commands.tailscale
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
@@ -18,6 +20,7 @@ import picocli.CommandLine.Command
  * The node will no longer be accessible via Tailscale until `tailscale start` is run again.
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "stop",
     description = ["Stop Tailscale VPN on the control node"],

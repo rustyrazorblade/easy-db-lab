@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.aws
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -17,6 +19,7 @@ import picocli.CommandLine.Command
  *   easy-db-lab aws s3-bucket  # Returns bucket name (e.g., easy-db-lab-mycluster-abc123)
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "s3-bucket",
     description = ["Get S3 bucket name for the current cluster"],

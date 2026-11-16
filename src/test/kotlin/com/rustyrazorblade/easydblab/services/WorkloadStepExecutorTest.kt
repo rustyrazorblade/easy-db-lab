@@ -61,7 +61,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 single<HelmService> { mock<HelmService>().also { helmService = it } }
                 single<KubectlService> { mock<KubectlService>().also { kubectlService = it } }
                 single<ClusterStateManager> { mock() }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

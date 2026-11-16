@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.mixins.BuildArgsMixin
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.containers.Packer
 import com.rustyrazorblade.easydblab.services.ExternalIpService
@@ -19,6 +21,7 @@ import picocli.CommandLine.Mixin
  */
 @RequireDocker
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "build-cassandra",
     description = ["Build the Cassandra image"],

@@ -113,7 +113,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
 
                 // Real TemplateService and manifest builders — never mock configuration classes.
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
                 single { BeylaManifestBuilder(get()) }
                 single { EbpfExporterManifestBuilder() }
                 single { JournaldOtelManifestBuilder(get()) }

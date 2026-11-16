@@ -10,12 +10,15 @@ import com.rustyrazorblade.easydblab.events.EventBus
 /**
  * The checks `up` runs before it provisions any AWS resource, so a configuration that cannot
  * produce a working cluster fails at once and stands up nothing.
+ *
+ * @param userConfig the profile, loaded only when the SSH transport is checked, so building the
+ *   preflight (as `up` does in any workspace) never needs one
  */
 class ProvisioningPreflight(
     private val localTailscaleClient: LocalTailscaleClient,
     private val eventBus: EventBus,
     private val localSsmTooling: LocalSsmTooling,
-    private val userConfig: User,
+    private val userConfig: Lazy<User>,
 ) {
     /** Fails when [state] or its [initConfig] cannot produce a cluster this machine can reach. */
     fun verify(
@@ -61,7 +64,7 @@ class ProvisioningPreflight(
      * instances were running, as an SSH readiness timeout that says nothing about SSM.
      */
     private fun verifyLocalSsmTooling() {
-        if (userConfig.sshTransport != SshTransport.Ssm) return
+        if (userConfig.value.sshTransport != SshTransport.Ssm) return
 
         val faults = localSsmTooling.faults()
         if (faults.isEmpty()) return

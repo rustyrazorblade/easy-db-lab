@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
@@ -12,6 +14,7 @@ import picocli.CommandLine.Parameters
  * Display IAM policies with account ID populated.
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "show-iam-policies",
     aliases = ["sip"],

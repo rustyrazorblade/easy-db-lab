@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.opensearch
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.DomainState
@@ -18,6 +20,7 @@ import picocli.CommandLine.Option
  * Displays current domain state, endpoints, and configuration.
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "status",
     description = ["Check OpenSearch domain status"],

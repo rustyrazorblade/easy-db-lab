@@ -45,7 +45,7 @@ class LogQlCompatibilityIntegrationTest : BaseKoinTest() {
                         whenever(it.load()).thenReturn(ClusterState(name = "logql", versions = mutableMapOf(), s3Bucket = bucket))
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

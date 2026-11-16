@@ -93,7 +93,7 @@ val servicesModule =
         // Reads the Tailscale client on the developer's own machine. Explicit factory so the
         // constructor defaults (the real CLI runner, the status timeout) apply.
         factory<LocalTailscaleClient> { DefaultLocalTailscaleClient() }
-        factory { ProvisioningPreflight(get(), get(), get(), get()) }
+        factory { ProvisioningPreflight(get(), get(), get(), lazy { get<User>() }) }
         factory<LocalSsmTooling> { DefaultLocalSsmTooling() }
 
         // Proves this machine has a route to the cluster's private network before `up` relies
@@ -147,7 +147,7 @@ val servicesModule =
         // GrafanaClient reaches Grafana through the service-access seam, with the route on its own client.
         factoryOf(::DefaultGrafanaClient) bind GrafanaClient::class
         factory { DashboardInstallContextFactory(get()) }
-        factoryOf(::TemplateService)
+        factory { TemplateService(get()) }
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
         factoryOf(::WorkloadStepExecutor)
@@ -291,6 +291,7 @@ val servicesModule =
                 RequirementCheckDeps(
                     get<UserConfigProvider>(),
                     get<DockerClientProvider>(),
+                    EnvironmentRequirements(get()),
                 ),
                 get<ResourceManager>(),
                 get<EventBus>(),

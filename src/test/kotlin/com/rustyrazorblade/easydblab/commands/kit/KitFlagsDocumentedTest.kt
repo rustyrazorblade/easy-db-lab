@@ -26,7 +26,7 @@ class KitFlagsDocumentedTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
             },

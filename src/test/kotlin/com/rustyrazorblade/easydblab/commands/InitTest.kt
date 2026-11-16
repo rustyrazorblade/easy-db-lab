@@ -41,7 +41,7 @@ class InitTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { mockEc2InstanceService }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.SparkJobState
 import com.rustyrazorblade.easydblab.services.SparkService
@@ -25,6 +27,7 @@ import picocli.CommandLine.Option
  * To query logs from Loki, use: easy-db-lab spark logs --step-id <step-id>
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "status",
     description = ["Check status of a Spark job"],

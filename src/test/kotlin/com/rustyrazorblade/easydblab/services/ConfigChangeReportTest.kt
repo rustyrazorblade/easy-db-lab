@@ -48,7 +48,7 @@ class ConfigChangeReportTest : BaseKoinTest() {
                         ).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

@@ -71,7 +71,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                         )
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 
@@ -644,7 +644,7 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                         )
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.koin.core.component.inject
@@ -19,6 +21,7 @@ import picocli.CommandLine.Option
  * - `spark stop --step-id s-XXXXX` - Cancels a specific job
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "stop",
     description = ["Cancel a running or pending Spark job"],

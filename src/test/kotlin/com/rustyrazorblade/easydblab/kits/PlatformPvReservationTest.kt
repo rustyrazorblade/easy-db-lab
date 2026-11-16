@@ -31,7 +31,7 @@ class PlatformPvReservationTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
             },
@@ -56,7 +56,7 @@ class PlatformPvReservationTest : BaseKoinTest() {
     private fun renderedObjects(kit: KitConfig): List<HasMetadata> {
         val resolver = get<InstallTemplateResolver>()
         val fixture =
-            BuiltinKitFixture(kit.name, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+            BuiltinKitFixture(kit.name, TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
         return resolver
             .listTemplateFiles(resolver.resolve(kit.name))
             .map { it.name }

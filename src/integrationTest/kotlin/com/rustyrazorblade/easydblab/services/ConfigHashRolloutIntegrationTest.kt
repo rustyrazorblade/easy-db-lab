@@ -9,7 +9,6 @@ import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -74,7 +73,6 @@ class ConfigHashRolloutIntegrationTest {
     private lateinit var otel: OtelManifestBuilder
     private lateinit var otelSync: OtelSyncService
     private lateinit var stateManager: ClusterStateManager
-    private lateinit var user: User
 
     @BeforeAll
     fun setup() {
@@ -89,16 +87,7 @@ class ConfigHashRolloutIntegrationTest {
         stateManager = mock()
         whenever(stateManager.load()).thenReturn(clusterState)
         whenever(stateManager.exists()).thenReturn(true)
-        user =
-            User(
-                region = "us-west-2",
-                email = "test@example.com",
-                keyName = "",
-                awsProfile = "",
-                awsAccessKey = "",
-                awsSecret = "",
-            )
-        val templateService = TemplateService(stateManager, user)
+        val templateService = TemplateService(stateManager)
         tempo = TempoManifestBuilder(templateService)
         pyroscope = PyroscopeManifestBuilder(templateService)
         otel = OtelManifestBuilder(templateService)

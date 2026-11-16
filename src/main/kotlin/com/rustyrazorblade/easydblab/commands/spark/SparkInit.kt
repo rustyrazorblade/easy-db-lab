@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.EMRProvisioningService
@@ -29,6 +31,7 @@ import picocli.CommandLine.Option
  * - `spark init --worker.instance.count 5` - Custom worker count
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "init",
     description = ["Provision Spark EMR cluster on existing environment"],

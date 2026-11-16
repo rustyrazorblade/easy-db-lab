@@ -55,6 +55,17 @@ class ClusterContractTest {
         assertThat(contract.nodeCapabilities.present()).containsExactly(NodeCapability.PRIVILEGED)
     }
 
+    /** aws-account is declared, never recorded: a recorded set can neither drop it nor add it. */
+    @Test
+    fun `the environment alone decides aws-account whatever set is recorded`() {
+        val awsRecordedWithout = stateFor(Environment.Ec2K3s, capabilities = setOf(NodeCapability.S3))
+        val localRecordedWith = stateFor(Environment.K3sDocker("/d"), capabilities = setOf(NodeCapability.AWS_ACCOUNT))
+
+        assertThat(ClusterContract.of(awsRecordedWithout).nodeCapabilities.present())
+            .containsExactly(NodeCapability.S3, NodeCapability.AWS_ACCOUNT)
+        assertThat(NodeCapabilities.from(localRecordedWith).present()).isEmpty()
+    }
+
     @Test
     fun `node labels from init are merged into every environment's placement`() {
         val labels = mapOf("pool" to "obs")

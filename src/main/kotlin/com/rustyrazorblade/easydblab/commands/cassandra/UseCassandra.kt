@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.annotation.JsonIgnore
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -20,6 +23,11 @@ import kotlin.system.exitProcess
 /**
  * Switch the active Cassandra version.
  */
+@RequiresCapability(
+    NodeCapability.NODE_SSH,
+    NodeCapability.AWS_ACCOUNT,
+    alternative = Constants.ClusterContract.CASSANDRA_KIT_ALTERNATIVE,
+)
 @RequireProfileSetup
 @TriggerBackup
 @Command(

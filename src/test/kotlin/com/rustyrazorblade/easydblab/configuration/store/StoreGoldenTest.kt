@@ -100,7 +100,7 @@ class StoreGoldenTest : BaseKoinTest() {
                 single {
                     mock<ClusterStateManager>().also { whenever(it.load()).thenReturn(state) }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

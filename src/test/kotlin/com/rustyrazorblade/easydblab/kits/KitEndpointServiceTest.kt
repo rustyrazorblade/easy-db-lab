@@ -20,8 +20,7 @@ import java.io.File
 class KitEndpointServiceTest : BaseKoinTest() {
     private val resolver get() = InstallTemplateResolver(context, KitSourcesProvider(context))
 
-    private fun fixture(kit: String) =
-        BuiltinKitFixture(kit, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+    private fun fixture(kit: String) = BuiltinKitFixture(kit, TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
 
     /** The kit's Service manifests, rendered with its arg defaults into a directory as `kit install` writes them. */
     private fun renderedKitDir(kit: String): File {

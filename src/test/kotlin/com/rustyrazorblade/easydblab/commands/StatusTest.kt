@@ -32,6 +32,7 @@ import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.EnvironmentRequirements
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
@@ -607,6 +608,7 @@ class StatusTest : BaseKoinTest() {
                     RequirementCheckDeps(
                         userConfigProvider = mockUserConfigProvider,
                         dockerClientProvider = mockDockerClientProvider,
+                        environmentRequirements = EnvironmentRequirements(getKoin().get()),
                     ),
                 resourceManager = mockResourceManager,
                 eventBus = getKoin().get(),

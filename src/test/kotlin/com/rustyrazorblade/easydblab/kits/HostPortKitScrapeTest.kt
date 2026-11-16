@@ -16,8 +16,7 @@ import java.io.File
  * discovery, which only the collector on the pod's own node acts on.
  */
 class HostPortKitScrapeTest : BaseKoinTest() {
-    private fun fixture(kit: String) =
-        BuiltinKitFixture(kit, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+    private fun fixture(kit: String) = BuiltinKitFixture(kit, TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
 
     @ParameterizedTest
     @ValueSource(strings = ["presto", "trino", "flink"])

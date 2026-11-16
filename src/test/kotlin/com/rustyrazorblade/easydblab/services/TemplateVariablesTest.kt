@@ -27,7 +27,7 @@ class TemplateVariablesTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

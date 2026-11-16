@@ -19,6 +19,10 @@ import kotlin.io.path.Path
  * Manages a pool of SSH connections to multiple hosts. The pool is an [SSHConnectionCache], so
  * threads that ask for the same host at the same time share one connection.
  *
+ * The key (from the profile) is loaded and the MINA client started on the first connection, not
+ * when the provider is built: commands in a local workspace, which has no profile, build it through
+ * `remoteOps` and never reach a node.
+ *
  * @param config SSH configuration settings
  * @param route decides the address and port each host is dialed at, which is how the profile's
  *   SSH transport reaches the in-process client
@@ -33,18 +37,22 @@ class DefaultSSHConnectionProvider(
     }
 
     private val connections = SSHConnectionCache(::createNewConnection)
-    private val keyPairs: List<KeyPair>
-    private val sshClient: SshClient
 
-    init {
+    /** The loaded key and the started client, made by the first connection. */
+    private class Started(
+        val keyPairs: List<KeyPair>,
+        val sshClient: SshClient,
+    )
+
+    private val started = lazy(::start)
+
+    private fun start(): Started {
         log.info { "Initializing SSH connection provider with key: ${config.keyPath}" }
 
-        // Load key pairs
         val loader = SecurityUtils.getKeyPairResourceParser()
-        keyPairs = loader.loadKeyPairs(null, Path(config.keyPath), null).toList()
+        val keyPairs = loader.loadKeyPairs(null, Path(config.keyPath), null).toList()
 
-        // Set up SSH client
-        sshClient = SshClient.setUpDefaultClient()
+        val sshClient = SshClient.setUpDefaultClient()
         sshClient.setKeyIdentityProvider(KeyIdentityProvider.wrapKeyPairs(keyPairs))
 
         // Configure keepalive to prevent session timeouts (heartbeat in milliseconds)
@@ -58,6 +66,7 @@ class DefaultSSHConnectionProvider(
         sshClient.start()
 
         log.info { "SSH client initialized successfully with keepalive=${config.keepAliveIntervalSeconds}s" }
+        return Started(keyPairs, sshClient)
     }
 
     override fun getConnection(host: Host): ISSHClient = connections.get(host)
@@ -74,6 +83,7 @@ class DefaultSSHConnectionProvider(
      * @return A new SSH client connected to the host
      */
     private fun createNewConnection(host: Host): ISSHClient {
+        val (keyPairs, sshClient) = started.value.let { it.keyPairs to it.sshClient }
         val endpoint = route.endpoint(host)
         log.info { "Creating new SSH connection to ${host.alias} (${endpoint.address}:${endpoint.port})" }
 
@@ -116,7 +126,7 @@ class DefaultSSHConnectionProvider(
         connections.closeAll()
 
         try {
-            sshClient.stop()
+            if (started.isInitialized()) started.value.sshClient.stop()
         } catch (e: IOException) {
             log.error(e) { "IO error while stopping SSH client" }
         } catch (e: RuntimeException) {

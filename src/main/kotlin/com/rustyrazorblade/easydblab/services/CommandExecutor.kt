@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
-import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
@@ -11,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
@@ -70,10 +70,12 @@ interface CommandExecutor {
  *
  * @property userConfigProvider Provides user configuration state
  * @property dockerClientProvider Provides Docker client for availability checks
+ * @property environmentRequirements Decides the capability check and whether the profile check applies
  */
 data class RequirementCheckDeps(
     val userConfigProvider: UserConfigProvider,
     val dockerClientProvider: DockerClientProvider,
+    val environmentRequirements: EnvironmentRequirements,
 )
 
 /**
@@ -120,10 +122,15 @@ class DefaultCommandExecutor(
      * carry [RequiresProxy]. A command that never declares the dependency never starts a tunnel.
      *
      * @param command The command to execute
+     * @param commandName The command as the user typed it (`cassandra use`), for messages; the
+     *   command's own `@Command` name when null
      * @return Exit code (0 for success, non-zero for failure)
      */
-    fun executeTopLevel(command: PicoCommand): Int =
-        runCatching { runTopLevel(command) }.getOrElse { failure ->
+    fun executeTopLevel(
+        command: PicoCommand,
+        commandName: String? = null,
+    ): Int =
+        runCatching { runTopLevel(command, commandName) }.getOrElse { failure ->
             // Failures raised outside executeWithLifecycle (state restore, resource cleanup) would
             // otherwise reach Picocli as a raw stack trace. An Error (out of memory) is not ours to report.
             if (failure !is Exception) throw failure
@@ -135,12 +142,15 @@ class DefaultCommandExecutor(
             Constants.ExitCodes.ERROR
         }
 
-    private fun runTopLevel(command: PicoCommand): Int {
+    private fun runTopLevel(
+        command: PicoCommand,
+        commandName: String?,
+    ): Int {
         // VPC reconstruction from environment variable (if set)
         handleVpcReconstructionFromEnv()
 
         try {
-            val exitCode = executeWithLifecycle(command)
+            val exitCode = executeWithLifecycle(command, commandName)
 
             // Process scheduled commands (each with full lifecycle)
             // Stop on first failure
@@ -191,10 +201,13 @@ class DefaultCommandExecutor(
      * itself, rather than escaping uncaught.
      */
     @Suppress("TooGenericExceptionCaught")
-    private fun executeWithLifecycle(command: PicoCommand): Int {
+    private fun executeWithLifecycle(
+        command: PicoCommand,
+        commandName: String? = null,
+    ): Int {
         val exitCode =
             try {
-                checkRequirements(command)
+                checkRequirements(command, commandName)
                 command.call()
             } catch (e: InterruptedException) {
                 // Ctrl-C or SIGTERM in REPL or server mode: cancellation is not a command failure.
@@ -217,7 +230,10 @@ class DefaultCommandExecutor(
      * Checks and enforces command requirements based on annotations.
      * May exit the process if requirements cannot be satisfied.
      */
-    private fun checkRequirements(command: PicoCommand) {
+    private fun checkRequirements(
+        command: PicoCommand,
+        commandName: String?,
+    ) {
         val annotations = command::class.annotations
 
         // Clear any proxy failure or tunnel recorded for a previous command before this one runs. Without
@@ -227,8 +243,16 @@ class DefaultCommandExecutor(
         proxyAvailability.clear()
         proxyPreflight.clear()
 
-        // Check if the command requires profile setup
-        if (annotations.any { it is RequireProfileSetup }) {
+        // First, before any profile check or side effect: a command the environment cannot serve.
+        val environmentRequirements = requirementCheckDeps.environmentRequirements
+        val unavailable = environmentRequirements.unavailable(command, commandName)
+        if (unavailable != null) {
+            eventBus.emit(unavailable)
+            throw CommandFailedException("${unavailable.command} is not available in ${unavailable.environment}")
+        }
+
+        // The profile is an AWS profile: required only where the target environment has an AWS account.
+        if (environmentRequirements.needsProfile(command)) {
             if (!requirementCheckDeps.userConfigProvider.isSetup()) {
                 // Run setup command with full lifecycle
                 executeWithLifecycle(profileSetupProvider.create())

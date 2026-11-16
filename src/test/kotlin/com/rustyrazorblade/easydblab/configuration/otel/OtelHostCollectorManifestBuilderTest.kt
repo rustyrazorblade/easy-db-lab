@@ -28,7 +28,7 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<ClusterStateManager>() }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

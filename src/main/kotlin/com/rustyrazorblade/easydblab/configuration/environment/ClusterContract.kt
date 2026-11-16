@@ -39,7 +39,7 @@ data class ClusterContract(
         /** The contract [state]'s recorded environment resolves to. Pure: it reads only [state]. */
         fun of(state: ClusterState): ClusterContract {
             val environment = state.environment
-            val capabilities = state.capabilities?.let(::NodeCapabilities) ?: environment.declaredCapabilities
+            val capabilities = NodeCapabilities.from(state)
             val nodeLabels = state.initConfig?.nodeLabels.orEmpty()
             return when (environment) {
                 Environment.Ec2K3s ->

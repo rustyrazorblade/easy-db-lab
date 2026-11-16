@@ -78,7 +78,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
                         ).thenReturn(ClusterState(name = "senders-it", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

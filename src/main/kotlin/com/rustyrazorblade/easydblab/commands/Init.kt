@@ -17,8 +17,10 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
@@ -64,7 +66,9 @@ import kotlin.system.exitProcess
     name = "init",
     description = ["Initialize this directory for easy-db-lab"],
 )
-class Init : PicoBaseCommand() {
+class Init :
+    PicoBaseCommand(),
+    DeclaresEnvironment {
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
@@ -366,6 +370,9 @@ class Init : PicoBaseCommand() {
      */
     @get:JsonIgnore
     val resolvedAppInstanceType: String get() = appInstanceType ?: stressInstanceType
+
+    /** The environment this `init` records, which decides whether it needs an AWS profile. */
+    override fun declaredEnvironment(): Environment = Environment.Ec2K3s
 
     override fun execute() {
         validateParameters()

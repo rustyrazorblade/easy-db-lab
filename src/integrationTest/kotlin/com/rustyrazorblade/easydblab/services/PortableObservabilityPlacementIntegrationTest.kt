@@ -14,7 +14,6 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
@@ -162,7 +161,7 @@ class PortableObservabilityPlacementIntegrationTest {
 
         stateManager = mock<ClusterStateManager>()
         whenever(stateManager.load()).thenReturn(state)
-        templates = TemplateService(stateManager, mock<User>())
+        templates = TemplateService(stateManager)
 
         resources().forEach { client.resource(it).serverSideApply() }
     }

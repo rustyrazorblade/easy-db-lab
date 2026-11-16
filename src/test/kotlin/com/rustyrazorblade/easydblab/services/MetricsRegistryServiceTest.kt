@@ -34,7 +34,7 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
                         whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

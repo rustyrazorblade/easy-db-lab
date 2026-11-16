@@ -26,14 +26,14 @@
 
 ## 4. Command gating and the profile rule
 
-- [ ] 4.1 Add `@RequiresCapability(vararg capabilities, alternative)` and `Event.Environment.CommandUnavailable(command, environment, missing, alternative)`. Check it in `checkRequirements` before the profile check.
-- [ ] 4.2 Annotate the AWS-only commands listed in the `execution-environment` spec. `cassandra use` also requires `NODE_SSH`.
-- [ ] 4.3 Add `kernel/DeclaresEnvironment`. `Init` implements it. The executor applies `@RequireProfileSetup` only when the target environment has `AWS_ACCOUNT`.
-- [ ] 4.4 Unit tests:
+- [x] 4.1 Add `@RequiresCapability(vararg capabilities, alternative)` and `Event.Environment.CommandUnavailable(command, environment, missing, alternative)`. Check it in `checkRequirements` before the profile check.
+- [x] 4.2 Annotate the AWS-only commands listed in the `execution-environment` spec. `cassandra use` also requires `NODE_SSH`.
+- [x] 4.3 Add `kernel/DeclaresEnvironment`. `Init` implements it. The executor applies `@RequireProfileSetup` only when the target environment has `AWS_ACCOUNT`.
+- [x] 4.4 Unit tests:
   - `cassandra use` and `spark` in a `K3sDocker` workspace emit `CommandUnavailable` naming the environment, with no side effect and no profile load.
   - `build-image` with no state passes the check.
   - An `Ec2K3s` workspace with no profile still requires setup.
-- [ ] 4.5 Koin graph test: with no `settings.yaml` and a `K3sDocker` state, resolving `Status`, `KitRunnerCommand`, `Up`, `Down` and the grafana, logs and metrics commands loads no `User`.
+- [x] 4.5 Koin graph test: with no `settings.yaml` and a `K3sDocker` state, resolving `Status`, `KitRunnerCommand`, `Up`, `Down` and the grafana, logs and metrics commands loads no `User`.
 
 ## 5. init --local
 

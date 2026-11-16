@@ -82,7 +82,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                         whenever(it.load()).thenReturn(withControlHost)
                     }
                 }
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
             },
         )
 

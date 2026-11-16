@@ -15,7 +15,7 @@ import java.io.File
  */
 class TidbKitTest : BaseKoinTest() {
     private val kit by lazy {
-        BuiltinKitFixture("tidb", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        BuiltinKitFixture("tidb", TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
     }
 
     @Test

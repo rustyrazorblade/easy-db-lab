@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import org.koin.core.component.inject
@@ -17,6 +19,7 @@ import picocli.CommandLine.Command
  * - Advertised routes
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "status",
     description = ["Show Tailscale connection status"],

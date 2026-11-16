@@ -6426,6 +6426,40 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
     }
+
+    // =========================================================================
+    // Event.Environment — what the execution environment provides
+    // =========================================================================
+
+    /** Facts about the execution environment a command runs in. */
+    @Serializable
+    sealed interface Environment : Event {
+        /**
+         * [command] needs the [missing] capabilities, and the [environment] (its display name) does
+         * not provide them, so it stopped before doing anything. [alternative] is what to use instead,
+         * or null when there is nothing.
+         */
+        @Serializable
+        @SerialName("Environment.CommandUnavailable")
+        data class CommandUnavailable(
+            val command: String,
+            val environment: String,
+            val missing: List<NodeCapability>,
+            val alternative: String? = null,
+        ) : Environment {
+            override fun toDisplayString(): String =
+                buildString {
+                    append("Error: '$command' is not available in $environment: it needs ")
+                    append(missing.joinToString { it.serialName })
+                    append(", and ")
+                    append(missing.joinToString("; ") { it.absentReason })
+                    append(".")
+                    alternative?.let { append(" Instead: $it.") }
+                }
+
+            override fun isError(): Boolean = true
+        }
+    }
 }
 
 /** A CIDR as the ingress events show it, naming it as this machine's public IP when it was detected. */

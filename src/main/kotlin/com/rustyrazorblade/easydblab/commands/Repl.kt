@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.commandPath
 import com.rustyrazorblade.easydblab.commands.aws.Aws
 import com.rustyrazorblade.easydblab.commands.cassandra.Cassandra
 import com.rustyrazorblade.easydblab.commands.exec.Exec
@@ -177,7 +178,7 @@ class Repl : PicoBaseCommand() {
                     if (userObj is PicoCommand) {
                         // Get CommandExecutor lazily when a command actually runs
                         val executor = get<CommandExecutor>() as DefaultCommandExecutor
-                        return@IExecutionStrategy executor.executeTopLevel(userObj)
+                        return@IExecutionStrategy executor.executeTopLevel(userObj, currentParseResult.commandPath())
                     }
                 }
 

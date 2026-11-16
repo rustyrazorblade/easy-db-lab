@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.observability
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.services.aws.CompactorService
@@ -23,6 +25,7 @@ abstract class CompactorCommand : PicoBaseCommand() {
 
 /** Starts the account compactor as `up` does: creates it when missing, starts it when stopped. */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "start",
     description = ["Start the account compactor (creates it when missing)"],
@@ -34,6 +37,7 @@ class CompactorStart : CompactorCommand() {
 
 /** Stops the account compactor by setting its desired count to 0. */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "stop",
     description = ["Stop the account compactor"],
@@ -45,6 +49,7 @@ class CompactorStop : CompactorCommand() {
 
 /** Prints the compactor's state, its current or last task, and that task's recent log lines. Changes nothing. */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "status",
     description = ["Show the account compactor's state, task and recent log lines"],

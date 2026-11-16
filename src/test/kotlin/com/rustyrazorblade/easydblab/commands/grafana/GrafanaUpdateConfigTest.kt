@@ -82,7 +82,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { mock<K8sClientProvider>().also { mockK8sClientProvider = it } }
 
                 // Real TemplateService — never mock configuration classes
-                single { TemplateService(get(), get()) }
+                single { TemplateService(get()) }
 
                 // Real manifest builders
                 single { BeylaManifestBuilder(get()) }

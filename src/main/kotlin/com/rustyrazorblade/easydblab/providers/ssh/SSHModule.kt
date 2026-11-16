@@ -10,8 +10,8 @@ import org.koin.dsl.module
  *
  * Provides:
  * - SSHConnectionProvider as a singleton (manages connection pool)
- * - SshRoute as a singleton, chosen by the profile's SSH transport; this is the one place the
- *   transport is decided
+ * - SshRoute as a singleton, chosen by the profile's SSH transport on first use
+ *   ([DeferredSshRoute]); this is the one place the transport is decided
  * - RemoteOperationsService as a factory (stateless operations)
  *
  * Note: SSHConfiguration must be provided by another module (e.g., contextModule), and
@@ -22,11 +22,14 @@ val sshModule =
         // SSH connection provider - singleton because it manages a connection pool
         single<SSHConnectionProvider> { DefaultSSHConnectionProvider(get(), get()) }
 
+        // Deferred: choosing the route loads the profile, which a local workspace does not have.
         single<SshRoute> {
-            val sshPort = get<SSHConfiguration>().sshPort
-            when (get<User>().sshTransport) {
-                SshTransport.Direct -> DirectSshRoute(sshPort)
-                SshTransport.Ssm -> SsmSshRoute(get(), sshPort, get())
+            DeferredSshRoute {
+                val sshPort = get<SSHConfiguration>().sshPort
+                when (get<User>().sshTransport) {
+                    SshTransport.Direct -> DirectSshRoute(sshPort)
+                    SshTransport.Ssm -> SsmSshRoute(get(), sshPort, get())
+                }
             }
         }
 

@@ -63,6 +63,12 @@ enum class NodeCapability(
     AWS_ACCOUNT("aws-account", "this environment has no AWS account", isOverridable = false),
     ;
 
+    /**
+     * Whether this is a fact about the nodes, and so published to them in `cluster-config`.
+     * [AWS_ACCOUNT] describes the workspace's account, so no node-side script is told about it.
+     */
+    val describesNode: Boolean get() = this != AWS_ACCOUNT
+
     companion object {
         /** The capability named [name], or null when no capability has that serial name. */
         fun fromSerialName(name: String): NodeCapability? = entries.firstOrNull { it.serialName == name }
@@ -102,9 +108,14 @@ value class NodeCapabilities(
         /**
          * The capabilities [state] records, or, when it records none, the set its environment
          * declares. A state written before capabilities were recorded is an EC2 + K3s state and so
-         * reads as [AWS].
+         * reads as [AWS]. A capability that is not [NodeCapability.isOverridable] always comes from
+         * the environment, so a recorded set can neither drop nor add it.
          */
-        fun from(state: ClusterState): NodeCapabilities =
-            state.capabilities?.let(::NodeCapabilities) ?: state.environment.declaredCapabilities
+        fun from(state: ClusterState): NodeCapabilities {
+            val declared = state.environment.declaredCapabilities
+            val recorded = state.capabilities ?: return declared
+            val fixed = NodeCapability.entries.filterNot { it.isOverridable }
+            return NodeCapabilities(recorded.filter { it.isOverridable }.toSet() + fixed.filter { it in declared })
+        }
     }
 }

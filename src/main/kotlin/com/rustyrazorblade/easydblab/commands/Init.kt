@@ -17,7 +17,9 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
+import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
@@ -29,10 +31,13 @@ import com.rustyrazorblade.easydblab.services.ObservabilityStage
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
+import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
+import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
+import picocli.CommandLine.Spec
 import java.time.LocalDate
 import kotlin.system.exitProcess
 
@@ -82,6 +87,12 @@ class Init :
 
         /** Classpath directory holding the OTel agent's Cassandra JMX rule files. */
         private const val CASSANDRA_RESOURCE_DIR = "/com/rustyrazorblade/easydblab/configuration/cassandra"
+
+        /** Creates a K3s in Docker workspace on this machine. */
+        const val LOCAL_OPTION = "--local"
+
+        /** Where a `--local` workspace keeps its observability data. */
+        const val DATA_DIR_OPTION = "--data-dir"
 
         @JsonIgnore val log = KotlinLogging.logger {}
     }
@@ -325,6 +336,29 @@ class Init :
     )
     var redirectProfilesEndpoint: String? = null
 
+    @Option(
+        names = [LOCAL_OPTION],
+        description = [
+            "Create a K3s in Docker workspace on this machine. Needs no AWS account or profile. " +
+                "Options that configure AWS instances, networking or services are refused.",
+        ],
+    )
+    var local = false
+
+    @Option(
+        names = [DATA_DIR_OPTION],
+        description = [
+            "With --local: the directory the observability data is kept in, resolved against the " +
+                "current directory (default: ${Constants.Local.DEFAULT_DATA_DIRECTORY} in the workspace). " +
+                "'clean' never removes it.",
+        ],
+    )
+    var dataDir: String? = null
+
+    /** Picocli's model of this command, for the usage error and for which options were given. */
+    @Spec
+    var spec: CommandSpec? = null
+
     /**
      * The telemetry redirect target built from the redirect options, or null in local mode
      * (`--redirect-telemetry` not supplied). The four endpoints derive from the base host and the
@@ -372,9 +406,27 @@ class Init :
     val resolvedAppInstanceType: String get() = appInstanceType ?: stressInstanceType
 
     /** The environment this `init` records, which decides whether it needs an AWS profile. */
-    override fun declaredEnvironment(): Environment = Environment.Ec2K3s
+    override fun declaredEnvironment(): Environment =
+        when (local) {
+            true -> Environment.K3sDocker(resolvedDataDir())
+            false -> Environment.Ec2K3s
+        }
+
+    /**
+     * The data directory as `state.json` records it: absolute and normalized. A given [dataDir] is
+     * resolved against the current directory (the workspace: every command runs from there); with
+     * none, it is [Constants.Local.DEFAULT_DATA_DIRECTORY] in the workspace.
+     */
+    private fun resolvedDataDir(): String =
+        context.workingDirectory
+            .toPath()
+            .resolve(dataDir ?: Constants.Local.DEFAULT_DATA_DIRECTORY)
+            .toAbsolutePath()
+            .normalize()
+            .toString()
 
     override fun execute() {
+        refuseOptionsThatNeedOtherOptions()
         validateParameters()
         // Parsed before anything is cleaned or written, so a bad override leaves the directory as it was.
         val capabilities = effectiveCapabilities()
@@ -390,6 +442,8 @@ class Init :
         refuseExistingBin()
 
         val clusterState = createClusterState(capabilities)
+        // The shell-side tools learn the network mode from the env file; the recorded environment decides it.
+        ProxyEnvFile(context.workingDirectory).recordDirect(ClusterContract.of(clusterState).networkMode == NetworkMode.Direct)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
 
@@ -415,6 +469,27 @@ class Init :
             eventBus.emit(Event.Setup.InitNextSteps)
         }
     }
+
+    /**
+     * Fails before anything is cleaned or written when an option is given without the one it needs:
+     * `--data-dir` is a usage error without `--local`, and `--local` refuses every AWS-only option
+     * given explicitly, naming each ([Event.Setup.LocalOptionsRefused]).
+     */
+    private fun refuseOptionsThatNeedOtherOptions() {
+        if (!local) {
+            if (dataDir != null) {
+                throw CommandLine.ParameterException(commandLine(), "$DATA_DIR_OPTION requires $LOCAL_OPTION")
+            }
+            return
+        }
+        val refused = AwsOnlyOptions.givenIn(commandLine().parseResult)
+        if (refused.isEmpty()) return
+        eventBus.emit(Event.Setup.LocalOptionsRefused(refused))
+        throw CommandFailedException("${refused.joinToString(", ")} cannot be used with $LOCAL_OPTION")
+    }
+
+    /** The command line this command was parsed by, or a new one for a command built in code. */
+    private fun commandLine(): CommandLine = spec?.commandLine() ?: CommandLine(this)
 
     private fun validateParameters() {
         require(resolvedDbCount > 0) { "Number of database instances must be positive" }
@@ -445,12 +520,13 @@ class Init :
     }
 
     /**
-     * The capability set `init` records: the environment's declared set with the operator's
-     * `--capability` overrides applied. `init` creates AWS clusters only, so the declared set is AWS.
+     * The capability set `init` records: the declared set of the environment it records, with the
+     * operator's `--capability` overrides applied.
      *
      * @throws IllegalArgumentException on an unknown capability, a bad value or conflicting overrides
      */
-    private fun effectiveCapabilities(): NodeCapabilities = CapabilityOverrides.parse(capabilityOverrides).applyTo(NodeCapabilities.AWS)
+    private fun effectiveCapabilities(): NodeCapabilities =
+        CapabilityOverrides.parse(capabilityOverrides).applyTo(declaredEnvironment().declaredCapabilities)
 
     /** Prints each absent capability and the stages `up` will skip without it. */
     private fun reportAbsentCapabilities(
@@ -496,30 +572,52 @@ class Init :
     }
 
     private fun createClusterState(capabilities: NodeCapabilities): ClusterState {
-        val tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale
         val state =
-            ClusterState(
-                name = name,
-                versions = mutableMapOf(),
-                initConfig =
-                    InitConfig.fromInit(
-                        init = this,
-                        region = userConfig.region,
-                        dbArch = deriveArch(resolvedDbInstanceType),
-                        appArch = deriveArch(resolvedAppInstanceType),
-                        controlArch = deriveArch(DEFAULT_CONTROL_INSTANCE_TYPE),
-                    ),
-                tailscaleActive = tailscaleActive,
-                capabilities = capabilities.present().toSet(),
-                exposure =
-                    Exposure.atInit(
-                        tailscaleActive = tailscaleActive,
-                        directNetwork = ProxyEnvFile(context.workingDirectory).read().direct,
-                    ),
-            )
+            when (val environment = declaredEnvironment()) {
+                Environment.Ec2K3s -> awsClusterState(capabilities)
+                else -> localClusterState(environment, capabilities)
+            }
         clusterStateManager.save(state)
         return state
     }
+
+    /** The state of an EC2 + K3s cluster: region and Tailscale from the profile, architectures from EC2. */
+    private fun awsClusterState(capabilities: NodeCapabilities): ClusterState {
+        val tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale
+        return ClusterState(
+            name = name,
+            versions = mutableMapOf(),
+            initConfig =
+                InitConfig.fromInit(
+                    init = this,
+                    region = userConfig.region,
+                    dbArch = deriveArch(resolvedDbInstanceType),
+                    appArch = deriveArch(resolvedAppInstanceType),
+                    controlArch = deriveArch(DEFAULT_CONTROL_INSTANCE_TYPE),
+                ),
+            tailscaleActive = tailscaleActive,
+            capabilities = capabilities.present().toSet(),
+            exposure = Exposure.atInit(tailscaleActive = tailscaleActive),
+        )
+    }
+
+    /**
+     * The state of a K3s in Docker workspace. It reads neither the AWS profile nor EC2: the Services
+     * are reached by a port-forward on loopback, and the nodes run this machine's architecture.
+     */
+    private fun localClusterState(
+        environment: Environment,
+        capabilities: NodeCapabilities,
+    ): ClusterState =
+        ClusterState(
+            name = name,
+            versions = mutableMapOf(),
+            initConfig = InitConfig.forLocal(init = this, hostArch = Arch.ofHost()),
+            tailscaleActive = false,
+            capabilities = capabilities.present().toSet(),
+            exposure = Exposure.PortForward,
+            environment = environment,
+        )
 
     /**
      * Derives the CPU architecture of an instance type from its EC2 `SupportedArchitectures`.
@@ -554,6 +652,17 @@ class Init :
 
     private fun displayCompletionMessage(clusterState: ClusterState) {
         val initConfig = clusterState.initConfig ?: return
+        val environment = clusterState.environment
+        if (environment is Environment.K3sDocker) {
+            eventBus.emit(
+                Event.Setup.LocalWorkspaceInitialized(
+                    dataDir = environment.dataDir,
+                    dbCount = initConfig.cassandraInstances,
+                    appCount = initConfig.stressInstances,
+                ),
+            )
+            return
+        }
         eventBus.emit(
             Event.Setup.WorkspaceInitialized(
                 cassandraInstances = initConfig.cassandraInstances,

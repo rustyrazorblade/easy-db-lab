@@ -79,17 +79,14 @@ enum class Exposure {
 
     companion object {
         /**
-         * The exposure `init` records: [Direct] when Tailscale or the `direct` network mode reaches
-         * the nodes' private addresses, otherwise [Socks]. [PortForward] is recorded only by
-         * `init --kubeconfig`.
+         * The exposure an AWS `init` records: [Direct] when Tailscale reaches the nodes' private
+         * addresses, otherwise [Socks]. [PortForward] is recorded by `init --local` and
+         * `init --kubeconfig`, whose Services are reached by a port-forward on loopback.
          */
-        fun atInit(
-            tailscaleActive: Boolean,
-            directNetwork: Boolean,
-        ): Exposure =
-            when {
-                tailscaleActive || directNetwork -> Direct
-                else -> Socks
+        fun atInit(tailscaleActive: Boolean): Exposure =
+            when (tailscaleActive) {
+                true -> Direct
+                false -> Socks
             }
     }
 }
@@ -261,6 +258,31 @@ data class InitConfig(
                 opensearchEbsSize = init.opensearch.ebsSize,
                 cidr = init.cidr,
                 cni = init.cni,
+                telemetryRedirect = init.resolvedTelemetryRedirect,
+                tenant = init.tenant,
+                nodeLabels = init.nodeLabels,
+            )
+
+        /**
+         * The [InitConfig] `init --local` records: the node counts and the observability settings, no
+         * region (there is no AWS account), Flannel (Cilium's ENI routing exists only on EC2), and
+         * [hostArch], the architecture of this machine, for every role. The AWS-only fields keep their
+         * defaults; `init --local` refuses the options that set them.
+         */
+        fun forLocal(
+            init: Init,
+            hostArch: Arch,
+        ): InitConfig =
+            InitConfig(
+                cassandraInstances = init.resolvedDbCount,
+                stressInstances = init.resolvedAppCount,
+                region = "",
+                name = init.name,
+                tags = init.tags,
+                dbArch = hostArch.name,
+                appArch = hostArch.name,
+                controlArch = hostArch.name,
+                cni = CniMode.Flannel,
                 telemetryRedirect = init.resolvedTelemetryRedirect,
                 tenant = init.tenant,
                 nodeLabels = init.nodeLabels,

@@ -4,10 +4,13 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -192,6 +195,18 @@ class InitTest : BaseKoinTest() {
                         initConfig?.region == "us-west-2"
                 },
             )
+        }
+
+        @Test
+        fun `a plain init records EC2 plus K3s and leaves no network mode in the env file`() {
+            val envFile = ProxyEnvFile(context.workingDirectory)
+
+            Init().apply { clean = true }.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { environment == Environment.Ec2K3s && exposure == Exposure.Socks && initConfig?.cni == CniMode.Cilium },
+            )
+            assertThat(envFile.file.readText()).doesNotContain(Constants.Proxy.ENV_NETWORK_MODE)
         }
 
         @Test

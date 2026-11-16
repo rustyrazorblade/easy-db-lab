@@ -5338,6 +5338,37 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `init --local` recorded a K3s in Docker workspace whose observability data lives in
+         * [dataDir], with [dbCount] database and [appCount] application nodes.
+         */
+        @Serializable
+        @SerialName("Setup.LocalWorkspaceInitialized")
+        data class LocalWorkspaceInitialized(
+            val dataDir: String,
+            val dbCount: Int,
+            val appCount: Int,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |Your workspace has been initialized for K3s in Docker on this machine, with $dbCount database and $appCount application nodes.
+                |Observability data is kept in $dataDir. 'clean' never removes it; delete it yourself when you no longer need it.
+                """.trimMargin()
+        }
+
+        /** `init --local` was given [options] that only an AWS cluster uses, so it wrote nothing. */
+        @Serializable
+        @SerialName("Setup.LocalOptionsRefused")
+        data class LocalOptionsRefused(
+            val options: List<String>,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Error: ${options.joinToString(", ")} cannot be used with --local: they configure AWS instances, " +
+                    "networking or services, and a K3s in Docker cluster has none. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {
@@ -6456,6 +6487,22 @@ sealed interface Event {
                     append(".")
                     alternative?.let { append(" Instead: $it.") }
                 }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * [command] (`up` or `down`) provisions or tears down infrastructure, and this easy-db-lab has
+         * no provisioner for the [environment] (its display name), so it stopped before doing anything.
+         */
+        @Serializable
+        @SerialName("Environment.ProvisionerUnavailable")
+        data class ProvisionerUnavailable(
+            val command: String,
+            val environment: String,
+        ) : Environment {
+            override fun toDisplayString(): String =
+                "Error: '$command' cannot run in this workspace: this easy-db-lab has no provisioner for $environment yet."
 
             override fun isError(): Boolean = true
         }

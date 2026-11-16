@@ -36,7 +36,7 @@ args:
     variable: STORAGE_SIZE
     description: "Persistent volume size for the Neo4j data directory"
     type: string
-    default: "10Ti"
+    default: "${KIT_STORAGE_SIZE}"
 
 install:
   - type: kit-storage

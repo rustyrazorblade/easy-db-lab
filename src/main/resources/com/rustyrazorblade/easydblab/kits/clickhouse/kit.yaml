@@ -56,11 +56,11 @@ args:
     description: "ClickHouse server image version (e.g. 25.4, 24.8)"
     type: string
     default: "latest"
-  - flag: --size
+  - flag: --storage-size
     variable: STORAGE_SIZE
     description: Storage size per node (e.g. 100Gi)
     type: string
-    default: "10Ti"
+    default: "${KIT_STORAGE_SIZE}"
   - flag: --replicas
     variable: REPLICAS
     description: "Number of ClickHouse replicas (default: db node count)"

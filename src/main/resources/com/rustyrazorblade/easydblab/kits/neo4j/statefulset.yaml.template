@@ -111,10 +111,6 @@ spec:
         accessModes:
           - ReadWriteOnce
         storageClassName: __KIT_STORAGE_CLASS__
-        # Binds only this kit's platform PVs; every kit's PVs share the storage class.
-        selector:
-          matchLabels:
-            app.kubernetes.io/name: __KIT_NAME__
         resources:
           requests:
             storage: __STORAGE_SIZE__

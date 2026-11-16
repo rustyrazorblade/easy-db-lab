@@ -379,12 +379,9 @@ class CassandraPodsKitIntegrationTest {
                     dbName = "cassandra-pods",
                     localPath = "$PV_PATH/data",
                     count = 1,
-                    // The PV must offer what the kit's claim requests (its STORAGE_SIZE default),
-                    // or the claim never binds and the pod stays Pending.
-                    storageSize =
-                        fixture.config.args
-                            .single { it.variable == "STORAGE_SIZE" }
-                            .default,
+                    // The PV must offer what the kit's claim requests (its STORAGE_SIZE default, the
+                    // local-volumes kit storage size), or the claim never binds and the pod stays Pending.
+                    storageSize = Constants.K8s.LOCAL_KIT_STORAGE_SIZE,
                     storageClass = KIT_CLASS,
                 ),
             ).getOrThrow()

@@ -16,11 +16,11 @@ spec:
       - id: 0
         type: persistent-claim
         size: __STORAGE_SIZE__
-        class: local-storage-wfc
-        # Binds only this kit's platform PVs; every kit's PVs share the storage class.
-        selector:
-          app.kubernetes.io/name: __KIT_NAME__
-        deleteClaim: true
+        class: __KIT_STORAGE_CLASS__
+        # stop deletes this node pool; the claims must outlive it so the next start rebinds the
+        # same volumes (a Retain PV whose claim is deleted is Released and never binds again).
+        # uninstall deletes the claims explicitly.
+        deleteClaim: false
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka

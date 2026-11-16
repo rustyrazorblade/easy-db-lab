@@ -87,7 +87,8 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
+        storageClassName: __KIT_STORAGE_CLASS__
         resources:
           requests:
-            storage: 10Gi
+            storage: __STORAGE_SIZE__
         volumeMode: Filesystem

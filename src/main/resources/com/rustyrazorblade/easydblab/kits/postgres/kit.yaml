@@ -54,11 +54,11 @@ args:
     description: "Number of PostgreSQL instances (1 = single node, >1 enables replication)"
     type: int
     default: "1"
-  - flag: --size
+  - flag: --storage-size
     variable: STORAGE_SIZE
     description: Storage size per node (e.g. 100Gi)
     type: string
-    default: "10Ti"
+    default: "${KIT_STORAGE_SIZE}"
   - flag: --extension
     variable: EXTENSION
     description: "Extension alias to activate (e.g. duckdb, postgis, timescaledb). Run 'postgres extensions' to list available aliases."

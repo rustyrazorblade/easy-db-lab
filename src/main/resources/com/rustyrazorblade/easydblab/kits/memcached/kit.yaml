@@ -37,6 +37,11 @@ args:
     variable: EXTSTORE_SIZE
     description: "Turns on extstore with this much flash on the db node's NVMe, e.g. 100G (M, G or T suffix)"
     type: string
+  - flag: --storage-size
+    variable: STORAGE_SIZE
+    description: "Size of the extstore volume claim; must hold --extstore-size"
+    type: string
+    default: "${KIT_STORAGE_SIZE}"
   - flag: --extstore-page-size
     variable: EXTSTORE_PAGE_SIZE
     description: "extstore page size in MB (ext_page_size)"
@@ -54,14 +59,13 @@ args:
     description: "Smallest item in bytes that goes to extstore (ext_item_size)"
     type: int
 
-# The extstore PV exists only when --extstore-size is set. local-storage ignores capacity; the
-# extstore claim requests the same 10Ti.
+# The extstore volume exists only when --extstore-size is set. Its PV and the extstore claim are
+# --storage-size.
 install:
   - type: kit-storage
     node-type: db
     count: 1
     volume-claim-template-name: data
-    storage-size: 10Ti
     if-set: EXTSTORE_SIZE
 
 start:

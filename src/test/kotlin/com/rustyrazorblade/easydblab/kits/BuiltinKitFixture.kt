@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.kits
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -22,17 +23,22 @@ import io.fabric8.kubernetes.client.utils.Serialization
 class BuiltinKitFixture(
     private val kitName: String,
     private val templateService: TemplateService,
+    kitStorageClass: String? = null,
 ) {
-    /** A cluster with one control node and two db nodes, enough to resolve every template variable. */
+    /**
+     * A cluster with one control node, two db nodes and one app node, enough to resolve every
+     * template variable. Its kit storage is local volumes, or the provisioned [kitStorageClass].
+     */
     private val clusterState =
         ClusterState(
             name = "test-cluster",
             versions = mutableMapOf(),
-            initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
+            initConfig = InitConfig(region = "us-west-2", name = "test-cluster", kitStorageClass = kitStorageClass),
             hosts =
                 mapOf(
                     ServerType.Control to listOf(host("control0", "10.0.0.5")),
                     ServerType.Cassandra to listOf(host("db0", "10.0.1.10"), host("db1", "10.0.2.10")),
+                    ServerType.Stress to listOf(host("app0", "10.0.3.10")),
                 ),
         )
 
@@ -44,9 +50,20 @@ class BuiltinKitFixture(
     /** The kit's scrape metrics entries. */
     val scrapeMetrics: List<KitMetrics.Scrape> get() = config.metrics.filterIsInstance<KitMetrics.Scrape>()
 
-    /** The kit's arg defaults keyed by variable, as `kit install` resolves them with no flags. */
+    private val variables: TemplateVariables
+        get() = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = "10Gi")
+
+    /**
+     * The kit's arg defaults keyed by variable, as `kit install` resolves them with no flags: a
+     * `\${VAR}` default takes the cluster variable's value, as `KitInstallCommandFactory` does.
+     */
     private val argDefaults: Map<String, String>
-        get() = config.args.associate { it.variable to it.default }
+        get() {
+            val vars = variables.toMap()
+            return config.args.associate { arg ->
+                arg.variable to arg.default.replace(Constants.Kit.SHELL_VAR_PATTERN) { vars[it.groupValues[1]] ?: it.value }
+            }
+        }
 
     /**
      * Renders [templateFile] with the kit's arg defaults overlaid by [args], failing on any
@@ -73,7 +90,7 @@ class BuiltinKitFixture(
         val rendered =
             templateService.renderKitTemplate(
                 templateContent = resource(templateFile),
-                vars = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = "10Gi"),
+                vars = variables,
                 extraVars = argDefaults + args,
             ) { unresolved.addAll(it) }
         check(unresolved.isEmpty()) { "Unresolved variables in $templateFile: $unresolved" }

@@ -56,7 +56,7 @@ args:
     variable: STORAGE_SIZE
     description: "Persistent volume size per node"
     type: string
-    default: "10Ti"
+    default: "${KIT_STORAGE_SIZE}"
 
 install:
   - type: kit-storage

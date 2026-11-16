@@ -24,16 +24,16 @@
 
 ## 5. Kits
 
-- [ ] 5.1 cassandra-pods, neo4j, postgres, clickhouse: drop selectors; class `__KIT_STORAGE_CLASS__`; size arg default `${KIT_STORAGE_SIZE}`; postgres and clickhouse `--size` → `--storage-size` (D3); `platform-pvs` → `kit-storage`.
-- [ ] 5.2 kafka: `class: __KIT_STORAGE_CLASS__`, no selector, `deleteClaim: false` (D10); size default.
-- [ ] 5.3 memcached: drop `volumeName` and literal `10Ti`; add `STORAGE_SIZE` arg.
-- [ ] 5.4 tidb: `kit-storage` steps (PD on app with `count: 1`, TiKV and TiFlash on db), class placeholder, `--storage-size`, `pvReclaimPolicy: Retain`, uninstall comment.
-- [ ] 5.5 ignite3: class placeholder, `kit-storage` step, size arg (D8).
-- [ ] 5.6 Check `fsGroup` / writable data dir for each non-root kit image on a fresh dynamic volume.
+- [x] 5.1 cassandra-pods, neo4j, postgres, clickhouse: drop selectors; class `__KIT_STORAGE_CLASS__`; size arg default `${KIT_STORAGE_SIZE}`; postgres and clickhouse `--size` → `--storage-size` (D3); `platform-pvs` → `kit-storage`.
+- [x] 5.2 kafka: `class: __KIT_STORAGE_CLASS__`, no selector, `deleteClaim: false` (D10); size default.
+- [x] 5.3 memcached: drop `volumeName` and literal `10Ti`; add `STORAGE_SIZE` arg.
+- [x] 5.4 tidb: `kit-storage` steps (PD on app with `count: 1`, TiKV and TiFlash on db), class placeholder, `--storage-size`, `pvReclaimPolicy: Retain`, uninstall comment.
+- [x] 5.5 ignite3: class placeholder, `kit-storage` step, size arg (D8).
+- [x] 5.6 Check `fsGroup` / writable data dir for each non-root kit image on a fresh dynamic volume.
 
 ## 6. Guard and integration tests
 
-- [ ] 6.1 `KitClaimStorageTest` replaces `PlatformPvReservationTest`: renders every kit in both modes, extended to `TidbCluster` and class-less StatefulSets; asserts class, no selector / volumeName, size; raw scan finds no fixed class; every kit with a claim declares `kit-storage`.
+- [x] 6.1 `KitClaimStorageTest` replaces `PlatformPvReservationTest`: renders every kit in both modes, extended to `TidbCluster` and class-less StatefulSets; asserts class, no selector / volumeName, size; raw scan finds no fixed class; every kit with a claim declares `kit-storage`.
 - [ ] 6.2 Integration (K3s TestContainers): a retained copy of `local-path` as `Provisioned`; cassandra-pods claims Bound at the default size.
 - [ ] 6.3 Integration: two kits' local PVs and classes; each kit's claims bind only its own PVs. Move `CassandraPodsKitIntegrationTest` off `LOCAL_STORAGE_WFC_CLASS`.
 - [ ] 6.4 Integration: Retain check against real StorageClasses — `local-path` refused, the retained copy accepted, a missing class reported missing.

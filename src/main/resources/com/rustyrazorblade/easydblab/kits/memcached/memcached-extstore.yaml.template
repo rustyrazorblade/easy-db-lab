@@ -1,7 +1,6 @@
 # Applied by the start step instead of memcached.yaml when --extstore-size is set.
-# The claim binds by name to the local PV that install's platform-pvs step creates on the db
-# node's NVMe (data-memcached-0), so it can never take another kit's PV in the same storage class.
-# local-storage ignores the requested size, so the request only has to fit the PV's capacity.
+# The claim names the kit storage class: on local volumes the kit's own edl-local-memcached,
+# whose only PV is the one install's kit-storage step creates on the db node's NVMe.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -14,10 +13,9 @@ spec:
   accessModes:
     - ReadWriteOnce
   storageClassName: __KIT_STORAGE_CLASS__
-  volumeName: data-memcached-0
   resources:
     requests:
-      storage: 10Ti
+      storage: __STORAGE_SIZE__
 ---
 apiVersion: apps/v1
 kind: Deployment

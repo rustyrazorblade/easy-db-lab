@@ -15,12 +15,12 @@
 - [x] 3.3 `StressJobService.buildJob`: remove the control-node lookup, parameter and argument; Pyroscope address from `pyroscopeIngestBaseUrl(redirect)`. Leave hostNetwork, hostPath, selector, region and target for #1101.
 - [x] 3.4 `TemplateVariables.pyroscopeUrl` from `pyroscopeIngestBaseUrl(redirect)`.
 - [x] 3.5 Unit tests (real `TemplateService`): each producer renders Service DNS locally and `redirect.profiles` under redirect; stress builds with no control node.
-- [ ] 3.6 Extend `BuiltinKitCollectorEndpointTest`: no kit file pairs `CONTROL_HOST_PRIVATE`/`HOST_IP` with 9009, 3100, 3200, 4320 or 4040.
+- [x] 3.6 Extend `BuiltinKitCollectorEndpointTest`: no kit file pairs `CONTROL_HOST_PRIVATE`/`HOST_IP` with 9009, 3100, 3200, 4320 or 4040.
 
 ## 4. Host processes to the relay
 
 - [x] 4.1 `SetupInstance`, `ProfilingStart`, `ProfilingStop`: `pyroscopeUrl = nodeLocalProfilesRelay()`; delete `ProfilingHostCommand.controlNodePrivateIp()`.
-- [ ] 4.2 Update `edl-profiling-reconcile.test.sh` fixtures to the relay URL; run `testCassandraScripts`.
+- [x] 4.2 Update `edl-profiling-reconcile.test.sh` fixtures to the relay URL; run `testCassandraScripts`.
 
 ## 5. Remove host ports and publish NodePorts
 

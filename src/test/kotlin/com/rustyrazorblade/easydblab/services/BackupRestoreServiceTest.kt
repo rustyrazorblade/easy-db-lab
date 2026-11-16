@@ -5,7 +5,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.proxy.ProxyEnv
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import org.assertj.core.api.Assertions.assertThat
@@ -46,6 +49,20 @@ internal class BackupRestoreServiceTest {
                 mockClusterStateManager,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                DefaultClusterConfigurationService(
+                    mock<UserConfigProvider>().also { whenever(it.sshKeyPath).thenReturn("/path/to/key") },
+                    com.rustyrazorblade.easydblab.events
+                        .EventBus(),
+                    DirectSshRoute(22),
+                ),
+                User(
+                    awsAccessKey = "k",
+                    awsSecret = "s",
+                    region = "us-west-2",
+                    email = "test@example.com",
+                    keyName = "test-key",
+                    awsProfile = "",
+                ),
             )
     }
 
@@ -107,6 +124,27 @@ internal class BackupRestoreServiceTest {
                     Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.KIT_LIBRARY +
                         Constants.ToolWrappers.MARKER,
                 )
+        }
+
+        @Test
+        fun `a restored workspace gets an sshConfig for this machine that reaches every restored host`() {
+            val vpcId = "vpc-12345"
+            whenever(mockClusterStateManager.exists()).thenReturn(false, true)
+            whenever(mockVpcService.getVpcTags(vpcId)).thenReturn(
+                mapOf("ClusterId" to "test-cluster-id", "Name" to "test-cluster", Constants.Vpc.BUCKET_TAG_KEY to "test-bucket"),
+            )
+            whenever(mockClusterBackupService.restoreAll(any(), any()))
+                .thenReturn(Result.success(RestoreResult(successfulTargets = setOf(BackupTarget.STATE_JSON), filesRestored = 1)))
+            whenever(mockClusterStateManager.load()).thenReturn(createClusterState(s3Bucket = "test-bucket"))
+
+            service.restoreFromVpc(vpcId, tempDir.absolutePath).getOrThrow()
+
+            val sshConfig = File(tempDir, "sshConfig").readText()
+            assertThat(sshConfig)
+                .contains("IdentityFile /path/to/key")
+                .contains("Host db0")
+                .contains("Hostname 1.2.3.4")
+            assertThat(File(tempDir, "env.sh")).exists()
         }
 
         @Test

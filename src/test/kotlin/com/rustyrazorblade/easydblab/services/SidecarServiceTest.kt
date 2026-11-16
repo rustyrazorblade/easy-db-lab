@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
@@ -33,15 +32,6 @@ class SidecarServiceTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockEcrClient: EcrClient
     private lateinit var sidecarService: SidecarService
-
-    private val testControlHost =
-        ClusterHost(
-            publicIp = "54.123.45.67",
-            privateIp = "10.0.1.10",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-control0",
-        )
 
     private val testClusterState =
         ClusterState(
@@ -80,7 +70,7 @@ class SidecarServiceTest : BaseKoinTest() {
 
     @Test
     fun `deploy applies all resources from manifest builder`() {
-        val result = sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest")
+        val result = sidecarService.deploy("ghcr.io/apache/cassandra-sidecar:latest")
 
         assertThat(result.isSuccess).isTrue()
         // ConfigMap + DaemonSet = 2 resources
@@ -92,7 +82,7 @@ class SidecarServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any()))
             .thenReturn(Result.failure(RuntimeException("K8s unreachable")))
 
-        val result = sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest")
+        val result = sidecarService.deploy("ghcr.io/apache/cassandra-sidecar:latest")
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()).hasMessageContaining("K8s unreachable")
@@ -144,7 +134,7 @@ class SidecarServiceTest : BaseKoinTest() {
         whenever(mockEcrClient.getAuthorizationToken()).thenReturn(tokenResponse)
 
         val ecrImage = "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo/cassandra-sidecar:latest"
-        val result = sidecarService.deploy(testControlHost, ecrImage)
+        val result = sidecarService.deploy(ecrImage)
 
         assertThat(result.isSuccess).isTrue()
         // Secret + ConfigMap + DaemonSet = 3 resources
@@ -159,7 +149,7 @@ class SidecarServiceTest : BaseKoinTest() {
     fun `deploy labels the sidecar's profiles with its host and the cluster label`() {
         val resources = argumentCaptor<HasMetadata>()
 
-        sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
+        sidecarService.deploy("ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
 
         verify(mockK8sService, times(2)).applyResource(resources.capture())
         val daemonSet = resources.allValues.filterIsInstance<DaemonSet>().single()
@@ -176,7 +166,7 @@ class SidecarServiceTest : BaseKoinTest() {
     fun `the sidecar exports OTLP to the core collector Service, not localhost`() {
         val resources = argumentCaptor<HasMetadata>()
 
-        sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
+        sidecarService.deploy("ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
 
         verify(mockK8sService, times(2)).applyResource(resources.capture())
         val endpoint =

@@ -19,7 +19,9 @@ import java.io.File
 class BuiltinKitNodePortTest {
     @Test
     fun `every NodePort a built-in kit or postgres instance declares is unique`() {
-        val claims = manifestNodePorts() + postgresInstanceNodePorts() + ("cilium:hubble-ui" to Constants.Cilium.HUBBLE_UI_NODE_PORT)
+        val claims =
+            manifestNodePorts() + postgresInstanceNodePorts() + ("cilium:hubble-ui" to Constants.Cilium.HUBBLE_UI_NODE_PORT) +
+                observabilityNodePorts()
 
         val duplicates =
             claims
@@ -36,6 +38,22 @@ class BuiltinKitNodePortTest {
         assertThat(Constants.Kit.CassandraPods.CQL_NODE_PORT).isEqualTo(30942)
         assertThat(duplicates).isEmpty()
     }
+
+    @Test
+    fun `the observability NodePorts are in the NodePort range`() {
+        assertThat(observabilityNodePorts().map { it.second }).allMatch { it in NODE_PORT_RANGE }
+    }
+
+    /** The fixed NodePorts the observability backends and Grafana publish on owned nodes. */
+    private fun observabilityNodePorts(): List<Pair<String, Int>> =
+        listOf(
+            "observability:grafana" to Constants.K8s.GRAFANA_NODE_PORT,
+            "observability:mimir" to Constants.K8s.MIMIR_NODE_PORT,
+            "observability:loki" to Constants.K8s.LOKI_NODE_PORT,
+            "observability:tempo" to Constants.K8s.TEMPO_NODE_PORT,
+            "observability:tempo-otlp-grpc" to Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT,
+            "observability:pyroscope" to Constants.K8s.PYROSCOPE_NODE_PORT,
+        )
 
     /** `nodePort: <n>` in each built-in kit's manifests, keyed `kit:file`; placeholders are skipped. */
     private fun manifestNodePorts(): List<Pair<String, Int>> =
@@ -76,5 +94,6 @@ class BuiltinKitNodePortTest {
     private companion object {
         const val KITS_RESOURCE_DIR = "com/rustyrazorblade/easydblab/kits"
         val NODE_PORT = Regex("""nodePort:\s*(\d+)""")
+        val NODE_PORT_RANGE = 30000..32767
     }
 }

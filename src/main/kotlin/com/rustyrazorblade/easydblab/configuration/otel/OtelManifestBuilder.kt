@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -84,12 +85,9 @@ class OtelManifestBuilder(
         const val NOT_A_HOST_LOG = "resource.attributes[\"source\"] == nil"
 
         /** In-cluster export endpoints used in local mode: Mimir's remote write and Loki's OTLP base. */
-        private val LOCAL_METRICS_ENDPOINT =
-            "http://${Constants.K8s.serviceHost(Constants.K8s.MIMIR_APP_LABEL)}:${Constants.K8s.MIMIR_HTTP_PORT}/api/v1/push"
-        private val LOCAL_LOGS_ENDPOINT =
-            "http://${Constants.K8s.serviceHost(Constants.K8s.LOKI_APP_LABEL)}:${Constants.K8s.LOKI_HTTP_PORT}/otlp"
-        private val LOCAL_TEMPO_ENDPOINT =
-            "${Constants.K8s.serviceHost(Constants.K8s.TEMPO_APP_LABEL)}:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}"
+        private val LOCAL_METRICS_ENDPOINT = BackendEndpoints.mimirPush()
+        private val LOCAL_LOGS_ENDPOINT = BackendEndpoints.lokiOtlp()
+        private val LOCAL_TEMPO_ENDPOINT = BackendEndpoints.tempoOtlpGrpc()
 
         /** The pod-log pipeline, rendered into `service.pipelines` only with [PodLogSource.NodeFiles]. */
         private val POD_LOG_PIPELINE =

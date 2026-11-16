@@ -518,6 +518,18 @@ object Constants {
          */
         const val ALLOY_RELAY_PORT = 4041
 
+        // Fixed NodePorts the observability Services publish where the environment owns its nodes, so
+        // callers outside the pod network (the CLI under Socks or Direct exposure, browsers, redirect
+        // senders, EMR, operator scripts) reach them at <node private IP>:<port>. Only client ports are
+        // published. Chosen outside every NodePort a kit declares and Cilium's Hubble UI
+        // (BuiltinKitNodePortTest guards this).
+        const val GRAFANA_NODE_PORT = 31300
+        const val MIMIR_NODE_PORT = 31009
+        const val LOKI_NODE_PORT = 31100
+        const val TEMPO_NODE_PORT = 31200
+        const val TEMPO_OTLP_GRPC_NODE_PORT = 31320
+        const val PYROSCOPE_NODE_PORT = 31040
+
         /** Tempo's `app.kubernetes.io/name` label; the collector finds the Tempo pod by it. */
         const val TEMPO_APP_LABEL = "tempo"
 

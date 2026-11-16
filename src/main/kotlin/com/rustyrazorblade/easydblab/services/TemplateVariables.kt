@@ -102,9 +102,9 @@ data class TemplateVariables(
                 // fallback because templates using VPC_CIDR only execute post-up
                 vpcCidr = state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR,
                 opensearchEndpoint = state.openSearchDomain?.endpoint.orEmpty(),
-                // Where a kit's Pyroscope agent ships profiles: the control node's server, or the
-                // external stack on a redirect cluster. Every write carries the cluster's tenant.
-                pyroscopeUrl = pyroscopeIngestBaseUrl(controlHost?.privateIp.orEmpty(), state.initConfig?.telemetryRedirect),
+                // Where a kit's Pyroscope agent ships profiles: the Pyroscope Service, or the external
+                // stack on a redirect cluster. Every write carries the cluster's tenant.
+                pyroscopeUrl = pyroscopeIngestBaseUrl(state.initConfig?.telemetryRedirect),
                 tenant = state.tenant(),
             )
         }

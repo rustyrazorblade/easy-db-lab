@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.tempo
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
@@ -88,7 +89,7 @@ class TempoManifestBuilder(
                     .fromString(storeBlocks.renderResource(TempoManifestBuilder::class.java, "tempo.yaml"))
                     .substitute(
                         mapOf(
-                            "MIMIR_HOST" to Constants.K8s.serviceHost(Constants.K8s.MIMIR_APP_LABEL),
+                            "MIMIR_HOST" to BackendEndpoints.mimirHost(),
                             "MIMIR_HTTP_PORT" to Constants.K8s.MIMIR_HTTP_PORT.toString(),
                         ),
                     ),

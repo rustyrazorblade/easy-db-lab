@@ -4,22 +4,22 @@
 
 ## 2. Shared addresses and constants
 
-- [ ] 2.1 Add `Constants.K8s.ALLOY_RELAY_PORT` and the six observability NodePort constants; unit test that none repeats a packaged kit NodePort or `HUBBLE_UI_NODE_PORT`.
-- [ ] 2.2 Add `configuration/BackendEndpoints` (`pyroscope()`, `mimirPush()`, `lokiOtlp()`, `tempoOtlpGrpc()`, `.svc` form) and route `OtelManifestBuilder` exporters and `GrafanaDatasourceSet` through it (D5a).
-- [ ] 2.3 Change `pyroscopeIngestBaseUrl(redirect)` (no IP) and add `nodeLocalProfilesRelay()`.
+- [x] 2.1 Add `Constants.K8s.ALLOY_RELAY_PORT` and the six observability NodePort constants; unit test that none repeats a packaged kit NodePort or `HUBBLE_UI_NODE_PORT`.
+- [x] 2.2 Add `configuration/BackendEndpoints` (`pyroscope()`, `mimirPush()`, `lokiOtlp()`, `tempoOtlpGrpc()`, `.svc` form) and route `OtelManifestBuilder` exporters and `GrafanaDatasourceSet` through it (D5a).
+- [x] 2.3 Change `pyroscopeIngestBaseUrl(redirect)` (no IP) and add `nodeLocalProfilesRelay()`.
 
 ## 3. In-cluster producers to Service DNS
 
-- [ ] 3.1 `PyroscopeManifestBuilder`: drop the hosting branch and `CONTROL_NODE_IP` read; Alloy writes to `BackendEndpoints.pyroscope()` or redirect; add the `receive_http` relay on `127.0.0.1:ALLOY_RELAY_PORT`.
-- [ ] 3.2 `SidecarManifestBuilder` / `SidecarService.deploy` / `cassandra start`: drop `controlNodeIp`; agent uses Service DNS or redirect.
-- [ ] 3.3 `StressJobService.buildJob`: remove the control-node lookup, parameter and argument; Pyroscope address from `pyroscopeIngestBaseUrl(redirect)`. Leave hostNetwork, hostPath, selector, region and target for #1101.
-- [ ] 3.4 `TemplateVariables.pyroscopeUrl` from `pyroscopeIngestBaseUrl(redirect)`.
-- [ ] 3.5 Unit tests (real `TemplateService`): each producer renders Service DNS locally and `redirect.profiles` under redirect; stress builds with no control node.
+- [x] 3.1 `PyroscopeManifestBuilder`: drop the hosting branch and `CONTROL_NODE_IP` read; Alloy writes to `BackendEndpoints.pyroscope()` or redirect; add the `receive_http` relay on `127.0.0.1:ALLOY_RELAY_PORT`.
+- [x] 3.2 `SidecarManifestBuilder` / `SidecarService.deploy` / `cassandra start`: drop `controlNodeIp`; agent uses Service DNS or redirect.
+- [x] 3.3 `StressJobService.buildJob`: remove the control-node lookup, parameter and argument; Pyroscope address from `pyroscopeIngestBaseUrl(redirect)`. Leave hostNetwork, hostPath, selector, region and target for #1101.
+- [x] 3.4 `TemplateVariables.pyroscopeUrl` from `pyroscopeIngestBaseUrl(redirect)`.
+- [x] 3.5 Unit tests (real `TemplateService`): each producer renders Service DNS locally and `redirect.profiles` under redirect; stress builds with no control node.
 - [ ] 3.6 Extend `BuiltinKitCollectorEndpointTest`: no kit file pairs `CONTROL_HOST_PRIVATE`/`HOST_IP` with 9009, 3100, 3200, 4320 or 4040.
 
 ## 4. Host processes to the relay
 
-- [ ] 4.1 `SetupInstance`, `ProfilingStart`, `ProfilingStop`: `pyroscopeUrl = nodeLocalProfilesRelay()`; delete `ProfilingHostCommand.controlNodePrivateIp()`.
+- [x] 4.1 `SetupInstance`, `ProfilingStart`, `ProfilingStop`: `pyroscopeUrl = nodeLocalProfilesRelay()`; delete `ProfilingHostCommand.controlNodePrivateIp()`.
 - [ ] 4.2 Update `edl-profiling-reconcile.test.sh` fixtures to the relay URL; run `testCassandraScripts`.
 
 ## 5. Remove host ports and publish NodePorts
@@ -33,8 +33,8 @@
 ## 6. Off-cluster callers
 
 - [ ] 6.1 `TelemetryRedirect.fromBaseHost` derives the NodePorts (D3a); unit test with and without overrides.
-- [ ] 6.2 `EMRProvisioningService`: Pyroscope at `controlIp:<Pyroscope NodePort>` or redirect (D4a).
-- [ ] 6.3 `GrafanaDashboardTreeUploader`: Pyroscope UI link at the NodePort on owned nodes (D6a).
+- [x] 6.2 `EMRProvisioningService`: Pyroscope at `controlIp:<Pyroscope NodePort>` or redirect (D4a).
+- [x] 6.3 `GrafanaDashboardTreeUploader`: Pyroscope UI link at the NodePort on owned nodes (D6a).
 - [ ] 6.4 `bin/export-workload-metrics`: Mimir NodePort.
 
 ## 7. Integration tier

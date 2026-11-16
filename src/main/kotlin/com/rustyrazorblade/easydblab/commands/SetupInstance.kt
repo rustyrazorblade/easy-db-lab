@@ -6,7 +6,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
-import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.profiling.nodeLocalProfilesRelay
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
 import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService.Companion.STRESS_ENV_FILE
 import com.rustyrazorblade.easydblab.services.HostOperationsService
@@ -77,12 +77,11 @@ class SetupInstance : PicoBaseCommand() {
             }
         }
 
-        // Cluster-up is the only moment that knows both the Pyroscope address and the cluster name,
-        // so it seeds desired profiling state here. That is what makes a freshly provisioned cluster
+        // Cluster-up seeds desired profiling state here. The Pyroscope URL is the node-local relay in
+        // the Alloy agent, which forwards to the cluster's Pyroscope or the redirect target. That is what makes a freshly provisioned cluster
         // profile CPU with no operator action: the node's reconciler picks this up on its next pass.
         fun seedProfilingConfig(
             host: Host,
-            controlNodeIp: String,
             clusterName: String,
         ) {
             profilingService.writeDesiredState(
@@ -93,7 +92,7 @@ class SetupInstance : PicoBaseCommand() {
                     loopInterval = Constants.Profiling.DEFAULT_LOOP_INTERVAL,
                     retentionMinutes = Constants.Profiling.DEFAULT_RETENTION_MINUTES,
                     maxBytes = Constants.Profiling.DEFAULT_MAX_BYTES,
-                    pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodeIp, clusterState.initConfig?.telemetryRedirect),
+                    pyroscopeUrl = nodeLocalProfilesRelay(),
                     clusterName = clusterName,
                     tenant = clusterState.tenant(),
                     updatedAt = Instant.now().toString(),
@@ -116,7 +115,6 @@ class SetupInstance : PicoBaseCommand() {
             }
 
         val cassandraHost = clusterState.getHosts(ServerType.Cassandra).first().private
-        val controlNodeIp = clusterState.getHosts(ServerType.Control).first().private
         val clusterName = clusterState.clusterLabelName()
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, hosts.hostList, parallel = true) { host ->
@@ -131,7 +129,7 @@ class SetupInstance : PicoBaseCommand() {
             val h = host.toHost()
             setup(h)
             writeJmxRules(h)
-            seedProfilingConfig(h, controlNodeIp, clusterName)
+            seedProfilingConfig(h, clusterName)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
             remoteOps.upload(h, context.workspaceFile(Constants.SETUP_INSTANCE_SCRIPT).toPath(), Constants.SETUP_INSTANCE_SCRIPT)
             remoteOps.executeRemotely(h, "sudo bash ${Constants.SETUP_INSTANCE_SCRIPT}").text

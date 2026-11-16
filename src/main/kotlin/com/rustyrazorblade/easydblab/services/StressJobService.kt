@@ -348,10 +348,6 @@ class DefaultStressJobService(
                 "job-name" to config.jobName,
             )
 
-        val controlNodeIp =
-            clusterState.getControlHost()?.privateIp
-                ?: error("No control node found. Re-provision the cluster to fix this.")
-
         // A custom stress image may live in the account's ECR, which containerd cannot read from
         // the node's IAM role alone. Same treatment the sidecar already gets.
         val pullSecretName = ecrPullSecrets.ensureFor(config.image, Constants.Stress.NAMESPACE)
@@ -360,7 +356,6 @@ class DefaultStressJobService(
             buildStressContainer(
                 config,
                 region,
-                controlNodeIp,
                 clusterState.clusterLabelName(),
                 clusterState.tenant(),
                 clusterState.initConfig?.telemetryRedirect,
@@ -374,12 +369,11 @@ class DefaultStressJobService(
     private fun buildStressContainer(
         config: StressJobConfig,
         region: String,
-        controlNodeIp: String,
         clusterName: String,
         tenant: String,
         telemetryRedirect: TelemetryRedirect?,
     ): Container {
-        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(controlNodeIp, telemetryRedirect)
+        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(telemetryRedirect)
         val pyroscopeLabels = "cluster=$clusterName,job_name=${config.jobName}"
 
         // Client spans come from here or from nowhere. Cassandra has no OTel server-side

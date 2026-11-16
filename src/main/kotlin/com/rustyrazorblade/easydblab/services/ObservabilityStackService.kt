@@ -345,7 +345,7 @@ class DefaultObservabilityStackService(
             ObservabilityStage.TEMPO -> tempoManifestBuilder.buildAllResources(hosting)
             ObservabilityStage.PYROSCOPE -> pyroscopeManifestBuilder.buildServerResources(hosting)
             // Every node, in both modes; under a redirect it points at the external Pyroscope.
-            ObservabilityStage.PYROSCOPE_AGENT -> pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect, hosting)
+            ObservabilityStage.PYROSCOPE_AGENT -> pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect)
             // The core collector already left its pod-log receiver out (CollectorResources).
             ObservabilityStage.POD_LOGS -> emptyList()
         }

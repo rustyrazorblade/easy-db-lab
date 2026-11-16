@@ -6,7 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.profiling.AsprofArgValidator
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
-import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.profiling.nodeLocalProfilesRelay
 import com.rustyrazorblade.easydblab.profiling.requireProfilingBounds
 import com.rustyrazorblade.easydblab.profiling.requireProfilingLoopInterval
 import picocli.CommandLine.Command
@@ -99,7 +99,7 @@ class ProfilingStart : ProfilingHostCommand() {
                 loopInterval = loopInterval,
                 retentionMinutes = retentionMinutes,
                 maxBytes = maxBytes,
-                pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp(), clusterState.initConfig?.telemetryRedirect),
+                pyroscopeUrl = nodeLocalProfilesRelay(),
                 clusterName = clusterState.clusterLabelName(),
                 tenant = clusterState.tenant(),
                 updatedAt = Instant.now().toString(),

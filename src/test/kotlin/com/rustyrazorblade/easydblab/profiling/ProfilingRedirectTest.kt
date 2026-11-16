@@ -4,8 +4,6 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
-import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -71,7 +69,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
 
     @Test
     fun `pyroscopeIngestBaseUrl resolves to the external profiles endpoint under redirect`() {
-        val url = pyroscopeIngestBaseUrl(CONTROL_NODE_IP, redirect)
+        val url = pyroscopeIngestBaseUrl(redirect)
 
         assertThat(url).isEqualTo(redirect.profiles)
         assertThat(url).doesNotContain(CONTROL_NODE_IP)
@@ -86,25 +84,11 @@ class ProfilingRedirectTest : BaseKoinTest() {
     }
 
     @Test
-    fun `eBPF DaemonSet points the write URL at the control node in local mode`() {
+    fun `in local mode the eBPF agent writes to the Pyroscope Service, never a node IP`() {
         val writeUrl = ebpfWriteUrl(telemetryRedirect = null)
 
-        assertThat(writeUrl).isEqualTo(localPyroscopeUrl)
-    }
-
-    @Test
-    fun `off owned nodes the eBPF agent writes to the Pyroscope Service, never a node IP`() {
-        val offAws = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE)
-        val alloy =
-            PyroscopeManifestBuilder(templateService)
-                .buildAgentResources(telemetryRedirect = null, hosting = offAws)
-                .filterIsInstance<DaemonSet>()
-                .single()
-                .spec.template.spec.containers
-                .single { it.name == "alloy" }
-
-        assertThat(alloy.env.single { it.name == "PYROSCOPE_WRITE_URL" }.value)
-            .isEqualTo("http://pyroscope.default.svc:4040")
+        assertThat(writeUrl).isEqualTo("http://pyroscope.default.svc:4040")
+        assertThat(writeUrl).doesNotContain(CONTROL_NODE_IP)
     }
 
     @Test
@@ -165,7 +149,6 @@ class ProfilingRedirectTest : BaseKoinTest() {
         val daemonSet =
             builder
                 .buildAllResources(
-                    controlNodeIp = CONTROL_NODE_IP,
                     clusterName = "test-cluster",
                     tenant = "acme",
                     telemetryRedirect = redirect,
@@ -180,6 +163,24 @@ class ProfilingRedirectTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains(redirect.profiles)
         assertThat(javaToolOptions).doesNotContain(localPyroscopeUrl)
         assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=acme")
+    }
+
+    @Test
+    fun `sidecar Pyroscope agent sends to the Pyroscope Service in local mode`() {
+        val daemonSet =
+            SidecarManifestBuilder(templateService)
+                .buildAllResources(clusterName = "test-cluster", tenant = "acme")
+                .filterIsInstance<DaemonSet>()
+                .single()
+        val javaToolOptions =
+            daemonSet.spec.template.spec.containers
+                .single { it.name == "cassandra-sidecar" }
+                .env
+                .single { it.name == "JAVA_TOOL_OPTIONS" }
+                .value
+
+        assertThat(javaToolOptions).contains("-Dpyroscope.server.address=http://pyroscope.default.svc:4040")
+        assertThat(javaToolOptions).doesNotContain(CONTROL_NODE_IP)
     }
 
     companion object {

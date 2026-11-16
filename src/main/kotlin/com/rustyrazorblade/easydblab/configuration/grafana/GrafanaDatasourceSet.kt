@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.services.LogQl
 import java.security.MessageDigest
 
@@ -45,16 +46,11 @@ data class BackendUrls(
          */
         val IN_CLUSTER =
             BackendUrls(
-                metrics = "${serviceUrl(Constants.K8s.MIMIR_APP_LABEL, Constants.K8s.MIMIR_HTTP_PORT)}/prometheus",
-                logs = serviceUrl(Constants.K8s.LOKI_APP_LABEL, Constants.K8s.LOKI_HTTP_PORT),
-                traces = serviceUrl(Constants.K8s.TEMPO_APP_LABEL, Constants.K8s.TEMPO_PORT),
-                profiles = serviceUrl(Constants.K8s.PYROSCOPE_APP_LABEL, Constants.K8s.PYROSCOPE_PORT),
+                metrics = "${BackendEndpoints.mimir()}/prometheus",
+                logs = BackendEndpoints.loki(),
+                traces = BackendEndpoints.tempo(),
+                profiles = BackendEndpoints.pyroscope(),
             )
-
-        private fun serviceUrl(
-            service: String,
-            port: Int,
-        ): String = "http://$service.${Constants.K8s.NAMESPACE}.svc:$port"
     }
 }
 

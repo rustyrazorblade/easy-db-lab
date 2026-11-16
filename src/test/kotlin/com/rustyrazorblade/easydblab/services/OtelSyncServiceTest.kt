@@ -331,7 +331,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
         assertThat(
             config.replace("0.0.0.0:", ""),
         ).describedAs("no endpoint at a node IP").doesNotContainPattern("""\b\d{1,3}(\.\d{1,3}){3}:\d+""")
-        assertThat(config).contains("mimir.default.svc.cluster.local", "loki.default.svc.cluster.local", "tempo.default.svc.cluster.local")
+        assertThat(config).contains("mimir.default.svc", "loki.default.svc", "tempo.default.svc")
     }
 
     /** The collector's hash against [clusterConfig], built the way [CollectorResources] builds it. */

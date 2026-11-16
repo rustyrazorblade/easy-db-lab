@@ -19,6 +19,12 @@ There are two methods to access your cluster:
 | **Tailscale VPN** (Recommended) | Production use, team sharing, persistent access |
 | **SOCKS Proxy** | Quick testing when you don't want to set up Tailscale |
 
+A local workspace (`init --local`, K3s in Docker on this machine) needs neither: its cluster is
+reachable from this machine as it is. easy-db-lab records it as direct (`EDL_NETWORK_MODE=direct` in
+the workspace's `.socks5-proxy.env`), starts no tunnel, and the workspace's `bin/` wrappers run each
+tool with your own proxy settings untouched. `socks start` reports that no tunnel is needed. See
+[Local workspaces](../reference/commands.md#local-workspaces).
+
 Both methods, and every command easy-db-lab runs on a node, travel over SSH. If your network blocks or
 re-routes outbound SSH (port 22), switch the profile's SSH transport to
 [SSM Session Manager](#ssh-over-ssm-session-manager). It works underneath either method.

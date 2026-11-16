@@ -18,4 +18,10 @@ Steps:
 Notes:
 - Db nodes need a data disk: use an NVMe instance type (`d` suffix, e.g. `i4i.xlarge`) or attach EBS with `--ebs.type`; otherwise `up` fails.
 
+Local workspace (K3s in Docker, no AWS):
+- `easy-db-lab init <name> --local` — needs no profile. Records this machine's architecture, Flannel and no region; the cluster is reached with no SOCKS tunnel (`socks start` says none is needed).
+- `--data-dir DIR` (only with `--local`; default `observability-data` in the workspace, resolved against the current dir) — where the observability data is kept. `clean` never removes it; it goes only when you delete it or the workspace.
+- AWS-only options (`--instance`, `--azs`, `--vpc`, `--cidr`, `--cni`, `--ami`, `--open`, `--ebs.*`, `--spark.*`, `--opensearch.*`) are refused by name, and nothing is written.
+- `up` and `down` cannot provision a local workspace yet: both say so and change nothing.
+
 Related: `cassandra`, `kits`, `stress-testing`.

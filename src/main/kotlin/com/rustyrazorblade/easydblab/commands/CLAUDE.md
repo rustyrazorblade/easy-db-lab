@@ -187,6 +187,10 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
   one, else `Ec2K3s` outside a workspace. A command in a local workspace therefore never prompts
   for a profile, and nothing it builds may load `User` before it needs AWS
   (`LocalWorkspaceNeedsNoProfileTest`).
+- **`up` and `down` provision only `Ec2K3s`.** Both call `ProvisionerGuard.require` first: in any
+  other recorded environment it emits `Event.Environment.ProvisionerUnavailable` and throws
+  `CommandFailedException` before the profile, the state or AWS is touched
+  (`UpTest`, `DownLocalWorkspaceTest`). A new provisioner widens `ProvisionerGuard.hasProvisioner`.
 - `@RequireSSHKey` — require SSH key to be available
 - `@RequireDocker` — require a Docker daemon to be reachable before execution
 - `@RequiresProxy` — command's execution path reaches the private K8s API (Fabric8, via
@@ -194,7 +198,7 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
   therefore needs the SOCKS5 tunnel. `DefaultCommandExecutor.checkRequirements()` starts the
   tunnel before the command runs, when the cluster is provisioned, infrastructure is UP, and it
   is reached through the tunnel (`proxy/reachedBySocksTunnel`: `exposure` Socks and
-  Tailscale not active; a Direct or PortForward cluster never gets one); a failure to establish it propagates and aborts the command. See
+  Tailscale not active, and the environment's network mode is `Tunnel`; a Direct or PortForward cluster, or one in the direct network mode such as K3s in Docker, never gets one, and the preflight records the network mode in the env file either way); a failure to establish it propagates and aborts the command. See
   `annotations/RequiresProxy.kt` and design decision D7/D9 in
   `openspec/changes/up-fail-fast/design.md`.
 

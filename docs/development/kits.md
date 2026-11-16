@@ -111,7 +111,9 @@ The `helm-repo`, `helm`, `helm-uninstall`, `namespace`, `manifest`, `manifest-ur
   require. A missing tool fails the step with a message that names it. Nothing is skipped. The CLI
   picks the form from the workspace's recorded environment: the control node for an EC2 + K3s
   cluster (and outside a workspace), the local process for a K3s in Docker workspace or a
-  Kubernetes cluster you bring. There is no switch to set.
+  Kubernetes cluster you bring. There is no switch to set. In a K3s in Docker workspace the
+  wrappers find `EDL_NETWORK_MODE=direct` in the env file, so they run the tool with no tunnel and
+  leave your own proxy variables as they are.
 
 On a local run, helm keeps its state under `<workspace>/.helm/` (`config/`, `cache/` and `data/`),
 not in your `~/.config/helm`, so a `helm-repo` step adds the repository to the workspace only.

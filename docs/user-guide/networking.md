@@ -12,6 +12,8 @@ easy-db-lab init my-cluster --db 3 --cni=flannel
 
 A cluster whose saved state records no CNI was provisioned before Cilium existed and is treated as Flannel.
 
+A local workspace (`init --local`, K3s in Docker) always records Flannel: Cilium's ENI routing exists only on EC2, so `init --local` refuses `--cni`.
+
 AMIs built before the Cilium node fixes lack the base image's cloud-init hotplug setting and the systemd-networkd ENI drop-ins that Cilium's secondary ENIs need. If your AMI predates them, rebuild it with `easy-db-lab build-image` before provisioning a Cilium cluster.
 
 On a Cilium cluster, `up` checks every node for those fixes before it starts K3s, and stops with an error naming each node that lacks them and the files it is missing:

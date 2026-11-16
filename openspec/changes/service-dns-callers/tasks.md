@@ -1,6 +1,6 @@
 ## 1. Spike: Alloy relay (D2)
 
-- [ ] 1.1 Integration test (real Alloy + Pyroscope containers, `CollectorToBackendsIntegrationTest` style): POST a reconciler-shaped JFR (`format=jfr`, `name=` series with labels, tenant header) to an Alloy `pyroscope.receive_http` relay and read it back from Pyroscope under that tenant. If it fails, stop and return D2 to the owner (fallback D2b).
+- [ ] 1.1 Integration test (real Alloy + Pyroscope containers, `CollectorToBackendsIntegrationTest` style): POST a reconciler-shaped JFR (`format=jfr`, `name=` series with labels, tenant header) to an Alloy `pyroscope.receive_http` relay and read it back from Pyroscope under that tenant. If it fails, use the fallback the owner already decided (D2b): forward `cluster.local` from systemd-resolved to CoreDNS on every node, point the reconciler at the Pyroscope Service FQDN, drop the relay tasks, and record the switch in `design.md`.
 
 ## 2. Shared addresses and constants
 

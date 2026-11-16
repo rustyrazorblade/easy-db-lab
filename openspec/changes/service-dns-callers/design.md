@@ -1,6 +1,6 @@
 ## Context
 
-Design by the `spec-flow:architect` agent; the decisions below are the owner's. Recommended options are written into the specs and tasks; an owner choice of an alternative changes them before implementation.
+Design by the `spec-flow:architect` agent. The owner approved the spec at Seam 1 on 2026-11-16 and chose option (a) on all seven decisions (D1–D6, D1b); the specs and tasks implement those choices. D2 carries a condition: the relay spike (task 1.1) runs first, and if it fails, D2 falls back to (b), forwarding `cluster.local` DNS to CoreDNS.
 
 Two halves:
 1. Pods that produce telemetry move to Service DNS. Every in-cluster producer can already resolve it: Alloy, the sidecar and stress jobs run `hostNetwork` with `ClusterFirstWithHostNet`; kit pods run `ClusterFirst`.
@@ -24,36 +24,36 @@ Two halves:
 
 ## Decisions
 
-### D1. How callers outside the pod network reach backends and Grafana — **owner decision**
-- **(a) Recommended: NodePort Services with fixed ports in `Constants`.** One mechanism for every off-pod caller; matches the kit NodePort rule; Hubble UI's NodePort 31234 already works on Cilium and Flannel. The seam's `ServiceTarget.nodePort` gets real values and the Socks, Direct, status and server paths need no other change.
+### D1. How callers outside the pod network reach backends and Grafana — **decided (owner, 2026-11-16): (a)**
+- **(a) Chosen: NodePort Services with fixed ports in `Constants`.** One mechanism for every off-pod caller; matches the kit NodePort rule; Hubble UI's NodePort 31234 already works on Cilium and Flannel. The seam's `ServiceTarget.nodePort` gets real values and the Socks, Direct, status and server paths need no other change.
 - (b) PortForward exposure everywhere, AWS included. Publishes nothing, but every query and the `down` flush go over an API-server port-forward, browsers need a forward per Service, and redirect and EMR still need (a).
 - (c) SOCKS to the Service ClusterIP. CLI only; breaks Tailscale/Direct because the Service CIDR is not advertised.
 
 Proposed ports (`Constants.K8s`): Grafana 31300, Mimir 31009, Loki 31100, Tempo query 31200, Tempo OTLP gRPC 31320, Pyroscope 31040. None collide with a kit NodePort (30081–32404 in use) or Hubble 31234. gRPC, memberlist and Tempo 4321 are not published.
 
-### D1b. Where the NodePorts apply — **owner decision**
-- **(a) Recommended: only where the environment owns its nodes** (Socks/Direct exposure). Fixed NodePorts on a foreign cluster can collide or be refused. One environment difference survives, at the Service type instead of container host ports.
+### D1b. Where the NodePorts apply — **decided (owner, 2026-11-16): (a)**
+- **(a) Chosen: only where the environment owns its nodes** (Socks/Direct exposure). Fixed NodePorts on a foreign cluster can collide or be refused. One environment difference survives, at the Service type instead of container host ports.
 - (b) Everywhere, so manifests are fully identical; fails when a foreign cluster already uses a port.
 
-### D2. How host processes on cluster nodes reach Pyroscope — **owner decision**
-- **(a) Recommended: Alloy `pyroscope.receive_http` relay on `127.0.0.1:4041`.** Host DNS is untouched; mirrors the OTel agent's `localhost:4318` pattern; redirect choice moves into Alloy; no backend URL is built from a node IP. Risk: must be verified that `receive_http` accepts `format=jfr` on `/ingest` and keeps the `name=` series and labels the reconciler sends. Task 1 is that spike; if it fails, fall back to (b).
+### D2. How host processes on cluster nodes reach Pyroscope — **decided (owner, 2026-11-16): (a)**
+- **(a) Chosen: Alloy `pyroscope.receive_http` relay on `127.0.0.1:4041`.** Host DNS is untouched; mirrors the OTel agent's `localhost:4318` pattern; redirect choice moves into Alloy; no backend URL is built from a node IP. Risk: must be verified that `receive_http` accepts `format=jfr` on `/ingest` and keeps the `name=` series and labels the reconciler sends. Task 1.1 is that spike; owner decision: if it fails, fall back to (b).
 - (b) Forward `cluster.local` from systemd-resolved to CoreDNS on every node. Every host process gets Service DNS, at the cost of an AMI/setup change and a host-DNS boot dependency on CoreDNS.
 - (c) `http://<controlIp>:<Pyroscope NodePort>`. Smallest change; violates AC3.
 
-### D3. Derived redirect ports — **owner decision**
-- **(a) Recommended: `fromBaseHost` derives the receiving stack's NodePorts**, so `--redirect-telemetry <ip>` alone still works against another easy-db-lab cluster.
+### D3. Derived redirect ports — **decided (owner, 2026-11-16): (a)**
+- **(a) Chosen: `fromBaseHost` derives the receiving stack's NodePorts**, so `--redirect-telemetry <ip>` alone still works against another easy-db-lab cluster.
 - (b) Keep 9009/3100/4320/4040; every redirect to an easy-db-lab stack then needs four overrides.
 
-### D4. Callers the issue did not list (EMR Spark Pyroscope, `bin/export-workload-metrics`, dashboard Pyroscope link) — **owner decision**
-- **(a) Recommended: include them.** Removing the host ports breaks each; the repo rule is to fix such bugs in the same patch. EMR keeps a node address plus NodePort, a named exception to AC3 for producers outside the cluster.
+### D4. Callers the issue did not list (EMR Spark Pyroscope, `bin/export-workload-metrics`, dashboard Pyroscope link) — **decided (owner, 2026-11-16): (a)**
+- **(a) Chosen: include them.** Removing the host ports breaks each; the repo rule is to fix such bugs in the same patch. EMR keeps a node address plus NodePort, a named exception to AC3 for producers outside the cluster.
 - (b) Separate issue; Spark profiling and the export script are broken in between.
 
-### D5. Service DNS form and consolidation — **owner decision**
-- **(a) Recommended: one `BackendEndpoints` in `.svc` form used by every in-cluster producer, including the collector exporters and Grafana datasources.** `StatusAddresses` keeps the FQDN for display. The collector rolls once.
+### D5. Service DNS form and consolidation — **decided (owner, 2026-11-16): (a)**
+- **(a) Chosen: one `BackendEndpoints` in `.svc` form used by every in-cluster producer, including the collector exporters and Grafana datasources.** `StatusAddresses` keeps the FQDN for display. The collector rolls once.
 - (b) Consolidate only the Pyroscope callers; smaller diff, mixed forms remain.
 
-### D6. The Pyroscope UI link in the profiling dashboard — **owner decision**
-- **(a) Recommended: `http://<controlIp>:<Pyroscope NodePort>` on owned nodes, unchanged on the claim path.**
+### D6. The Pyroscope UI link in the profiling dashboard — **decided (owner, 2026-11-16): (a)**
+- **(a) Chosen: `http://<controlIp>:<Pyroscope NodePort>` on owned nodes, unchanged on the claim path.**
 - (b) Proxy Pyroscope under `/pyroscope/` in the Grafana front so the link is relative; requires Pyroscope path-prefix support (unverified).
 
 ## Structure

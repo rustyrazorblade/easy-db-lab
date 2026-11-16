@@ -2,6 +2,8 @@
 
 Part of #1032 (Kubernetes-forward epic). Follow-up to #1091 (backends as Services), decision D. Issue: #1135.
 
+**Status:** approved by the owner at Seam 1 on 2026-11-16, with option (a) on every design decision (D1–D6, D1b; see `design.md`).
+
 #1091 moved Mimir, Loki, Tempo, Pyroscope and Grafana onto the pod network behind ClusterIP Services. On AWS the stack still publishes their client ports on the control node (`Placement.publishOnNode`), because some callers still dial the control node's IP. While that flag exists, the AWS manifests differ from every other environment and the control node stays special.
 
 The issue puts the CLI's readers out of scope because they "already go through the service-access seam (#1090)". On AWS that is not true. The Socks and Direct seams dial `controlPrivateIp:<servicePort>` (`services/access/NodeServiceAccess.kt`, `ClusterServices.kt` sets `nodePort = servicePort`), and that port is the host port this change removes. Removing the host ports alone would break `logs query`, `grafana annotate`, `status`, the server's status cache and the `down` tail flush. `down` would then refuse to tear down. The fix belongs in this patch.

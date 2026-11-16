@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient
@@ -8,7 +9,10 @@ import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 @EnableKubernetesMockClient(crud = true)
@@ -25,6 +29,13 @@ class DefaultK8sStorageOperationsTest {
         mockClientProvider = mock()
         whenever(mockClientProvider.createClient()).thenAnswer { server.createClient() }
         storageOps = DefaultK8sStorageOperations(mockClientProvider, mockEventBus)
+    }
+
+    /** Every event emitted so far, in order. */
+    private fun emitted(): List<Event> {
+        val captor = argumentCaptor<Event>()
+        verify(mockEventBus, atLeast(0)).emit(captor.capture())
+        return captor.allValues
     }
 
     @Test
@@ -54,7 +65,10 @@ class DefaultK8sStorageOperationsTest {
     @Test
     fun `ensureKitLocalStorageClass is idempotent when the class already exists`() {
         storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
+        assertThat(emitted()).containsExactly(Event.K8s.KitStorageClassCreated("edl-local-kafka"))
+
         val result = storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
+        assertThat(emitted()).containsExactly(Event.K8s.KitStorageClassCreated("edl-local-kafka"))
 
         assertThat(result.isSuccess).isTrue()
         val classes =
@@ -74,8 +88,13 @@ class DefaultK8sStorageOperationsTest {
         storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
         storageOps.ensureKitLocalStorageClass("edl-local-tidb", "cid-1")
 
+        val created = emitted()
+
         assertThat(storageOps.deleteKitLocalStorageClass("edl-local-kafka").isSuccess).isTrue()
         assertThat(storageOps.deleteKitLocalStorageClass("edl-local-kafka").isSuccess).isTrue()
+
+        // Only the delete that removed the class reports it; the class already gone reports nothing.
+        assertThat(emitted().drop(created.size)).containsExactly(Event.K8s.KitStorageClassDeleted("edl-local-kafka"))
 
         val names =
             server

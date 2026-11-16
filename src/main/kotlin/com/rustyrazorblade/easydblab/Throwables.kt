@@ -17,3 +17,9 @@ fun Throwable.reason(): String {
     }
     return current.message ?: current.toString()
 }
+
+/**
+ * The exception's own message, or its string form (class name included) when it has none. Every
+ * place that reports a failure as text reads it through this, so none of them prints "null".
+ */
+fun Throwable.messageOrString(): String = message ?: toString()

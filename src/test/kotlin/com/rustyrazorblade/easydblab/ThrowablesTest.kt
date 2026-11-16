@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab
 
 import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
@@ -35,6 +36,12 @@ class ThrowablesTest {
                 ),
                 Arguments.of("no message", IllegalStateException(), "java.lang.IllegalStateException"),
             )
+    }
+
+    @Test
+    fun `a failure with no message reads as its class name, never as null`() {
+        assertThat(IllegalStateException().messageOrString()).isEqualTo("java.lang.IllegalStateException")
+        assertThat(IllegalStateException("boom").messageOrString()).isEqualTo("boom")
     }
 
     @ParameterizedTest(name = "{0}")

@@ -393,18 +393,24 @@ class ClusterStatusCollector(
     ): CassandraVersionInfo? {
         val cassandraHosts = state.hosts[ServerType.Cassandra]?.takeIf { it.isNotEmpty() } ?: return null
 
-        // Only try the live version over SSH when a node is running. When EC2 could not be asked
-        // (no instance states at all) every node is unknown, so try rather than report cached.
-        val tryLive =
-            instanceStates.isEmpty() ||
-                cassandraHosts.any { host -> instanceStates[host.instanceId]?.state?.uppercase() == RUNNING }
+        // Only ask the nodes that are running: a stopped node's SSH connect would hold the report for
+        // the whole bound. When EC2 could not be asked (no instance states at all) every node is
+        // unknown, so ask all of them rather than report cached.
+        val probeHosts =
+            if (instanceStates.isEmpty()) {
+                cassandraHosts
+            } else {
+                cassandraHosts.filter { host -> instanceStates[host.instanceId]?.state?.uppercase() == RUNNING }
+            }
 
-        if (tryLive) {
-            val answers = collectLiveVersions(cassandraHosts)
-            if (answers.isNotEmpty()) return liveVersionInfo(answers, cassandraHosts)
-        }
+        val answers = if (probeHosts.isEmpty()) emptyList() else collectLiveVersions(probeHosts)
+        if (answers.isNotEmpty()) return liveVersionInfo(answers, probeHosts)
 
-        return CassandraVersionInfo(version = state.default.version.ifEmpty { "unknown" }, source = "cached")
+        return CassandraVersionInfo(
+            version = state.default.version.ifEmpty { "unknown" },
+            source = "cached",
+            unanswered = probeHosts.map { it.alias },
+        )
     }
 
     /**

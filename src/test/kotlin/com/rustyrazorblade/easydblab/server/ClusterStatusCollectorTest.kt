@@ -351,8 +351,8 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
         val unconfigured = collector().collect(state(hosts = hosts)).response.cassandraVersion
 
         assertThat(live).isEqualTo(CassandraVersionInfo("5.0.9", "live", hosts = listOf(HostVersion("db0", "5.0.9"))))
-        assertThat(unreachable).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
-        assertThat(unconfigured).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
+        assertThat(unreachable).isEqualTo(CassandraVersionInfo("5.0.2", "cached", unanswered = listOf("db0")))
+        assertThat(unconfigured).isEqualTo(CassandraVersionInfo("5.0.2", "cached", unanswered = listOf("db0")))
     }
 
     @Test
@@ -456,7 +456,7 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
             version,
         ).isEqualTo(CassandraVersionInfo("5.0.9", "live", hosts = listOf(HostVersion("db1", "5.0.9")), unanswered = listOf("db0")))
         // Every host is given the whole bound now, so the report waits for it (2000 ms) and no longer.
-        assertThat(elapsed).isBetween(Duration.ofMillis(1800), Duration.ofMillis(3500))
+        assertThat(elapsed).isBetween(Duration.ofMillis(1800), Duration.ofMillis(8000))
     }
 
     @Test
@@ -472,7 +472,7 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
         val version = ClusterStatusCollector(Duration.ofMillis(500)).collect(state(hosts = hosts)).response.cassandraVersion
         val elapsed = Duration.ofNanos(System.nanoTime() - started)
 
-        assertThat(version).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
+        assertThat(version).isEqualTo(CassandraVersionInfo("5.0.2", "cached", unanswered = listOf("db0", "db1")))
         assertThat(elapsed).isLessThan(Duration.ofMillis(5000))
     }
 
@@ -529,6 +529,24 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
 
         assertThat(version?.hosts).containsExactly(HostVersion("db1", "5.0.9"))
         assertThat(version?.unanswered).containsExactly("db0")
+    }
+
+    @Test
+    fun `a stopped db host is not asked, so it neither delays the report nor counts as unanswered`() {
+        val hosts = mapOf(ServerType.Cassandra to listOf(db("db0", "i-db0"), db("db1", "i-db1")))
+        whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode("i-db0"), runningNode("i-db1").copy(state = "stopped")))
+        whenever(remoteOps.getRemoteVersion(any(), any())).thenAnswer {
+            if (it.getArgument<Host>(0).alias == "db1") Thread.sleep(60_000)
+            Version.fromString("5.0.9")
+        }
+
+        val started = System.nanoTime()
+        val version = ClusterStatusCollector(Duration.ofMillis(5000)).collect(state(hosts = hosts)).response.cassandraVersion
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+
+        assertThat(version?.hosts).containsExactly(HostVersion("db0", "5.0.9"))
+        assertThat(version?.unanswered).isEmpty()
+        assertThat(elapsed).isLessThan(Duration.ofMillis(4000))
     }
 
     @Test

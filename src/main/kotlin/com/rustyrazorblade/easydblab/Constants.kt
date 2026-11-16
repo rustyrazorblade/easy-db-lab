@@ -510,6 +510,14 @@ object Constants {
         const val TEMPO_PORT = 3200
         const val PYROSCOPE_PORT = 4040
 
+        /**
+         * The node-local profiles relay: the host-network Alloy eBPF agent listens for Pyroscope
+         * pushes on `127.0.0.1` at this port on every node and forwards them to the cluster's
+         * Pyroscope (or the redirect target). Host processes that cannot resolve cluster DNS, such
+         * as the db-node profiling reconciler, send here.
+         */
+        const val ALLOY_RELAY_PORT = 4041
+
         /** Tempo's `app.kubernetes.io/name` label; the collector finds the Tempo pod by it. */
         const val TEMPO_APP_LABEL = "tempo"
 

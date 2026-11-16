@@ -57,7 +57,7 @@ class PyroscopeManifestBuilder(
         // eBPF agent constants
         private const val EBPF_APP_LABEL = "pyroscope-ebpf"
         private const val EBPF_CONFIGMAP_NAME = "pyroscope-ebpf-config"
-        private const val ALLOY_IMAGE = "grafana/alloy:v1.20.0"
+        const val ALLOY_IMAGE = "grafana/alloy:v1.20.0"
         private const val ALLOY_PORT = 12345
 
         // RBAC constants — the Alloy `discovery.kubernetes` component lists pods on the

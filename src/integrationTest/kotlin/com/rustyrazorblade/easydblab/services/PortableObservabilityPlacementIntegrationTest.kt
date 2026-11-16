@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.ObservabilityBackends
@@ -9,12 +10,14 @@ import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
@@ -25,10 +28,16 @@ import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.otel.ServiceAccountCa
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.ProxiedHttpClientFactory
 import com.rustyrazorblade.easydblab.services.access.ClusterServices
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
+import com.rustyrazorblade.easydblab.services.access.ServiceEndpoint
+import com.rustyrazorblade.easydblab.ssh.Response
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -48,10 +57,16 @@ import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.slf4j.LoggerFactory
+import org.testcontainers.DockerClientFactory
+import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.output.Slf4jLogConsumer
+import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
+import org.testcontainers.containers.wait.strategy.Wait
+import org.testcontainers.images.builder.Transferable
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
@@ -125,6 +140,13 @@ class PortableObservabilityPlacementIntegrationTest {
         private const val PROFILE_ARRIVAL_SECONDS = 180L
         private const val POLL_MILLIS = 2_000L
 
+        /** The redirected sender: its cluster label and one sample of each signal it ships. */
+        private const val SENDER_CLUSTER = "redirected-sender"
+        private const val REDIRECT_METRIC = "edl_redirect_probe"
+        private const val REDIRECT_LOG_LINE = "redirected log line"
+        private const val REDIRECT_PROFILED_SERVICE = "portable-redirected"
+        private const val SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
+
         @Container
         @JvmStatic
         val k3s: K3sContainer =
@@ -149,6 +171,7 @@ class PortableObservabilityPlacementIntegrationTest {
                         LOCAL_PATH_PROVISIONER_IMAGE,
                         LOCAL_PATH_HELPER_IMAGE,
                         CURL_IMAGE,
+                        OtelManifestBuilder.IMAGE,
                     )
                 }
     }
@@ -434,7 +457,7 @@ class PortableObservabilityPlacementIntegrationTest {
         assertThat(
             config.replace("0.0.0.0:", ""),
         ).describedAs("no endpoint at a node IP").doesNotContainPattern("""\b\d{1,3}(\.\d{1,3}){3}:\d+""")
-        assertThat(config).contains("mimir.default.svc.cluster.local", "loki.default.svc.cluster.local", "tempo.default.svc.cluster.local")
+        assertThat(config).contains(BackendEndpoints.mimirPush(), BackendEndpoints.lokiOtlp(), BackendEndpoints.tempoOtlpGrpc())
         assertThat(
             client
                 .apps()
@@ -503,6 +526,268 @@ class PortableObservabilityPlacementIntegrationTest {
             series = cpuSeries()
         }
         assertThat(series).describedAs("Pyroscope series under tenant $TENANT").contains(PROFILED_SERVICE)
+    }
+
+    /**
+     * A second cluster redirected to this one (`--redirect-telemetry <node address>`, no overrides)
+     * lands all four signals in this stack, whose backends declare no host port. The sender's OTel
+     * collector runs with its rendered redirect configuration, unedited, on the Docker network the K3s
+     * node is on, so it dials the derived endpoints themselves: Mimir remote write, Loki OTLP and Tempo
+     * OTLP gRPC on their NodePorts at the node address. Profiles go to the derived Pyroscope endpoint
+     * as the redirected eBPF agent and sidecar send them. Each signal is read back under the tenant,
+     * carrying the sender's cluster label.
+     */
+    @Test
+    @Order(8)
+    fun `a cluster redirected to this one lands metrics, logs, traces and profiles in its backends`() {
+        WORKLOADS.forEach { ready(it) }
+        val redirect = TelemetryRedirect.fromBaseHost(bridgeAddress(k3s.containerId))
+        val collector = startRedirectedCollector(redirect)
+        try {
+            val nanos = System.currentTimeMillis() * 1_000_000
+            val traceId = UUID.randomUUID().toString().replace("-", "")
+            postToCollector(
+                collector,
+                "/v1/metrics",
+                """
+                {"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"redirected"}}]},
+                 "scopeMetrics":[{"metrics":[{"name":"$REDIRECT_METRIC","gauge":{"dataPoints":[{"asDouble":3,"timeUnixNano":"$nanos"}]}}]}]}]}
+                """.trimIndent(),
+            )
+            postToCollector(
+                collector,
+                "/v1/logs",
+                """
+                {"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"redirected"}}]},
+                 "scopeLogs":[{"logRecords":[{"timeUnixNano":"$nanos","body":{"stringValue":"$REDIRECT_LOG_LINE"}}]}]}]}
+                """.trimIndent(),
+            )
+            postToCollector(
+                collector,
+                "/v1/traces",
+                """
+                {"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"redirected"}}]},
+                 "scopeSpans":[{"spans":[{"traceId":"$traceId","spanId":"${traceId.take(16)}","name":"probe","kind":1,
+                 "startTimeUnixNano":"$nanos","endTimeUnixNano":"${nanos + 1_000_000}"}]}]}]}
+                """.trimIndent(),
+            )
+            sendProfileTo(redirect.profiles)
+
+            val metric =
+                awaitBody("metric $REDIRECT_METRIC") {
+                    nodeGet(
+                        Constants.K8s.MIMIR_NODE_PORT,
+                        "/prometheus/api/v1/query?query=$REDIRECT_METRIC",
+                    ).takeIf { it.contains("\"value\"") }
+                }
+            assertThat(metric).contains("\"cluster\":\"$SENDER_CLUSTER\"")
+
+            val logQuery = URLEncoder.encode("{cluster=\"$SENDER_CLUSTER\"}", Charsets.UTF_8)
+            val logs =
+                awaitBody("log line") {
+                    nodeGet(Constants.K8s.LOKI_NODE_PORT, "/loki/api/v1/query_range?query=$logQuery&since=10m")
+                        .takeIf { it.contains(REDIRECT_LOG_LINE) }
+                }
+            assertThat(logs).contains(REDIRECT_LOG_LINE)
+
+            awaitBody("trace $traceId") {
+                nodeResponse(Constants.K8s.TEMPO_NODE_PORT, "/api/v2/traces/$traceId").takeIf { it.statusCode() == 200 }?.body()
+            }
+            awaitBody(
+                "profile $REDIRECT_PROFILED_SERVICE",
+            ) { cpuSeries(REDIRECT_PROFILED_SERVICE).takeIf { it.contains(REDIRECT_PROFILED_SERVICE) } }
+        } finally {
+            collector.stop()
+        }
+    }
+
+    /**
+     * `down`'s tail flush, run for real against backends that declare no host port: the Loki and
+     * Mimir ingester shutdowns and the Tempo drain reach their backends through [ObservabilityHttp]
+     * over the service-access seam, which dials each Service's NodePort at the node, and the
+     * collector stop and the scale-downs go through the Kubernetes API. The seam here returns the
+     * port Docker maps from the node's NodePort, where on AWS it returns the node address and the
+     * NodePort through the tunnel. Tempo's local blocks are on its claim, so the node command that
+     * lists them reads the claim's directory on the K3s node.
+     *
+     * Runs last: it stops the collector and scales Loki and Mimir to 0.
+     */
+    @Test
+    @Order(9)
+    fun `the tail flush reaches Loki, Mimir and Tempo on their NodePorts and completes`() {
+        WORKLOADS.forEach { ready(it) }
+        val clientProvider = mock<K8sClientProvider>()
+        whenever(clientProvider.createClient()).thenAnswer {
+            KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
+        }
+        val atNodePort = ServiceAccess { target -> ServiceEndpoint.Plain(k3s.host, k3s.getMappedPort(target.nodePort)) }
+        val http = DefaultObservabilityHttp(atNodePort, { TENANT }, ProxiedHttpClientFactory())
+        val workloads = K8sBackendWorkloads(clientProvider, NAMESPACE, pollInterval = Duration.ofSeconds(1))
+        val timeouts =
+            FlushTimeouts(
+                shutdown = Duration.ofMinutes(2),
+                scaleDown = Duration.ofMinutes(2),
+                sendersStop = Duration.ofMinutes(2),
+                tempoDrain = Duration.ofMinutes(5),
+            )
+        val service =
+            DefaultTeardownFlushService
+                .builder()
+                .lokiFlush(LokiTailFlush(http, workloads, timeouts))
+                .mimirFlush(MimirTailFlush(http, workloads, timeouts))
+                .tempoDrain(TempoTailFlush(http, tempoNode(), timeouts))
+                .telemetrySenders(K8sTelemetrySenders(clientProvider, NAMESPACE, pollInterval = Duration.ofSeconds(1)))
+                .annotationMirror(RecordingAnnotationMirror())
+                .annotationBackupService(mock<GrafanaAnnotationBackupService>())
+                .eventBus(EventBus())
+                .timeouts(timeouts)
+                .build()
+        val node = ClusterHost(publicIp = "", privateIp = bridgeAddress(k3s.containerId), alias = "control0", availabilityZone = "")
+
+        val outcome = service.saveTail(node, state, setOf(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES))
+
+        assertThat(outcome.failed).describedAs { "failed steps\n${clusterDiagnostics(client, NAMESPACE)}" }.isEmpty()
+        assertThat(outcome.saved.keys).containsExactlyInAnyOrder(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES)
+        assertThat(outcome.backends)
+            .containsEntry(Constants.K8s.LOKI_APP_LABEL, BackendState.SCALED_TO_ZERO)
+            .containsEntry(Constants.K8s.MIMIR_APP_LABEL, BackendState.SCALED_TO_ZERO)
+    }
+
+    /**
+     * The node commands the Tempo drain runs, run on the K3s node as root. Tempo's `/var/tempo` is
+     * its claim here, not [TempoManifestBuilder.DATA_HOST_PATH], so the WAL directory the command
+     * names is read from the claim's directory on the node.
+     */
+    private fun tempoNode(): RemoteOperationsService {
+        val walOnNode = "${claimDirectory("tempo-data")}/live-store/wal"
+        val node = mock<RemoteOperationsService>()
+        whenever(node.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
+            val command = invocation.getArgument<String>(1).replace(TempoTailFlush.WAL_DIR, walOnNode)
+            val result = k3s.execInContainer("sh", "-c", "sudo() { \"\$@\"; }\n$command")
+            check(result.exitCode == 0) { "node command failed (${result.exitCode}): ${result.stderr}" }
+            Response(result.stdout, result.stderr)
+        }
+        return node
+    }
+
+    /** The directory on the node that holds the volume bound to [claim]. */
+    private fun claimDirectory(claim: String): String {
+        val volume =
+            client
+                .persistentVolumeClaims()
+                .inNamespace(NAMESPACE)
+                .withName(claim)
+                .get()
+                .spec.volumeName
+        val spec =
+            client
+                .persistentVolumes()
+                .withName(volume)
+                .get()
+                .spec
+        return checkNotNull(spec.hostPath?.path ?: spec.local?.path) { "volume $volume of $claim has no node directory" }
+    }
+
+    /** [containerId]'s address on Docker's default bridge: the node address another host dials. */
+    private fun bridgeAddress(containerId: String): String {
+        val networks =
+            DockerClientFactory
+                .instance()
+                .client()
+                .inspectContainerCmd(containerId)
+                .exec()
+                .networkSettings.networks
+        return checkNotNull(networks["bridge"]?.ipAddress) { "no address on the default bridge: $networks" }
+    }
+
+    /** The redirected sender's OTel collector, its rendered configuration unedited. */
+    private fun startRedirectedCollector(redirect: TelemetryRedirect): GenericContainer<*> {
+        val config =
+            OtelManifestBuilder(templates)
+                .buildConfigMap(NodeCapabilities.AWS, telemetryRedirect = redirect)
+                .data
+                .values
+                .single()
+        return GenericContainer(DockerImageName.parse("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"))
+            .withCopyToContainer(Transferable.of(config), "/etc/otel-collector-config.yaml")
+            .withCopyToContainer(Transferable.of("placeholder"), "$SA_DIR/token")
+            .withCopyToContainer(Transferable.of(NAMESPACE), "$SA_DIR/namespace")
+            // kubelet_stats loads the in-cluster CA when it starts.
+            .withCopyToContainer(Transferable.of(ServiceAccountCa.pem()), "$SA_DIR/ca.crt")
+            .withEnv("K8S_NODE_NAME", "sender0")
+            .withEnv("K8S_NODE_IP", "127.0.0.1")
+            .withEnv("CLUSTER_NAME", SENDER_CLUSTER)
+            .withEnv("TENANT", TENANT)
+            .withEnv("KUBERNETES_SERVICE_HOST", "127.0.0.1")
+            .withEnv("KUBERNETES_SERVICE_PORT", "1")
+            .withCommand("--config=/etc/otel-collector-config.yaml")
+            .withExposedPorts(Constants.K8s.OTEL_HTTP_PORT, Constants.K8s.OTEL_HEALTH_PORT)
+            .waitingFor(Wait.forHttp("/").forPort(Constants.K8s.OTEL_HEALTH_PORT).withStartupTimeout(Duration.ofMinutes(2)))
+            .apply { start() }
+    }
+
+    private fun postToCollector(
+        collector: GenericContainer<*>,
+        path: String,
+        body: String,
+    ) {
+        val request =
+            HttpRequest
+                .newBuilder(URI("http://${collector.host}:${collector.getMappedPort(Constants.K8s.OTEL_HTTP_PORT)}$path"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build()
+        val response = nodeHttp.send(request, HttpResponse.BodyHandlers.ofString())
+        assertThat(response.statusCode()).describedAs("$path: ${response.body()}").isEqualTo(200)
+    }
+
+    /** Posts a folded profile to [profilesUrl] from a host on the node's network, as a redirected agent sends. */
+    private fun sendProfileTo(profilesUrl: String) {
+        val name = URLEncoder.encode("$REDIRECT_PROFILED_SERVICE{cluster=$SENDER_CLUSTER}", Charsets.UTF_8)
+        GenericContainer(DockerImageName.parse(CURL_IMAGE))
+            .withCommand(
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--header",
+                "${Constants.Observability.TENANT_HEADER}: $TENANT",
+                "--data-binary",
+                "main;work;compute 100",
+                "$profilesUrl/ingest?name=$name&format=folded",
+            ).withStartupCheckStrategy(OneShotStartupCheckStrategy().withTimeout(Duration.ofSeconds(EXEC_TIMEOUT_SECONDS)))
+            .use { it.start() }
+    }
+
+    private fun nodeResponse(
+        nodePort: Int,
+        pathAndQuery: String,
+    ): HttpResponse<String> {
+        val request =
+            HttpRequest
+                .newBuilder(URI("http://${k3s.host}:${k3s.getMappedPort(nodePort)}$pathAndQuery"))
+                .header(Constants.Observability.TENANT_HEADER, TENANT)
+                .GET()
+                .build()
+        return nodeHttp.send(request, HttpResponse.BodyHandlers.ofString())
+    }
+
+    private fun nodeGet(
+        nodePort: Int,
+        pathAndQuery: String,
+    ): String = nodeResponse(nodePort, pathAndQuery).body()
+
+    /** Polls [probe] until it returns a body, failing with [what] once the arrival window passes. */
+    private fun awaitBody(
+        what: String,
+        probe: () -> String?,
+    ): String {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PROFILE_ARRIVAL_SECONDS)
+        var body = probe()
+        while (body == null && System.nanoTime() < deadline) {
+            Thread.sleep(POLL_MILLIS)
+            body = probe()
+        }
+        return checkNotNull(body) { "$what did not arrive under tenant $TENANT within ${PROFILE_ARRIVAL_SECONDS}s" }
     }
 
     private val nodeHttp: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(EXEC_TIMEOUT_SECONDS)).build()
@@ -589,11 +874,11 @@ class PortableObservabilityPlacementIntegrationTest {
             .build()
     }
 
-    /** The CPU series Pyroscope holds for [PROFILED_SERVICE] under the tenant, read on its NodePort. */
-    private fun cpuSeries(): String {
+    /** The CPU series Pyroscope holds for [service] under the tenant, read on its NodePort. */
+    private fun cpuSeries(service: String = PROFILED_SERVICE): String {
         val base = "http://${k3s.host}:${k3s.getMappedPort(Constants.K8s.PYROSCOPE_NODE_PORT)}"
         val body =
-            """{"matchers":["{service_name=\"$PROFILED_SERVICE\",__profile_type__=\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}"],""" +
+            """{"matchers":["{service_name=\"$service\",__profile_type__=\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}"],""" +
                 """"start":${Instant.now().minusSeconds(3600).toEpochMilli()},"end":${Instant.now().plusSeconds(60).toEpochMilli()}}"""
         val request =
             HttpRequest

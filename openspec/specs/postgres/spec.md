@@ -8,6 +8,8 @@ Manages the PostgreSQL kit lifecycle via the CloudNativePG operator and provides
 
 The system MUST deploy PostgreSQL clusters on K8s db nodes via the CloudNativePG (CNPG) operator. The operator SHALL be installed via Helm (`cloudnative-pg/cloudnative-pg` chart into the `cnpg-system` namespace). The PostgreSQL cluster SHALL be defined as a CNPG `Cluster` custom resource named `postgres`. The container image, shared_preload_libraries, and postInitSQL MAY be configured via extension flags — see the `postgres-extensions` spec.
 
+The `Cluster` MUST set `spec.podSecurityContext.appArmorProfile.type` to `Unconfined`, with the operator's default pod security context stated beside it. The node's default AppArmor profile refuses every signal a container sends, and Postgres processes signal each other; without the setting an instance never leaves recovery.
+
 #### Scenario: Default deployment uses standard image
 - **GIVEN** a running cluster with K3s
 - **WHEN** the user runs `kit install postgres` and `postgres start` with no extension flags

@@ -14,8 +14,12 @@ package com.rustyrazorblade.easydblab.configuration
  * Example usage:
  * ```
  * val s3Path = ClusterS3Path.from(clusterState)
- * val jarPath = s3Path.spark().resolve("myapp.jar")
- * println(jarPath) // s3://my-account-bucket/clusters/mycluster-abc123/spark/myapp.jar
+ * val scriptPath = s3Path.spark().resolve("bootstrap-otel.sh")
+ * println(scriptPath) // s3://my-account-bucket/clusters/mycluster-abc123/spark/bootstrap-otel.sh
+ *
+ * // `spark submit` uploads a job jar to the cluster's data bucket, at its root, not under a cluster prefix:
+ * val jarPath = ClusterS3Path.root(clusterState.dataBucket).resolve("spark").resolve("myapp.jar")
+ * println(jarPath) // s3://my-data-bucket/spark/myapp.jar
  *
  * // For S3 SDK calls:
  * val putRequest = PutObjectRequest.builder()
@@ -82,7 +86,7 @@ data class ClusterS3Path(
          * where the full key is returned.
          *
          * @param bucket The S3 bucket name
-         * @param key The S3 object key (e.g., "spark/myapp.jar")
+         * @param key The S3 object key (e.g., "spark/emr-logs/j-ABC/steps/s-123/stderr.gz")
          * @return A new ClusterS3Path representing the key
          */
         fun fromKey(

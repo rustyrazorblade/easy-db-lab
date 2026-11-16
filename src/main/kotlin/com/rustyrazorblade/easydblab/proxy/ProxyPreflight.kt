@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import io.github.oshai.kotlinlogging.KotlinLogging
 
@@ -10,8 +11,9 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  * PortForward cluster never gets one, and neither does one in the direct network mode (K3s in Docker,
  * a kubeconfig cluster), whatever else its state says.
  *
- * Whenever the cluster state can be read, it also records the cluster's Tailscale flag and network
- * mode in the proxy env file ([recordReachability]). A Tailscale or direct cluster never starts a
+ * Before every command, with or without the annotation, the executor has it record the cluster's
+ * Tailscale flag and network mode in the proxy env file ([recordReachability]) whenever the cluster
+ * state can be read; [ensureTunnel] does the same. A Tailscale or direct cluster never starts a
  * tunnel, so without this the tool wrappers and `env.sh` would have no record of how to reach it.
  *
  * A failure to establish the tunnel propagates: the annotation says the command cannot work without it.
@@ -39,16 +41,26 @@ class ProxyPreflight(
         obtained.remove()
     }
 
+    /**
+     * Records the cluster's reachability in the env file without starting a tunnel, and returns the
+     * state it read. The executor calls it before every command, so a lost key is back before any
+     * command logic runs. Returns null, writing nothing, in a directory with no readable cluster state.
+     */
+    fun recordReachability(): ClusterState? {
+        if (!clusterStateManager.exists()) return null
+        val state =
+            runCatching { clusterStateManager.load() }.getOrElse { e ->
+                log.debug(e) { "Could not load cluster state to record its reachability" }
+                return null
+            }
+        envFile.recordReachability(state)
+        return state
+    }
+
     /** Starts or reuses the tunnel when the cluster needs one; does nothing in a directory with no cluster. */
     fun ensureTunnel() {
         obtained.remove()
-        if (!clusterStateManager.exists()) return
-        val state =
-            runCatching { clusterStateManager.load() }.getOrElse { e ->
-                log.debug(e) { "Could not load cluster state for proxy startup check" }
-                return
-            }
-        envFile.recordReachability(state)
+        val state = recordReachability() ?: return
         if (state.isDirectNetwork() || !state.isInfrastructureUp() || !state.reachedBySocksTunnel()) return
         val controlHost = state.getControlHost() ?: return
         obtained.set(socksProxyService.ensureRunning(controlHost))

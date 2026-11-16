@@ -251,6 +251,11 @@ class DefaultCommandExecutor(
             throw CommandFailedException("${unavailable.command} is not available in ${unavailable.environment}")
         }
 
+        // Every command, with or without @RequiresProxy, re-asserts how the cluster is reached in the
+        // proxy env file, so a key lost from it (EDL_NETWORK_MODE, EDL_TAILSCALE_ACTIVE) is back before
+        // the command or a bin/ wrapper it launches reads it. This never starts a tunnel.
+        proxyPreflight.recordReachability()
+
         // The profile is an AWS profile: required only where the target environment has an AWS account.
         if (environmentRequirements.needsProfile(command)) {
             if (!requirementCheckDeps.userConfigProvider.isSetup()) {

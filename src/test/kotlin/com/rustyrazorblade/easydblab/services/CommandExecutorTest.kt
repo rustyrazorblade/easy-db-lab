@@ -50,6 +50,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import picocli.CommandLine.Command
 import java.io.File
@@ -627,6 +628,19 @@ class CommandExecutorTest : BaseKoinTest() {
 
         // Then
         verify(mockSocksProxyService, never()).ensureRunning(any())
+    }
+
+    @Test
+    fun `a command without RequiresProxy restores a lost direct key before it runs and starts no tunnel`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        val envFile = ProxyEnvFile(context.workingDirectory)
+        var directWhenRun: Boolean? = null
+
+        val exitCode = commandExecutor.executeTopLevel(TestCommand { directWhenRun = envFile.read().direct })
+
+        assertThat(exitCode).isZero()
+        assertThat(directWhenRun).isTrue()
+        verifyNoInteractions(mockSocksProxyService)
     }
 
     @Test

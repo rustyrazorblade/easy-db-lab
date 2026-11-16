@@ -52,8 +52,8 @@ Verify with `docker buildx imagetools inspect` or a GHCR index-accept `curl`.
   `--region us-west-2` on raw `aws` CLI calls. The token often **expires mid-`down`**; if
   teardown orphans the VPC, re-login then clean up directly with the AWS CLI (the tool
   caches the stale token). See the Teardown section.
-- **JDK 21:** `export JAVA_HOME=/Users/pmcfadin/.sdkman/candidates/java/21.0.11-tem`
-  (bare `java` is a broken Salesforce shim). The workspace wrapper sets this automatically.
+- **JDK 21:** point `JAVA_HOME` at a Java 21 install (for example SDKMAN's
+  `~/.sdkman/candidates/java/21.0.11-tem`) when a bare `java` is not a working JDK 21.
 - **Local jar:** build once with `./gradlew installDist` on branch `fix/735-jdbc-socks-proxy`
   so the SOCKS-JDBC (#735) and Grafana core-plugin fixes are baked in — otherwise the
   per-run `JAVA_TOOL_OPTIONS` SOCKS export and Grafana hotfix are needed.
@@ -72,14 +72,15 @@ Verify with `docker buildx imagetools inspect` or a GHCR index-accept `curl`.
 Every scenario with `needs: none` assumes the prelude has completed and left the cluster in
 the **baseline state** defined at the end of this section.
 
-### P0.1 Workspace + provision (~8–10 min)
+### P0.1 Provision (~8–10 min)
+
+Run this plan with `/easy-db-lab:run test-plans/cqlite-flight-production-readiness.md`. The
+`run` skill creates the workspace and its wrapper and sets `$EDB`; `CLUSTER_DIR` below is
+that workspace directory.
 
 ```bash
-CLUSTER_DIR="clusters/cqlite-flight-<round>-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$CLUSTER_DIR"
-bin/create-easy-db-lab-wrapper "$CLUSTER_DIR"
-EDB="$CLUSTER_DIR/easy-db-lab"
-export JAVA_HOME=/Users/pmcfadin/.sdkman/candidates/java/21.0.11-tem AWS_PROFILE=edl
+CLUSTER_DIR="$(dirname "$EDB")"
+export AWS_PROFILE=edl
 "$EDB" init cqlite-flight-<round> --db 3 --app 1 --instance i4i.xlarge --stress-instance m5.xlarge --up
 ```
 
@@ -134,7 +135,7 @@ perl -0pi -e 's/additionalConfigProperties:\n(  - .*\n)+/additionalConfigPropert
 ### P0.6 cqlite-flight (digest-pinned) + overlay + add-opens
 
 ```bash
-"$EDB" kit source add cqlite /Users/pmcfadin/projects/cqlite/easy-db-lab-kits
+"$EDB" kit source add cqlite <path-to-cqlite-checkout>/easy-db-lab-kits
 "$EDB" kit install cqlite-flight --tag "dev@sha256:<INDEX-digest>" --flight-port 8815
 "$EDB" cqlite-flight start
 # Verify one pod per db node AND every imageID ends in <INDEX-digest> (see 8.1)

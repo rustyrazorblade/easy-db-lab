@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -169,8 +171,10 @@ class K3sAgentServiceTest : BaseKoinTest() {
 
     // ========== START OPERATION TESTS ==========
 
-    @Test
-    fun `start should execute k3s agent startup script successfully`() {
+    /** The script gets the mode as its third argument: a first join starts, a retried join restarts. */
+    @ParameterizedTest
+    @EnumSource(AgentStartMode::class)
+    fun `start runs the startup script with the server, the token and the start mode`(mode: AgentStartMode) {
         // Given
         val serverUrl = "https://10.0.1.5:6443"
         val token = "K10abcdef1234567890::server:1234567890abcdef"
@@ -182,7 +186,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
 
         val configCommand = "cat /etc/rancher/k3s/config.yaml"
         val configResponse = Response(text = configContent, stderr = "")
-        val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh '$serverUrl' '$token'"
+        val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh '$serverUrl' '$token' ${mode.arg}"
         val scriptResponse = Response(text = "", stderr = "")
         val successResponse = Response(text = "", stderr = "")
 
@@ -195,7 +199,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
             .thenReturn(scriptResponse)
 
         // When
-        val result = k3sAgentService.start(testHost)
+        val result = k3sAgentService.start(testHost, mode)
 
         // Then
         assertThat(result.isSuccess).isTrue()
@@ -267,7 +271,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
 
         val configCommand = "cat /etc/rancher/k3s/config.yaml"
         val configResponse = Response(text = configContent, stderr = "")
-        val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh '$serverUrl' '$token'"
+        val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh '$serverUrl' '$token' start"
 
         doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))

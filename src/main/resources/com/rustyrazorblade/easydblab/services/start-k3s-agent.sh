@@ -6,13 +6,22 @@ echo "=== Starting K3s Agent ==="
 
 # Check arguments
 if [ $# -lt 2 ]; then
-    echo "Usage: $0 <server_url> <node_token>"
+    echo "Usage: $0 <server_url> <node_token> [start|restart]"
     echo "Example: $0 https://10.0.1.5:6443 K10abc..."
     exit 1
 fi
 
 SERVER_URL="$1"
 NODE_TOKEN="$2"
+# "start" on the first join attempt; "restart" when up retries a join that did not register.
+MODE="${3:-start}"
+case "$MODE" in
+    start|restart) ;;
+    *)
+        echo "ERROR: unknown mode '$MODE', expected start or restart"
+        exit 1
+        ;;
+esac
 
 echo "Server URL: $SERVER_URL"
 
@@ -107,8 +116,10 @@ EOF
     systemctl daemon-reload
 fi
 
-# Start the k3s-agent service
-echo "Starting k3s-agent.service..."
-systemctl start k3s-agent
+# Start (or, on a retry, restart) the k3s-agent service without waiting for it. The agent can sit
+# for minutes waiting on a busy server, and a blocking start held this SSH session for all of it
+# (#1134). `up` reads the node's registration from the K8s API instead.
+echo "Running systemctl $MODE --no-block k3s-agent..."
+systemctl "$MODE" --no-block k3s-agent
 
-echo "✓ K3s agent started successfully"
+echo "✓ K3s agent $MODE queued"

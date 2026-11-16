@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -95,6 +96,7 @@ class SetupInstanceTest : BaseKoinTest() {
                     }
                 }
                 single { HostOperationsService(get()) }
+                single { NodeSetupService(get(), get(), get()) }
                 single<RemoteOperationsService> { remoteOps }
                 single<CassandraProfilingService> { mock<CassandraProfilingService>().also { profilingService = it } }
             },

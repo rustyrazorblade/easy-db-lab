@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
@@ -26,6 +27,7 @@ import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest
 import software.amazon.awssdk.services.ec2.model.Filter
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
 import software.amazon.awssdk.services.ec2.model.SummaryStatus
+import software.amazon.awssdk.services.ec2.model.TerminateInstancesRequest
 import software.amazon.awssdk.services.ec2.waiters.Ec2Waiter
 import java.time.Duration
 import java.time.Instant
@@ -127,6 +129,45 @@ class EC2InstanceService(
         eventBus.emit(Event.Ec2.InstancesCreated(instances.size, config.serverType.serverType))
 
         return instances.sortedBy { config.serverType.ordinalOf(it.alias) ?: 0 }
+    }
+
+    /**
+     * Launches the one instance that replaces ordinal [ordinal] of [config]'s server type (design
+     * D6): in subnet `ordinal % subnets`, the alias's zone, with the ordinal tags `first = ordinal`
+     * and `stride = 1`, through the same request builder as the batched launch, then names it.
+     * [config]'s `indexes` are not used.
+     */
+    fun launchOne(
+        config: InstanceCreationConfig,
+        ordinal: Int,
+    ): CreatedInstance {
+        val batch = LaunchBatch(config.subnetIds[ordinal % config.subnetIds.size], OrdinalRun(ordinal, 1, 1), config.serverType)
+        return launchBatch(config, batch).single().also { nameInstances(listOf(it)) }
+    }
+
+    /**
+     * Terminates [instanceId] and waits, within [timeout], until EC2 no longer reports it pending or
+     * running. Discovery counts only those two states, so once this returns no later `up` or
+     * `down` sees two instances under one alias. An instance EC2 no longer returns is gone.
+     */
+    fun terminateAndWait(
+        instanceId: InstanceId,
+        timeout: Duration,
+    ) {
+        val request = TerminateInstancesRequest.builder().instanceIds(instanceId).build()
+        withEc2ThrottleRetry("terminate-$instanceId", throttleBackoff) { ec2Client.terminateInstances(request) }
+        val live = setOf(InstanceStateName.PENDING.toString(), InstanceStateName.RUNNING.toString())
+        val last =
+            pollUntil(
+                operationName = "terminate-$instanceId",
+                maxAttempts = Int.MAX_VALUE,
+                interval = pollInterval,
+                deadline = Instant.now().plus(timeout),
+                done = { it == null || it !in live },
+            ) { describeStates(listOf(instanceId)).firstOrNull()?.state }
+        if (last != null && last in live) {
+            throw AwsTimeoutException("Instance $instanceId was still $last ${timeout.toSeconds()}s after it was terminated")
+        }
     }
 
     /**

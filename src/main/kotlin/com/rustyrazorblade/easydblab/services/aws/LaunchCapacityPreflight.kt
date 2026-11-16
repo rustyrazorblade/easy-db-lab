@@ -105,6 +105,21 @@ class LaunchCapacityPreflight(
         }
     }
 
+    /**
+     * The checks for the one instance that replaces ordinal [ordinal] of [launch]'s server type
+     * (design D6 step 4): [verifyCapacity] counts that instance alone, in the zone the ordinal lands
+     * in, and the dry run asks for that one ordinal. [plan] gives the region, zones, CNI and VPC;
+     * its groups are replaced by the single instance.
+     */
+    fun verifyReplacement(
+        plan: CapacityPlan,
+        launch: InstanceCreationConfig,
+        ordinal: Int,
+    ) {
+        verifyCapacity(plan.copy(groups = listOf(LaunchGroup(launch.serverType, launch.instanceType, listOf(ordinal)))))
+        verifyLaunchPermitted(listOf(launch.copy(indexes = listOf(ordinal))))
+    }
+
     private fun verifyZoneCount(plan: CapacityPlan) {
         val max = Constants.Vpc.MAX_AVAILABILITY_ZONES
         if (plan.zones.size <= max) return

@@ -28,12 +28,12 @@
 
 ## 5. Node steps as services
 
-- [ ] 5.1 Move `SetupInstance`'s per-node work into `NodeSetupService` (one method per server type); app nodes read their own region from IMDS; `setup-instances` calls the service through `HostOperationsService.withHosts` with the same behaviour; existing `SetupInstance` tests pass
-- [ ] 5.2 `K3sClusterService`: split into `startServer(control)` (server, token, kubeconfig, backup) and `joinAgent(host, labels)` (configure and a non-blocking start); `setupCluster` is removed once `up` no longer calls it; update `K3sClusterServiceTest`
-- [ ] 5.3 `start-k3s-agent.sh`: `systemctl start --no-block k3s-agent`; a retry of the join step runs `systemctl restart --no-block k3s-agent`; update `K3sAgentServiceTest`
-- [ ] 5.4 `NodeCleanup` (K8s side of replacement): delete the Node and `<alias>.node-password.k3s` in `kube-system`, tolerating either already gone; integration test on K3s TestContainers
-- [ ] 5.5 `EC2InstanceService.launchOne(spec, alias, ordinal)`: one instance in subnet `ordinal % subnets`, ordinal tags `first = ordinal`, `stride = 1`, using the batched path's request builder; `terminateAndWait(instanceId)` until the instance is neither pending nor running.  Unit tests on the request built (subnet, tags, count)
-- [ ] 5.6 `LaunchCapacityPreflight`: a one-instance `CapacityPlan` and `verifyLaunchPermitted` path for a replacement; test that the plan counts exactly one instance in the alias's zone
+- [x] 5.1 Move `SetupInstance`'s per-node work into `NodeSetupService` (one method per server type); app nodes read their own region from IMDS; `setup-instances` calls the service through `HostOperationsService.withHosts` with the same behaviour; existing `SetupInstance` tests pass
+- [x] 5.2 `K3sClusterService`: split into `startServer(control)` (server, token, kubeconfig, backup) and `joinAgent(host, labels)` (configure and a non-blocking start); `setupCluster` is removed once `up` no longer calls it; update `K3sClusterServiceTest`
+- [x] 5.3 `start-k3s-agent.sh`: `systemctl start --no-block k3s-agent`; a retry of the join step runs `systemctl restart --no-block k3s-agent`; update `K3sAgentServiceTest`
+- [x] 5.4 `NodeCleanup` (K8s side of replacement): delete the Node and `<alias>.node-password.k3s` in `kube-system`, tolerating either already gone; integration test on K3s TestContainers
+- [x] 5.5 `EC2InstanceService.launchOne(spec, alias, ordinal)`: one instance in subnet `ordinal % subnets`, ordinal tags `first = ordinal`, `stride = 1`, using the batched path's request builder; `terminateAndWait(instanceId)` until the instance is neither pending nor running.  Unit tests on the request built (subnet, tags, count)
+- [x] 5.6 `LaunchCapacityPreflight`: a one-instance `CapacityPlan` and `verifyLaunchPermitted` path for a replacement; test that the plan counts exactly one instance in the alias's zone
 
 ## 6. Replacement
 

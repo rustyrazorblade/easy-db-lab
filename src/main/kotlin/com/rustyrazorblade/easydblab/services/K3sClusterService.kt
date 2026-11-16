@@ -45,6 +45,17 @@ data class AgentSetupResult(
 )
 
 /**
+ * A started K3s server as an agent needs it: [url] on the control node's private IP, and the
+ * node [token] agents register with.
+ */
+data class K3sServer(
+    val url: String,
+    val token: String,
+) {
+    override fun toString(): String = "K3sServer(url=$url, token=***)"
+}
+
+/**
  * Configuration for K3s cluster setup.
  *
  * @property controlHost The control node to run K3s server
@@ -100,6 +111,31 @@ interface K3sClusterService {
      * @return Result containing setup status and any errors
      */
     fun setupCluster(config: K3sClusterConfig): K3sSetupResult
+
+    /**
+     * The control pipeline's server step: starts the K3s server on [control], reads the node
+     * token, writes the kubeconfig to [kubeconfigPath] and backs it up to S3 when [clusterState]
+     * names a bucket. A failed backup is logged and does not fail the step; any other failure
+     * throws, naming the part that failed.
+     */
+    fun startServer(
+        control: ClusterHost,
+        kubeconfigPath: Path,
+        clusterState: ClusterState?,
+        useCustomCni: Boolean,
+    ): K3sServer
+
+    /**
+     * One node's join: writes [host]'s agent config with [server] and its [serverType]'s labels,
+     * then starts the agent in [mode] without waiting on systemd. The caller reads the node's
+     * registration from the K8s API. A failure throws, naming the part that failed.
+     */
+    fun joinAgent(
+        host: ClusterHost,
+        serverType: ServerType,
+        server: K3sServer,
+        mode: AgentStartMode,
+    )
 
     /**
      * Gets the node labels for a given server type and host.
@@ -184,6 +220,34 @@ class DefaultK3sClusterService(
             agentResults = agentResults,
             errors = errors,
         )
+    }
+
+    override fun startServer(
+        control: ClusterHost,
+        kubeconfigPath: Path,
+        clusterState: ClusterState?,
+        useCustomCni: Boolean,
+    ): K3sServer {
+        val errors = mutableMapOf<String, Exception>()
+
+        fun failed(): Nothing = error(errors.entries.joinToString("; ") { (part, e) -> "$part failed: ${e.message}" })
+
+        startK3sServer(control, errors, useCustomCni)?.let { failed() }
+        val token = retrieveNodeToken(control, errors) ?: failed()
+        val config = K3sClusterConfig(control, emptyMap(), kubeconfigPath, clusterState = clusterState, useCustomCni = useCustomCni)
+        val (written, _) = downloadAndBackupKubeconfig(config, control, errors)
+        if (!written) failed()
+        return K3sServer("https://${control.privateIp}:$K3S_SERVER_PORT", token)
+    }
+
+    override fun joinAgent(
+        host: ClusterHost,
+        serverType: ServerType,
+        server: K3sServer,
+        mode: AgentStartMode,
+    ) {
+        val result = setupSingleAgent(host, server.url, server.token, getNodeLabels(serverType, host), mode)
+        result.error?.let { throw it }
     }
 
     private fun startK3sServer(
@@ -332,6 +396,7 @@ class DefaultK3sClusterService(
         serverUrl: String,
         nodeToken: String,
         nodeLabels: Map<String, String>,
+        mode: AgentStartMode = AgentStartMode.START,
     ): AgentSetupResult {
         val host = clusterHost.toHost()
         eventBus.emit(Event.K3s.AgentConfiguring(host.alias, nodeLabels.toString()))
@@ -350,7 +415,7 @@ class DefaultK3sClusterService(
         }
 
         // Start agent
-        val startResult = k3sAgentService.start(host)
+        val startResult = k3sAgentService.start(host, mode)
         if (startResult.isFailure) {
             val error = checkNotNull(startResult.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
             log.error(error) { "Failed to start K3s agent on ${host.alias}" }

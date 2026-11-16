@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.images.builder.Transferable
@@ -24,8 +25,11 @@ class StartK3sScriptsIntegrationTest {
         private const val SERVER = "start-k3s-server.sh"
         private const val AGENT = "start-k3s-agent.sh"
 
-        /** systemctl reports no installed unit, so the script runs the (stubbed) installer. */
-        private const val SYSTEMCTL_STUB = "#!/bin/sh\necho systemctl >> /tmp/calls.log\nexit 0\n"
+        /**
+         * systemctl reports no installed unit, so the script runs the (stubbed) installer. Each call
+         * is logged to [CALLS_LOG] as `systemctl <args>`, one call a line.
+         */
+        private const val SYSTEMCTL_STUB = "#!/bin/sh\necho \"systemctl $*\" >> $CALLS_LOG\nexit 0\n"
 
         /** The k3s installer is not run; the script only has to reach it. */
         private const val INSTALLER_STUB = "#!/bin/sh\necho installer >> /tmp/calls.log\nexit 0\n"
@@ -49,6 +53,7 @@ class StartK3sScriptsIntegrationTest {
         mounted: Boolean,
         seed: String = "true",
         runs: Int = 1,
+        extraArgs: String = "",
         check: (NodeAfterRun) -> Unit,
     ) {
         val container =
@@ -63,7 +68,7 @@ class StartK3sScriptsIntegrationTest {
             it.start()
             // The AMI has k3s installed, so /var/lib/rancher exists before the script runs.
             assertThat(it.execInContainer("sh", "-c", "mkdir -p /var/lib/rancher && $seed").exitCode).describedAs("seed").isZero()
-            val args = if (script == AGENT) " https://10.0.0.5:6443 token" else ""
+            val args = if (script == AGENT) " https://10.0.0.5:6443 token$extraArgs" else ""
             var last = it.execInContainer("bash", "-c", "/tmp/$script$args")
             repeat(runs - 1) { _ -> last = it.execInContainer("bash", "-c", "/tmp/$script$args") }
             check(NodeAfterRun(last.exitCode, last.stdout + last.stderr, it))
@@ -124,6 +129,37 @@ class StartK3sScriptsIntegrationTest {
             assertThat(thresholds).contains("nodefs.available<0%", "imagefs.available<0%")
             // Memory eviction and the inode guard keep their kubelet defaults.
             assertThat(thresholds).contains("memory.available<100Mi", "nodefs.inodesFree<5%")
+        }
+    }
+
+    /**
+     * The agent is started without waiting on systemd: registration is read from the K8s API, so
+     * no SSH session is held while the agent waits on the server (#1134). A retry of the join
+     * restarts the agent. A mode the script does not know fails it before systemd is touched.
+     */
+    @ParameterizedTest
+    @CsvSource(
+        "'', start --no-block k3s-agent",
+        "' start', start --no-block k3s-agent",
+        "' restart', restart --no-block k3s-agent",
+    )
+    fun `the agent start does not wait on systemd, and a retry restarts it`(
+        mode: String,
+        expected: String,
+    ) {
+        runScript(AGENT, mounted = false, extraArgs = mode) { node ->
+            assertThat(node.exitCode).describedAs(node.output).isZero()
+            val agentCalls = "grep '^systemctl .*k3s-agent' $CALLS_LOG | grep -v list-unit-files | sed 's/^systemctl //'"
+            assertThat(node.sh(agentCalls)).isEqualTo(expected)
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = [" stop", " bogus"])
+    fun `an unknown agent start mode fails before systemd is touched`(mode: String) {
+        runScript(AGENT, mounted = false, extraArgs = mode) { node ->
+            assertThat(node.exitCode).isNotZero()
+            assertThat(node.sh("cat $CALLS_LOG 2>/dev/null || true")).isEmpty()
         }
     }
 

@@ -64,6 +64,7 @@ val servicesModule =
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
         factoryOf(::DefaultCassandraProfilingService) bind CassandraProfilingService::class
+        factoryOf(::NodeSetupService)
         // Singleton: CiliumService records the install window on it during K3s bring-up and `up`
         // posts the annotations later, after Grafana is deployed, so the state must be shared.
         single { CiliumInstallAnnotator(get(), get()) }

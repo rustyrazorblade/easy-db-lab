@@ -46,6 +46,24 @@ interface K3sAgentService : SystemDServiceManager {
         token: String,
         labels: Map<String, String> = emptyMap(),
     ): Result<Unit>
+
+    /**
+     * Starts the configured agent with [mode], without waiting for systemd: the script queues the
+     * start and returns, and the caller reads the node's registration from the K8s API. A first
+     * join uses [AgentStartMode.START]; a retried join uses [AgentStartMode.RESTART].
+     */
+    fun start(
+        host: Host,
+        mode: AgentStartMode,
+    ): Result<Unit>
+}
+
+/** How `start-k3s-agent.sh` starts the agent unit; [arg] is the script's third argument. */
+enum class AgentStartMode(
+    val arg: String,
+) {
+    START("start"),
+    RESTART("restart"),
 }
 
 /**
@@ -87,16 +105,21 @@ class DefaultK3sAgentService(
      * The start-k3s-agent.sh script handles:
      * - Checking if k3s-agent.service already exists
      * - Running airgap installation if needed
-     * - Starting the k3s-agent.service
+     * - Queueing the k3s-agent.service start (`systemctl start --no-block`)
      *
      * The agent must be configured via configure() before calling start().
      *
      * @param host The worker node where the K3s agent should run
      * @return Result indicating success or failure
      */
-    override fun start(host: Host): Result<Unit> =
+    override fun start(host: Host): Result<Unit> = start(host, AgentStartMode.START)
+
+    override fun start(
+        host: Host,
+        mode: AgentStartMode,
+    ): Result<Unit> =
         runCatching {
-            log.debug { "Starting K3s agent on ${host.alias}" }
+            log.debug { "Starting K3s agent on ${host.alias} (${mode.arg})" }
 
             // Upload the startup script from classpath resources
             remoteOps.installFile(host, AGENT_SCRIPT_RESOURCE, AGENT_SCRIPT_PATH, "0755")
@@ -114,7 +137,7 @@ class DefaultK3sAgentService(
             // Call the uploaded script with server URL and token
             remoteOps.executeRemotely(
                 host,
-                "sudo $AGENT_SCRIPT_PATH '$serverUrl' '$token'",
+                "sudo $AGENT_SCRIPT_PATH '$serverUrl' '$token' ${mode.arg}",
                 output = true,
             )
 

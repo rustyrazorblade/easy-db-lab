@@ -23,6 +23,7 @@ import java.net.Socket
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
 
 /**
@@ -133,7 +134,7 @@ class MetricsStreamSignalIntegrationTest {
             val accepted = CompletableFuture<Socket>()
             thread(isDaemon = true) { runCatching { accepted.complete(mimir.accept()) } }
             val stream = startStream()
-            accepted.get(STARTUP_SECONDS, TimeUnit.SECONDS).use { connection ->
+            awaitMimirConnection(accepted, stream).use { connection ->
                 if (afterRequestSent) {
                     awaitRequestHeaders(connection)
                     Thread.sleep(READ_SETTLE_MS)
@@ -146,6 +147,20 @@ class MetricsStreamSignalIntegrationTest {
             }
         }
     }
+
+    /** Waits for the stream to connect to the fake Mimir; a stream that never does fails with its own output, not a bare timeout. */
+    private fun awaitMimirConnection(
+        accepted: CompletableFuture<Socket>,
+        stream: Process,
+    ): Socket =
+        try {
+            accepted.get(STARTUP_SECONDS, TimeUnit.SECONDS)
+        } catch (e: TimeoutException) {
+            throw AssertionError(
+                "the stream did not connect to Mimir within ${STARTUP_SECONDS}s (alive=${stream.isAlive}); output:\n${output.readText()}",
+                e,
+            )
+        }
 
     /** Reads [connection] until the blank line that ends the HTTP request's headers. */
     private fun awaitRequestHeaders(connection: Socket) {

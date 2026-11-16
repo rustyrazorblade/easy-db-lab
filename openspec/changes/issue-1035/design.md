@@ -8,7 +8,7 @@ Owner decisions that bind this design:
 - K5: two store identities.
 - Root rules: no automatic deletion, no S3-outage design, no verify checks in `down`, and no YAML built from strings.
 
-Decisions still open are listed under **Owner decisions** (D1-D14). The design below follows the architect's recommendation for each one until the owner decides.
+The owner decided D1-D14 on 2026-11-16. See **Owner decisions** below; every decision follows the architect's recommendation.
 
 ## What decides storage
 
@@ -22,7 +22,7 @@ Three questions are decided separately.
 
 | Environment | Store | Hosting | Identities |
 |---|---|---|---|
-| AWS (no record) | `S3Backend` | `HostPath("/mnt/db1")` | instance role (writer); compactor per D7 |
+| AWS (no record) | `S3Backend` | `HostPath("/mnt/db1")` | instance role for both identities (D7: separate compactor role in a child issue) |
 | K3s in Docker (#1041) | `FilesystemBackend` | `HostPath(NODE_DATA_DIR/state)`, tree at `NODE_DATA_DIR` | none |
 | Your cluster, object store (#1082) | `S3Backend` | `RetainedClaim(class, size)` for state | writer Secret, compactor Secret |
 | Your cluster, retained volume (#1082) | `FilesystemBackend` | `RetainedClaim`, one claim per workload holding `state/` and `store/` | none, labelled cluster-scoped |
@@ -88,7 +88,7 @@ Compactor scratch is not on D, because #1071's lease agent wipes its scratch dir
 - `credentials: StoreCredentials` is replaced by `store: StoreAccess`:
   - `Object(StoreIdentities(writer, compactor))` or `Directory`.
   - Neither "filesystem with credentials" nor "writer Secret on the compactor" can be written down.
-  - `StoreCredentials` keeps `InstanceRole` and `FromSecret(secretName)`. It gains `AssumedRole(roleArn)` only if D7(a) is chosen.
+  - `StoreCredentials` keeps `InstanceRole` and `FromSecret(secretName)`. This change does not add `AssumedRole(roleArn)`. The D7 child issue adds it.
 - For `Directory`, `host(...)` adds the store volume:
   - `HostPath`: a hostPath of `NODE_DATA_DIR` (all of D, D3) at `/store`, and state at `stateRoot/<dir>`.
   - `RetainedClaim`: the existing `<workload>-data` claim, mounted with `subPath: state` at the state path and `subPath: store` at `/store`.
@@ -148,70 +148,39 @@ Compactor scratch is not on D, because #1071's lease agent wipes its scratch dir
 
 One running stack per D. This is documented, and there is no lock (owner decision 5, 2026-10-31). Two stacks on one D would contend for Pyroscope Raft and the Loki ingester state.
 
-## Owner decisions (open)
+## Owner decisions (decided 2026-11-16)
 
-Each decision lists its options. The recommendation (rec.) is the architect's. The owner decides.
+The owner approved the spec at Seam 1 on 2026-11-16. D1, D2 and D7 were decided explicitly. For every other decision the owner took the architect's recommendation. The rejected options are kept so the reasoning can be followed.
 
-- **D1. Ordering with PR #1071.**
-  - (a) rec.: merge `origin/main` into `local-k8s-edbl` as its own PR before #1035 builds. The merge is real work: #1071's compactor ConfigMap renders `mimir.yaml`/`loki.yaml` without `StoreBlockRenderer`, reads the old `s3_bucket` key, and pins `*_S3_PREFIX` to bare roots.
-  - (b) Build without #1071 and reconcile later. Any `CompactorIam` fix would be thrown away.
-  - (c) Fold the merge into this PR. The PR gets larger and mixes two reviews.
-- **D2. Local state hosting.**
-  - (a) rec.: hostPath into D, chosen by `HOST_PATH`. This follows the 2026-11-11 amendment.
-  - (b) Static Retain PVs with `claimRef`, two per backend. This is the 2026-11-10 decision. It conflicts with the amendment and adds PV bookkeeping to #1041.
-- **D3. Filesystem tree mount.**
-  - (a) rec.: all of D at `/store` in each backend. The prefixes work as on S3, there is one mount, and D mirrors the bucket exactly. The cost is that each backend sees the others' trees.
-  - (b) A `subPath` per root. Loki's `object_prefix` would nest `loki/loki/`.
-  - (c) Separate host directories per root. This gives isolation, at the cost of more volumes.
-- **D4. Local compaction.**
-  - (a) rec.: in-process (Mimir `compactor` target with shared flags, Loki 10m). There is no lease, laptops stay out of lease candidacy, and it works on RWO per-backend claims. It amends the #1048 "no compactor on a cluster" requirement to object stores.
-  - (b) #1071's pod with the gate always open and no lease. This reuses one pod definition but fails on RWO claims.
-  - (c) #1071's pod with a filesystem `ConditionalObjects`. This is the most code, for no contention (one stack per D).
-- **D5. Retained-volume store on your cluster.**
-  - (a) rec.: build the backend half now (the claim holds `state/` and `store/`, with a K3s test). CLI-side backups and documents fail, naming #1082.
-  - (b) Object store only off AWS until #1082. Simpler, but K3's "retained volume allowed" stays unbuilt.
-- **D6. Store credentials off AWS.**
-  - (a) rec.: user-created Secrets named at `init` (defaults `edl-store-writer` and `edl-store-compactor`). `up` validates them and prints both policies. Nothing is minted or rotated.
-  - (b) The CLI builds the Secrets from a named profile. SSO credentials expire, so this breaks silently.
-  - (c) Workload identity, `StoreCredentials.ServiceAccount`. Deferred to #1082 on EKS or GKE.
-- **D7. K5 on AWS.** Since #1071 the compactor runs as the instance role, and the instance role's delete deny under `mimir/`, `loki/` and `tempo/` is gone.
-  - (a) A new `EasyDBLabCompactorRole` assumed by the lease container and served on `127.0.0.1` as ECS-style container credentials. The instance role's deny returns to all roots. A spike must first prove that minio-go and Loki's S3 client honour `AWS_CONTAINER_CREDENTIALS_FULL_URI`.
-  - (b) An IAM user with static keys in a Secret. IAM allows two keys per user, which breaks with several clusters.
-  - (c) Keep #1071's lease-only guard on AWS and apply K5 only off AWS.
-  - Rec.: (a), as a child issue. This change's AWS criterion is "unchanged".
-- **D8. Pyroscope and the writer identity.** Pyroscope v2 compaction runs in the server and removes merged segments.
-  - (a) rec.: the writer may delete under `pyroscope/` only. This is today's exception, made explicit.
-  - (b) Give Pyroscope the compactor identity, which widens its delete to `mimir/`, `loki/` and `tempo/`.
-  - Disabling Pyroscope compaction is not an option.
-- **D9. Compactor allow and store prefixes (gap 1).**
-  - (a) rec.: a prefix-independent allow, with lease and roots per store prefix.
-  - (b) Enumerate the prefixes in use. This needs a census, which #1071 deleted.
-  - (c) Leave it latent, since no prefix is set today.
-- **D10. Who writes the record.**
-  - (a) rec.: #1035 adds the type and resolvers; #1040 and #1082 add the flags.
-  - (b) Wait for #1040, which keeps #1035 blocked.
-- **D11. Filesystem "bucket".**
-  - (a) rec.: a fixed container constant.
-  - (b) Move `bucket` off `StoreBackend`. This touches every `ClusterStoragePath` user.
-- **D12. State directories without SSH.**
-  - (a) rec.: a root init container, only where `NODE_SSH` is absent.
-  - (b) The same init container everywhere. This drops an SSH dependency on AWS but changes AWS.
-  - (c) The CLI or #1041 creates the directories with mode 0777. Fragile on Linux hosts.
-- **D13. macOS bind-mount xattr gate.**
-  - (a) rec.: keep it as a manual gate before the storage tasks, recording the Docker file-sharing implementation used. If only the object root works on the mount, Mimir's state moves to the node container's own disk. This is safe because blocks ship within about 2m and on graceful stop. If the object root fails, stop and ask the owner.
-  - (b) Drop it. The risk is a Mimir that silently does not ship on macOS.
-- **D14. Retained-volume label (K3).**
-  - (a) rec.: a typed event at `up` plus a `status` line.
-  - (b) (a), plus `store_durability` in `cluster-config` for dashboards.
-  - (c) Docs only.
-
+- **D1. Ordering with PR #1071: (a).** `origin/main` (PR #1071) is merged into `local-k8s-edbl` in its own PR, and #1035 builds only after that merge. The merge PR owns the reconciliation:
+  - #1071's compactor ConfigMap renders `mimir.yaml`/`loki.yaml` without `StoreBlockRenderer`;
+  - it reads the old `s3_bucket` key;
+  - it pins `*_S3_PREFIX` to bare roots.
+  - Rejected: (b) build without #1071, because any `CompactorIam` fix would be thrown away; (c) fold the merge into this PR, because it mixes two reviews.
+- **D2. Local state hosting: (a).** A hostPath into D, chosen by the `HOST_PATH` capability, per the 2026-11-11 amendment. This replaces the 2026-11-10 decision. Rejected: (b) static Retain PVs with `claimRef`, two per backend.
+- **D3. Filesystem tree mount: (a).** All of D is mounted at `/store` in each backend, so each backend can see the others' trees. Rejected: (b) a `subPath` per root, which nests `loki/loki/`; (c) a separate host directory per root.
+- **D4. Local compaction: (a).** In-process: the Mimir `compactor` target with shared flags, and Loki compacting every 10m. This amends the "no compactor on a cluster" requirement so that it applies to object stores only. Rejected: (b) and (c), #1071's pod with no lease or with a filesystem `ConditionalObjects`.
+- **D5. Retained-volume store on your cluster: (a).** Build the backend half now. CLI-side backups and documents fail with a message that names #1082. Rejected: (b) object store only off AWS.
+- **D6. Store credentials off AWS: (a).** Secrets the user creates, named at `init` (defaults `edl-store-writer`, `edl-store-compactor`). They are validated before apply, and both policies are printed. Rejected: (b) Secrets built from a named profile. Deferred: (c) workload identity, to #1082.
+- **D7. K5 on AWS: (a), in a child issue.** A separate `EasyDBLabCompactorRole`, assumed by the lease container and served on `127.0.0.1` as ECS-style container credentials. The instance role's delete deny returns to all roots.
+  - The child issue runs the credentials spike first. It must prove that minio-go and Loki's S3 client honour `AWS_CONTAINER_CREDENTIALS_FULL_URI`.
+  - #1035 does not build it. #1035's AWS criterion stays "unchanged", so on AWS both identities remain the instance role.
+  - Rejected: (b) an IAM user with static keys; (c) a permanent lease-only guard.
+- **D8. Pyroscope and the writer identity: (a).** The writer may delete under `pyroscope/` only. Rejected: (b) giving Pyroscope the compactor identity.
+- **D9. Compactor allow and store prefixes: (a).** A prefix-independent allow, with the lease and the roots following each store's prefix. Rejected: (b) enumerating the prefixes in use; (c) leaving the gap latent.
+- **D10. Who writes the record: (a).** #1035 adds the type and the resolvers; #1040 and #1082 add the `init` flags. Rejected: (b) waiting for #1040.
+- **D11. Filesystem "bucket": (a).** A fixed container constant. Rejected: (b) moving `bucket` off `StoreBackend`.
+- **D12. State directories without SSH: (a).** A root init container, only where `NODE_SSH` is absent. Rejected: (b) the init container everywhere; (c) directories created with mode 0777.
+- **D13. macOS bind-mount xattr gate: (a).** Kept as a manual gate before the storage tasks (task 1). Rejected: (b) dropping it.
+- **D14. Retained-volume label: (a).** A typed event at `up` plus a `status` line. Rejected: (b) also publishing `store_durability`; (c) docs only.
+- **R5 (known limit) accepted.** On a filesystem store, K5 is enforced by configuration only (retention off, compaction replaces its sources). The store itself cannot enforce it. This is documented in the user guide.
 ## Risks
 
 - **R1. AWS calls in local mode.** The paths are `BucketRegion.of`, `CompactorStage.prepare`, the sigv4 container, an eagerly built `S3ObjectStore`, and `ObservabilityStore.from` on a null `s3Bucket`. Covered by the no-egress scenario.
 - **R2. #1071 merge breakage** (D1): a literal `__OBJECT_STORE_BLOCK__`, the old `s3_bucket` key, a prefix ignored. Covered by the compactor-config scenario.
 - **R3. Pyroscope Raft identity across clusters.** The Raft server id and advertise address are pinned to the stable Service DNS name. Covered by the new-cluster-on-the-same-D scenario.
 - **R4. WAL replay on reuse.** Loki's ingester id is `${TENANT}.${CLUSTER_NAME}`. The flush on shutdown leaves the WAL nearly empty. Covered by the no-duplicate-lines check in the reuse test.
-- **R5. K5 cannot be structural on a filesystem.** A process that writes can unlink. The guard is configuration only (retention off, compaction replaces sources). This is documented as a known limit and needs the owner's acceptance.
+- **R5. K5 cannot be structural on a filesystem.** A process that writes can unlink. The guard is configuration only (retention off, compaction replaces sources). The owner accepted it as a known limit on 2026-11-16, and it is documented.
 - **R6. A deleting StorageClass.** Already refused by `RetainedClaimCheck`. No new deletion path is added.
 - **R7. Writer can delete beyond `pyroscope/`.** Pinned by a policy unit test.
 - **R8. Uncompacted Tempo on a long-lived D.** Queries slow down. Reads stay correct.

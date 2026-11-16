@@ -1,7 +1,7 @@
 ## 0. Preconditions
 
-- [ ] 0.1 The owner has decided D1-D14 in `design.md`. Record each decision there. Where it differs from the recommendation, revise the affected tasks below before starting.
-- [ ] 0.2 (D1) PR #1071 (in-cluster compactor) is on `local-k8s-edbl`. Merge `origin/local-k8s-edbl` into this branch.
+- [x] 0.1 The owner decided D1-D14 on 2026-11-16, as recorded in `design.md`. Every decision follows the recommendation, so no task needed revision.
+- [ ] 0.2 (D1) The separate merge PR has brought `origin/main` (PR #1071, in-cluster compactor) into `local-k8s-edbl`, with the compactor ConfigMap, the `store_bucket` key and the prefix env reconciled there. Merge `origin/local-k8s-edbl` into this branch. Do not start task 1 before this step.
 
 ## 1. Gate: macOS bind mount (D13)
 
@@ -35,7 +35,7 @@
 - [ ] 5.1 Test first (D9): the compactor allow is identical for prefix `a/`, prefix `b/` and no prefix, and covers every compacted root at the top and under any prefix. Build it with `underAnyPrefix`. Remove the "known gap" note from `services/aws/CLAUDE.md`.
 - [ ] 5.2 Test first: the compactor's roots and lease follow the store prefix, and its ConfigMap goes through `StoreBlockRenderer` with no unreplaced placeholder and the `store_bucket` key.
 - [ ] 5.3 Test first (D8): the writer policy denies deletes under `mimir/`, `loki/` and `tempo/` at the top and under any prefix, and allows deletes only under `pyroscope/`. Render the writer and compactor policies that `StoreSecretCheck` prints.
-- [ ] 5.4 (D7) Implement whichever option the owner picked, or open the child issue if K5 on AWS is deferred.
+- [ ] 5.4 (D7) Do not build K5 on AWS here. Check that the child issue exists (separate `EasyDBLabCompactorRole`, credentials spike first) and link it from `design.md`. On AWS both identities stay the instance role.
 
 ## 6. Local compaction
 
@@ -57,6 +57,6 @@
 
 ## 9. Docs and guidance
 
-- [ ] 9.1 Update `docs/user-guide/monitoring.md` and `docs/user-guide/compactor.md`: store kinds per environment, the D layout, store Secrets and their policies, the retained-volume label, local compaction, and "one stack per D".
+- [ ] 9.1 Update `docs/user-guide/monitoring.md` and `docs/user-guide/compactor.md`: store kinds per environment, the D layout, store Secrets and their policies, the retained-volume label, the known limit that K5 on a filesystem store is enforced only by configuration (R5), local compaction, and "one stack per D".
 - [ ] 9.2 Update `configuration/CLAUDE.md` (`ObservabilityHosting`, the store fragments), `services/aws/CLAUDE.md`, and the root `CLAUDE.md` Observability section.
 - [ ] 9.3 Update the KDoc in `ObjectStore.kt` and `StoreBackend.kt`, so credentials are documented in one place.

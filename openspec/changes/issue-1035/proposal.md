@@ -41,7 +41,7 @@ Since the 2026-11-10 spec, the types these cases hang on have landed:
 - **Retained-volume label (K3).** When a filesystem store sits on a claim, `up` emits a typed event, and `status` says the data lives only as long as the cluster's volumes.
 - **D layout** mirrors the bucket, under the store prefix when one is set: `mimir/`, `loki/`, `tempo/`, `pyroscope/`, `grafana/annotations/<tenant>/`, `reports/<tenant>/`, and `state/<backend>/` for each backend's local state.
 
-The owner decisions still open, D1-D14, are in `design.md`. Each one names the architect's recommendation, and the spec is written to those recommendations until the owner decides.
+The owner decided D1-D14 on 2026-11-16 (recorded in `design.md`): the architect's recommendation for every decision. K5 on AWS (D7) is a child issue, so on AWS both identities stay the instance role here.
 
 ## Capabilities
 
@@ -61,7 +61,7 @@ The owner decisions still open, D1-D14, are in `design.md`. Each one names the a
   - `OnNodeStateDirectories`, `ObservabilityStackService`, a new `StoreSecretCheck`, `GrafanaFront`/`GrafanaDeployService`.
   - `TestDocumentService`, `GrafanaAnnotationBackupService`, `TenantDirectory`, `AWSPolicy`, the compactor builders, `Constants`, `ServicesModule`.
 - Ordering: this change is built after PR #1071 (in-cluster compactor with a store lease, removes the Fargate account compactor) reaches `local-k8s-edbl` (decision D1).
-- AWS: rendered configs are byte-identical except Loki's `object_store` line, which now reads `store_kind` and rolls Loki once. The IAM deny rules and the compactor are unchanged unless the owner picks D7(a).
+- AWS: rendered configs are byte-identical except Loki's `object_store` line, which now reads `store_kind` and rolls Loki once. The IAM deny rules and the compactor are unchanged. The separate `EasyDBLabCompactorRole` (D7) is a child issue, which begins with a credentials spike.
 
 ## Out of scope
 

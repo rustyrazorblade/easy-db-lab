@@ -70,7 +70,7 @@ When a filesystem store sits on retained claims, `up` SHALL emit a typed event n
 - **AND** `status` says the data lives as long as the cluster's volumes
 
 ### Requirement: Store access uses a writer and a compactor identity
-An object store SHALL be reached with two identities. The writer, used by Mimir, Loki, Tempo and Pyroscope, SHALL NOT be able to delete under `mimir/`, `loki/` or `tempo/`, at the top of the store or under any prefix. It MAY delete under `pyroscope/` only, for Pyroscope v2 compaction. The compactor SHALL delete only sources it merged. Off AWS, each identity SHALL come from a Kubernetes Secret named in the record, with the defaults `edl-store-writer` and `edl-store-compactor`. Backends SHALL receive only the writer Secret, and the compactor only the compactor Secret. A filesystem store SHALL have no identities.
+An object store SHALL be reached with two identities. The writer, used by Mimir, Loki, Tempo and Pyroscope, SHALL NOT be able to delete under `mimir/`, `loki/` or `tempo/`, at the top of the store or under any prefix. It MAY delete under `pyroscope/` only, for Pyroscope v2 compaction. The compactor SHALL delete only sources it merged. Off AWS, each identity SHALL come from a Kubernetes Secret named in the record, with the defaults `edl-store-writer` and `edl-store-compactor`. Backends SHALL receive only the writer Secret, and the compactor only the compactor Secret. A filesystem store SHALL have no identities. On AWS, both identities SHALL remain the instance role until a separate compactor role is added.
 
 #### Scenario: Backends get the writer, the compactor gets the compactor
 - **WHEN** the stack is rendered for an object store with writer and compactor Secrets

@@ -44,9 +44,9 @@
 
 ## 8. Docs and guidance
 
-- [ ] 8.1 `docs/reference/ports.md`: control-node section becomes Service ports plus published NodePorts and the relay port.
-- [ ] 8.2 `docs/user-guide/monitoring.md`, `network-connectivity.md`, `profiling.md`, `platform-substrate.md`, `docs/development/kits.md` (stop advising `CONTROL_HOST_PRIVATE:4040`), `help/observability.md`.
-- [ ] 8.3 `configuration/CLAUDE.md`, `dashboards/CLAUDE.md`, root `CLAUDE.md` Grafana port mention.
+- [x] 8.1 `docs/reference/ports.md`: control-node section becomes Service ports plus published NodePorts and the relay port.
+- [x] 8.2 `docs/user-guide/monitoring.md`, `network-connectivity.md`, `profiling.md`, `platform-substrate.md`, `docs/development/kits.md` (stop advising `CONTROL_HOST_PRIVATE:4040`), `help/observability.md`.
+- [x] 8.3 `configuration/CLAUDE.md`, `dashboards/CLAUDE.md`, root `CLAUDE.md` Grafana port mention.
 - [ ] 8.4 Tell #1101's owner that its `design.md` line on stress reaching `controlIP:4040` is obsolete.
 
 ## 9. Verify

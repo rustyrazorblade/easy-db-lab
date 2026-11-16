@@ -695,12 +695,12 @@ method-level CPU, allocation, and lock contention profiles — much richer than 
 
 The agent JAR lives on the host at `/usr/local/pyroscope`. Mount it into each JVM container via a
 `hostPath` volume, then inject `JAVA_TOOL_OPTIONS` via a `kubectl patch` in the `start` phase.
-`CONTROL_HOST_PRIVATE` and `CLUSTER_NAME` are available as environment variables at runtime.
+`CLUSTER_NAME` is available as an environment variable at runtime. The agent ships to the Pyroscope Service by its cluster DNS name; never point it at `CONTROL_HOST_PRIVATE`, as no backend listens on a node address (`BuiltinKitCollectorEndpointTest` fails on one). A kit template can use `__PYROSCOPE_URL__`, which is the Service or, on a redirect cluster, the external stack.
 
 ```bash
 PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar \
   -Dpyroscope.application.name=<kit> \
-  -Dpyroscope.server.address=http://${CONTROL_HOST_PRIVATE}:4040 \
+  -Dpyroscope.server.address=http://pyroscope.default.svc:4040 \
   -Dpyroscope.format=jfr \
   -Dpyroscope.profiler.event=cpu \
   -Dpyroscope.profiler.alloc=512k \

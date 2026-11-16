@@ -2,7 +2,7 @@
 
 ## Grafana Dashboards
 
-Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is accessible on port 3000 of the control node. On a port-forward cluster, run the `bin/kubectl port-forward` command `status` prints for Grafana, then open `http://127.0.0.1:3000` (see [Port Reference](../reference/ports.md#reaching-services-on-a-port-forward-cluster)).  Grafana and the backends it reads (Mimir, Loki, Tempo, Pyroscope) run in the Kubernetes pod network; Grafana reaches each backend by its Service name, such as `http://mimir.default.svc:9009/prometheus`.  By default they all run on the control node.  To narrow where they run, add node labels at init with `--node-label key=value`; every backend and Grafana then also requires those labels.  The labels must already be on a node: `--node-label` only adds them to the selector and labels no node, so label one first (for example `kubectl label node <node> pool=observability`).  If no node carries the control-node selector plus every `--node-label`, the deploy fails before it applies anything and names the selector.
+Grafana is deployed automatically as part of the observability stack (`k8 apply`). It is published on NodePort 31300: open `http://<control-private-ip>:31300` over Tailscale or the SOCKS tunnel. On a port-forward cluster, run the `bin/kubectl port-forward` command `status` prints for Grafana, then open `http://127.0.0.1:3000` (see [Port Reference](../reference/ports.md#reaching-services-on-a-port-forward-cluster)).  Grafana and the backends it reads (Mimir, Loki, Tempo, Pyroscope) run in the Kubernetes pod network; Grafana reaches each backend by its Service name, such as `http://mimir.default.svc:9009/prometheus`.  By default they all run on the control node.  To narrow where they run, add node labels at init with `--node-label key=value`; every backend and Grafana then also requires those labels.  The labels must already be on a node: `--node-label` only adds them to the selector and labels no node, so label one first (for example `kubectl label node <node> pool=observability`).  If no node carries the control-node selector plus every `--node-label`, the deploy fails before it applies anything and names the selector.
 
 ### Cluster Identification
 
@@ -304,14 +304,14 @@ Set the redirect target once, at `init`, with `--redirect-telemetry <host>`:
 easy-db-lab init --redirect-telemetry 10.0.0.9 --up
 ```
 
-`<host>` is the hostname or IP of the external stack.  The tool derives the four signal endpoints from that host and the known stack ports:
+`<host>` is the hostname or IP of the external stack.  The tool derives the four signal endpoints from that host and the NodePorts an easy-db-lab cluster publishes its backends on, so `<host>` is a node of the receiving cluster (its control node's private IP):
 
-- Metrics: `http://<host>:9009/api/v1/push` (Mimir remote write)
-- Logs: `http://<host>:3100/otlp` (Loki OTLP ingest)
-- Traces: `<host>:4320` (Tempo OTLP gRPC receiver)
-- Profiles: `http://<host>:4040` (Pyroscope ingest)
+- Metrics: `http://<host>:31009/api/v1/push` (Mimir remote write)
+- Logs: `http://<host>:31100/otlp` (Loki OTLP ingest)
+- Traces: `<host>:31320` (Tempo OTLP gRPC receiver)
+- Profiles: `http://<host>:31040` (Pyroscope ingest)
 
-The traces endpoint uses the OTLP receiver port 4320, not Tempo's query port 3200.
+The traces endpoint uses the OTLP receiver NodePort 31320, not Tempo's query NodePort 31200.
 
 ```admonish info
 Redirect mode is a life-of-cluster choice made at `init`.  All four signals move together; you cannot redirect one signal and keep the rest local.  You cannot switch a running cluster between local and redirect mode.

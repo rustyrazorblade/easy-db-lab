@@ -28,6 +28,10 @@ Kit paths are under `src/main/resources/com/rustyrazorblade/easydblab/kits/`; Ko
 
 **Agent images**: cassandra-pods already copies the OTel agent from `ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:@OTEL_AGENT_VERSION@` (`statefulset.yaml.template:36-45`, `Constants.kt:632`, `build.gradle.kts:994-1004`). The Pyroscope agent exists only on the AMI and as an EMR bootstrap download. The catalog pins OTel 2.26.0 (`gradle/libs.versions.toml:73`); the AMI ships 2.31.1.
 
+## Decision record
+
+Owner, 2026-11-16: every decision D1-D9 below is decided as its option (a). D6: split by concern; #1135 owns the Pyroscope address, the control-node lookup in `buildJob`, `TemplateVariables.pyroscopeUrl` and `publishOnNode`, and lands before this change. D8: the AC2 blockers (install pool check, node counts, `TARGET_*` from the Kubernetes API and Service DNS) stay in this change. Test scope for postgres + sysbench on one node: a K3s integration test (task 7.4), following the "prefer TestContainers" rule, plus the AWS lab run.
+
 ## Goals / Non-Goals
 
 **Goals:** no built-in kit or stress pod mounts a hostPath under `/usr/local` or uses `hostPort` / `hostNetwork`; one node can hold several roles; AWS placement, agent versions and dashboards are unchanged.
@@ -36,47 +40,47 @@ Kit paths are under `src/main/resources/com/rustyrazorblade/easydblab/kits/`; Ko
 
 ## Decisions
 
-### D1. Where the agent jars come from (pending owner)
-- **(a) Recommended:** one agent per image. OTel: upstream `autoinstrumentation-java`. Pyroscope: a small multi-arch image easy-db-lab publishes (`ghcr.io/rustyrazorblade/pyroscope-java-agent:2.3.0`, busybox + checksummed jar) from `publish-container.yml`.
+### D1. Where the agent jars come from (decided (a), owner 2026-11-16)
+- **(a) Chosen (owner 2026-11-16):** one agent per image. OTel: upstream `autoinstrumentation-java`. Pyroscope: a small multi-arch image easy-db-lab publishes (`ghcr.io/rustyrazorblade/pyroscope-java-agent:2.3.0`, busybox + checksummed jar) from `publish-container.yml`.
 - (b) One easy-db-lab agents image with both jars; cassandra-pods moves to it. Easy-db-lab republishes the OTel agent.
 - (c) Download the Pyroscope jar at pod start (curl + SHA). No image, but every start depends on GitHub and fails air-gapped.
 
-### D2. Presto and Trino coordinator exposure (pending owner)
-- **(a) Recommended:** a NodePort Service owned by each kit, presto 30880, trino 30881, selecting `app.kubernetes.io/component=coordinator`. Follows the root CLAUDE.md rule; works through every #1090 seam; fixes the multi-app-node bug.
+### D2. Presto and Trino coordinator exposure (decided (a), owner 2026-11-16)
+- **(a) Chosen (owner 2026-11-16):** a NodePort Service owned by each kit, presto 30880, trino 30881, selecting `app.kubernetes.io/component=coordinator`. Follows the root CLAUDE.md rule; works through every #1090 seam; fixes the multi-app-node bug.
 - (b) ClusterIP only. Works only through port-forward; the SOCKS seam dials node IPs.
 - (c) Switch each chart's own Service to NodePort through values. Ties the port to chart value names that differ between charts.
 
-### D3. Role mapping representation and flag (pending owner)
-- **(a) Recommended:** `RoleSelectors` in state, `init --role-nodes <role>=<k=v>[,…]` repeatable, validated like `--node-label` but separate from it.
+### D3. Role mapping representation and flag (decided (a), owner 2026-11-16)
+- **(a) Chosen (owner 2026-11-16):** `RoleSelectors` in state, `init --role-nodes <role>=<k=v>[,…]` repeatable, validated like `--node-label` but separate from it.
 - (b) One flag per role (`--db-node-selector`, `--app-node-selector`).
 - (c) Fixed label convention (`easydblab.com/role-db=true`), no flag; the user relabels their nodes, and AWS would differ.
 
-### D4. "Anywhere" on your cluster with no mapping (pending owner)
-- **(a) Recommended:** truly anywhere; co-location shows in the fidelity grade (#1098).
+### D4. "Anywhere" on your cluster with no mapping (decided (a), owner 2026-11-16)
+- **(a) Chosen (owner 2026-11-16):** truly anywhere; co-location shows in the fidelity grade (#1098).
 - (b) Preferred (soft) anti-affinity between clients and db pods; needs a common db pod label and an affinity block in every template.
 - (c) Required anti-affinity. Breaks AC2 on one node; rejected.
 
-### D5. ClickHouse and Postgres allowed CIDRs (pending owner)
-- **(a) Recommended:** AWS: VPC CIDR + `Constants.K3s.CLUSTER_CIDR` (10.42.0.0/16, passed explicitly as `--cluster-cidr`). Elsewhere: probed at `init` from node `spec.podCIDRs` and InternalIP /32s, plus `init --client-network` (for CNIs like EKS VPC-CNI). Recorded in state.
+### D5. ClickHouse and Postgres allowed CIDRs (decided (a), owner 2026-11-16)
+- **(a) Chosen (owner 2026-11-16):** AWS: VPC CIDR + `Constants.K3s.CLUSTER_CIDR` (10.42.0.0/16, passed explicitly as `--cluster-cidr`). Elsewhere: probed at `init` from node `spec.podCIDRs` and InternalIP /32s, plus `init --client-network` (for CNIs like EKS VPC-CNI). Recorded in state.
 - (b) Probe at every kit start, no state; cannot cover VPC-CNI without an override anyway.
 - (c) Allow every address. Simplest; on your cluster a passwordless ClickHouse and a `trust` Postgres would be open to anything reaching their NodePorts.
 
-### D6. Stress-job split with #1135 (pending owner)
-- **(a) Recommended:** #1101 owns hostNetwork, hostPath/agents, selector and the stress target; #1135 owns the Pyroscope address, the control-node lookup in `buildJob`, `TemplateVariables.pyroscopeUrl` and `publishOnNode`. #1135 lands first.
+### D6. Stress-job split with #1135 (decided (a), owner 2026-11-16)
+- **(a) Chosen (owner 2026-11-16):** #1101 owns hostNetwork, hostPath/agents, selector and the stress target; #1135 owns the Pyroscope address, the control-node lookup in `buildJob`, `TemplateVariables.pyroscopeUrl` and `publishOnNode`. #1135 lands first.
 - (b) #1101 in two PRs: kits, shell library, roles and CIDRs first; stress jobs after #1135.
 - (c) #1101 also takes the stress Pyroscope address; eats into #1135's "no node-IP URL" AC.
 
-### D7. How stress picks its target (pending owner; gap the issue does not name)
-- **(a) Recommended:** the `cassandra-pods` kit if running, else the VM db hosts, else fail naming both.
+### D7. How stress picks its target (decided (a), owner 2026-11-16; gap the issue does not name)
+- **(a) Chosen (owner 2026-11-16):** the `cassandra-pods` kit if running, else the VM db hosts, else fail naming both.
 - (b) Explicit `stress start --target cassandra-pods|vm`, defaulting to (a).
 - (c) Kit off AWS, VM on AWS; switches on environment name, rejected by the capabilities principle.
 
-### D8. AC2 blockers in scope (pending owner)
-- **(a) Recommended:** in #1101: the install pool check, node counts and `TARGET_*` from the Kubernetes API and Service DNS. AC2 cannot pass without them.
+### D8. AC2 blockers in scope (decided (a), owner 2026-11-16)
+- **(a) Chosen (owner 2026-11-16):** in #1101: the install pool check, node counts and `TARGET_*` from the Kubernetes API and Service DNS. AC2 cannot pass without them.
 - (b) A separate #1055 sub-issue; AC2 is then verifiable only on AWS-shaped state until it lands.
 
-### D9. Which core collector pod receives shell gauges (pending owner)
-- **(a) Recommended:** the pod on the first node matching the control selector; with none, the first Running core pod by name (stable, so one gauge stays one series). AWS unchanged.
+### D9. Which core collector pod receives shell gauges (decided (a), owner 2026-11-16)
+- **(a) Chosen (owner 2026-11-16):** the pod on the first node matching the control selector; with none, the first Running core pod by name (stable, so one gauge stays one series). AWS unchanged.
 - (b) Leave to a #1092 follow-up; gauges are lost where no control-plane node is visible.
 
 ### Fixed choices

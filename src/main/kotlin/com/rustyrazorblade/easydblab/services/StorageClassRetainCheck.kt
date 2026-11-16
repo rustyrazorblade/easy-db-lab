@@ -48,7 +48,11 @@ enum class RetainedData {
 class StorageClassRetainCheck(
     private val k8sService: K8sService,
 ) {
-    /** Fails unless [storageClass] exists and reclaims with `Retain`; [holds] words the refusal. */
+    /**
+     * Fails unless [storageClass] exists and reclaims with `Retain`; [holds] words the refusal.
+     *
+     * @throws StorageClassRefusedException when the class is missing or does not retain
+     */
     fun require(
         storageClass: String,
         holds: RetainedData,
@@ -57,11 +61,27 @@ class StorageClassRetainCheck(
             k8sService.storageClassReclaimPolicy(storageClass).getOrElse { exception ->
                 error("Could not read StorageClass $storageClass: ${exception.message}")
             }
-        checkNotNull(policy) { holds.refusal(storageClass, "does not exist") }
-        check(policy == RETAIN) { holds.refusal(storageClass, "reclaims with $policy, which would delete ${holds.loss}") }
+        when (policy) {
+            RETAIN -> Unit
+            null -> throw StorageClassRefusedException(storageClass, null, holds.refusal(storageClass, "does not exist"))
+            else -> {
+                val problem = "reclaims with $policy, which would delete ${holds.loss}"
+                throw StorageClassRefusedException(storageClass, policy, holds.refusal(storageClass, problem))
+            }
+        }
     }
 
     private companion object {
         const val RETAIN = "Retain"
     }
 }
+
+/**
+ * A StorageClass [StorageClassRetainCheck] refused: [storageClass] with [reclaimPolicy], or null when
+ * the class does not exist. An [IllegalStateException], so callers that only fail need not catch it.
+ */
+class StorageClassRefusedException(
+    val storageClass: String,
+    val reclaimPolicy: String?,
+    message: String,
+) : IllegalStateException(message)

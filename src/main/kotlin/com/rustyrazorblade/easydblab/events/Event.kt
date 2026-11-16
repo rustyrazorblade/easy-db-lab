@@ -5291,6 +5291,33 @@ sealed interface Event {
             override fun toDisplayString(): String = "Initializing directory"
         }
 
+        /**
+         * The kit StorageClass would not keep kit data: [storageClass] reclaims with
+         * [reclaimPolicy], or does not exist when that is null. [reason] is the refusal with its fix.
+         */
+        @Serializable
+        @SerialName("Setup.KitStorageClassRefused")
+        data class KitStorageClassRefused(
+            val storageClass: String,
+            val reclaimPolicy: String?,
+            val reason: String,
+        ) : Setup {
+            override fun toDisplayString(): String = reason
+
+            override fun isError(): Boolean = true
+        }
+
+        /** A cluster easy-db-lab did not build has no default StorageClass, and none was named. */
+        @Serializable
+        @SerialName("Setup.NoDefaultKitStorageClass")
+        data object NoDefaultKitStorageClass : Setup {
+            override fun toDisplayString(): String =
+                "The cluster has no default StorageClass for kit data. Pass init --kit-storage-class naming a " +
+                    "StorageClass with reclaimPolicy: Retain."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.ProvisioningInstances")
         data object ProvisioningInstances : Setup {

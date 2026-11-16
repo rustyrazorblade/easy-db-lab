@@ -35,6 +35,7 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.KitStorageResolver
 import com.rustyrazorblade.easydblab.services.LocalSsmTooling
 import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
@@ -200,6 +201,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         module {
             single<TestDocumentService> { mock<TestDocumentService>().also { mockDocumentService = it } }
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
+            factory { KitStorageResolver(get(), get()) }
             single<RegistryService> { mock<RegistryService>() }
             // The real preflight the executor runs before `up`; a test calls ensureTunnel() to play the executor.
             single { ProxyPreflight(get(), get(), ProxyEnvFile(get<Context>().workingDirectory)) }
@@ -381,8 +383,6 @@ abstract class UpTestFixture : BaseKoinTest() {
         stubCiliumSuccess()
 
         whenever(mockK8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageClass()).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageWfcClass()).thenReturn(Result.success(Unit))
 
         whenever(mockObservabilityStackService.deploy()).thenReturn(Result.success(Unit))
 

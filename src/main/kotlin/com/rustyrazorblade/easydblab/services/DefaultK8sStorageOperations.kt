@@ -361,8 +361,26 @@ class DefaultK8sStorageOperations(
             }
         }
 
+    override fun defaultStorageClass(): Result<String?> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                client
+                    .storage()
+                    .v1()
+                    .storageClasses()
+                    .list()
+                    .items
+                    .firstOrNull { it.metadata.annotations.orEmpty()[DEFAULT_CLASS_ANNOTATION] == "true" }
+                    ?.metadata
+                    ?.name
+            }
+        }
+
     private companion object {
         /** What Kubernetes reclaims with when a StorageClass sets no `reclaimPolicy`. */
         const val DEFAULT_RECLAIM_POLICY = "Delete"
+
+        /** The annotation that marks a cluster's default StorageClass. */
+        const val DEFAULT_CLASS_ANNOTATION = "storageclass.kubernetes.io/is-default-class"
     }
 }

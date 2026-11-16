@@ -191,6 +191,12 @@ interface K8sStorageOperations {
      * class that sets none reclaims with Kubernetes' default, `Delete`.
      */
     fun storageClassReclaimPolicy(name: String): Result<String?>
+
+    /**
+     * The name of the cluster's default StorageClass (annotation
+     * `storageclass.kubernetes.io/is-default-class: "true"`), or null when it has none.
+     */
+    fun defaultStorageClass(): Result<String?>
 }
 
 /**

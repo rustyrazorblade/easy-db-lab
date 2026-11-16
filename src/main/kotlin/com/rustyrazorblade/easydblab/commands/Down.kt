@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
@@ -287,7 +288,7 @@ class Down : PicoBaseCommand() {
                             Event.Teardown.BackupFailedAbort.SignalFailure(
                                 signal = it.signal.description,
                                 step = it.step.description,
-                                reason = it.cause?.message ?: it.message.orEmpty(),
+                                reason = it.cause?.reason() ?: it.message.orEmpty(),
                                 unreached = it.unreached,
                             )
                         },

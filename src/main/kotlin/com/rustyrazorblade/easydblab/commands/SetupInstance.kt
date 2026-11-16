@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.ImdsRegion
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
@@ -126,12 +127,7 @@ class SetupInstance : PicoBaseCommand() {
         val stressHosts = clusterState.getHosts(ServerType.Stress)
         val datacenter =
             if (stressHosts.isNotEmpty()) {
-                val datacenterResponse =
-                    remoteOps.executeRemotely(
-                        stressHosts.first(),
-                        "curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | yq .region",
-                    )
-                datacenterResponse.text.trim()
+                ImdsRegion.parse(remoteOps.executeRemotely(stressHosts.first(), ImdsRegion.COMMAND).text)
             } else {
                 ""
             }

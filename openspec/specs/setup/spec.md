@@ -186,3 +186,30 @@ The profile setup workflow MUST let the user choose the SSH transport (`direct` 
 - **WHEN** the user displays the profile
 - **THEN** the SSH transport is shown
 
+### Requirement: Profile setup rejects a blank region and creates the EC2 key pair
+
+Profile setup SHALL reject a blank region before it builds any AWS client, with the error `region must not be blank or empty.`. It SHALL accept any named region without checking it against a list, so a misspelt region is not caught at this step. When the profile has no key pair, setup SHALL create an EC2 key pair named `easy-db-lab-<random UUID>`, tagged `easy_cass_lab=1`, write its private key to `secret.pem` in the profile directory with owner-only permissions (`rw-------`) from the moment the file exists, and save the key name in the profile.
+
+#### Scenario: Blank region is rejected
+
+- **GIVEN** a blank region
+- **WHEN** the user enters it during `easy-db-lab profile setup`
+- **THEN** it is rejected with `region must not be blank or empty.`, before any AWS call
+
+#### Scenario: Valid region creates the key pair
+
+- **GIVEN** a valid region and a profile with no key pair
+- **WHEN** profile setup reaches the key-pair step
+- **THEN** it creates a key pair named `easy-db-lab-<random UUID>` tagged `easy_cass_lab=1`
+- **AND** it writes the private key to `secret.pem` in the profile directory, readable and writable by the owner only, and saves the key name in the profile
+
+### Requirement: Setup classifies credential failures like any command
+
+Profile setup's credential check SHALL classify an AWS failure with the same provider error handler as command failures: credentials errors show the credentials guidance, and permission errors show the IAM policy guidance.
+
+#### Scenario: Setup with expired SSO credentials
+
+- **GIVEN** an SSO-backed profile whose session has expired
+- **WHEN** profile setup validates credentials
+- **THEN** it shows the credentials guidance once, not the permission guidance
+

@@ -4,6 +4,13 @@
 checks that your AWS account can hold the new nodes, so a cluster that does not fit fails at
 once, naming what is short, instead of part-way through the launch.
 
+## Control plane datastore
+
+The K3s server runs on embedded etcd, not the default kine/sqlite. sqlite takes one writer at a
+time, and on a 79-node run its write latency (0.4-1.0 s per write) while the agents registered
+led the apiserver to reject thousands of requests with 429. See
+[Kubernetes](kubernetes.md#datastore) for where etcd's data and snapshots live.
+
 ## Pre-launch capacity checks
 
 The checks count only the instances `up` is about to launch: the node numbers, from 0 up to the

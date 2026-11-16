@@ -24,7 +24,7 @@ I have deep knowledge of:
 
 ## Project Context
 
-K3s cluster deployed on: Control node (K3s server) + Database nodes (K3s agents)
+K3s cluster deployed on: Control node (K3s server, one-member embedded etcd datastore on /mnt/db1) + Database nodes (K3s agents)
 
 Key K8s-related files: !`find /Users/jhaddad/dev/easy-db-lab/src/main/kotlin -path "*/configuration/*" -o -path "*/kubernetes/*" | grep -E "(ManifestBuilder|KubernetesClient)" | head -20`
 

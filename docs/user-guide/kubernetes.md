@@ -218,6 +218,25 @@ kubectl port-forward svc/my-service 8080:80
 - All nodes communicate over the private VPC network
 - External access is via SOCKS5 proxy through the control node
 
+### Datastore
+
+The K3s server keeps cluster state in one-member embedded etcd (not kine/sqlite). It is still a
+single server, not high availability.
+
+- etcd data is on the control node's data disk, at `/mnt/db1/k3s/server/db/etcd`. `up` fails, naming `/mnt/db1`, when the control node has no data disk.
+- The etcd backend quota is 8 GiB, so a large cluster does not hit etcd's `NOSPACE` alarm.
+- K3s takes a scheduled snapshot at 00:00 and 12:00 into `/mnt/db1/k3s/server/db/snapshots` and keeps the five newest, removing older ones. These are K3s's own recovery files for the control plane, not your data: test results, metrics, logs, traces and backups are never stored in etcd or in that directory.
+- The datastore settings are in `/etc/rancher/k3s/config.yaml.d/20-datastore.yaml` on the control node.
+
+To check the datastore from the workspace:
+
+```bash
+kubectl get --raw '/readyz?verbose' | grep etcd     # [+]etcd ok
+kubectl get nodes -l node-role.kubernetes.io/etcd=true
+```
+
+On the control node, `/mnt/db1/k3s/server/db/etcd/member` exists and `/mnt/db1/k3s/server/db/state.db` does not.
+
 ### Storage
 
 - Local path provisioner for persistent volumes

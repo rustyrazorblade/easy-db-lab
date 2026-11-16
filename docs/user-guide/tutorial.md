@@ -103,7 +103,7 @@ This command creates:
 
 - **S3 Storage**: Cluster data stored under a dedicated prefix in the account S3 bucket
 - **VPC**: With subnets and security groups
-- **EC2 Instances**: Cassandra nodes, stress nodes, and a control node (an `m5d.xlarge`; K3s data is stored on its NVMe drive to avoid filling the root volume)
+- **EC2 Instances**: Cassandra nodes, stress nodes, and a control node (an `m5d.xlarge`; K3s data, including the etcd datastore, is stored on its NVMe drive to avoid filling the root volume)
 - **K3s Cluster**: Lightweight Kubernetes across all nodes
 
 ### What Happens During `up`

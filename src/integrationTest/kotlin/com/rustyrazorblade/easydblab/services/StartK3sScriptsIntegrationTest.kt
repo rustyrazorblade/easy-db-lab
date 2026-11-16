@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.testcontainers.containers.GenericContainer
@@ -18,14 +19,16 @@ class StartK3sScriptsIntegrationTest {
         private const val IMAGE = "ubuntu:24.04"
         private const val RESOURCE_DIR = "com/rustyrazorblade/easydblab/services"
         private const val EVICTION_CONFIG = "/etc/rancher/k3s/config.yaml.d/10-kubelet-eviction.yaml"
+        private const val DATASTORE_CONFIG = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
+        private const val CALLS_LOG = "/tmp/calls.log"
         private const val SERVER = "start-k3s-server.sh"
         private const val AGENT = "start-k3s-agent.sh"
 
         /** systemctl reports no installed unit, so the script runs the (stubbed) installer. */
-        private const val SYSTEMCTL_STUB = "#!/bin/sh\nexit 0\n"
+        private const val SYSTEMCTL_STUB = "#!/bin/sh\necho systemctl >> /tmp/calls.log\nexit 0\n"
 
         /** The k3s installer is not run; the script only has to reach it. */
-        private const val INSTALLER_STUB = "#!/bin/sh\nexit 0\n"
+        private const val INSTALLER_STUB = "#!/bin/sh\necho installer >> /tmp/calls.log\nexit 0\n"
     }
 
     /** What a script run left on the node. */
@@ -101,7 +104,7 @@ class StartK3sScriptsIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = [SERVER, AGENT])
+    @ValueSource(strings = [AGENT])
     fun `a host without a data disk keeps its pod logs and the kubelet's default eviction`(script: String) {
         runScript(script, mounted = false) { node ->
             assertThat(node.exitCode).describedAs(node.output).isZero()
@@ -131,6 +134,36 @@ class StartK3sScriptsIntegrationTest {
         runScript(script, mounted = true, runs = 2) { node ->
             assertThat(node.exitCode).describedAs(node.output).isZero()
             assertThat(node.sh("grep -c eviction-hard= $EVICTION_CONFIG")).isEqualTo("1")
+        }
+    }
+
+    @Test
+    fun `the server runs K3s on one-member embedded etcd with a larger quota`() {
+        runScript(SERVER, mounted = true, runs = 2) { node ->
+            assertThat(node.exitCode).describedAs(node.output).isZero()
+            assertThat(node.sh("grep -c '^cluster-init: true$' $DATASTORE_CONFIG")).isEqualTo("1")
+            assertThat(node.sh("grep -c 'quota-backend-bytes=8589934592' $DATASTORE_CONFIG")).isEqualTo("1")
+            assertThat(node.sh("grep -c eviction-hard= $EVICTION_CONFIG")).isEqualTo("1")
+        }
+    }
+
+    @Test
+    fun `the server refuses to start K3s without a data disk and touches nothing`() {
+        runScript(SERVER, mounted = false) { node ->
+            assertThat(node.exitCode).isNotZero()
+            assertThat(node.output).contains("/mnt/db1").containsIgnoringCase("datastore")
+            assertThat(node.sh("test -L /var/lib/rancher/k3s && echo link || echo none")).isEqualTo("none")
+            assertThat(node.sh("test -e $DATASTORE_CONFIG && echo present || echo absent")).isEqualTo("absent")
+            assertThat(node.sh("cat $CALLS_LOG 2>/dev/null || true")).isEmpty()
+        }
+    }
+
+    @Test
+    fun `the agent writes no datastore setting`() {
+        runScript(AGENT, mounted = true) { node ->
+            assertThat(node.exitCode).describedAs(node.output).isZero()
+            assertThat(node.sh("test -e $DATASTORE_CONFIG && echo present || echo absent")).isEqualTo("absent")
+            assertThat(node.sh("grep -rl 'cluster-init\\|etcd-arg' /etc/rancher/k3s 2>/dev/null || true")).isEmpty()
         }
     }
 }

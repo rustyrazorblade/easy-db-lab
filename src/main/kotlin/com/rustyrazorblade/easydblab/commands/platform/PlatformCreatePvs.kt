@@ -53,23 +53,23 @@ class PlatformCreatePvs : PicoBaseCommand() {
         val targetHosts = clusterState.hosts[serverType].orEmpty()
         check(targetHosts.isNotEmpty()) { "No $nodeType nodes found in cluster state." }
         val storage = KitStorage.from(clusterState)
-        check(storage is KitStorage.LocalVolumes) {
-            "Kits on this cluster claim from StorageClass ${storage.storageClassFor(kit)}, which provisions its own " +
-                "volumes; local PVs are only for nodes easy-db-lab owns."
+        val volumes = KitVolumes(kit = kit, nodeType = nodeType, volumeClaimTemplateName = pvcTemplateName, size = size)
+
+        when (storage) {
+            is KitStorage.LocalVolumes -> {
+                eventBus.emit(
+                    Event.Platform.CreatingPvs(kit = kit, nodeType = nodeType, count = targetHosts.size, size = size),
+                )
+                runCatching { kitStorageProvisioner.provision(volumes, storage, clusterState) }
+                    .getOrElse { exception -> error("Failed to create PVs for $kit: ${exception.message}") }
+                eventBus.emit(Event.Platform.PvsCreated(kit = kit, count = targetHosts.size))
+            }
+            // The cluster provisions the volumes; the provisioner only refuses a class that would
+            // delete them, and its refusal already names the class and the fix.
+            is KitStorage.Provisioned -> {
+                kitStorageProvisioner.provision(volumes, storage, clusterState)
+                eventBus.emit(Event.Platform.KitStorageClassChecked(kit = kit, storageClass = storage.storageClass))
+            }
         }
-
-        eventBus.emit(Event.Platform.CreatingPvs(kit = kit, nodeType = nodeType, count = targetHosts.size, size = size))
-
-        runCatching {
-            kitStorageProvisioner.provision(
-                volumes = KitVolumes(kit = kit, nodeType = nodeType, volumeClaimTemplateName = pvcTemplateName, size = size),
-                storage = storage,
-                state = clusterState,
-            )
-        }.getOrElse { exception ->
-            error("Failed to create PVs for $kit: ${exception.message}")
-        }
-
-        eventBus.emit(Event.Platform.PvsCreated(kit = kit, count = targetHosts.size))
     }
 }

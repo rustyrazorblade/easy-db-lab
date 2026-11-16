@@ -5635,6 +5635,20 @@ sealed interface Event {
         ) : Platform {
             override fun toDisplayString(): String = "Created $count PVs for '$kit'"
         }
+
+        /**
+         * `platform create-pvs` on a provisioned kit StorageClass: [storageClass] retains, so
+         * [kit]'s claims may use it; the cluster provisions the volumes and nothing was created.
+         */
+        @Serializable
+        @SerialName("Platform.KitStorageClassChecked")
+        data class KitStorageClassChecked(
+            val kit: String,
+            val storageClass: String,
+        ) : Platform {
+            override fun toDisplayString(): String =
+                "StorageClass $storageClass retains and provisions the volumes for '$kit'; no PVs created"
+        }
     }
 
     // =========================================================================

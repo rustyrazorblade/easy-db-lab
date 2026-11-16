@@ -96,7 +96,7 @@ The command is safe to re-run. If a PV exists with a stale claimRef (the PVC was
 easy-db-lab platform create-pvs --kit <name> --size <Gi> [--node-type db|app] [--pvc-name <name>]
 ```
 
-Creates the kit's class and one PV per node of the specified type. Defaults to `db` nodes; use `--node-type app` for app-node storage. `--pvc-name` sets the claim template the PVs serve, which names them `<pvc-name>-<kit>-N` and their directory `/mnt/db1/<kit>/<pvc-name>` (default: `data`). It is refused on a cluster with a provisioned kit StorageClass, where the cluster makes the volumes.
+Creates the kit's class and one PV per node of the specified type. Defaults to `db` nodes; use `--node-type app` for app-node storage. `--pvc-name` sets the claim template the PVs serve, which names them `<pvc-name>-<kit>-N` and their directory `/mnt/db1/<kit>/<pvc-name>` (default: `data`). On a cluster with a provisioned kit StorageClass the cluster makes the volumes, so it creates nothing: it only checks that the class reclaims with `Retain`, and fails, naming the class, when it would delete the kit's data.
 
 ### `platform info`
 

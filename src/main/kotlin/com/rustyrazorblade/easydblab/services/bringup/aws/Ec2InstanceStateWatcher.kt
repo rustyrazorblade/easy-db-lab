@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.services.aws.InstanceStateReader
 import com.rustyrazorblade.easydblab.services.bringup.InstanceAddresses
 import com.rustyrazorblade.easydblab.services.bringup.InstanceTracker
 import com.rustyrazorblade.easydblab.services.bringup.InstanceWatch
+import com.rustyrazorblade.easydblab.services.bringup.Ticker
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
@@ -55,23 +56,7 @@ class Ec2InstanceStateWatcher(
     }
 
     /** Polls every [interval] on a virtual thread until the returned handle is closed. */
-    fun start(): AutoCloseable {
-        val poller =
-            Thread.ofVirtual().name("instance-state-watcher").start {
-                while (!Thread.currentThread().isInterrupted) {
-                    poll()
-                    try {
-                        Thread.sleep(interval)
-                    } catch (_: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                    }
-                }
-            }
-        return AutoCloseable {
-            poller.interrupt()
-            poller.join()
-        }
-    }
+    override fun start(): AutoCloseable = Ticker.every("instance-state-watcher", interval) { poll() }
 
     /** [read], or null when it failed; an interrupt is not a failed read and propagates. */
     private fun <T> readOrSkip(

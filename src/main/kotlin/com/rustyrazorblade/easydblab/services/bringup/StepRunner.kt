@@ -148,14 +148,15 @@ class StepRunner(
             worker: Thread,
         ): AttemptResult<T> {
             val ended = instanceEnded.getNow(null)
+            // A step that failed while its instance ended failed because it ended (a wait on the
+            // instance is failed by its end), so the end decides; one that succeeded succeeded.
             return when {
-                !outcome.isDone && ended != null -> {
+                outcome.isDone && !outcome.isCompletedExceptionally -> AttemptResult.Done(outcome.resultNow())
+                ended != null -> {
                     worker.interrupt()
                     AttemptResult.Ended(ended)
                 }
-                outcome.isCompletedExceptionally ->
-                    outcome.exceptionNow().let { AttemptResult.Error(it.message ?: it::class.java.simpleName) }
-                else -> AttemptResult.Done(outcome.resultNow())
+                else -> outcome.exceptionNow().let { AttemptResult.Error(it.message ?: it::class.java.simpleName) }
             }
         }
     }

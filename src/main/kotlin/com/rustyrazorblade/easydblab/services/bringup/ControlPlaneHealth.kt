@@ -13,8 +13,8 @@ import java.time.Instant
  * acts on the [Transition] each one returns. It is used from one thread only.
  */
 class ControlPlaneHealth(
-    private val latencyLimitMs: Long = Constants.Scale.HEALTH_LATENCY_LIMIT_MS,
-    private val rejectionLimit: Long = Constants.Scale.HEALTH_REJECTION_LIMIT,
+    val latencyLimitMs: Long = Constants.Scale.HEALTH_LATENCY_LIMIT_MS,
+    val rejectionLimit: Long = Constants.Scale.HEALTH_REJECTION_LIMIT,
     private val recoverySamples: Int = Constants.Scale.HEALTH_RECOVERY_SAMPLES,
     private val unhealthyTimeout: Duration = Duration.ofSeconds(Constants.Scale.HEALTH_UNHEALTHY_TIMEOUT_SECONDS),
 ) {

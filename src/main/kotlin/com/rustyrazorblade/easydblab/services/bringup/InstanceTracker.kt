@@ -15,6 +15,9 @@ interface InstanceTracker {
 
     /** Stops watching [instanceId]: the pipeline is done with it, or replaced it. */
     fun unwatch(instanceId: String)
+
+    /** Starts tracking in the background until the returned handle is closed. */
+    fun start(): AutoCloseable
 }
 
 /** The addresses a running instance was given. */
@@ -45,12 +48,12 @@ class InstanceWatch(
         statusOk.complete(Unit)
     }
 
-    /** The instance ended, in the provider's [state]. */
+    /** The instance ended, in the provider's [state]. [ended] completes first, so a wait failed by the end sees it. */
     fun end(state: String) {
+        ended.complete(state)
         val failure = IllegalStateException("instance $instanceId ended: $state")
         running.completeExceptionally(failure)
         statusOk.completeExceptionally(failure)
-        ended.complete(state)
     }
 
     /** Whether the instance runs and has not passed its health checks yet. */

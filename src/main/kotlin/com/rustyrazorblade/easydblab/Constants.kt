@@ -203,6 +203,24 @@ object Constants {
         /** One attempt of a node's join step, from the agent configuration until its Node registers. */
         const val NODE_REGISTRATION_TIMEOUT_SECONDS = 300L
 
+        /** How long a launched instance has to run with a public IP. */
+        const val INSTANCE_RUNNING_TIMEOUT_SECONDS = 600L
+
+        /** How long a running instance has to pass the provider's own health checks. */
+        const val INSTANCE_STATUS_TIMEOUT_SECONDS = 600L
+
+        /** How often a node's SSH readiness is probed while it boots. */
+        const val SSH_PROBE_INTERVAL_SECONDS = 5L
+
+        /** One attempt of a node's image check. */
+        const val IMAGE_CHECK_TIMEOUT_SECONDS = 120L
+
+        /** One attempt of a control node step: the tunnel, the registry certificate, the K3s server, the CNI. */
+        const val CONTROL_STEP_TIMEOUT_SECONDS = 900L
+
+        /** Attempts of a control node step; the control node is never replaced. */
+        const val CONTROL_STEP_ATTEMPTS = 2
+
         /** How long a registered node has to become Ready: its Cilium agent and image pulls. */
         const val NODE_READY_TIMEOUT_SECONDS = 600L
 

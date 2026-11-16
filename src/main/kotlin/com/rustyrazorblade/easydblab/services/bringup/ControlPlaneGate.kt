@@ -4,8 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import io.github.resilience4j.retry.Retry
-import io.github.resilience4j.retry.RetryConfig
 import java.time.Clock
 import java.time.Duration
 
@@ -64,15 +62,7 @@ class ControlPlaneGate(
     /** Waits for the gate to open; throws [ControlPlaneGateTimedOutException] past the timeout. */
     fun await() {
         val began = clock.instant()
-        val deadline = began.plus(timeout)
-        val config =
-            RetryConfig
-                .custom<Look>()
-                .maxAttempts(Int.MAX_VALUE)
-                .intervalFunction { _ -> interval.toMillis() }
-                .retryOnResult { !it.open && clock.instant().isBefore(deadline) }
-                .build()
-        val last = Retry.decorateSupplier(Retry.of("control-plane-gate", config), ::look).get()
+        val last = pollUntil("control-plane-gate", interval, timeout, clock, done = { it.open }, look = ::look)
         val waited = Duration.between(began, clock.instant()).toSeconds()
         if (!last.open) {
             eventBus.emit(Event.K3s.ControlPlaneGateTimedOut(waited, last.falseConditions))

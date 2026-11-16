@@ -5,7 +5,6 @@ import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -20,24 +19,13 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class NodeWatcher private constructor(
     private val client: KubernetesClient,
-) : AutoCloseable {
+) : NodeTracker,
+    AutoCloseable {
     private val watches = ConcurrentHashMap<String, NodeWatch>()
     private val informer: SharedIndexInformer<Node> = client.nodes().inform(Handler(), RESYNC_MS)
 
-    /** What one pipeline waits on for its node. */
-    class NodeWatch internal constructor(
-        val alias: String,
-        val privateIp: String,
-    ) {
-        val registered = CompletableFuture<Unit>()
-        val ready = CompletableFuture<Unit>()
-    }
-
-    /**
-     * Watches the node named [alias] at [privateIp], replacing any earlier watch of [alias]. A Node
-     * already in the informer's cache counts at once.
-     */
-    fun watch(
+    /** A Node already in the informer's cache counts at once. */
+    override fun watch(
         alias: String,
         privateIp: String,
     ): NodeWatch {
@@ -47,8 +35,7 @@ class NodeWatcher private constructor(
         return watch
     }
 
-    /** Stops watching [alias]. */
-    fun unwatch(alias: String) {
+    override fun unwatch(alias: String) {
         watches.remove(alias)
     }
 

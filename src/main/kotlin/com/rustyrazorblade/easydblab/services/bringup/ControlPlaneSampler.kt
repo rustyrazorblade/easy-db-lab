@@ -18,11 +18,12 @@ import java.util.concurrent.TimeUnit
  */
 class ControlPlaneSampler private constructor(
     private val client: KubernetesClient,
-) : AutoCloseable {
+) : HealthSampler,
+    AutoCloseable {
     private var lastRejected: Double? = null
 
     /** One sample; a call that fails or that the API server refuses is [ControlPlaneHealth.Sample.Unreachable]. */
-    fun sample(): ControlPlaneHealth.Sample =
+    override fun sample(): ControlPlaneHealth.Sample =
         try {
             val began = System.nanoTime()
             client.nodes().list(ListOptionsBuilder().withLimit(1L).build())

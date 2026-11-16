@@ -235,6 +235,25 @@ Integration tier (K3s TestContainers, since `K8sService` is never mocked for clu
 
 The real AWS verification is in tasks section 10.
 
+### D12. How a second provider fits
+
+easy-db-lab is moving to be cloud-provider agnostic, and this change does not build a second provider.  It keeps the bring-up coordinator free of provider types, so one can be added without touching `NodeBringUp`, `NodePipeline` or the policies.  No class in `services/bringup/` imports `providers.aws` or `services.aws`; the EC2 adapters live in `services/bringup/aws/`.
+
+The coordinator sees only these ports:
+
+- **`InstanceFleet`:** terminate one instance and wait until it is gone, check that one replacement may launch (capacity and permission), and launch one instance under an alias in that alias's zone.  It takes and returns provider-neutral types: a string instance ID and a `ClusterHost`.  EC2: `Ec2InstanceFleet`.
+- **`InstanceTracker`:** for each instance, when it runs with an address, when the provider's own health checks pass, and when it ends on its own.  EC2: `Ec2InstanceStateWatcher`, over `DescribeInstances` and `DescribeInstanceStatus`.
+- **`NodeSteps`:** the per-node work after the instance is up: SSH, setup, image check, registry TLS, join, and the control node's steps.  The K3s and Cilium specifics are behind it.
+- **`ControlPlaneReader`:** the gate's conditions and the health samples.  The K3s and Cilium CRD specifics are behind it.  Fabric8: `Fabric8ControlPlaneReader`.
+- **`NodeCleanup`:** removes a replaced node's cluster objects (the K3s Node and its `<alias>.node-password.k3s` secret).
+
+The shared pre-steps (preflight, bucket, discovery, capacity, network, launch permission, the batched launch) stay outside the coordinator, behind the existing provisioning service.
+
+What a second adapter implements:
+
+- **GCP or Azure, with K3s:** `InstanceFleet` and `InstanceTracker` on that provider's compute API, plus its own pre-steps.  `NodeSteps`, `ControlPlaneReader` and `NodeCleanup` are reused unchanged.
+- **EKS, or any existing cluster:** no machines are launched, so `InstanceTracker` completes `running` and `statusOk` at once and never ends an instance, and `InstanceFleet` refuses replacement, so a failed node fails `up`.  `NodeSteps` drops the K3s server start and join and waits for the provider's node instead.  `ControlPlaneReader` checks only what that cluster needs, and `NodeCleanup` does nothing.
+
 ## Risks / Trade-offs
 
 - [The join limit makes a 1,000-node join take about 16 minutes] → The limit is a constant, and the later 80-node run (after #1157) records the per-node registration time.  Raise it once #1157 lowers write latency.

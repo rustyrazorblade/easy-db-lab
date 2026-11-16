@@ -78,7 +78,7 @@ sealed interface StepOutcome<out T> {
         val replaceable: Boolean,
     ) : StepOutcome<Nothing>
 
-    /** EC2 ended the node's instance during the step; [state] is what it reported. */
+    /** The provider ended the node's instance during the step; [state] is what it reported. */
     data class InstanceEnded(
         val state: String,
     ) : StepOutcome<Nothing>

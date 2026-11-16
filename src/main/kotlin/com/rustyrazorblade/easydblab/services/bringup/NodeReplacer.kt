@@ -4,31 +4,34 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
-import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * The EC2 side of replacing a node, as [NodeReplacer] needs it. The AWS implementation is
- * [Ec2InstanceFleet]; the tests use a fake that records the order of the calls.
+ * The cloud provider side of replacing a node, as [NodeReplacer] needs it: a port, so the
+ * replacement logic holds no provider type. The EC2 adapter is
+ * [com.rustyrazorblade.easydblab.services.bringup.aws.Ec2InstanceFleet]; the tests use a fake that
+ * records the order of the calls.
  */
 interface InstanceFleet {
-    /** Terminates [instanceId] and returns once EC2 no longer reports it pending or running. */
-    fun terminate(instanceId: InstanceId)
+    /** Terminates [instanceId] and returns once the provider no longer reports it starting or running. */
+    fun terminate(instanceId: String)
 
-    /** Fails when the account cannot hold, or AWS would refuse, one more [serverType] instance at [ordinal]. */
+    /** Fails when the account cannot hold, or the provider would refuse, one more [serverType] instance at [ordinal]. */
     fun verifyReplacement(
         serverType: ServerType,
         ordinal: Int,
     )
 
-    /** Launches the one instance for [serverType] at [ordinal], in the ordinal's subnet, and names it. */
+    /**
+     * Launches the one instance for [serverType] at [ordinal], in the ordinal's zone, names it,
+     * and returns it as the host it becomes under the ordinal's alias.
+     */
     fun launch(
         serverType: ServerType,
         ordinal: Int,
-    ): CreatedInstance
+    ): ClusterHost
 }
 
 /**
@@ -113,25 +116,15 @@ class NodeReplacer(
             fleet.terminate(old.instanceId)
             if (registered) cleanup(old.alias)
             fleet.verifyReplacement(serverType, ordinal)
-            val created = fleet.launch(serverType, ordinal)
-            val host = toClusterHost(created)
+            val host = fleet.launch(serverType, ordinal)
             state.mergeHosts(serverType, listOf(host))
-            eventBus.emit(Event.Provision.NodeReplaced(old.alias, old.instanceId, created.instanceId, created.privateIp))
+            eventBus.emit(Event.Provision.NodeReplaced(old.alias, old.instanceId, host.instanceId, host.privateIp))
             Outcome.Replaced(host, replacement)
         } catch (e: RuntimeException) {
             log.warn(e) { "Replacing ${old.alias} failed" }
             Outcome.NotReplaced("the replacement failed: ${e.message}")
         }
     }
-
-    private fun toClusterHost(instance: CreatedInstance) =
-        ClusterHost(
-            publicIp = instance.publicIp,
-            privateIp = instance.privateIp,
-            alias = instance.alias,
-            availabilityZone = instance.availabilityZone,
-            instanceId = instance.instanceId,
-        )
 
     private companion object {
         val log = KotlinLogging.logger {}

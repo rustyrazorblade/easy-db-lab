@@ -1,13 +1,13 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
-import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import com.rustyrazorblade.easydblab.services.aws.CapacityPlan
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
+import com.rustyrazorblade.easydblab.services.bringup.InstanceFleet
 import java.time.Duration
 
 /**
@@ -22,7 +22,7 @@ class Ec2InstanceFleet(
     private val plan: CapacityPlan,
     private val terminateTimeout: Duration = Duration.ofSeconds(Constants.Scale.REPLACEMENT_TERMINATE_TIMEOUT_SECONDS),
 ) : InstanceFleet {
-    override fun terminate(instanceId: InstanceId) = ec2.terminateAndWait(instanceId, terminateTimeout)
+    override fun terminate(instanceId: String) = ec2.terminateAndWait(instanceId, terminateTimeout)
 
     override fun verifyReplacement(
         serverType: ServerType,
@@ -32,7 +32,7 @@ class Ec2InstanceFleet(
     override fun launch(
         serverType: ServerType,
         ordinal: Int,
-    ): CreatedInstance = ec2.launchOne(launchOf(serverType), ordinal)
+    ): ClusterHost = ec2.launchOne(launchOf(serverType), ordinal).toClusterHost()
 
     private fun launchOf(serverType: ServerType): InstanceCreationConfig =
         requireNotNull(launches[serverType]) { "No launch configuration for ${serverType.serverType} nodes" }

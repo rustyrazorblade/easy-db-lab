@@ -31,7 +31,7 @@ class StepRunner(
 ) {
     /**
      * Runs [action] for [alias]'s [step] until it succeeds, its attempts run out, or [instanceEnded]
-     * completes with the state EC2 reported. [action] receives the attempt number, from 1.
+     * completes with the state the provider reported. [action] receives the attempt number, from 1.
      */
     fun <T> run(
         alias: String,

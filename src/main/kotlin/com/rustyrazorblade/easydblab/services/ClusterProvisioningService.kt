@@ -431,23 +431,17 @@ class DefaultClusterProvisioningService(
     ) {
         val config = spec.creationConfig(infraContext)
 
-        val createdInstances = ec2InstanceService.createInstances(config) { launched -> report(launched.map(::toClusterHost)) }
+        val createdInstances =
+            ec2InstanceService.createInstances(
+                config,
+            ) { launched -> report(launched.map(CreatedInstance::toClusterHost)) }
 
         val instanceIds = createdInstances.map { it.instanceId }
         ec2InstanceService.waitForInstancesRunning(instanceIds)
         ec2InstanceService.waitForInstanceStatusOk(instanceIds)
 
-        report(ec2InstanceService.updateInstanceIps(createdInstances).map(::toClusterHost))
+        report(ec2InstanceService.updateInstanceIps(createdInstances).map(CreatedInstance::toClusterHost))
     }
-
-    private fun toClusterHost(instance: CreatedInstance): ClusterHost =
-        ClusterHost(
-            publicIp = instance.publicIp,
-            privateIp = instance.privateIp,
-            alias = instance.alias,
-            availabilityZone = instance.availabilityZone,
-            instanceId = instance.instanceId,
-        )
 
     private fun createOpenSearchDomain(
         initConfig: InitConfig,

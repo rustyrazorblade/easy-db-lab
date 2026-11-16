@@ -1,13 +1,12 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
-import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * EC2 for the bring-up tests (design D11): every call is recorded in order in [calls], a call
+ * The cloud provider for the bring-up tests (design D11): every call is recorded in order in [calls], a call
  * named in [failing] throws, and [maxInFlight] is the most calls that ever ran at once. Launched
  * instances get IDs `i-<alias>-<n>`, one IP per launch, in the zone the ordinal lands in.
  */
@@ -39,7 +38,7 @@ class FakeInstanceFleet(
         }
     }
 
-    override fun terminate(instanceId: InstanceId) = record("terminate $instanceId") { }
+    override fun terminate(instanceId: String) = record("terminate $instanceId") { }
 
     override fun verifyReplacement(
         serverType: ServerType,
@@ -49,17 +48,16 @@ class FakeInstanceFleet(
     override fun launch(
         serverType: ServerType,
         ordinal: Int,
-    ): CreatedInstance =
+    ): ClusterHost =
         record("launch ${serverType.serverType}$ordinal") {
             val n = launched.incrementAndGet()
             val alias = "${serverType.serverType}$ordinal"
-            CreatedInstance(
-                instanceId = "i-$alias-$n",
+            ClusterHost(
                 publicIp = "54.0.1.$n",
                 privateIp = "10.0.1.$n",
                 alias = alias,
                 availabilityZone = zones[ordinal % zones.size],
-                serverType = serverType,
+                instanceId = "i-$alias-$n",
             )
         }
 }

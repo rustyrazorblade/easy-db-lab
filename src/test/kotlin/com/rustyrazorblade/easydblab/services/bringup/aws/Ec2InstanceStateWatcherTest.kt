@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.aws
 
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
@@ -10,7 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
-class InstanceStateWatcherTest {
+class Ec2InstanceStateWatcherTest {
     /** EC2 as a map the test edits: each instance's state and public IP, and who passed status checks. */
     private class FakeEc2(
         override val batchSize: Int = 100,
@@ -41,7 +41,7 @@ class InstanceStateWatcherTest {
     }
 
     private val ec2 = FakeEc2()
-    private val watcher = InstanceStateWatcher(ec2, Duration.ZERO)
+    private val watcher = Ec2InstanceStateWatcher(ec2, Duration.ZERO)
 
     @Test
     fun `250 instances are read in requests of at most 100, one of each read per batch`() {
@@ -127,7 +127,7 @@ class InstanceStateWatcherTest {
         ec2.states.remove("i-1")
         watcher.poll()
 
-        assertThat(watch.ended.get()).isEqualTo(InstanceStateWatcher.DROPPED)
+        assertThat(watch.ended.get()).isEqualTo(Ec2InstanceStateWatcher.DROPPED)
     }
 
     @Test
@@ -171,7 +171,7 @@ class InstanceStateWatcherTest {
                     return ec2.describeStates(ids)
                 }
             }
-        val watcher = InstanceStateWatcher(failing, Duration.ZERO)
+        val watcher = Ec2InstanceStateWatcher(failing, Duration.ZERO)
         val watch = watcher.watch("i-1")
         ec2.running("i-1")
 
@@ -190,7 +190,7 @@ class InstanceStateWatcherTest {
         ec2.running("i-1")
 
         watcher.start().use {
-            assertThat(watch.running.get(5, TimeUnit.SECONDS).instanceId).isEqualTo("i-1")
+            assertThat(watch.running.get(5, TimeUnit.SECONDS).publicIp).isEqualTo("1.2.3.4")
         }
     }
 }

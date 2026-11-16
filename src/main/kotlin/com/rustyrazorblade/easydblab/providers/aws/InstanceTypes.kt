@@ -71,7 +71,17 @@ data class CreatedInstance(
     val alias: String,
     val availabilityZone: String,
     val serverType: ServerType,
-)
+) {
+    /** This instance as a cluster state entry. */
+    fun toClusterHost(): ClusterHost =
+        ClusterHost(
+            publicIp = publicIp,
+            privateIp = privateIp,
+            alias = alias,
+            availabilityZone = availabilityZone,
+            instanceId = instanceId,
+        )
+}
 
 /**
  * Details about an existing EC2 instance.

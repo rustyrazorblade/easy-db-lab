@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
@@ -180,7 +181,7 @@ class FlushStepFailed(
     val backends: Map<String, BackendState>,
     cause: Throwable,
     val unreached: Boolean = false,
-) : RuntimeException("${step.description} failed: ${cause.message ?: cause}", cause) {
+) : RuntimeException("${step.description} failed: ${cause.reason()}", cause) {
     /** The signal that is not saved. */
     val signal: TailSignal get() = step.signal
 }

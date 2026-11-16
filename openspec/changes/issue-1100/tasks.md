@@ -11,8 +11,8 @@
 
 ## 3. Retain check
 
-- [ ] 3.1 Test first: `StorageClassRetainCheck.require` refuses `Delete`, no policy and a missing class, each message naming the class and the fix; accepts `Retain`. Existing `RetainedClaimCheck` tests still pass through delegation.
-- [ ] 3.2 Generalize `RetainedClaimCheck` into `StorageClassRetainCheck(storageClass, holds)`.
+- [x] 3.1 Test first: `StorageClassRetainCheck.require` refuses `Delete`, no policy and a missing class, each message naming the class and the fix; accepts `Retain`. Existing `RetainedClaimCheck` tests still pass through delegation.
+- [x] 3.2 Generalize `RetainedClaimCheck` into `StorageClassRetainCheck(storageClass, holds)`.
 - [ ] 3.3 `KitStorageResolver` at `init` (kubeconfig path, #1082 hook) and `up` (when `--kit-storage-class` given): flag, else cluster default, else fail naming `--kit-storage-class`; emit `Event.Setup.KitStorageClassRefused` and fail. Add `K8sService.defaultStorageClass()`.
 
 ## 4. kit-storage step

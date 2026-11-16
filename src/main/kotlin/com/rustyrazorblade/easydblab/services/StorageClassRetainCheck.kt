@@ -1,0 +1,67 @@
+package com.rustyrazorblade.easydblab.services
+
+/**
+ * What a claim on a checked StorageClass holds, for the refusal: what a `Delete` class would lose,
+ * and how the operator fixes it.
+ */
+enum class RetainedData {
+    /** A kit's data, on the class every kit claim names (`init --kit-storage-class`). */
+    KitData {
+        override fun refusal(
+            storageClass: String,
+            problem: String,
+        ) = "StorageClass $storageClass $problem. Pass init --kit-storage-class naming a StorageClass with " +
+            "reclaimPolicy: Retain, or create one (a copy of $storageClass with reclaimPolicy: Retain)."
+
+        override val loss = "kit data when a kit's claim is deleted"
+    },
+
+    /** An observability backend's state, on its `<workload>-data` claim. */
+    BackendState {
+        override fun refusal(
+            storageClass: String,
+            problem: String,
+        ) = "StorageClass $storageClass for the backends' state $problem. Use a StorageClass with reclaimPolicy Retain."
+
+        override val loss = "the backends' state with its claim"
+    },
+    ;
+
+    /** The refusal for [storageClass], whose [problem] is that it is missing or deletes. */
+    abstract fun refusal(
+        storageClass: String,
+        problem: String,
+    ): String
+
+    /** What a deleting class would delete. */
+    abstract val loss: String
+}
+
+/**
+ * Refuses a StorageClass that would delete what its claims hold.
+ *
+ * A class whose `reclaimPolicy` is `Delete` (the Kubernetes default) removes the volume once its
+ * claim goes away. For a kit's data or a backend's state that is automatic deletion of the owner's
+ * data, so callers read the class before anything claims from it and fail unless it reclaims with
+ * `Retain`. A class that does not exist is refused the same way, since a claim on it never binds.
+ */
+class StorageClassRetainCheck(
+    private val k8sService: K8sService,
+) {
+    /** Fails unless [storageClass] exists and reclaims with `Retain`; [holds] words the refusal. */
+    fun require(
+        storageClass: String,
+        holds: RetainedData,
+    ) {
+        val policy =
+            k8sService.storageClassReclaimPolicy(storageClass).getOrElse { exception ->
+                error("Could not read StorageClass $storageClass: ${exception.message}")
+            }
+        checkNotNull(policy) { holds.refusal(storageClass, "does not exist") }
+        check(policy == RETAIN) { holds.refusal(storageClass, "reclaims with $policy, which would delete ${holds.loss}") }
+    }
+
+    private companion object {
+        const val RETAIN = "Retain"
+    }
+}

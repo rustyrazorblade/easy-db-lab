@@ -17,14 +17,14 @@
 
 ## 3. Shared watchers
 
-- [ ] 3.1 `InstanceStateWatcher`: one DescribeInstances and one DescribeInstanceStatus per poll for every instance it watches, at most 100 IDs a request, through `EC2InstanceService`; completes per-instance futures for running with a public IP and for status OK; fails them when an instance ends; keeps watching instances past those steps.  Unit test with a fake EC2 layer: batching, ending in any step, and a dropped instance
-- [ ] 3.2 `NodeWatcher`: one fabric8 informer on Node objects through `K8sClientProvider` (the existing per-client proxy; no JVM proxy properties); per-alias registered and Ready futures.  Integration test on K3s TestContainers: a node that registers completes registered, Ready completes on its condition
-- [ ] 3.3 `ControlPlaneSampler`: `get nodes` with `limit=1` latency, and the sum of `apiserver_flowcontrol_rejected_requests_total` from `/metrics`.  Integration test on K3s TestContainers reads both; unit test for the metric text parse
+- [x] 3.1 `InstanceStateWatcher`: one DescribeInstances and one DescribeInstanceStatus per poll for every instance it watches, at most 100 IDs a request, through `EC2InstanceService`; completes per-instance futures for running with a public IP and for status OK; fails them when an instance ends; keeps watching instances past those steps.  Unit test with a fake EC2 layer: batching, ending in any step, and a dropped instance
+- [x] 3.2 `NodeWatcher`: one fabric8 informer on Node objects through `K8sClientProvider` (the existing per-client proxy; no JVM proxy properties); per-alias registered and Ready futures.  Integration test on K3s TestContainers: a node that registers completes registered, Ready completes on its condition
+- [x] 3.3 `ControlPlaneSampler`: `get nodes` with `limit=1` latency, and the sum of `apiserver_flowcontrol_rejected_requests_total` from `/metrics`.  Integration test on K3s TestContainers reads both; unit test for the metric text parse
 
 ## 4. Control-plane gate
 
-- [ ] 4.1 `ControlPlaneGate`: polls API server readiness, control node registered, and under Cilium the operator Deployment's ready replicas and every `REQUIRED_CRDS` CRD `Established`; opens once; times out naming the false conditions; emits `Cilium.OperatorReady` and `K3s.ControlPlaneGateOpen`.  Unit tests with a fake reader: opens only when all hold, Flannel needs no Cilium conditions, timeout names the false ones
-- [ ] 4.2 Integration test on K3s TestContainers: a CRD that exists but is not yet `Established` does not count; once established it does
+- [x] 4.1 `ControlPlaneGate`: polls API server readiness, control node registered, and under Cilium the operator Deployment's ready replicas and every `REQUIRED_CRDS` CRD `Established`; opens once; times out naming the false conditions; emits `Cilium.OperatorReady` and `K3s.ControlPlaneGateOpen`.  Unit tests with a fake reader: opens only when all hold, Flannel needs no Cilium conditions, timeout names the false ones
+- [x] 4.2 Integration test on K3s TestContainers: a CRD that exists but is not yet `Established` does not count; once established it does
 
 ## 5. Node steps as services
 

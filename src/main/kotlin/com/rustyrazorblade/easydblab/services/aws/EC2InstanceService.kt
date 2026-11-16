@@ -25,6 +25,7 @@ import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest
 import software.amazon.awssdk.services.ec2.model.Filter
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
+import software.amazon.awssdk.services.ec2.model.SummaryStatus
 import software.amazon.awssdk.services.ec2.waiters.Ec2Waiter
 import java.time.Duration
 import java.time.Instant
@@ -57,7 +58,7 @@ class EC2InstanceService(
     private val region: String,
     private val pollInterval: Duration = Duration.ofMillis(POLL_INTERVAL_MS),
     private val throttleBackoff: Duration = Duration.ofMillis(Constants.Scale.THROTTLE_BACKOFF_BASE_MS),
-) {
+) : InstanceStateReader {
     companion object {
         private val log = KotlinLogging.logger {}
 
@@ -77,7 +78,7 @@ class EC2InstanceService(
         const val INSTANCE_TYPES_PAGE_SIZE = 100
 
         /** States an instance never leaves for running: EC2 is ending it, or has ended it. */
-        private val ENDED_STATES =
+        val ENDED_STATES =
             setOf(
                 InstanceStateName.SHUTTING_DOWN,
                 InstanceStateName.TERMINATED,
@@ -361,6 +362,37 @@ class EC2InstanceService(
         instanceIds.chunked(Constants.Scale.DESCRIBE_INSTANCES_BATCH).flatMap { batch ->
             withEc2InstanceRetry("describe-instances") { describeBatch(batch) }
         }
+
+    override val batchSize: Int = minOf(Constants.Scale.DESCRIBE_INSTANCES_BATCH, Constants.Scale.DESCRIBE_INSTANCE_STATUS_BATCH)
+
+    override fun describeStates(ids: List<InstanceId>): List<InstanceDetails> {
+        require(ids.size <= batchSize) { "at most $batchSize instance IDs a request, got ${ids.size}" }
+        return withEc2ThrottleRetry("describe-instance-states", throttleBackoff) { describeTolerantly(ids) }
+    }
+
+    override fun passedStatusChecks(ids: List<InstanceId>): Set<InstanceId> {
+        require(ids.size <= batchSize) { "at most $batchSize instance IDs a request, got ${ids.size}" }
+        val request =
+            DescribeInstanceStatusRequest
+                .builder()
+                .instanceIds(ids)
+                .build()
+        // A not-yet-visible ID fails the whole request; nothing in it has passed yet, so the next poll asks again.
+        val statuses =
+            withEc2ThrottleRetry("describe-instance-status", throttleBackoff) {
+                try {
+                    ec2Client.describeInstanceStatus(request).instanceStatuses()
+                } catch (e: AwsServiceException) {
+                    if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_INSTANCE_NOT_FOUND) throw e
+                    emptyList()
+                }
+            }
+        return statuses
+            .filter {
+                it.systemStatus()?.status() == SummaryStatus.OK && it.instanceStatus()?.status() == SummaryStatus.OK
+            }.map { it.instanceId() }
+            .toSet()
+    }
 
     private fun describeBatch(instanceIds: List<InstanceId>): List<InstanceDetails> {
         val request =

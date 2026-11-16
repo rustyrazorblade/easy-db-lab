@@ -21,7 +21,7 @@
 ## 4. Specs and docs
 
 - [ ] 4.1 `docs/user-guide/kubernetes.md` (Architecture): the server's datastore is one-member embedded etcd on `/mnt/db1/k3s/server/db/etcd`; scheduled snapshots twice a day into `/mnt/db1/k3s/server/db/snapshots`, five kept, removed by K3s, K3s's files and not owner data; how to check (`/readyz?verbose`, the `etcd` node label)
-- [ ] 4.2 `docs/user-guide/large-clusters.md`: the datastore is etcd and why (#1134's sqlite write latency); the 80-node numbers once task 6 has them
+- [ ] 4.2 `docs/user-guide/large-clusters.md`: the datastore is etcd and why (#1134's sqlite write latency); that the 80-node comparison is a later run, after #1157 and #1158 are merged
 - [ ] 4.3 `docs/user-guide/tutorial.md` line on the control node's data disk: add the K3s datastore
 - [ ] 4.4 `.claude/skills/k8-expert/SKILL.md` and `README.md`: name etcd as the server's datastore where they describe the K3s server
 - [ ] 4.5 Confirm the `cluster-lifecycle` and `instance-storage-validation` deltas still match the code and the tests, and `openspec validate issue-1157` passes
@@ -30,19 +30,12 @@
 
 - [ ] 5.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (in a subagent); every test passes and detekt reports nothing new
 
-## 6. Real AWS: 80 nodes
+## 6. Real AWS: small cluster
 
-- [ ] 6.1 `./gradlew installDist`; record the cluster name and workspace in the state file before `up`
-- [ ] 6.2 `init` with 1 control (m5d.xlarge), 76 db (i4i.xlarge), 2 app (c6id.4xlarge), the default profile, `--tag embark_offhours=off`, then `up` from `main` plus this change only; time `up`, and the first agent start to the last node Ready
-- [ ] 6.3 During the join and after `up`: `kubectl get --raw /metrics` from the workstation, recording `etcd_request_duration_seconds` p50/p99 for `create` `nodes` and `update` `leases`, `apiserver_flowcontrol_rejected_requests_total` by priority level, and the `node-high` request wait; cilium-operator restarts; whether a manual step was needed; the k3s process RSS on control0
-- [ ] 6.4 Check the three facts of design D5 on control0, and `df` of `/` and `/mnt/db1`
-- [ ] 6.5 Put the comparison with #1134 (table: each metric, before and after) in the PR and as a comment on #1134; `down --auto-approve` and confirm the instances and VPC are gone
-
-## 7. Real AWS: small-cluster regression
-
-- [ ] 7.1 A 3-db, 1-app cluster with the tag `embark_offhours=off`: run the D5 checks
-- [ ] 7.2 Install, start and stop a kit; open the system overview dashboard and confirm metrics, logs and traces from every node
-- [ ] 7.3 Back up the cluster state and restore it into a new workspace; confirm `kubectl get nodes` works from the restored workspace
-- [ ] 7.4 `sudo systemctl restart k3s` on control0; every node returns to Ready and the kit's objects are intact
-- [ ] 7.5 On control0, `k3s etcd-snapshot list` and `ls /mnt/db1/k3s/server/db/snapshots`: the directory is on `/mnt/db1`, and if the run spans 00:00 or 12:00 a scheduled `etcd-snapshot-*` file is there (no on-demand snapshot is taken)
-- [ ] 7.6 `down --auto-approve`: the flush completes and the cluster is torn down; record the output in the PR
+- [ ] 6.1 `./gradlew installDist`; one cluster of 2 db (c6id.xlarge), 1 app (c6id.xlarge) and the default control, no Spark, no OpenSearch, default profile, `--tag embark_offhours=off`; record the cluster name and workspace in the state file before `up`
+- [ ] 6.2 The D5 checks on control0: the etcd node label, `server/db/etcd/member` present, no `state.db`, `/readyz?verbose` lists `[+]etcd ok`; etcd is on `/mnt/db1`, not `/`
+- [ ] 6.3 `sudo systemctl restart k3s` on control0; every node returns to Ready
+- [ ] 6.4 The snapshot directory `/mnt/db1/k3s/server/db/snapshots` exists on `/mnt/db1` (no on-demand snapshot is taken)
+- [ ] 6.5 Install, start and stop two kits (for example clickhouse and postgres); open the Grafana dashboards and confirm metrics from every node; `status`
+- [ ] 6.6 Back up the cluster state and restore it into a new workspace; `kubectl get nodes` works from it
+- [ ] 6.7 `down --dry-run`, then `down --auto-approve`: the flush completes, 0 instances remain and the VPC is gone; record the output in the PR

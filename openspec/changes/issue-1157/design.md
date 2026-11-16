@@ -26,7 +26,7 @@ The integration tier boots K3s from `rancher/k3s:v1.35.1-k3s1` (`SharedK3s`), th
 - etcd data is on the control node's data disk.
 - Nothing in the cluster deletes owner data, and nothing K3s writes for etcd can fill the data disk.
 - Every existing command works as before.
-- An 80-node run measures the effect against #1134.
+- A small real cluster shows etcd in use, and the existing commands working.
 
 **Non-Goals:**
 - More than one server, or an external datastore.
@@ -109,18 +109,12 @@ etcd listens on 2379 (clients) and 2380 (peers) on the control node's address an
 
 ### D8. Measuring the effect
 
-The cluster runs no scrape of the apiserver's own metrics.  The 80-node run reads them with `kubectl get --raw /metrics` from the workstation, at the end of the join and again after `up` finishes, and records:
-
-- datastore write latency: `etcd_request_duration_seconds` by `operation` and `type`, the p50 and p99 for `create` on `nodes` and `update` on `leases`;
-- 429s: `apiserver_flowcontrol_rejected_requests_total` by `priority_level`, and `apiserver_flowcontrol_request_wait_duration_seconds` for `node-high`;
-- `up` wall time, the time from the first agent start to the last node Ready, cilium-operator restarts, and whether any manual step was needed.
-
-The run uses `main` plus this change only, the #1134 shape (1 control m5d.xlarge, 76 db i4i.xlarge, 2 app c6id.4xlarge), the default profile, and the tag `embark_offhours=off`.  The comparison goes in the PR and on #1134.
+No 80-node run and no comparison with the #1134 run belong to this change.  That run happens after #1157 and #1158 are both merged, and it never gates this merge.  This change is verified on one small cluster (2 db, 1 app, the default control) with the D5 checks, a K3s restart, the kit lifecycle, dashboards, `status`, backup and restore, and `down`.
 
 ## Risks / Trade-offs
 
-- [The sqlite datastore is a likely cause, not a proven one.  The 429 storm may come from 50 agents registering at once, whatever the datastore.] → The 80-node run measures it with no other change.  Join throttling is #1158; this change does not depend on it.
-- [etcd uses more memory than kine on a control node that was at 7.2 of 15.8 GB.] → The 80-node run records the k3s process RSS on the control node.
+- [The sqlite datastore is a likely cause, not a proven one.  The 429 storm may come from 50 agents registering at once, whatever the datastore.] → The later 80-node run, after #1157 and #1158 merge, measures it.  Join throttling is #1158; this change does not depend on it.
+- [etcd uses more memory than kine on a control node that was at 7.2 of 15.8 GB.] → The later 80-node run records the k3s process RSS on the control node.
 - [A re-run of `up` on a cluster whose K3s is already running writes the drop-in, but `systemctl start k3s` does not restart K3s, so the running server stays on sqlite.] → Clusters are ephemeral and are made new by `up`.  K3s migrates a sqlite datastore to etcd on the next K3s start with `cluster-init`, so a restart also converges.  No migration path is built.
 - [etcd's fsync latency is its main performance limit.] → Its data is on local NVMe, never the root EBS volume (D2).
 
@@ -128,9 +122,8 @@ The run uses `main` plus this change only, the #1134 shape (1 control m5d.xlarge
 
 None.  Clusters are ephemeral; a new `up` makes a new etcd-backed server.  Rollback is a revert of the script change.
 
-## Open Questions
+## Decisions from the owner
 
-- Snapshots: keep K3s's defaults (local, twice a day, the five newest kept, older K3s snapshots removed by K3s), or also send them to the cluster's S3 path, where they would be owner data with no retention?
-- `instance-storage-validation` says control and app nodes need no data disk, while `DataDiskRequirement` refuses them without instance store.  This change relies on the code's rule.  Correct the spec to match the code, as proposed here?
-- The 80-node run must be "main plus this change only".  Should it run before #1158 merges, so #1158's join limit does not mask the datastore's effect?
-- If the 80-node run stalls again, may the agent restart k3s by hand to finish the run and record the numbers, as #1134 did, and leave join throttling to #1158?
+- Snapshots keep K3s's defaults and stay local; no S3 copy.
+- `instance-storage-validation` is corrected: every node type needs a data disk.
+- No 80-node run and no #1134 comparison in this issue.

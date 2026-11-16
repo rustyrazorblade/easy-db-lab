@@ -29,3 +29,9 @@ Every node writes to its data disk: databases and kit PVs on db nodes; the obser
 - **WHEN** the user runs init with a control instance type that has no instance store (e.g., `m5.xlarge`)
 - **THEN** the system SHALL fail with an error message that names the control node type and the instance type and says it needs instance store for its data disk
 - **AND** the system SHALL NOT create any EC2 instances
+
+#### Scenario: App instance type without instance store
+
+- **WHEN** the user runs init with an app (stress) instance type that has no instance store, even with `--ebs.type` set
+- **THEN** the system SHALL fail with an error message that names the app node type and the instance type and says it needs instance store for its data disk
+- **AND** the system SHALL NOT create any EC2 instances

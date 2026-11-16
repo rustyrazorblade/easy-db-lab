@@ -13,7 +13,7 @@ The K3s server keeps cluster state in its default datastore: kine in front of on
 - Tests: the start-script integration test covers the datastore drop-in and the new failure; a new K3s TestContainers test boots K3s with the real drop-in and proves etcd is the datastore.
 - Docs: `docs/user-guide/kubernetes.md` and `docs/user-guide/large-clusters.md` describe the datastore, where its data and snapshots live, and how to check it.
 - Specs: `cluster-lifecycle` gains a requirement for the K3s server datastore.  `instance-storage-validation` is corrected: it says control and app nodes need no data disk, but the code (`DataDiskRequirement`) already requires one, and the etcd data depends on it.
-- Real AWS verification: an 80-node run (76 db i4i.xlarge, 2 app c6id.4xlarge) that compares datastore write latency and apiserver 429 counts with the #1134 run, and a small-cluster regression run of kits, observability, backup and restore, and `down`.
+- Real AWS verification: one small cluster (2 db, 1 app, default control): etcd in use, a K3s restart, the snapshot directory, two kits, dashboards, `status`, backup and restore, and `down`.  The 80-node run and any comparison with #1134 come later, after #1157 and #1158 merge, and never gate this change.
 
 No AMI bake: the AMI already has the K3s binary, and the flags are applied at runtime.
 

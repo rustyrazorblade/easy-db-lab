@@ -2763,46 +2763,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Backup.KubeconfigRestored")
-        data class KubeconfigRestored(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Kubeconfig restored from S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.K8sManifestsBackedUp")
-        data class K8sManifestsBackedUp(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "K8s manifests backed up to S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.K8sManifestsRestored")
-        data class K8sManifestsRestored(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "K8s manifests restored from S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.CassandraPatchBackedUp")
-        data class CassandraPatchBackedUp(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Cassandra patch backed up to S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.CassandraPatchRestored")
-        data class CassandraPatchRestored(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Cassandra patch restored from S3: $s3Path"
-        }
-
-        @Serializable
         @SerialName("Backup.ClusterLookup")
         data class ClusterLookup(
             val vpcId: String,

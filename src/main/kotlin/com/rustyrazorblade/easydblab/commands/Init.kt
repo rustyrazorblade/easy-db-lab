@@ -257,7 +257,6 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--clean"],
-
         description = ["Clean existing configuration before initializing"],
     )
     var clean = false
@@ -439,7 +438,6 @@ class Init : PicoBaseCommand() {
     }
 
     private fun validateParameters() {
-
         require(resolvedDbCount > 0) { "Number of database instances must be positive" }
         require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
         require(ebsSize > 0) { "EBS size must be positive" }

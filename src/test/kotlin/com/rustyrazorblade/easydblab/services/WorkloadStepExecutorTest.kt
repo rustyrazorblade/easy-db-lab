@@ -445,7 +445,6 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             assertThat(config.localPath).isEqualTo("/mnt/db1/testdb/data")
         }
 
-
         /** A literal placeholder is no node pool, so the step fails naming it instead of finding no nodes. */
         @Test
         fun `an unset variable in node-type fails the step and names the placeholder`() {
@@ -518,7 +517,6 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
     @Nested
     inner class DeleteStep {
-
         @Test
         fun `a delete step with a selector deletes by label, with the selector and namespace interpolated`() {
             val result =

@@ -144,7 +144,6 @@ sealed interface InstallStep {
         val nodeType: String = "db",
     ) : InstallStep
 
-
     @Serializable
     @SerialName("configmap")
     data class ConfigMap(

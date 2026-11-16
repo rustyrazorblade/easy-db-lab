@@ -31,7 +31,6 @@ class PlatformInfoTest {
         assertThat(output).contains("Kit storage: StorageClass retain-x, default size 100Gi")
     }
 
-
     @Test
     fun `outputs correct db and app node counts`() {
         val output = PlatformInfo.buildInfoText(dbNodeCount = 3, appNodeCount = 2, kitStorage = local)

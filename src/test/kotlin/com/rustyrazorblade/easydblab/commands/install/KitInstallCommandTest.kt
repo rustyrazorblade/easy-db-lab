@@ -52,7 +52,16 @@ class KitInstallCommandTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { TemplateService(get(), get()) }
                 single<InstallTemplateResolver> { mockResolver }
-                single { WorkloadStepExecutor(mock(), mock(), mock(), get(), KitProcessEnvironment(ToolWrapperInstaller(), get()), KitStorageProvisioner(mock(), get())) }
+                single {
+                    WorkloadStepExecutor(
+                        mock(),
+                        mock(),
+                        mock(),
+                        get(),
+                        KitProcessEnvironment(ToolWrapperInstaller(), get()),
+                        KitStorageProvisioner(mock(), get()),
+                    )
+                }
             },
         )
 

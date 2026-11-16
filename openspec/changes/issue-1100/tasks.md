@@ -34,10 +34,10 @@
 ## 6. Guard and integration tests
 
 - [x] 6.1 `KitClaimStorageTest` replaces `PlatformPvReservationTest`: renders every kit in both modes, extended to `TidbCluster` and class-less StatefulSets; asserts class, no selector / volumeName, size; raw scan finds no fixed class; every kit with a claim declares `kit-storage`.
-- [ ] 6.2 Integration (K3s TestContainers): a retained copy of `local-path` as `Provisioned`; cassandra-pods claims Bound at the default size.
-- [ ] 6.3 Integration: two kits' local PVs and classes; each kit's claims bind only its own PVs. Move `CassandraPodsKitIntegrationTest` off `LOCAL_STORAGE_WFC_CLASS`.
-- [ ] 6.4 Integration: Retain check against real StorageClasses — `local-path` refused, the retained copy accepted, a missing class reported missing.
-- [ ] 6.5 Integration: Kafka stop then start rebinds its Retain local PVs.
+- [x] 6.2 Integration (K3s TestContainers): a retained copy of `local-path` as `Provisioned`; cassandra-pods claims Bound at the default size.
+- [x] 6.3 Integration: two kits' local PVs and classes; each kit's claims bind only its own PVs. Move `CassandraPodsKitIntegrationTest` off `LOCAL_STORAGE_WFC_CLASS`.
+- [x] 6.4 Integration: Retain check against real StorageClasses — `local-path` refused, the retained copy accepted, a missing class reported missing.
+- [x] 6.5 Integration: Kafka stop then start rebinds its Retain local PVs.
 
 ## 7. Docs and specs
 

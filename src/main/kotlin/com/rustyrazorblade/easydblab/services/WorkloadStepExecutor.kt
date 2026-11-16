@@ -2,13 +2,13 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.KitStorage as EnvironmentKitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
+import com.rustyrazorblade.easydblab.configuration.KitStorage as EnvironmentKitStorage
 
 private val log = KotlinLogging.logger {}
 
@@ -230,7 +230,6 @@ class WorkloadStepExecutor(
                         storage = EnvironmentKitStorage.from(ctx.clusterState),
                         state = ctx.clusterState,
                     )
-
 
                 is InstallStep.ConfigMap -> {
                     k8sService

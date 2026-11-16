@@ -84,7 +84,9 @@ class KitClaimStorageTest : BaseKoinTest() {
         return when (obj) {
             is PersistentVolumeClaim -> listOf(claim(owner, obj.spec))
             is StatefulSet ->
-                obj.spec.volumeClaimTemplates.orEmpty().map { claim("$owner/${it.metadata.name}", it.spec) }
+                obj.spec.volumeClaimTemplates
+                    .orEmpty()
+                    .map { claim("$owner/${it.metadata.name}", it.spec) }
             is GenericKubernetesResource -> operatorClaims(owner, obj)
             else -> emptyList()
         }
@@ -224,7 +226,8 @@ class KitClaimStorageTest : BaseKoinTest() {
     fun `no kit template names a fixed StorageClass`() {
         val fixed =
             kits().flatMap { kit ->
-                val fixture = BuiltinKitFixture(kit.name, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+                val fixture =
+                    BuiltinKitFixture(kit.name, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
                 templateFiles(kit).flatMap { file ->
                     fixture
                         .resource(file)
@@ -242,7 +245,12 @@ class KitClaimStorageTest : BaseKoinTest() {
             renderedObjects(kits().single { it.name == "kafka" }, null)
                 .filterIsInstance<GenericKubernetesResource>()
                 .filter { it.kind == "KafkaNodePool" }
-                .flatMap { it.additionalProperties["spec"].asMap()["storage"].asMap()["volumes"].asList() }
+                .flatMap {
+                    it.additionalProperties["spec"]
+                        .asMap()["storage"]
+                        .asMap()["volumes"]
+                        .asList()
+                }
         assertThat(kafkaVolumes).isNotEmpty
         assertThat(kafkaVolumes.map { it.asMap()["deleteClaim"] }).containsOnly(false)
 

@@ -212,7 +212,6 @@ class TemplateVariablesTest : BaseKoinTest() {
         assertThat(map).doesNotContainKey("STORAGE_CLASS_WFC")
     }
 
-
     @Test
     fun `renderKitTemplate substitutes all standard variables`() {
         val state = stateWith(bucketName = "test-bucket", region = "us-east-1")

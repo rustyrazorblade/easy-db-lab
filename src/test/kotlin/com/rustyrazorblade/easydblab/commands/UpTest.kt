@@ -333,7 +333,6 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up aborts when labeling the control node fails`() {
-
         whenever(mockK8sService.labelNode(eq("control0"), any()))
             .thenReturn(Result.failure(RuntimeException("k8s api unreachable")))
 

@@ -1,9 +1,9 @@
 ## 1. Environment data model
 
-- [ ] 1.1 Add `configuration/environment/Environment.kt`. It is the sealed `Ec2K3s` / `K3sDocker(dataDir)` / `Kubeconfig(source)` record, with `displayName` and `declaredCapabilities`, and matching Jackson `@JsonTypeInfo`/`@JsonSubTypes` and kotlinx `@SerialName` ids (`ec2-k3s`, `k3s-docker`, `kubeconfig`). KDoc says the record names only the provisioner (K1).
-- [ ] 1.2 Add `ClusterState.environment: Environment = Environment.Ec2K3s`.
-- [ ] 1.3 `ClusterStateManager.load`: catch `InvalidTypeIdException` before the generic wrapper. Throw the error that names the path, the value and the known ids.
-- [ ] 1.4 Unit tests: round-trip all three variants; a missing field reads as `Ec2K3s`; an unknown `type` gives the specific message and the executor reports it with no stack trace.
+- [x] 1.1 Add `configuration/environment/Environment.kt`. It is the sealed `Ec2K3s` / `K3sDocker(dataDir)` / `Kubeconfig(source)` record, with `displayName` and `declaredCapabilities`, and matching Jackson `@JsonTypeInfo`/`@JsonSubTypes` and kotlinx `@SerialName` ids (`ec2-k3s`, `k3s-docker`, `kubeconfig`). KDoc says the record names only the provisioner (K1).
+- [x] 1.2 Add `ClusterState.environment: Environment = Environment.Ec2K3s`.
+- [x] 1.3 `ClusterStateManager.load`: catch `InvalidTypeIdException` before the generic wrapper. Throw the error that names the path, the value and the known ids.
+- [x] 1.4 Unit tests: round-trip all three variants; a missing field reads as `Ec2K3s`; an unknown `type` gives the specific message and the executor reports it with no stack trace.
 
 ## 2. Cluster contract
 

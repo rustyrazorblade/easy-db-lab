@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.Init
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.services.TailSignal
 import java.time.Instant
 import java.util.UUID
@@ -328,6 +329,8 @@ data class ClusterState(
     var capabilities: Set<NodeCapability>? = null,
     // How the CLI reaches cluster Services; a state that records none predates the field and reads as Socks
     var exposure: Exposure = Exposure.Socks,
+    // The execution environment `init` recorded; a state that records none predates the field and reads as EC2 + K3s
+    var environment: Environment = Environment.Ec2K3s,
 ) {
     /**
      * Returns true when the db nodes are provisioned with Cassandra hosts.

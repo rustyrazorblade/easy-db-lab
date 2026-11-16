@@ -3,10 +3,12 @@ package com.rustyrazorblade.easydblab.configuration
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.exc.InvalidTypeIdException
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -59,6 +61,13 @@ class ClusterStateManager(
                     initConfig.put(CNI_FIELD, CniMode.Flannel.name)
                 }
                 mapper.treeToValue(tree, ClusterState::class.java)
+            } catch (e: InvalidTypeIdException) {
+                // A newer easy-db-lab may record an environment this one does not know. The message
+                // says everything; the parser's cause is left off so the failure report is one line.
+                throw IllegalStateException(
+                    "Unknown execution environment '${e.typeId}' in ${stateFile.absolutePath}. " +
+                        "This easy-db-lab knows: ${Environment.TYPE_IDS.joinToString(", ")}.",
+                )
             } catch (e: IOException) {
                 throw IllegalStateException(
                     "Cannot read the cluster state at ${stateFile.absolutePath}: " +

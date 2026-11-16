@@ -85,6 +85,9 @@ value class NodeCapabilities(
         val LOCAL_DOCKER =
             NodeCapabilities(setOf(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH))
 
+        /** Nothing declared: an environment whose capabilities are probed rather than known up front. */
+        val NONE = NodeCapabilities(emptySet())
+
         /**
          * The capabilities [state] records. A state written before capabilities were recorded has
          * none and reads as [AWS], the only environment such a state can describe.

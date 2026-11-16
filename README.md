@@ -42,7 +42,7 @@ We use packer to create a single AMI with the following:
 * [async-profiler](https://github.com/async-profiler/async-profiler), [learn about it here](https://rustyrazorblade.com/post/2023/2023-11-07-async-profiler/)
 * [cassandra-easy-stress](https://github.com/apache/cassandra-easy-stress) (Apache project, formerly easy-cass-stress)
 * [AxonOps agent](https://axonops.com/) (free monitoring up to six nodes)
-* K3s distribution of Kubernetes
+* K3s distribution of Kubernetes (embedded etcd datastore)
 
 ## Pre-requisites
 

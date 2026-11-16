@@ -27,14 +27,14 @@ Constraints: no source checkout at runtime; resilience4j for retries; typed even
 - A node that fails is retried, then replaced, without blocking the other nodes.
 - No agent joins before the control plane is ready, and at most `JOIN_CONCURRENCY` join at once.
 - An unhealthy control plane stops joins and replacements, and `up` reports it.
-- About 80 nodes finish `up` with no manual step.
+- A bad node is shut down and replaced with no manual step, and the rest of the cluster does not wait for it.
 - A small cluster gets the same result as today.
 
 **Non-Goals:**
 
 - The K3s datastore (#1157).
-- More than one control node, or replacing the control node (see Open Questions).
-- Restarting K3s automatically when the control plane is unhealthy.  The issue asks `up` to wait and report.  A restart remedy can follow once the 80-node data shows whether it is needed.
+- More than one control node, or replacing the control node (owner decision 3).
+- Restarting K3s automatically when the control plane is unhealthy.  The issue asks `up` to wait and report.  A restart remedy can follow once the later 80-node data shows whether it is needed.
 - Retrying a launch in another zone or instance type after `InsufficientInstanceCapacity`.  The existing spec forbids it.
 - Event timestamps on the console.  The progress line carries the elapsed time.
 - Parallelising the operator-side fan-outs of `status` and `exec`.
@@ -147,11 +147,11 @@ After the last pipeline ends, the shared post-step rewrites `sshConfig`, `env.sh
 
 ### D7. Limits, and how `up` ends
 
-- Per node: at most `Constants.Scale.MAX_NODE_REPLACEMENTS` replacements (recommendation: 2, so 3 instances in all; see Open Questions).
+- Per node: at most `Constants.Scale.MAX_NODE_REPLACEMENTS` replacements (2, so 3 instances in all; owner decision 1).
 - Cluster-wide: at most `max(MIN_CLUSTER_REPLACEMENTS = 3, ceil(nodes × CLUSTER_REPLACEMENT_FRACTION = 0.05))`.  A fault every node has, for example a setup script bug, a missing package or a bad kernel, would otherwise replace the whole cluster 2 times over.  When the cluster limit is reached, no more replacements start.  A node that would need one fails.
-- The control node is not replaced (see Open Questions).  A control step failure after its retries fails `up` at once.  Every other pipeline is interrupted, because none can join without it.  The control node and every instance launched so far stay running and recorded, for debugging and for a re-run.
+- The control node is not replaced (owner decision 3).  A control step failure after its retries fails `up` at once.  Every other pipeline is interrupted, because none can join without it.  The control node and every instance launched so far stay running and recorded, for debugging and for a re-run.
 
-When a db or app node fails for good (out of replacements, a non-replaceable failure, or the cluster limit), the recommendation is to **fail after the others finish**.  The other pipelines run to the end.  The shared post-steps run for the nodes that came up, so Grafana and the logs are there to debug with.  Then `up` emits `Provision.NodesFailed` with each failed alias, its last step and the reason, and exits non-zero.  The failed node's last instance is kept, not terminated, for debugging.  A re-run of `up` sends it through its pipeline again.  See Open Questions for the alternative of finishing short.
+When a db or app node fails for good (out of replacements, a non-replaceable failure, or the cluster limit), `up` **fails after the others finish** (owner decision 2).  The other pipelines run to the end.  The shared post-steps run for the nodes that came up, so Grafana and the logs are there to debug with.  Then `up` emits `Provision.NodesFailed` with each failed alias, its last step and the reason, and exits non-zero.  The failed node's last instance is kept, not terminated, for debugging.  A re-run of `up` sends it through its pipeline again.
 
 This changes the requirement "Provisioning reports success only when it fully succeeded".  A node step failure no longer aborts `up` at that step.  `up` still never reports success unless every node is Ready and every shared step succeeded.
 
@@ -237,10 +237,10 @@ The real AWS verification is in tasks section 10.
 
 ## Risks / Trade-offs
 
-- [The join limit makes a 1,000-node join take about 16 minutes] → The limit is a constant, and the 80-node run records the per-node registration time.  Raise it once #1157 lowers write latency.
-- [Health thresholds are guesses until measured] → The 80-node run records every sample (Redis or the debug log).  The thresholds are constants and are tuned from that data.
+- [The join limit makes a 1,000-node join take about 16 minutes] → The limit is a constant, and the later 80-node run (after #1157) records the per-node registration time.  Raise it once #1157 lowers write latency.
+- [Health thresholds are guesses until measured] → The later 80-node run records every sample (Redis or the debug log).  The thresholds are constants and are tuned from that data.
 - [The fabric8 informer through the SOCKS tunnel] → The informer is on the existing per-client proxy.  The tunnel already carries `waitForNodesRegistered`'s lists.  If the watch fails, the informer relists, and a pipeline's Ready timeout catches a watcher that never recovers.
-- [MINA SSH from virtual threads may pin carrier threads in `synchronized` blocks] → The SSH permit caps SSH at 50 sessions, so a pinned carrier blocks at most that many.  The forced-failure and 80-node runs are the check.
+- [MINA SSH from virtual threads may pin carrier threads in `synchronized` blocks] → The SSH permit caps SSH at 50 sessions, so a pinned carrier blocks at most that many.  The forced-failure run is the first check; the later 80-node run is the second.
 - [The Cilium CRD list goes stale on a version bump] → It lives next to `Constants.Cilium.VERSION`, and the KDoc says to update both.  A missing CRD makes the gate time out naming it.  A stale list never lets an agent through too early.
 - [Replacing db0 changes the seed and the stress host] → The post-step rewrites the workspace files and pushes the two environment files again.  Kits read hosts from `state.json` at start, after `up`.
 - [The cluster replacement limit could fail a large `up` that hit one bad zone] → The failure names every node and the reason, the instances are kept, and a re-run continues.
@@ -248,10 +248,13 @@ The real AWS verification is in tasks section 10.
 
 ## Migration Plan
 
-None.  Clusters are ephemeral.  The change ships in one release.  `issue-1048` is merged but not archived.  It should be archived before this change is archived, so that this change's ADDED requirements can be folded into "up works with 1,000 database nodes" (tasks section 11).
+None.  Clusters are ephemeral.  The change ships in one release.  `issue-1048` is archived in this change's PR, before any code, so this change MODIFIES "up works with 1,000 database nodes" directly.
 
-## Open Questions
+## Owner decisions
 
-1. **Replacement limit per node.**  Recommendation: 2 replacements (3 instances in all), plus the cluster-wide limit of `max(3, 5% of nodes)`.  One replacement fixes a bad host.  A second covers bad luck.  A third failure of the same alias almost always means a fault that a new instance will not fix.
-2. **When a node exhausts its replacements: does `up` fail, or finish short?**  Recommendation: fail, after the other pipelines and the shared post-steps finish, exit non-zero naming the nodes, and keep the failed instance for debugging.  Finishing short leaves a cluster whose db count differs from `init`.  Kits pin StatefulSet replicas and local volumes to ordinals, so a missing `db17` breaks them later, far from the cause.  Failing after the rest finishes keeps the work done, and a re-run of `up` resumes only the failed node.
-3. **Is the control node replaced too?**  Recommendation: no.  Its private IP is the K3s server URL, the registry host and Cilium's `k8sServiceHost`, and a replacement before the gate would redo work already done on every other node.  Its steps are retried, and if they still fail, `up` fails at once with every instance kept.  It is one instance, so a hardware fault there is rare.
+The owner approved the spec with these answers to its open questions (issue #1158):
+
+1. **Replacement limit per node:** 2 replacements, 3 instances in all, with a cluster-wide limit of `max(3, ceil(5% of nodes))`.  A bad node must be handled gracefully: shut down and replaced.  At 80 nodes a bad host is likely, so this path must be solid and well tested.
+2. **A node out of replacements:** the other nodes and the cluster-wide steps finish, then `up` exits non-zero, names each failed node and its step, and keeps its instance for debugging.
+3. **The control node is not replaced:** its steps are retried, then `up` fails at once and keeps every instance.
+4. **No 80-node run in this change.**  Verification is one small real cluster with forced bad nodes.  The 80-node run happens after #1157 and #1158 are both merged, and never gates this merge.

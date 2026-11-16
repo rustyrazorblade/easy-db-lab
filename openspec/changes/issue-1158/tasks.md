@@ -1,6 +1,6 @@
 ## 1. Constants and events
 
-- [ ] 1.1 `Constants.Scale`: add `JOIN_CONCURRENCY` (16), `MAX_NODE_REPLACEMENTS` (owner decision, recommended 2), `MIN_CLUSTER_REPLACEMENTS` (3), `CLUSTER_REPLACEMENT_FRACTION` (0.05), `GATE_TIMEOUT_SECONDS` (600), `GATE_POLL_INTERVAL_SECONDS` (5), `NODE_SETUP_TIMEOUT_SECONDS` (900), `NODE_REGISTRATION_TIMEOUT_SECONDS` (300), `NODE_READY_TIMEOUT_SECONDS` (600), `HEALTH_SAMPLE_INTERVAL_SECONDS` (5), `HEALTH_LATENCY_LIMIT_MS` (2000), `HEALTH_REJECTION_LIMIT` (25), `HEALTH_RECOVERY_SAMPLES` (3), `HEALTH_UNHEALTHY_TIMEOUT_SECONDS` (900), `PROGRESS_INTERVAL_SECONDS` (15), each with KDoc saying why
+- [ ] 1.1 `Constants.Scale`: add `JOIN_CONCURRENCY` (16), `MAX_NODE_REPLACEMENTS` (2, owner decision), `MIN_CLUSTER_REPLACEMENTS` (3), `CLUSTER_REPLACEMENT_FRACTION` (0.05), `GATE_TIMEOUT_SECONDS` (600), `GATE_POLL_INTERVAL_SECONDS` (5), `NODE_SETUP_TIMEOUT_SECONDS` (900), `NODE_REGISTRATION_TIMEOUT_SECONDS` (300), `NODE_READY_TIMEOUT_SECONDS` (600), `HEALTH_SAMPLE_INTERVAL_SECONDS` (5), `HEALTH_LATENCY_LIMIT_MS` (2000), `HEALTH_REJECTION_LIMIT` (25), `HEALTH_RECOVERY_SAMPLES` (3), `HEALTH_UNHEALTHY_TIMEOUT_SECONDS` (900), `PROGRESS_INTERVAL_SECONDS` (15), each with KDoc saying why
 - [ ] 1.2 `Constants.Cilium.REQUIRED_CRDS`: the CRDs the Cilium agent waits for at `Constants.Cilium.VERSION`, read from that version's source or chart; the KDoc says a version bump must update it
 - [ ] 1.3 `Event`: add `fun showOnConsole(): Boolean = true`; `ConsoleEventListener` skips an event that returns false unless `isError()`; unit test both cases (event-system delta)
 - [ ] 1.4 `events/Event.kt`: add `Provision.NodeStepStarted`, `NodeStepCompleted` (both `showOnConsole = false`), `NodeStepFailed` (error), `NodeReplacing`, `NodeReplaced`, `NodeReady`, `NodesFailed` (error, list of `FailedNode`), `ControlPlaneUnhealthy` (error), `ControlPlaneHealthy`, `BringUpProgress`; `K3s.ControlPlaneGateOpen`, `K3s.ControlPlaneGateTimedOut` (error); `Cilium.OperatorReady`.  Each one has structured fields and a `toDisplayString()`.  Add a unit test for the progress line's text from a sample `byStep` map
@@ -61,12 +61,15 @@
 
 ## 10. Real AWS verification (`requires-aws`)
 
-- [ ] 10.1 Small-cluster regression: 1 control, 3 db, 1 app, default profile, with the off-hours tag WORKFLOW.md names.  `up` exits zero with every node Ready; `status`, a kit install and start, and `down` work.  Record the `up` output and wall time in the PR
-- [ ] 10.2 Forced failure: 1 control, 6 db.  While db2 is in setup, terminate its instance from the AWS CLI.  `up` reports `NodeReplacing` and `NodeReplaced` for db2, finishes with exit zero, `state.json` holds db2 once with the new instance ID, the old instance is terminated, `kubectl get nodes` shows db2 Ready once, and no `node-password` rejection appears in the K3s journal.  Record the commands, the output and `aws ec2 describe-instances` for both IDs
-- [ ] 10.3 Forced join failure: same cluster shape.  Make db4's agent fail to register (for example a wrong token written into its agent config before its join step).  `up` retries, then replaces db4, and the replacement joins under the same name
-- [ ] 10.4 About 80 nodes: 1 control, 76 db `i4i.xlarge`, 2 app `c6id.4xlarge`, default profile, with the off-hours tag WORKFLOW.md names.  `up` finishes with no manual step.  Record: the `up` wall time and each progress line; the most joins in flight; the time from gate open to the last Ready; every health sample (latency and rejection growth); any `ControlPlaneUnhealthy` and how long it lasted; replacements; cilium-operator restarts (`kubectl -n kube-system get pods`); and which K3s datastore was in use (#1157).  Compare with the #1134 numbers.  Tear down with `down` and record that it found every instance, including any replaced one's successor
-- [ ] 10.5 Post the evidence in the PR with no account numbers, bucket names or company names
+One small cluster for all of it: 1 control (default type), 3 db `c6id.xlarge`, 1 app `c6id.xlarge`, no Spark, no OpenSearch, default profile, with the off-hours tag WORKFLOW.md names.  No 80-node run in this change (owner decision 4).
+
+- [ ] 10.1 Normal `up`: exits zero with every node Ready; record the new per-node output, the progress lines, the events and the wall time
+- [ ] 10.2 Forced bad node, killed: while db2 is in setup, terminate its instance from the AWS CLI.  `up` reports `NodeReplacing` and `NodeReplaced` for db2, a replacement launches under the same alias in the same subnet, `state.json` holds db2 once with the new instance ID, the old instance is terminated, `kubectl get nodes` shows db2 Ready once, and `up` exits zero.  Record `aws ec2 describe-instances` for both IDs
+- [ ] 10.3 Forced bad node, setup fails: in a second `up`, make one node's setup fail on every attempt from outside `up` (no test hook in the code).  The node is shut down, its Node object and `<alias>.node-password.k3s` secret are deleted, a replacement launches under the same alias in the same subnet, `state.json` is updated, and `up` exits zero
+- [ ] 10.4 Forced join failure: make one node's agent fail to register.  `up` retries, then replaces it, and the replacement joins under the same name with no node-password rejection
+- [ ] 10.5 After `up`: two kits through their full cycle, `status`, `hosts`, `exec`, then `down --dry-run` and `down`: 0 instances, the VPC gone, no orphaned replaced instance
+- [ ] 10.6 Post the evidence in the PR with no account numbers, bucket names or company names
 
 ## 11. Archive
 
-- [ ] 11.1 After `issue-1048` is archived, fold the overrides in `overrides.md` into "up works with 1,000 database nodes" when archiving this change
+- [x] 11.1 `issue-1048` is archived as this PR's first commit; this change's delta MODIFIES "up works with 1,000 database nodes" directly, so no fold is needed at archive time

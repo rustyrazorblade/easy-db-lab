@@ -51,6 +51,62 @@ This applies to every step invoked during provisioning, including nested command
 - **THEN** node setup SHALL be skipped
 - **AND** `up` SHALL exit zero if all remaining steps succeeded
 
+### Requirement: up works with 1,000 database nodes
+
+`up` MUST provision and set up a cluster of 1,000 database nodes, and a re-run of `up` with a larger count MUST launch only the missing nodes.
+
+- Discovery MUST read every page of DescribeInstances, count running and pending instances, and run once per `up`.
+- A discovered instance that is pending, or has no public IP, MUST be waited on as a new instance is, until it runs with a public IP and passes its status checks, and MUST be kept with the IPs that wait read, so no host in the cluster state has a blank address.
+- The instances to launch MUST be the ordinals in `0` to the configured count that no existing instance's alias holds, so a re-run fills the gaps an interrupted `up` left and never reuses the alias of a running instance.  Ordinal `i` is named `<serverType><i>` and lands in subnet `i % subnets`.
+- RunInstances MUST launch one call per subnet, with `minCount = maxCount = n`, in chunks of at most `Constants.Scale.RUN_INSTANCES_CHUNK`, with a client token, and retry a throttled call (`RequestLimitExceeded`) with the same token.  The ordinals of one call are `subnets` apart, a gap starting a new call, and the call tags its instances with its first ordinal and that stride (`Constants.Scale.FIRST_ORDINAL_TAG`, `Constants.Scale.ORDINAL_STRIDE_TAG`), so the instance with launch index `k` is `first + k * stride`.  Each instance also gets its `Name` tag after launch.
+- Each launched instance MUST be recorded in the cluster state as soon as RunInstances returns it, before it is named.
+- Discovery MUST name an instance from its `Name` tag, or, when that tag never landed, from its launch ordinal tags and launch index.  The hosts in the cluster state MUST be one per alias, in ordinal order.
+- The running wait MUST wait for every instance ID, tolerate `InvalidInstanceID.NotFound` while EC2 catches up, and ask only about the instances not yet running.  An instance it finds shutting-down, terminated, stopping or stopped MUST be seen at the poll that sees it and MUST NOT be waited on until the deadline.  A database or application node in that state MUST be replaced at once, as "up replaces a node whose step keeps failing" says; `up` fails only when it cannot be replaced.  DescribeInstanceStatus and DescribeInstances requests MUST name at most 100 IDs.
+- Each node's steps (the SSH readiness wait, instance setup, the Cilium node image check, registry TLS, the K3s agent join) MUST run in that node's own pipeline, as "up brings each node up in its own pipeline" says.  At most `Constants.Scale.HOST_CONCURRENCY` SSH sessions MUST be open at once across all pipelines, and at most `Constants.Scale.JOIN_CONCURRENCY` nodes MUST join at once.  AxonOps MUST run once, after every pipeline has ended, on at most `Constants.Scale.HOST_CONCURRENCY` hosts at once.
+- Each node's pipeline MUST wait until its own node is registered and Ready, and the StorageClasses MUST be made only after every pipeline has ended.  The node type and ordinal labels MUST be set in each agent's K3s configuration, not by a later per-node label call.
+- The observability readiness wait MUST list pods once per poll under one deadline, and the rollout deadline MUST grow with the node count.  A pod with a container in a terminal state (`CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, `Error`) MUST end the wait at the poll that sees it, naming the pod, the container and the reason; it MUST NOT be retried until the deadline.
+
+#### Scenario: Launched instances survive a failure later in up
+
+- **GIVEN** an `up` whose second RunInstances call, running wait, or status check fails
+- **WHEN** `up` stops
+- **THEN** every instance already launched is in the cluster state, and a re-run does not launch it again
+
+#### Scenario: A re-run fills the gaps a partial launch left
+
+- **GIVEN** a cluster of 9 configured db nodes in 3 subnets whose db0, db3 and db6 run, because the launch into the second subnet failed
+- **WHEN** `up` runs again
+- **THEN** it launches exactly db1, db2, db4, db5, db7 and db8, each in subnet `ordinal % 3`, and the capacity checks count those six in those zones
+
+#### Scenario: An instance whose name tag failed is still found
+
+- **GIVEN** an `up` whose CreateTags call fails after RunInstances returned the instances
+- **WHEN** `up` stops, and a later `up` discovers the cluster
+- **THEN** the instances are in the cluster state, and discovery names them from their launch tags and does not launch them again
+
+#### Scenario: A re-run in the pending window waits for the pending instances
+
+- **GIVEN** an `up` that launched db0, which is still pending with no public IP
+- **WHEN** `up` runs again
+- **THEN** it waits until db0 runs and passes its status checks, does not launch it again, and records db0 with its public IP
+
+#### Scenario: An instance EC2 ends during the running wait is replaced at once
+
+- **GIVEN** an `up` waiting for db1 to run
+- **WHEN** EC2 reports db1 terminated
+- **THEN** `up` sees it at that poll, well before the wait's deadline, and replaces db1 under the same alias, within the replacement limits
+
+#### Scenario: A re-run continues the numbering
+
+- **GIVEN** a cluster whose db0 to db999 run
+- **WHEN** `up` runs with a count of 1,002
+- **THEN** it launches db1000 and db1001, in subnets `1000 % subnets` and `1001 % subnets`
+
+#### Scenario: Every node registers before the storage classes are made
+
+- **WHEN** `up` brings up every node
+- **THEN** the StorageClasses are made only after every node's pipeline has ended, and a node that does not register in time is retried, replaced, or fails `up` by name
+
 ## ADDED Requirements
 
 ### Requirement: up brings each node up in its own pipeline
@@ -185,11 +241,16 @@ A replaced instance MUST always be terminated before its replacement is launched
 #### Scenario: A control node failure fails up
 - **GIVEN** a control node whose K3s server does not start after its retries
 - **WHEN** the step fails
-- **THEN** `up` fails at once, naming the step, and every launched instance stays running and recorded
+- **THEN** `up` fails at once, naming the step, and makes no replacement of the control node
+- **AND** every other node's pipeline stops, and every launched instance stays running and recorded
 
 ### Requirement: Replacements are limited
 
-`up` MUST replace one node at most `Constants.Scale.MAX_NODE_REPLACEMENTS` times.  In all, `up` MUST make at most the larger of `Constants.Scale.MIN_CLUSTER_REPLACEMENTS` and `Constants.Scale.CLUSTER_REPLACEMENT_FRACTION` of the node count, rounded up.  A node that needs a replacement past either limit MUST fail.  Its last instance MUST be kept running and recorded in the cluster state.  A re-run of `up` MUST send it through its pipeline again.
+`up` MUST replace one node at most `Constants.Scale.MAX_NODE_REPLACEMENTS` (2) times, so one alias uses at most 3 instances.  In all, `up` MUST make at most the larger of `Constants.Scale.MIN_CLUSTER_REPLACEMENTS` (3) and `Constants.Scale.CLUSTER_REPLACEMENT_FRACTION` (5%) of the node count, rounded up.  A node that needs a replacement past either limit MUST fail.  Its last instance MUST be kept running and recorded in the cluster state, for debugging.  The other nodes and the shared steps that follow them MUST still finish; then `up` MUST exit non-zero, naming each failed node and the step it failed.  A re-run of `up` MUST send it through its pipeline again.
+
+#### Scenario: The cluster limit scales with the node count
+- **WHEN** `up` brings up 3, 20, 80 or 1,000 database and application nodes
+- **THEN** the cluster replacement limit is 3, 3, 4 or 50
 
 #### Scenario: A node runs out of replacements
 - **GIVEN** db9, whose setup fails on every instance

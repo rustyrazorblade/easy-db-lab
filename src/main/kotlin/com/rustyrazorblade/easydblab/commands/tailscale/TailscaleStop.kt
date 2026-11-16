@@ -72,6 +72,13 @@ class TailscaleStop : PicoBaseCommand() {
             }
     }
 
+    /**
+     * Deletes the auth key `tailscale start` recorded. Missing OAuth credentials, or a failed delete,
+     * are written to the log only: no event is emitted and the exit code stays zero. In both cases the
+     * key stays valid in the tailnet until it expires or is revoked in the Tailscale admin console. A
+     * failed delete still clears the recorded key ID, so a later `stop` does not retry it; missing
+     * credentials return before that, so the ID stays recorded.
+     */
     @Suppress("TooGenericExceptionCaught")
     private fun deleteTailscaleAuthKey() {
         val keyId = clusterState.tailscaleAuthKeyId ?: return

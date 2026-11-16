@@ -103,10 +103,9 @@ class StartK3sScriptsIntegrationTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = [AGENT])
-    fun `a host without a data disk keeps its pod logs and the kubelet's default eviction`(script: String) {
-        runScript(script, mounted = false) { node ->
+    @Test
+    fun `an agent without a data disk keeps its pod logs and the kubelet's default eviction`() {
+        runScript(AGENT, mounted = false) { node ->
             assertThat(node.exitCode).describedAs(node.output).isZero()
             assertThat(node.sh("test -L /var/log/pods && echo link || echo none")).isEqualTo("none")
             assertThat(node.sh("test -e $EVICTION_CONFIG && echo present || echo absent")).isEqualTo("absent")

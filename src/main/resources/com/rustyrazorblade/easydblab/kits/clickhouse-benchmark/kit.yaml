@@ -12,6 +12,14 @@ runtime:
   selector: "easydblab/kit=${KIT_NAME},easydblab/role=benchmark-run"
   namespace: default
 
+# prepare and start create pods (and configmaps) that outlive their run. Uninstall removes every
+# one of them, by the label every benchmark object carries.
+uninstall:
+  - type: delete
+    kinds: [pod, configmap]
+    selector: "easydblab/kit=${KIT_NAME}"
+    namespace: default
+
 args:
   - flag: --target
     variable: TARGET

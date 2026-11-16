@@ -171,6 +171,64 @@ object Constants {
 
         /** Launch tag: how far apart the ordinals of one RunInstances call's instances are. */
         const val ORDINAL_STRIDE_TAG = "easydblab/ordinal-stride"
+
+        /**
+         * The most nodes in their join step at once: from the agent configuration until the Node
+         * registers. The registration burst (Node, lease, node-password secret, CiliumNode) is
+         * what saturated the datastore at 79 nodes (#1134); 16 joins 1,000 nodes in about 16 minutes.
+         */
+        const val JOIN_CONCURRENCY = 16
+
+        /** Replacements one node may take, so one alias uses at most 3 instances (owner decision). */
+        const val MAX_NODE_REPLACEMENTS = 2
+
+        /** The cluster-wide replacement limit is at least this, however small the cluster. */
+        const val MIN_CLUSTER_REPLACEMENTS = 3
+
+        /**
+         * The share of the nodes the cluster may replace, rounded up, when that is above
+         * [MIN_CLUSTER_REPLACEMENTS]. It stops a fault every node has from replacing the whole cluster.
+         */
+        const val CLUSTER_REPLACEMENT_FRACTION = 0.05
+
+        /** How long the control-plane gate waits for the API server, the control node and Cilium. */
+        const val GATE_TIMEOUT_SECONDS = 600L
+
+        /** How often the control-plane gate reads its conditions. */
+        const val GATE_POLL_INTERVAL_SECONDS = 5L
+
+        /** One attempt of a node's setup step; `setup_instance.sh` installs packages and formats disks. */
+        const val NODE_SETUP_TIMEOUT_SECONDS = 900L
+
+        /** One attempt of a node's join step, from the agent configuration until its Node registers. */
+        const val NODE_REGISTRATION_TIMEOUT_SECONDS = 300L
+
+        /** How long a registered node has to become Ready: its Cilium agent and image pulls. */
+        const val NODE_READY_TIMEOUT_SECONDS = 600L
+
+        /** One attempt of a node's registry TLS step. */
+        const val REGISTRY_TLS_TIMEOUT_SECONDS = 120L
+
+        /** How often the control-plane health monitor samples the API server. */
+        const val HEALTH_SAMPLE_INTERVAL_SECONDS = 5L
+
+        /**
+         * A minimal `get nodes` slower than this marks the control plane unhealthy. The SOCKS tunnel
+         * or Tailscale adds tens of milliseconds, so the limit sits well above that.
+         */
+        const val HEALTH_LATENCY_LIMIT_MS = 2000L
+
+        /** More new APF rejections than this in one sample marks the control plane unhealthy. */
+        const val HEALTH_REJECTION_LIMIT = 25L
+
+        /** Healthy samples in a row that end an unhealthy period, so one good sample is not trusted. */
+        const val HEALTH_RECOVERY_SAMPLES = 3
+
+        /** An unhealthy control plane for this long fails `up`; `up` does not restart K3s itself. */
+        const val HEALTH_UNHEALTHY_TIMEOUT_SECONDS = 900L
+
+        /** How often `up` prints where every node is, so a long bring-up is never silent. */
+        const val PROGRESS_INTERVAL_SECONDS = 15L
     }
 
     /**
@@ -636,6 +694,29 @@ object Constants {
     object Cilium {
         const val VERSION = "1.19.4"
         const val NAMESPACE = "kube-system"
+
+        /** The operator Deployment the control-plane gate waits on. */
+        const val OPERATOR_DEPLOYMENT = "cilium-operator"
+
+        /**
+         * The CRDs the Cilium agent waits for before it starts, at [VERSION] with the flags
+         * `CiliumService` installs: `agentCRDResourceNames()` in `pkg/k8s/synced/crd.go`. The
+         * control-plane gate lets no agent join until each one is Established. A [VERSION] bump
+         * MUST re-read that function and update this list; a stale entry makes the gate time out
+         * naming it, never let an agent through early.
+         */
+        val REQUIRED_CRDS =
+            listOf(
+                "ciliumidentities.cilium.io",
+                "ciliumpodippools.cilium.io",
+                "ciliumendpoints.cilium.io",
+                "ciliumnodes.cilium.io",
+                "ciliumnetworkpolicies.cilium.io",
+                "ciliumclusterwidenetworkpolicies.cilium.io",
+                "ciliumcidrgroups.cilium.io",
+                "ciliumloadbalancerippools.cilium.io",
+                "ciliuml2announcementpolicies.cilium.io",
+            )
 
         // The agent and the operator both run hostNetwork, so their metrics ports are node ports.
         // The agent is a DaemonSet: every collector scrapes its own node's agent at localhost.

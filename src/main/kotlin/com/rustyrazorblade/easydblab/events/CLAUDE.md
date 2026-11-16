@@ -36,8 +36,8 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 
 - `Event.Cassandra.*` — Database lifecycle (start, stop, restart). `VersionList` (from `cassandra list`) carries `partial` (version to the nodes that have it), `unreachable` (node to error) and `nodes`; it is an error event when any node is unreachable. `UseSideEffects` (before `cassandra use` starts: the hosts `cassandra.patch.yaml` is re-applied to, and the `--java` override) and `UseConfigNotApplied` (an error: the version switched but the config download or update failed)
 - `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
-- `Event.K3s.*` — K3s cluster management
-- `Event.Cilium.*` — Cilium CNI operations
+- `Event.K3s.*` — K3s cluster management, including the control-plane gate: `ControlPlaneGateOpen` (seconds waited) and `ControlPlaneGateTimedOut` (an error; each condition still false)
+- `Event.Cilium.*` — Cilium CNI operations, including `OperatorReady` (ready replicas, and the count of `Constants.Cilium.REQUIRED_CRDS` Established)
 - `Event.K8s.*` — Kubernetes operations, including `NodesRegistering` / `NodesRegistered` (the count of nodes `up` waits on to register with K3s)
 - `Event.Infra.*` — AWS infrastructure (VPC, subnet, security group)
 - `Event.Ec2.*` — EC2 instance operations
@@ -51,7 +51,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.AwsSetup.*` — AWS resource setup (IAM roles, etc.)
 - `Event.Stress.*` — Stress testing operations. `JobStarted` (from `cassandra stress start`, once the pod runs) carries `host`, the alias of the node the stress pod runs on. `JobCompleted(jobName, host, outcome, durationSeconds)` comes only from `metrics stream`: once for each job it saw running that has finished; `outcome` is `StressJobOutcome`, `succeeded` or `failed` on the wire
 - `Event.Service.*` — SystemD service management
-- `Event.Provision.*` — Cluster provisioning orchestration, including the pre-launch capacity checks: `LaunchCapacityVerified`, and the errors `VcpuQuotaInsufficient`, `NetworkInterfaceQuotaInsufficient`, `SubnetAddressesInsufficient` (each with needed, available and shortBy), `InstanceTypeNotOffered`, `TooManyAvailabilityZones` and `LaunchDryRunRefused` (AWS's code and message); `VcpuQuotaNotChecked` names a type whose family has its own quota. `InstanceCapacityShortage` (an error; node role, instance type and availability zone) replaces `InfrastructureFailure` when a launch fails with `InsufficientInstanceCapacity`
+- `Event.Provision.*` — Cluster provisioning orchestration, including the pre-launch capacity checks: `LaunchCapacityVerified`, and the errors `VcpuQuotaInsufficient`, `NetworkInterfaceQuotaInsufficient`, `SubnetAddressesInsufficient` (each with needed, available and shortBy), `InstanceTypeNotOffered`, `TooManyAvailabilityZones` and `LaunchDryRunRefused` (AWS's code and message); `VcpuQuotaNotChecked` names a type whose family has its own quota. `InstanceCapacityShortage` (an error; node role, instance type and availability zone) replaces `InfrastructureFailure` when a launch fails with `InsufficientInstanceCapacity`. The per-node bring-up (`services/bringup/`) emits `NodeStepStarted` and `NodeStepCompleted` (alias, step, attempt; both `showOnConsole() = false`, so they reach Redis only), `NodeStepFailed` (an error; attempt of maxAttempts, reason, willRetry), `NodeReplacing` (alias, old instance, failed step, reason, replacement of limit), `NodeReplaced` (old and new instance, private IP), `NodeReady` (instance, elapsed seconds, replacements), `NodesFailed` (an error; one `FailedNode` per alias with its step, reason and kept instance), `ControlPlaneUnhealthy` (an error; latency, or null when unreachable, rejections and both limits), `ControlPlaneHealthy` (how long it was unhealthy) and `BringUpProgress` (every `Constants.Scale.PROGRESS_INTERVAL_SECONDS`: elapsed, total, nodes per step, joins in flight against the limit, ready, replaced, failed and the `ControlPlaneState`)
 - `Event.Command.*` — Command execution and general command output
 - `Event.Status.*` — Cluster status display sections
 - `Event.Teardown.*` — Cluster teardown lifecycle, including `DryRunPreview` (the resources `down --dry-run` would delete) and `DryRunDeviceRemovalPreview` (the tailnet device it would remove when the VPC is already gone), and the errors `DataBucketMetricsDisableFailed` (bucket and AWS reason; the data-bucket request-metric teardown failed) and `DataBucketDiscoveryFailed` (reason; `down --all` could not list data buckets). `ClusterStateUpdateFailed` (reason; `down` removed the infrastructure but could not read or write state.json). A bucket whose delete throws is reported as `S3.DataBucketKept`
@@ -76,7 +76,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 
 1. Add a new `@Serializable data class` inside the appropriate sealed sub-interface in `Event.kt`
 2. Implement `toDisplayString()` returning the exact user-facing output string
-3. If it's an error event, override `isError(): Boolean = true`
+3. If it's an error event, override `isError(): Boolean = true`. If it comes in high volume and exists for subscribers only, override `showOnConsole(): Boolean = false`: `ConsoleEventListener` skips it (unless it is an error) and Redis still gets it
 4. Use `eventBus.emit(Event.Domain.NewType(...))` at the call site
 5. Serialization is automatic via `@Serializable` sealed interfaces
 

@@ -18,11 +18,11 @@
 
 ## 3. Per-environment Koin selection
 
-- [ ] 3.1 Bind `ClusterTooling` as a `factory` selected on `toolingForm`. Remove the "until #1040" comment in `ServicesModule.kt:75`.
-- [ ] 3.2 Audit the `single` holders of `ClusterTooling` so none freezes the form across a REPL `init`.
-- [ ] 3.3 Update the KDoc in `KubeApiLocator` and `WorkspaceKubeApiLocator`. The locator is already environment-neutral; the contract does not change it.
-- [ ] 3.4 Integration test: `LocalClusterToolingIntegrationTest` drops its Koin rebind and uses a `K3sDocker` state through the production binding.
-- [ ] 3.5 Unit test: in one Koin graph, an `init --local` after an AWS state switches the resolved `ClusterTooling` on the next resolution.
+- [x] 3.1 Bind `ClusterTooling` as a `factory` selected on `toolingForm`. Remove the "until #1040" comment in `ServicesModule.kt:75`.
+- [x] 3.2 Audit the `single` holders of `ClusterTooling` so none freezes the form across a REPL `init`.
+- [x] 3.3 Update the KDoc in `KubeApiLocator` and `WorkspaceKubeApiLocator`. The locator is already environment-neutral; the contract does not change it.
+- [x] 3.4 Integration test: `LocalClusterToolingIntegrationTest` drops its Koin rebind and uses a `K3sDocker` state through the production binding.
+- [x] 3.5 Unit test: in one Koin graph, an `init --local` after an AWS state switches the resolved `ClusterTooling` on the next resolution.
 
 ## 4. Command gating and the profile rule
 

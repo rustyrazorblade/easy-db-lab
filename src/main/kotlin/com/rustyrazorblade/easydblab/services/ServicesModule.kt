@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
+import com.rustyrazorblade.easydblab.configuration.environment.ToolingForm
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -71,11 +73,17 @@ val servicesModule =
         factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
-        // helm and kubectl run on the control node over SSH. A local cluster has no SSH host, so a
-        // harness rebinds this to LocalClusterTooling until #1040 selects the form per environment.
-        // The directory holds the SSH form's local staging copy of stdin; it is injected because the
-        // JVM caches java.io.tmpdir at startup.
-        single<ClusterTooling> { SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir"))) }
+        // Where helm and kubectl run follows the recorded environment: over SSH on the control node, or
+        // locally through the workspace bin/ wrappers. A factory, resolved from state.json each time,
+        // so an `init` inside the REPL or the server switches it for the next command. The SSH form's
+        // directory holds its local staging copy of stdin; it is injected because the JVM caches
+        // java.io.tmpdir at startup.
+        factory<ClusterTooling> {
+            when (get<ClusterContractSource>().current().toolingForm) {
+                ToolingForm.Ssh -> SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir")))
+                ToolingForm.Local -> LocalClusterTooling(get<Context>().workingDirectory, get())
+            }
+        }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies

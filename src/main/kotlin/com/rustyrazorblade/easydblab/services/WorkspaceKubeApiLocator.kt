@@ -16,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
  * and the kubeconfig path, once per (path, context) pair, so a cluster reached through an unpinned
  * context is visible in the log without a line on every K8s operation of a long-running `server`.
  *
- * This is the only [KubeApiLocator] today; #1040's `Environment` later produces the [KubeApi] and this
- * becomes a thin adapter. It fails fast when the workspace has no kubeconfig, since every K8s command
+ * This is the only [KubeApiLocator]: every execution environment writes its cluster's kubeconfig into
+ * the workspace, so the locator needs no knowledge of the environment. It fails fast when the workspace has no kubeconfig, since every K8s command
  * must run from the cluster's workspace.
  */
 class WorkspaceKubeApiLocator(

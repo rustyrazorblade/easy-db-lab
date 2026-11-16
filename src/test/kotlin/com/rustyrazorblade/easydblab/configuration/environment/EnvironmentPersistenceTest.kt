@@ -68,6 +68,63 @@ class EnvironmentPersistenceTest {
     }
 
     @Test
+    fun `an environment with no type is reported as missing its type, never as the value null`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{"name": "test", "versions": {}, "environment": {}}""")
+
+        assertThatThrownBy { ClusterStateManager(stateFile).load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(stateFile.absolutePath)
+            .hasMessageContaining("no type")
+            .hasMessageContaining("ec2-k3s, k3s-docker, kubeconfig")
+            .hasMessageNotContaining("'null'")
+    }
+
+    @Test
+    fun `a K3s in Docker environment with no data directory names the missing field`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{"name": "test", "versions": {}, "environment": {"type": "k3s-docker"}}""")
+
+        assertThatThrownBy { ClusterStateManager(stateFile).load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(stateFile.absolutePath)
+            .hasMessageContaining("k3s-docker")
+            .hasMessageContaining("dataDir")
+    }
+
+    @Test
+    fun `a K3s in Docker environment with a blank data directory names the missing field`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{"name": "test", "versions": {}, "environment": {"type": "k3s-docker", "dataDir": " "}}""")
+
+        assertThatThrownBy { ClusterStateManager(stateFile).load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(stateFile.absolutePath)
+            .hasMessageContaining("dataDir")
+    }
+
+    @Test
+    fun `an environment written as a string instead of an object names the file and the problem`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{"name": "test", "versions": {}, "environment": "ec2-k3s"}""")
+
+        assertThatThrownBy { ClusterStateManager(stateFile).load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(stateFile.absolutePath)
+            .hasMessageContaining("environment")
+            .hasMessageContaining("object")
+            .hasMessageNotContaining("'null'")
+    }
+
+    @Test
     fun `an unknown environment is reported as one line with no parser cause`(
         @TempDir tempDir: File,
     ) {

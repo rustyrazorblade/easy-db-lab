@@ -3,12 +3,11 @@ package com.rustyrazorblade.easydblab.configuration
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.databind.exc.InvalidTypeIdException
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.environment.Environment
+import com.rustyrazorblade.easydblab.configuration.environment.EnvironmentRecord
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -56,18 +55,17 @@ class ClusterStateManager(
         val state =
             try {
                 val tree = mapper.readTree(stateFile)
+                // A newer easy-db-lab may record an environment this one does not know, and a hand
+                // edit may break one. The message says everything, with no parser cause, so the
+                // failure report is one line.
+                EnvironmentRecord.problem(tree.get(ENVIRONMENT_FIELD), stateFile.absolutePath)?.let { problem ->
+                    throw IllegalStateException(problem)
+                }
                 val initConfig = tree.get("initConfig")
                 if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
                     initConfig.put(CNI_FIELD, CniMode.Flannel.name)
                 }
                 mapper.treeToValue(tree, ClusterState::class.java)
-            } catch (e: InvalidTypeIdException) {
-                // A newer easy-db-lab may record an environment this one does not know. The message
-                // says everything; the parser's cause is left off so the failure report is one line.
-                throw IllegalStateException(
-                    "Unknown execution environment '${e.typeId}' in ${stateFile.absolutePath}. " +
-                        "This easy-db-lab knows: ${Environment.TYPE_IDS.joinToString(", ")}.",
-                )
             } catch (e: IOException) {
                 throw IllegalStateException(
                     "Cannot read the cluster state at ${stateFile.absolutePath}: " +
@@ -144,5 +142,8 @@ class ClusterStateManager(
     private companion object {
         /** The [InitConfig] field that records the cluster's CNI. */
         const val CNI_FIELD = "cni"
+
+        /** The `state.json` field that records the execution environment. */
+        const val ENVIRONMENT_FIELD = "environment"
     }
 }

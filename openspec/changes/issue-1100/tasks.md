@@ -1,8 +1,8 @@
 ## 1. KitStorage value and state
 
-- [ ] 1.1 Test first: `KitStorage.from(state)` returns `LocalVolumes(10Ti)` with nothing recorded, `Provisioned(class, default)` with a class recorded, and applies `kitStorageSize` to either; `storageClassFor(kit)` is `edl-local-<kit>` under `LocalVolumes`.
-- [ ] 1.2 Add `configuration/KitStorage` (sealed), `InitConfig.kitStorageClass` / `kitStorageSize`, `Constants.K8s.KIT_LOCAL_CLASS_PREFIX`, `LOCAL_KIT_STORAGE_SIZE`, `DEFAULT_PROVISIONED_KIT_STORAGE_SIZE`.
-- [ ] 1.3 `Init --kit-storage-class` / `--kit-storage-size` named options, validated in `validateParameters` (quantity parse). Unit test: a bad quantity fails naming the value and flag.
+- [x] 1.1 Test first: `KitStorage.from(state)` returns `LocalVolumes(10Ti)` with nothing recorded, `Provisioned(class, default)` with a class recorded, and applies `kitStorageSize` to either; `storageClassFor(kit)` is `edl-local-<kit>` under `LocalVolumes`.
+- [x] 1.2 Add `configuration/KitStorage` (sealed), `InitConfig.kitStorageClass` / `kitStorageSize`, `Constants.K8s.KIT_LOCAL_CLASS_PREFIX`, `LOCAL_KIT_STORAGE_SIZE`, `DEFAULT_PROVISIONED_KIT_STORAGE_SIZE`.
+- [x] 1.3 `Init --kit-storage-class` / `--kit-storage-size` named options, validated in `validateParameters` (quantity parse). Unit test: a bad quantity fails naming the value and flag.
 
 ## 2. Template variables
 

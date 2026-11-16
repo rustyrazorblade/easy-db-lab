@@ -491,6 +491,34 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class KitStorageOptions {
+        @Test
+        fun `--kit-storage-class and --kit-storage-size are recorded in the init configuration`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--kit-storage-class", "retain-x", "--kit-storage-size", "200Gi")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.kitStorageClass == "retain-x" && initConfig?.kitStorageSize == "200Gi" },
+            )
+        }
+
+        @Test
+        fun `a kit storage size that is not a quantity fails before anything is saved, naming it and the flag`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--kit-storage-size", "lots")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("lots")
+                .hasMessageContaining("--kit-storage-size")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+    }
+
+    @Nested
     inner class Tenant {
         @Test
         fun `the tenant defaults to default`() {

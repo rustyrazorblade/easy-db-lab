@@ -21,15 +21,19 @@ class ClusterReachSocksIntegrationTest {
             val answerer =
                 Thread {
                     fakeProxy.accept().use { client ->
-                        client.getInputStream().read()
+                        // The reply ends in a FIN, and what the client sends after it is drained: a close
+                        // with unread bytes sends a reset, and the client would see that, not the reply.
+                        client.getInputStream().readNBytes(GREETING_BYTES)
                         client.getOutputStream().write(byteArrayOf(0x7f, 0x7f))
+                        client.shutdownOutput()
+                        client.getInputStream().readAllBytes()
                     }
                 }.apply { start() }
 
             val failure =
                 runCatching {
                     Socket(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", fakeProxy.localPort))).use {
-                        it.connect(InetSocketAddress.createUnresolved("10.0.1.5", 6443), CONNECT_TIMEOUT_MS)
+                        it.connect(InetSocketAddress("10.0.1.5", 6443), CONNECT_TIMEOUT_MS)
                     }
                 }.exceptionOrNull()
             answerer.join()
@@ -63,5 +67,8 @@ class ClusterReachSocksIntegrationTest {
 
     private companion object {
         const val CONNECT_TIMEOUT_MS = 5_000
+
+        /** The SOCKS5 greeting the JDK sends: version, one method, "no authentication". */
+        const val GREETING_BYTES = 3
     }
 }

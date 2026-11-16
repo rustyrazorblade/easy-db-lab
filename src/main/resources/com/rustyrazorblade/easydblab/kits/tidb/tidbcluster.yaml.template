@@ -14,6 +14,15 @@ spec:
   configUpdateStrategy: RollingUpdate
 
   pd:
+    # PD's start script resolves its own name with `nslookup`. Ubuntu ships a host AppArmor profile
+    # for /usr/bin/nslookup, and under the node's default container profile (containerd's, stacked
+    # with the host's) it refuses the signals nslookup's own threads send each other, so nslookup
+    # segfaults, the script never finishes and PD crash-loops. The TidbCluster CRD prunes
+    # `appArmorProfile` from its pod security context, so the container is set unconfined through
+    # the annotation the API server converts to the pod field. The operator copies the annotation
+    # only when it creates the StatefulSet.
+    annotations:
+      container.apparmor.security.beta.kubernetes.io/pd: unconfined
     baseImage: pingcap/pd
     replicas: 1
     requests:

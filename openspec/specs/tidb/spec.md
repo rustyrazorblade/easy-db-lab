@@ -8,6 +8,8 @@ Manages TiDB deployment on K3s using the TiDB Operator, with component placement
 
 The TiDB kit SHALL deploy a `TidbCluster` custom resource managed by the TiDB Operator Helm chart. The operator SHALL be installed in the `tidb-admin` namespace. The cluster SHALL include PD, TiDB, TiKV, and TiFlash components.
 
+The PD container MUST run unconfined (`container.apparmor.security.beta.kubernetes.io/pd: unconfined` in `spec.pd.annotations`): PD's start script runs `nslookup`, whose host AppArmor profile, stacked with the node's container profile, makes it segfault.
+
 #### Scenario: Operator installed on install
 
 - **WHEN** the user runs `easy-db-lab tidb install`

@@ -80,6 +80,12 @@ easy-db-lab tidb uninstall   # stop the cluster if running, delete its PVCs, rem
 `uninstall` of a running TiDB kit runs `tidb stop` first. It still refuses to run when a
 `TidbCluster` exists that the kit does not know is running — run `tidb stop` first.
 
+PD's start script runs `nslookup`, and Ubuntu's host AppArmor profile for it, stacked with the
+node's default container profile, makes it segfault; the PD container therefore runs unconfined
+(`container.apparmor.security.beta.kubernetes.io/pd: unconfined` in the `TidbCluster`). The
+TiDB Operator copies that annotation to the PD StatefulSet only when it creates it, which `tidb start`
+does after every `tidb stop`.
+
 ## Monitoring
 
 The kit registers four Prometheus scrape jobs with the cluster's observability stack

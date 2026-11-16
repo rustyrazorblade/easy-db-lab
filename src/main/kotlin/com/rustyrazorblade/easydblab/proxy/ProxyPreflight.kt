@@ -7,11 +7,12 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  * What the command executor does for a `@RequiresProxy` command before it runs: start or reuse the
  * SOCKS tunnel when the cluster is provisioned, its infrastructure is UP, and it is reached through
  * the tunnel ([reachedBySocksTunnel]: a Socks exposure without Tailscale). A Direct or
- * PortForward cluster never gets one.
+ * PortForward cluster never gets one, and neither does one in the direct network mode (K3s in Docker,
+ * a kubeconfig cluster), whatever else its state says.
  *
- * Whenever the cluster state can be read, it also records the cluster's Tailscale flag in the proxy
- * env file. A Tailscale cluster never starts a tunnel, so without this the tool wrappers and `env.sh`
- * would have no record of how to reach the cluster.
+ * Whenever the cluster state can be read, it also records the cluster's Tailscale flag and network
+ * mode in the proxy env file ([recordReachability]). A Tailscale or direct cluster never starts a
+ * tunnel, so without this the tool wrappers and `env.sh` would have no record of how to reach it.
  *
  * A failure to establish the tunnel propagates: the annotation says the command cannot work without it.
  *
@@ -47,8 +48,8 @@ class ProxyPreflight(
                 log.debug(e) { "Could not load cluster state for proxy startup check" }
                 return
             }
-        envFile.recordTailscale(state.isTailscaleEnabled())
-        if (!state.isInfrastructureUp() || !state.reachedBySocksTunnel()) return
+        envFile.recordReachability(state)
+        if (state.isDirectNetwork() || !state.isInfrastructureUp() || !state.reachedBySocksTunnel()) return
         val controlHost = state.getControlHost() ?: return
         obtained.set(socksProxyService.ensureRunning(controlHost))
     }

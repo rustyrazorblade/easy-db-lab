@@ -4,7 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 
 /** How a reader reaches the control node's observability services for one request. */
 sealed interface ObservabilityRoute {
-    /** Straight to the private address: Tailscale routes it. */
+    /** Straight to the address: Tailscale routes it, or the cluster is reachable from this machine as it is. */
     data object Direct : ObservabilityRoute
 
     /** Through the recorded SOCKS tunnel listening on [port]. */
@@ -38,8 +38,8 @@ fun interface ObservabilityRoutes {
 }
 
 /**
- * [ObservabilityRoutes] from the workspace's proxy env file: Tailscale goes direct, otherwise the
- * tunnel recorded as `EDL_SOCKS_PORT` / `EDL_SOCKS_PID`, while that PID is still the tunnel script
+ * [ObservabilityRoutes] from the workspace's proxy env file: Tailscale and the direct network mode go
+ * direct (a stale tunnel record is ignored), otherwise the tunnel recorded as `EDL_SOCKS_PORT` / `EDL_SOCKS_PID`, while that PID is still the tunnel script
  * for that port and the workspace's `sshConfig`.  It reads no JSON.
  *
  * @param envFile the workspace's `.socks5-proxy.env`
@@ -52,7 +52,7 @@ class RecordedTunnelRoutes(
     private val control: TunnelProcessControl,
 ) : ObservabilityRoutes {
     override fun current(state: ClusterState): RouteLookup {
-        if (state.isTailscaleEnabled()) return RouteLookup.Usable(ObservabilityRoute.Direct)
+        if (state.isTailscaleEnabled() || state.isDirectNetwork()) return RouteLookup.Usable(ObservabilityRoute.Direct)
         val tunnel = envFile.read().tunnel ?: return RouteLookup.Unavailable(NO_TUNNEL)
         return when (control.status(tunnel.pid, tunnel.port, sshConfig)) {
             RecordedTunnelStatus.RUNNING -> RouteLookup.Usable(ObservabilityRoute.Socks(tunnel.port))

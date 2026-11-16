@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
 import io.fabric8.kubernetes.client.Config
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -82,6 +83,19 @@ class ProxiedKubernetesClientFactoryTest {
         factory.createClient(KubeApi(writeKubeconfig(), "first-context")).use { client ->
             assertThat(client.configuration.httpsProxy).isEqualTo("socks5://127.0.0.1:1080")
         }
+    }
+
+    /** A port left published by an earlier command in the REPL must not send a local cluster's API through SOCKS. */
+    @Test
+    fun `in direct network mode httpsProxy stays null even when a proxy port is published`() {
+        System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
+        val direct = ProxiedKubernetesClientFactory { NetworkMode.Direct }
+
+        direct.createClient(KubeApi(writeKubeconfig(), "first-context")).use { client ->
+            assertThat(client.configuration.httpsProxy).isNull()
+        }
+        assertThat(System.getProperty("socksProxyHost")).isNull()
+        assertThat(System.getProperty("socksProxyPort")).isNull()
     }
 
     @Test

@@ -56,14 +56,14 @@
 
 ## 7. Direct network mode
 
-- [ ] 7.1 `ProxyPreflight`: re-assert `recordDirect` from the contract next to `recordTailscale`, and return early when `networkMode == Direct`. `WorkspaceShellTools.prepare` writes the same key.
-- [ ] 7.2 `SocksStart`: `TunnelNotNeeded` when `networkMode == Direct`. `RecordedTunnelRoutes`: `Usable(Direct)` in direct mode.
-- [ ] 7.3 `ProxiedKubernetesClientFactory`: set `httpsProxy` only when `networkMode == Tunnel`. Never touch `socksProxyHost` or `socksProxyPort`.
-- [ ] 7.4 Unit tests:
+- [x] 7.1 `ProxyPreflight`: re-assert `recordDirect` from the contract next to `recordTailscale`, and return early when `networkMode == Direct`. `WorkspaceShellTools.prepare` writes the same key.
+- [x] 7.2 `SocksStart`: `TunnelNotNeeded` when `networkMode == Direct`. `RecordedTunnelRoutes`: `Usable(Direct)` in direct mode.
+- [x] 7.3 `ProxiedKubernetesClientFactory`: set `httpsProxy` only when `networkMode == Tunnel`. Never touch `socksProxyHost` or `socksProxyPort`.
+- [x] 7.4 Unit tests:
   - `ProxyPreflight` in a `K3sDocker` workspace restores a lost key and never asks `SocksProxyService`.
   - `socks start` reports no tunnel needed.
   - An `Ec2K3s` workspace keeps today's behaviour and has no key.
-- [ ] 7.5 Integration test on a K3s TestContainer: in a `K3sDocker` workspace, a `@RequiresProxy` command reaches the API with no tunnel and no `PORT_PROPERTY`. A wrapped `kubectl` run through `KitProcessEnvironment` succeeds, with the caller's proxy variables passed through.
+- [x] 7.5 Integration test on a K3s TestContainer: in a `K3sDocker` workspace, a `@RequiresProxy` command reaches the API with no tunnel and no `PORT_PROPERTY`. A wrapped `kubectl` run through `KitProcessEnvironment` succeeds, with the caller's proxy variables passed through.
 
 ## 8. Docs and guidance
 

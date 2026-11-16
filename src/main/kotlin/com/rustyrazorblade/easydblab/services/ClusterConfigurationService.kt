@@ -154,7 +154,7 @@ class DefaultClusterConfigurationService(
 
         // env.sh puts bin/ on PATH, and a Tailscale cluster never starts a tunnel that would
         // record anything, so both are written here, where every cluster passes.
-        workspaceShellTools.prepare(workingDirectory.toFile(), clusterState.isTailscaleEnabled())
+        workspaceShellTools.prepare(workingDirectory.toFile(), clusterState)
     }
 
     /** The `ProxyCommand` for each host alias whose route needs one; empty under the direct transport. */

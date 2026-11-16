@@ -38,13 +38,14 @@
 ## 5. init --local
 
 - [ ] 5.1 Add `--local` and `--data-dir` (default `Constants.Local.DEFAULT_DATA_DIRECTORY`, resolved against the current directory, recorded absolute). `--data-dir` without `--local` is a usage error.
-- [ ] 5.2 Add the local branch of `createClusterState`. It records `K3sDocker`, the D3 exposure, no Tailscale, the `LOCAL_DOCKER` capabilities with overrides, Flannel, the D5 region and `Arch.ofHost()`. It touches no `User` and no EC2 service.
+- [ ] 5.2 Add the local branch of `createClusterState`. It records `K3sDocker`, `PortForward` exposure (D3), no Tailscale, the `LOCAL_DOCKER` capabilities with overrides, Flannel, region `""` (D5) and `Arch.ofHost()`. It touches no `User` and no EC2 service.
 - [ ] 5.3 Refuse explicitly given AWS-only options by name (`ParseResult.hasMatchedOption`).
 - [ ] 5.4 Write `ProxyEnvFile.recordDirect(true)` and emit `Event.Setup.LocalWorkspaceInitialized`. Stop reading the env file key at `Init.kt:510`.
 - [ ] 5.5 `clean` never lists the data directory, and `checkExistingFiles` does not refuse it.
 - [ ] 5.6 Unit tests, with a real `UserConfigProvider` over an empty `@TempDir` and an EC2 mock that fails on any call:
   - the recorded state, with the default and a typed relative `--data-dir`;
   - `EDL_NETWORK_MODE=direct` in the env file;
+  - `exposure = PortForward` recorded;
   - the AWS-only options refused with nothing written;
   - AWS `init` unchanged, with no `EDL_NETWORK_MODE` key.
 

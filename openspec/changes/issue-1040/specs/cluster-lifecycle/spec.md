@@ -16,7 +16,8 @@
 - `tailscaleActive: false`;
 - the local Docker capability set, with any capability overrides applied;
 - Flannel as the CNI;
-- the host's architecture for every role.
+- the host's architecture for every role;
+- `exposure: PortForward`, so the CLI reaches cluster Services by a port-forward on loopback, on a free port chosen on each use. CQL is a single-endpoint session.
 
 It MUST write `EDL_NETWORK_MODE=direct` to the proxy env file.
 

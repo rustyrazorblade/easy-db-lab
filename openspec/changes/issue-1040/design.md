@@ -37,7 +37,7 @@ Owner decisions that bind this design: Q1 (K3s-in-Docker is the first local runt
 
 ## Decisions
 
-The decisions marked **OPEN** await the owner. The spec deltas and tasks assume the recommended option; a different choice changes the named scenarios only.
+The owner decided D1 to D9 at spec review on 2026-11-16. Each took option (a), the architect's recommendation. The rejected options are kept for the record.
 
 ### 1. Data model: a sealed provisioner record
 
@@ -77,72 +77,72 @@ sealed interface Environment {
 
 A test seam binds a fixed contract through `ClusterContractSource` (`fun interface { fun current(): ClusterContract }`). Its production implementation, `StateClusterContractSource`, reads the current state. With no `state.json` it resolves a default `Ec2K3s` state.
 
-### 3. Where the namespace, the datacenter and the other recorded facts live: **OPEN (D1)**
+### 3. Where the namespace, the datacenter and the other recorded facts live: decided (D1, owner, 2026-11-16): option (a)
 
-- **(a) Recommended:** `environment` holds only the provisioner and its own parameters. `capabilities`, `exposure` and `kubeContext` stay top-level. Namespace and datacenter are contract fields resolved from the environment; #1094 and #1097 add their flags and nullable recorded overrides. This is the least churn on the merged #1090/#1096 fields, and builds nothing unused.
-- (b) One nested `environment` block holding the provisioner, capabilities, exposure, namespace and datacenter. Closest to the amendment's "record them with the environment", but it moves fields that about 15 merged call sites read.
-- (c) Add non-null `namespace` and `datacenter` fields now. Pins the values at `init`, but adds fields nothing can set yet.
+- **(a) Chosen:** `environment` holds only the provisioner and its own parameters. `capabilities`, `exposure` and `kubeContext` stay top-level. Namespace and datacenter are contract fields resolved from the environment; #1094 and #1097 add their flags and nullable recorded overrides. This is the least churn on the merged #1090/#1096 fields, and builds nothing unused.
+- (b) Rejected: One nested `environment` block holding the provisioner, capabilities, exposure, namespace and datacenter. Closest to the amendment's "record them with the environment", but it moves fields that about 15 merged call sites read.
+- (c) Rejected: Add non-null `namespace` and `datacenter` fields now. Pins the values at `init`, but adds fields nothing can set yet.
 
-### 4. How "once per command" is enforced: **OPEN (D2)**
+### 4. How "once per command" is enforced: decided (D2, owner, 2026-11-16): option (a)
 
-- **(a) Recommended:** the pure `ClusterContract.of(state)`, evaluated on each call through `ClusterContractSource`. Seams the environment selects are bound as Koin `factory`. It is deterministic, survives an `init` inside Repl or Server, and is safe on `down`'s Phase B thread pool. `ExposureServiceAccess` already resolves on each call for the same reason.
-- (b) A per-command memo the executor clears, like `ProxyPreflight`'s `ThreadLocal`. It breaks on the Phase B pool.
-- (c) Koin `single`s. They go stale after an `init` inside Repl.
+- **(a) Chosen:** the pure `ClusterContract.of(state)`, evaluated on each call through `ClusterContractSource`. Seams the environment selects are bound as Koin `factory`. It is deterministic, survives an `init` inside Repl or Server, and is safe on `down`'s Phase B thread pool. `ExposureServiceAccess` already resolves on each call for the same reason.
+- (b) Rejected: A per-command memo the executor clears, like `ProxyPreflight`'s `ThreadLocal`. It breaks on the Phase B pool.
+- (c) Rejected: Koin `single`s. They go stale after an `init` inside Repl.
 
-### 5. Service exposure for K3s in Docker: **OPEN (D3)**
+### 5. Service exposure for K3s in Docker: decided (D3, owner, 2026-11-16): option (a)
 
 The network mode is `Direct` either way. This decision is how the CLI reaches cluster Services.
 
-- **(a) Recommended:** `PortForward` (loopback, a free port). It works on Docker Desktop for macOS, and it meets #1041's "Grafana when port 3000 is taken" criterion with no extra work. CQL becomes a single-endpoint session (`CqlSessionService.kt:103`).
-- (b) `Direct`, with #1041 recording `127.0.0.1` per role and publishing every NodePort. Fixed host ports can clash.
-- (c) `Direct` to container IPs. Docker Desktop for macOS cannot reach them from the host.
+- **(a) Chosen:** `PortForward` on loopback, with a free local port chosen on each use, never a fixed host port. `init --local` records `exposure = PortForward`. It works on Docker Desktop for macOS, and it meets #1041's "Grafana when port 3000 is taken" criterion with no extra work. CQL is a single-endpoint session through the existing #1090 path (`CqlSessionService.kt:102`); this change adds no CQL code.
+- (b) Rejected: `Direct`, with #1041 recording `127.0.0.1` per role and publishing every NodePort. Fixed host ports can clash.
+- (c) Rejected: `Direct` to container IPs. Docker Desktop for macOS cannot reach them from the host.
 
-### 6. `up` and `down` before #1041: **OPEN (D4)**
+### 6. `up` and `down` before #1041: decided (D4, owner, 2026-11-16): option (a)
 
-- **(a) Recommended:** a guard at the top of `Up.execute` and `Down.execute`. For an environment with no provisioner yet it emits `Event.Environment.ProvisionerUnavailable(command, environment)` and fails, with no profile prompt. #1041 owns the `Provisioner` extraction.
-- (b) Define the `Provisioner` interface here, with `Ec2K3s` wrapping today's code. This takes over #1041's scope.
+- **(a) Chosen:** a guard at the top of `Up.execute` and `Down.execute`. For an environment with no provisioner yet it emits `Event.Environment.ProvisionerUnavailable(command, environment)` and fails, with no profile prompt. #1041 owns the `Provisioner` extraction.
+- (b) Rejected: Define the `Provisioner` interface here, with `Ec2K3s` wrapping today's code. This takes over #1041's scope.
 
-### 7. Region on a local `InitConfig`: **OPEN (D5)**
+### 7. Region on a local `InitConfig`: decided (D5, owner, 2026-11-16): option (a)
 
-- **(a) Recommended:** `""`. Only the S3 and EC2 paths read it, and those are AWS-gated.
-- (b) Move `region` into `Ec2K3s(region)`. Cleaner under K1 and aligned with #746, but it touches 8 readers. Better done in #1097 or #746.
-- (c) Make it nullable.
+- **(a) Chosen:** `""`. Only the S3 and EC2 paths read it, and those are AWS-gated.
+- (b) Rejected: Move `region` into `Ec2K3s(region)`. Cleaner under K1 and aligned with #746, but it touches 8 readers. Better done in #1097 or #746.
+- (c) Rejected: Make it nullable.
 
-### 8. How a command declares it is AWS-only: **OPEN (D6)**
+### 8. How a command declares it is AWS-only: decided (D6, owner, 2026-11-16): option (a)
 
-- **(a) Recommended:** `NodeCapability.AWS_ACCOUNT` plus a class annotation `@RequiresCapability(vararg capabilities, alternative)`, checked in `checkRequirements` before the profile check. It shares one vocabulary with the kit `requires:` terms, and needs no environment-name check. `CapabilityOverrides` refuses it, because it is declared, not probed.
-- (b) A separate `EnvironmentFeature` enum. Two vocabularies.
-- (c) An `@AwsOnly` annotation. This is branching on a name.
+- **(a) Chosen:** `NodeCapability.AWS_ACCOUNT` plus a class annotation `@RequiresCapability(vararg capabilities, alternative)`, checked in `checkRequirements` before the profile check. It shares one vocabulary with the kit `requires:` terms, and needs no environment-name check. `CapabilityOverrides` refuses it, because it is declared, not probed.
+- (b) Rejected: A separate `EnvironmentFeature` enum. Two vocabularies.
+- (c) Rejected: An `@AwsOnly` annotation. This is branching on a name.
 
 The gated set is `cassandra use`, `cassandra install`, `build-image`, `build-base`, `build-cassandra`, `spark *`, `opensearch *`, `tailscale *`, `ingress *`, `aws *`, `prune-amis`, `show-iam-policies` and `observability compactor *`. `cassandra use` also requires `NODE_SSH`. Outside a workspace the target is `Ec2K3s`, so `build-image` with no workspace still runs.
 
-### 9. Profile requirement: **OPEN (D7)**
+### 9. Profile requirement: decided (D7, owner, 2026-11-16): option (a)
 
-- **(a) Recommended:** keep `@RequireProfileSetup`. The executor applies it only when the target environment has `AWS_ACCOUNT`. The target is `(command as? DeclaresEnvironment)?.declaredEnvironment()` (implemented by `Init`), else the recorded environment. `DeclaresEnvironment` lives in `kernel/`, which depends only on `configuration`. This one rule covers all 76 annotated commands.
-- (b) Remove the annotation from `init`, `up` and `down` and check inside each. The other 73 commands still prompt in a local workspace.
+- **(a) Chosen:** keep `@RequireProfileSetup`. The executor applies it only when the target environment has `AWS_ACCOUNT`. The target is `(command as? DeclaresEnvironment)?.declaredEnvironment()` (implemented by `Init`), else the recorded environment. `DeclaresEnvironment` lives in `kernel/`, which depends only on `configuration`. This one rule covers all 76 annotated commands.
+- (b) Rejected: Remove the annotation from `init`, `up` and `down` and check inside each. The other 73 commands still prompt in a local workspace.
 
-### 10. Direct mode for an AWS workspace: **OPEN (D8)**
+### 10. Direct mode for an AWS workspace: decided (D8, owner, 2026-11-16): option (a)
 
-- **(a) Recommended:** not in this change. Only `init --local` writes the key. `Init.kt:510` stops reading it, so the environment alone decides.
-- (b) Add `init --network direct` for AWS over a VPN. This is a feature nobody has asked for, so it needs the owner's go-ahead.
+- **(a) Chosen:** not in this change. Only `init --local` writes the key. `Init.kt:510` stops reading it, so the environment alone decides.
+- (b) Rejected: Add `init --network direct` for AWS over a VPN. This is a feature nobody has asked for, so it needs the owner's go-ahead.
 
-### 11. Data directory default name: **OPEN (D9)**
+### 11. Data directory default name: decided (D9, owner, 2026-11-16): option (a)
 
-- **(a) Recommended:** `<workspace>/observability-data` (`Constants.Local.DEFAULT_DATA_DIRECTORY`). It cannot be mistaken for kit data. `clean` never lists it, and `init` does not refuse an existing one.
-- (b) `<workspace>/data`. Shorter and more generic.
+- **(a) Chosen:** `<workspace>/observability-data` (`Constants.Local.DEFAULT_DATA_DIRECTORY`). It cannot be mistaken for kit data. `clean` never lists it, and `init` does not refuse an existing one.
+- (b) Rejected: `<workspace>/data`. Shorter and more generic.
 
 ### 12. `init --local`: what it records
 
 The local branch of `Init.createClusterState` calls no `User`, no `EC2InstanceService` and no `deriveArch`. It records:
 
 - `environment = K3sDocker(absolute dataDir)`
-- `exposure` per D3
+- `exposure = PortForward` (D3)
 - `tailscaleActive = false`
 - `capabilities = overrides.applyTo(LOCAL_DOCKER)`
 - `initConfig` with:
   - the db and app counts, `tenant`, `telemetryRedirect` and `nodeLabels`
   - `cni = Flannel`, because Cilium ENI is EC2-only
-  - `region` per D5
+  - `region = ""` (D5)
   - architectures from the host's `os.arch` (`Arch.ofHost()`)
 
 Then it writes `ProxyEnvFile(workspace).recordDirect(true)` and emits `Event.Setup.LocalWorkspaceInitialized(dataDir, dbCount, appCount)`.
@@ -182,7 +182,7 @@ The pattern follows `SSHModule.kt:25-30`: a `when` over the contract inside the 
 - **[Risk]** A `single` that captures `ClusterTooling` freezes it across an `init` inside Repl. → Audit every holder when the binding becomes a `factory`. The test runs `init --local` after an AWS state in one Koin graph.
 - **[Risk]** A local kit `start` still fails on S3 storage until #1035 lands (`StoreBackend.from` requires `s3Bucket`). → Expected. This change removes the profile requirement; #1035 renders `Volume`. The scenario for local kit commands asserts only that no profile is required.
 - **[Assumption about #1035]** #1035 merges `ObservabilityStorage.from(state)` as currently drafted (`S3 | Volume`, returning `S3` "until #1040"). Whichever change merges second makes it `when (ClusterContract.of(state).storeKind)`. Neither change compiles against the other.
-- **[Risk]** Docker Desktop for macOS cannot reach container IPs from the host. → D3 recommends `PortForward`.
+- **[Risk]** Docker Desktop for macOS cannot reach container IPs from the host. → D3 chose `PortForward` on loopback.
 - **[Trade-off]** The default data directory sits inside the workspace, so deleting the workspace deletes the data. → The docs say so plainly. `clean` never removes it, and nothing in easy-db-lab deletes it.
 - **[Risk]** An unknown environment from a newer easy-db-lab. → A clear error that names the value and the known ones.
 
@@ -192,4 +192,4 @@ None. Clusters are ephemeral. A state with no `environment` field reads as `Ec2K
 
 ## Open Questions
 
-D1 to D9 above (Decisions 3 to 11).
+None. D1 to D9 were decided by the owner on 2026-11-16 (Decisions 3 to 11).

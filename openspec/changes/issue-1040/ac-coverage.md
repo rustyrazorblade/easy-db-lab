@@ -16,9 +16,10 @@
 | Risk: env file drifts from state | networking: "The env file follows the recorded environment" |
 | Risk: hidden `User` loads on local paths | execution-environment: "Kit commands in a local workspace need no profile" (plus Koin graph test, task 4.5) |
 | Risk: `aws-account` faked by an override | execution-environment: "aws-account cannot be overridden" |
+| D3: K3s in Docker reached by loopback port-forward | cluster-lifecycle: "Local init records port-forward exposure" |
 | Docs, `help provisioning`, networking and cluster-lifecycle specs | Tasks 8.1-8.3; spec deltas in this change |
 
 Intentional exclusions:
 - Namespace (#1094) and datacenter (#1097) flags: contract fields only, with fixed values (D1).
 - Local kit `start` reaching storage: needs the #1035 Volume rendering. This change removes only the profile requirement.
-- Docker Desktop host reachability: decided by D3; built by #1041.
+- Docker Desktop host reachability: D3 (owner, 2026-11-16) chose PortForward on loopback, so the host never dials container IPs; #1041 builds the cluster.

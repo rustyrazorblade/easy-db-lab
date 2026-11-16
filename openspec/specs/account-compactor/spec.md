@@ -91,3 +91,13 @@ The account VPC `easy-db-lab-compactor` SHALL carry the `easy_cass_lab=1` tag an
 - **WHEN** `down` counts the clusters that name the account bucket
 - **THEN** the `easy-db-lab-compactor` VPC is not counted
 
+### Requirement: The compactor task definition is unchanged by the package move
+
+The account compactor's registered ECS task definition SHALL be identical to today's, including the Tempo backend configuration it carries.
+
+#### Scenario: Registered request is unchanged
+
+- **WHEN** the account compactor registers its task definition
+- **THEN** the registered request is identical to today's
+- **AND** the Tempo backend configuration resource still loads
+

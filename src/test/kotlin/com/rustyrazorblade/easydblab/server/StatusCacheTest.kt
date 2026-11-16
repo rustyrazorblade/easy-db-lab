@@ -107,6 +107,7 @@ class StatusCacheTest : BaseKoinTest() {
                 single { mockOpenSearchService }
                 single<StressJobService> { mockStressJobService }
                 single { WorkspaceKitScanner(get()) }
+                factory { ClusterStatusCollector() }
             },
         )
 

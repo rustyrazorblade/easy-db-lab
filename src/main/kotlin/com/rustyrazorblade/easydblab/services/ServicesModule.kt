@@ -35,6 +35,7 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
+import com.rustyrazorblade.easydblab.server.ClusterStatusCollector
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -213,6 +214,9 @@ val servicesModule =
 
         // Kit discovery — the single source of truth for which workspace directories are kits
         singleOf(::WorkspaceKitScanner)
+
+        // The status facts `status` prints and the status server caches; it resolves its own services from Koin
+        factory { ClusterStatusCollector() }
 
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class

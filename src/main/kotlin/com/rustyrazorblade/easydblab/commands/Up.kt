@@ -129,6 +129,9 @@ class Up(
         private val log = KotlinLogging.logger {}
         private val SSH_STARTUP_DELAY = Duration.ofSeconds(5)
         private val TAILNET_RETRY_INTERVAL = Duration.ofMillis(Constants.Tailscale.REACHABILITY_RETRY_INTERVAL_MS)
+
+        /** The name `up` reports itself by. */
+        private const val COMMAND_NAME = "up"
     }
 
     // Lock for synchronizing access to workingState from parallel threads
@@ -147,9 +150,10 @@ class Up(
     private var preflightTunnel: SocksProxyState? = null
 
     override fun execute() {
+        workingState = clusterStateManager.load()
+        ProvisionerGuard.require(COMMAND_NAME, workingState, eventBus)
         // Read before any nested command runs: the executor clears the record before each command.
         preflightTunnel = proxyPreflight.tunnelForCommand()
-        workingState = clusterStateManager.load()
         val initConfig =
             workingState.initConfig
                 ?: error("No init config found. Please run 'easy-db-lab init' first.")

@@ -10,7 +10,7 @@
 - [x] 2.1 Add the form enums `ToolingForm`, `NodeAccessForm`, `StoreKind` and `NetworkMode`, and `ClusterContract` with `of(state)`, the only `when (state.environment)` in main code.
 - [x] 2.2 Add `ClusterContractSource` and `StateClusterContractSource`. With no state, the latter resolves a default `Ec2K3s`. Register it in Koin.
 - [x] 2.3 Add `NodeCapability.AWS_ACCOUNT` to `NodeCapabilities.AWS` only. `CapabilityOverrides` refuses it.
-- [ ] 2.4 `NodeCapabilities.from`: return the recorded set, else `environment.declaredCapabilities`. `Init.effectiveCapabilities()` starts from the environment's declared set.
+- [x] 2.4 `NodeCapabilities.from`: return the recorded set, else `environment.declaredCapabilities`. `Init.effectiveCapabilities()` starts from the environment's declared set.
 - [x] 2.5 Make `Placement.from` and `ObservabilityHosting.from` read the contract. Replace their "until #1040" KDoc.
 - [x] 2.6 Replace `StackEnvironment.from` and the `capabilitiesOf`/`environmentOf` lambdas in `ObservabilityStackService`, `OtelSyncService`, `Status` and `StatusCache` with the injected `ClusterContractSource`.
 - [x] 2.7 `ObservabilityStackService` and `OtelSyncService` read the region from `state.initConfig.region` and stop injecting `User`.
@@ -37,12 +37,12 @@
 
 ## 5. init --local
 
-- [ ] 5.1 Add `--local` and `--data-dir` (default `Constants.Local.DEFAULT_DATA_DIRECTORY`, resolved against the current directory, recorded absolute). `--data-dir` without `--local` is a usage error.
-- [ ] 5.2 Add the local branch of `createClusterState`. It records `K3sDocker`, `PortForward` exposure (D3), no Tailscale, the `LOCAL_DOCKER` capabilities with overrides, Flannel, region `""` (D5) and `Arch.ofHost()`. It touches no `User` and no EC2 service.
-- [ ] 5.3 Refuse explicitly given AWS-only options by name (`ParseResult.hasMatchedOption`).
-- [ ] 5.4 Write `ProxyEnvFile.recordDirect(true)` and emit `Event.Setup.LocalWorkspaceInitialized`. Stop reading the env file key at `Init.kt:510`.
-- [ ] 5.5 `clean` never lists the data directory, and `checkExistingFiles` does not refuse it.
-- [ ] 5.6 Unit tests, with a real `UserConfigProvider` over an empty `@TempDir` and an EC2 mock that fails on any call:
+- [x] 5.1 Add `--local` and `--data-dir` (default `Constants.Local.DEFAULT_DATA_DIRECTORY`, resolved against the current directory, recorded absolute). `--data-dir` without `--local` is a usage error.
+- [x] 5.2 Add the local branch of `createClusterState`. It records `K3sDocker`, `PortForward` exposure (D3), no Tailscale, the `LOCAL_DOCKER` capabilities with overrides, Flannel, region `""` (D5) and `Arch.ofHost()`. It touches no `User` and no EC2 service.
+- [x] 5.3 Refuse explicitly given AWS-only options by name (`ParseResult.hasMatchedOption`).
+- [x] 5.4 Write `ProxyEnvFile.recordDirect(true)` and emit `Event.Setup.LocalWorkspaceInitialized`. Stop reading the env file key at `Init.kt:510`.
+- [x] 5.5 `clean` never lists the data directory, and `checkExistingFiles` does not refuse it.
+- [x] 5.6 Unit tests, with a real `UserConfigProvider` over an empty `@TempDir` and an EC2 mock that fails on any call:
   - the recorded state, with the default and a typed relative `--data-dir`;
   - `EDL_NETWORK_MODE=direct` in the env file;
   - `exposure = PortForward` recorded;
@@ -51,8 +51,8 @@
 
 ## 6. up and down
 
-- [ ] 6.1 Add a guard at the top of `Up.execute` and `Down.execute`. For an environment with no provisioner it emits `Event.Environment.ProvisionerUnavailable` and fails before any side effect or profile check.
-- [ ] 6.2 Unit test: `up` and `down` in a `K3sDocker` workspace fail with the event and make no AWS call.
+- [x] 6.1 Add a guard at the top of `Up.execute` and `Down.execute`. For an environment with no provisioner it emits `Event.Environment.ProvisionerUnavailable` and fails before any side effect or profile check.
+- [x] 6.2 Unit test: `up` and `down` in a `K3sDocker` workspace fail with the event and make no AWS call.
 
 ## 7. Direct network mode
 

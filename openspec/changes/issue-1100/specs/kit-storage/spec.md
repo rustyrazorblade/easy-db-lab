@@ -67,13 +67,13 @@ A kit's claim size SHALL be, from strongest to weakest: the kit's `--storage-siz
 
 ### Requirement: A kit StorageClass that does not retain is refused
 
-Where a kit StorageClass is recorded, the system SHALL refuse it when its `reclaimPolicy` is not `Retain` or it does not exist, naming the class and stating the fix: pass `init --kit-storage-class` naming a class with `reclaimPolicy: Retain`, or create a copy of the named class with `reclaimPolicy: Retain`. The check SHALL run at `init` when the cluster is reachable, at `up` when the operator passed `--kit-storage-class`, and in the `kit-storage` step before any kit claim is created. Under `LocalVolumes` no check is needed. When no kit StorageClass is given on a cluster the user brings, the cluster's default class SHALL be used and checked; with no default class, `init` SHALL fail naming `--kit-storage-class`.
+Where a kit StorageClass is recorded, the system SHALL refuse it when its `reclaimPolicy` is not `Retain` or it does not exist, naming the class and stating the fix: pass `init --kit-storage-class` naming a class with `reclaimPolicy: Retain`, or create a copy of the named class with `reclaimPolicy: Retain`. The check SHALL run at `up`, the first time the cluster's API is reachable, when `init` recorded a `--kit-storage-class`, before any kit or observability workload is deployed; and in the `kit-storage` step before any kit claim is created. `init` SHALL only record the class: on AWS it has no cluster API to check against. The resolver that picks and checks the class (`KitStorageResolver`) SHALL use the named class, else the cluster's default class, and SHALL fail naming `--kit-storage-class` when neither exists; running it at `init` against a cluster the user brings is left to the `init --kubeconfig` change (#1082). Under `LocalVolumes` no check is needed.
 
-#### Scenario: A deleting class fails init
-- **GIVEN** a cluster whose kit StorageClass `gp2` reclaims with `Delete`
-- **WHEN** `init` runs
+#### Scenario: A deleting class fails up
+- **GIVEN** `init --kit-storage-class gp2` was run and `gp2` reclaims with `Delete`
+- **WHEN** `up` reaches the cluster's API
 - **THEN** it fails, naming `gp2`, its reclaim policy, and `init --kit-storage-class` with `reclaimPolicy: Retain` as the fix
-- **AND** nothing is recorded or created
+- **AND** no observability stack or kit is deployed
 
 #### Scenario: A class swapped after init is refused at kit install
 - **GIVEN** the recorded kit StorageClass was deleted and recreated with `reclaimPolicy: Delete`
@@ -84,7 +84,7 @@ Where a kit StorageClass is recorded, the system SHALL refuse it when its `recla
 - **WHEN** the recorded kit StorageClass does not exist
 - **THEN** the refusal says the class does not exist and gives the same fix
 
-#### Scenario: No default class and no flag
-- **GIVEN** a cluster the user brings with no default StorageClass
-- **WHEN** `init` runs without `--kit-storage-class`
+#### Scenario: No default class and no class named
+- **GIVEN** a cluster with no default StorageClass
+- **WHEN** the kit StorageClass is resolved with no class named
 - **THEN** it fails naming `--kit-storage-class`

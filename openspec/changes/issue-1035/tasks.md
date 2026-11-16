@@ -35,7 +35,7 @@
 - [ ] 5.1 Test first (D9): the compactor allow is identical for prefix `a/`, prefix `b/` and no prefix, and covers every compacted root at the top and under any prefix. Build it with `underAnyPrefix`. Remove the "known gap" note from `services/aws/CLAUDE.md`.
 - [ ] 5.2 Test first: the compactor's roots and lease follow the store prefix, and its ConfigMap goes through `StoreBlockRenderer` with no unreplaced placeholder and the `store_bucket` key.
 - [ ] 5.3 Test first (D8): the writer policy denies deletes under `mimir/`, `loki/` and `tempo/` at the top and under any prefix, and allows deletes only under `pyroscope/`. Render the writer and compactor policies that `StoreSecretCheck` prints.
-- [ ] 5.4 (D7) Do not build K5 on AWS here. Check that the child issue exists (separate `EasyDBLabCompactorRole`, credentials spike first) and link it from `design.md`. On AWS both identities stay the instance role.
+- [ ] 5.4 (D7) Do not build K5 on AWS here. The separate `EasyDBLabCompactorRole` is #1159 ("Run the account compactor under its own AWS identity, EasyDBLabCompactorRole"), a sub-issue of #1035, and its credentials spike runs first. Until #1159 lands, both identities on AWS stay the instance role. Check that nothing in this change pre-empts #1159: no `AssumedRole`, and no change to the instance role's deny.
 
 ## 6. Local compaction
 

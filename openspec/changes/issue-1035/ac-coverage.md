@@ -11,7 +11,7 @@
 | Amendment 2026-11-11 | Host path vs claim chosen by `HOST_PATH`, not store type | observability-store: Local cluster mounts D; Your cluster mounts the claim | Covered |
 | Amendment / K3 | Non-Retain StorageClass refused, naming the class | observability-store: A deleting class is refused | Covered (existing `RetainedClaimCheck`) |
 | Amendment / K3 | Retained volume labelled cluster-scoped | observability-store: Retained volume is labelled | Covered |
-| K5 | Writer cannot delete; compactor deletes only what it merged | observability-store: The writer cannot delete merged roots; Backends get the writer, the compactor gets the compactor | Covered off AWS; on AWS deferred to the D7 child issue (both identities stay the instance role; the AWS criterion is "unchanged") |
+| K5 | Writer cannot delete; compactor deletes only what it merged | observability-store: The writer cannot delete merged roots; Backends get the writer, the compactor gets the compactor | Covered off AWS; on AWS deferred to #1159 (D7) (both identities stay the instance role; the AWS criterion is "unchanged") |
 | Lead | Store credentials off AWS populate `StoreCredentials.FromSecret` | observability-store: Backends get the writer...; Missing Secret; Missing key | Covered |
 | Lead | CompactorIam prefixed allow is last-writer-wins | account-compactor: Two prefixes do not narrow each other; The compactor follows its store prefix | Covered |
 | Risk R1 | AWS calls leak in local mode | observability-store: All four signals land under D with no AWS request | Covered |

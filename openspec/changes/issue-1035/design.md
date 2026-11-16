@@ -22,7 +22,7 @@ Three questions are decided separately.
 
 | Environment | Store | Hosting | Identities |
 |---|---|---|---|
-| AWS (no record) | `S3Backend` | `HostPath("/mnt/db1")` | instance role for both identities (D7: separate compactor role in a child issue) |
+| AWS (no record) | `S3Backend` | `HostPath("/mnt/db1")` | instance role for both identities (D7: separate compactor role in #1159) |
 | K3s in Docker (#1041) | `FilesystemBackend` | `HostPath(NODE_DATA_DIR/state)`, tree at `NODE_DATA_DIR` | none |
 | Your cluster, object store (#1082) | `S3Backend` | `RetainedClaim(class, size)` for state | writer Secret, compactor Secret |
 | Your cluster, retained volume (#1082) | `FilesystemBackend` | `RetainedClaim`, one claim per workload holding `state/` and `store/` | none, labelled cluster-scoped |
@@ -88,7 +88,7 @@ Compactor scratch is not on D, because #1071's lease agent wipes its scratch dir
 - `credentials: StoreCredentials` is replaced by `store: StoreAccess`:
   - `Object(StoreIdentities(writer, compactor))` or `Directory`.
   - Neither "filesystem with credentials" nor "writer Secret on the compactor" can be written down.
-  - `StoreCredentials` keeps `InstanceRole` and `FromSecret(secretName)`. This change does not add `AssumedRole(roleArn)`. The D7 child issue adds it.
+  - `StoreCredentials` keeps `InstanceRole` and `FromSecret(secretName)`. This change does not add `AssumedRole(roleArn)`. #1159 (D7) adds it.
 - For `Directory`, `host(...)` adds the store volume:
   - `HostPath`: a hostPath of `NODE_DATA_DIR` (all of D, D3) at `/store`, and state at `stateRoot/<dir>`.
   - `RetainedClaim`: the existing `<workload>-data` claim, mounted with `subPath: state` at the state path and `subPath: store` at `/store`.
@@ -162,8 +162,8 @@ The owner approved the spec at Seam 1 on 2026-11-16. D1, D2 and D7 were decided 
 - **D4. Local compaction: (a).** In-process: the Mimir `compactor` target with shared flags, and Loki compacting every 10m. This amends the "no compactor on a cluster" requirement so that it applies to object stores only. Rejected: (b) and (c), #1071's pod with no lease or with a filesystem `ConditionalObjects`.
 - **D5. Retained-volume store on your cluster: (a).** Build the backend half now. CLI-side backups and documents fail with a message that names #1082. Rejected: (b) object store only off AWS.
 - **D6. Store credentials off AWS: (a).** Secrets the user creates, named at `init` (defaults `edl-store-writer`, `edl-store-compactor`). They are validated before apply, and both policies are printed. Rejected: (b) Secrets built from a named profile. Deferred: (c) workload identity, to #1082.
-- **D7. K5 on AWS: (a), in a child issue.** A separate `EasyDBLabCompactorRole`, assumed by the lease container and served on `127.0.0.1` as ECS-style container credentials. The instance role's delete deny returns to all roots.
-  - The child issue runs the credentials spike first. It must prove that minio-go and Loki's S3 client honour `AWS_CONTAINER_CREDENTIALS_FULL_URI`.
+- **D7. K5 on AWS: (a), in child issue #1159** ("Run the account compactor under its own AWS identity, EasyDBLabCompactorRole", a sub-issue of #1035). A separate `EasyDBLabCompactorRole`, assumed by the lease container and served on `127.0.0.1` as ECS-style container credentials. The instance role's delete deny returns to all roots.
+  - #1159 runs the credentials spike first. It must prove that minio-go and Loki's S3 client honour `AWS_CONTAINER_CREDENTIALS_FULL_URI`.
   - #1035 does not build it. #1035's AWS criterion stays "unchanged", so on AWS both identities remain the instance role.
   - Rejected: (b) an IAM user with static keys; (c) a permanent lease-only guard.
 - **D8. Pyroscope and the writer identity: (a).** The writer may delete under `pyroscope/` only. Rejected: (b) giving Pyroscope the compactor identity.

@@ -249,10 +249,14 @@ The coordinator sees only these ports:
 
 The shared pre-steps (preflight, bucket, discovery, capacity, network, launch permission, the batched launch) stay outside the coordinator, behind the existing provisioning service.
 
+The state the coordinator writes stays neutral, as the multi-cloud epic (#1062) has it: a host is an alias, its zone, its addresses and an opaque instance ID.  The provider's own resources (VPC, subnets, security group) stay in `InfrastructureState`, which #1062 makes a sealed type per provider; the coordinator never reads it.  The seams sit at domain concepts (an instance, a node's steps, the control plane), not at SDK calls.
+
 What a second adapter implements:
 
-- **GCP or Azure, with K3s:** `InstanceFleet` and `InstanceTracker` on that provider's compute API, plus its own pre-steps.  `NodeSteps`, `ControlPlaneReader` and `NodeCleanup` are reused unchanged.
-- **EKS, or any existing cluster:** no machines are launched, so `InstanceTracker` completes `running` and `statusOk` at once and never ends an instance, and `InstanceFleet` refuses replacement, so a failed node fails `up`.  `NodeSteps` drops the K3s server start and join and waits for the provider's node instead.  `ControlPlaneReader` checks only what that cluster needs, and `NodeCleanup` does nothing.
+- **GCP instances with K3s (#1053):** the second `InstanceFleet` and `InstanceTracker`, on Compute Engine, plus that provider's pre-steps.  `NodeSteps`, `ControlPlaneReader` and `NodeCleanup` are reused unchanged.  Azure would be the same shape.
+- **An existing cluster (EKS or any kubeconfig):** the Kubernetes-forward epic (#1032), with `init --kubeconfig` (#1082) as its entry point.  The workspace records its target in `state.json` as the sealed execution environment of #1040 (a `Kubeconfig` variant beside `Ec2K3s`).  On that target `up` provisions no nodes, so `NodeBringUp` does not run: there is no instance to launch, track, replace or join.  The nodes the cluster has are read through the Kubernetes API.  If such a target later needs a bring-up step (waiting for a managed node group, say), it plugs in its own `NodeSteps` and a tracker that completes at once; the coordinator does not change.
+
+This change builds none of these.  It only keeps the coordinator from depending on EC2 or K3s directly, and it does not touch the execution-environment model of #1040.
 
 ## Risks / Trade-offs
 

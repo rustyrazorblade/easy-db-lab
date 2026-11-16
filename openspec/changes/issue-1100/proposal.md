@@ -16,7 +16,7 @@ Six stateful kits bind their claims to easy-db-lab's own local PVs with a label 
 - **TiDB, Kafka, memcached, ignite3** use the environment's class. TiDB gets `kit-storage` steps, a size arg and `pvReclaimPolicy: Retain` (today `Delete`, which overrides a Retain class). Kafka drops its literal `local-storage-wfc` and sets `deleteClaim: false`. memcached drops `volumeName` and its literal `10Ti`. ignite3 gets a class, a step and a size arg.
 - **Retain check.** `RetainedClaimCheck` is generalized to `StorageClassRetainCheck`. A kit StorageClass that does not reclaim with `Retain`, or does not exist, is refused, naming the class and the fix — at `init` when a kubeconfig is reachable, at `up` when `--kit-storage-class` was given, and in the `kit-storage` step. `LocalVolumes` is exempt (its class and PVs are easy-db-lab's own and `Retain`).
 - **Guard test** over the packaged kit resources: no kit names `local-path`, `local-storage`, `STORAGE_CLASS_WFC` or any fixed class; no claim has a selector or a volume name.
-- **Removed:** `local-storage-wfc`, `local-storage`, `STORAGE_CLASS_WFC` and their `up` steps, pending owner decision D9.
+- **Removed:** `local-storage-wfc`, `local-storage`, `STORAGE_CLASS_WFC` and their `up` steps (D9).
 
 ## Capabilities
 

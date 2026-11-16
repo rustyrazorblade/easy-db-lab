@@ -30,6 +30,10 @@ Kit paths are under `src/main/resources/com/rustyrazorblade/easydblab/kits/`; Ko
 
 **Variable flow**: `${VAR}` arg defaults resolve against `TemplateVariables` (`KitInstallCommandFactory.kt:73,112-118`); `STORAGE_SIZE` is persisted in `kit-resolved-args.env` (`BaseInstallCommand.kt:63-71`) and re-read by later phases (`KitRunnerCommand.kt:144-153`); `KitProcessEnvironment.applyTo` exports every variable to kit scripts.
 
+## Decision record
+
+Owner, 2026-11-16: every decision D1-D10 below is decided as its option (a). D10: Kafka `deleteClaim: false`; uninstall deletes the claims explicitly; the restart-after-stop integration test (task 6.5) is the proof.
+
 ## Goals / Non-Goals
 
 **Goals:** one kit template that binds on owned local volumes and on any retained dynamic class; a real size on dynamic classes; no kit names a fixed class; a non-`Retain` kit class is refused with its name and the fix.
@@ -38,64 +42,64 @@ Kit paths are under `src/main/resources/com/rustyrazorblade/easydblab/kits/`; Ko
 
 ## Decisions
 
-### D1. A per-kit local StorageClass replaces the selector (pending owner)
+### D1. A per-kit local StorageClass replaces the selector (decided (a), owner 2026-11-16)
 
 `LocalVolumes.storageClassFor(kit)` returns `edl-local-<kit>`. The `kit-storage` step creates that no-provisioner, `WaitForFirstConsumer`, `Retain` class (fabric8 `StorageClassBuilder`, labelled `app.kubernetes.io/managed-by=easy-db-lab` and `easydblab/cluster=<id>`) and the kit's PVs of that class. A claim of class `edl-local-cassandra-pods` can only bind a PV of that class, so reservation is structural.
 
-- **(a) Recommended:** per-kit class. One template, no operator-specific claim names, valid on a dynamic class.
+- **(a) Chosen (owner 2026-11-16):** per-kit class. One template, no operator-specific claim names, valid on a dynamic class.
 - (b) Pre-bind each PV's `claimRef` to the exact claim name. Needs per-operator name patterns (Strimzi, CNPG, Altinity); fragile.
 - (c) Conditional template sections or a Kotlin post-render patch that strips selectors. A mini template language, or hidden rewriting of operator CRs.
 
-### D2. Default size on a provisioned class (pending owner)
+### D2. Default size on a provisioned class (decided (a), owner 2026-11-16)
 
-- **(a) Recommended:** `100Gi`, overridden by `init --kit-storage-size`.
+- **(a) Chosen (owner 2026-11-16):** `100Gi`, overridden by `init --kit-storage-size`.
 - (b) `20Gi`: cheaper, kits fill it.
 - (c) No default: the flag is required on any provisioned class.
 
-### D3. Per-kit size option (pending owner)
+### D3. Per-kit size option (decided (a), owner 2026-11-16)
 
-- **(a) Recommended:** keep the kit.yaml named arg, default `${KIT_STORAGE_SIZE}`, and rename postgres's and clickhouse's `--size` to `--storage-size` so every kit uses one name.
+- **(a) Chosen (owner 2026-11-16):** keep the kit.yaml named arg, default `${KIT_STORAGE_SIZE}`, and rename postgres's and clickhouse's `--size` to `--storage-size` so every kit uses one name.
 - (b) Keep `--size` on those two.
 - (c) One global injected `--storage-size`; hides the option from kit.yaml.
 
-### D4. Your cluster with no `--kit-storage-class` (pending owner)
+### D4. Your cluster with no `--kit-storage-class` (decided (a), owner 2026-11-16)
 
-- **(a) Recommended:** use the cluster's default class (annotation `storageclass.kubernetes.io/is-default-class`), then run the Retain check. With no default, fail naming `--kit-storage-class`.
+- **(a) Chosen (owner 2026-11-16):** use the cluster's default class (annotation `storageclass.kubernetes.io/is-default-class`), then run the Retain check. With no default, fail naming `--kit-storage-class`.
 - (b) Always require `--kit-storage-class`.
 - (c) Fall back to the observability retained class (#1035). Couples two settings.
 
-### D5. When Retain is checked (pending owner)
+### D5. When Retain is checked (decided (a), owner 2026-11-16)
 
-- **(a) Recommended:** at `init` (kubeconfig reachable) / `up`, and in the `kit-storage` step. One GET per kit install catches a class deleted and recreated as `Delete`.
+- **(a) Chosen (owner 2026-11-16):** at `init` (kubeconfig reachable) / `up`, and in the `kit-storage` step. One GET per kit install catches a class deleted and recreated as `Delete`.
 - (b) `init` only.
 - (c) Also every `start`; redundant with (a).
 
-### D6. The local environment (K3s in Docker, #1041) (pending owner)
+### D6. The local environment (K3s in Docker, #1041) (decided (a), owner 2026-11-16)
 
-- **(a) Recommended:** `Provisioned` on a retained copy of K3s `local-path` that `up` creates. Same code path as your cluster; needs no `NODE_SSH`.
+- **(a) Chosen (owner 2026-11-16):** `Provisioned` on a retained copy of K3s `local-path` that `up` creates. Same code path as your cluster; needs no `NODE_SSH`.
 - (b) `LocalVolumes` with `mkdir` through `docker exec` (#1039).
 - (c) hostPath PVs with `DirectoryOrCreate`.
 
-### D7. Step name (pending owner)
+### D7. Step name (decided (a), owner 2026-11-16)
 
-- **(a) Recommended:** rename to `kit-storage` / `kit-storage-delete`.
+- **(a) Chosen (owner 2026-11-16):** rename to `kit-storage` / `kit-storage-delete`.
 - (b) Keep `platform-pvs` and branch inside it.
 
-### D8. ignite3 and memcached in scope (pending owner)
+### D8. ignite3 and memcached in scope (decided (a), owner 2026-11-16)
 
-- **(a) Recommended:** yes. ignite3's class-less claim lands on a `Delete` default; memcached's literal `10Ti` would bill 10Ti on EBS.
+- **(a) Chosen (owner 2026-11-16):** yes. ignite3's class-less claim lands on a `Delete` default; memcached's literal `10Ti` would bill 10Ti on EBS.
 - (b) Defer ignite3.
 
-### D9. Remove `local-storage-wfc` and `local-storage` (pending owner)
+### D9. Remove `local-storage-wfc` and `local-storage` (decided (a), owner 2026-11-16)
 
-- **(a) Recommended:** remove both, their `up` steps and their events; nothing consumes them after this change.
+- **(a) Chosen (owner 2026-11-16):** remove both, their `up` steps and their events; nothing consumes them after this change.
 - (b) Keep both for ad-hoc `kit install --from` templates.
 
-### D10. Kafka `deleteClaim` (pending owner)
+### D10. Kafka `deleteClaim` (decided (a), owner 2026-11-16; the restart-after-stop integration test, task 6.5, is the proof)
 
 `stop` deletes the KafkaNodePool; with `deleteClaim: true` Strimzi deletes the claims, and a Retain local PV is left `Released` and cannot rebind on the next `start` (likely an existing bug; to be verified by test).
 
-- **(a) Recommended:** `deleteClaim: false`; uninstall deletes claims explicitly, as today.
+- **(a) Chosen (owner 2026-11-16):** `deleteClaim: false`; uninstall deletes claims explicitly, as today.
 - (b) Leave it if the integration test shows restart works.
 
 ### Fixed choices (no owner decision needed)

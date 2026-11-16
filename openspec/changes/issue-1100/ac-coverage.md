@@ -12,6 +12,6 @@
 | Risk | Two PVs of one kit on one node share a directory (TiDB) | `kit-storage: One kit holds two volumes on one node` | |
 | Risk | ignite3 claim lands on a `Delete` default class | `kit-storage: Kit claims follow the environment's kit storage` (ignite3 listed) | D8 |
 | Risk | TiDB `pvReclaimPolicy: Delete` overrides Retain | `kit-storage: TiDB and Kafka take the environment's class` | |
-| Risk | Kafka `deleteClaim: true` leaves Released PVs | task 6.5 | D10; behaviour fix, not a new requirement |
+| Risk | Kafka `deleteClaim: true` leaves Released PVs | task 6.5 | D10 decided (a): `deleteClaim: false`; task 6.5 is the proof |
 | Risk | Root-owned dynamic volumes vs non-root images | task 5.6, `A stateful kit binds on a dynamic StorageClass` | Checked per kit in implementation |
 | Excluded | Pod placement off labelled nodes | — | #1101 |

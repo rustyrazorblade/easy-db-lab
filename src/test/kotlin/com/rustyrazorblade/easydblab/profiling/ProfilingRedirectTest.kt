@@ -89,6 +89,15 @@ class ProfilingRedirectTest : BaseKoinTest() {
 
         assertThat(writeUrl).isEqualTo("http://pyroscope.default.svc:4040")
         assertThat(writeUrl).doesNotContain(CONTROL_NODE_IP)
+
+        // A host-network pod resolves a Service name only under ClusterFirstWithHostNet; with the
+        // default policy it reads the node's resolv.conf and every profile is dropped silently.
+        val podSpec =
+            PyroscopeManifestBuilder(templateService)
+                .buildEbpfDaemonSet(telemetryRedirect = null)
+                .spec.template.spec
+        assertThat(podSpec.hostNetwork).isTrue()
+        assertThat(podSpec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
     }
 
     @Test
@@ -172,8 +181,9 @@ class ProfilingRedirectTest : BaseKoinTest() {
                 .buildAllResources(clusterName = "test-cluster", tenant = "acme")
                 .filterIsInstance<DaemonSet>()
                 .single()
+        val podSpec = daemonSet.spec.template.spec
         val javaToolOptions =
-            daemonSet.spec.template.spec.containers
+            podSpec.containers
                 .single { it.name == "cassandra-sidecar" }
                 .env
                 .single { it.name == "JAVA_TOOL_OPTIONS" }
@@ -181,6 +191,9 @@ class ProfilingRedirectTest : BaseKoinTest() {
 
         assertThat(javaToolOptions).contains("-Dpyroscope.server.address=http://pyroscope.default.svc:4040")
         assertThat(javaToolOptions).doesNotContain(CONTROL_NODE_IP)
+        // The Service name resolves from the host network only under ClusterFirstWithHostNet.
+        assertThat(podSpec.hostNetwork).isTrue()
+        assertThat(podSpec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
     }
 
     companion object {

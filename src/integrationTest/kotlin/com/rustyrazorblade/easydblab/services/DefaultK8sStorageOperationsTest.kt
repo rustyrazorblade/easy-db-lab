@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
+import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer
@@ -173,4 +175,44 @@ class DefaultK8sStorageOperationsTest {
         assertThat(storageOps.storageClassReclaimPolicy("defaulted").getOrThrow()).isEqualTo("Delete")
         assertThat(storageOps.storageClassReclaimPolicy("absent").getOrThrow()).isNull()
     }
+
+    @Test
+    fun `listKitLocalPersistentVolumes returns every kit's PVs and no other PV`() {
+        storageOps.createLocalPersistentVolumes(kitVolumes("kafka", count = 2)).getOrThrow()
+        storageOps.createLocalPersistentVolumes(kitVolumes("presto", count = 1)).getOrThrow()
+        server
+            .createClient()
+            .persistentVolumes()
+            .resource(
+                PersistentVolumeBuilder()
+                    .withNewMetadata()
+                    .withName("not-a-kit")
+                    .endMetadata()
+                    .withNewSpec()
+                    .addToCapacity("storage", Quantity("1Gi"))
+                    .withNewHostPath()
+                    .withPath("/tmp")
+                    .endHostPath()
+                    .endSpec()
+                    .build(),
+            ).create()
+
+        val names = storageOps.listKitLocalPersistentVolumes().getOrThrow().map { it.metadata.name }
+
+        assertThat(names).containsExactlyInAnyOrder("data-kafka-0", "data-kafka-1", "data-presto-0")
+    }
+
+    private fun kitVolumes(
+        kit: String,
+        count: Int,
+    ) = PersistentVolumeConfig(
+        dbName = kit,
+        localPath = "/mnt/db1/$kit/data",
+        count = count,
+        storageSize = "1Gi",
+        storageClass = "edl-local-$kit",
+        namespace = "default",
+        volumeClaimTemplateName = "data",
+        nodeType = "db",
+    )
 }

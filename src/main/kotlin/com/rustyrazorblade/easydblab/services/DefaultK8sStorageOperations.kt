@@ -213,6 +213,17 @@ class DefaultK8sStorageOperations(
             }
         }
 
+    override fun listKitLocalPersistentVolumes(): Result<List<PersistentVolume>> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                client
+                    .persistentVolumes()
+                    .withLabel(Constants.PV_KIT_LABEL)
+                    .list()
+                    .items
+            }
+        }
+
     /**
      * If a PV's claimRef has a UID pointing to a deleted PVC, clear just the UID.
      * The claimRef name/namespace remain correct (matching the PVC the StatefulSet will create),

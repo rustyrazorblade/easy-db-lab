@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.PersistentVolume
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import java.nio.file.Path
 
@@ -181,6 +182,9 @@ interface K8sStorageOperations {
     fun createLocalPersistentVolumes(config: PersistentVolumeConfig): Result<Unit>
 
     fun deleteLocalPersistentVolumes(dbName: String): Result<Unit>
+
+    /** Every kit local PV: the PVs labelled with [com.rustyrazorblade.easydblab.Constants.PV_KIT_LABEL]. */
+    fun listKitLocalPersistentVolumes(): Result<List<PersistentVolume>>
 
     /**
      * Creates the kit-local StorageClass [name] when it is missing: no provisioner,

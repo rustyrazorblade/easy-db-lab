@@ -41,6 +41,11 @@ easy-db-lab postgres uninstall
 3. Waits for all pods to reach `Ready`
 4. Applies the NodePort service for external access
 
+The CNPG `Cluster` sets `podSecurityContext.appArmorProfile.type: Unconfined`, with the operator's
+default pod security context stated beside it. Postgres processes signal each other, and the node's
+default AppArmor profile refuses every signal a container sends; without the setting the instance
+stays in "the database system is in recovery mode" and never becomes Ready.
+
 ### stop
 
 Deletes the CNPG `Cluster` CR and the NodePort service. PersistentVolumes are retained — running `postgres start` again resumes from the existing dataset.

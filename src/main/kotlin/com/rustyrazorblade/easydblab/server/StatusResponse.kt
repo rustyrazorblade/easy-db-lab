@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.server
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -137,10 +139,25 @@ data class StressInfo(
     val jobs: List<StressJobInfo>,
 )
 
+/**
+ * The Cassandra version the cluster runs. [version] is the first answering db host's version;
+ * [hosts] has every host's answer, [mixed] says they differ, and [unanswered] names the db hosts
+ * that did not answer within the probe bound. A `cached` report has no host answers.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class CassandraVersionInfo(
     val version: String,
     val source: String,
+    @EncodeDefault val hosts: List<HostVersion> = emptyList(),
+    @EncodeDefault val mixed: Boolean = false,
+    @EncodeDefault val unanswered: List<String> = emptyList(),
+)
+
+@Serializable
+data class HostVersion(
+    val host: String,
+    val version: String,
 )
 
 @Serializable

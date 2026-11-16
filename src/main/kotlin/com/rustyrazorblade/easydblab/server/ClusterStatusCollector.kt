@@ -25,7 +25,6 @@ import org.koin.core.component.inject
 import java.time.Duration
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -401,35 +400,66 @@ class ClusterStatusCollector(
                 cassandraHosts.any { host -> instanceStates[host.instanceId]?.state?.uppercase() == RUNNING }
 
         if (tryLive) {
-            tryGetLiveVersion(cassandraHosts)?.let { return CassandraVersionInfo(version = it, source = "live") }
+            val answers = collectLiveVersions(cassandraHosts)
+            if (answers.isNotEmpty()) return liveVersionInfo(answers, cassandraHosts)
         }
 
         return CassandraVersionInfo(version = state.default.version.ifEmpty { "unknown" }, source = "cached")
     }
 
     /**
-     * Asks every db host for its version at the same time and returns the first good answer, or
-     * null when none answers within [liveVersionTimeout]. A host that does not answer cannot delay
-     * the report past the timeout.
+     * The live report: [CassandraVersionInfo.version] is the answer of the first db host in
+     * cluster order that answered, so it does not change with which host answered first, and
+     * [CassandraVersionInfo.hosts] lists every answer. The cluster is mixed when the answers differ.
      */
-    private fun tryGetLiveVersion(hosts: List<ClusterHost>): String? {
+    private fun liveVersionInfo(
+        answers: List<HostVersion>,
+        hosts: List<ClusterHost>,
+    ): CassandraVersionInfo =
+        CassandraVersionInfo(
+            version = answers.first().version,
+            source = "live",
+            hosts = answers,
+            mixed = answers.map { it.version }.distinct().size > 1,
+            unanswered = hosts.map { it.alias }.filter { alias -> answers.none { it.host == alias } },
+        )
+
+    /**
+     * Asks every db host for its version at the same time and returns every good answer in host
+     * order. Waits at most [liveVersionTimeout] in total: a host that has not answered by then is
+     * left out and cannot delay the report. The probe threads are interrupted and not waited for,
+     * because a connect that hangs inside the SSH client does not react to the interrupt; closing
+     * the executor would wait for it, up to the connect timeout.
+     */
+    private fun collectLiveVersions(hosts: List<ClusterHost>): List<HostVersion> {
         val executor = Executors.newVirtualThreadPerTaskExecutor()
         try {
-            val probes = hosts.map { host -> Callable { probeVersion(host) } }
-            return executor.invokeAny(probes, liveVersionTimeout.toMillis(), TimeUnit.MILLISECONDS)
-        } catch (e: TimeoutException) {
-            log.debug(e) { "No db host reported its version within $liveVersionTimeout" }
-            return null
-        } catch (e: ExecutionException) {
-            log.debug(e) { "No db host reported its version" }
-            return null
+            val probes = hosts.map { host -> host.alias to executor.submit<String> { probeVersion(host) } }
+            val deadline = System.nanoTime() + liveVersionTimeout.toNanos()
+            return probes.mapNotNull { (alias, future) ->
+                awaitProbe(alias, future, deadline)?.let { HostVersion(alias, it) }
+            }
         } finally {
             executor.shutdownNow()
-            executor.close()
         }
     }
 
-    /** One host's version; throws when the host fails or has no usable version, so `invokeAny` moves on. */
+    private fun awaitProbe(
+        alias: String,
+        future: Future<String>,
+        deadline: Long,
+    ): String? =
+        try {
+            future.get(maxOf(deadline - System.nanoTime(), 0L), TimeUnit.NANOSECONDS)
+        } catch (e: TimeoutException) {
+            log.debug(e) { "$alias did not report its version within $liveVersionTimeout" }
+            null
+        } catch (e: ExecutionException) {
+            log.debug(e) { "$alias did not report a version" }
+            null
+        }
+
+    /** One host's version; throws when the host fails or has no usable version, so the host is left out of the report. */
     private fun probeVersion(host: ClusterHost): String {
         val version =
             runCatching { remoteOperationsService.getRemoteVersion(host.toHost()).versionString }

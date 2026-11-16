@@ -25,6 +25,12 @@ import org.koin.core.component.inject
 import java.time.Duration
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * What a collection found: the typed [response] and the failures behind its gaps.
@@ -58,7 +64,9 @@ data class StatusReport(
  *   **account bucket** under the cluster prefix `clusters/<name>-<id>/`.
  * - Observability paths come from [ObservabilityStore] and are in the account bucket.
  */
-class ClusterStatusCollector : KoinComponent {
+class ClusterStatusCollector(
+    private val liveVersionTimeout: Duration = Duration.ofSeconds(Constants.Cassandra.LIVE_VERSION_PROBE_TIMEOUT_SECONDS),
+) : KoinComponent {
     companion object {
         private val log = KotlinLogging.logger {}
         private const val HOURS_PER_DAY = 24
@@ -79,6 +87,12 @@ class ClusterStatusCollector : KoinComponent {
     /**
      * Collects every section for [state].
      *
+     * The remote fetches run at the same time, each on its own virtual thread, so the report takes
+     * about as long as the slowest fetch rather than the sum. The live Cassandra version needs the
+     * EC2 result to know whether a node is running, so it starts when EC2 returns. Every thread is
+     * finished before this returns. An interrupt stops the collection at once, keeps the interrupt
+     * flag and rethrows the [InterruptedException].
+     *
      * @param includePods whether to list the Kubernetes pods; `status` does not show them, so it
      *   skips the call
      * @param kubernetesReachable whether the Kubernetes API can be reached (the SOCKS tunnel is
@@ -89,25 +103,56 @@ class ClusterStatusCollector : KoinComponent {
         includePods: Boolean = true,
         kubernetesReachable: Boolean = true,
     ): StatusReport {
-        val instanceStates = fetchInstanceStates(state)
-        val securityGroup = collectSecurityGroup(state)
-        val stress = if (kubernetesReachable) collectStressJobs() else StressOutcome()
-        val response =
-            StatusResponse(
-                cluster = buildClusterInfo(state),
-                nodes = buildNodesInfo(state, instanceStates),
-                networking = buildNetworkingInfo(state),
-                securityGroup = securityGroup.info,
-                spark = buildSparkInfo(state),
-                opensearch = buildOpenSearchInfo(state),
-                s3 = buildS3Info(state),
-                kubernetes = if (includePods) buildKubernetesInfo() else null,
-                stressJobs = stress.info,
-                cassandraVersion = buildCassandraVersionInfo(state, instanceStates),
-                accessInfo = buildAccessInfo(state),
-            )
-        return StatusReport(response, securityGroup.error, stress.error)
+        val executor = Executors.newVirtualThreadPerTaskExecutor()
+        try {
+            val instanceStates = executor.submit<Map<String, InstanceDetails>> { fetchInstanceStates(state) }
+            val securityGroup = executor.submit<SecurityGroupOutcome> { collectSecurityGroup(state) }
+            val stress = executor.submit<StressOutcome> { if (kubernetesReachable) collectStressJobs() else StressOutcome() }
+            val spark = executor.submit<SparkInfo?> { buildSparkInfo(state) }
+            val openSearch = executor.submit<OpenSearchInfo?> { buildOpenSearchInfo(state) }
+            val kubernetes = executor.submit<KubernetesInfo?> { if (includePods) buildKubernetesInfo() else null }
+            val cassandraVersion =
+                executor.submit<CassandraVersionInfo?> { buildCassandraVersionInfo(state, await(instanceStates)) }
+
+            val instances = await(instanceStates)
+            val securityGroupOutcome = await(securityGroup)
+            val stressOutcome = await(stress)
+            val response =
+                StatusResponse(
+                    cluster = buildClusterInfo(state),
+                    nodes = buildNodesInfo(state, instances),
+                    networking = buildNetworkingInfo(state),
+                    securityGroup = securityGroupOutcome.info,
+                    spark = await(spark),
+                    opensearch = await(openSearch),
+                    s3 = buildS3Info(state),
+                    kubernetes = await(kubernetes),
+                    stressJobs = stressOutcome.info,
+                    cassandraVersion = await(cassandraVersion),
+                    accessInfo = buildAccessInfo(state),
+                )
+            return StatusReport(response, securityGroupOutcome.error, stressOutcome.error)
+        } finally {
+            // Closing waits for the threads, so stop any still running (an interrupt, or a failure
+            // in one fetch) before it does.
+            executor.shutdownNow()
+            executor.close()
+        }
     }
+
+    /**
+     * Waits for [future], rethrowing what the fetch threw. An interrupt of the waiting thread
+     * restores the interrupt flag and propagates.
+     */
+    private fun <T> await(future: Future<T>): T =
+        try {
+            future.get()
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw e
+        } catch (e: ExecutionException) {
+            throw e.cause ?: e
+        }
 
     /**
      * The endpoints of every installed kit recorded as running, from each kit's `kit.yaml`.
@@ -362,21 +407,37 @@ class ClusterStatusCollector : KoinComponent {
         return CassandraVersionInfo(version = state.default.version.ifEmpty { "unknown" }, source = "cached")
     }
 
+    /**
+     * Asks every db host for its version at the same time and returns the first good answer, or
+     * null when none answers within [liveVersionTimeout]. A host that does not answer cannot delay
+     * the report past the timeout.
+     */
     private fun tryGetLiveVersion(hosts: List<ClusterHost>): String? {
-        for (host in hosts) {
-            val version =
-                runCatching {
-                    remoteOperationsService.getRemoteVersion(host.toHost()).versionString
-                }.onFailure { e ->
-                    log.debug(e) { "Failed to get version from ${host.alias}" }
-                }.getOrNull()
-
-            // "current" means the symlink is not configured: treat it as unavailable
-            if (!version.isNullOrEmpty() && version != "current") {
-                return version
-            }
+        val executor = Executors.newVirtualThreadPerTaskExecutor()
+        try {
+            val probes = hosts.map { host -> Callable { probeVersion(host) } }
+            return executor.invokeAny(probes, liveVersionTimeout.toMillis(), TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            log.debug(e) { "No db host reported its version within $liveVersionTimeout" }
+            return null
+        } catch (e: ExecutionException) {
+            log.debug(e) { "No db host reported its version" }
+            return null
+        } finally {
+            executor.shutdownNow()
+            executor.close()
         }
-        return null
+    }
+
+    /** One host's version; throws when the host fails or has no usable version, so `invokeAny` moves on. */
+    private fun probeVersion(host: ClusterHost): String {
+        val version =
+            runCatching { remoteOperationsService.getRemoteVersion(host.toHost()).versionString }
+                .onFailure { e -> log.debug(e) { "Failed to get version from ${host.alias}" } }
+                .getOrThrow()
+        // "current" means the symlink is not configured: treat it as unavailable
+        check(version.isNotEmpty() && version != "current") { "${host.alias} has no usable version" }
+        return version
     }
 
     private fun buildAccessInfo(state: ClusterState): AccessInfo? {

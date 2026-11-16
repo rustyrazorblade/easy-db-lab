@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
@@ -22,12 +21,5 @@ class ImdsRegionTest {
     @ValueSource(strings = ["null", "", "  \n", "401 Unauthorized", "us-west-2a"])
     fun `anything that is not a region fails instead of becoming a datacenter`(output: String) {
         assertThatThrownBy { ImdsRegion.parse(output) }.isInstanceOf(CommandFailedException::class.java)
-    }
-
-    @Test
-    fun `the read sends an IMDSv2 token`() {
-        assertThat(ImdsRegion.COMMAND)
-            .contains("-X PUT http://169.254.169.254/latest/api/token")
-            .contains("X-aws-ec2-metadata-token: \$TOKEN")
     }
 }

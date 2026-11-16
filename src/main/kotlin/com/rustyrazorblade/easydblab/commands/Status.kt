@@ -470,7 +470,7 @@ internal fun renderCassandraVersion(version: CassandraVersionInfo): String =
             append("Version (${version.source}): ${version.version}\n")
         }
         if (version.unanswered.isNotEmpty()) {
-            append("No answer within the probe bound from: ${version.unanswered.joinToString(", ")}\n")
+            append("No answer from: ${version.unanswered.joinToString(", ")}\n")
         }
     }.trimEnd()
 

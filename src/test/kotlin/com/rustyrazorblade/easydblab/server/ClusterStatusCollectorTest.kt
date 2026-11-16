@@ -204,7 +204,7 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
         val whenRunning = collector().collect(state(hosts = hosts)).response.cassandraVersion
 
         assertThat(whenStopped).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
-        assertThat(whenRunning).isEqualTo(CassandraVersionInfo("5.0.9", "live"))
+        assertThat(whenRunning).isEqualTo(CassandraVersionInfo("5.0.9", "live", hosts = listOf(HostVersion("db0", "5.0.9"))))
     }
 
     @Test
@@ -350,7 +350,7 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
         whenever(remoteOps.getRemoteVersion(any(), any())).thenReturn(Version.fromString("current"))
         val unconfigured = collector().collect(state(hosts = hosts)).response.cassandraVersion
 
-        assertThat(live).isEqualTo(CassandraVersionInfo("5.0.9", "live"))
+        assertThat(live).isEqualTo(CassandraVersionInfo("5.0.9", "live", hosts = listOf(HostVersion("db0", "5.0.9"))))
         assertThat(unreachable).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
         assertThat(unconfigured).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
     }
@@ -432,12 +432,14 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
 
         // Serial would be 5 * 600ms; the version probe waits for EC2, so the floor is 2 * 600ms.
         assertThat(elapsed).isLessThan(Duration.ofMillis(2200))
-        assertThat(report.response.cassandraVersion).isEqualTo(CassandraVersionInfo("5.0.9", "live"))
+        assertThat(
+            report.response.cassandraVersion,
+        ).isEqualTo(CassandraVersionInfo("5.0.9", "live", hosts = listOf(HostVersion("db0", "5.0.9"))))
         assertThat(report.response.spark?.state).isEqualTo("RUNNING")
     }
 
     @Test
-    fun `a host that does not answer is bounded by the probe timeout and a healthy host still wins`() {
+    fun `a host that does not answer is bounded by the probe timeout and a healthy host still reports`() {
         val hosts = mapOf(ServerType.Cassandra to listOf(db("db0", "i-db0"), db("db1", "i-db1")))
         whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode("i-db0"), runningNode("i-db1")))
         whenever(remoteOps.getRemoteVersion(any(), any())).thenAnswer {
@@ -450,8 +452,11 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
         val version = ClusterStatusCollector(Duration.ofMillis(2000)).collect(state(hosts = hosts)).response.cassandraVersion
         val elapsed = Duration.ofNanos(System.nanoTime() - started)
 
-        assertThat(version).isEqualTo(CassandraVersionInfo("5.0.9", "live"))
-        assertThat(elapsed).isLessThan(Duration.ofMillis(1500))
+        assertThat(
+            version,
+        ).isEqualTo(CassandraVersionInfo("5.0.9", "live", hosts = listOf(HostVersion("db1", "5.0.9")), unanswered = listOf("db0")))
+        // Every host is given the whole bound now, so the report waits for it (2000 ms) and no longer.
+        assertThat(elapsed).isBetween(Duration.ofMillis(1800), Duration.ofMillis(3500))
     }
 
     @Test
@@ -469,6 +474,92 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
 
         assertThat(version).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
         assertThat(elapsed).isLessThan(Duration.ofMillis(5000))
+    }
+
+    @Test
+    fun `a cluster whose db hosts run different versions reports every host and is marked mixed`() {
+        val hosts = mapOf(ServerType.Cassandra to listOf(db("db0", "i-db0"), db("db1", "i-db1")))
+        whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode("i-db0"), runningNode("i-db1")))
+        whenever(remoteOps.getRemoteVersion(any(), any())).thenAnswer {
+            // db0 is slow and db1 fast, so the first answer is db1's; the report must not depend on that.
+            if (it.getArgument<Host>(0).alias == "db0") {
+                Thread.sleep(300)
+                Version.fromString("5.0")
+            } else {
+                Version.fromString("4.1.12")
+            }
+        }
+
+        val version = collector().collect(state(hosts = hosts)).response.cassandraVersion
+
+        assertThat(version)
+            .isEqualTo(
+                CassandraVersionInfo(
+                    version = "5.0",
+                    source = "live",
+                    hosts = listOf(HostVersion("db0", "5.0"), HostVersion("db1", "4.1.12")),
+                    mixed = true,
+                ),
+            )
+    }
+
+    @Test
+    fun `hosts on the same version are not mixed`() {
+        val hosts = mapOf(ServerType.Cassandra to listOf(db("db0", "i-db0"), db("db1", "i-db1")))
+        whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode("i-db0"), runningNode("i-db1")))
+        whenever(remoteOps.getRemoteVersion(any(), any())).thenReturn(Version.fromString("5.0.9"))
+
+        val version = collector().collect(state(hosts = hosts)).response.cassandraVersion
+
+        assertThat(version?.mixed).isFalse()
+        assertThat(version?.hosts).hasSize(2)
+        assertThat(version?.unanswered).isEmpty()
+    }
+
+    @Test
+    fun `a host that never answers is named, and the others still report`() {
+        val hosts = mapOf(ServerType.Cassandra to listOf(db("db0", "i-db0"), db("db1", "i-db1")))
+        whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode("i-db0"), runningNode("i-db1")))
+        whenever(remoteOps.getRemoteVersion(any(), any())).thenAnswer {
+            if (it.getArgument<Host>(0).alias == "db0") Thread.sleep(60_000)
+            Version.fromString("5.0.9")
+        }
+
+        val version = ClusterStatusCollector(Duration.ofMillis(1000)).collect(state(hosts = hosts)).response.cassandraVersion
+
+        assertThat(version?.hosts).containsExactly(HostVersion("db1", "5.0.9"))
+        assertThat(version?.unanswered).containsExactly("db0")
+    }
+
+    @Test
+    fun `a probe stuck where an interrupt cannot reach it does not hold the report past the bound`() {
+        val hosts = mapOf(ServerType.Cassandra to listOf(db("db0", "i-db0"), db("db1", "i-db1")))
+        whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode("i-db0"), runningNode("i-db1")))
+        val release = java.util.concurrent.CountDownLatch(1)
+        whenever(remoteOps.getRemoteVersion(any(), any())).thenAnswer {
+            if (it.getArgument<Host>(0).alias == "db0") {
+                // An SSH connect in progress ignores the interrupt: wait out any number of them.
+                while (release.count > 0) {
+                    try {
+                        release.await()
+                    } catch (_: InterruptedException) {
+                        Thread.interrupted()
+                    }
+                }
+            }
+            Version.fromString("5.0.9")
+        }
+
+        try {
+            val started = System.nanoTime()
+            val version = ClusterStatusCollector(Duration.ofMillis(1000)).collect(state(hosts = hosts)).response.cassandraVersion
+            val elapsed = Duration.ofNanos(System.nanoTime() - started)
+
+            assertThat(version?.unanswered).containsExactly("db0")
+            assertThat(elapsed).isLessThan(Duration.ofMillis(4000))
+        } finally {
+            release.countDown()
+        }
     }
 
     @Test

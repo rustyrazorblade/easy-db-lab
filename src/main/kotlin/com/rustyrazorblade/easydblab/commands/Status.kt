@@ -452,9 +452,27 @@ S3 Manager:
             eventBus.emit(Event.Status.CassandraNoNodes)
             return
         }
-        println("\n=== CASSANDRA VERSION ===\nVersion (${version.source}): ${version.version}")
+        println(renderCassandraVersion(version))
     }
 }
+
+/**
+ * The `=== CASSANDRA VERSION ===` section. A cluster whose db hosts report different versions
+ * says so and lists each host's version; the first host's version alone would hide the mismatch.
+ */
+internal fun renderCassandraVersion(version: CassandraVersionInfo): String =
+    buildString {
+        append("\n=== CASSANDRA VERSION ===\n")
+        if (version.mixed) {
+            append("Version (${version.source}): MIXED, the db hosts run different versions\n")
+            version.hosts.forEach { append("  ${it.host}: ${it.version}\n") }
+        } else {
+            append("Version (${version.source}): ${version.version}\n")
+        }
+        if (version.unanswered.isNotEmpty()) {
+            append("No answer within the probe bound from: ${version.unanswered.joinToString(", ")}\n")
+        }
+    }.trimEnd()
 
 /**
  * Thrown by [Status] after it renders a degraded report, so the command still exits non-zero.

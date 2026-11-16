@@ -40,6 +40,7 @@ The server MUST expose REST HTTP endpoints for programmatic access to cluster st
 - **GIVEN** a running server
 - **WHEN** a client sends GET /status
 - **THEN** the server returns JSON with cluster info, EC2 instances, K8s pods, networking, security groups, EMR, OpenSearch, S3, Cassandra version, and access URLs.
+- **AND** the Cassandra version section holds every db host's live answer, says whether the hosts differ (`mixed`), and names the hosts that gave no answer within the 15 second probe bound (`unanswered`); the report returns within the bound even when an SSH connect hangs
 
 #### Scenario: Section filter returns single section
 - **GIVEN** a running server

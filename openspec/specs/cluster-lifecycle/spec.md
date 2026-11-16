@@ -334,7 +334,7 @@ The system MUST back up cluster configuration files to S3 for recovery.
 
 ### Requirement: Cluster State Restore
 
-The system MUST support restoring cluster configuration from S3 using VPC identification. A restored workspace MUST get its tool wrappers and its proxy env file, so wrapped tools and `env.sh` work without running `up`.
+The system MUST support restoring cluster configuration from S3 using VPC identification. A restored workspace MUST get its tool wrappers and its proxy env file, so wrapped tools and `env.sh` work without running `up`. A restored workspace MUST also get an `sshConfig` and `env.sh` generated for the machine that restores, from the restored state and that machine's SSH key and SSH transport, so `status` and the SOCKS tunnel work without running `up`. `sshConfig` is never backed up: it holds the key path and routing of the machine that wrote it.
 
 #### Scenario: Restore state from VPC ID
 
@@ -342,6 +342,7 @@ The system MUST support restoring cluster configuration from S3 using VPC identi
 - **WHEN** the user restores state
 - **THEN** cluster configuration is recovered from S3 and the local environment is rebuilt.
 - **AND** the tool wrappers, their marker, and the proxy env file are written
+- **AND** `sshConfig` and `env.sh` are written for this machine and name every restored host
 
 #### Scenario: Restore when no backup exists
 

@@ -35,7 +35,6 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
-import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -265,7 +264,8 @@ val servicesModule =
                 get<ClusterBackupService>(),
                 get<ClusterStateManager>(),
                 get<EventBus>(),
-                get<WorkspaceShellTools>(),
+                get<ClusterConfigurationService>(),
+                get<User>(),
             )
         }
 

@@ -97,6 +97,18 @@ class CommandLineParserTest : BaseKoinTest() {
     }
 
     @Test
+    fun `version flag prints the build version`() {
+        System.setProperty("easydblab.version", "42")
+        try {
+            CommandLineParser().eval(arrayOf("--version"))
+        } finally {
+            System.clearProperty("easydblab.version")
+        }
+
+        assertThat(stdout.toString().trim()).isEqualTo("42")
+    }
+
+    @Test
     fun `root usage includes a footer pointing to the help topic system`() {
         CommandLineParser().eval(arrayOf("--help"))
 

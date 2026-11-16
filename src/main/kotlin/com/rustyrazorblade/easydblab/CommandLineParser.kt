@@ -75,6 +75,7 @@ import kotlin.system.exitProcess
     name = "easy-db-lab",
     description = ["Tool to create Cassandra lab environments in AWS"],
     mixinStandardHelpOptions = true,
+    versionProvider = EasyDbLabVersionProvider::class,
     subcommands = [
         // Top-level commands
         Commands::class,
@@ -126,6 +127,15 @@ class EasyDBLabCommand : Runnable {
         // Show help when no subcommand is provided
         spec.commandLine().usage(System.out)
     }
+}
+
+/**
+ * What `easy-db-lab --version` prints: the same build number as the `version` command, taken from
+ * the `easydblab.version` property the start script sets. Without a provider the mixin's
+ * `--version` has nothing to print and exits 0 in silence.
+ */
+class EasyDbLabVersionProvider : CommandLine.IVersionProvider {
+    override fun getVersion(): Array<String> = arrayOf(Context.buildVersion().toString())
 }
 
 /**
@@ -222,6 +232,9 @@ class CommandLineParser : KoinComponent {
 
     private fun applyHelpOptionsToAll(cl: CommandLine) {
         StandardHelpOptions.apply(cl.commandSpec)
+        // The mixin's -V/--version prints what the command's own spec holds, which is nothing for
+        // a subcommand, so every command gets the root's version provider.
+        cl.commandSpec.versionProvider(EasyDbLabVersionProvider())
         cl.subcommands.values.forEach { applyHelpOptionsToAll(it) }
     }
 

@@ -27,8 +27,8 @@ data class Context(
     val appHome: String? = System.getProperty("easydblab.apphome"),
 ) : KoinComponent {
     companion object {
-        /** The build number the start script passes as `easydblab.version`; 0 when run without it. */
-        fun buildVersion(): Int = System.getProperty("easydblab.version")?.toInt() ?: 0
+        /** The build number the start script passes as `easydblab.version`; 0 when run without it or when it is not a number. */
+        fun buildVersion(): Int = System.getProperty("easydblab.version")?.toIntOrNull() ?: 0
 
         /**
          * Create a Context for regular CLI execution

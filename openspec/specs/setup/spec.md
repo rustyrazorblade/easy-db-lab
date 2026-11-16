@@ -186,21 +186,22 @@ The profile setup workflow MUST let the user choose the SSH transport (`direct` 
 - **WHEN** the user displays the profile
 - **THEN** the SSH transport is shown
 
-### Requirement: Profile setup region and key pair behave as today
+### Requirement: Profile setup rejects a blank region and creates the EC2 key pair
 
-Profile setup SHALL validate the region and create the EC2 key pair exactly as today. The key-pair creation SHALL live in the AWS services layer, not in the user configuration model.
+Profile setup SHALL reject a blank region before it builds any AWS client, with the error `region must not be blank or empty.`. It SHALL accept any named region without checking it against a list, so a misspelt region is not caught at this step. When the profile has no key pair, setup SHALL create an EC2 key pair named `easy-db-lab-<random UUID>`, tagged `easy_cass_lab=1`, write its private key to `secret.pem` in the profile directory with owner-only permissions (`rw-------`) from the moment the file exists, and save the key name in the profile.
 
-#### Scenario: Invalid region is rejected as today
+#### Scenario: Blank region is rejected
 
-- **GIVEN** a region value that profile setup rejects today
+- **GIVEN** a blank region
 - **WHEN** the user enters it during `easy-db-lab profile setup`
-- **THEN** it is rejected with the same error as today
+- **THEN** it is rejected with `region must not be blank or empty.`, before any AWS call
 
 #### Scenario: Valid region creates the key pair
 
-- **GIVEN** a valid region
+- **GIVEN** a valid region and a profile with no key pair
 - **WHEN** profile setup reaches the key-pair step
-- **THEN** it creates the key pair and saves the private key as today
+- **THEN** it creates a key pair named `easy-db-lab-<random UUID>` tagged `easy_cass_lab=1`
+- **AND** it writes the private key to `secret.pem` in the profile directory, readable and writable by the owner only, and saves the key name in the profile
 
 ### Requirement: Setup classifies credential failures like any command
 

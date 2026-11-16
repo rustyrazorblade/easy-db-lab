@@ -34,5 +34,7 @@ The OpenSearch service SHALL report a domain that does not exist as an absent re
 
 - **GIVEN** a cluster whose recorded OpenSearch domain does not exist
 - **WHEN** the user runs `opensearch status`
-- **THEN** the output is the same as today's not-found output
+- **THEN** it prints `OpenSearch domain '<domain>' no longer exists.` and then `Clearing local state.`
+- **AND** it removes the domain from the cluster state and saves it
+- **AND** with `--endpoint` it prints nothing but still clears the domain from the cluster state
 

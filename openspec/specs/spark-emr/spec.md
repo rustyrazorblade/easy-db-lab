@@ -231,12 +231,12 @@ If a step submitted with `spark submit --wait` fails, the command SHALL wait for
 
 `spark status` and every Spark service result SHALL report a job's state as a project-owned state (`PENDING`, `CANCEL_PENDING`, `RUNNING`, `COMPLETED`, `CANCELLED`, `FAILED`, `INTERRUPTED`, `UNKNOWN`), mapped from the EMR step state inside the EMR adapter. A state that the SDK version does not know, or a missing state, SHALL map to `UNKNOWN`.
 
-#### Scenario: Every EMR step state maps unchanged
+#### Scenario: Every EMR step state maps to the state of the same name
 
 - **GIVEN** a step in each EMR `StepState` value
 - **WHEN** `spark status` reports it
-- **THEN** the state shown is the same name as today
-- **AND** the failed-step branch runs for `FAILED` only, as today
+- **THEN** `PENDING`, `CANCEL_PENDING`, `RUNNING`, `COMPLETED`, `CANCELLED`, `FAILED` and `INTERRUPTED` are shown as the state of the same name, on the `State:` line
+- **AND** only `FAILED` adds the hint naming `easy-db-lab spark status --step-id <step-id> --verbose` and `easy-db-lab spark logs --step-id <step-id>`
 
 #### Scenario: Unknown EMR state
 

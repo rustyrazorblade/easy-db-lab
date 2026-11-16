@@ -5,7 +5,7 @@ Provider failures (expired credentials, denied permissions, an unavailable servi
 ## Requirements
 ### Requirement: Provider failures are reported with a remedy
 
-When a command fails, the system SHALL ask every registered provider error handler to describe the failure, walking the exception's cause chain from the outermost exception inward. A handler SHALL claim an exception by its type alone, not by the active target, so that the classification works before any cluster state exists. On the first match the system SHALL emit `Event.Command.ProviderError` with the provider, the kind (`credentials`, `permission-denied` or `unavailable`), the provider's detail message and a remedy. When no handler claims the exception, the system SHALL emit `Event.Command.ExecutionError` exactly as today. In both cases the exit code SHALL be non-zero.
+When a command fails, the system SHALL ask every registered provider error handler to describe the failure, walking the exception's cause chain from the outermost exception inward. A handler SHALL claim an exception by its type alone, not by the active target, so that the classification works before any cluster state exists. On the first match the system SHALL emit `Event.Command.ProviderError` with the provider, the kind (`credentials`, `permission-denied` or `unavailable`), the provider's detail message and a remedy. When no handler claims the exception, the system SHALL emit `Event.Command.ExecutionError` whose message is the exception's cause chain, outermost first, each entry written `<exception simple class name>: <message>` and the entries joined by a newline and `  caused by: `. In both cases the exit code SHALL be non-zero.
 
 #### Scenario: Expired credentials
 
@@ -57,13 +57,13 @@ When a command fails, the system SHALL ask every registered provider error handl
 
 - **GIVEN** an `SdkClientException` caused by a network error
 - **WHEN** the command fails
-- **THEN** `Event.Command.ExecutionError` is emitted, as today
+- **THEN** `Event.Command.ExecutionError` is emitted with the cause chain, starting `SdkClientException: <message>`, and no credentials message
 
 #### Scenario: Exception owned by no provider
 
 - **GIVEN** a command that fails with an exception that is not an AWS SDK exception
 - **WHEN** the command fails
-- **THEN** `Event.Command.ExecutionError` is emitted exactly as today
+- **THEN** `Event.Command.ExecutionError` is emitted with the cause chain, one `<class>: <message>` entry per cause, each inner one on a new line after `  caused by: `
 
 #### Scenario: Wrapped provider exception
 

@@ -22,6 +22,7 @@ import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PodSpec
+import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
@@ -36,8 +37,8 @@ import org.mockito.kotlin.whenever
  * crash-loop whichever starts second. A pod on the host network holds every port it listens on,
  * including the ports set only in its config file (Mimir, Loki, Tempo and Pyroscope are dskit
  * processes with the same default gRPC and gossip ports). A pod on the pod network holds only the
- * container ports it publishes with a `hostPort`; on AWS the observability backends and Grafana
- * are such pods.
+ * container ports it publishes with a `hostPort`. The observability backends and Grafana publish none;
+ * their Services hold NodePorts instead, which kube-proxy opens on every node, the control node included.
  */
 class ControlNodePortsTest : BaseKoinTest() {
     private companion object {
@@ -88,6 +89,17 @@ class ControlNodePortsTest : BaseKoinTest() {
         ).map { it.toInt() }.toSet()
     }
 
+    /** The node ports each Service holds on every node, keyed by the Service's name. */
+    private fun nodePorts(resources: List<HasMetadata>): Map<String, Set<Int>> =
+        resources
+            .filterIsInstance<Service>()
+            .associate { service ->
+                service.metadata.name to
+                    service.spec.ports
+                        .mapNotNull { it.nodePort }
+                        .toSet()
+            }.filterValues { it.isNotEmpty() }
+
     @Test
     fun `no two workloads on the control node's network share a port`() {
         val templates: TemplateService = getKoin().get()
@@ -124,8 +136,14 @@ class ControlNodePortsTest : BaseKoinTest() {
                         true -> declared.map { it.containerPort }.toSet() + configured[name].orEmpty()
                         false -> declared.mapNotNull { it.hostPort }.toSet()
                     }
-                }.filterValues { it.isNotEmpty() }
+                }.filterValues { it.isNotEmpty() } + nodePorts(resources)
         assertThat(ports.keys).contains("mimir", "loki", "tempo", "pyroscope", "grafana", Constants.OtelCollector.HOST_COLLECTOR_NAME)
+        // The backends and Grafana are on the pod network: they hold no host port, only their Services' NodePorts.
+        assertThat(
+            controlNodePods(resources).filterKeys { it in nodePorts(resources).keys }.values.flatMap { pod ->
+                pod.containers.flatMap { it.ports.orEmpty() }.mapNotNull { it.hostPort }
+            },
+        ).isEmpty()
         // The core collector is on the pod network with no host port, so it claims no port on the node.
         assertThat(ports.keys).doesNotContain(Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
 

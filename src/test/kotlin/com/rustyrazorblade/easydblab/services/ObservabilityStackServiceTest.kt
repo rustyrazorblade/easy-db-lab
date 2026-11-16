@@ -606,12 +606,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     /**
-     * A cluster the operator brought has no control node in its state. Off owned nodes nothing in the
-     * stack needs one: the K8s API comes from the kubeconfig, state lives on claims, and every
+     * A cluster the operator brought has no control node in its state. On claims nothing in the stack
+     * needs one: the K8s API comes from the kubeconfig, state lives on claims, and every
      * in-cluster caller reaches the backends by Service DNS.
      */
     @Test
-    fun `off owned nodes the stack deploys with no control node and publishes no node IP`() {
+    fun `on claims the stack deploys with no control node and publishes no node IP`() {
         hosting =
             {
                 ObservabilityHosting(
@@ -627,7 +627,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val data = argumentCaptor<Map<String, String>>()
         verify(mockK8sService).createConfigMap(any(), eq("cluster-config"), data.capture(), any())
-        assertThat(data.firstValue).doesNotContainKey(ClusterConfigData.CONTROL_NODE_IP_KEY).containsKey("tenant")
+        assertThat(data.firstValue).doesNotContainKey("control_node_ip").containsKey("tenant")
         verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
         val alloy =
             appliedResources()
@@ -640,11 +640,11 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `on the AWS control node a state with no control node fails, naming the callers that need its IP`() {
+    fun `on host paths a state with no control node fails, naming the host directories`() {
         val brought = mockClusterStateManager.load().copy(hosts = emptyMap())
         whenever(mockClusterStateManager.load()).thenReturn(brought)
 
-        assertThat(service.deploy().exceptionOrNull()).hasMessageContaining("no control node").hasMessageContaining("redirected clusters")
+        assertThat(service.deploy().exceptionOrNull()).hasMessageContaining("no control node").hasMessageContaining("host directories")
         verify(mockK8sService, never()).applyResource(any<HasMetadata>())
     }
 
@@ -872,17 +872,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val firstTempo = appliedTemplateHash("tempo")
         val firstGrafanaIndependent = appliedTemplateHash("otel-collector")
 
-        // Only the runtime cluster-config differs between the two deploys: a new control node IP.
+        // Only the runtime cluster-config differs between the two deploys: a new tenant.
         reset(mockK8sService)
         stubK8sSuccess()
         val moved =
             mockClusterStateManager.load().let {
-                it.copy(
-                    hosts =
-                        mapOf(
-                            ServerType.Control to listOf(controlNode.copy(privateIp = "10.0.1.99")),
-                        ),
-                )
+                it.copy(initConfig = InitConfig(region = "us-west-2", tenant = "acme"))
             }
         whenever(mockClusterStateManager.load()).thenReturn(moved)
         service.deploy().getOrThrow()

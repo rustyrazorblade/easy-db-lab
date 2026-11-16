@@ -494,11 +494,11 @@ class StatusCacheTest : BaseKoinTest() {
                 .jsonObject["observability"]!!
                 .jsonObject
 
-        assertThat(observability["grafana"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3000")
-        assertThat(observability["mimir"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:9009")
-        assertThat(observability["loki"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3100")
-        assertThat(observability["tempo"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3200")
-        assertThat(observability["pyroscope"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:4040")
+        assertThat(observability["grafana"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:31300")
+        assertThat(observability["mimir"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:31009")
+        assertThat(observability["loki"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:31100")
+        assertThat(observability["tempo"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:31200")
+        assertThat(observability["pyroscope"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:31040")
     }
 
     @Test

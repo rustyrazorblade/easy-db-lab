@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
@@ -13,6 +14,7 @@ import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
+import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
@@ -90,7 +92,8 @@ class PyroscopeManifestBuilder(
      * so the observability stack deploys these only in local mode.
      */
     fun buildServerResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
-        listOf(buildServerConfigMap(), buildServerService()) + hosting.host(buildServerPodTemplate(), STATE, isBackend = true)
+        listOf(buildServerConfigMap(), buildServerService(hosting.publishing)) +
+            hosting.host(buildServerPodTemplate(), STATE, isBackend = true)
 
     /** The Pyroscope server Deployment as [hosting] runs it. */
     fun buildServerDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
@@ -184,10 +187,16 @@ class PyroscopeManifestBuilder(
                     .substitute(),
             ).build()
 
-    /**
-     * Builds the Pyroscope ClusterIP Service on port 4040.
-     */
-    fun buildServerService() =
+    /** The Pyroscope server Service on 4040; [publishing] puts it on [Constants.K8s.PYROSCOPE_NODE_PORT]. */
+    fun buildServerService(publishing: ServicePublishing = ServicePublishing.ClusterIp): Service =
+        publishing.publish(
+            clusterIpService(),
+            mapOf(
+                "http" to Constants.K8s.PYROSCOPE_NODE_PORT,
+            ),
+        )
+
+    private fun clusterIpService(): Service =
         ServiceBuilder()
             .withNewMetadata()
             .withName(SERVER_APP_LABEL)
@@ -208,9 +217,8 @@ class PyroscopeManifestBuilder(
 
     /**
      * Builds the Pyroscope server Deployment before it is hosted. [ObservabilityHosting] places it
-     * and sets where its metastore volume lives; its port is published on the node, where the eBPF
-     * agents and the JVM profilers send profiles, which the hosting keeps only on a node
-     * easy-db-lab owns. Profiles are stored in S3 under
+     * and sets where its metastore volume lives; callers outside the pod network
+     * reach it through its Service's NodePort on nodes easy-db-lab owns. Profiles are stored in S3 under
      * `pyroscope` in the account bucket (configured at build time via TemplateService);
      * the v2 metastore index lives on the node at [DATA_HOST_PATH], so a pod restart keeps it.
      *
@@ -261,7 +269,6 @@ class PyroscopeManifestBuilder(
             .withArgs("-config.file=/etc/pyroscope/config.yaml")
             .addNewPort()
             .withContainerPort(SERVER_PORT)
-            .withHostPort(SERVER_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewVolumeMount()

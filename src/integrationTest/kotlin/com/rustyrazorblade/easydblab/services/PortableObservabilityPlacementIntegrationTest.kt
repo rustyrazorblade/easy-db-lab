@@ -178,7 +178,7 @@ class PortableObservabilityPlacementIntegrationTest {
                 .withName(ClusterConfigData.NAME)
                 .withNamespace(NAMESPACE)
                 .endMetadata()
-                .withData<String, String>(ClusterConfigData.of(state, hosting, SharedLocalStack.region()))
+                .withData<String, String>(ClusterConfigData.of(state, SharedLocalStack.region()))
                 .build()
         val datasources =
             ConfigMapBuilder()
@@ -383,7 +383,6 @@ class PortableObservabilityPlacementIntegrationTest {
             user,
             ConfigChangeReport(k8sService, EventBus()),
             capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER },
-            hostingOf = { hosting },
         ).syncConfigMap().getOrThrow()
 
         val config =

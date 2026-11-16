@@ -24,10 +24,10 @@
 
 ## 5. Remove host ports and publish NodePorts
 
-- [ ] 5.1 Remove `Placement.publishOnNode`, `placePorts` and every backend/Grafana `withHostPort`.
-- [ ] 5.2 Backend and Grafana Service builders: `type: NodePort` with the fixed client NodePorts when the environment owns its nodes; ClusterIP otherwise (D1a, D1b-a).
-- [ ] 5.3 `ClusterServices.controlService(name, servicePort, nodePort)` takes the NodePort constants; Socks/Direct seam, `StatusAddresses` and `StatusCache` follow.
-- [ ] 5.4 Remove `ClusterConfigData.CONTROL_NODE_IP_KEY`, `publishedNodeIp` and its failure path.
+- [x] 5.1 Remove `Placement.publishOnNode`, `placePorts` and every backend/Grafana `withHostPort`.
+- [x] 5.2 Backend and Grafana Service builders: `type: NodePort` with the fixed client NodePorts when the environment owns its nodes; ClusterIP otherwise (D1a, D1b-a).
+- [x] 5.3 `ClusterServices.controlService(name, servicePort, nodePort)` takes the NodePort constants; Socks/Direct seam, `StatusAddresses` and `StatusCache` follow.
+- [x] 5.4 Remove `ClusterConfigData.CONTROL_NODE_IP_KEY`, `publishedNodeIp` and its failure path.
 - [ ] 5.5 Flip `ObservabilityHostingRenderingTest` AWS scenario to "no hostPort"; update `ControlNodePortsTest`; add Service-type rendering tests for both environment kinds; seam tests assert Socks/Direct dial the NodePort.
 
 ## 6. Off-cluster callers

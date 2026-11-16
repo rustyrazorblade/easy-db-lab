@@ -144,7 +144,6 @@ class K8sServiceIntegrationTest {
                                         ),
                                 ),
                         ),
-                        ObservabilityHosting.AWS,
                         defaultRegion = "us-west-2",
                     ),
                 ).build()

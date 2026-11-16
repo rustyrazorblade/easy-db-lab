@@ -63,9 +63,7 @@ interface ObservabilityStackService {
      * collector this deploy applies identical to the one a kit sync applies ([CollectorResources]).
      *
      * The control node in the cluster state is needed only where the stack uses the node itself: the
-     * host-path state directories and dashboard tree, and the node IP the backends publish on under
-     * [com.rustyrazorblade.easydblab.configuration.Placement.CONTROL_NODE]. Off owned nodes the deploy
-     * needs no control node.
+     * host-path state directories and dashboard tree. On claims the deploy needs no control node.
      *
      * @return success once the stack is applied and the namespace reaches Ready; failure otherwise.
      */
@@ -154,7 +152,7 @@ class DefaultObservabilityStackService(
             // A selector no node matches would leave every backend Pending until the rollout wait times out.
             placementCheck.require(hosting.placement)
 
-            val clusterConfig = createClusterConfigMap(clusterState, hosting)
+            val clusterConfig = createClusterConfigMap(clusterState)
             val collector = collectorStage(clusterState, environment)
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
@@ -218,7 +216,6 @@ class DefaultObservabilityStackService(
             "OTel Collector",
             CollectorResources.build(
                 otelManifestBuilder,
-                environment.hosting,
                 clusterState,
                 user.region,
                 scrapeConfigs,
@@ -399,11 +396,8 @@ class DefaultObservabilityStackService(
      * Creates the cluster-config ConfigMap with runtime values needed by OTel and Tempo
      * ([ClusterConfigData]), returning its data.
      */
-    private fun createClusterConfigMap(
-        clusterState: ClusterState,
-        hosting: ObservabilityHosting,
-    ): Map<String, String> {
-        val configData = ClusterConfigData.of(clusterState, hosting, user.region)
+    private fun createClusterConfigMap(clusterState: ClusterState): Map<String, String> {
+        val configData = ClusterConfigData.of(clusterState, user.region)
 
         k8sService
             .createConfigMap(

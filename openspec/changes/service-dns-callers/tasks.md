@@ -28,7 +28,7 @@
 - [x] 5.2 Backend and Grafana Service builders: `type: NodePort` with the fixed client NodePorts when the environment owns its nodes; ClusterIP otherwise (D1a, D1b-a).
 - [x] 5.3 `ClusterServices.controlService(name, servicePort, nodePort)` takes the NodePort constants; Socks/Direct seam, `StatusAddresses` and `StatusCache` follow.
 - [x] 5.4 Remove `ClusterConfigData.CONTROL_NODE_IP_KEY`, `publishedNodeIp` and its failure path.
-- [ ] 5.5 Flip `ObservabilityHostingRenderingTest` AWS scenario to "no hostPort"; update `ControlNodePortsTest`; add Service-type rendering tests for both environment kinds; seam tests assert Socks/Direct dial the NodePort.
+- [x] 5.5 Flip `ObservabilityHostingRenderingTest` AWS scenario to "no hostPort"; update `ControlNodePortsTest`; add Service-type rendering tests for both environment kinds; seam tests assert Socks/Direct dial the NodePort.
 
 ## 6. Off-cluster callers
 
@@ -39,8 +39,8 @@
 
 ## 7. Integration tier
 
-- [ ] 7.1 Extend `PortableObservabilityPlacementIntegrationTest`: AWS-hosted stack on K3s, every pod Ready, no `hostPort`; a hostNetwork + `ClusterFirstWithHostNet` Job POSTs a JFR to the Pyroscope Service and the profile is read back with the tenant.
-- [ ] 7.2 Each published NodePort reaches its backend from the K3s node address.
+- [x] 7.1 Extend `PortableObservabilityPlacementIntegrationTest`: AWS-hosted stack on K3s, every pod Ready, no `hostPort`; a hostNetwork + `ClusterFirstWithHostNet` Job POSTs a JFR to the Pyroscope Service and the profile is read back with the tenant.
+- [x] 7.2 Each published NodePort reaches its backend from the K3s node address.
 
 ## 8. Docs and guidance
 

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -33,9 +34,12 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.Quantity
+import io.fabric8.kubernetes.api.model.batch.v1.Job
+import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import jdk.jfr.Recording
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -52,6 +56,15 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
+import java.net.URI
+import java.net.URLEncoder
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.time.Duration
+import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -95,6 +108,23 @@ class PortableObservabilityPlacementIntegrationTest {
 
         private val WORKLOADS = listOf("mimir", "loki", "tempo", "pyroscope", "grafana")
 
+        /** The fixed NodePorts the AWS hosting publishes, with the readiness path each answers on. */
+        private val PUBLISHED =
+            mapOf(
+                Constants.K8s.MIMIR_NODE_PORT to "/ready",
+                Constants.K8s.LOKI_NODE_PORT to "/ready",
+                Constants.K8s.TEMPO_NODE_PORT to "/ready",
+                Constants.K8s.PYROSCOPE_NODE_PORT to "/ready",
+                Constants.K8s.GRAFANA_NODE_PORT to "/api/health",
+            )
+
+        /** A process on a node's own network, as the db-node reconciler and a stress pod run. */
+        private const val CURL_IMAGE = "curlimages/curl:8.11.1"
+        private const val PROFILED_SERVICE = "portable-hostnet"
+        private const val PROFILE_SPIN_MILLIS = 1_500L
+        private const val PROFILE_ARRIVAL_SECONDS = 180L
+        private const val POLL_MILLIS = 2_000L
+
         @Container
         @JvmStatic
         val k3s: K3sContainer =
@@ -107,6 +137,7 @@ class PortableObservabilityPlacementIntegrationTest {
                 }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
                 .withEnv("K3S_SNAPSHOTTER", "native")
                 .let {
+                    it.addExposedPorts(*PUBLISHED.keys.toIntArray())
                     (it as K3sContainer).withPreloadedImages(
                         MimirManifestBuilder.IMAGE,
                         Constants.K8s.MIMIR_MEMCACHED_IMAGE,
@@ -117,6 +148,7 @@ class PortableObservabilityPlacementIntegrationTest {
                         Constants.Grafana.Documents.WEB_SERVER_IMAGE,
                         LOCAL_PATH_PROVISIONER_IMAGE,
                         LOCAL_PATH_HELPER_IMAGE,
+                        CURL_IMAGE,
                     )
                 }
     }
@@ -294,6 +326,11 @@ class PortableObservabilityPlacementIntegrationTest {
         WORKLOADS.forEach { app ->
             val pod = ready(app)
             assertThat(pod.spec.hostNetwork ?: false).describedAs(app).isFalse()
+            assertThat(
+                pod.spec.containers
+                    .flatMap { it.ports.orEmpty() }
+                    .map { it.hostPort },
+            ).describedAs("$app host ports").containsOnlyNulls()
             assertThat(pod.spec.nodeSelector.orEmpty()).describedAs(app).isEmpty()
             assertThat(pod.spec.volumes.mapNotNull { it.persistentVolumeClaim?.claimName }).describedAs(app).isNotEmpty()
             assertThat(pod.status.containerStatuses).describedAs(app).allSatisfy {
@@ -406,5 +443,165 @@ class PortableObservabilityPlacementIntegrationTest {
                 .withName(Constants.OtelCollector.SERVICE_NAME)
                 .get(),
         ).isNotNull()
+    }
+
+    /**
+     * On nodes easy-db-lab owns, EMR, a browser and the operator's scripts reach each backend and
+     * Grafana on its fixed NodePort at a node's address. The K3s container's own address stands in
+     * for that node: the port the test dials is the one Docker maps from the node's NodePort.
+     */
+    @Test
+    @Order(6)
+    fun `each published NodePort reaches its backend from the node address`() {
+        WORKLOADS.forEach { ready(it) }
+        val services =
+            client
+                .services()
+                .inNamespace(NAMESPACE)
+                .list()
+                .items
+        val published = services.filter { it.spec.type == "NodePort" }.flatMap { it.spec.ports }.mapNotNull { it.nodePort }
+        assertThat(published).containsAll(PUBLISHED.keys)
+
+        PUBLISHED.forEach { (nodePort, path) ->
+            val url = "http://${k3s.host}:${k3s.getMappedPort(nodePort)}$path"
+            val status = nodeHttp.send(HttpRequest.newBuilder(URI(url)).GET().build(), HttpResponse.BodyHandlers.discarding()).statusCode()
+            assertThat(status).describedAs("NodePort $nodePort at $url").isEqualTo(200)
+        }
+    }
+
+    /**
+     * A process on a node's own network, as the db-node reconciler and a stress pod are, resolves the
+     * Pyroscope Service through cluster DNS (`ClusterFirstWithHostNet`) and posts a JFR chunk to it;
+     * the profile is then read back under the tenant.
+     */
+    @Test
+    @Order(7)
+    fun `a host-network pod posts a JFR to the Pyroscope Service and the profile is read back under the tenant`() {
+        ready("pyroscope")
+        client.resource(jfrConfigMap(recordJfr())).serverSideApply()
+        val job = client.resource(hostNetworkSender()).create()
+
+        val done =
+            client
+                .batch()
+                .v1()
+                .jobs()
+                .inNamespace(NAMESPACE)
+                .withName(job.metadata.name)
+                .waitUntilCondition(
+                    { (it?.status?.succeeded ?: 0) > 0 || (it?.status?.failed ?: 0) > 0 },
+                    READY_TIMEOUT_SECONDS,
+                    TimeUnit.SECONDS,
+                )
+        assertThat(done.status.succeeded).describedAs("JFR sender job").isEqualTo(1)
+
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PROFILE_ARRIVAL_SECONDS)
+        var series = cpuSeries()
+        while (!series.contains(PROFILED_SERVICE) && System.nanoTime() < deadline) {
+            Thread.sleep(POLL_MILLIS)
+            series = cpuSeries()
+        }
+        assertThat(series).describedAs("Pyroscope series under tenant $TENANT").contains(PROFILED_SERVICE)
+    }
+
+    private val nodeHttp: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(EXEC_TIMEOUT_SECONDS)).build()
+
+    /** A real JFR recording of this JVM spinning, so the chunk has CPU samples to parse. */
+    private fun recordJfr(): ByteArray {
+        val file = Files.createTempFile("portable", ".jfr")
+        try {
+            Recording().use { recording ->
+                recording.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(10))
+                recording.start()
+                val end = System.currentTimeMillis() + PROFILE_SPIN_MILLIS
+                var sink = 0.0
+                while (System.currentTimeMillis() < end) {
+                    sink += Math.sqrt(sink + 1)
+                }
+                recording.stop()
+                recording.dump(file)
+                check(sink > 0)
+            }
+            return Files.readAllBytes(file)
+        } finally {
+            Files.deleteIfExists(file)
+        }
+    }
+
+    private fun jfrConfigMap(jfr: ByteArray): ConfigMap =
+        ConfigMapBuilder()
+            .withNewMetadata()
+            .withName("portable-jfr")
+            .withNamespace(NAMESPACE)
+            .endMetadata()
+            .addToBinaryData("chunk.jfr", Base64.getEncoder().encodeToString(jfr))
+            .build()
+
+    /** A Job on the node's network that posts the chunk to the Pyroscope Service, as the reconciler posts. */
+    private fun hostNetworkSender(): Job {
+        val until = Instant.now().epochSecond
+        val name = URLEncoder.encode("$PROFILED_SERVICE{cluster=${state.name}}", Charsets.UTF_8)
+        val url = "${BackendEndpoints.pyroscope()}/ingest?name=$name&format=jfr&from=${until - 60}&until=$until"
+        return JobBuilder()
+            .withNewMetadata()
+            .withName("portable-jfr-sender-${System.currentTimeMillis() / 1000}")
+            .withNamespace(NAMESPACE)
+            .endMetadata()
+            .withNewSpec()
+            .withBackoffLimit(0)
+            .withNewTemplate()
+            .withNewSpec()
+            .withHostNetwork(true)
+            .withDnsPolicy("ClusterFirstWithHostNet")
+            .withRestartPolicy("Never")
+            .addNewContainer()
+            .withName("sender")
+            .withImage(CURL_IMAGE)
+            .withImagePullPolicy("IfNotPresent")
+            .withArgs(
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--request",
+                "POST",
+                "--header",
+                "Content-Type: application/octet-stream",
+                "--header",
+                "${Constants.Observability.TENANT_HEADER}: $TENANT",
+                "--data-binary",
+                "@/jfr/chunk.jfr",
+                url,
+            ).addNewVolumeMount()
+            .withName("jfr")
+            .withMountPath("/jfr")
+            .endVolumeMount()
+            .endContainer()
+            .addNewVolume()
+            .withName("jfr")
+            .withNewConfigMap()
+            .withName("portable-jfr")
+            .endConfigMap()
+            .endVolume()
+            .endSpec()
+            .endTemplate()
+            .endSpec()
+            .build()
+    }
+
+    /** The CPU series Pyroscope holds for [PROFILED_SERVICE] under the tenant, read on its NodePort. */
+    private fun cpuSeries(): String {
+        val base = "http://${k3s.host}:${k3s.getMappedPort(Constants.K8s.PYROSCOPE_NODE_PORT)}"
+        val body =
+            """{"matchers":["{service_name=\"$PROFILED_SERVICE\",__profile_type__=\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}"],""" +
+                """"start":${Instant.now().minusSeconds(3600).toEpochMilli()},"end":${Instant.now().plusSeconds(60).toEpochMilli()}}"""
+        val request =
+            HttpRequest
+                .newBuilder(URI("$base/querier.v1.QuerierService/Series"))
+                .header(Constants.Observability.TENANT_HEADER, TENANT)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build()
+        return nodeHttp.send(request, HttpResponse.BodyHandlers.ofString()).body()
     }
 }

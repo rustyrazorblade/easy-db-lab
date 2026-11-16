@@ -23,13 +23,20 @@ import java.util.stream.Stream
  */
 class ClusterReachTest {
     companion object {
+        private fun thrownBy(
+            className: String,
+            failure: SocketException,
+        ): SocketException = failure.also { it.stackTrace = arrayOf(StackTraceElement(className, "connect", null, -1)) }
+
         @JvmStatic
         fun failures(): Stream<Arguments> =
             Stream.of(
                 Arguments.of("refused connection", ConnectException("Connection refused"), true),
                 Arguments.of("unknown host", UnknownHostException("10.0.1.5"), true),
                 Arguments.of("no route", NoRouteToHostException("No route to host"), true),
-                Arguments.of("SOCKS tunnel down", SocketException("Malformed reply from SOCKS server"), true),
+                Arguments.of("SOCKS tunnel down", thrownBy(ClusterReach.SOCKS_CLIENT_CLASS, SocketException("Can't connect to SOCKS proxy")), true),
+                Arguments.of("SOCKS reply failure", thrownBy(ClusterReach.SOCKS_CLIENT_CLASS, SocketException("SOCKS: Host unreachable")), true),
+                Arguments.of("reset whose message says SOCKS", thrownBy("sun.nio.ch.NioSocketImpl", SocketException("SOCKS connection reset")), false),
                 Arguments.of("missing kubeconfig", FileNotFoundException("kubeconfig (No such file or directory)"), true),
                 Arguments.of("missing file", NoSuchFileException("/ws/kubeconfig"), true),
                 Arguments.of(

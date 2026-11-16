@@ -233,7 +233,7 @@ class TeardownFlushServiceTest {
         sendersFailure = java.io.FileNotFoundException("kubeconfig (No such file or directory)")
         val outcome =
             service(
-                loki = throwing("loki", SignalReport.Logs, java.net.SocketException("Malformed reply from SOCKS server")),
+                loki = throwing("loki", SignalReport.Logs, socksFailure()),
                 mimir = throwing("mimir", SignalReport.Metrics, java.net.ConnectException("Connection refused")),
             ).saveTail(control, state, setOf(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES))
 
@@ -296,7 +296,7 @@ class TeardownFlushServiceTest {
     @Test
     fun `a collector stop whose delete was accepted keeps the collector deleted when the wait loses the tunnel`() {
         sendersAnswered = true
-        sendersFailure = java.net.SocketException("Malformed reply from SOCKS server")
+        sendersFailure = socksFailure()
 
         val outcome = service().saveTail(control, state, setOf(TailSignal.TRACES))
 

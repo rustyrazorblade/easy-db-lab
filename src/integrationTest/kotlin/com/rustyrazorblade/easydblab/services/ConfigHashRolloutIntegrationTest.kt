@@ -7,7 +7,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -49,6 +51,12 @@ class ConfigHashRolloutIntegrationTest {
     companion object {
         private const val NAMESPACE = "config-hash-rollout"
         private const val TEMPLATE_NAMESPACE = "config-hash-template-only"
+
+        /**
+         * The AWS hosting with ClusterIP Services: a fixed NodePort is cluster-wide, so the two
+         * namespaces' Pyroscope Services on the shared K3s could not both claim it.
+         */
+        private val CLUSTER_IP = ObservabilityHosting.AWS.copy(publishing = ServicePublishing.ClusterIp)
     }
 
     private val controlHost =
@@ -119,7 +127,7 @@ class ConfigHashRolloutIntegrationTest {
 
     private fun stack(tempoConfigEdit: (String) -> String = { it }): List<HasMetadata> {
         val tempoResources =
-            tempo.buildAllResources().map { resource ->
+            tempo.buildAllResources(CLUSTER_IP).map { resource ->
                 if (resource is ConfigMap) {
                     ConfigMapBuilder(resource)
                         .addToData("tempo.yaml", tempoConfigEdit(resource.data.getValue("tempo.yaml")))
@@ -128,7 +136,7 @@ class ConfigHashRolloutIntegrationTest {
                     resource
                 }
             }
-        return (tempoResources + pyroscope.buildServerResources()).onEach { it.metadata.namespace = NAMESPACE }
+        return (tempoResources + pyroscope.buildServerResources(CLUSTER_IP)).onEach { it.metadata.namespace = NAMESPACE }
     }
 
     private fun generation(
@@ -238,7 +246,7 @@ class ConfigHashRolloutIntegrationTest {
      */
     private fun pyroscopeServer(withStartupProbe: Boolean = true): List<HasMetadata> =
         pyroscope
-            .buildServerResources()
+            .buildServerResources(CLUSTER_IP)
             .map { resource ->
                 if (resource is Deployment && !withStartupProbe) {
                     DeploymentBuilder(resource)

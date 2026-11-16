@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -134,8 +135,8 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
                 getKoin().get(),
             ).buildConfigMap(NodeCapabilities.AWS, emptyList()).data.getValue("otel-collector-config.yaml")
         return GenericContainer("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
-            .withExtraHost("mimir.default.svc.cluster.local", bridgeAddress(mimir))
-            .withExtraHost("loki.default.svc.cluster.local", bridgeAddress(loki))
+            .withExtraHost(BackendEndpoints.mimirHost(), bridgeAddress(mimir))
+            .withExtraHost(BackendEndpoints.host(Constants.K8s.LOKI_APP_LABEL), bridgeAddress(loki))
             .withCopyToContainer(Transferable.of(config), "/etc/otel-collector-config.yaml")
             .withCopyToContainer(Transferable.of("placeholder"), "$SA_DIR/token")
             .withCopyToContainer(Transferable.of("default"), "$SA_DIR/namespace")

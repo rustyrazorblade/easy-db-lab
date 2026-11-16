@@ -57,7 +57,7 @@ test_queries_only_series_live_in_the_window() {
   setup "${LIVE_RESPONSE}"
   run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
 
-  grep -Fqx 'http://10.0.0.5:9009/prometheus/api/v1/query' "${WORK}/curl.args" \
+  grep -Fqx 'http://10.0.0.5:31009/prometheus/api/v1/query' "${WORK}/curl.args" \
     || fail "expected an instant query at Mimir's /prometheus/api/v1/query, got: $(cat "${WORK}/curl.args")"
   grep -Fqx 'query={job="memcached"}' "${WORK}/curl.args" \
     || fail "expected an instant query of the workload's selector, got: $(cat "${WORK}/curl.args")"

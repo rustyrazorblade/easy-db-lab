@@ -666,9 +666,9 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = redirect))
 
-        assertThat(yaml).contains("http://10.0.0.9:9009/api/v1/push")
-        assertThat(yaml).contains("http://10.0.0.9:3100/otlp")
-        assertThat(yaml).contains("10.0.0.9:4320")
+        assertThat(yaml).contains("http://10.0.0.9:31009/api/v1/push")
+        assertThat(yaml).contains("http://10.0.0.9:31100/otlp")
+        assertThat(yaml).contains("10.0.0.9:31320")
         // Redirect must displace the in-cluster services entirely, not merely add alongside them.
         assertThat(yaml).doesNotContain("mimir.default.svc")
         assertThat(yaml).doesNotContain("loki.default.svc")

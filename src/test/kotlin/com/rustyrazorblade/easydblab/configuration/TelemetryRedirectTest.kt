@@ -5,25 +5,27 @@ import org.junit.jupiter.api.Test
 
 /**
  * Verifies endpoint derivation, per-signal override replacement, and well-formedness validation
- * for [TelemetryRedirect]. The traces assertion guards the port trap: OTLP is 4320, never 3200.
+ * for [TelemetryRedirect]. A base host is another easy-db-lab cluster's node, reached on its published
+ * NodePorts. The traces assertion guards the port trap: the Tempo OTLP gRPC NodePort 31320, never the
+ * query NodePort 31200.
  */
 class TelemetryRedirectTest {
     @Test
-    fun `fromBaseHost derives all four endpoints from the base host and known ports`() {
+    fun `fromBaseHost derives all four endpoints from the base host and the receiving stack's NodePorts`() {
         val redirect = TelemetryRedirect.fromBaseHost("10.0.0.5")
 
-        assertThat(redirect.metrics).isEqualTo("http://10.0.0.5:9009/api/v1/push")
-        assertThat(redirect.logs).isEqualTo("http://10.0.0.5:3100/otlp")
-        assertThat(redirect.traces).isEqualTo("10.0.0.5:4320")
-        assertThat(redirect.profiles).isEqualTo("http://10.0.0.5:4040")
+        assertThat(redirect.metrics).isEqualTo("http://10.0.0.5:31009/api/v1/push")
+        assertThat(redirect.logs).isEqualTo("http://10.0.0.5:31100/otlp")
+        assertThat(redirect.traces).isEqualTo("10.0.0.5:31320")
+        assertThat(redirect.profiles).isEqualTo("http://10.0.0.5:31040")
     }
 
     @Test
-    fun `derived traces endpoint uses the OTLP port 4320, not the query port 3200`() {
+    fun `derived traces endpoint uses the OTLP gRPC NodePort, not the query NodePort`() {
         val redirect = TelemetryRedirect.fromBaseHost("tempo.example.com")
 
-        assertThat(redirect.traces).endsWith(":4320")
-        assertThat(redirect.traces).doesNotContain("3200")
+        assertThat(redirect.traces).endsWith(":31320")
+        assertThat(redirect.traces).doesNotContain("31200")
     }
 
     @Test
@@ -36,9 +38,9 @@ class TelemetryRedirectTest {
 
         assertThat(redirect.traces).isEqualTo("otel.example.com:4317")
         // The other three remain derived from the base host.
-        assertThat(redirect.metrics).isEqualTo("http://10.0.0.5:9009/api/v1/push")
-        assertThat(redirect.logs).isEqualTo("http://10.0.0.5:3100/otlp")
-        assertThat(redirect.profiles).isEqualTo("http://10.0.0.5:4040")
+        assertThat(redirect.metrics).isEqualTo("http://10.0.0.5:31009/api/v1/push")
+        assertThat(redirect.logs).isEqualTo("http://10.0.0.5:31100/otlp")
+        assertThat(redirect.profiles).isEqualTo("http://10.0.0.5:31040")
     }
 
     @Test

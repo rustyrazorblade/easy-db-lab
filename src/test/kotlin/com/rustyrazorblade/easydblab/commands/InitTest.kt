@@ -640,9 +640,9 @@ class InitTest : BaseKoinTest() {
 
             val redirect = command.resolvedTelemetryRedirect!!
             assertThat(redirect.logs).isEqualTo("http://logs.example.com:1234/insert/opentelemetry")
-            assertThat(redirect.metrics).isEqualTo("http://10.0.0.9:9009/api/v1/push")
-            assertThat(redirect.traces).isEqualTo("10.0.0.9:4320")
-            assertThat(redirect.profiles).isEqualTo("http://10.0.0.9:4040")
+            assertThat(redirect.metrics).isEqualTo("http://10.0.0.9:31009/api/v1/push")
+            assertThat(redirect.traces).isEqualTo("10.0.0.9:31320")
+            assertThat(redirect.profiles).isEqualTo("http://10.0.0.9:31040")
         }
 
         @Test

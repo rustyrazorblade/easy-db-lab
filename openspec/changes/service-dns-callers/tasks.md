@@ -32,10 +32,10 @@
 
 ## 6. Off-cluster callers
 
-- [ ] 6.1 `TelemetryRedirect.fromBaseHost` derives the NodePorts (D3a); unit test with and without overrides.
+- [x] 6.1 `TelemetryRedirect.fromBaseHost` derives the NodePorts (D3a); unit test with and without overrides.
 - [x] 6.2 `EMRProvisioningService`: Pyroscope at `controlIp:<Pyroscope NodePort>` or redirect (D4a).
 - [x] 6.3 `GrafanaDashboardTreeUploader`: Pyroscope UI link at the NodePort on owned nodes (D6a).
-- [ ] 6.4 `bin/export-workload-metrics`: Mimir NodePort.
+- [x] 6.4 `bin/export-workload-metrics`: Mimir NodePort.
 
 ## 7. Integration tier
 

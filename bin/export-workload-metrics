@@ -58,7 +58,8 @@ CONTROL_HOST_PRIVATE="${CONTROL_HOST_PRIVATE:-$(easy-db-lab ip control0 --privat
 # Mimir runs native multi-tenancy; a state written before tenants existed is the default tenant.
 TENANT="$(jq -r '.initConfig.tenant // "default"' state.json 2>/dev/null || echo default)"
 
-MIMIR_URL="http://${CONTROL_HOST_PRIVATE}:9009/prometheus"
+# Mimir is published on the Mimir NodePort (Constants.K8s.MIMIR_NODE_PORT) on every node of the cluster.
+MIMIR_URL="http://${CONTROL_HOST_PRIVATE}:31009/prometheus"
 OUTPUT_DIR="${WORKLOAD}"
 OUTPUT_FILE="${OUTPUT_DIR}/metrics-catalog.json"
 

@@ -6,8 +6,8 @@
 
 ## 2. Template variables
 
-- [ ] 2.1 Test first (real `TemplateService`): `KIT_STORAGE_CLASS` / `KIT_STORAGE_SIZE` per mode; blank class when kit name is blank; `${KIT_STORAGE_SIZE}` arg defaults resolve in `KitInstallCommandFactory`, and an explicit `--storage-size` wins.
-- [ ] 2.2 Publish both in `TemplateVariables`; remove `STORAGE_CLASS_WFC` / `storageClassWfc`.
+- [x] 2.1 Test first (real `TemplateService`): `KIT_STORAGE_CLASS` / `KIT_STORAGE_SIZE` per mode; blank class when kit name is blank; `${KIT_STORAGE_SIZE}` arg defaults resolve in `KitInstallCommandFactory`, and an explicit `--storage-size` wins.
+- [x] 2.2 Publish both in `TemplateVariables`; remove `STORAGE_CLASS_WFC` / `storageClassWfc`.
 
 ## 3. Retain check
 

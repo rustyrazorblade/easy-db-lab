@@ -43,7 +43,7 @@ spec:
                 values:
                   - db
   storage:
-    storageClass: __STORAGE_CLASS_WFC__
+    storageClass: __KIT_STORAGE_CLASS__
     size: __STORAGE_SIZE__
     # Binds only this instance's platform PVs; every kit's PVs share the storage class.
     pvcTemplate:

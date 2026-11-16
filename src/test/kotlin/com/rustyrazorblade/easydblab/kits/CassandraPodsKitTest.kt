@@ -213,7 +213,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
 
         assertThat(sts.metadata.name).isEqualTo("cassandra-pods")
         assertThat(claim.metadata.name).isEqualTo(pvs.volumeClaimTemplateName)
-        assertThat(claim.spec.storageClassName).isEqualTo(pvs.storageClass)
+        assertThat(claim.spec.storageClassName).isEqualTo("edl-local-cassandra-pods")
         assertThat(claim.spec.selector.matchLabels).containsEntry("app.kubernetes.io/name", "cassandra-pods")
     }
 

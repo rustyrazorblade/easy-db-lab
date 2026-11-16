@@ -2,7 +2,7 @@
 
 Workload: ClickHouse via Altinity Operator
 Replicas: __REPLICAS__
-Storage per replica: __STORAGE_SIZE__ (StorageClass: __STORAGE_CLASS_WFC__)
+Storage per replica: __STORAGE_SIZE__ (StorageClass: __KIT_STORAGE_CLASS__)
 DB nodes: __DB_NODE_COUNT__
 Region: __REGION__
 

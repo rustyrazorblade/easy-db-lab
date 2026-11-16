@@ -322,7 +322,7 @@ class MemcachedKitTest : BaseKoinTest() {
             // platform-pvs names the PV <claim template>-<kit>-<ordinal>. Binding by name keeps the
             // claim off any other kit's PV in the same storage class.
             assertThat(claim.spec.volumeName).isEqualTo("${pvs.volumeClaimTemplateName}-memcached-0")
-            assertThat(claim.spec.storageClassName).isEqualTo(pvs.storageClass)
+            assertThat(claim.spec.storageClassName).isEqualTo("edl-local-memcached")
             assertThat(
                 claim.spec.resources.requests["storage"]
                     ?.toString(),

@@ -133,7 +133,7 @@ class Neo4jKitTest : BaseKoinTest() {
         // platform-pvs names each PV <claim template>-<kit>-<ordinal>, the name the StatefulSet's PVC takes.
         assertThat(sts.metadata.name).isEqualTo("neo4j")
         assertThat(claim.metadata.name).isEqualTo(pvs.volumeClaimTemplateName)
-        assertThat(claim.spec.storageClassName).isEqualTo(pvs.storageClass)
+        assertThat(claim.spec.storageClassName).isEqualTo("edl-local-neo4j")
         assertThat(neo4jContainer().volumeMounts).anySatisfy { mount ->
             assertThat(mount.name).isEqualTo(claim.metadata.name)
             assertThat(mount.mountPath).isEqualTo("/data")

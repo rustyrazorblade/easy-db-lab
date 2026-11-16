@@ -13,7 +13,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: __STORAGE_CLASS_WFC__
+  storageClassName: __KIT_STORAGE_CLASS__
   volumeName: data-memcached-0
   resources:
     requests:

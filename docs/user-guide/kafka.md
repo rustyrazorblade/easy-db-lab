@@ -30,7 +30,9 @@ easy-db-lab kafka start
 Deploys the Kafka cluster and waits for it to become Ready:
 
 1. Applies the JMX metrics ConfigMap
-2. Applies the `Kafka` and `KafkaNodePool` custom resources
+2. Applies the `Kafka` and `KafkaNodePool` custom resources. After a `stop`, it applies them with
+   reconciliation paused, puts back the KRaft cluster ID that `stop` saved, and then resumes, so the
+   brokers accept their kept volumes
 3. Waits for the Kafka cluster to report `Ready` (up to 300s)
 4. Applies NodePort services for the kafka-exporter and JMX exporter
 
@@ -38,7 +40,7 @@ Grafana dashboards in `kafka/dashboards/` are installed automatically after a su
 
 ### stop
 
-Removes the `Kafka` and `KafkaNodePool` resources and NodePort services. Persistent volumes are retained — topic data survives a stop/start cycle.
+Saves the cluster's KRaft cluster ID to `kafka/kafka-cluster-id`, then removes the `Kafka` and `KafkaNodePool` resources and NodePort services. The brokers' claims and persistent volumes are kept, so topic data survives a stop/start cycle. The next `start` reuses the saved ID, because a broker refuses a volume that belongs to another cluster ID.
 
 ### uninstall
 

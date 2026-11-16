@@ -38,6 +38,7 @@
 - [x] 6.3 Integration: two kits' local PVs and classes; each kit's claims bind only its own PVs. Move `CassandraPodsKitIntegrationTest` off `LOCAL_STORAGE_WFC_CLASS`.
 - [x] 6.4 Integration: Retain check against real StorageClasses — `local-path` refused, the retained copy accepted, a missing class reported missing.
 - [x] 6.5 Integration: Kafka stop then start rebinds its Retain local PVs.
+- [x] 6.6 Kafka keeps its KRaft cluster ID across stop/start: stop saves `.status.clusterId`, start applies paused, restores it, resumes (`KafkaKitTest`, shell steps against a stub kubectl). The end-to-end proof is 8.2.
 
 ## 7. Docs and specs
 
@@ -48,4 +49,4 @@
 ## 8. Verification
 
 - [ ] 8.1 `./gradlew test integrationTest detekt ktlintCheck` on JDK 21 (in a subagent).
-- [ ] 8.2 AWS lab run: install cassandra-pods, clickhouse, kafka and tidb; claims bind to local PVs; stop/start/uninstall behave as before.
+- [ ] 8.2 AWS lab run: install cassandra-pods, clickhouse, kafka and tidb; claims bind to local PVs; stop/start/uninstall behave as before. For kafka: create a topic, produce a message, `kafka stop`, `kafka start`, and read the message back (brokers must not fail with `Invalid cluster.id`).

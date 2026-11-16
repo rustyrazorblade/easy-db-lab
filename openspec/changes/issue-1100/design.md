@@ -102,6 +102,8 @@ Owner, 2026-11-16: every decision D1-D10 below is decided as its option (a). D10
 - **(a) Chosen (owner 2026-11-16):** `deleteClaim: false`; uninstall deletes claims explicitly, as today.
 - (b) Leave it if the integration test shows restart works.
 
+Consequence (review finding): `stop` also deletes the `Kafka` resource, whose `.status.clusterId` is the KRaft cluster ID that the kept volumes record in `meta.properties`. A new resource gets a new ID, and a broker refuses a volume of another cluster. So `stop` saves the ID to `kafka-cluster-id` in the kit directory. After a stop, `start` applies the resources with `strimzi.io/pause-reconciliation`, patches the saved ID into the status, and removes the pause. This is Strimzi's procedure for recovering a KRaft cluster from persistent volumes. Keeping the `Kafka` resource across stop instead (pause or scale to 0) was not chosen: it leaves the entity operator and exporter running, and `start` would no longer apply a changed `--brokers` or `--version` the same way.
+
 ### Fixed choices (no owner decision needed)
 
 - **State shape:** `InitConfig.kitStorageClass: String?`, `kitStorageSize: String?`; `KitStorage.from(state)` builds the sealed value, like `Placement.from` and `NodeCapabilities.from`. No Jackson polymorphism.

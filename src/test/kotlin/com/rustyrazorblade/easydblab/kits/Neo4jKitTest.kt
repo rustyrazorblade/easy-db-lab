@@ -351,13 +351,15 @@ class Neo4jKitTest : BaseKoinTest() {
 /**
  * Runs a kit shell step the way `WorkloadStepExecutor` does, with a stub `kubectl` first on
  * `PATH` that records each invocation's arguments and passes stdin through, so a test can check
- * what the step would have applied without a cluster.
+ * what the step would have applied without a cluster. A verb given canned output with [respond]
+ * prints that output instead.
  */
 class StubKubectl(
     private val dir: File,
 ) {
     private val log = File(dir, "kubectl.log")
     private val out = File(dir, "script.out")
+    private val responses = File(dir, "responses")
 
     init {
         dir.mkdirs()
@@ -366,11 +368,21 @@ class StubKubectl(
                 """
                 #!/bin/bash
                 echo "$*" >> "${log.absolutePath}"
+                if [ -f "${responses.absolutePath}/$1" ]; then cat "${responses.absolutePath}/$1"; exit 0; fi
                 cat
                 """.trimIndent() + "\n",
             )
             setExecutable(true)
         }
+    }
+
+    /** Makes every `kubectl <verb> ...` call print [output] instead of passing stdin through. */
+    fun respond(
+        verb: String,
+        output: String,
+    ) {
+        responses.mkdirs()
+        File(responses, verb).writeText(output)
     }
 
     /** Runs [script] under bash with [env] added, returning the exit code; see [output]. */

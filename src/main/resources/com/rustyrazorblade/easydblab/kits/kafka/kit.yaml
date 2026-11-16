@@ -142,8 +142,27 @@ install:
 start:
   - type: manifest
     template: kafka-metrics-config.yaml
-  - type: manifest
-    template: kafka.yaml
+  # The brokers' volumes outlive stop (deleteClaim: false) and record the KRaft cluster ID in
+  # meta.properties, but a new Kafka resource gets a new ID, and a broker refuses a volume of
+  # another cluster. After a stop, the ID it saved goes back into the new resource's status before
+  # Strimzi first reconciles it: apply paused, wait for the pause, patch the status, resume
+  # (Strimzi's recovery of a KRaft cluster from persistent volumes). A first start just applies.
+  - type: shell
+    script: |
+      set -euo pipefail
+      CLUSTER_ID_FILE=kafka-cluster-id
+      if [ ! -s "$CLUSTER_ID_FILE" ]; then
+        kubectl apply -f kafka.yaml --namespace default
+        exit 0
+      fi
+      CLUSTER_ID=$(cat "$CLUSTER_ID_FILE")
+      echo "Restoring KRaft cluster ID $CLUSTER_ID saved by the last stop"
+      kubectl annotate --local -f kafka.yaml strimzi.io/pause-reconciliation=true -o yaml > kafka-paused.yaml
+      kubectl apply -f kafka-paused.yaml --namespace default
+      kubectl wait kafka/kafka --namespace default --for=condition=ReconciliationPaused --timeout=300s
+      kubectl patch kafka kafka --namespace default --subresource status --type merge \
+        -p "{\"status\":{\"clusterId\":\"$CLUSTER_ID\"}}"
+      kubectl annotate kafka/kafka kafkanodepool/dual-role --namespace default strimzi.io/pause-reconciliation-
   - type: wait
     kind: kafka
     name: kafka
@@ -155,6 +174,17 @@ start:
     template: kafka-broker-jmx-nodeport.yaml
 
 stop:
+  # The Kafka resource's status holds the KRaft cluster ID the kept volumes record; start puts it
+  # back. A resource with no ID (never reconciled) leaves the last saved one in place. uninstall
+  # removes the kit directory, and the file with it.
+  - type: shell
+    script: |
+      set -euo pipefail
+      CLUSTER_ID=$(kubectl get kafka kafka --namespace default --ignore-not-found -o jsonpath='{.status.clusterId}')
+      if [ -n "$CLUSTER_ID" ]; then
+        printf '%s\n' "$CLUSTER_ID" > kafka-cluster-id
+        echo "Saved KRaft cluster ID $CLUSTER_ID for the next start"
+      fi
   - type: delete
     kind: kafka
     name: kafka

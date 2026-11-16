@@ -1,11 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
-import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
 
@@ -32,21 +29,18 @@ interface OtelSyncService {
  * template, and the next `up` or `grafana update-config` would see a "changed" collector and roll
  * it again for nothing.
  *
- * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
- *   like the one on [DefaultObservabilityStackService] (consolidated by #1040).
- * @property hostingOf derives how the stack is hosted from cluster state, the same seam. Where the
- *   backends are not published on a node, the collector this renders carries no node IP, so a sync
- *   needs nothing from the control host but the K8s API it reaches.
+ * @property contractSource the workspace's cluster contract, the same source
+ *   [DefaultObservabilityStackService] reads, so both render the collector from the same capabilities
+ *   and hosting. Where the backends are not published on a node, the collector this renders carries
+ *   no node IP, so a sync needs nothing from the control host but the K8s API it reaches.
  */
 class DefaultOtelSyncService(
     private val k8sClientProvider: K8sClientProvider,
     private val k8sService: K8sService,
     private val otelManifestBuilder: OtelManifestBuilder,
     private val clusterStateManager: ClusterStateManager,
-    private val user: User,
     private val configChangeReport: ConfigChangeReport,
-    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
-    private val hostingOf: (ClusterState) -> ObservabilityHosting = ObservabilityHosting::from,
+    private val contractSource: ClusterContractSource,
 ) : OtelSyncService {
     private val log = KotlinLogging.logger {}
 
@@ -54,21 +48,22 @@ class DefaultOtelSyncService(
         runCatching {
             log.debug { "Syncing OTel collector configuration" }
             val clusterState = clusterStateManager.load()
+            val contract = contractSource.current()
             val scrapeConfigs =
                 k8sClientProvider.createClient().use { client ->
                     otelManifestBuilder.listWorkloadScrapeConfigs(client)
                 }
-            // The cluster's export destinations and CNI come from its recorded init config, so a
-            // regenerated ConfigMap keeps a redirect cluster's external endpoints and a Cilium
+            // The cluster's export destinations, CNI and region come from its recorded init config,
+            // so a regenerated ConfigMap keeps a redirect cluster's external endpoints and a Cilium
             // cluster's Cilium scrape jobs.
             val resources =
                 CollectorResources.build(
                     otelManifestBuilder,
-                    hostingOf(clusterState),
+                    contract.hosting,
                     clusterState,
-                    user.region,
+                    clusterState.region(),
                     scrapeConfigs,
-                    capabilitiesOf(clusterState),
+                    contract.nodeCapabilities,
                 )
             configChangeReport.report(resources, Constants.K8s.NAMESPACE)
             for (resource in resources) {

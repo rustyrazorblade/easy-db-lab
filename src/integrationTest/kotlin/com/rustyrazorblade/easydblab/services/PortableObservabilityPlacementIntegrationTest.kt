@@ -15,6 +15,8 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardConfigMaps
@@ -373,17 +375,17 @@ class PortableObservabilityPlacementIntegrationTest {
             KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
         }
         val k8sService = DefaultK8sService(clientProvider, EventBus())
-        val user = User(email = "", region = SharedLocalStack.region(), keyName = "", awsProfile = "", awsAccessKey = "", awsSecret = "")
-
         DefaultOtelSyncService(
             clientProvider,
             k8sService,
             OtelManifestBuilder(templates),
             stateManager,
-            user,
             ConfigChangeReport(k8sService, EventBus()),
-            capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER },
-            hostingOf = { hosting },
+            // The local Docker capabilities with this test's hosting, which no recorded environment
+            // pairs yet: the claim storage arrives with #1035.
+            ClusterContractSource {
+                ClusterContract.of(state).copy(nodeCapabilities = NodeCapabilities.LOCAL_DOCKER, hosting = hosting)
+            },
         ).syncConfigMap().getOrThrow()
 
         val config =

@@ -12,9 +12,10 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
@@ -76,10 +77,9 @@ interface ObservabilityStackService {
  * Default implementation that applies the stack over the K8s API and configures on-node
  * directories over SSH.
  *
- * @property environmentOf derives what the environment provides and how the stack is hosted on it
- *   from cluster state. It is a test seam so a unit test can run a non-AWS environment; production
- *   takes the default. The four capability seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
- *   [com.rustyrazorblade.easydblab.server.StatusCache]) are consolidated by #1040 into one provider.
+ * @property contractSource the workspace's cluster contract, read once per deploy, so the capabilities
+ *   that gate stages and the hosting the backends and Grafana are placed with come from one reading.
+ *   A test binds a fixed contract to run a non-AWS environment.
  */
 @Suppress("LongParameterList")
 class DefaultObservabilityStackService(
@@ -87,7 +87,6 @@ class DefaultObservabilityStackService(
     private val k8sClientProvider: K8sClientProvider,
     remoteOps: RemoteOperationsService,
     private val clusterStateManager: ClusterStateManager,
-    private val user: User,
     private val eventBus: EventBus,
     private val grafanaDeployService: GrafanaDeployService,
     private val otelManifestBuilder: OtelManifestBuilder,
@@ -105,7 +104,7 @@ class DefaultObservabilityStackService(
     private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
     private val configChangeReport: ConfigChangeReport,
     private val installContextFactory: DashboardInstallContextFactory,
-    private val environmentOf: (ClusterState) -> StackEnvironment = StackEnvironment::from,
+    private val contractSource: ClusterContractSource,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
@@ -147,15 +146,15 @@ class DefaultObservabilityStackService(
         runCatching {
             val clusterState = clusterStateManager.load()
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
-            val environment = environmentOf(clusterState)
-            val hosting = environment.hosting
+            val contract = contractSource.current()
+            val hosting = contract.hosting
             // Before anything is applied: a claim on a class that deletes its volume would lose the state.
             retainedClaimCheck.require(hosting.storage)
             // A selector no node matches would leave every backend Pending until the rollout wait times out.
             placementCheck.require(hosting.placement)
 
             val clusterConfig = createClusterConfigMap(clusterState, hosting)
-            val collector = collectorStage(clusterState, environment)
+            val collector = collectorStage(clusterState, contract)
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
@@ -163,7 +162,7 @@ class DefaultObservabilityStackService(
             val stages =
                 applyCapabilityGate(
                     buildStages(telemetryRedirect, clusterState.initConfig?.cni ?: CniMode.Flannel, hosting),
-                    environment.capabilities,
+                    contract.nodeCapabilities,
                 )
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
@@ -208,7 +207,7 @@ class DefaultObservabilityStackService(
      */
     private fun collectorStage(
         clusterState: ClusterState,
-        environment: StackEnvironment,
+        contract: ClusterContract,
     ): Stage {
         val scrapeConfigs =
             k8sClientProvider.createClient().use { client ->
@@ -218,11 +217,11 @@ class DefaultObservabilityStackService(
             "OTel Collector",
             CollectorResources.build(
                 otelManifestBuilder,
-                environment.hosting,
+                contract.hosting,
                 clusterState,
-                user.region,
+                clusterState.region(),
                 scrapeConfigs,
-                environment.capabilities,
+                contract.nodeCapabilities,
             ),
         )
     }
@@ -403,7 +402,7 @@ class DefaultObservabilityStackService(
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
     ): Map<String, String> {
-        val configData = ClusterConfigData.of(clusterState, hosting, user.region)
+        val configData = ClusterConfigData.of(clusterState, hosting, clusterState.region())
 
         k8sService
             .createConfigMap(
@@ -420,23 +419,5 @@ class DefaultObservabilityStackService(
                 error("Failed to create cluster-config ConfigMap: ${exception.message}")
             }
         return configData
-    }
-}
-
-/**
- * What one stack deploy needs to know about the environment it deploys into: the capabilities that
- * gate stages and the hosting the backends and Grafana are placed with. One value, resolved once
- * per deploy from cluster state, so the two never come from different readings of it.
- *
- * @property capabilities what the environment's nodes and account provide.
- * @property hosting where the backends and Grafana run and keep their state.
- */
-data class StackEnvironment(
-    val capabilities: NodeCapabilities,
-    val hosting: ObservabilityHosting,
-) {
-    companion object {
-        /** The environment [state] records. */
-        fun from(state: ClusterState): StackEnvironment = StackEnvironment(NodeCapabilities.from(state), ObservabilityHosting.from(state))
     }
 }

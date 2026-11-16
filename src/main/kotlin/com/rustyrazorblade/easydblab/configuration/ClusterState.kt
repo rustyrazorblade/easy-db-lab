@@ -425,6 +425,12 @@ data class ClusterState(
         return tenant
     }
 
+    /**
+     * The region `init` recorded, or [InitConfig]'s default for a state with no init configuration.
+     * A local workspace records `""`; only AWS-gated paths read it there.
+     */
+    fun region(): String = (initConfig ?: InitConfig()).region
+
     /** Returns the S3 metrics config ID: "edl-{name}-{clusterId}", truncated to API limit. */
     fun metricsConfigId(): String = "edl-$name-$clusterId".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)
 

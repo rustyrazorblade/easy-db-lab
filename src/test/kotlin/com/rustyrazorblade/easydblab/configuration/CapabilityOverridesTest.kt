@@ -5,7 +5,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 class CapabilityOverridesTest {
-    private val validNames = NodeCapability.entries.map { it.serialName }.toTypedArray()
+    // aws-account is declared, never overridden, so it is not offered as a valid name.
+    private val validNames = (NodeCapability.entries - NodeCapability.AWS_ACCOUNT).map { it.serialName }.toTypedArray()
 
     @Test
     fun `an override to false removes the capability and keeps the rest`() {
@@ -28,6 +29,22 @@ class CapabilityOverridesTest {
     fun `no overrides leave the set as it is`() {
         assertThat(CapabilityOverrides.parse(emptyList()).applyTo(NodeCapabilities.LOCAL_DOCKER))
             .isEqualTo(NodeCapabilities.LOCAL_DOCKER)
+    }
+
+    @Test
+    fun `aws-account cannot be overridden either way`() {
+        listOf("aws-account=true", "aws-account=false").forEach { entry ->
+            assertThatThrownBy { CapabilityOverrides.parse(listOf(entry)) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("aws-account")
+                .hasMessageContaining("cannot be overridden")
+        }
+    }
+
+    @Test
+    fun `aws-account is declared by AWS only`() {
+        assertThat(NodeCapability.AWS_ACCOUNT in NodeCapabilities.AWS).isTrue()
+        assertThat(NodeCapability.AWS_ACCOUNT in NodeCapabilities.LOCAL_DOCKER).isFalse()
     }
 
     @Test

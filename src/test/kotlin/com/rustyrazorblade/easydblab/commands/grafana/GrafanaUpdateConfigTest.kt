@@ -124,8 +124,8 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                         get(),
                         get(),
                         get(),
-                        get(),
                         DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore())),
+                        get(),
                     )
                 }
             },

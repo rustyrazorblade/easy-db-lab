@@ -5,10 +5,10 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
@@ -48,15 +48,13 @@ import kotlin.system.exitProcess
  * Periodically fetches live data from AWS, SSH, and Kubernetes,
  * storing the result in memory for instant retrieval via the /status endpoint.
  *
- * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
- *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]); consolidated by #1040.
+ * What the environment provides comes from the injected [ClusterContractSource].
  */
 class StatusCache(
     private val refreshIntervalSeconds: Long = Constants.Time.DEFAULT_STATUS_REFRESH_SECONDS,
     private val autoShutdown: Boolean = false,
     private val vpcName: String? = null,
     private val onShutdown: () -> Unit = { exitProcess(0) },
-    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
 ) : KoinComponent,
     CachedStatus {
     companion object {
@@ -84,6 +82,7 @@ class StatusCache(
     private val context: Context by inject()
     private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
+    private val contractSource: ClusterContractSource by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
     private val objectStore: ObjectStore by inject()
     private val vpcService: VpcService by inject()
@@ -497,7 +496,7 @@ class StatusCache(
         val kits = buildKitAccess(state)
 
         val s3Manager =
-            if (NodeCapability.S3 in capabilitiesOf(state)) {
+            if (NodeCapability.S3 in contractSource.current().nodeCapabilities) {
                 val s3Path = state.s3Path()
                 S3ManagerAccess(
                     ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",

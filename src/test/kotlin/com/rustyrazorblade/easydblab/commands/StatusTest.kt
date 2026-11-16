@@ -383,7 +383,8 @@ class StatusTest : BaseKoinTest() {
         setupBasicClusterState()
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
 
-        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+        recordCapabilities(NodeCapabilities.LOCAL_DOCKER)
+        Status().execute()
 
         assertThat(capturedOutput()).contains(
             """
@@ -404,7 +405,8 @@ class StatusTest : BaseKoinTest() {
         installPackagedKit("clickhouse")
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
 
-        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+        recordCapabilities(NodeCapabilities.LOCAL_DOCKER)
+        Status().execute()
 
         val output = capturedOutput()
         assertThat(output).contains("http://clickhouse-nodeport.default.svc.cluster.local:8123")
@@ -424,7 +426,8 @@ class StatusTest : BaseKoinTest() {
         assertThat(capturedOutput()).contains("S3 Manager:")
 
         stdout.reset()
-        Status(capabilitiesOf = { NodeCapabilities.LOCAL_DOCKER }).execute()
+        recordCapabilities(NodeCapabilities.LOCAL_DOCKER)
+        Status().execute()
         assertThat(capturedOutput()).doesNotContain("S3 Manager")
     }
 
@@ -662,6 +665,12 @@ class StatusTest : BaseKoinTest() {
             }
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
+    }
+
+    /** Records [capabilities] on the stubbed state, as `init` would, so Status reads them through the contract. */
+    private fun recordCapabilities(capabilities: NodeCapabilities) {
+        val state = mockClusterStateManager.load()
+        whenever(mockClusterStateManager.load()).thenReturn(state.copy(capabilities = capabilities.present().toSet()))
     }
 
     private fun setupBasicClusterStateWithS3Bucket(bucketName: String) {

@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
+import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.di.commandsModule
 import com.rustyrazorblade.easydblab.di.prompterModule
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -106,6 +108,10 @@ object TestModules {
 
             // Real: it only writes and removes the packaged tool wrappers in a workspace's bin/.
             single { ToolWrapperInstaller() }
+
+            // Real: it resolves the contract from whichever ClusterStateManager a test binds (usually
+            // a stub whose load() returns an inline state), so a test picks the environment by state.
+            single<ClusterContractSource> { StateClusterContractSource(get()) }
 
             // Real, over the test workspace, so stopping a tunnel (`down`, `socks stop`) runs the
             // real state file and env file code. Its ssh launcher refuses to start anything: a test

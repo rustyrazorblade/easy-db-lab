@@ -7,14 +7,14 @@
 
 ## 2. Cluster contract
 
-- [ ] 2.1 Add the form enums `ToolingForm`, `NodeAccessForm`, `StoreKind` and `NetworkMode`, and `ClusterContract` with `of(state)`, the only `when (state.environment)` in main code.
-- [ ] 2.2 Add `ClusterContractSource` and `StateClusterContractSource`. With no state, the latter resolves a default `Ec2K3s`. Register it in Koin.
-- [ ] 2.3 Add `NodeCapability.AWS_ACCOUNT` to `NodeCapabilities.AWS` only. `CapabilityOverrides` refuses it.
+- [x] 2.1 Add the form enums `ToolingForm`, `NodeAccessForm`, `StoreKind` and `NetworkMode`, and `ClusterContract` with `of(state)`, the only `when (state.environment)` in main code.
+- [x] 2.2 Add `ClusterContractSource` and `StateClusterContractSource`. With no state, the latter resolves a default `Ec2K3s`. Register it in Koin.
+- [x] 2.3 Add `NodeCapability.AWS_ACCOUNT` to `NodeCapabilities.AWS` only. `CapabilityOverrides` refuses it.
 - [ ] 2.4 `NodeCapabilities.from`: return the recorded set, else `environment.declaredCapabilities`. `Init.effectiveCapabilities()` starts from the environment's declared set.
-- [ ] 2.5 Make `Placement.from` and `ObservabilityHosting.from` read the contract. Replace their "until #1040" KDoc.
-- [ ] 2.6 Replace `StackEnvironment.from` and the `capabilitiesOf`/`environmentOf` lambdas in `ObservabilityStackService`, `OtelSyncService`, `Status` and `StatusCache` with the injected `ClusterContractSource`.
-- [ ] 2.7 `ObservabilityStackService` and `OtelSyncService` read the region from `state.initConfig.region` and stop injecting `User`.
-- [ ] 2.8 Unit tests: a parameterized resolution table over the three environments for every contract field; an AWS state with no recorded capabilities still yields the AWS set; the stack service skips the stages a `K3sDocker` contract lacks.
+- [x] 2.5 Make `Placement.from` and `ObservabilityHosting.from` read the contract. Replace their "until #1040" KDoc.
+- [x] 2.6 Replace `StackEnvironment.from` and the `capabilitiesOf`/`environmentOf` lambdas in `ObservabilityStackService`, `OtelSyncService`, `Status` and `StatusCache` with the injected `ClusterContractSource`.
+- [x] 2.7 `ObservabilityStackService` and `OtelSyncService` read the region from `state.initConfig.region` and stop injecting `User`.
+- [x] 2.8 Unit tests: a parameterized resolution table over the three environments for every contract field; an AWS state with no recorded capabilities still yields the AWS set; the stack service skips the stages a `K3sDocker` contract lacks.
 
 ## 3. Per-environment Koin selection
 

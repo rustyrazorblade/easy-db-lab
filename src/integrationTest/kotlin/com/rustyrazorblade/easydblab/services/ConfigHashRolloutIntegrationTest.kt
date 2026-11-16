@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
@@ -87,6 +88,7 @@ class ConfigHashRolloutIntegrationTest {
 
         stateManager = mock()
         whenever(stateManager.load()).thenReturn(clusterState)
+        whenever(stateManager.exists()).thenReturn(true)
         user =
             User(
                 region = "us-west-2",
@@ -102,7 +104,14 @@ class ConfigHashRolloutIntegrationTest {
         otel = OtelManifestBuilder(templateService)
         val k8sService = DefaultK8sService(clientProvider, EventBus())
         otelSync =
-            DefaultOtelSyncService(clientProvider, k8sService, otel, stateManager, user, ConfigChangeReport(k8sService, EventBus()))
+            DefaultOtelSyncService(
+                clientProvider,
+                k8sService,
+                otel,
+                stateManager,
+                ConfigChangeReport(k8sService, EventBus()),
+                StateClusterContractSource(stateManager),
+            )
     }
 
     @AfterAll
@@ -318,7 +327,7 @@ class ConfigHashRolloutIntegrationTest {
                 otel,
                 ObservabilityHosting.AWS,
                 state,
-                user.region,
+                state.region(),
                 scrapeConfigs,
                 NodeCapabilities.AWS,
             )

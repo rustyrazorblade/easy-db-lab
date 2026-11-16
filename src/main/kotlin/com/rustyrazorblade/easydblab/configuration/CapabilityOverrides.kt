@@ -49,6 +49,9 @@ value class CapabilityOverrides private constructor(
                 requireNotNull(NodeCapability.fromSerialName(name)) {
                     "Unknown capability '$name' in ${Constants.Capabilities.OVERRIDE_OPTION} $entry. ${validNames()}"
                 }
+            require(capability.isOverridable) {
+                "Capability '$name' cannot be overridden: the environment declares it. ${validNames()}"
+            }
             val value =
                 requireNotNull(
                     entry
@@ -62,6 +65,7 @@ value class CapabilityOverrides private constructor(
             return capability to value
         }
 
-        private fun validNames(): String = "Valid capabilities: ${NodeCapability.entries.joinToString(", ") { it.serialName }}."
+        private fun validNames(): String =
+            "Valid capabilities: ${NodeCapability.entries.filter { it.isOverridable }.joinToString(", ") { it.serialName }}."
     }
 }

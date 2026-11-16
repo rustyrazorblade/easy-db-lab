@@ -633,6 +633,24 @@ object Constants {
         }
     }
 
+    // The fixed per-environment values of the cluster contract (ClusterContract)
+    object ClusterContract {
+        /** The namespace a cluster easy-db-lab built runs its workloads in. */
+        const val OWNED_NAMESPACE = "default"
+
+        /** The namespace easy-db-lab uses on a cluster the user brings, so it never mixes with theirs. */
+        const val BROUGHT_NAMESPACE = "easy-db-lab"
+
+        /** The datacenter name of a cluster with no cloud region to name it after. */
+        const val LOCAL_DATACENTER = "dc1"
+    }
+
+    // `init --local`: K3s in Docker on this machine
+    object Local {
+        /** The data directory under the workspace when `init --local` is given no `--data-dir`. */
+        const val DEFAULT_DATA_DIRECTORY = "observability-data"
+    }
+
     // Node capabilities: `init --capability` overrides and the admission probe (CapabilityProbeService)
     object Capabilities {
         /** The `init` option that overrides one capability, `--capability <name>=<bool>`. */

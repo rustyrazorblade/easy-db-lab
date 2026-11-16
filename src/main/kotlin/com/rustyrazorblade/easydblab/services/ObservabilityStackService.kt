@@ -23,6 +23,7 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -341,7 +342,7 @@ class DefaultObservabilityStackService(
                 // ships with (origin identity). If it is missing, metrics/logs/traces/profiles
                 // ship unlabeled and two DCs become indistinguishable on one Grafana — so fail
                 // fast rather than report a successful `up` over a broken identity mechanism.
-                eventBus.emit(Event.Provision.ClusterConfigMapFailed(exception.message ?: exception.toString()))
+                eventBus.emit(Event.Provision.ClusterConfigMapFailed(exception.messageOrString()))
                 error("Failed to create cluster-config ConfigMap: ${exception.message}")
             }
         return configData

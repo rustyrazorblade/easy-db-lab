@@ -1,11 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.reason
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.util.concurrent.Callable
@@ -354,7 +355,7 @@ class DefaultTeardownFlushService private constructor(
                 SaveTask(TailSignal.ANNOTATIONS, FlushProgress(FlushStep.ANNOTATIONS_BACKUP)) {
                     val backup =
                         annotationBackupService.backup(controlHost, clusterState).getOrElse { failure ->
-                            throw IllegalStateException(failure.message ?: failure.toString(), failure)
+                            throw IllegalStateException(failure.messageOrString(), failure)
                         }
                     SignalReport.Annotations(backup.s3Path.getKey())
                 }
@@ -377,7 +378,7 @@ class DefaultTeardownFlushService private constructor(
         val mirrored =
             annotationMirror.syncAll(controlHost).getOrElse { failure ->
                 throw IllegalStateException(
-                    "${failure.message ?: failure}; the Loki flush was not run, and Loki keeps running",
+                    "${failure.messageOrString()}; the Loki flush was not run, and Loki keeps running",
                     failure,
                 )
             }

@@ -1,16 +1,17 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
+import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.services.BackendState
 import com.rustyrazorblade.easydblab.services.DataBucketTeardown
 import com.rustyrazorblade.easydblab.services.DeviceRemoval
@@ -316,7 +317,7 @@ class Down : PicoBaseCommand() {
                 Event.Teardown.BackupFailedAbort.SignalFailure(
                     signal = it.description,
                     step = step,
-                    reason = failure.message ?: failure.toString(),
+                    reason = failure.reason(),
                 )
             },
     )
@@ -573,7 +574,7 @@ class Down : PicoBaseCommand() {
 
     private fun reportClusterStateFailure(e: Exception) {
         log.warn(e) { "Failed to update cluster state, continuing anyway" }
-        eventBus.emit(Event.Teardown.ClusterStateUpdateFailed(e.message ?: e.toString()))
+        eventBus.emit(Event.Teardown.ClusterStateUpdateFailed(e.messageOrString()))
     }
 
     /**

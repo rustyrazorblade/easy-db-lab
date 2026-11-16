@@ -30,7 +30,6 @@ class StatusCache(
     private val autoShutdown: Boolean = false,
     private val vpcName: String? = null,
     private val onShutdown: () -> Unit = { exitProcess(0) },
-    private val collector: ClusterStatusCollector = ClusterStatusCollector(),
 ) : KoinComponent,
     CachedStatus {
     companion object {
@@ -56,6 +55,7 @@ class StatusCache(
     private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val vpcService: VpcService by inject()
+    private val collector: ClusterStatusCollector by inject()
 
     private val lock = ReentrantLock()
     private val timer = Timer("status-cache-refresh", true)

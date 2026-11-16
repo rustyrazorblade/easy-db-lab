@@ -32,9 +32,16 @@ object ClusterReach {
         when (this) {
             is ConnectException, is UnknownHostException, is NoRouteToHostException -> true
             is FileNotFoundException, is NoSuchFileException -> true
-            // The SOCKS client reports a tunnel that is down or cannot connect as a SocketException
-            // whose message names SOCKS. A bare SocketException (a reset) says the request was sent.
-            is SocketException -> message.orEmpty().contains("SOCKS")
+            // The JDK's SOCKS client reports a tunnel that is down or cannot connect as a plain
+            // SocketException with no type of its own, so the origin is the signal: it is thrown from
+            // SocksSocketImpl. A SocketException from anywhere else (a reset) says the request was sent.
+            is SocketException -> thrownBySocksClient()
             else -> false
         }
+
+    /** True when the JDK's SOCKS client threw this, judged by the class of the throwing frame, not the message. */
+    private fun Throwable.thrownBySocksClient(): Boolean = stackTrace.firstOrNull()?.className == SOCKS_CLIENT_CLASS
+
+    /** The JDK class that connects through a SOCKS proxy and throws every tunnel failure. */
+    internal const val SOCKS_CLIENT_CLASS = "java.net.SocksSocketImpl"
 }

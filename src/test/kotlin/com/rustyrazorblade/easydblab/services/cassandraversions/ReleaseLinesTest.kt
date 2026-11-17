@@ -82,6 +82,6 @@ class ReleaseLinesTest {
 
         assertThatThrownBy { ReleaseLines.parse(yaml) }
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("4.1", "17")
+            .hasMessageContainingAll("4.1", "17")
     }
 }

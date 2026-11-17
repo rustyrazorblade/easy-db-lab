@@ -292,10 +292,12 @@ script reads a version file:
 
 - `install-cassandra-version <name> --url URL [--fallback-url URL] [--cache-uri URI] [--reinstall]`,
   or `--url GIT --branch B --java N [--ant-flags F]` for a git build. Run by `CassandraInstaller` for
-  `cassandra install`, `cassandra use` and `CassandraNodeRestorer` (a replaced db node).
+  `cassandra install`, `cassandra use` and `CassandraNodeRestorer` (a replaced db node; nothing calls
+  the restorer yet, issue 1158 wires it into `up`).
 - `use-cassandra <version> --java N --python X.Y.Z`. Both flags are required; the script checks every
   argument before it changes anything.
-- `install-axonops-agent <X.Y> <java> --cache-prefix URI`, run by `cassandra start` through
+- `install-axonops-agent <X.Y|name> <java> --cache-prefix URI` (a name with no X.Y, such as
+  `cep-45`, takes its release from the install's `apache-cassandra` jar), run by `cassandra start` through
   `AxonOpsAgents` before Cassandra starts anywhere. Exit 0 prints the agent name last; exit 3 means
   AxonOps ships no agent for the release and JDK and prints the ones it ships.
 

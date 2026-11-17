@@ -53,7 +53,11 @@ running cluster without rebuilding the AMI, via `cassandra install <version>`.
 The system MUST support these install mechanisms: downloading a tarball from a URL that the CLI
 resolved from a version source, downloading a tarball given with `--url`, and cloning a git
 `--url` with `--branch` and building it with `ant`. `cassandra install` and `cassandra use` MUST
-use the same node-side install implementation.
+use the same node-side install implementation.  `--branch` with no `--url` SHALL build from the git
+repository of a profile entry or, on a reinstall, of a git record; when no source of the version
+gives a git repository, it SHALL fail before any node changes and SHALL name `--url`.  A rebuild of
+a git record on a JDK other than the recorded one SHALL use the release-line table's ant flags
+for that JDK, not the recorded ones.
 
 The CLI MUST resolve every install parameter (the source, the URL, the JDK, Python and, for a git
 build, the ant flags) before it changes any node, and MUST give them to the node install script
@@ -473,7 +477,7 @@ The ASF list and the cassandra-builds release list SHALL be fetched one time and
 
 ### Requirement: AxonOps agents install on demand
 
-When AxonOps is on, `cassandra start` SHALL, before it starts Cassandra on any node, install on each targeted node the AxonOps agent that the agent selection picks for the node's active release and JDK, when the node does not have it.  It SHALL fetch the agent package through the account's download cache.  The JDK SHALL always be the JDK that the CLI chose; the system SHALL NOT change the JDK to fit AxonOps.
+When AxonOps is on, `cassandra start` SHALL, before it starts Cassandra on any node, install on each targeted node the AxonOps agent that the agent selection picks for the node's active release and JDK, when the node does not have it.  For a version whose name has no `X.Y` release (a build named `cep-45`), the release SHALL be the one that the install's `apache-cassandra` jar names.  It SHALL fetch the agent package through the account's download cache.  The JDK SHALL always be the JDK that the CLI chose; the system SHALL NOT change the JDK to fit AxonOps.
 
 When AxonOps ships no agent for the release and the JDK of a targeted node, `cassandra start` SHALL fail before it starts Cassandra on any node.  The message SHALL name the release, the JDK, the agents that AxonOps ships, and `--skip-axonops`.
 

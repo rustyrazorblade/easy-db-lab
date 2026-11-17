@@ -7,6 +7,9 @@
 #
 # Usage: install-axonops-agent <X.Y> <java> --cache-prefix URI
 #
+# The first argument may also be an installed version name with no X.Y (a build named cep-45); the
+# release is then read from the apache-cassandra jar under $CASSANDRA_INSTALL_DIR/<name>/lib.
+#
 # Exit status, a contract with the CLI:
 #   0  the agent is installed; the last line of stdout is its name (e.g. 5.0-agent-jdk17)
 #   3  AxonOps ships no agent for that release and JDK; stdout lists the agents it ships, one a line
@@ -64,6 +67,28 @@ fi
 source "$EDL_AGENTS_LIB"
 # shellcheck disable=SC1090
 source "$EDL_CACHE_LIB"
+
+# A release argument that is not X.Y is an installed version name (a build named cep-45): its
+# release is read from the apache-cassandra jar of that install.
+CASSANDRA_INSTALL_DIR="${CASSANDRA_INSTALL_DIR:-/usr/local/cassandra}"
+if [[ ! "$RELEASE" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  if [[ ! "$RELEASE" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+    echo "ERROR: invalid version name [$RELEASE]: use letters, digits, ., _, + and -, starting with a letter or a digit" >&2
+    exit 1
+  fi
+  NAME="$RELEASE"
+  RELEASE=""
+  for jar in "$CASSANDRA_INSTALL_DIR/$NAME"/lib/apache-cassandra-*.jar; do
+    if line="$(edl_cassandra_version_from_jar "$jar")"; then
+      RELEASE="$line"
+      break
+    fi
+  done
+  if [[ -z "$RELEASE" ]]; then
+    echo "ERROR: cannot tell the Cassandra release of $NAME: no apache-cassandra jar in $CASSANDRA_INSTALL_DIR/$NAME/lib" >&2
+    exit 1
+  fi
+fi
 
 # The library reads JDK 8 as 1, the way `java -version` prints it; the CLI passes 8.
 lib_java="$JAVA"

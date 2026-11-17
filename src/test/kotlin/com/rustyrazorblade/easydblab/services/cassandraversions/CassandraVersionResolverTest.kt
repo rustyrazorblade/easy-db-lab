@@ -231,7 +231,7 @@ class CassandraVersionResolverTest {
         fun `an unknown name fails before any install, naming every source it checked`() {
             assertThatThrownBy { resolve(FakeSources(), VersionRequest("9.9-nope")) }
                 .isInstanceOf(VersionResolutionException::class.java)
-                .hasMessageContaining(
+                .hasMessageContainingAll(
                     "9.9-nope",
                     "cluster state",
                     "/profile/cassandra_versions",
@@ -239,6 +239,7 @@ class CassandraVersionResolverTest {
                     "cassandra-builds",
                     "build catalog",
                     "--url",
+                    "cassandra list --refresh",
                 )
         }
     }
@@ -347,7 +348,7 @@ class CassandraVersionResolverTest {
         fun `--java outside the list fails, listing the supported JDKs`() {
             assertThatThrownBy { resolve(FakeSources(), VersionRequest("5.0", java = "21")) }
                 .isInstanceOf(VersionResolutionException::class.java)
-                .hasMessageContaining("21", "5.0", "11, 17")
+                .hasMessageContainingAll("21", "5.0", "11, 17")
         }
 
         @Test
@@ -443,6 +444,40 @@ class CassandraVersionResolverTest {
             assertThat(resolver.forNode(resolver.resolve(request, cluster), request, cluster.nodes["db0"]).java).isEqualTo("17")
         }
 
+        /**
+         * One row per git build record: its JDK and ant flags. The rebuild of exactly that record (a
+         * replaced node) builds on the recorded JDK with the recorded flags, never with the flags
+         * of another JDK.
+         */
+        @ParameterizedTest(name = "recorded on JDK {0} with flags [{1}] -> [{2}]")
+        @CsvSource(
+            "8,  ,                  ",
+            "11, -Duse.jdk11=true,  -Duse.jdk11=true",
+            "8,  -Dcustom=1,        -Dcustom=1",
+        )
+        fun `a rebuild of a git record builds on its JDK with its own ant flags`(
+            java: String,
+            recordedFlags: String?,
+            expectedFlags: String?,
+        ) {
+            val record =
+                InstalledVersion(
+                    "4.0-x",
+                    java,
+                    listOf("8", "11"),
+                    "3.11.9",
+                    CassandraSource.GIT,
+                    "https://github.com/me/c.git",
+                    branch = "b",
+                    antFlags = recordedFlags,
+                )
+
+            val spec = CassandraVersionResolver(FakeSources()).forRecord(record)
+
+            assertThat(spec.java).isEqualTo(java)
+            assertThat(spec.antFlags).isEqualTo(expectedFlags)
+        }
+
         @Test
         fun `forNode keeps each node's own recorded JDK`() {
             val on11 = InstalledVersion("5.0", "11", listOf("11", "17"), "3.11.9", CassandraSource.ASF, AsfReleases.downloadUrl("5.0.6"))
@@ -498,7 +533,52 @@ class CassandraVersionResolverTest {
 
             assertThatThrownBy { resolve(FakeSources(profile = listOf(build)), VersionRequest("5.0-mine")) }
                 .isInstanceOf(VersionResolutionException::class.java)
-                .hasMessageContaining("--java", "java", "/profile/cassandra_versions")
+                .hasMessageContainingAll("--java", "java", "/profile/cassandra_versions")
+        }
+
+        /**
+         * `--branch` with no `--url` needs a git repository from somewhere else: a profile entry's
+         * git URL, or (on a reinstall) a recorded git build. A release name has none.
+         */
+        @ParameterizedTest(name = "{0} --branch other (reinstall={1}) -> {2}")
+        @CsvSource(
+            "git-entry,   false, other",
+            "git-record,  true,  other",
+            "5.0,         false, refused",
+            "tgz-entry,   false, refused",
+        )
+        fun `--branch without --url builds the branch only where a source gives a git repository`(
+            name: String,
+            reinstall: Boolean,
+            expected: String,
+        ) {
+            val sources =
+                FakeSources(
+                    profile =
+                        listOf(
+                            customBuild.copy(version = "git-entry", url = "https://github.com/me/c.git", branch = "b"),
+                            customBuild.copy(version = "tgz-entry"),
+                        ),
+                )
+            val record =
+                InstalledVersion(
+                    "git-record",
+                    "11",
+                    listOf("11"),
+                    "3.11.9",
+                    CassandraSource.GIT,
+                    "https://github.com/me/c.git",
+                    branch = "b",
+                )
+            val request = VersionRequest(name, branch = "other", reinstall = reinstall)
+
+            val actual =
+                runCatching { resolve(sources, request, state("db0" to node(record))).branch }
+                    .getOrElse {
+                        assertThat(it).isInstanceOf(VersionResolutionException::class.java).hasMessageContaining("--url")
+                        "refused"
+                    }
+            assertThat(actual).isEqualTo(expected)
         }
 
         @Test

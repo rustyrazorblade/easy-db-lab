@@ -161,6 +161,31 @@ else
   fail "6.0 should exit 3, got ${STATUS}"
 fi
 
+# --- a version name with no X.Y: the release comes from the install's jar --------
+export CASSANDRA_INSTALL_DIR="${SANDBOX}/cassandra"
+mkdir -p "$CASSANDRA_INSTALL_DIR/cep-45/lib"
+touch "$CASSANDRA_INSTALL_DIR/cep-45/lib/apache-cassandra-5.0.4-SNAPSHOT.jar" \
+  "$CASSANDRA_INSTALL_DIR/cep-45/lib/apache-cassandra-clientutil-5.0.4-SNAPSHOT.jar"
+reset_agents
+run_script cep-45 17 --cache-prefix "$PREFIX"
+if [[ "$STATUS" -eq 0 && "$(printf '%s\n' "$OUTPUT" | tail -n 1)" == "5.0-agent-jdk17" ]]; then
+  pass "a build named cep-45 gets the agent of the 5.0 release its jar names"
+else
+  fail "cep-45 (a 5.0 jar) on JDK 17 should install 5.0-agent-jdk17, got ${STATUS}: ${OUTPUT} ${ERR}"
+fi
+run_script not-installed 17 --cache-prefix "$PREFIX"
+if [[ "$STATUS" -eq 1 && "$ERR" == *"not-installed"* && ! -s "$CALLS" ]]; then
+  pass "a name with no X.Y and no install is a failure that names it, with nothing fetched"
+else
+  fail "an uninstalled name should exit 1 naming it, got ${STATUS}: ${ERR}; calls: $(cat "$CALLS")"
+fi
+run_script ../x 17 --cache-prefix "$PREFIX"
+if [[ "$STATUS" -eq 1 && "$ERR" == *"invalid version name"* && ! -s "$CALLS" ]]; then
+  pass "a release argument that is not one path segment is refused"
+else
+  fail "../x should be refused, got ${STATUS}: ${ERR}"
+fi
+
 # --- JDK 8 is passed as 8; the script maps it to the library's 1 --------------
 reset_agents
 run_script 4.1 8 --cache-prefix "$PREFIX"

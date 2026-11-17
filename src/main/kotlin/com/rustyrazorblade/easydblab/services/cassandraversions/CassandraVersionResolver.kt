@@ -68,12 +68,20 @@ class CassandraVersionResolver(
         val record = node?.installed?.get(spec.name) ?: return spec
         val java = request.java ?: record.java.takeIf { it in spec.javaSupported } ?: spec.java
         val python = request.python ?: record.python.ifBlank { spec.python }
+        val keepFlags = !spec.isGitBuild || java == spec.java || request.antFlags != null
         return spec
             .toBuilder()
             .jdks(spec.javaSupported, java)
             .python(python)
+            .antFlags(if (keepFlags) spec.antFlags else recordAntFlags(record, java))
             .build()
     }
+
+    /** The ant flags a git build of [record] uses on [java]: its own on its JDK, else the release line's. */
+    private fun recordAntFlags(
+        record: InstalledVersion,
+        java: String,
+    ): String? = if (java == record.java) record.antFlags else releaseLines.entryFor(record.version)?.antFlagsFor(java)
 
     /**
      * The install of exactly [record], with its own JDK and Python: what a replaced node gets
@@ -100,10 +108,7 @@ class CassandraVersionResolver(
         val source = recordSource(record, url, branch)
         val asfRelease = AsfReleases.releaseOf(url).takeIf { source == CassandraSource.ASF }
         val java = chooseJava(request, record.javaSupported, profile?.java, noListHint(request.name))
-        val antFlags =
-            request.antFlags.takeIf { request.reinstall }
-                ?: record.antFlags.takeIf { java == record.java }
-                ?: releaseLines.entryFor(record.version)?.antFlagsFor(java)
+        val antFlags = request.antFlags.takeIf { request.reinstall } ?: recordAntFlags(record, java)
         return InstallSpec
             .builder(record.version)
             .source(source)
@@ -174,6 +179,7 @@ class CassandraVersionResolver(
         request: VersionRequest,
     ): InstallSpec {
         val hint = "Pass --java, or add java to the entry for '${build.version}' in ${sources.profileBuildDir.path}."
+        if (build.branch == null && request.url == null) refuseBranchWithoutRepository(request)
         val branch = request.branch ?: build.branch
         return InstallSpec
             .builder(build.version)
@@ -207,6 +213,7 @@ class CassandraVersionResolver(
 
     /** The Apache releases, then cassandra-builds, then the catalog; an unknown name names a stale ASF list. */
     private fun fromReleaseLists(request: VersionRequest): InstallSpec {
+        refuseBranchWithoutRepository(request)
         val asf = asfLookup(request.name)
         return asf.release?.let { fromAsf(it, request) }
             ?: fromCassandraBuilds(request)
@@ -272,6 +279,15 @@ class CassandraVersionResolver(
             .python(request.python ?: Constants.Cassandra.DEFAULT_PYTHON_VERSION)
     }
 
+    /** `--branch` names a branch of a git repository; a source that gives none needs `--url`. */
+    private fun refuseBranchWithoutRepository(request: VersionRequest) {
+        if (request.branch == null) return
+        throw VersionResolutionException(
+            "Building ${request.name} from branch ${request.branch} requires a git repository, and no source of " +
+                "${request.name} gives one: pass --url with the repository.",
+        )
+    }
+
     private fun tableJdks(name: String): List<String> = releaseLines.entryFor(name)?.javaSupported.orEmpty()
 
     /**
@@ -319,6 +335,7 @@ class CassandraVersionResolver(
               - the cassandra-builds nightly release
               - the profile's build catalog
             To install a build from elsewhere, pass --url (and --branch for a git URL).
+            A release newer than the cached lists shows after: easy-db-lab cassandra list --refresh
             """.trimIndent()
         val stale = "The ASF list could not be fetched; the cached copy from ${asf.fetchedAt} was used (stale).".takeIf { asf.stale }
         return VersionResolutionException(listOfNotNull(checked, stale).joinToString("\n"))

@@ -72,7 +72,7 @@ class VersionSourceCacheTest {
     fun `a failed fetch with no file fails, naming the source and the URL`() {
         assertThatThrownBy { cache().get(fetch = failing) }
             .isInstanceOf(VersionSourceUnavailableException::class.java)
-            .hasMessageContaining("Apache archive", "https://archive.example/", "connection refused")
+            .hasMessageContainingAll("Apache archive", "https://archive.example/", "connection refused")
     }
 
     @Test

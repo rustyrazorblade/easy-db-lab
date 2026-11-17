@@ -147,7 +147,8 @@ command fails and names the URL it fetched.
 ### AxonOps agents
 
 With AxonOps on, `cassandra start` installs on each node the AxonOps agent for that node's
-release and JDK, before it starts Cassandra anywhere. If AxonOps ships no agent for that release
+release and JDK, before it starts Cassandra anywhere. For a build whose name has no `X.Y` release
+(say `cep-45`), the release is the one its `apache-cassandra` jar names. If AxonOps ships no agent for that release
 and JDK (for example 5.0 on JDK 21), the start fails before Cassandra starts and lists the agents
 AxonOps ships. The JDK is never changed to fit AxonOps. To start without the agent this time:
 
@@ -375,7 +376,10 @@ left alone. If the download or build fails on a node, that node keeps its old in
 build, `--reinstall` takes a new `--url`, `--branch` or `--ant-flags`; without one it builds the
 recorded one again. `--reinstall --url <git-url> --branch <b>` turns a tarball version into a git
 build. Without `--reinstall`, a `--url` other than the one a tarball version was installed from
-fails before any node changes, and names the recorded URL.
+fails before any node changes, and names the recorded URL. `--branch` without `--url` works only
+where a git repository is already known: a profile entry with a git URL, or `--reinstall` of a git
+build. For any other version it fails and says to pass `--url`. A git build rebuilt on another JDK
+(a replaced node, or `--java`) uses the ant flags for that JDK, not the recorded ones.
 
 #### Re-installing with different options
 

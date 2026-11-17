@@ -52,7 +52,7 @@ class PublicHttpIntegrationTest {
 
         assertThatThrownBy { http.getOrNull(url()) }
             .isInstanceOf(HttpStatusException::class.java)
-            .hasMessageContaining("/index.html", "403")
+            .hasMessageContainingAll("/index.html", "403")
         assertThat(server.requestCount).isEqualTo(1)
     }
 

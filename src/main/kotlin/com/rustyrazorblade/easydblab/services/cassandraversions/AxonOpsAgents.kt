@@ -128,7 +128,7 @@ class AxonOpsAgents(
         private const val NO_AGENT = 3
         private const val EXIT_MARKER = "edl-exit:"
 
-        /** The release line of [version]; a name with none (`trunk`) is passed as is, and the script refuses it. */
+        /** The release line of [version]; a name with none (`trunk`, `cep-45`) is passed as is, and the script reads its release from the install's jar. */
         fun releaseLine(version: String): String = ReleaseLines.leadingReleaseLine(version) ?: version
 
         /**

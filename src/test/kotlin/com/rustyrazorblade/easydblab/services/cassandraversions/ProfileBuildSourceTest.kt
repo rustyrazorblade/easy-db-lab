@@ -73,7 +73,7 @@ class ProfileBuildSourceTest {
 
         assertThatThrownBy { source().builds() }
             .isInstanceOf(ProfileBuildException::class.java)
-            .hasMessageContaining("old.yaml", "4.1.7", "url")
+            .hasMessageContainingAll("old.yaml", "4.1.7", "url")
     }
 
     @Test
@@ -83,7 +83,7 @@ class ProfileBuildSourceTest {
 
         assertThatThrownBy { source().builds() }
             .isInstanceOf(ProfileBuildException::class.java)
-            .hasMessageContaining("dup", "a.yaml", "b.yaml")
+            .hasMessageContainingAll("dup", "a.yaml", "b.yaml")
     }
 
     @Test
@@ -101,7 +101,7 @@ class ProfileBuildSourceTest {
 
         assertThatThrownBy { source().builds() }
             .isInstanceOf(ProfileBuildException::class.java)
-            .hasMessageContaining("j.yaml", "jb", "21", "11, 17")
+            .hasMessageContainingAll("j.yaml", "jb", "21", "11, 17")
     }
 
     @ParameterizedTest(name = "[{0}] is refused")

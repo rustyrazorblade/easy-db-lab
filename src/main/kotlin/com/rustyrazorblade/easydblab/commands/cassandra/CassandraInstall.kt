@@ -86,7 +86,6 @@ class CassandraInstall : PicoBaseCommand() {
 
     override fun execute() {
         check(version.isNotBlank()) { "A version to install is required, e.g. 'cassandra install 5.0'" }
-        require(branch.isBlank() || url.isNotBlank()) { "Building $version from a branch requires a git repository: pass --url." }
 
         val state = clusterState
         val targets = targetedHosts()

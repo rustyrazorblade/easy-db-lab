@@ -46,6 +46,9 @@ class StepRunner(
         return try {
             StepOutcome.Succeeded(Retry.decorateCheckedSupplier(retry) { attempt.run(attempts.incrementAndGet()) }.get())
         } catch (e: AttemptFailed) {
+            // resilience4j answers an interrupt of its pause between attempts by setting the flag
+            // again and rethrowing the last failure: the step was interrupted, not failed.
+            if (Thread.interrupted()) throw InterruptedException("$alias ${step.wireName} interrupted between attempts")
             StepOutcome.Failed(e.reason, policy.replaceable)
         } catch (e: InstanceEnded) {
             StepOutcome.InstanceEnded(e.state)

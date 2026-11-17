@@ -10,11 +10,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * One database or application node's pipeline (design D2 and D5): running, status checks, SSH,
- * setup, the image check, registry TLS (after the certificate), join (after the gate, holding a
- * join permit until the node registers), and Ready. A step that does not succeed and that a new
- * instance can fix replaces the node, and the pipeline starts again from running on the new
- * instance; one that cannot be fixed, or a replacement that is refused, ends the node as failed
- * on its last instance, which is kept.
+ * setup (after the workspace files), the image check, registry TLS (after the certificate), join
+ * (after the gate, holding a join permit until the node registers), and Ready. A step that does
+ * not succeed and that a new instance can fix replaces the node, and the pipeline starts again
+ * from running on the new instance; one that cannot be fixed, or a replacement that is refused,
+ * ends the node as failed on its last instance, which is kept unless the refused replacement had
+ * already terminated it.
  *
  * An [InterruptedException] (the control node failed) stops it at once and propagates.
  */
@@ -55,7 +56,8 @@ internal class NodePipeline(
         enter(PipelineStep.REPLACING)
         val failure = NodeReplacer.Failure(stopped.step, stopped.reason)
         return when (val outcome = run.replacer.replace(serverType, stopped.host, failure)) {
-            is NodeReplacer.Outcome.NotReplaced -> failed(NodeEnd.Failed(stopped.host, replacements, stopped.step, outcome.reason))
+            is NodeReplacer.Outcome.NotReplaced ->
+                failed(NodeEnd.Failed(stopped.host, replacements, stopped.step, outcome.reason, outcome.oldInstanceKept))
             is NodeReplacer.Outcome.Replaced -> {
                 run.progress.replaced()
                 bringUp(outcome.host, outcome.replacement)
@@ -80,6 +82,7 @@ internal class NodePipeline(
         return instance.use {
             it.reachable()
             if (run.settings.noSetup) return NodeEnd.Provisioned(it.host, replacements)
+            it.await(PipelineStep.WORKSPACE, run.workspace)
             setUp(it)
             it.checkImage()
             it.await(PipelineStep.REGISTRY_TLS, run.certificate)

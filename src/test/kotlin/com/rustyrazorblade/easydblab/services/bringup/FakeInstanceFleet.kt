@@ -38,7 +38,10 @@ class FakeInstanceFleet(
         }
     }
 
-    override fun terminate(instanceId: String) = record("terminate $instanceId") { }
+    /** Runs inside each terminate, before it returns; a test blocks here to hold the replacer lock. */
+    @Volatile var onTerminate: (String) -> Unit = {}
+
+    override fun terminate(instanceId: String) = record("terminate $instanceId") { onTerminate(instanceId) }
 
     override fun verifyReplacement(
         serverType: ServerType,

@@ -14,6 +14,7 @@ enum class PipelineStep(
     RUNNING("running"),
     STATUS_CHECKS("status-checks"),
     SSH("ssh"),
+    WORKSPACE("workspace"),
     SETUP("setup"),
     IMAGE_CHECK("image-check"),
     TUNNEL("tunnel"),

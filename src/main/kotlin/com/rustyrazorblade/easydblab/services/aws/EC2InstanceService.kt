@@ -332,18 +332,22 @@ class EC2InstanceService(
     }
 
     /**
-     * Describes [ids], treating IDs EC2 does not know yet as not running rather than as an error:
-     * when the request fails with `InvalidInstanceID.NotFound`, nothing in it is reported this
-     * poll, and the next poll asks again.
+     * Describes [ids], leaving out the ones EC2 does not know yet. A request that names IDs
+     * directly fails as a whole when one of them is not visible yet, which hides every other
+     * instance in it; an `instance-id` filter returns the ones EC2 knows and no error.
      */
     private fun describeTolerantly(ids: List<InstanceId>): List<InstanceDetails> =
-        try {
-            describeBatch(ids)
-        } catch (e: AwsServiceException) {
-            if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_INSTANCE_NOT_FOUND) throw e
-            log.debug { "Some of ${ids.size} instances are not visible yet; will ask again" }
-            emptyList()
-        }
+        describe(
+            DescribeInstancesRequest
+                .builder()
+                .filters(
+                    Filter
+                        .builder()
+                        .name("instance-id")
+                        .values(ids)
+                        .build(),
+                ).build(),
+        )
 
     /**
      * Waits for instance status checks to pass (both system and instance reachability).
@@ -435,14 +439,16 @@ class EC2InstanceService(
             .toSet()
     }
 
-    private fun describeBatch(instanceIds: List<InstanceId>): List<InstanceDetails> {
-        val request =
+    private fun describeBatch(instanceIds: List<InstanceId>): List<InstanceDetails> =
+        describe(
             DescribeInstancesRequest
                 .builder()
                 .instanceIds(instanceIds)
-                .build()
+                .build(),
+        )
 
-        return ec2Client.describeInstances(request).reservations().flatMap { reservation ->
+    private fun describe(request: DescribeInstancesRequest): List<InstanceDetails> =
+        ec2Client.describeInstances(request).reservations().flatMap { reservation ->
             reservation.instances().map { instance ->
                 InstanceDetails(
                     instanceId = instance.instanceId(),
@@ -455,7 +461,6 @@ class EC2InstanceService(
                 )
             }
         }
-    }
 
     /**
      * The alias of an instance with [tags] and launch index [launchIndex]: its `Name` tag, or, when

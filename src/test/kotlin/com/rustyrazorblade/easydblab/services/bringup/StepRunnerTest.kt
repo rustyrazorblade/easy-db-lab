@@ -166,6 +166,34 @@ class StepRunnerTest {
         assertThat(calls.get()).isEqualTo(1)
     }
 
+    /** resilience4j turns an interrupt of its pause into the last failure; the step must still stop as interrupted. */
+    @Test
+    fun `an interrupt in the pause between attempts stops the step as interrupted, not failed`() {
+        val pausing = StepRunner(eventBus, health, retryInterval = Duration.ofSeconds(30))
+        val failed = CountDownLatch(1)
+        val result = CompletableFuture<Any?>()
+
+        val pipeline =
+            Thread.ofVirtual().start {
+                try {
+                    result.complete(
+                        pausing.run("db5", PipelineStep.SETUP, policy(2), neverEnds) {
+                            failed.countDown()
+                            error("exit 1")
+                        },
+                    )
+                } catch (e: InterruptedException) {
+                    result.complete(e)
+                }
+            }
+        failed.await()
+        // The first attempt failed; the runner is in, or about to start, the 30 s pause.
+        Thread.sleep(PAUSE_SETTLE_MS)
+        pipeline.interrupt()
+
+        assertThat(result.get(5, TimeUnit.SECONDS)).isInstanceOf(InterruptedException::class.java)
+    }
+
     @Test
     fun `step events carry the command name of the pipeline that ran them`() {
         EventContext.push("up")
@@ -187,5 +215,10 @@ class StepRunnerTest {
     fun `a step with no attempts is refused`() {
         assertThatThrownBy { StepPolicy(0, Duration.ofSeconds(1), replaceable = true) }
             .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    private companion object {
+        /** Long enough for the failed attempt to reach the pause; an interrupt before it is caught the same way. */
+        const val PAUSE_SETTLE_MS = 50L
     }
 }

@@ -49,21 +49,29 @@ class BringUpEventsTest {
     }
 
     @Test
-    fun `nodes that failed for good are each named with their step, reason and kept instance`() {
+    fun `nodes that failed for good are each named with their step, reason, last instance and whether it is kept`() {
         val event =
             Event.Provision.NodesFailed(
                 listOf(
-                    Event.Provision.FailedNode("db3", "setup", "exit 1", "i-0abc"),
-                    Event.Provision.FailedNode("app0", "ready", "not Ready after 600s", "i-0def"),
+                    Event.Provision.FailedNode("db3", "setup", "exit 1", "i-0abc", instanceKept = true),
+                    Event.Provision.FailedNode("app0", "ready", "not Ready after 600s", "i-0def", instanceKept = true),
+                    Event.Provision.FailedNode(
+                        "db5",
+                        "setup",
+                        "the replacement failed at launch: no capacity",
+                        "i-0fed",
+                        instanceKept = false,
+                    ),
                 ),
             )
 
         assertThat(event.isError()).isTrue()
         assertThat(event.toDisplayString()).isEqualTo(
             """
-            2 node(s) could not be brought up; their last instances are kept for debugging:
-              db3 (i-0abc): setup: exit 1
-              app0 (i-0def): ready: not Ready after 600s
+            3 node(s) could not be brought up:
+              db3 (i-0abc, kept for debugging): setup: exit 1
+              app0 (i-0def, kept for debugging): ready: not Ready after 600s
+              db5 (i-0fed, terminated, no instance left): setup: the replacement failed at launch: no capacity
             """.trimIndent(),
         )
     }

@@ -5,11 +5,12 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 
 /**
- * The control node's pipeline (design D2): running, status checks, SSH, setup and the image
- * check; the workspace files for the hosts known so far and the operator's route into the
- * cluster; the registry certificate, which releases every node's registry TLS; the control plane,
- * whose clients it opens and whose health it starts sampling; the label and the network plugin;
- * and the gate, which releases every node's join. Under `--no-setup` it ends after the route.
+ * The control node's pipeline (design D2): running, status checks and SSH; the workspace files
+ * once every launch returned (they need the control node's address, and every setup installs
+ * them); setup and the image check; the operator's route into the cluster; the registry
+ * certificate, which releases every node's registry TLS; the control plane, whose clients it
+ * opens and whose health it starts sampling; the label and the network plugin; and the gate,
+ * which releases every node's join. Under `--no-setup` it ends after the route.
  *
  * The control node is never replaced (design D7): any step that does not succeed after its
  * retries throws [ControlNodeFailedException], and the coordinator stops every pipeline.
@@ -29,14 +30,14 @@ internal class ControlPipeline(
             it.reachable()
             val steps = run.ports.controlSteps
             val policy = run.timing.controlPolicy
+            // Every setup, this one too, installs the environment file, which names db0.
+            it.step(PipelineStep.WORKSPACE, policy) { _ -> steps.writeWorkspace() }
+            run.workspace.complete(Unit)
             if (!run.settings.noSetup) {
                 it.step(PipelineStep.SETUP, policy) { _ -> run.ssh.withSession { run.ports.nodeSteps.setup(ServerType.Control, it.host) } }
                 it.checkImage()
             }
-            it.step(PipelineStep.TUNNEL, policy) { _ ->
-                steps.writeWorkspace()
-                steps.connect(it.host)
-            }
+            it.step(PipelineStep.TUNNEL, policy) { _ -> steps.connect(it.host) }
             if (run.settings.noSetup) return
             it.step(PipelineStep.REGISTRY_CERT, policy) { _ -> run.ssh.withSession { steps.prepareRegistry(it.host) } }
             run.certificate.complete(Unit)

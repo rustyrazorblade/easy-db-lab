@@ -422,14 +422,14 @@ class UpTest : UpTestFixture() {
     // Group 5: `up` fails fast at every swallow site
     // =========================================================================
 
-    /** The workspace files are written in the control node's tunnel step, so their failure is the control node's. */
+    /** The workspace files are written in the control node's workspace step, so their failure is the control node's. */
     @Test
     fun `up fails at once when the nested WriteConfig command fails, before K3s starts`() {
         nestedCommandExitCodes["WriteConfig"] = 1
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(ControlNodeFailedException::class.java)
-            .hasMessageContaining("control0 failed at tunnel")
+            .hasMessageContaining("control0 failed at workspace")
             .hasMessageContaining("write-config exited with code 1")
 
         verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())

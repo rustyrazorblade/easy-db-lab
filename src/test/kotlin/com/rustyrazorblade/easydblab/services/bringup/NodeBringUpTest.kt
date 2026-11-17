@@ -55,6 +55,24 @@ class NodeBringUpTest {
         assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).allMatch { it is NodeEnd.Ready }
     }
 
+    /** Setup installs the workspace's environment file, which names db0: no node sets up before it is written. */
+    @Test
+    fun `no node sets up before the workspace files are written`() {
+        val h = harness(dbs = 2, apps = 1)
+        val release = CountDownLatch(1)
+        h.steps.scripts["control0 ssh"] = { _, _ -> release.await() }
+
+        val result = h.runInBackground()
+        h.waitFor("every node answers over SSH") { h.steps.callsOf("ssh").count { !it.startsWith("control0") } == 3 }
+        Thread.sleep(SETTLE_MS)
+
+        assertThat(h.steps.callsOf("setup")).isEmpty()
+        release.countDown()
+        assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).allMatch { it is NodeEnd.Ready }
+        val calls = synchronized(h.steps.calls) { h.steps.calls.toList() }
+        assertThat(calls.indexOf("control workspace -")).isNotNegative().isLessThan(calls.indexOfFirst { " setup " in it })
+    }
+
     @Test
     fun `a step that fails once is retried and the node needs no replacement`() {
         val h = harness(dbs = 2)
@@ -211,7 +229,31 @@ class NodeBringUpTest {
         assertThat(h.saved(ServerType.Cassandra).single { it.alias == "db0" }.instanceId).isEqualTo("i-db0-2")
         assertThat(result.nodes.filterKeys { it != "db0" }.values).allMatch { it is NodeEnd.Ready }
         val event = result.failureEvent()
-        assertThat(event?.nodes).containsExactly(Event.Provision.FailedNode("db0", "setup", failed.reason, "i-db0-2"))
+        assertThat(event?.nodes).containsExactly(Event.Provision.FailedNode("db0", "setup", failed.reason, "i-db0-2", instanceKept = true))
+    }
+
+    /** The old instance is gone before the launch, so a refused launch leaves the node with none, and no second try. */
+    @Test
+    fun `a refused replacement launch fails the node with no instance left and no further replacement`() {
+        val h = harness(dbs = 3)
+        failSetupOn(h, "db1") { true }
+        h.fleet.failing += "launch"
+
+        val result = h.run()
+
+        val failed = result.nodes.getValue("db1") as NodeEnd.Failed
+        assertThat(failed.instanceKept).isFalse()
+        assertThat(failed.reason).contains("setup failed").contains("failed at launch")
+        assertThat(h.fleet.calls).containsExactly("terminate i-db1", "verify db1", "launch db1")
+        assertThat(h.eventsOf<Event.Provision.NodeReplaceFailed>().single().oldInstanceKept).isFalse()
+        assertThat(
+            result
+                .failureEvent()
+                ?.nodes
+                ?.single()
+                ?.instanceKept,
+        ).isFalse()
+        assertThat(result.nodes.filterKeys { it != "db1" }.values).allMatch { it is NodeEnd.Ready }
     }
 
     @Test

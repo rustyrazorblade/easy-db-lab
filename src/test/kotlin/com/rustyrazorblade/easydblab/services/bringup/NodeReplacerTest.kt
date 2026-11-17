@@ -12,10 +12,11 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.ValueSource
+import org.junit.jupiter.params.provider.CsvSource
 import java.io.File
 import java.util.Collections
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -89,17 +90,92 @@ class NodeReplacerTest {
             .isEqualTo(Event.Provision.NodeReplaced("db1", "i-old1", replaced.host.instanceId, replaced.host.privateIp))
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = ["verify", "launch"])
-    fun `a refused capacity check or launch leaves the node with no instance and the state unchanged`(refused: String) {
+    /**
+     * The old instance is terminated before the capacity check, so a refused check or launch
+     * leaves the node with no instance: the outcome and the event say so, and both the step's
+     * failure and the replacement's are reported.
+     */
+    @ParameterizedTest(name = "{0} refused at {1}")
+    @CsvSource("verify, capacity-check", "launch, launch")
+    fun `a refused capacity check or launch leaves the node with no instance and the state unchanged`(
+        refused: String,
+        phase: String,
+    ) {
         fleet.failing += refused
 
-        val outcome = replacer().replace(ServerType.Cassandra, host(1), failure)
+        val outcome = replacer().replace(ServerType.Cassandra, host(1), failure) as NodeReplacer.Outcome.NotReplaced
 
-        assertThat(outcome).isInstanceOf(NodeReplacer.Outcome.NotReplaced::class.java)
-        assertThat((outcome as NodeReplacer.Outcome.NotReplaced).reason).contains("refused")
+        assertThat(outcome.oldInstanceKept).isFalse()
+        assertThat(outcome.reason).contains("setup failed (setup_instance.sh exited 1)").contains("failed at $phase").contains("refused")
         assertThat(fleet.calls.filter { it.startsWith("launch") }).hasSize(if (refused == "launch") 1 else 0)
         assertThat(manager.exists()).isFalse()
+        assertThat(events.filterIsInstance<Event.Provision.NodeReplaceFailed>().single())
+            .extracting({ it.alias }, { it.oldInstanceId }, { it.phase }, { it.oldInstanceKept })
+            .containsExactly("db1", "i-old1", phase, false)
+    }
+
+    @Test
+    fun `a failed terminate keeps the old instance, and nothing launches`() {
+        fleet.failing += "terminate"
+
+        val outcome = replacer().replace(ServerType.Cassandra, host(1), failure) as NodeReplacer.Outcome.NotReplaced
+
+        assertThat(outcome.oldInstanceKept).isTrue()
+        assertThat(fleet.calls).containsExactly("terminate i-old1")
+        assertThat(events.filterIsInstance<Event.Provision.NodeReplaceFailed>().single().phase).isEqualTo("terminate")
+    }
+
+    @Test
+    fun `an interrupt while waiting for a healthy control plane stops the replacement with nothing terminated`() {
+        val replacer = replacer()
+        health.markUnhealthy()
+        val result = CompletableFuture<Any?>()
+
+        val pipeline =
+            Thread.ofVirtual().start {
+                try {
+                    result.complete(replacer.replace(ServerType.Cassandra, host(1), failure))
+                } catch (e: InterruptedException) {
+                    result.complete(e)
+                }
+            }
+        Thread.sleep(UNHEALTHY_WINDOW_MS)
+        pipeline.interrupt()
+
+        assertThat(result.get(5, TimeUnit.SECONDS)).isInstanceOf(InterruptedException::class.java)
+        assertThat(fleet.calls).isEmpty()
+    }
+
+    @Test
+    fun `an interrupt while another replacement holds the lock stops the waiting one with nothing terminated`() {
+        val replacer = replacer()
+        val holding = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fleet.onTerminate = { id ->
+            if (id == "i-old0") {
+                holding.countDown()
+                release.await()
+            }
+        }
+        val first = CompletableFuture.supplyAsync { replacer.replace(ServerType.Cassandra, host(0), failure) }
+        holding.await()
+        val result = CompletableFuture<Any?>()
+
+        val waiting =
+            Thread.ofVirtual().start {
+                try {
+                    result.complete(replacer.replace(ServerType.Cassandra, host(1), failure))
+                } catch (e: InterruptedException) {
+                    result.complete(e)
+                }
+            }
+        Thread.sleep(UNHEALTHY_WINDOW_MS)
+        waiting.interrupt()
+
+        assertThat(result.get(5, TimeUnit.SECONDS)).isInstanceOf(InterruptedException::class.java)
+        release.countDown()
+        assertThat(first.get(5, TimeUnit.SECONDS)).isInstanceOf(NodeReplacer.Outcome.Replaced::class.java)
+        assertThat(fleet.calls.filter { it.startsWith("terminate") }).containsExactly("terminate i-old0")
     }
 
     @Test

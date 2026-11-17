@@ -4,9 +4,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 /**
  * The cloud provider side of replacing a node, as [NodeReplacer] needs it: a port, so the
@@ -58,7 +58,10 @@ class NodeReplacer(
     data class Failure(
         val step: PipelineStep,
         val reason: String,
-    )
+    ) {
+        /** The step and its reason, as a failed node reports them. */
+        fun describe(): String = "${step.wireName} failed ($reason)"
+    }
 
     /** How a replacement ended. */
     sealed interface Outcome {
@@ -68,14 +71,21 @@ class NodeReplacer(
             val replacement: Int,
         ) : Outcome
 
-        /** No new instance runs for the node, for [reason]; its pipeline ends as failed. */
+        /**
+         * No new instance runs for the node, for [reason]; its pipeline ends as failed.
+         * [oldInstanceKept] is false when the old instance was terminated before a capacity check
+         * or launch failed, so the node has no instance left.
+         */
         data class NotReplaced(
             val reason: String,
+            val oldInstanceKept: Boolean,
         ) : Outcome
     }
 
     /**
-     * Replaces [old], a [serverType] node, after [failure]. An [InterruptedException] propagates.
+     * Replaces [old], a [serverType] node, after [failure]. An [InterruptedException] propagates:
+     * an interrupt while waiting for the lock, for a healthy control plane, or before the old
+     * instance is terminated stops the replacement with nothing terminated.
      */
     fun replace(
         serverType: ServerType,
@@ -84,9 +94,9 @@ class NodeReplacer(
     ): Outcome =
         when (val grant = budget.tryTake(old.alias)) {
             is ReplacementBudget.Grant.NodeLimitReached ->
-                Outcome.NotReplaced("${failure.step.wireName} failed (${failure.reason}); the node had its ${grant.limit} replacements")
+                Outcome.NotReplaced("${failure.describe()}; the node had its ${grant.limit} replacements", oldInstanceKept = true)
             is ReplacementBudget.Grant.ClusterLimitReached ->
-                Outcome.NotReplaced("${failure.step.wireName} failed (${failure.reason}); the cluster made its ${grant.limit} replacements")
+                Outcome.NotReplaced("${failure.describe()}; the cluster made its ${grant.limit} replacements", oldInstanceKept = true)
             is ReplacementBudget.Grant.Granted -> {
                 eventBus.emit(
                     Event.Provision.NodeReplacing(
@@ -98,28 +108,54 @@ class NodeReplacer(
                         grant.limit,
                     ),
                 )
-                lock.withLock { replaceNow(serverType, old, grant.replacement) }
+                lock.lockInterruptibly()
+                try {
+                    replaceNow(serverType, old, failure, grant.replacement)
+                } finally {
+                    lock.unlock()
+                }
             }
         }
 
     private fun replaceNow(
         serverType: ServerType,
         old: ClusterHost,
+        failure: Failure,
         replacement: Int,
     ): Outcome {
         val ordinal = requireNotNull(serverType.ordinalOf(old.alias)) { "${old.alias} is not a ${serverType.serverType} alias" }
         health.awaitHealthy()
+        if (Thread.interrupted()) throw InterruptedException("replacing ${old.alias} was interrupted before its instance was terminated")
+        var phase = Phase.TERMINATE
         return try {
             fleet.terminate(old.instanceId)
+            phase = Phase.VERIFY
             fleet.verifyReplacement(serverType, ordinal)
+            phase = Phase.LAUNCH
             val host = fleet.launch(serverType, ordinal)
             state.mergeHosts(serverType, listOf(host))
             eventBus.emit(Event.Provision.NodeReplaced(old.alias, old.instanceId, host.instanceId, host.privateIp))
             Outcome.Replaced(host, replacement)
         } catch (e: RuntimeException) {
-            log.warn(e) { "Replacing ${old.alias} failed" }
-            Outcome.NotReplaced("the replacement failed: ${e.message}")
+            // An SDK call cut short by an interrupt surfaces as a RuntimeException; the interrupt wins.
+            if (Thread.interrupted()) throw InterruptedException("replacing ${old.alias} was interrupted at ${phase.wireName}")
+            log.warn(e) { "Replacing ${old.alias} failed at ${phase.wireName}" }
+            val kept = phase == Phase.TERMINATE
+            eventBus.emit(Event.Provision.NodeReplaceFailed(old.alias, old.instanceId, phase.wireName, e.messageOrString(), kept))
+            Outcome.NotReplaced(
+                "${failure.describe()}; the replacement failed at ${phase.wireName}: ${e.messageOrString()}",
+                oldInstanceKept = kept,
+            )
         }
+    }
+
+    /** The replacement call that was running when a replacement failed. */
+    private enum class Phase(
+        val wireName: String,
+    ) {
+        TERMINATE("terminate"),
+        VERIFY("capacity-check"),
+        LAUNCH("launch"),
     }
 
     private companion object {

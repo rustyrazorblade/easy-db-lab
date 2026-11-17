@@ -91,18 +91,21 @@ A slow node never holds another back. A database or app node runs these steps, i
 1. `running`: the instance runs with a public IP.
 2. `status-checks`: it passes EC2's own instance and system status checks.
 3. `ssh`: it answers on SSH.
-4. `setup`: `setup_instance.sh`, and for the first database node the database versions file.
-5. `image-check`: under Cilium, the AMI carries the Cilium node fixes.
-6. `registry-tls`: the node trusts the cluster registry's certificate, once the control node has
+4. `workspace`: it waits until the control node's pipeline has written the workspace files, which
+   setup installs.
+5. `setup`: `setup_instance.sh`, and for the first database node the database versions file.
+6. `image-check`: under Cilium, the AMI carries the Cilium node fixes.
+7. `registry-tls`: the node trusts the cluster registry's certificate, once the control node has
    made it.
-7. `join-wait`, then `join`: it waits for the control-plane gate and a join slot, starts its K3s
+8. `join-wait`, then `join`: it waits for the control-plane gate and a join slot, starts its K3s
    agent, and holds the slot until its Node registers.
-8. `readiness`: its Node is Ready.
+9. `readiness`: its Node is Ready.
 
-The control node runs `running`, `status-checks`, `ssh`, `setup` and `image-check`, then:
+The control node runs `running`, `status-checks` and `ssh`, then `workspace`: once every launch
+call has returned, the workspace files are written for every host, and every node's setup may
+start. Then it runs `setup` and `image-check`, then:
 
-1. `tunnel`: the workspace files are written and this machine connects (the SOCKS tunnel, or the
-   tailnet route).
+1. `tunnel`: this machine connects (the SOCKS tunnel, or the tailnet route).
 2. `registry-cert`: the registry certificate is made and installed on the control node.
 3. `k3s-server`: the K3s server starts and the API server answers.
 4. `cni`: the control node is labelled and, under Cilium, Cilium is installed.
@@ -169,7 +172,7 @@ control plane stays unhealthy for 15 minutes, `up` fails; it does not restart K3
 Every 15 seconds `up` prints where every node is:
 
 ```
-[4m30s] 1000 nodes: setup 120, join-wait 300, join 16, readiness 40, join 16/16, ready 520, replaced 2, failed 0, control plane healthy
+[4m30s] 1000 nodes: setup 120, join-wait 300, readiness 40, join 16/16, ready 520, replaced 2, failed 0, control plane healthy
 ```
 
 The per-step counts are the nodes in that step now. `join` is the join slots in use against the
@@ -182,9 +185,16 @@ keeps its last instance for debugging. The other nodes and the cluster-wide step
 Then `up` names each failed node, its instance, its step and the reason, and exits non-zero:
 
 ```
-1 node(s) could not be brought up; their last instances are kept for debugging:
-  db7 (i-0abc...): setup: setup failed (ERROR: no data disk); the node had its 2 replacements
+2 node(s) could not be brought up:
+  db7 (i-0abc..., kept for debugging): setup: setup failed (ERROR: no data disk); the node had its 2 replacements
+  db9 (i-0def..., terminated, no instance left): join: join failed (...); the replacement failed at launch: ...
 ```
+
+A replacement terminates the old instance before it checks capacity and launches the new one.
+When that check or launch is refused (for example, no capacity in the zone), the node fails with
+no instance left, `Provision.NodeReplaceFailed` names the phase that failed, and no further
+replacement is tried for it. A Cilium node image that is missing its node fixes fails the node at
+once, with no replacement, because a new instance from the same image would fail the same way.
 
 Run `up` again after fixing the cause. `down` removes the kept instances with the rest of the
 cluster.

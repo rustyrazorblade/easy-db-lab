@@ -17,8 +17,9 @@ internal data class OpenControlPlane(
 /**
  * What every pipeline of one bring-up shares: the ports, the step runner, the limiters, the
  * health latch, the progress counts, the replacer, and the latches the control pipeline releases
- * (the registry [certificate], the control-plane [connection], and [controlPlane] once the gate
- * is open). It also owns the background work (tickers, the connection) and closes it in [close].
+ * (the [workspace] files every setup installs from, the registry [certificate], the
+ * control-plane [connection], and [controlPlane] once the gate is open). It also owns the
+ * background work (tickers, the connection) and closes it in [close].
  */
 internal class BringUpRun(
     val ports: BringUpPortSet,
@@ -32,6 +33,7 @@ internal class BringUpRun(
     val joins = JoinLimiter(health, settings.joinLimit)
     val ssh = SshSessionLimiter(settings.sshSessions)
     val progress = BringUpProgress(settings.nodeCount, settings.joinLimit, clock)
+    val workspace = CompletableFuture<Unit>()
     val certificate = CompletableFuture<Unit>()
     val connection = CompletableFuture<ControlPlaneConnection>()
     val controlPlane = CompletableFuture<OpenControlPlane>()

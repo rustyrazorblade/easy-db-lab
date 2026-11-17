@@ -32,12 +32,17 @@ sealed interface NodeEnd {
         override val replacements: Int,
     ) : NodeEnd
 
-    /** The node could not be brought up: [step] failed for [reason]. Its last instance is kept. */
+    /**
+     * The node could not be brought up: [step] failed for [reason]. Its last instance [host] is
+     * kept for debugging, unless [instanceKept] is false: that instance was terminated for a
+     * replacement whose capacity check or launch then failed.
+     */
     data class Failed(
         override val host: ClusterHost,
         override val replacements: Int,
         val step: PipelineStep,
         val reason: String,
+        val instanceKept: Boolean = true,
     ) : NodeEnd
 }
 
@@ -56,7 +61,7 @@ data class BringUpResult(
     fun failureEvent(): Event.Provision.NodesFailed? =
         failed.takeIf { it.isNotEmpty() }?.let { nodes ->
             Event.Provision.NodesFailed(
-                nodes.map { Event.Provision.FailedNode(it.host.alias, it.step.wireName, it.reason, it.host.instanceId) },
+                nodes.map { Event.Provision.FailedNode(it.host.alias, it.step.wireName, it.reason, it.host.instanceId, it.instanceKept) },
             )
         }
 }

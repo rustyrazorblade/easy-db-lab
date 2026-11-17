@@ -4135,6 +4135,27 @@ sealed interface Event {
             override fun toDisplayString(): String = "Replaced $alias: $oldInstanceId terminated, now $newInstanceId ($privateIp)"
         }
 
+        /**
+         * Replacing [alias] failed at [phase] (`terminate`, `capacity-check` or `launch`) for
+         * [reason]. [oldInstanceKept] is false when [oldInstanceId] was already terminated, so the
+         * node has no instance; no further replacement is made for it.
+         */
+        @Serializable
+        @SerialName("Provision.NodeReplaceFailed")
+        data class NodeReplaceFailed(
+            val alias: String,
+            val oldInstanceId: String,
+            val phase: String,
+            val reason: String,
+            val oldInstanceKept: Boolean,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Replacing $alias failed at $phase: $reason; " +
+                    if (oldInstanceKept) "$oldInstanceId is kept" else "$oldInstanceId is terminated and $alias has no instance"
+
+            override fun isError(): Boolean = true
+        }
+
         /** [alias] is a Ready K3s node, [elapsedSeconds] after `up` started its pipeline. */
         @Serializable
         @SerialName("Provision.NodeReady")
@@ -4149,14 +4170,23 @@ sealed interface Event {
                     if (replacements > 0) ", after $replacements replacement(s)" else ""
         }
 
-        /** One node `up` could not bring up: the step it last failed, why, and its kept instance. */
+        /**
+         * One node `up` could not bring up: the step it last failed, why, and its last instance.
+         * [instanceKept] is false when that instance was terminated for a replacement that then
+         * could not launch.
+         */
         @Serializable
         data class FailedNode(
             val alias: String,
             val step: String,
             val reason: String,
             val instanceId: String,
-        )
+            val instanceKept: Boolean,
+        ) {
+            /** The node as one line of the failure list. */
+            fun toDisplayLine(): String =
+                "  $alias ($instanceId, ${if (instanceKept) "kept for debugging" else "terminated, no instance left"}): $step: $reason"
+        }
 
         /** The nodes that could not be brought up. `up` exits non-zero after the others finished. */
         @Serializable
@@ -4165,8 +4195,7 @@ sealed interface Event {
             val nodes: List<FailedNode>,
         ) : Provision {
             override fun toDisplayString(): String =
-                "${nodes.size} node(s) could not be brought up; their last instances are kept for debugging:\n" +
-                    nodes.joinToString("\n") { "  ${it.alias} (${it.instanceId}): ${it.step}: ${it.reason}" }
+                "${nodes.size} node(s) could not be brought up:\n" + nodes.joinToString("\n") { it.toDisplayLine() }
 
             override fun isError(): Boolean = true
         }

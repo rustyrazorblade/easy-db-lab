@@ -177,3 +177,28 @@ myService.start(host).onSuccess {
 3. **Test Thoroughly**: Test both success and failure scenarios
 4. **Name the failures you handle**: A `catch` names the exception types its body can throw; never `catch (e: Exception)` and never `@Suppress("TooGenericExceptionCaught")`. A boundary that must turn any failure into a report or fallback uses `runCatchingException { }` (in `Throwables.kt`), which captures an `Exception` and still rethrows a JVM `Error`.
 5. **Document Custom Behavior**: Clearly document any overridden methods or custom logic
+
+## Per-Node Bring-Up (`bringup/`)
+
+`up` brings every node up through its own pipeline (`NodeBringUp`), not one phase at a time across
+the cluster. The user-facing behaviour is in `docs/user-guide/large-clusters.md`; the decisions are
+in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
+
+- **Ports**: `NodeSteps`, `ControlNodeSteps`, `ControlPlaneConnection`, `NodeTracker` and
+  `HealthSampler` (`BringUpPorts.kt`), `InstanceTracker` and `InstanceFleet`. `NodeBringUp`, `NodePipeline`, `ControlPipeline` and
+  `NodeReplacer` see only these. Files directly in `bringup/` import no `providers.aws.*` or
+  `services.aws.*` and nothing K3s- or Cilium-specific.
+- **Adapters**: the EC2 ones (`Ec2InstanceFleet`, `Ec2InstanceStateWatcher`, and `Ec2K3sBringUp`,
+  which assembles the port set) are in `bringup/aws/`; the K3s and Cilium ones (`K3sNodeSteps`,
+  `K3sControlSteps`, `Fabric8ControlPlaneConnection`) are in `bringup/k3s/`. A second provider
+  adds its own adapter package; it never changes the ports.
+- **Coordination**: one virtual thread per node. Shared limits are in `Limiters.kt` (join slots,
+  SSH sessions); the gate, the registry certificate and the control-plane connection are
+  latches in `BringUpRun`. Use `ReentrantLock`, not `synchronized`, so a virtual thread never pins.
+- **Failure**: `StepRunner` retries only an `AttemptFailed`; a node step that still fails goes to
+  `NodeReplacer` (budget in `ReplacementBudget`). Control steps are retried and never replaced:
+  `ControlNodeFailedException`. `ClusterStateWriter` is the only writer of hosts to `state.json`
+  during bring-up.
+- **Tests**: `src/test/.../services/bringup/BringUpFakes.kt` and `FakeInstanceFleet` drive every
+  pipeline without SSH or AWS; `UpTestFixture` wires the real `K3sBringUpSteps` over a fake
+  `RemoteOperationsService` with fake tracker, fleet and control plane.

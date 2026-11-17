@@ -6,43 +6,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
-
-/**
- * Result of K3s cluster setup operation.
- *
- * @property serverStarted Whether the K3s server was successfully started
- * @property nodeToken The node token for agent registration (null if server failed)
- * @property kubeconfigWritten Whether kubeconfig was successfully downloaded
- * @property kubeconfigBackedUp Whether kubeconfig was successfully backed up to S3
- * @property agentResults Results of agent setup per host alias
- * @property errors Map of error descriptions to exceptions
- */
-data class K3sSetupResult(
-    val serverStarted: Boolean,
-    val nodeToken: String? = null,
-    val kubeconfigWritten: Boolean = false,
-    val kubeconfigBackedUp: Boolean = false,
-    val agentResults: Map<String, AgentSetupResult> = emptyMap(),
-    val errors: Map<String, Exception> = emptyMap(),
-) {
-    val isSuccessful: Boolean
-        get() = serverStarted && errors.isEmpty() && agentResults.values.all { it.success }
-}
-
-/**
- * Result of setting up a single K3s agent.
- *
- * @property alias The host alias
- * @property success Whether agent setup succeeded
- * @property error Error if setup failed, null otherwise
- */
-data class AgentSetupResult(
-    val alias: String,
-    val success: Boolean,
-    val error: Exception? = null,
-)
 
 /**
  * A started K3s server as an agent needs it: [url] on the control node's private IP, and the
@@ -56,62 +22,12 @@ data class K3sServer(
 }
 
 /**
- * Configuration for K3s cluster setup.
- *
- * @property controlHost The control node to run K3s server
- * @property workerHosts Map of ServerType to list of worker hosts
- * @property kubeconfigPath Local path to write kubeconfig
- * @property hostFilter Optional filter for which hosts to include (comma-separated aliases)
- * @property clusterState Optional ClusterState for backing up kubeconfig to S3
- */
-data class K3sClusterConfig(
-    val controlHost: ClusterHost,
-    val workerHosts: Map<ServerType, List<ClusterHost>>,
-    val kubeconfigPath: Path,
-    val hostFilter: String = "",
-    val clusterState: ClusterState? = null,
-    // When true, K3s starts with --flannel-backend=none so a custom CNI (e.g. Cilium) can be used.
-    // When false (default), K3s uses built-in Flannel and nodes become Ready without extra setup.
-    val useCustomCni: Boolean = false,
-    // Called after the server is ready and kubeconfig is downloaded, before agents join.
-    // Use this to install the CNI (e.g. Cilium) so workers join into a cluster that already
-    // has working networking — avoiding the CNI bootstrap deadlock.
-    val onServerReady: (() -> Unit)? = null,
-)
-
-/**
- * Service for orchestrating K3s cluster setup.
- *
- * This service coordinates the K3sService (server) and K3sAgentService (workers)
- * to set up a complete K3s cluster. It handles:
- * - Starting the K3s server on the control node
- * - Retrieving the node token for agent registration
- * - Downloading and configuring kubeconfig for local kubectl access
- * - Configuring and starting K3s agents on worker nodes in parallel
- *
- * The orchestration follows this workflow:
- * 1. Start K3s server on control node
- * 2. Retrieve node token from server
- * 3. Download and configure kubeconfig
- * 4. For each worker server type (Cassandra, Stress):
- *    a. Configure K3s agent with server URL, token, and node labels
- *    b. Start K3s agent service
+ * The K3s steps of `up`'s per-node bring-up, over [K3sService] (server) and [K3sAgentService]
+ * (agents): the control pipeline's server step, and each node's join step. Every node joins in
+ * its own pipeline, so there is no cluster-wide setup call; the caller reads each node's
+ * registration from the K8s API.
  */
 interface K3sClusterService {
-    /**
-     * Sets up a complete K3s cluster.
-     *
-     * This method orchestrates the full cluster setup including:
-     * - Server start on control node
-     * - Token retrieval
-     * - Kubeconfig download and configuration
-     * - Agent configuration and start on all worker nodes
-     *
-     * @param config K3s cluster configuration
-     * @return Result containing setup status and any errors
-     */
-    fun setupCluster(config: K3sClusterConfig): K3sSetupResult
-
     /**
      * The control pipeline's server step: starts the K3s server on [control], reads the node
      * token, writes the kubeconfig to [kubeconfigPath] and backs it up to S3 when [clusterState]
@@ -168,58 +84,10 @@ class DefaultK3sClusterService(
     private val k3sAgentService: K3sAgentService,
     private val eventBus: EventBus = EventBus(),
     private val clusterBackupService: ClusterBackupService? = null,
-    private val parallel: BoundedParallel = BoundedParallel(),
 ) : K3sClusterService {
     companion object {
         private val log = KotlinLogging.logger {}
         private const val K3S_SERVER_PORT = 6443
-    }
-
-    override fun setupCluster(config: K3sClusterConfig): K3sSetupResult {
-        eventBus.emit(Event.K3s.ClusterStarting)
-
-        val errors = mutableMapOf<String, Exception>()
-        val controlHost = config.controlHost
-
-        val serverFailure = startK3sServer(controlHost, errors, config.useCustomCni)
-        if (serverFailure != null) return serverFailure
-
-        val nodeToken =
-            retrieveNodeToken(controlHost, errors)
-                ?: return K3sSetupResult(serverStarted = true, errors = errors)
-
-        val (kubeconfigWritten, kubeconfigBackedUp) = downloadAndBackupKubeconfig(config, controlHost, errors)
-
-        config.onServerReady?.let { callback ->
-            log.info { "K3s server ready — running pre-agent hook (e.g. CNI install)" }
-            runCatching { callback() }
-                .onFailure { error ->
-                    log.error(error) { "Pre-agent hook failed" }
-                    errors["pre-agent hook"] = Exception(error.message, error)
-                    return K3sSetupResult(
-                        serverStarted = true,
-                        nodeToken = nodeToken,
-                        kubeconfigWritten = kubeconfigWritten,
-                        kubeconfigBackedUp = kubeconfigBackedUp,
-                        errors = errors,
-                    )
-                }
-        }
-
-        val serverUrl = "https://${controlHost.privateIp}:$K3S_SERVER_PORT"
-        val agentResults = setupAgents(config, serverUrl, nodeToken)
-        collectAgentErrors(agentResults, errors)
-
-        eventBus.emit(Event.K3s.ClusterStarted)
-
-        return K3sSetupResult(
-            serverStarted = true,
-            nodeToken = nodeToken,
-            kubeconfigWritten = kubeconfigWritten,
-            kubeconfigBackedUp = kubeconfigBackedUp,
-            agentResults = agentResults,
-            errors = errors,
-        )
     }
 
     override fun startServer(
@@ -228,15 +96,16 @@ class DefaultK3sClusterService(
         clusterState: ClusterState?,
         useCustomCni: Boolean,
     ): K3sServer {
-        val errors = mutableMapOf<String, Exception>()
-
-        fun failed(): Nothing = error(errors.entries.joinToString("; ") { (part, e) -> "$part failed: ${e.message}" })
-
-        startK3sServer(control, errors, useCustomCni)?.let { failed() }
-        val token = retrieveNodeToken(control, errors) ?: failed()
-        val config = K3sClusterConfig(control, emptyMap(), kubeconfigPath, clusterState = clusterState, useCustomCni = useCustomCni)
-        val (written, _) = downloadAndBackupKubeconfig(config, control, errors)
-        if (!written) failed()
+        val host = control.toHost()
+        eventBus.emit(Event.K3s.ServerStarting(control.alias))
+        k3sService.startServer(host, useCustomCni).orFail("K3s server start") { eventBus.emit(Event.K3s.ServerStartFailed(it)) }
+        val token = k3sService.getNodeToken(host).orFail("K3s node token retrieval") { eventBus.emit(Event.K3s.NodeTokenFailed(it)) }
+        k3sService
+            .downloadAndConfigureKubeconfig(host, kubeconfigPath)
+            .orFail("Kubeconfig download") { eventBus.emit(Event.K3s.KubeconfigFailed(it)) }
+        eventBus.emit(Event.K3s.KubeconfigWritten(kubeconfigPath.fileName.toString()))
+        eventBus.emit(Event.K3s.KubeconfigInstruction)
+        backupKubeconfig(kubeconfigPath, clusterState)
         return K3sServer("https://${control.privateIp}:$K3S_SERVER_PORT", token)
     }
 
@@ -246,192 +115,43 @@ class DefaultK3sClusterService(
         server: K3sServer,
         mode: AgentStartMode,
     ) {
-        val result = setupSingleAgent(host, server.url, server.token, getNodeLabels(serverType, host), mode)
-        result.error?.let { throw it }
+        val agent = host.toHost()
+        val labels = getNodeLabels(serverType, host)
+        eventBus.emit(Event.K3s.AgentConfiguring(agent.alias, labels.toString()))
+        k3sAgentService
+            .configure(agent, server.url, server.token, labels)
+            .orFail("Failed to configure K3s agent", separator = ": ") {
+                eventBus.emit(Event.K3s.AgentConfigFailed(agent.alias, it))
+            }
+        k3sAgentService
+            .start(agent, mode)
+            .orFail("Failed to start K3s agent", separator = ": ") { eventBus.emit(Event.K3s.AgentStartFailed(agent.alias, it)) }
+        log.info { "Started K3s agent on ${agent.alias}" }
     }
 
-    private fun startK3sServer(
-        controlHost: ClusterHost,
-        errors: MutableMap<String, Exception>,
-        useCustomCni: Boolean,
-    ): K3sSetupResult? {
-        eventBus.emit(Event.K3s.ServerStarting(controlHost.alias))
-        val result = k3sService.startServer(controlHost.toHost(), useCustomCni)
-        if (result.isFailure) {
-            val error = checkNotNull(result.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
-            log.error(error) { "Failed to start K3s server on ${controlHost.alias}" }
-            eventBus.emit(Event.K3s.ServerStartFailed(error.message ?: "unknown error"))
-            errors["K3s server start"] = Exception(error.message, error)
-            return K3sSetupResult(serverStarted = false, errors = errors)
+    /** The value, or [report] the failure and throw it, prefixed by [part]. */
+    private fun <T> Result<T>.orFail(
+        part: String,
+        separator: String = " failed: ",
+        report: (String) -> Unit,
+    ): T =
+        getOrElse { e ->
+            val message = e.messageOrString()
+            log.error(e) { "$part$separator$message" }
+            report(message)
+            throw IllegalStateException("$part$separator$message", e)
         }
-        log.info { "Successfully started K3s server on ${controlHost.alias}" }
-        return null
-    }
 
-    private fun retrieveNodeToken(
-        controlHost: ClusterHost,
-        errors: MutableMap<String, Exception>,
-    ): String? {
-        val tokenResult = k3sService.getNodeToken(controlHost.toHost())
-        if (tokenResult.isFailure) {
-            val error = checkNotNull(tokenResult.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
-            log.error(error) { "Failed to retrieve K3s node token from ${controlHost.alias}" }
-            eventBus.emit(Event.K3s.NodeTokenFailed(error.message ?: "unknown error"))
-            errors["K3s node token retrieval"] = Exception(error.message, error)
-            return null
-        }
-        log.info { "Retrieved K3s node token from ${controlHost.alias}" }
-        return tokenResult.getOrThrow()
-    }
-
-    private fun collectAgentErrors(
-        agentResults: Map<String, AgentSetupResult>,
-        errors: MutableMap<String, Exception>,
+    /** A copy of the kubeconfig in the cluster's bucket, when it has one. A failure is logged, not fatal. */
+    private fun backupKubeconfig(
+        kubeconfigPath: Path,
+        clusterState: ClusterState?,
     ) {
-        agentResults.values
-            .filter { !it.success }
-            .forEach { result ->
-                result.error?.let { error ->
-                    errors["Agent ${result.alias}"] = error
-                }
-            }
-    }
-
-    private fun downloadAndBackupKubeconfig(
-        config: K3sClusterConfig,
-        controlHost: ClusterHost,
-        errors: MutableMap<String, Exception>,
-    ): Pair<Boolean, Boolean> {
-        var kubeconfigWritten = false
-        var kubeconfigBackedUp = false
-        val kubeconfigResult =
-            k3sService.downloadAndConfigureKubeconfig(
-                controlHost.toHost(),
-                config.kubeconfigPath,
-            )
-        kubeconfigResult
-            .onFailure { error ->
-                log.error(error) { "Failed to download kubeconfig from ${controlHost.alias}" }
-                eventBus.emit(Event.K3s.KubeconfigFailed(error.message ?: "unknown error"))
-                errors["Kubeconfig download"] = Exception(error.message, error)
-            }.onSuccess {
-                kubeconfigWritten = true
-                eventBus.emit(Event.K3s.KubeconfigWritten(config.kubeconfigPath.fileName.toString()))
-                eventBus.emit(Event.K3s.KubeconfigInstruction)
-                kubeconfigBackedUp = backupKubeconfigToS3(config, errors)
-            }
-        return Pair(kubeconfigWritten, kubeconfigBackedUp)
-    }
-
-    /**
-     * Backs up the kubeconfig to S3 if ClusterBackupService and ClusterState are available.
-     *
-     * @param config The K3s cluster configuration containing ClusterState
-     * @param errors Mutable map to collect any backup errors
-     * @return true if backup was successful, false otherwise
-     */
-    @Suppress("UnusedParameter")
-    private fun backupKubeconfigToS3(
-        config: K3sClusterConfig,
-        errors: MutableMap<String, Exception>,
-    ): Boolean {
-        if (clusterBackupService == null) {
-            log.debug { "ClusterBackupService not available, skipping S3 backup" }
-            return false
-        }
-
-        val clusterState = config.clusterState
-        if (clusterState == null) {
-            log.debug { "ClusterState not provided, skipping kubeconfig S3 backup" }
-            return false
-        }
-
-        if (clusterState.s3Bucket == null) {
-            log.debug { "S3 bucket not configured, skipping kubeconfig S3 backup" }
-            return false
-        }
-
-        return clusterBackupService
-            .backupKubeconfig(config.kubeconfigPath, clusterState)
-            .onFailure { error ->
-                log.warn(error) { "Failed to backup kubeconfig to S3 (non-fatal)" }
-                // Don't add to errors - this is a non-critical operation
-            }.isSuccess
-    }
-
-    private fun setupAgents(
-        config: K3sClusterConfig,
-        serverUrl: String,
-        nodeToken: String,
-    ): Map<String, AgentSetupResult> {
-        val workerServerTypes = listOf(ServerType.Cassandra, ServerType.Stress)
-
-        val hostFilter =
-            config.hostFilter
-                .split(",")
-                .filter { it.isNotBlank() }
-                .toSet()
-
-        val agents =
-            workerServerTypes.flatMap { serverType ->
-                config.workerHosts[serverType]
-                    .orEmpty()
-                    .filter { hostFilter.isEmpty() || it.alias in hostFilter }
-                    .map { it to getNodeLabels(serverType, it) }
-            }
-
-        // At most the pool's cap at once: one thread per agent is one SSH session per node.
-        return parallel
-            .map(agents) { (clusterHost, labels) -> setupSingleAgent(clusterHost, serverUrl, nodeToken, labels) }
-            .zip(agents) { result, (clusterHost, _) ->
-                clusterHost.alias to
-                    result.getOrElse { e ->
-                        AgentSetupResult(clusterHost.alias, success = false, error = Exception(e.message, e))
-                    }
-            }.toMap()
-    }
-
-    private fun setupSingleAgent(
-        clusterHost: ClusterHost,
-        serverUrl: String,
-        nodeToken: String,
-        nodeLabels: Map<String, String>,
-        mode: AgentStartMode = AgentStartMode.START,
-    ): AgentSetupResult {
-        val host = clusterHost.toHost()
-        eventBus.emit(Event.K3s.AgentConfiguring(host.alias, nodeLabels.toString()))
-
-        // Configure agent
-        val configResult = k3sAgentService.configure(host, serverUrl, nodeToken, nodeLabels)
-        if (configResult.isFailure) {
-            val error = checkNotNull(configResult.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
-            log.error(error) { "Failed to configure K3s agent on ${host.alias}" }
-            eventBus.emit(Event.K3s.AgentConfigFailed(host.alias, error.message ?: "unknown error"))
-            return AgentSetupResult(
-                alias = host.alias,
-                success = false,
-                error = Exception("Failed to configure K3s agent: ${error.message}", error),
-            )
-        }
-
-        // Start agent
-        val startResult = k3sAgentService.start(host, mode)
-        if (startResult.isFailure) {
-            val error = checkNotNull(startResult.exceptionOrNull()) { "Result.isFailure but exceptionOrNull() was null" }
-            log.error(error) { "Failed to start K3s agent on ${host.alias}" }
-            eventBus.emit(Event.K3s.AgentStartFailed(host.alias, error.message ?: "unknown error"))
-            return AgentSetupResult(
-                alias = host.alias,
-                success = false,
-                error = Exception("Failed to start K3s agent: ${error.message}", error),
-            )
-        }
-
-        log.info { "Successfully started K3s agent on ${host.alias}" }
-        return AgentSetupResult(
-            alias = host.alias,
-            success = true,
-        )
+        val backup = clusterBackupService ?: return
+        val state = clusterState?.takeIf { it.s3Bucket != null } ?: return
+        backup
+            .backupKubeconfig(kubeconfigPath, state)
+            .onFailure { log.warn(it) { "Failed to back up the kubeconfig to S3 (non-fatal)" } }
     }
 
     override fun getNodeLabels(

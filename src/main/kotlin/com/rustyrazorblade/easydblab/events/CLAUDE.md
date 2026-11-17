@@ -38,7 +38,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
 - `Event.K3s.*` — K3s cluster management, including the control-plane gate: `ControlPlaneGateOpen` (seconds waited) and `ControlPlaneGateTimedOut` (an error; each condition still false)
 - `Event.Cilium.*` — Cilium CNI operations, including `OperatorReady` (ready replicas, and the count of `Constants.Cilium.REQUIRED_CRDS` Established)
-- `Event.K8s.*` — Kubernetes operations, including `NodesRegistering` / `NodesRegistered` (the count of nodes `up` waits on to register with K3s)
+- `Event.K8s.*` — Kubernetes operations
 - `Event.Infra.*` — AWS infrastructure (VPC, subnet, security group)
 - `Event.Ec2.*` — EC2 instance operations
 - `Event.Emr.*` — EMR/Spark operations

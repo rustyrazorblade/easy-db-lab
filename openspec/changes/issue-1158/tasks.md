@@ -38,26 +38,26 @@
 ## 6. Replacement
 
 - [x] 6.1 `NodeReplacer`: under one lock, wait for healthy, terminate and wait, K8s cleanup when registered, capacity and dry run for one instance, launch, atomic state write by alias, emit `NodeReplacing` and `NodeReplaced`.  Unit tests with `FakeInstanceFleet` and a recording state manager: terminate before launch; same alias and subnet; one host per alias in the saved state, in ordinal order; cleanup only when registered; a capacity refusal or a refused dry run fails the node with no launch
-- [ ] 6.2 State write: the replacement and the batched launch's `onHostsCreated` go through one writer under `Up`'s state lock; test that concurrent writes from many pipelines keep every host
+- [x] 6.2 State write: the replacement and the batched launch's `onHostsCreated` go through one writer under `Up`'s state lock; test that concurrent writes from many pipelines keep every host
 
 ## 7. Pipeline and coordinator
 
 - [x] 7.1 `NodePipeline`: the step order per server type (D2), latches for the certificate and the gate, the join permit held to registration, and an end-state of Ready or Failed(step, reason).  Steps after an `InterruptedException` stop
 - [x] 7.2 `NodeBringUp`: starts one virtual thread per node (`newVirtualThreadPerTaskExecutor`), pushes the command name onto `EventContext` in each, starts pipelines as launch batches return, runs the control pipeline, starts the health monitor, interrupts every pipeline when the control pipeline fails, and returns every node's end-state
 - [x] 7.3 Unit tests with `FakeNodeSteps`, `FakeInstanceFleet` and `FakeControlPlane` (zero intervals): a slow node does not delay another's Ready; retry with no replacement; replacement after the attempts run out; replacement with no retry for an instance that ended; per-node limit reached, the others finish, and the result names the node and step with its instance kept; cluster limit stops replacements; image check failure fails with no replacement; no join before the gate; join limit holds at 40 nodes; permit released at registration; unhealthy blocks permits and replacements and a join timeout then is not counted; control failure interrupts all; `--no-setup` ends after SSH; `--hosts` runs only the named pipelines
-- [ ] 7.4 `Up`: replace steps 4-9 of today's flow with the shared pre-steps, `NodeBringUp.run`, and the shared post-steps (final workspace files, re-push of `environment.sh` and `stress.env` when db0 was replaced, storage classes, observability, Cilium annotations, AxonOps).  Emit `NodesFailed` and throw `CommandFailedException` when any node failed.  Update `Up` tests for the success path, a failed node, and a failed shared step
-- [ ] 7.5 Remove code `up` no longer uses (`SshReadinessWait` if unused elsewhere, `labelControlAndAwaitNodes`, the per-phase `BoundedParallel` calls in `up`); keep `BoundedParallel` for its other callers
+- [x] 7.4 `Up`: replace steps 4-9 of today's flow with the shared pre-steps, `NodeBringUp.run`, and the shared post-steps (final workspace files, re-push of `environment.sh` and `stress.env` when db0 was replaced, storage classes, observability, Cilium annotations, AxonOps).  Emit `NodesFailed` and throw `CommandFailedException` when any node failed.  Update `Up` tests for the success path, a failed node, and a failed shared step
+- [x] 7.5 Remove code `up` no longer uses (`SshReadinessWait` if unused elsewhere, `labelControlAndAwaitNodes`, the per-phase `BoundedParallel` calls in `up`); keep `BoundedParallel` for its other callers
 - [ ] 7.6 Run `./gradlew test`, `./gradlew integrationTest` and `detekt` on JDK 21 in a subagent; fix every finding in code, with no suppression, threshold change or baseline entry
 
 ## 8. Specs
 
-- [ ] 8.1 Check the change with `openspec validate issue-1158`
+- [x] 8.1 Check the change with `openspec validate issue-1158`
 
 ## 9. Docs
 
-- [ ] 9.1 `docs/user-guide/large-clusters.md`: per-node pipelines, the control-plane gate, the join limit, retry and replacement with both limits, the health check and what its report means, the progress line, and how `up` ends when a node fails; remove the "runs on at most 50 nodes at once" and "a re-run of `up` launches a replacement" text
-- [ ] 9.2 `src/main/kotlin/.../commands/CLAUDE.md`: the `HostOperationsService` section says `up` no longer fans out per phase; `services/CLAUDE.md` gets a short section on `services/bringup/`
-- [ ] 9.3 Root `CLAUDE.md` and `configuration/CLAUDE.md`: update any line that describes `up`'s phase order
+- [x] 9.1 `docs/user-guide/large-clusters.md`: per-node pipelines, the control-plane gate, the join limit, retry and replacement with both limits, the health check and what its report means, the progress line, and how `up` ends when a node fails; remove the "runs on at most 50 nodes at once" and "a re-run of `up` launches a replacement" text
+- [x] 9.2 `src/main/kotlin/.../commands/CLAUDE.md`: the `HostOperationsService` section says `up` no longer fans out per phase; `services/CLAUDE.md` gets a short section on `services/bringup/`
+- [x] 9.3 Root `CLAUDE.md` and `configuration/CLAUDE.md`: update any line that describes `up`'s phase order
 
 ## 10. Real AWS verification (`requires-aws`)
 

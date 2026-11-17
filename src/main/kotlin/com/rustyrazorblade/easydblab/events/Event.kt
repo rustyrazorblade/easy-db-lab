@@ -830,12 +830,6 @@ sealed interface Event {
     @Serializable
     sealed interface K3s : Event {
         @Serializable
-        @SerialName("K3s.ClusterStarting")
-        data object ClusterStarting : K3s {
-            override fun toDisplayString(): String = "Starting K3s cluster..."
-        }
-
-        @Serializable
         @SerialName("K3s.ServerStarting")
         data class ServerStarting(
             val controlHost: String,
@@ -885,12 +879,6 @@ sealed interface Event {
         @SerialName("K3s.KubeconfigInstruction")
         data object KubeconfigInstruction : K3s {
             override fun toDisplayString(): String = "Use 'source env.sh' to configure kubectl for cluster access"
-        }
-
-        @Serializable
-        @SerialName("K3s.ClusterStarted")
-        data object ClusterStarted : K3s {
-            override fun toDisplayString(): String = "K3s cluster started successfully"
         }
 
         @Serializable
@@ -1119,24 +1107,6 @@ sealed interface Event {
         @SerialName("K8s.ObservabilityPodsReady")
         data object ObservabilityPodsReady : K8s {
             override fun toDisplayString(): String = "All observability pods are ready"
-        }
-
-        /** `up` started waiting for [count] nodes to register with K3s (their agents label them). */
-        @Serializable
-        @SerialName("K8s.NodesRegistering")
-        data class NodesRegistering(
-            val count: Int,
-        ) : K8s {
-            override fun toDisplayString(): String = "Waiting for $count node(s) to register with K3s..."
-        }
-
-        /** All [count] expected nodes are registered with K3s and carry their labels. */
-        @Serializable
-        @SerialName("K8s.NodesRegistered")
-        data class NodesRegistered(
-            val count: Int,
-        ) : K8s {
-            override fun toDisplayString(): String = "All $count node(s) registered with K3s"
         }
 
         @Serializable
@@ -4025,30 +3995,6 @@ sealed interface Event {
         data object CassandraPatchInstruction : Provision {
             override fun toDisplayString(): String =
                 "You can edit cassandra.patch.yaml with any changes you'd like to see merge in into the remote cassandra.yaml file."
-        }
-
-        @Serializable
-        @SerialName("Provision.SshWaiting")
-        data object SshWaiting : Provision {
-            override fun toDisplayString(): String = "Waiting for SSH to come up.."
-        }
-
-        /**
-         * `up`'s SSH readiness check failed and will run again.
-         *
-         * @property attempt how many attempts have failed so far
-         * @property lastError the message of the failure that triggered this retry, so an
-         *   operator can tell a node still booting from a fault that will never clear
-         */
-        @Serializable
-        @SerialName("Provision.SshRetrying")
-        data class SshRetrying(
-            val attempt: Int,
-            val lastError: String? = null,
-        ) : Provision {
-            override fun toDisplayString(): String =
-                "SSH still not up yet, waiting... (attempt $attempt)" +
-                    lastError?.let { ": ${it.lineSequence().first()}" }.orEmpty()
         }
 
         @Serializable

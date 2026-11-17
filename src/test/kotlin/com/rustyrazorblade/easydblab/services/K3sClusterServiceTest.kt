@@ -17,10 +17,10 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Tests for K3sClusterService.
@@ -57,348 +57,6 @@ class K3sClusterServiceTest {
             )
     }
 
-    @Nested
-    inner class SetupCluster {
-        @Test
-        fun `should start server and retrieve token successfully`() {
-            val config = createConfig()
-            setupSuccessfulServerStart()
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.serverStarted).isTrue()
-            assertThat(result.nodeToken).isEqualTo("test-token-12345")
-            assertThat(result.errors).isEmpty()
-        }
-
-        @Test
-        fun `should return failure when server start fails`() {
-            val config = createConfig()
-            whenever(k3sService.startServer(any(), any())).thenReturn(Result.failure(RuntimeException("Server start failed")))
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.serverStarted).isFalse()
-            assertThat(result.nodeToken).isNull()
-            assertThat(result.errors).containsKey("K3s server start")
-            verify(k3sService, never()).getNodeToken(any())
-        }
-
-        @Test
-        fun `should return failure when token retrieval fails`() {
-            val config = createConfig()
-            whenever(k3sService.startServer(any(), any())).thenReturn(Result.success(Unit))
-            whenever(k3sService.getNodeToken(any()))
-                .thenReturn(Result.failure(RuntimeException("Token retrieval failed")))
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.serverStarted).isTrue()
-            assertThat(result.nodeToken).isNull()
-            assertThat(result.errors).containsKey("K3s node token retrieval")
-        }
-
-        @Test
-        fun `should download kubeconfig successfully`() {
-            val config = createConfig()
-            setupSuccessfulServerStart()
-            whenever(k3sService.downloadAndConfigureKubeconfig(any(), any()))
-                .thenReturn(Result.success(Unit))
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.kubeconfigWritten).isTrue()
-            verify(k3sService).downloadAndConfigureKubeconfig(any(), eq(config.kubeconfigPath))
-        }
-
-        @Test
-        fun `should continue even if kubeconfig download fails`() {
-            val config = createConfig()
-            setupSuccessfulServerStart()
-            whenever(k3sService.downloadAndConfigureKubeconfig(any(), any()))
-                .thenReturn(Result.failure(RuntimeException("Download failed")))
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.serverStarted).isTrue()
-            assertThat(result.kubeconfigWritten).isFalse()
-            assertThat(result.errors).containsKey("Kubeconfig download")
-        }
-
-        @Test
-        fun `should configure and start agents on Cassandra nodes`() {
-            val cassandraHost = createClusterHost("db0", "10.0.0.1")
-            val config =
-                createConfig(
-                    workerHosts =
-                        mapOf(
-                            ServerType.Cassandra to listOf(cassandraHost),
-                        ),
-                )
-            setupSuccessfulServerStart()
-            setupSuccessfulAgentSetup()
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.agentResults).hasSize(1)
-            assertThat(result.agentResults["db0"]?.success).isTrue()
-            verify(k3sAgentService).configure(
-                any(),
-                eq("https://10.0.1.1:6443"),
-                eq("test-token-12345"),
-                eq(mapOf(Constants.NODE_TYPE_LABEL to "db", Constants.NODE_ORDINAL_LABEL to "0")),
-            )
-        }
-
-        @Test
-        fun `should configure and start agents on Stress nodes`() {
-            val stressHost = createClusterHost("app0", "10.0.0.2")
-            val config =
-                createConfig(
-                    workerHosts =
-                        mapOf(
-                            ServerType.Stress to listOf(stressHost),
-                        ),
-                )
-            setupSuccessfulServerStart()
-            setupSuccessfulAgentSetup()
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.agentResults).hasSize(1)
-            assertThat(result.agentResults["app0"]?.success).isTrue()
-            verify(k3sAgentService).configure(
-                any(),
-                eq("https://10.0.1.1:6443"),
-                eq("test-token-12345"),
-                eq(mapOf(Constants.NODE_TYPE_LABEL to "app", Constants.NODE_ORDINAL_LABEL to "0")),
-            )
-        }
-
-        @Test
-        fun `should setup multiple agents in parallel`() {
-            val cassandraHosts =
-                listOf(
-                    createClusterHost("db0", "10.0.0.1"),
-                    createClusterHost("db1", "10.0.0.2"),
-                )
-            val stressHosts =
-                listOf(
-                    createClusterHost("stress0", "10.0.0.3"),
-                )
-            val config =
-                createConfig(
-                    workerHosts =
-                        mapOf(
-                            ServerType.Cassandra to cassandraHosts,
-                            ServerType.Stress to stressHosts,
-                        ),
-                )
-            setupSuccessfulServerStart()
-            setupSuccessfulAgentSetup()
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.agentResults).hasSize(3)
-            assertThat(result.agentResults["db0"]?.success).isTrue()
-            assertThat(result.agentResults["db1"]?.success).isTrue()
-            assertThat(result.agentResults["stress0"]?.success).isTrue()
-        }
-
-        /** At 1,000 nodes one thread per agent is 1,000 SSH sessions at once; the pool caps it. */
-        @Test
-        fun `never configures more agents at once than the concurrency cap`() {
-            val capped =
-                DefaultK3sClusterService(
-                    k3sService = k3sService,
-                    k3sAgentService = k3sAgentService,
-                    parallel = BoundedParallel(maxConcurrency = 2),
-                )
-            val hosts = (0 until 8).map { createClusterHost("db$it", "10.0.0.$it") }
-            setupSuccessfulServerStart()
-            val running = AtomicInteger()
-            val peak = AtomicInteger()
-            whenever(k3sAgentService.configure(any(), any(), any(), any())).thenAnswer {
-                peak.accumulateAndGet(running.incrementAndGet(), ::maxOf)
-                Thread.sleep(SLOW_AGENT_MS)
-                running.decrementAndGet()
-                Result.success(Unit)
-            }
-            whenever(k3sAgentService.start(any(), any())).thenReturn(Result.success(Unit))
-
-            val result = capped.setupCluster(createConfig(workerHosts = mapOf(ServerType.Cassandra to hosts)))
-
-            assertThat(result.agentResults).hasSize(8)
-            assertThat(result.isSuccessful).isTrue()
-            assertThat(peak.get()).isEqualTo(2)
-        }
-
-        @Test
-        fun `should collect agent errors without stopping other agents`() {
-            val cassandraHosts =
-                listOf(
-                    createClusterHost("db0", "10.0.0.1"),
-                    createClusterHost("db1", "10.0.0.2"),
-                )
-            val config =
-                createConfig(
-                    workerHosts =
-                        mapOf(
-                            ServerType.Cassandra to cassandraHosts,
-                        ),
-                )
-            setupSuccessfulServerStart()
-
-            // Both agents succeed, but one has an error recorded manually
-            // This test verifies that agent failures are collected without stopping other agents
-            whenever(k3sAgentService.configure(any(), any(), any(), any())).thenReturn(Result.success(Unit))
-            whenever(k3sAgentService.start(any(), any())).thenReturn(Result.failure(RuntimeException("Agent start failed")))
-
-            val result = service.setupCluster(config)
-
-            // Both agents should fail since start always fails
-            val failureCount = result.agentResults.values.count { !it.success }
-            assertThat(failureCount).isEqualTo(2)
-            assertThat(result.agentResults).hasSize(2)
-            // Errors should be collected for both
-            assertThat(result.errors).hasSize(2)
-        }
-
-        @Test
-        fun `should filter hosts by host filter`() {
-            val cassandraHosts =
-                listOf(
-                    createClusterHost("db0", "10.0.0.1"),
-                    createClusterHost("db1", "10.0.0.2"),
-                    createClusterHost("db2", "10.0.0.3"),
-                )
-            val config =
-                createConfig(
-                    workerHosts =
-                        mapOf(
-                            ServerType.Cassandra to cassandraHosts,
-                        ),
-                    hostFilter = "db0,db2",
-                )
-            setupSuccessfulServerStart()
-            setupSuccessfulAgentSetup()
-
-            val result = service.setupCluster(config)
-
-            // Only db0 and db2 should be configured (filtered out db1)
-            assertThat(result.agentResults).hasSize(2)
-            assertThat(result.agentResults).containsKeys("db0", "db2")
-            assertThat(result.agentResults).doesNotContainKey("db1")
-        }
-
-        @Test
-        fun `should report overall success only when all operations succeed`() {
-            val config =
-                createConfig(
-                    workerHosts =
-                        mapOf(
-                            ServerType.Cassandra to listOf(createClusterHost("db0", "10.0.0.1")),
-                        ),
-                )
-            setupSuccessfulServerStart()
-            setupSuccessfulAgentSetup()
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.isSuccessful).isTrue()
-        }
-
-        @Test
-        fun `should report failure when agent setup fails`() {
-            val config =
-                createConfig(
-                    workerHosts =
-                        mapOf(
-                            ServerType.Cassandra to listOf(createClusterHost("db0", "10.0.0.1")),
-                        ),
-                )
-            setupSuccessfulServerStart()
-            whenever(k3sAgentService.configure(any(), any(), any(), any()))
-                .thenReturn(Result.failure(RuntimeException("Agent failed")))
-
-            val result = service.setupCluster(config)
-
-            assertThat(result.isSuccessful).isFalse()
-        }
-
-        @Test
-        fun `should backup kubeconfig to S3 when ClusterState is provided`() {
-            val clusterState = createClusterState()
-            val config = createConfig(clusterState = clusterState)
-            setupSuccessfulServerStart()
-            whenever(clusterBackupService.backupKubeconfig(any(), eq(clusterState)))
-                .thenReturn(Result.success(Unit))
-
-            val result = serviceWithBackup.setupCluster(config)
-
-            assertThat(result.kubeconfigBackedUp).isTrue()
-            verify(clusterBackupService).backupKubeconfig(eq(config.kubeconfigPath), eq(clusterState))
-        }
-
-        @Test
-        fun `should not attempt backup when ClusterState is not provided`() {
-            val config = createConfig() // No clusterState
-            setupSuccessfulServerStart()
-
-            val result = serviceWithBackup.setupCluster(config)
-
-            assertThat(result.kubeconfigBackedUp).isFalse()
-            verify(clusterBackupService, never()).backupKubeconfig(any(), any())
-        }
-
-        @Test
-        fun `should not attempt backup when S3 bucket is not configured`() {
-            val clusterState =
-                ClusterState(
-                    name = "test",
-                    versions = mutableMapOf(),
-                    s3Bucket = null,
-                )
-            val config = createConfig(clusterState = clusterState)
-            setupSuccessfulServerStart()
-
-            val result = serviceWithBackup.setupCluster(config)
-
-            assertThat(result.kubeconfigBackedUp).isFalse()
-            verify(clusterBackupService, never()).backupKubeconfig(any(), any())
-        }
-
-        @Test
-        fun `should handle backup failure gracefully`() {
-            val clusterState = createClusterState()
-            val config = createConfig(clusterState = clusterState)
-            setupSuccessfulServerStart()
-            whenever(clusterBackupService.backupKubeconfig(any(), any()))
-                .thenReturn(Result.failure(RuntimeException("S3 upload failed")))
-
-            val result = serviceWithBackup.setupCluster(config)
-
-            // Setup should still succeed even if backup fails
-            assertThat(result.isSuccessful).isTrue()
-            assertThat(result.kubeconfigBackedUp).isFalse()
-            // Backup failure should NOT be added to errors (it's non-critical)
-            assertThat(result.errors).isEmpty()
-        }
-
-        @Test
-        fun `should still succeed when backup service is not available`() {
-            val clusterState = createClusterState()
-            val config = createConfig(clusterState = clusterState)
-            setupSuccessfulServerStart()
-
-            // Use service without backup capability
-            val result = service.setupCluster(config)
-
-            assertThat(result.isSuccessful).isTrue()
-            assertThat(result.kubeconfigBackedUp).isFalse()
-        }
-    }
-
     /** The control pipeline's server step: server, token and kubeconfig, each a failure of the step. */
     @Nested
     inner class StartServer {
@@ -433,6 +91,30 @@ class K3sClusterServiceTest {
             assertThatThrownBy { service.startServer(control, tempDir.resolve("kubeconfig"), null, useCustomCni = false) }
                 .hasMessageContaining(named)
                 .hasMessageContaining("boom")
+        }
+
+        /** The kubeconfig is backed up only with a backup service and a state that names a bucket. */
+        @ParameterizedTest
+        @CsvSource("true, bucket, true", "true, none, false", "true, nostate, false", "false, bucket, false")
+        fun `the kubeconfig is backed up only when there is a service and a bucket`(
+            withService: Boolean,
+            state: String,
+            backedUp: Boolean,
+        ) {
+            setupSuccessfulServerStart()
+            whenever(clusterBackupService.backupKubeconfig(any(), any())).thenReturn(Result.success(Unit))
+            val clusterState =
+                when (state) {
+                    "bucket" -> createClusterState()
+                    "none" -> ClusterState(name = "test-cluster", versions = mutableMapOf(), s3Bucket = null)
+                    else -> null
+                }
+            val target = if (withService) serviceWithBackup else service
+
+            target.startServer(control, tempDir.resolve("kubeconfig"), clusterState, useCustomCni = false)
+
+            verify(clusterBackupService, if (backedUp) times(1) else never())
+                .backupKubeconfig(eq(tempDir.resolve("kubeconfig")), any())
         }
 
         @Test
@@ -564,19 +246,6 @@ class K3sClusterServiceTest {
         whenever(k3sAgentService.start(any(), any())).thenReturn(Result.success(Unit))
     }
 
-    private fun createConfig(
-        workerHosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
-        hostFilter: String = "",
-        clusterState: ClusterState? = null,
-    ): K3sClusterConfig =
-        K3sClusterConfig(
-            controlHost = createClusterHost("control0", "10.0.1.1"),
-            workerHosts = workerHosts,
-            kubeconfigPath = tempDir.resolve("kubeconfig"),
-            hostFilter = hostFilter,
-            clusterState = clusterState,
-        )
-
     private fun createClusterHost(
         alias: String,
         privateIp: String,
@@ -595,8 +264,4 @@ class K3sClusterServiceTest {
             versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test-abc12345",
         )
-
-    private companion object {
-        const val SLOW_AGENT_MS = 30L
-    }
 }

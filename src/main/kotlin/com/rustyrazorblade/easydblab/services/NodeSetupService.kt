@@ -31,10 +31,18 @@ data class NodeSetupContext(
 ) {
     /** Building a context from the cluster state. */
     companion object {
-        /** The context for [state]: db0 is the database host, the first control node runs Pyroscope. */
+        /**
+         * The context for [state]: db0 is the database host, the first control node runs Pyroscope.
+         * A cluster with no database nodes has no database host; its app nodes get an empty one.
+         */
         fun from(state: ClusterState): NodeSetupContext =
             NodeSetupContext(
-                databaseHost = state.getHosts(ServerType.Cassandra).first().private,
+                databaseHost =
+                    state
+                        .getHosts(ServerType.Cassandra)
+                        .firstOrNull()
+                        ?.private
+                        .orEmpty(),
                 controlNodeIp = state.getHosts(ServerType.Control).first().private,
                 clusterName = state.clusterLabelName(),
                 tenant = state.tenant(),
@@ -95,9 +103,15 @@ class NodeSetupService(
         common(host)
     }
 
-    /** Installs the workspace's `environment.sh` as the login profile every shell on [host] reads. */
+    /**
+     * Installs the workspace's `environment.sh` as the login profile every shell on [host] reads.
+     * The file names db0, so a cluster with no database nodes has none, and there is nothing to
+     * install.
+     */
     fun installEnvironment(host: Host) {
-        remoteOps.installFile(host, Path.of(ENVIRONMENT_FILE), ENVIRONMENT_PATH, FILE_MODE)
+        val environment = Path.of(ENVIRONMENT_FILE)
+        if (!Files.exists(environment)) return
+        remoteOps.installFile(host, environment, ENVIRONMENT_PATH, FILE_MODE)
     }
 
     /** Writes the stress service's environment file on [host], naming [databaseHost] and [datacenter]. */
@@ -170,8 +184,9 @@ class NodeSetupService(
         try {
             remoteOps.executeRemotely(host, "sudo bash $SETUP_SCRIPT").text
         } catch (e: RemoteCommandFailedException) {
-            eventBus.emit(Event.Provision.InstanceSetupFailed(host = host.alias, reason = setupFailureReason(e)))
-            throw CommandFailedException("Instance setup failed on ${host.alias}")
+            val reason = setupFailureReason(e)
+            eventBus.emit(Event.Provision.InstanceSetupFailed(host = host.alias, reason = reason))
+            throw CommandFailedException("Instance setup failed on ${host.alias}: $reason")
         }
     }
 

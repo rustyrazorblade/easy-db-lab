@@ -170,7 +170,7 @@ class StepRunnerTest {
     fun `step events carry the command name of the pipeline that ran them`() {
         EventContext.push("up")
         try {
-            runner.run("db5", PipelineStep.SSH, policy(1), neverEnds) { eventBus.emit(Event.Provision.SshWaiting) }
+            runner.run("db5", PipelineStep.SSH, policy(1), neverEnds) { eventBus.emit(Event.Provision.SkippingNodeSetup) }
         } finally {
             EventContext.pop()
         }
@@ -178,7 +178,7 @@ class StepRunnerTest {
         assertThat(envelopes.map { it.commandName }).containsOnly("up")
         assertThat(events().map { it::class }).containsExactly(
             Event.Provision.NodeStepStarted::class,
-            Event.Provision.SshWaiting::class,
+            Event.Provision.SkippingNodeSetup::class,
             Event.Provision.NodeStepCompleted::class,
         )
     }

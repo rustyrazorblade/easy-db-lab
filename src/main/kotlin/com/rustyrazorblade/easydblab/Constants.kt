@@ -121,8 +121,8 @@ object Constants {
      */
     object Scale {
         /**
-         * The most hosts a parallel per-host operation (SSH setup, K3s agents, registry TLS, the
-         * Cilium image check, SSH readiness) works on at once. One thread per host at 1,000 nodes
+         * The most hosts a parallel per-host operation works on at once, and the most SSH sessions
+         * the per-node bring-up pipelines hold together. One thread per host at 1,000 nodes
          * is 1,000 SSH sessions from the operator's machine.
          */
         const val HOST_CONCURRENCY = 50
@@ -153,12 +153,6 @@ object Constants {
 
         /** How long `up` waits for SSH on every node, however many there are. */
         const val SSH_READY_TIMEOUT_SECONDS = 600L
-
-        /** How long `up` waits for every K3s agent to register its node with the server, at least. */
-        const val NODE_REGISTRATION_BASE_SECONDS = 300L
-
-        /** Extra registration wait per expected node, on top of [NODE_REGISTRATION_BASE_SECONDS]. */
-        const val NODE_REGISTRATION_PER_NODE_SECONDS = 1L
 
         /** Extra observability rollout wait per cluster node; DaemonSets roll one pod per node. */
         const val ROLLOUT_PER_NODE_SECONDS = 2L

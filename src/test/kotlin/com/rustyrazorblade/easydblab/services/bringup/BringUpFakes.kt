@@ -13,10 +13,12 @@ typealias FakeCall = (host: ClusterHost, attempt: Int) -> Unit
 
 /**
  * The provider's view of each instance for the bring-up tests: every watched instance runs at
- * once, at `pub-<id>`, and passes its checks, unless its ID is in [held]. [end] ends one the way
- * the provider would report it.
+ * once, at the [addresses] it is given (by default `pub-<id>`), and passes its checks, unless its
+ * ID is in [held]. [end] ends one the way the provider would report it.
  */
-class FakeInstanceTracker : InstanceTracker {
+class FakeInstanceTracker(
+    private val addresses: (instanceId: String) -> InstanceAddresses = { InstanceAddresses("pub-$it", null) },
+) : InstanceTracker {
     private val watches = ConcurrentHashMap<String, InstanceWatch>()
     val held: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
     val started = AtomicBoolean(false)
@@ -25,7 +27,7 @@ class FakeInstanceTracker : InstanceTracker {
         watches.computeIfAbsent(instanceId) { id ->
             InstanceWatch(id).also {
                 if (id !in held) {
-                    it.markRunning(InstanceAddresses("pub-$id", null))
+                    it.markRunning(addresses(id))
                     it.markStatusOk()
                 }
             }

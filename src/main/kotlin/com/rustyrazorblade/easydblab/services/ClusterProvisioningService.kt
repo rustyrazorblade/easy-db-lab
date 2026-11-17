@@ -66,6 +66,14 @@ fun InstanceSpec.creationConfig(infraContext: InfrastructureContext): InstanceCr
 fun InstanceProvisioningConfig.launches(): List<InstanceCreationConfig> =
     specs.filter { it.neededCount > 0 }.map { it.creationConfig(toInfrastructureContext()) }
 
+/**
+ * The launch request of every server type the cluster has nodes of, whether or not this `up`
+ * launches any: a replacement of a node an earlier `up` launched uses its server type's request,
+ * with its own ordinal.
+ */
+fun InstanceProvisioningConfig.replacementLaunches(): Map<ServerType, InstanceCreationConfig> =
+    specs.filter { it.configuredCount > 0 }.associate { it.serverType to it.creationConfig(toInfrastructureContext()) }
+
 /** The network, key and tags every launch of [InstanceProvisioningConfig] shares. */
 fun InstanceProvisioningConfig.toInfrastructureContext() =
     InfrastructureContext(
@@ -133,11 +141,14 @@ data class OptionalServicesConfig(
  * @property onHostsCreated Called when hosts are created for a server type
  * @property onEmrCreated Called when an EMR cluster is created
  * @property onOpenSearchCreated Called when an OpenSearch domain is created
+ * @property onInstancesLaunched Called once every server type's launch has returned, whether or
+ *   not it succeeded, so a waiter for the full host list is never left waiting
  */
 data class ProvisioningCallbacks(
     val onHostsCreated: (ServerType, List<ClusterHost>) -> Unit,
     val onEmrCreated: (EMRClusterState) -> Unit,
     val onOpenSearchCreated: (OpenSearchClusterState) -> Unit,
+    val onInstancesLaunched: () -> Unit = {},
 )
 
 /**
@@ -162,20 +173,6 @@ private data class ThreadContext(
  * and OpenSearch domains with proper error collection and state synchronization.
  */
 interface ClusterProvisioningService {
-    /**
-     * Provisions all cluster instances in parallel.
-     *
-     * @param config Instance provisioning configuration
-     * @param existingHosts Currently existing hosts by server type
-     * @param onHostsCreated Callback when hosts are created (for state updates)
-     * @return Result with created hosts and any errors
-     */
-    fun provisionInstances(
-        config: InstanceProvisioningConfig,
-        existingHosts: Map<ServerType, List<ClusterHost>>,
-        onHostsCreated: (ServerType, List<ClusterHost>) -> Unit,
-    ): ProvisioningResult
-
     /**
      * Provisions all cluster infrastructure including optional services.
      *
@@ -227,52 +224,6 @@ class DefaultClusterProvisioningService(
         private val log = KotlinLogging.logger {}
     }
 
-    override fun provisionInstances(
-        config: InstanceProvisioningConfig,
-        existingHosts: Map<ServerType, List<ClusterHost>>,
-        onHostsCreated: (ServerType, List<ClusterHost>) -> Unit,
-    ): ProvisioningResult {
-        val allHosts = existingHosts.toMutableMap()
-        val threadErrors = ConcurrentHashMap<String, Exception>()
-        val stateLock = Any()
-
-        // Log messages for existing instances that don't need creation
-        config.specs
-            .filter { it.neededCount <= 0 && it.configuredCount > 0 && it.existingCount > 0 }
-            .forEach { spec ->
-                eventBus.emit(Event.Ec2.ExistingInstancesFound(spec.serverType.name, spec.existingCount))
-            }
-
-        // Build and run instance creation threads
-        val threads =
-            config.specs
-                .filter { it.neededCount > 0 }
-                .map { spec ->
-                    thread(start = true, name = "create-${spec.serverType.name}") {
-                        try {
-                            val infraContext = config.toInfrastructureContext()
-                            createInstancesForType(spec, infraContext) { hosts ->
-                                synchronized(stateLock) {
-                                    allHosts[spec.serverType] = mergeByAlias(spec.serverType, allHosts[spec.serverType], hosts)
-                                    onHostsCreated(spec.serverType, hosts)
-                                }
-                            }
-                        } catch (e: Exception) {
-                            log.error(e) { "Failed to create ${spec.serverType.name} instances" }
-                            threadErrors["${spec.serverType.name} instances"] = e
-                        }
-                    }
-                }
-
-        // Wait for all threads to complete
-        threads.forEach { it.join() }
-
-        return ProvisioningResult(
-            hosts = allHosts.toMap(),
-            errors = threadErrors.toMap(),
-        )
-    }
-
     override fun provisionAll(
         instanceConfig: InstanceProvisioningConfig,
         servicesConfig: OptionalServicesConfig,
@@ -296,8 +247,12 @@ class DefaultClusterProvisioningService(
 
         serviceThreads.add(
             thread(start = true, name = "instance-coordinator") {
-                instanceThreads.forEach { it.join() }
-                instancesReady.countDown()
+                try {
+                    instanceThreads.forEach { it.join() }
+                } finally {
+                    instancesReady.countDown()
+                    callbacks.onInstancesLaunched()
+                }
             },
         )
 
@@ -416,31 +371,19 @@ class DefaultClusterProvisioningService(
     }
 
     /**
-     * Launches [spec]'s missing instances and waits until they are running with their status
-     * checks passed.
-     *
-     * [report] receives each RunInstances batch's hosts the moment the batch is launched, before
-     * any wait, so a failure later in the launch, in the running wait, in the status check or in
-     * the IP refresh still leaves every launched instance recorded. It receives the same hosts
-     * again, by alias, once their public IPs are known.
+     * Launches [spec]'s missing instances. [report] receives each RunInstances batch's hosts the
+     * moment the batch is launched, so every launched instance is recorded and its pipeline starts
+     * at once. The running and status-check waits are each node's own (`bringup/InstanceTracker`),
+     * so one slow instance never holds up the rest of its type.
      */
     private fun createInstancesForType(
         spec: InstanceSpec,
         infraContext: InfrastructureContext,
         report: (List<ClusterHost>) -> Unit,
     ) {
-        val config = spec.creationConfig(infraContext)
-
-        val createdInstances =
-            ec2InstanceService.createInstances(
-                config,
-            ) { launched -> report(launched.map(CreatedInstance::toClusterHost)) }
-
-        val instanceIds = createdInstances.map { it.instanceId }
-        ec2InstanceService.waitForInstancesRunning(instanceIds)
-        ec2InstanceService.waitForInstanceStatusOk(instanceIds)
-
-        report(ec2InstanceService.updateInstanceIps(createdInstances).map(CreatedInstance::toClusterHost))
+        ec2InstanceService.createInstances(spec.creationConfig(infraContext)) { launched ->
+            report(launched.map(CreatedInstance::toClusterHost))
+        }
     }
 
     private fun createOpenSearchDomain(

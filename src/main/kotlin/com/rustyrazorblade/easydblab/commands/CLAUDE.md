@@ -271,13 +271,14 @@ Results are keyed by position, never by alias — two hosts sharing an alias wou
 misattribute each other's failure.
 
 Both take either a hosts map with a server type and alias filter, or a plain `List<ClusterHost>`
-for hosts of mixed types (`up` passes every node, control first, for registry TLS; the SSH
-readiness wait passes the hosts still pending). Never pack a mixed list under one server type.
+for hosts of mixed types (`up` passes every node when it pushes the environment files again
+after db0 was replaced). Never pack a mixed list under one server type.
 
 With `parallel = true` both run on at most `Constants.Scale.HOST_CONCURRENCY` (50) hosts at once,
 through `services/BoundedParallel`; at 1,000 nodes one thread per host would open 1,000 SSH
-sessions from the operator's machine. K3s agent setup and the Cilium node image check use the
-same pool. Per-node work that `up` runs (db setup, AxonOps, registry TLS) is parallel.
+sessions from the operator's machine. `up` does not fan out this way for node bring-up: each
+node runs its own pipeline (`services/bringup/`), whose SSH steps share one session limit,
+`Constants.Scale.HOST_CONCURRENCY`. AxonOps on the ready db nodes still uses `withHosts`.
 
 ## Invoking AMI-Baked Scripts At Runtime
 

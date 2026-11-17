@@ -53,16 +53,23 @@ interface NodeSteps {
 }
 
 /**
- * The control node's own steps (design D2): the workspace files, the operator's route into the
- * cluster, the registry, the control plane and its network plugin. A port, as [NodeSteps] is.
+ * The operator's side of the control node's steps: the workspace files and the route from this
+ * machine into the cluster. The command running the bring-up provides it, because both are about
+ * the workspace and the operator's machine, not the cluster.
  */
-interface ControlNodeSteps {
+interface OperatorRoute {
     /** Writes the workspace files (SSH config, environment files, database config) for the hosts known now. */
     fun writeWorkspace()
 
     /** Opens the operator's route to the cluster: the VPN and its route check, or the SOCKS tunnel. */
     fun connect(control: ClusterHost)
+}
 
+/**
+ * The control node's own steps (design D2): the workspace files, the operator's route into the
+ * cluster, the registry, the control plane and its network plugin. A port, as [NodeSteps] is.
+ */
+interface ControlNodeSteps : OperatorRoute {
     /** Creates the registry certificate and makes [control] serve it. */
     fun prepareRegistry(control: ClusterHost)
 

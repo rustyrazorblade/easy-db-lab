@@ -37,13 +37,18 @@ Stop MUST preserve data; data is only deleted on uninstall. Starting after a sto
 - **WHEN** data is written to PostgreSQL, `postgres stop` is run, and then `postgres start` is run again
 - **THEN** the previously written data is accessible without any restore step.
 
+#### Scenario: Data survives stop and start on a provisioned class
+- **GIVEN** a recorded kit StorageClass that reclaims with `Retain`
+- **WHEN** `postgres stop` deletes the Cluster and CNPG deletes its claims, and `postgres start` is run
+- **THEN** the `kit-storage` step (`rebind-released: true`) reopens the Released volumes before the Cluster is applied, and the new claims bind them, so the data is accessible.
+
 #### Scenario: Uninstall deletes data
-- **WHEN** the user runs `postgres uninstall`
-- **THEN** the CNPG operator is removed and all PersistentVolumes for db nodes are deleted.
+- **WHEN** the user runs `postgres uninstall` on local volumes
+- **THEN** the CNPG operator is removed and the instance's PVs, its class `edl-local-<instance>` and its node directories are deleted.
 
 #### Scenario: First start after fresh install
 - **WHEN** `postgres start` is run after a fresh install with no prior starts
-- **THEN** PVs are created via `platform-pvs` and the Cluster CR is deployed successfully.
+- **THEN** the `kit-storage` step readies the instance's storage, and the Cluster CR, whose storage names `__KIT_STORAGE_CLASS__` at `--storage-size` with no selector, is deployed successfully.
 
 ### Requirement: SQL Execution
 

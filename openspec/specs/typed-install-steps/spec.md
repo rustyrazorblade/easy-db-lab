@@ -33,7 +33,8 @@ The CLI SHALL support the following step types:
 | `kustomize` | Apply a kustomize overlay via `kubectl apply -k` |
 | `wait` | Wait for a K8s resource to reach a condition |
 | `delete` | Delete a K8s resource |
-| `platform-pvs` | Create local PersistentVolumes via the platform service |
+| `kit-storage` | Ready a kit's storage: on owned nodes its `edl-local-<kit>` class and local PVs, on a provisioned class a Retain check |
+| `kit-storage-delete` | Release a kit's local storage on uninstall: its PVs, class and node directories; nothing on a provisioned class |
 | `configmap` | Create or update a ConfigMap |
 | `label` | Add labels to cluster nodes |
 | `exec` | Run a command inside a running pod |

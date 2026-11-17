@@ -50,7 +50,10 @@ A name uses the longest entry that is a prefix of it at a `-`, else the entry of
 With no `--java`, the CLI uses the JDK the cluster state records for the version on that node,
 else the profile build's `java`, else the highest supported JDK. `--java N` outside the supported
 list fails before any node changes and lists the supported JDKs. A version with no list at all
-needs `--java`. Python is `--python`, else the profile build's `python`, else 3.11.9.
+needs `--java`. Python is `--python`, else the profile build's `python`, else 3.11.9. cqlsh on the
+node runs under that Python: the node environment sets `CQLSH_PYTHON=/usr/bin/python`, the
+alternative `use` switches. Without it, cqlsh picks the distro `python3`, where the `six` that a 4.x
+release bundles does not import.
 
 ## Quick Start
 

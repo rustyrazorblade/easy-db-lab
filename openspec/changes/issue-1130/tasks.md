@@ -66,17 +66,17 @@
 
 ## 9. Local gates
 
-- [ ] 9.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (in a build-engineer subagent); no new `@Suppress`, threshold change or baseline entry
+- [x] 9.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (in a build-engineer subagent); no new `@Suppress`, threshold change or baseline entry
 
 ## 10. Real AWS test (`requires-aws`, `requires-ami-bake`)
 
-- [ ] 10.1 `./gradlew installDist`, then `build-image`; record the AMI IDs in the state file
-- [ ] 10.2 A new node from the AMI has no version under `/usr/local/cassandra` and no `/etc/cassandra_versions.yaml`
-- [ ] 10.3 A 3-node cluster with the off-hours tag that WORKFLOW.md names: `cassandra list` before `init` (no cluster) and after `up`; then `cassandra use 5.0` (ASF, JDK 17, cache miss then a second cluster or node shows a cache hit), `start`, `nodetool status`
-- [ ] 10.4 `cassandra use 4.1.7` (ASF, not in any file), `start`; `cassandra use 5.0-rustyrazorblade-HEAD` (cassandra-builds), `start`, JDK checked on the node; a second `use` of the same version downloads nothing
-- [ ] 10.5 `cassandra use 5.0.6 --java 21` fails and lists 11 and 17; a bad name fails before any node changes
+- [x] 10.1 `./gradlew installDist`, then `build-image`; record the AMI IDs in the state file
+- [x] 10.2 A new node from the AMI has no version under `/usr/local/cassandra` and no `/etc/cassandra_versions.yaml`
+- [x] 10.3 A 3-node cluster with the off-hours tag that WORKFLOW.md names: `cassandra list` before `init` (no cluster) and after `up`; then `cassandra use 5.0` (ASF, JDK 17, cache miss then a second cluster or node shows a cache hit), `start`, `nodetool status`
+- [x] 10.4 `cassandra use 4.1.7` (ASF, not in any file), `start`; `cassandra use 5.0-rustyrazorblade-HEAD` (cassandra-builds), `start`, JDK checked on the node; a second `use` of the same version downloads nothing
+- [x] 10.5 `cassandra use 5.0.6 --java 21` fails and lists 11 and 17; a bad name fails before any node changes
 - [ ] 10.6 With AxonOps on: `start` on 4.1 installs the agent and it connects; on 5.0 with JDK 21, `start` fails before Cassandra starts and names `--skip-axonops`; `start --skip-axonops` starts on JDK 21
 - [ ] 10.7 `cassandra build` (local) then `cassandra use <build>` from the catalog; `cassandra install <name> --url <git> --branch <b> --java 11` builds as before
-- [ ] 10.7a A profile build (a yaml in the profile `cassandra_versions/` directory with a tarball URL and `java`): `cassandra list` shows it with source `profile`; `cassandra use <it>` installs it with that JDK
-- [ ] 10.7b `cassandra stop`, then `cassandra install 5.0-HEAD --reinstall`: the node downloads again and the record is updated; `cassandra start` works; with Cassandra running, the reinstall of the active version is refused
+- [x] 10.7a A profile build (a yaml in the profile `cassandra_versions/` directory with a tarball URL and `java`): `cassandra list` shows it with source `profile`; `cassandra use <it>` installs it with that JDK
+- [x] 10.7b `cassandra stop`, then `cassandra install 5.0-HEAD --reinstall`: the node downloads again and the record is updated; `cassandra start` works; with Cassandra running, the reinstall of the active version is refused
 - [ ] 10.8 `down`; put the commands, their output and the AWS-side result in the PR

@@ -209,6 +209,23 @@ else
   fail "expected 'Waiting for JMX' and a final OK, got: ${OUTPUT}"
 fi
 
+# --- sjk-mx reads JMX over the local socket ---------------------------------------
+# Attaching to the Cassandra pid fails on JDK 8 ("Failed to access MBean server"): root cannot
+# attach to a JVM another user owns.  sjk-mx connects to the local JMX port instead, which works
+# on every JDK the release-line table selects.
+SJK_DIR="${SANDBOX}/sjk"
+mkdir -p "$SJK_DIR"
+printf '#!/bin/bash\nexec "$@"\n' >"${SJK_DIR}/sudo"
+printf '#!/bin/bash\necho "$*" >"%s/java.args"\n' "$STATE" >"${SJK_DIR}/java"
+chmod +x "${SJK_DIR}"/*
+PATH="${SJK_DIR}:${PATH}" bash "${SCRIPT_DIR}/sjk-mx" -b org.apache.cassandra.db:type=StorageService -mg -f OperationMode
+SJK_ARGS="$(cat "${STATE}/java.args" 2>/dev/null)"
+if [[ "$SJK_ARGS" == *"mx -s localhost:7199 -b org.apache.cassandra.db:type=StorageService -mg -f OperationMode"* ]]; then
+  pass "sjk-mx connects to the local JMX port and passes its arguments through"
+else
+  fail "sjk-mx should connect with -s localhost:7199, ran java ${SJK_ARGS}"
+fi
+
 # --- Cassandra is not running at all ---------------------------------------------
 run_script PID_GONE_AT=1
 if [[ "$STATUS" == "1" && "$OUTPUT" == *"CASSANDRA NOT RUNNING: FAIL"* ]]; then

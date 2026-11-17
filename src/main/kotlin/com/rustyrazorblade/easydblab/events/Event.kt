@@ -520,7 +520,8 @@ sealed interface Event {
             val hostCount: Int,
             val hostsFilter: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "Installing version $version on $hostCount hosts, filter: $hostsFilter"
+            override fun toDisplayString(): String =
+                "Installing version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}"
         }
 
         /** `use-cassandra` failed on [host], so [host] does not run [version]; [reason] is why. */

@@ -78,6 +78,22 @@ else
   pass "install_cassandra.sh names no version file"
 fi
 
+# cqlsh runs under the Python the CLI selected. Every bundled cqlsh wrapper tries `python3` first,
+# which on the AMI is the distro Python (3.12+), where a 4.x cqlsh's bundled six fails to import.
+# CQLSH_PYTHON makes the wrapper use `python`, the alternative use-cassandra switches to --python.
+ENVIRONMENT_FILE="${SCRIPT_DIR}/../environment"
+USE_CASSANDRA="${SCRIPT_DIR}/../bin/use-cassandra"
+if grep -qx 'CQLSH_PYTHON=/usr/bin/python' "$ENVIRONMENT_FILE"; then
+  pass "the node environment points cqlsh at /usr/bin/python"
+else
+  fail "the node environment does not set CQLSH_PYTHON=/usr/bin/python"
+fi
+if grep -q 'update-alternatives --set python ' "$USE_CASSANDRA"; then
+  pass "use-cassandra switches the /usr/bin/python alternative that cqlsh uses"
+else
+  fail "use-cassandra no longer switches the python alternative CQLSH_PYTHON names"
+fi
+
 echo
 echo "${tests_run} tests, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

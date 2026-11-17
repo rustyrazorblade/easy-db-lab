@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitMetrics
@@ -24,10 +25,12 @@ class BuiltinKitFixture(
     private val kitName: String,
     private val templateService: TemplateService,
     kitStorageClass: String? = null,
+    roleSelectors: RoleSelectors? = null,
 ) {
     /**
      * A cluster with one control node, two db nodes and one app node, enough to resolve every
-     * template variable. Its kit storage is local volumes, or the provisioned [kitStorageClass].
+     * template variable. Its kit storage is local volumes, or the provisioned [kitStorageClass]; its
+     * role selectors are [roleSelectors], or the owned nodes' when null.
      */
     private val clusterState =
         ClusterState(
@@ -39,6 +42,7 @@ class BuiltinKitFixture(
                     ServerType.Cassandra to listOf(host("db0", "10.0.1.10"), host("db1", "10.0.2.10")),
                     ServerType.Stress to listOf(host("app0", "10.0.3.10")),
                 ),
+            roleSelectors = roleSelectors,
         )
 
     /** The kit's parsed `kit.yaml`. */

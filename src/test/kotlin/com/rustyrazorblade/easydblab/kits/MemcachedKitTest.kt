@@ -57,14 +57,7 @@ class MemcachedKitTest : BaseKoinTest() {
         val deployment = deployment()
 
         assertThat(deployment.spec.replicas).isEqualTo(1)
-        val terms =
-            deployment.spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution
-                .nodeSelectorTerms
-        assertThat(terms.flatMap { it.matchExpressions })
-            .anySatisfy { expr ->
-                assertThat(expr.key).isEqualTo("type")
-                assertThat(expr.values).containsExactly("db")
-            }
+        assertThat(deployment.spec.template.spec.nodeSelector).containsExactlyEntriesOf(mapOf("type" to "db"))
     }
 
     @Test

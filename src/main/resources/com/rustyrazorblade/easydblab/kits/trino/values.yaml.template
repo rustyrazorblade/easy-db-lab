@@ -13,9 +13,7 @@ image:
   tag: "__VERSION__"
 
 coordinator:
-  nodeSelector:
-    type: app
+  nodeSelector: __APP_NODE_SELECTOR__
 
 worker:
-  nodeSelector:
-    type: app
+  nodeSelector: __APP_NODE_SELECTOR__

@@ -44,15 +44,7 @@ spec:
       # user (uid and gid 11211), which needs group write access to create the extstore file.
       securityContext:
         fsGroup: 11211
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: type
-                    operator: In
-                    values:
-                      - db
+      nodeSelector: __DB_NODE_SELECTOR__
       containers:
         - name: memcached
           image: memcached:1.6-alpine

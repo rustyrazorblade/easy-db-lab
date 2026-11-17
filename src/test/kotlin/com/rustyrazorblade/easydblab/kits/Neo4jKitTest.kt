@@ -66,14 +66,7 @@ class Neo4jKitTest : BaseKoinTest() {
         val sts = statefulSet()
 
         assertThat(sts.spec.replicas).isEqualTo(1)
-        assertThat(
-            sts.spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution
-                .nodeSelectorTerms
-                .flatMap { it.matchExpressions },
-        ).anySatisfy { expr ->
-            assertThat(expr.key).isEqualTo("type")
-            assertThat(expr.values).containsExactly("db")
-        }
+        assertThat(sts.spec.template.spec.nodeSelector).containsExactlyEntriesOf(mapOf("type" to "db"))
         assertThat(env(neo4jContainer(), "NEO4J_AUTH").value).isEqualTo("none")
     }
 

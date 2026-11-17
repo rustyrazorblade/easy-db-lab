@@ -152,17 +152,8 @@ class ClickHouseKitTest : BaseKoinTest() {
 
         assertThat(podTemplate.get<Map<String, String>>("template", "metadata", "labels"))
             .containsEntry("app.kubernetes.io/instance", "clickhouse")
-        val terms =
-            podTemplate.get<List<Map<String, Any>>>(
-                "template",
-                "spec",
-                "affinity",
-                "nodeAffinity",
-                "requiredDuringSchedulingIgnoredDuringExecution",
-                "nodeSelectorTerms",
-            )
-        assertThat(terms.flatMap { it["matchExpressions"] as List<*> })
-            .containsExactly(mapOf("key" to "type", "operator" to "In", "values" to listOf("db")))
+        assertThat(podTemplate.get<Map<String, String>>("template", "spec", "nodeSelector"))
+            .containsExactlyEntriesOf(mapOf("type" to "db"))
     }
 
     /** The CHK's `spec.configuration.settings`, each value as a string. */

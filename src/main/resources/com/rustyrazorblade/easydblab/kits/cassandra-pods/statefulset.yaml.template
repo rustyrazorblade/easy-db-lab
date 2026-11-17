@@ -23,8 +23,7 @@ spec:
         easydblab/kit: cassandra-pods
     spec:
       terminationGracePeriodSeconds: 120
-      nodeSelector:
-        type: db
+      nodeSelector: __DB_NODE_SELECTOR__
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

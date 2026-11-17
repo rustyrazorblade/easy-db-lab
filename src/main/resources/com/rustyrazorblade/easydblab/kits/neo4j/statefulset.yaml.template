@@ -28,15 +28,7 @@ spec:
       # for the kit's own neo4j-nodeport Service and crash-loop the pod. The official Helm chart
       # turns them off for the same reason.
       enableServiceLinks: false
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: type
-                    operator: In
-                    values:
-                      - db
+      nodeSelector: __DB_NODE_SELECTOR__
       # The OpenTelemetry Java agent comes from a pinned image through an init container, not from
       # a host path, so the pod runs on any node.
       initContainers:

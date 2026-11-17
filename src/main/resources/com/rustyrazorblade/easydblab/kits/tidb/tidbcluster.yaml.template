@@ -31,8 +31,7 @@ spec:
       storage: __STORAGE_SIZE__
     storageClassName: __KIT_STORAGE_CLASS__
     config: {}
-    nodeSelector:
-      type: app
+    nodeSelector: __APP_NODE_SELECTOR__
 
   tidb:
     baseImage: pingcap/tidb
@@ -59,8 +58,7 @@ spec:
         param = 1.0
       [opentracing.reporter]
         local-agent-host-port = "__OTEL_COLLECTOR_HOST__:6831"
-    nodeSelector:
-      type: app
+    nodeSelector: __APP_NODE_SELECTOR__
 
   tikv:
     baseImage: pingcap/tikv
@@ -69,8 +67,7 @@ spec:
       storage: __STORAGE_SIZE__
     storageClassName: __KIT_STORAGE_CLASS__
     config: {}
-    nodeSelector:
-      type: db
+    nodeSelector: __DB_NODE_SELECTOR__
 
   tiflash:
     baseImage: pingcap/tiflash
@@ -80,5 +77,4 @@ spec:
           requests:
             storage: __STORAGE_SIZE__
         storageClassName: __KIT_STORAGE_CLASS__
-    nodeSelector:
-      type: db
+    nodeSelector: __DB_NODE_SELECTOR__

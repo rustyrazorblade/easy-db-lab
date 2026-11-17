@@ -120,15 +120,7 @@ spec:
           containers:
             - name: clickhouse
               image: clickhouse/clickhouse-server:__VERSION__
-          affinity:
-            nodeAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                nodeSelectorTerms:
-                  - matchExpressions:
-                      - key: type
-                        operator: In
-                        values:
-                          - db
+          nodeSelector: __DB_NODE_SELECTOR__
     volumeClaimTemplates:
       - name: data
         spec:

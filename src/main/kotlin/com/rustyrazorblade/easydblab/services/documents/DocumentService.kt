@@ -45,11 +45,12 @@ data class UploadedDocuments(
 )
 
 /**
- * A test's documents: the operator's markdown files in the test's folder in the account bucket,
+ * The documents an operator uploads: markdown files stored in the cluster's folder in the account bucket,
  * `reports/<tenant>/<name>-<id>/`, each with an HTML copy, and one `index.html` that holds them all
- * for Grafana. It uses the operator's own credentials, so it works before and after `down`.
+ * for Grafana.
+ * It uses the operator's own credentials, so it works before and after `down`.
  */
-interface TestDocumentService {
+interface DocumentService {
     /**
      * Stores [files] in the test's folder of [clusterState], each with its HTML copy, and rebuilds the
      * index. A file with the name of a stored document replaces it.
@@ -66,12 +67,12 @@ interface TestDocumentService {
 }
 
 /**
- * Default [TestDocumentService] over the [ObjectStore]. Every HTML page is uploaded from a local
+ * Default [DocumentService] over the [ObjectStore]. Every HTML page is uploaded from a local
  * `.html` file, so S3 stores it as `text/html`.
  */
-class DefaultTestDocumentService(
+class DefaultDocumentService(
     private val objectStore: ObjectStore,
-) : TestDocumentService {
+) : DocumentService {
     override fun upload(
         clusterState: ClusterState,
         files: List<File>,

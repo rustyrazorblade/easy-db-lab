@@ -209,6 +209,9 @@ object Constants {
         /** One attempt of a node's image check. */
         const val IMAGE_CHECK_TIMEOUT_SECONDS = 120L
 
+        /** Attempts of a node's image check that could not run, before the node is replaced. */
+        const val IMAGE_CHECK_ATTEMPTS = 2
+
         /** One attempt of a control node step: the tunnel, the registry certificate, the K3s server, the CNI. */
         const val CONTROL_STEP_TIMEOUT_SECONDS = 900L
 

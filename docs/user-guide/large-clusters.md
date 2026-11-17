@@ -135,7 +135,9 @@ it `shutting-down`, `terminated`, `stopping` or `stopped`), is replaced:
    earlier `up`, may have registered.
 
 An instance that ended is replaced at once, with no retry. A missing Cilium node fix is not
-replaced, because a new instance from the same AMI would lack the same files.
+replaced, because a new instance from the same AMI would lack the same files. An image check
+that could not run at all, for example because its SSH command died, is retried and replaced
+like any other step.
 
 Each node may be replaced twice, so one alias uses at most 3 instances. The whole cluster may
 make at most `max(3, ceil(5% of the nodes))` replacements: 3 up to 60 nodes, 50 at 1,000. The

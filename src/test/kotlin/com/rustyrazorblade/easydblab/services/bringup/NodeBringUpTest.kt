@@ -205,6 +205,25 @@ class NodeBringUpTest {
         assertThat(result.nodes.getValue("db0")).isInstanceOf(NodeEnd.Ready::class.java)
     }
 
+    /**
+     * Only an image that lacks the fixes rules out a replacement. A check that could not run (its
+     * SSH command died, as when the instance is going away) says nothing about the image, so it is
+     * retried and then replaced like any other step.
+     */
+    @Test
+    fun `an image check that cannot run is retried, then the node is replaced`() {
+        val h = harness(dbs = 2)
+        h.settings = h.settings.copy(cni = CniMode.Cilium)
+        h.steps.scripts["db1 image"] = { host, _ -> check(host.instanceId != "i-db1") { "No exit status returned for command" } }
+
+        val result = h.run()
+
+        assertThat(h.steps.callsOf("image").filter { it.startsWith("db1") }).containsExactly("db1 i-db1", "db1 i-db1", "db1 i-db1-1")
+        assertThat(result.nodes.getValue("db1")).isEqualTo(NodeEnd.Ready(result.nodes.getValue("db1").host, 1))
+        assertThat(h.eventsOf<Event.Provision.NodeReplacing>().single().step).isEqualTo("image-check")
+        assertThat(h.eventsOf<Event.Cilium.NodeImageMissingFixes>()).isEmpty()
+    }
+
     @Test
     fun `no node joins before the gate opens`() {
         val h = harness(dbs = 2)

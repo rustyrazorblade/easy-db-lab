@@ -207,7 +207,7 @@ A node step that fails MUST be retried under that step's policy.  When its attem
 6. start the node's pipeline again;
 7. before the replacement's first join attempt, delete the alias's Node object and its K3s node password, whatever step the old instance stopped at.  The old instance may have registered in this `up` or in an earlier one, so `up` MUST NOT skip this because the old instance did not reach its join step.  A first instance MUST NOT delete them.
 
-A replaced instance MUST always be terminated before its replacement is launched.  An instance that EC2 ends on its own (shutting-down, terminated, stopping or stopped) during any step MUST be replaced at once, with no retry.  A Cilium node image check failure MUST NOT be replaced: it MUST fail `up`, as before.  A replacement launch that fails for capacity, or whose dry run is refused, MUST fail the node and start no further replacement for it.  The control node MUST NOT be replaced: a control node step that fails after its retries MUST fail `up` at once.  Every instance launched so far MUST stay running and recorded.
+A replaced instance MUST always be terminated before its replacement is launched.  An instance that EC2 ends on its own (shutting-down, terminated, stopping or stopped) during any step MUST be replaced at once, with no retry.  A Cilium node image check that finds the node fixes missing MUST NOT be replaced: it MUST fail `up`, as before.  An image check that could not run (its remote command failed) says nothing about the image, so it MUST be retried and replaced like any other node step.  A replacement launch that fails for capacity, or whose dry run is refused, MUST fail the node and start no further replacement for it.  The control node MUST NOT be replaced: a control node step that fails after its retries MUST fail `up` at once.  Every instance launched so far MUST stay running and recorded.
 
 #### Scenario: A step that fails once is retried
 - **GIVEN** a db node whose registry TLS step fails once and then succeeds
@@ -237,6 +237,11 @@ A replaced instance MUST always be terminated before its replacement is launched
 - **GIVEN** a Cilium cluster whose node fails the node image check
 - **WHEN** the check fails
 - **THEN** `up` fails naming the node and the missing files, and no replacement is launched
+
+#### Scenario: An image check that cannot run is retried and replaced
+- **GIVEN** a Cilium cluster whose node's image check command fails over SSH (no exit status)
+- **WHEN** the check still cannot run after its retries
+- **THEN** the node is replaced like any other failed step, and no missing-fixes failure is reported
 
 #### Scenario: A control node failure fails up
 - **GIVEN** a control node whose K3s server does not start after its retries

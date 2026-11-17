@@ -58,8 +58,11 @@ data class BringUpTiming(
     /** The SSH poll's own deadline decides; the step's bound only backs it up. */
     val sshPolicy: StepPolicy get() = once(sshTimeout.plus(sshInterval).plus(sshInterval))
 
-    /** An image a new instance would share, so a failure is not replaceable. */
-    val imageCheckPolicy: StepPolicy get() = StepPolicy(1, imageCheck, replaceable = false)
+    /**
+     * Running the image check: retried, then replaced, since a check that could not run says
+     * nothing about the image. An image found to lack the fixes is never replaced ([InstanceRun.checkImage]).
+     */
+    val imageCheckPolicy: StepPolicy get() = StepPolicy(Constants.Scale.IMAGE_CHECK_ATTEMPTS, imageCheck, replaceable = true)
 
     /** A control node step: retried, never replaced. */
     val controlPolicy: StepPolicy get() = StepPolicy(Constants.Scale.CONTROL_STEP_ATTEMPTS, controlStep, replaceable = false)

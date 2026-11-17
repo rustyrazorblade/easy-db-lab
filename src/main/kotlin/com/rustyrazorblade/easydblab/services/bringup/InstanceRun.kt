@@ -65,15 +65,21 @@ internal class InstanceRun(
         step(PipelineStep.SSH, run.timing.sshPolicy) { awaitSsh() }
     }
 
-    /** Under Cilium, fails for good when the image lacks the node fixes: a new instance has the same image. */
+    /**
+     * Under Cilium, fails for good when the image lacks the node fixes: a new instance has the same
+     * image. A check that could not run (its SSH command died) says nothing about the image, so it
+     * is retried and replaced like any other step.
+     */
     fun checkImage() {
         if (run.settings.cni != CniMode.Cilium) return
-        step(PipelineStep.IMAGE_CHECK, run.timing.imageCheckPolicy) {
-            val missing = run.ssh.withSession { run.ports.nodeSteps.missingImageFixes(host) }
-            if (missing.isNotEmpty()) {
-                run.eventBus.emit(Event.Cilium.NodeImageMissingFixes(listOf(host.alias), missing))
-                error("its image lacks the Cilium node fixes (missing ${missing.joinToString(", ")}); rebuild the images")
+        val missing =
+            step(PipelineStep.IMAGE_CHECK, run.timing.imageCheckPolicy) {
+                run.ssh.withSession { run.ports.nodeSteps.missingImageFixes(host) }
             }
+        if (missing.isNotEmpty()) {
+            run.eventBus.emit(Event.Cilium.NodeImageMissingFixes(listOf(host.alias), missing))
+            val reason = "its image lacks the Cilium node fixes (missing ${missing.joinToString(", ")}); rebuild the images"
+            stop(PipelineStep.IMAGE_CHECK, reason, false, host)
         }
     }
 

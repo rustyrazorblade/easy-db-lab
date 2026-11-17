@@ -120,7 +120,7 @@ Each `NodeStep` has a resilience4j policy built with `RetryUtil`.  It uses the c
 | status checks | 1 | `INSTANCE_STATUS_TIMEOUT` | yes |
 | SSH ready | polls within `SSH_READY_TIMEOUT_SECONDS` | as today | yes |
 | setup | 2 | `NODE_SETUP_TIMEOUT_SECONDS` (900) | yes |
-| Cilium image check | 1 | as today | **no**, fails `up` (an AMI fault; a replacement has the same image) |
+| Cilium image check | 2 | as today | a check that finds files missing: **no**, fails `up` (an AMI fault; a replacement has the same image).  A check that could not run (its SSH command died): yes, like any step |
 | registry TLS | 3 | 120 s | yes |
 | join (configure + start + registered) | 2, the second runs `systemctl restart k3s-agent` | `NODE_REGISTRATION_TIMEOUT_SECONDS` (300) | yes |
 | Ready | 1 | `NODE_READY_TIMEOUT_SECONDS` (600) | yes |

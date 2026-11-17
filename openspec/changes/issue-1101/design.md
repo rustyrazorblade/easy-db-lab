@@ -110,7 +110,7 @@ Owner, 2026-11-16: every decision D1-D9 below is decided as its option (a). D6: 
 | hostPath agents, hostPort, hostNetwork, role selectors in kits / shell lib / stress, role pools, stress target, client CIDRs | #1101 |
 | Stress and presto/trino Pyroscope address (control IP → Service DNS), `buildJob` control-node requirement, `publishOnNode` removal | #1135 |
 
-On AWS either merge order works: a pod-network stress pod still reaches `controlIP:4040` while `publishOnNode` holds the host port. Off AWS, stress needs #1135 to drop the control-node requirement. To keep the conflict in `StressJobService` small, #1101 moves pod-spec work into `JavaAgentDelivery` and a placement step, leaving #1135 only the Pyroscope address line and the control-node lookup.
+Either merge order works: #1135 points stress at the Pyroscope Service (`pyroscope.default.svc:4040`, resolved through cluster DNS on any node) and drops `publishOnNode` and the control-node requirement, so no stress pod dials `controlIP:4040`. To keep the conflict in `StressJobService` small, #1101 moves pod-spec work into `JavaAgentDelivery` and a placement step, leaving #1135 only the Pyroscope address line and the control-node lookup.
 
 ## Risks / Trade-offs
 

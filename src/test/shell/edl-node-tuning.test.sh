@@ -76,7 +76,7 @@ EOF
 echo "\$*" >> "${WORK}/logger.log"
 EOF
   printf '#!/bin/bash\necho db0\n' > "${WORK}/bin/hostname"
-  printf '#!/bin/bash\nexit 7\n' > "${WORK}/bin/curl"
+  printf '#!/bin/bash\necho call >> "%s/curl.log"\nexit 7\n' "${WORK}" > "${WORK}/bin/curl"
   chmod +x "${WORK}"/bin/*
   : > "${WORK}/logger.log"
 }
@@ -122,6 +122,20 @@ if [[ "$(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")" == 8192 ]]; then
 else
   fail "expected 8192 flows per queue, got $(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")"
 fi
+
+# The kernel rounds rps_flow_cnt up to a power of two and reads that back, so a queue count that
+# is not a power of two must write the rounded share, and verify must accept it.
+for row in "3 16384" "6 8192" "12 4096"; do
+  read -r queues expected <<< "${row}"
+  setup 8 "${queues}"
+  run rps ens5 > /dev/null
+  actual=$(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")
+  if [[ "$actual" == "$expected" ]]; then
+    pass "${queues} receive queues each get the power-of-two share ${expected}"
+  else
+    fail "${queues} receive queues: expected ${expected} flows per queue, got ${actual}"
+  fi
+done
 
 # --- apply steers ENA links only ---
 setup 4 2
@@ -201,6 +215,28 @@ if [[ "$STATUS" -eq 0 && -z "$OUTPUT" ]]; then
   pass "verify passes on a tuned node"
 else
   fail "verify should pass, got ${STATUS}: ${OUTPUT}"
+fi
+
+# --- verify: a node with 3 queues passes with the rounded flow count the kernel reads back ---
+setup 4 3
+tuned_sysctls
+run apply > /dev/null
+for q in 0 1 2; do echo 16384 > "${SYS}/class/net/ens5/queues/rx-${q}/rps_flow_cnt"; done
+OUTPUT=$(run verify)
+STATUS=$?
+if [[ "$STATUS" -eq 0 && -z "$OUTPUT" ]]; then
+  pass "verify accepts the power-of-two flow count on 3 receive queues"
+else
+  fail "verify with 3 queues should pass, got ${STATUS}: ${OUTPUT}"
+fi
+
+# --- the instance type is read from metadata once per run, however many settings are skipped ---
+setup 2 1
+run apply > /dev/null
+if [[ $(wc -l < "${WORK}/curl.log") -le 2 && $(grep -c "unknown instance type" "${WORK}/logger.log") -eq 2 ]]; then
+  pass "one metadata lookup (token and type) serves every skip line"
+else
+  fail "expected at most 2 metadata calls for 2 skips, got $(wc -l < "${WORK}/curl.log"): $(cat "${WORK}/logger.log")"
 fi
 
 # --- verify: each kind of mismatch fails, naming the setting, the wanted and the read value ---

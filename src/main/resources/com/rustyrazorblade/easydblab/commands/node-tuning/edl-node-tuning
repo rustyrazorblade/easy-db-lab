@@ -38,21 +38,22 @@ say() {
   return 0
 }
 
-# The instance type from instance metadata (IMDSv2), or "unknown instance type".
+# The instance type from instance metadata (IMDSv2), or "unknown instance type". Looked up once
+# per run and kept in INSTANCE_TYPE, so several skip lines cost one metadata round trip.
+INSTANCE_TYPE="${EDL_INSTANCE_TYPE:-}"
 instance_type() {
-  if [ -n "${EDL_INSTANCE_TYPE:-}" ]; then
-    echo "$EDL_INSTANCE_TYPE"
-    return
+  if [ -z "$INSTANCE_TYPE" ]; then
+    token=$(curl -s -m 2 -X PUT http://169.254.169.254/latest/api/token \
+      -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2> /dev/null)
+    INSTANCE_TYPE=$(curl -s -m 2 -H "X-aws-ec2-metadata-token: $token" \
+      http://169.254.169.254/latest/meta-data/instance-type 2> /dev/null)
+    INSTANCE_TYPE="${INSTANCE_TYPE:-unknown instance type}"
   fi
-  token=$(curl -s -m 2 -X PUT http://169.254.169.254/latest/api/token \
-    -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2> /dev/null)
-  type=$(curl -s -m 2 -H "X-aws-ec2-metadata-token: $token" \
-    http://169.254.169.254/latest/meta-data/instance-type 2> /dev/null)
-  echo "${type:-unknown instance type}"
 }
 
 skip() {
-  say "skipped $1 on $(hostname): $(instance_type) $2"
+  instance_type
+  say "skipped $1 on $(hostname): $INSTANCE_TYPE $2"
 }
 
 # Writes [value] to [file]; a write the kernel refuses is reported by verify, not here.
@@ -101,10 +102,16 @@ rx_queues() {
   ls -d "$SYS/class/net/$1/queues"/rx-* 2> /dev/null
 }
 
+# Each queue's share of the flow table, rounded up to a power of two: the kernel rounds
+# rps_flow_cnt up that way and reads back the rounded value, so writing it already rounded makes
+# the write and verify agree for any queue count (3 queues: 10922 becomes 16384).
 flow_count() {
   count=$(rx_queues "$1" | wc -l)
   [ "$count" -gt 0 ] || count=1
-  echo $((RPS_FLOW_ENTRIES / count))
+  share=$((RPS_FLOW_ENTRIES / count))
+  flows=1
+  while [ "$flows" -lt "$share" ]; do flows=$((flows * 2)); done
+  echo "$flows"
 }
 
 # The kernel announces a new interface before it creates its receive queues, so a call from udev

@@ -110,7 +110,8 @@ below do reach pods, because pod traffic arrives on the node's ENA interfaces.
 - Every ENA interface has receive packet steering (RPS) and receive flow steering (RFS) on:
   - every receive queue steers to every CPU;
   - `net.core.rps_sock_flow_entries` is 32768;
-  - each queue's flow count is 32768 divided by the number of queues.
+  - each queue's flow count is 32768 divided by the number of queues, rounded up to a power of
+    two as the kernel stores it (3 queues get 16384 each).
 - A udev rule applies the same settings to an ENA interface that appears later, such as a
   secondary ENI that Cilium attaches for pod IPs. The rule file is `90-easydblab.rules`: it runs
   after udev gives the new interface its final name (`eth0` becomes `ens6`).

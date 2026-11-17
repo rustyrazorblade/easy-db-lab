@@ -17,13 +17,17 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.stress.StressCluster
+import com.rustyrazorblade.easydblab.configuration.stress.StressJobManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
+import com.rustyrazorblade.easydblab.services.StressJobConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PodSpec
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
+import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.client.utils.Serialization
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -38,8 +42,8 @@ import org.mockito.kotlin.whenever
  * connection can take it as its source port, and the listener fails to bind on its next restart.
  *
  * The ports come from the rendered manifests of every workload on the host network (declared
- * container and host ports, and the listen addresses and ports in their config) and from the
- * host services that no manifest names. A new fixed host port fails this test until it is
+ * container and host ports, the ports their `*PORT` environment variables name, and the listen
+ * addresses and ports in their config) and from the host services that no manifest names. A new fixed host port fails this test until it is
  * reserved.
  */
 class NodeTuningReservedPortsTest : BaseKoinTest() {
@@ -152,6 +156,24 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
             "ebpf-exporter" to EbpfExporterManifestBuilder().buildAllResources(),
             "beyla" to BeylaManifestBuilder(templates).buildAllResources(),
             "sidecar" to SidecarManifestBuilder(templates).buildAllResources("sidecar:test", "10.0.0.1", "test-1", "tenant"),
+            "stress" to stressJobs(),
+        )
+    }
+
+    /** The stress Job and the command Job, both on the host network of an app node. */
+    private fun stressJobs(): List<HasMetadata> {
+        val image = "ghcr.io/apache/cassandra-easy-stress:latest"
+        val config =
+            StressJobConfig(
+                jobName = "stress-test",
+                image = image,
+                args = listOf("run", "KeyValue"),
+                contactPoints = "10.0.0.2",
+            )
+        val cluster = StressCluster("us-west-2", "10.0.0.1", "test", "tenant", telemetryRedirect = null)
+        return listOf(
+            StressJobManifestBuilder.buildStressJob(config, cluster),
+            StressJobManifestBuilder.buildCommandJob("stress-command-test", image, listOf("list")),
         )
     }
 
@@ -160,6 +182,7 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
             when (it) {
                 is Deployment -> it.spec.template.spec
                 is DaemonSet -> it.spec.template.spec
+                is Job -> it.spec.template.spec
                 else -> null
             }
         }
@@ -175,6 +198,13 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
                     .flatMap { it.containers + it.initContainers.orEmpty() }
                     .flatMap { it.ports.orEmpty() }
                     .flatMap { listOfNotNull(it.containerPort, it.hostPort) }
+                    .forEach { ports.putIfAbsent(it, name) }
+                podSpecs(resources)
+                    .filter { it.hostNetwork == true }
+                    .flatMap { it.containers + it.initContainers.orEmpty() }
+                    .flatMap { it.env.orEmpty() }
+                    .filter { it.name.endsWith("PORT") }
+                    .mapNotNull { it.value?.toIntOrNull() }
                     .forEach { ports.putIfAbsent(it, name) }
                 val rendered = resources.joinToString("\n") { Serialization.asYaml(it) }
                 CONFIG_PORT
@@ -195,7 +225,12 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
     fun `every port a host-network workload binds is reserved`() {
         val ports = hostNetworkPorts()
         // The scan must see the backends; an empty result would pass vacuously.
-        assertThat(ports.keys).contains(Constants.K8s.MIMIR_HTTP_PORT, Constants.K8s.OTEL_GRPC_PORT, Constants.Yace.PORT)
+        assertThat(ports.keys).contains(
+            Constants.K8s.MIMIR_HTTP_PORT,
+            Constants.K8s.OTEL_GRPC_PORT,
+            Constants.Yace.PORT,
+            Constants.Stress.PROMETHEUS_PORT,
+        )
 
         val missing = ports.filterKeys { it !in reservedPorts() }
         assertThat(missing).describedAs("host-network ports missing from ip_local_reserved_ports, with the workload").isEmpty()

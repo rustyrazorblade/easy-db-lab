@@ -3,7 +3,9 @@
 # database starts. Installed to /etc/systemd/system/ and enabled by setup_instance.sh.
 [Unit]
 Description=easy-db-lab node tuning
-After=systemd-sysctl.service systemd-udev-trigger.service
+# network-online lets the one instance-metadata lookup for a skip line succeed; K3s waits for it too.
+Wants=network-online.target
+After=systemd-sysctl.service systemd-udev-trigger.service network-online.target
 Before=k3s.service k3s-agent.service cassandra.service cassandra-easy-stress.service
 
 [Service]

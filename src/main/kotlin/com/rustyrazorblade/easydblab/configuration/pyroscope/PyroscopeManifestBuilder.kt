@@ -12,12 +12,17 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
+import io.fabric8.kubernetes.api.model.EnvVar
+import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
+import io.fabric8.kubernetes.api.model.Volume
+import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
@@ -361,8 +366,7 @@ class PyroscopeManifestBuilder(
      *
      * @param telemetryRedirect when non-null, profiles are written to [TelemetryRedirect.profiles].
      */
-    @Suppress("LongMethod")
-    fun buildEbpfDaemonSet(telemetryRedirect: TelemetryRedirect? = null) =
+    fun buildEbpfDaemonSet(telemetryRedirect: TelemetryRedirect? = null): DaemonSet =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(EBPF_APP_LABEL)
@@ -385,38 +389,23 @@ class PyroscopeManifestBuilder(
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()
-            .addNewContainer()
+            .addToContainers(buildAlloyContainer(telemetryRedirect))
+            .addAllToVolumes(buildAlloyVolumes())
+            .endSpec()
+            .endTemplate()
+            .endSpec()
+            .build()
+
+    /** The privileged Alloy container: eBPF profiling plus the loopback profiles relay. */
+    private fun buildAlloyContainer(telemetryRedirect: TelemetryRedirect?): Container =
+        ContainerBuilder()
             .withName("alloy")
             .withImage(ALLOY_IMAGE)
             .withArgs(
                 "run",
                 "--server.http.listen-addr=0.0.0.0:$ALLOY_PORT",
                 "/etc/alloy/config.alloy",
-            ).addNewEnv()
-            .withName("HOSTNAME")
-            .withNewValueFrom()
-            .withNewFieldRef()
-            .withFieldPath("spec.nodeName")
-            .endFieldRef()
-            .endValueFrom()
-            .endEnv()
-            .addNewEnv()
-            .withName("CLUSTER_NAME")
-            .withValue(resolveClusterName())
-            .endEnv()
-            .addNewEnv()
-            .withName("PYROSCOPE_WRITE_URL")
-            .withValue(pyroscopeIngestBaseUrl(telemetryRedirect))
-            .endEnv()
-            .addNewEnv()
-            .withName("TENANT")
-            .withNewValueFrom()
-            .withNewConfigMapKeyRef()
-            .withName("cluster-config")
-            .withKey("tenant")
-            .endConfigMapKeyRef()
-            .endValueFrom()
-            .endEnv()
+            ).withEnv(buildAlloyEnv(telemetryRedirect))
             .withSecurityContext(
                 SecurityContextBuilder()
                     .withPrivileged(true)
@@ -433,21 +422,46 @@ class PyroscopeManifestBuilder(
                     .withName("sym-cache")
                     .withMountPath("/tmp/symb-cache")
                     .build(),
-            ).endContainer()
-            .addNewVolume()
-            .withName("config")
-            .withConfigMap(
-                ConfigMapVolumeSourceBuilder()
-                    .withName(EBPF_CONFIGMAP_NAME)
-                    .build(),
-            ).endVolume()
-            .addNewVolume()
-            .withName("sym-cache")
-            .withNewEmptyDir()
-            .endEmptyDir()
-            .endVolume()
-            .endSpec()
-            .endTemplate()
-            .endSpec()
-            .build()
+            ).build()
+
+    /** The env vars config.alloy reads with `sys.env(...)`, plus the node name Alloy reports as. */
+    private fun buildAlloyEnv(telemetryRedirect: TelemetryRedirect?): List<EnvVar> =
+        listOf(
+            EnvVarBuilder()
+                .withName("HOSTNAME")
+                .withNewValueFrom()
+                .withNewFieldRef()
+                .withFieldPath("spec.nodeName")
+                .endFieldRef()
+                .endValueFrom()
+                .build(),
+            EnvVarBuilder().withName("CLUSTER_NAME").withValue(resolveClusterName()).build(),
+            EnvVarBuilder().withName("PYROSCOPE_WRITE_URL").withValue(pyroscopeIngestBaseUrl(telemetryRedirect)).build(),
+            EnvVarBuilder()
+                .withName("TENANT")
+                .withNewValueFrom()
+                .withNewConfigMapKeyRef()
+                .withName("cluster-config")
+                .withKey("tenant")
+                .endConfigMapKeyRef()
+                .endValueFrom()
+                .build(),
+        )
+
+    /** The Alloy config ConfigMap and the symbol cache scratch directory. */
+    private fun buildAlloyVolumes(): List<Volume> =
+        listOf(
+            VolumeBuilder()
+                .withName("config")
+                .withConfigMap(
+                    ConfigMapVolumeSourceBuilder()
+                        .withName(EBPF_CONFIGMAP_NAME)
+                        .build(),
+                ).build(),
+            VolumeBuilder()
+                .withName("sym-cache")
+                .withNewEmptyDir()
+                .endEmptyDir()
+                .build(),
+        )
 }

@@ -77,9 +77,10 @@ class SetupInstance : PicoBaseCommand() {
             }
         }
 
-        // Cluster-up seeds desired profiling state here. The Pyroscope URL is the node-local relay in
-        // the Alloy agent, which forwards to the cluster's Pyroscope or the redirect target. That is what makes a freshly provisioned cluster
-        // profile CPU with no operator action: the node's reconciler picks this up on its next pass.
+        // Cluster-up seeds desired profiling state here, which is what makes a freshly provisioned
+        // cluster profile CPU with no operator action: the node's reconciler picks this up on its
+        // next pass. The Pyroscope URL is the node-local relay in the Alloy agent, which forwards
+        // to the cluster's Pyroscope or the redirect target.
         fun seedProfilingConfig(
             host: Host,
             clusterName: String,

@@ -28,6 +28,8 @@ Mimir, Loki, Tempo, the Pyroscope server and Grafana run in the Kubernetes pod n
 | 31320 | 4320 | Tempo OTLP gRPC receiver |
 | 31040 | 4040 | Pyroscope |
 
+The cluster's security group opens every TCP and UDP port to the VPC's own address range and only SSH to the addresses `init` and `ingress allow` name. So the NodePorts answer anything inside the VPC (EMR, another easy-db-lab cluster in the same VPC, a host where you run the export script) and nothing outside it: from your laptop, reach Grafana and the backends through the SOCKS tunnel or Tailscale, which arrive from a cluster node. No rule names a backend port.
+
 The Service and pod ports:
 
 | Port | Service |

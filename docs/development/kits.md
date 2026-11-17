@@ -537,12 +537,23 @@ Only series with a sample in the last five minutes are exported, so series left 
 that have since been replaced do not end up in the catalog. Export while the kit is running and
 being scraped.
 
-The script sources `env.sh`, so run it **from the cluster workspace** (the directory holding
-`env.sh`, `state.json` and `kubeconfig`), calling it by its path in your checkout:
+The script is a kit-development tool and is **not packaged**: the Homebrew and release
+distributions carry only `packer/` and the agents, so it needs a source checkout. It sources
+`env.sh`, so run it **from the cluster workspace** (the directory holding `env.sh`, `state.json`
+and `kubeconfig`), calling it by its path in your checkout:
 
 ```bash
 cd <cluster-workspace>
 <checkout>/bin/export-workload-metrics <kit>
+```
+
+It queries Mimir on its NodePort, `http://<control private IP>:31009/prometheus`, which is
+reachable from inside the VPC. Elsewhere, or where the backends are ClusterIP only, it fails
+naming that address; port-forward Mimir and pass its URL in `MIMIR_URL` instead:
+
+```bash
+kubectl port-forward svc/mimir 19009:9009 &
+MIMIR_URL=http://127.0.0.1:19009/prometheus <checkout>/bin/export-workload-metrics <kit>
 ```
 
 It writes `<cluster-workspace>/<kit>/metrics-catalog.json`, not the kit's resource directory.

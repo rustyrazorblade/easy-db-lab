@@ -646,6 +646,46 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `a base host carrying a scheme or a port is refused, pointing at the per-signal overrides`() {
+            // The base host is a node of a receiving easy-db-lab cluster; its ports are the
+            // NodePorts that cluster publishes. A plain external stack (Mimir on 9009, say) given
+            // here would derive endpoints that can never work, so init refuses it before writing
+            // anything and names the overrides that reach such a target.
+            listOf("http://10.0.0.9", "10.0.0.9:9009").forEach { host ->
+                val command = Init()
+                picocli.CommandLine(command).parseArgs("--redirect-telemetry", host)
+                command.clean = true
+
+                assertThatThrownBy { command.execute() }
+                    .isInstanceOf(IllegalArgumentException::class.java)
+                    .hasMessageContaining(host)
+                    .hasMessageContaining("easy-db-lab")
+                    .hasMessageContaining("--redirect-metrics-endpoint")
+            }
+
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+
+        @Test
+        fun `a base host with every signal overridden may be anything`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--redirect-telemetry",
+                "stack.example.com:9009",
+                "--redirect-metrics-endpoint",
+                "http://stack.example.com:9009/api/v1/push",
+                "--redirect-logs-endpoint",
+                "http://stack.example.com:3100/otlp",
+                "--redirect-traces-endpoint",
+                "stack.example.com:4317",
+                "--redirect-profiles-endpoint",
+                "http://stack.example.com:4040",
+            )
+
+            assertThat(command.redirectTelemetryProblem()).isNull()
+        }
+
+        @Test
         fun `execute fails fast naming a malformed override signal and provisions nothing`() {
             // The traces endpoint is a bare host:port; a URL with a scheme is malformed. Init must
             // abort before any cluster state is written, naming the offending signal.

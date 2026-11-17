@@ -304,7 +304,7 @@ Set the redirect target once, at `init`, with `--redirect-telemetry <host>`:
 easy-db-lab init --redirect-telemetry 10.0.0.9 --up
 ```
 
-`<host>` is the hostname or IP of the external stack.  The tool derives the four signal endpoints from that host and the NodePorts an easy-db-lab cluster publishes its backends on, so `<host>` is a node of the receiving cluster (its control node's private IP):
+`<host>` must be a node of another easy-db-lab cluster (its control node's private IP is the usual choice), given as a bare host or IP with no scheme and no port.  The tool derives the four signal endpoints from that host and the NodePorts an easy-db-lab cluster publishes its backends on:
 
 - Metrics: `http://<host>:31009/api/v1/push` (Mimir remote write)
 - Logs: `http://<host>:31100/otlp` (Loki OTLP ingest)
@@ -319,7 +319,7 @@ Redirect mode is a life-of-cluster choice made at `init`.  All four signals move
 
 ### Overriding Individual Endpoints
 
-If the external stack does not use the easy-db-lab port layout, override any signal.  An override wins over the derived value; the other signals still derive from the base host.
+An override wins over the derived value; the other signals still derive from the base host.  A stack that is not an easy-db-lab cluster (a plain Mimir on 9009, Loki on 3100 and so on) publishes none of these NodePorts, so set all four overrides for it.  `init` refuses a `<host>` that carries a scheme or a port unless all four are set, because the derived endpoints could never work.
 
 ```bash
 easy-db-lab init --redirect-telemetry 10.0.0.9 \

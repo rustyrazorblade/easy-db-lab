@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
 import com.rustyrazorblade.easydblab.events.Event
@@ -195,7 +196,10 @@ class DefaultEMRProvisioningService(
         // Pyroscope NodePort on the control node. On a redirect cluster the local Pyroscope never
         // exists, so they ship to the external stack instead.
         val pyroscopeServerAddress =
-            clusterState.initConfig?.telemetryRedirect?.profiles ?: pyroscopeNodePortUrl(controlIp)
+            clusterState.initConfig?.telemetryRedirect?.profiles
+                ?: pyroscopeNodePortUrl(controlIp).also {
+                    ObservabilityHosting.from(clusterState).publishing.requireNodePorts("EMR's Spark Pyroscope agent")
+                }
         val pyroscopeFlags =
             listOf(
                 "-javaagent:${Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH}",

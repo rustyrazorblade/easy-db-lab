@@ -27,7 +27,8 @@ enum class ServicePublishing {
      * NodePort Service a node port, picking a random one in 30000-32767 when none is set, which would
      * publish an internal port (gRPC, OTLP HTTP and the like) and could take a port a kit claims
      * later. Nothing dials those ports through the Service; the pod still listens on them. A mapped
-     * name the Service does not have is refused rather than silently left unpublished.
+     * name the Service does not have, or an empty mapping, is refused rather than silently left
+     * unpublished.
      */
     fun publish(
         service: Service,
@@ -40,6 +41,9 @@ enum class ServicePublishing {
                         .map { it.name }
                         .toSet()
                 val unknown = nodePorts.keys - names
+                require(nodePorts.isNotEmpty()) {
+                    "Service ${service.metadata.name} maps no port to a node port; a NodePort Service needs at least one of $names"
+                }
                 require(unknown.isEmpty()) {
                     "Service ${service.metadata.name} has no port named $unknown to publish; its ports are $names"
                 }
@@ -55,4 +59,17 @@ enum class ServicePublishing {
             }
             ClusterIp -> service
         }
+
+    /**
+     * Fails naming [caller] when this publishing puts nothing on a node port. A caller outside the
+     * pod network that dials `<node IP>:<NodePort>` under [ClusterIp] would only time out, so it is
+     * refused before it is configured.
+     */
+    fun requireNodePorts(caller: String) {
+        check(this == NodePorts) {
+            "$caller needs the observability NodePorts, but this cluster publishes its backends as ClusterIP " +
+                "Services only (an environment easy-db-lab does not own). Reach them with kubectl port-forward, " +
+                "as `status` prints, or redirect telemetry to a cluster easy-db-lab provisioned."
+        }
+    }
 }

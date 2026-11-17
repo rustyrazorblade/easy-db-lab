@@ -411,7 +411,7 @@ class PortableObservabilityPlacementIntegrationTest {
     @Order(5)
     fun `on a claim Grafana loads the dashboards it mounts from ConfigMaps into their folders`() {
         val grafana = ClusterServices.GRAFANA
-        val searchUrl = "http://${Constants.K8s.serviceHost(grafana.service)}:${grafana.servicePort}/api/search?type=dash-db"
+        val searchUrl = "http://${BackendEndpoints.host(grafana.service)}:${grafana.servicePort}/api/search?type=dash-db"
         val search = inGrafana("curl", "-s", "-u", "admin:admin", searchUrl)
 
         assertThat(search).contains("\"uid\":\"portable-one\"", "\"uid\":\"portable-two\"")

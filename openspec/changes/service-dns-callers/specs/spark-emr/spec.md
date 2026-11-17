@@ -13,3 +13,8 @@ The system SHALL inject Pyroscope Java agent flags into Spark submit arguments s
 
 - **WHEN** a Spark job is submitted on a cluster with no telemetry redirect
 - **THEN** the Pyroscope agent is configured with `pyroscope.server.address=http://<control_ip>:<Pyroscope NodePort>`
+
+#### Scenario: No NodePort to send to
+
+- **WHEN** an EMR cluster is provisioned for a cluster with no telemetry redirect whose backends are published as ClusterIP Services only
+- **THEN** provisioning fails before creating the EMR cluster, saying the Spark Pyroscope agent needs the observability NodePorts, instead of configuring an address that would only time out

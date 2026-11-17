@@ -14,6 +14,11 @@ The operator SHALL be able to select redirect mode at `init` by supplying one ex
 - **WHEN** a cluster is initialized with `--redirect-telemetry <host>` and an explicit override for one signal
 - **THEN** that signal uses the override endpoint and the other three remain derived from `<host>`
 
+#### Scenario: A base host that cannot carry the derived endpoints is refused
+
+- **WHEN** a cluster is initialized with `--redirect-telemetry` set to a value carrying a scheme or a port, and at least one signal is not overridden
+- **THEN** `init` fails before writing any state, saying the host must be a node of an easy-db-lab cluster and naming the four `--redirect-*-endpoint` overrides for any other stack
+
 #### Scenario: A redirected cluster lands all four signals on another easy-db-lab cluster
 
 - **GIVEN** a receiving AWS cluster with no backend host ports

@@ -1063,6 +1063,29 @@ test_network_failure_reports_what_curl_said() {
   teardown
 }
 
+# The reconciler posts to the Alloy relay on the node's loopback, so a restarting or not-yet-scheduled
+# Alloy pod refuses the connection. That chunk is the only copy of its interval: it must stay pending
+# past both prune bounds and ship on the first pass after the relay is back.
+test_a_chunk_the_relay_refuses_is_kept_until_the_relay_is_back() {
+  setup
+  write_config true '["-e", "cpu"]' "1m" "60" "1024"
+  make_chunk "cassandra-1-100.jfr" 7300 2048
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=000 \
+    STUB_CURL_EXIT=7 STUB_CURL_STDERR="curl: (7) Failed to connect to 127.0.0.1 port 4041: Connection refused" >/dev/null
+
+  assert_file "a chunk the relay refused is kept, past the age and byte bounds" "$PROFILE_DIR/cassandra-1-100.jfr"
+  assert_no_file "a refused chunk is not marked shipped" "$PROFILE_DIR/cassandra-1-100-shipped.jfr"
+  assert_no_file "a refused chunk is not marked rejected" "$PROFILE_DIR/cassandra-1-100.jfr.rejected"
+  assert_contains "the refusal names the relay" "$(cat "$OUTPUT")" "127.0.0.1 port 4041"
+
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=200 >/dev/null
+
+  assert_no_file "the next pass with the relay back ships it" "$PROFILE_DIR/cassandra-1-100.jfr"
+  assert_contains "the chunk reaches the relay" "$(curl_log)" "http://127.0.0.1:4041/ingest"
+  teardown
+}
+
 test_client_error_is_rejected_and_never_retried() {
   setup
   write_config true '["-e", "cpu"]'
@@ -2151,6 +2174,7 @@ test_a_freshly_rotated_chunk_is_not_yet_a_backlog
 test_chunks_the_shipper_failed_to_send_are_counted_as_pending
 test_server_error_leaves_the_chunk_for_retry
 test_network_failure_reports_what_curl_said
+test_a_chunk_the_relay_refuses_is_kept_until_the_relay_is_back
 test_client_error_is_rejected_and_never_retried
 test_a_non_ascii_cluster_name_encodes_as_utf8_bytes
 test_a_chunk_exactly_on_the_grace_boundary_ships

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -21,17 +22,18 @@ import org.mockito.kotlin.whenever
 
 /**
  * Proves that every Pyroscope profile producer resolves to the external stack when the cluster is
- * in telemetry-redirect mode, rather than to the in-cluster server on the control node.
+ * in telemetry-redirect mode, rather than to the in-cluster Pyroscope Service.
  *
- * The control node is deliberately given a concrete private IP so the local-mode Pyroscope URL is a
- * distinct, assertable string: a redirect must displace it, not merely add the external URL beside
- * it. Uses real TemplateService and real manifest builders (never mock configuration classes).
+ * A redirect must displace the local-mode Service URL, not merely add the external URL beside it.
+ * The control node keeps a concrete private IP so a test can also show no producer falls back to a
+ * node address. Uses real TemplateService and real manifest builders (never mock configuration
+ * classes).
  */
 class ProfilingRedirectTest : BaseKoinTest() {
     private val redirect = TelemetryRedirect.fromBaseHost("10.0.0.9")
 
-    /** The Pyroscope URL local mode would have produced for this control node. */
-    private val localPyroscopeUrl = "http://$CONTROL_NODE_IP:4040"
+    /** The Pyroscope URL local mode produces: the Pyroscope Service, which a redirect must displace. */
+    private val localPyroscopeUrl = BackendEndpoints.pyroscope()
 
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager

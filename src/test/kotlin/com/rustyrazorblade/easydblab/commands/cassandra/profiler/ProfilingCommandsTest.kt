@@ -373,6 +373,29 @@ class ProfilingCommandsTest : BaseKoinTest() {
     }
 
     @Test
+    fun `start and stop need no control node, since nodes ship through their own relay`() {
+        // An environment with no control host (the backends run on any node) must still profile:
+        // the URL is the node-local relay, so nothing looks a control node up.
+        whenever(clusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                clusterId = "abc123",
+                versions = mutableMapOf(),
+                hosts = hosts - ServerType.Control,
+            ),
+        )
+
+        ProfilingStart().execute()
+        ProfilingStop().execute()
+
+        val configs = capturedConfigs()
+        assertThat(configs.map { it.enabled }).containsExactly(true, true, false, false)
+        assertThat(configs).allSatisfy {
+            assertThat(it.pyroscopeUrl).isEqualTo("http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}")
+        }
+    }
+
+    @Test
     fun `start applies to every Cassandra node by default`() {
         ProfilingStart().execute()
 

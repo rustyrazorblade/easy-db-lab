@@ -216,6 +216,29 @@ test_error_status_fails() {
   grep -q "status=error" "${WORK}/out.txt" || fail "expected the status in the error, got: $(cat "${WORK}/out.txt")"
 }
 
+# A cluster whose backends are ClusterIP only (or a NodePort a firewall drops) refuses or times out
+# the connection. The script must say where it dialled and how to reach Mimir instead, not exit
+# with curl's bare status.
+test_an_unreachable_mimir_names_the_node_port_and_the_port_forward() {
+  tests_run=$((tests_run + 1))
+  setup '' 7
+  if run_script memcached; then
+    fail "expected a non-zero exit when Mimir cannot be reached"
+  fi
+  grep -q '10.0.0.5:31009' "${WORK}/out.txt" || fail "expected the dialled NodePort in the error, got: $(cat "${WORK}/out.txt")"
+  grep -q 'port-forward' "${WORK}/out.txt" || fail "expected the port-forward hint in the error, got: $(cat "${WORK}/out.txt")"
+  grep -q 'MIMIR_URL' "${WORK}/out.txt" || fail "expected the MIMIR_URL override in the error, got: $(cat "${WORK}/out.txt")"
+}
+
+test_mimir_url_overrides_the_node_port() {
+  tests_run=$((tests_run + 1))
+  setup "${LIVE_RESPONSE}"
+  (cd "${WORK}" && MIMIR_URL=http://127.0.0.1:19009/prometheus PATH="${WORK}/stubs:${PATH}" "${SCRIPT}" memcached) \
+    > "${WORK}/out.txt" 2>&1 || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  grep -Fqx 'http://127.0.0.1:19009/prometheus/api/v1/query' "${WORK}/curl.args" \
+    || fail "expected the query at MIMIR_URL, got: $(cat "${WORK}/curl.args")"
+}
+
 test_workload_name_is_required() {
   tests_run=$((tests_run + 1))
   setup "${LIVE_RESPONSE}"
@@ -234,6 +257,8 @@ test_caps_distinct_values_per_label_key
 test_output_order_is_deterministic
 test_no_live_series_fails_without_writing_a_catalog
 test_error_status_fails
+test_an_unreachable_mimir_names_the_node_port_and_the_port_forward
+test_mimir_url_overrides_the_node_port
 test_workload_name_is_required
 
 echo "${tests_run} tests, ${tests_failed} failed"

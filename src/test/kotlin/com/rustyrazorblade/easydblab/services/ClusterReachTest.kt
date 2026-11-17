@@ -52,6 +52,19 @@ class ClusterReachTest {
                 Arguments.of("missing kubeconfig", FileNotFoundException("kubeconfig (No such file or directory)"), true),
                 Arguments.of("missing file", NoSuchFileException("/ws/kubeconfig"), true),
                 Arguments.of(
+                    "unreadable kubeconfig wrapped by the client factory",
+                    IOException(
+                        "Cannot read the kubeconfig at /ws/kubeconfig",
+                        FileNotFoundException("/ws/kubeconfig (No such file or directory)"),
+                    ),
+                    true,
+                ),
+                Arguments.of(
+                    "SocketException with no stack trace",
+                    SocketException("Connection reset").also { it.stackTrace = emptyArray() },
+                    false,
+                ),
+                Arguments.of(
                     "wrapped by the Kubernetes client",
                     KubernetesClientException("An error has occurred.", ConnectException("Connection refused")),
                     true,

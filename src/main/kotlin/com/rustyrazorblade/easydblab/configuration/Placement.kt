@@ -1,9 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
-import io.fabric8.kubernetes.api.model.ContainerBuilder
-import io.fabric8.kubernetes.api.model.ContainerPort
-import io.fabric8.kubernetes.api.model.ContainerPortBuilder
 import io.fabric8.kubernetes.api.model.PodSpec
 import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import io.fabric8.kubernetes.api.model.Toleration
@@ -15,45 +12,32 @@ import io.fabric8.kubernetes.api.model.TolerationBuilder
  * manifests run on a cluster easy-db-lab built and on one it did not.
  *
  * Every workload it places is on the pod network and is reached in the cluster by its Service DNS
- * name.
+ * name; callers outside the pod network reach it through its Service's NodePort
+ * ([ServicePublishing]), never a host port.
  *
  * @property nodeSelector the labels a node must carry.
  * @property tolerations the taints the pods tolerate.
- * @property publishOnNode whether each container port that declares a `hostPort` keeps it, so a
- *   caller outside the pod network (a node-side agent, or the CLI over the SOCKS tunnel) still
- *   reaches the workload on its node's private IP. Only an environment that owns its nodes does.
  */
 data class Placement(
     val nodeSelector: Map<String, String>,
     val tolerations: List<Toleration>,
-    val publishOnNode: Boolean = false,
 ) {
     /** This placement with [labels] added to its node selector. */
     fun withNodeLabels(labels: Map<String, String>): Placement = copy(nodeSelector = nodeSelector + labels)
 
-    /**
-     * [pod] placed here: its selector and tolerations replaced by this placement's, moved onto the pod
-     * network, and its host ports dropped unless [publishOnNode].
-     */
+    /** [pod] placed here: its selector and tolerations replaced by this placement's, on the pod network. */
     fun applyTo(pod: PodSpec): PodSpec =
         PodSpecBuilder(pod)
             .withNodeSelector<String, String>(nodeSelector)
             .withTolerations(tolerations)
             .withHostNetwork(false)
             .withDnsPolicy("ClusterFirst")
-            .withContainers(pod.containers.map { ContainerBuilder(it).withPorts(placePorts(it.ports.orEmpty())).build() })
             .build()
-
-    private fun placePorts(ports: List<ContainerPort>) =
-        when (publishOnNode) {
-            true -> ports
-            false -> ports.map { ContainerPortBuilder(it).withHostPort(null).build() }
-        }
 
     companion object {
         private const val CONTROL_PLANE_LABEL = "node-role.kubernetes.io/control-plane"
 
-        /** The K3s control node of a cluster easy-db-lab built, with its ports on the node's private IP. */
+        /** The K3s control node of a cluster easy-db-lab built. */
         val CONTROL_NODE =
             Placement(
                 nodeSelector = mapOf(CONTROL_PLANE_LABEL to "true"),
@@ -65,7 +49,6 @@ data class Placement(
                             .withEffect("NoSchedule")
                             .build(),
                     ),
-                publishOnNode = true,
             )
 
         /** Any schedulable node: an environment that declares no control node. */

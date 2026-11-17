@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Constants.Cassandra
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
+import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -54,7 +55,6 @@ class SidecarManifestBuilder(
      * Builds all sidecar K8s resources in apply order.
      *
      * @param image Container image for the sidecar (default: ghcr.io/apache/cassandra-sidecar:latest)
-     * @param controlNodeIp Private IP of the control node (for Pyroscope server address)
      * @param clusterName The cluster label, `<name>-<id>` (for Pyroscope labels)
      * @param tenant The cluster's observability tenant, sent by the Pyroscope agent on every write
      * @param telemetryRedirect When non-null, the Pyroscope agent ships to this external stack.
@@ -62,7 +62,6 @@ class SidecarManifestBuilder(
      */
     fun buildAllResources(
         image: String = DEFAULT_IMAGE,
-        controlNodeIp: String,
         clusterName: String,
         tenant: String,
         imagePullSecretName: String = "",
@@ -70,7 +69,7 @@ class SidecarManifestBuilder(
     ): List<HasMetadata> =
         listOf(
             buildConfigMap(),
-            buildDaemonSet(image, controlNodeIp, clusterName, tenant, imagePullSecretName, telemetryRedirect),
+            buildDaemonSet(image, clusterName, tenant, imagePullSecretName, telemetryRedirect),
         )
 
     /**
@@ -103,7 +102,6 @@ class SidecarManifestBuilder(
     @Suppress("LongMethod")
     fun buildDaemonSet(
         image: String,
-        controlNodeIp: String,
         clusterName: String,
         tenant: String,
         imagePullSecretName: String = "",
@@ -176,7 +174,7 @@ class SidecarManifestBuilder(
         .endEnv()
         .addNewEnv()
         .withName("JAVA_TOOL_OPTIONS")
-        .withValue(buildJavaToolOptions(controlNodeIp, clusterName, tenant, telemetryRedirect))
+        .withValue(buildJavaToolOptions(clusterName, tenant, telemetryRedirect))
         .endEnv()
         .addNewEnv()
         .withName("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -253,13 +251,11 @@ class SidecarManifestBuilder(
         .build()
 
     private fun buildJavaToolOptions(
-        controlNodeIp: String,
         clusterName: String,
         tenant: String,
         telemetryRedirect: TelemetryRedirect?,
     ): String {
-        val pyroscopeServerAddress =
-            telemetryRedirect?.profiles ?: "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
+        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(telemetryRedirect)
         return listOf(
             "-Dsidecar.config=file://$SIDECAR_CONFIG_PATH",
             "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",

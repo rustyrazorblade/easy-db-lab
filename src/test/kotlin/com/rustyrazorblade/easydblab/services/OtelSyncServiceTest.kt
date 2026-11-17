@@ -9,8 +9,6 @@ import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
-import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
-import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.environment.fixedContract
@@ -47,9 +45,6 @@ class OtelSyncServiceTest : BaseKoinTest() {
     private lateinit var mockFiltered: FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>
     private lateinit var service: OtelSyncService
 
-    /** The hosting the sync under test resolves; AWS unless a test declares otherwise. */
-    private var hosting: ObservabilityHosting = ObservabilityHosting.AWS
-
     /** The capabilities the sync under test sees; AWS unless a test declares otherwise. */
     private var capabilities: NodeCapabilities = NodeCapabilities.AWS
 
@@ -71,7 +66,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
         )
 
     /** A cluster brought by the operator: no control node in its state. */
-    private val noControlHost = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test")
+    private val noControlHost = withControlHost.copy(hosts = emptyMap())
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -117,7 +112,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 otelManifestBuilder,
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
-                fixedContract({ capabilities }, { hosting }),
+                fixedContract({ capabilities }),
                 getKoin().get<ProfileRegion>(),
             )
     }
@@ -307,22 +302,18 @@ class OtelSyncServiceTest : BaseKoinTest() {
     }
 
     /**
-     * Off owned nodes the backends are not published on a node, so a sync needs no control host: the
-     * cluster-config it hashes the collector against carries no node IP, and the collector config it
-     * renders reaches every backend by Service DNS.
+     * Nothing the collector renders depends on the control host: the cluster-config it hashes against
+     * carries no node IP, and the collector reaches every backend by Service DNS. So a sync needs no
+     * control host, and the hash it stamps is the one a state with a control host gets.
      */
     @Test
-    fun `a sync off owned nodes runs with no control host and renders no node IP`() {
-        hosting = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE)
+    fun `a sync runs with no control host, renders no node IP, and stamps the same hash as with one`() {
         whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(noControlHost)
         val applied = captureApplied()
 
         service.syncConfigMap().getOrThrow()
 
-        val withoutNodeIp = collectorHash(ClusterConfigData.of(noControlHost, hosting, "us-west-2"))
-        val withNodeIp = collectorHash(ClusterConfigData.of(withControlHost, ObservabilityHosting.AWS, "us-west-2"))
-        assertThat(ClusterConfigData.of(noControlHost, hosting, "us-west-2")).doesNotContainKey(ClusterConfigData.CONTROL_NODE_IP_KEY)
-        assertThat(appliedConfigHash(applied)).isEqualTo(withoutNodeIp).isNotEqualTo(withNodeIp)
+        assertThat(appliedConfigHash(applied)).isEqualTo(collectorHash(ClusterConfigData.of(withControlHost, "us-west-2")))
         val config =
             applied
                 .filterIsInstance<ConfigMap>()
@@ -332,7 +323,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
         assertThat(
             config.replace("0.0.0.0:", ""),
         ).describedAs("no endpoint at a node IP").doesNotContainPattern("""\b\d{1,3}(\.\d{1,3}){3}:\d+""")
-        assertThat(config).contains("mimir.default.svc.cluster.local", "loki.default.svc.cluster.local", "tempo.default.svc.cluster.local")
+        assertThat(config).contains("mimir.default.svc", "loki.default.svc", "tempo.default.svc")
     }
 
     /** The collector's hash against [clusterConfig], built the way [CollectorResources] builds it. */
@@ -342,17 +333,4 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 otelManifestBuilder.buildAllResources(capabilities, emptyList(), null, CollectorResources.podLogSource(capabilities)),
                 mapOf(ClusterConfigData.NAME to clusterConfig),
             ).let(::appliedConfigHash)
-
-    @Test
-    fun `a sync on the AWS control node without a control host fails naming why it needs one`() {
-        whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(noControlHost)
-
-        val result = service.syncConfigMap()
-
-        assertThat(result.exceptionOrNull())
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("no control node")
-            .hasMessageContaining("redirected clusters")
-        verify(mockK8sService, never()).applyResource(any())
-    }
 }

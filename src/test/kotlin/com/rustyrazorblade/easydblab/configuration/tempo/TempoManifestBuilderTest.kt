@@ -164,7 +164,7 @@ class TempoManifestBuilderTest : BaseKoinTest() {
         val remoteWrite = nodeAt(yaml, "metrics_generator", "storage", "remote_write") as YamlList
         val target = remoteWrite.items.single() as YamlMap
 
-        assertThat(target.get<YamlScalar>("url")?.content).isEqualTo("http://mimir.default.svc.cluster.local:9009/api/v1/push")
+        assertThat(target.get<YamlScalar>("url")?.content).isEqualTo("http://mimir.default.svc:9009/api/v1/push")
         assertThat(scalarAt(yaml, "metrics_generator", "storage", "remote_write_add_org_id_header")).isEqualTo("true")
         assertThat(yaml).doesNotContainIgnoringCase("victoria")
     }

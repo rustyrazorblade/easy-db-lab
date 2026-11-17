@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
-import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -45,7 +44,6 @@ class CollectorResourcesTest : BaseKoinTest() {
         val resources: List<HasMetadata> =
             CollectorResources.build(
                 OtelManifestBuilder(getKoin().get()),
-                ObservabilityHosting.AWS,
                 state,
                 "us-west-2",
                 emptyList(),
@@ -75,7 +73,7 @@ class CollectorResourcesTest : BaseKoinTest() {
 
     private fun daemonSet(capabilities: NodeCapabilities): DaemonSet =
         CollectorResources
-            .build(OtelManifestBuilder(getKoin().get()), ObservabilityHosting.AWS, state, "us-west-2", emptyList(), capabilities)
+            .build(OtelManifestBuilder(getKoin().get()), state, "us-west-2", emptyList(), capabilities)
             .filterIsInstance<DaemonSet>()
             .single()
 }

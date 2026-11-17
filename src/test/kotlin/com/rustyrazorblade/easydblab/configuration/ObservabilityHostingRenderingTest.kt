@@ -14,6 +14,7 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim
 import io.fabric8.kubernetes.api.model.PodSpec
 import io.fabric8.kubernetes.api.model.Quantity
+import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import org.assertj.core.api.Assertions.assertThat
@@ -26,8 +27,9 @@ import org.mockito.kotlin.whenever
 
 /**
  * The five observability workloads render from the resolved [ObservabilityHosting]: on AWS they keep
- * today's control-node selector, toleration and `/mnt/db1/<backend>` host paths; elsewhere they carry
- * neither, and none of them shares the node's network on any environment.
+ * today's control-node selector, toleration and `/mnt/db1/<backend>` host paths and publish their client
+ * ports as NodePorts; elsewhere they carry neither and their Services stay ClusterIP. None of them shares
+ * the node's network or holds a host port on any environment.
  */
 class ObservabilityHostingRenderingTest : BaseKoinTest() {
     private val controlPlaneLabel = "node-role.kubernetes.io/control-plane"
@@ -93,33 +95,60 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
             assertThat(pod.nodeSelector.orEmpty()).describedAs(hostPath).isEmpty()
             assertThat(pod.tolerations.orEmpty()).describedAs(hostPath).isEmpty()
             assertThat(pod.hostNetwork ?: false).describedAs(hostPath).isFalse()
-            assertThat(pod.containers.flatMap { it.ports.orEmpty() }.mapNotNull { it.hostPort }).describedAs(hostPath).isEmpty()
         }
     }
 
     @Test
-    fun `on AWS the ports callers outside the pod network use stay published on the node`() {
-        // Mimir and Loki push and read, Tempo's query and OTLP receivers, Pyroscope ingest, and Grafana's
-        // client port, held by its nginx front (a sidecar, not the first container): a redirected cluster, a
-        // node-side agent and the CLI over the SOCKS tunnel reach these on the control node's private IP.
+    fun `on owned nodes each Service publishes exactly its client ports on the fixed NodePorts`() {
+        // Callers outside the pod network (the CLI over Socks or Direct, browsers, redirect senders, EMR)
+        // reach these on any node's address; gRPC, gossip and Tempo's OTLP HTTP stay cluster-internal.
         val expected =
             mapOf(
-                "/mnt/db1/mimir" to listOf(Constants.K8s.MIMIR_HTTP_PORT),
-                "/mnt/db1/loki" to listOf(Constants.K8s.LOKI_HTTP_PORT),
+                "/mnt/db1/mimir" to mapOf(Constants.K8s.MIMIR_HTTP_PORT to Constants.K8s.MIMIR_NODE_PORT),
+                "/mnt/db1/loki" to mapOf(Constants.K8s.LOKI_HTTP_PORT to Constants.K8s.LOKI_NODE_PORT),
                 "/mnt/db1/tempo" to
-                    listOf(Constants.K8s.TEMPO_PORT, Constants.K8s.TEMPO_OTLP_GRPC_PORT, Constants.K8s.TEMPO_OTLP_HTTP_PORT),
-                "/mnt/db1/pyroscope" to listOf(PyroscopeManifestBuilder.SERVER_PORT),
-                GRAFANA to listOf(Constants.K8s.GRAFANA_PORT),
+                    mapOf(
+                        Constants.K8s.TEMPO_PORT to Constants.K8s.TEMPO_NODE_PORT,
+                        Constants.K8s.TEMPO_OTLP_GRPC_PORT to Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT,
+                    ),
+                "/mnt/db1/pyroscope" to mapOf(PyroscopeManifestBuilder.SERVER_PORT to Constants.K8s.PYROSCOPE_NODE_PORT),
+                GRAFANA to mapOf(Constants.K8s.GRAFANA_PORT to Constants.K8s.GRAFANA_NODE_PORT),
             )
 
-        val published =
-            backends(ObservabilityHosting.AWS).mapValues { (_, resources) ->
-                pod(resources).containers.flatMap { it.ports.orEmpty() }.mapNotNull { it.hostPort }
-            }
+        val rendered = backends(ObservabilityHosting.AWS)
 
-        assertThat(published.keys).containsExactlyInAnyOrderElementsOf(expected.keys)
-        expected.forEach { (hostPath, ports) ->
-            assertThat(published.getValue(hostPath)).describedAs(hostPath).containsExactlyInAnyOrderElementsOf(ports)
+        assertThat(rendered.keys).containsExactlyInAnyOrderElementsOf(expected.keys)
+        expected.forEach { (hostPath, nodePorts) ->
+            val service = rendered.getValue(hostPath).filterIsInstance<Service>().single()
+            assertThat(service.spec.type).describedAs(hostPath).isEqualTo("NodePort")
+            // Kubernetes gives every port of a NodePort Service a node port, picking a random one in
+            // 30000-32767 when none is set, so the Service may list no port without a fixed one.
+            assertThat(service.spec.ports.map { it.nodePort }).describedAs(hostPath).doesNotContainNull()
+            assertThat(service.spec.ports.associate { it.port to it.nodePort })
+                .describedAs(hostPath)
+                .containsExactlyInAnyOrderEntriesOf(nodePorts)
+        }
+    }
+
+    @Test
+    fun `no workload holds a host port, on owned nodes or off them`() {
+        listOf(ObservabilityHosting.AWS, ObservabilityHosting.AWS.copy(publishing = ServicePublishing.ClusterIp)).forEach { hosting ->
+            backends(hosting).forEach { (hostPath, resources) ->
+                assertThat(pod(resources).containers.flatMap { it.ports.orEmpty() }.mapNotNull { it.hostPort })
+                    .describedAs(hostPath)
+                    .isEmpty()
+            }
+        }
+    }
+
+    @Test
+    fun `off owned nodes each Service stays ClusterIP with no node port`() {
+        val foreign = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE, publishing = ServicePublishing.ClusterIp)
+
+        backends(foreign).forEach { (hostPath, resources) ->
+            val service = resources.filterIsInstance<Service>().single()
+            assertThat(service.spec.type).describedAs(hostPath).isEqualTo("ClusterIP")
+            assertThat(service.spec.ports.mapNotNull { it.nodePort }).describedAs(hostPath).isEmpty()
         }
     }
 
@@ -176,7 +205,7 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
             mapOf(
                 "/mnt/db1/loki" to LokiManifestBuilder.LOKI_UID,
                 "/mnt/db1/tempo" to TempoManifestBuilder.TEMPO_UID,
-                "/mnt/db1/pyroscope" to PyroscopeManifestBuilder.PYROSCOPE_UID,
+                "/mnt/db1/pyroscope" to Constants.PyroscopeServer.UID,
                 GRAFANA to GrafanaManifestBuilder.GRAFANA_UID.toLong(),
             )
 

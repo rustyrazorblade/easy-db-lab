@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -213,6 +214,17 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(limit("ingestion_burst_size_mb") * MIB).isGreaterThanOrEqualTo(sizeLimit)
         // The distributor forwards each profile to the segment writer in one gRPC message.
         assertThat(sizeLimit).isLessThan(PYROSCOPE_GRPC_MAX_MESSAGE_BYTES)
+    }
+
+    @Test
+    fun `the profiles relay listens on the node's loopback at the relay port and forwards to the agent's writer`() {
+        val alloy = builder.buildEbpfConfigMap().data.getValue("config.alloy")
+        val relay = requireNotNull(Regex("""pyroscope\.receive_http "relay" \{(.*?)\n}""", RegexOption.DOT_MATCHES_ALL).find(alloy))
+
+        assertThat(relay.groupValues[1])
+            .contains("listen_address = \"127.0.0.1\"")
+            .contains("forward_to = [pyroscope.write.endpoint.receiver]")
+        assertThat(alloySetting("listen_port")).isEqualTo(Constants.K8s.ALLOY_RELAY_PORT.toLong())
     }
 
     @Test

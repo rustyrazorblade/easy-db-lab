@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -166,10 +167,19 @@ class GrafanaManifestBuilder(
     }
 
     /**
-     * Builds Grafana's ClusterIP Service on its HTTP port, so a port-forward reaches Grafana through a
-     * Service, as it does Mimir, Loki, Tempo and Pyroscope, rather than through a pod.
+     * Grafana's Service on its HTTP port, so a port-forward reaches Grafana through a Service, as it
+     * does Mimir, Loki, Tempo and Pyroscope, rather than through a pod; [publishing] puts it on
+     * [Constants.K8s.GRAFANA_NODE_PORT].
      */
-    fun buildService(): Service =
+    fun buildService(publishing: ServicePublishing = ServicePublishing.ClusterIp): Service =
+        publishing.publish(
+            clusterIpService(),
+            mapOf(
+                "http" to Constants.K8s.GRAFANA_NODE_PORT,
+            ),
+        )
+
+    private fun clusterIpService(): Service =
         ServiceBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
@@ -202,7 +212,7 @@ class GrafanaManifestBuilder(
     ): List<HasMetadata> =
         listOf(buildDashboardProvisioningConfigMap(), front.configMap(documents)) +
             hostedResources(documents, hosting) +
-            buildService()
+            buildService(hosting.publishing)
 
     private fun buildGrafanaContainer(clusterName: String): Container =
         ContainerBuilder()

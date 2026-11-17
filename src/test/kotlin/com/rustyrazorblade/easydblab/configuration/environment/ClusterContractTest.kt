@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -92,7 +93,7 @@ class ClusterContractTest {
         val state = stateFor(Environment.K3sDocker("/d"))
 
         assertThat(ObservabilityHosting.from(state)).isEqualTo(ClusterContract.of(state).hosting)
-        assertThat(Placement.from(state).publishOnNode).isFalse()
+        assertThat(Placement.from(state)).isEqualTo(ClusterContract.of(state).hosting.placement)
     }
 
     @Test
@@ -120,8 +121,6 @@ class ClusterContractTest {
     }
 
     companion object {
-        private val localPlacement = Placement.CONTROL_NODE.copy(publishOnNode = false)
-
         @JvmStatic
         fun table(): List<Arguments> =
             listOf(
@@ -152,7 +151,7 @@ class ClusterContractTest {
                         storeKind = StoreKind.Volume,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = NodeCapabilities.LOCAL_DOCKER,
-                        hosting = ObservabilityHosting.AWS.copy(placement = localPlacement),
+                        hosting = ObservabilityHosting.AWS.copy(publishing = ServicePublishing.ClusterIp),
                         namespace = "default",
                         datacenter = "dc1",
                     ),
@@ -168,7 +167,7 @@ class ClusterContractTest {
                         storeKind = StoreKind.Volume,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = NodeCapabilities.NONE,
-                        hosting = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE),
+                        hosting = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE, publishing = ServicePublishing.ClusterIp),
                         namespace = "easy-db-lab",
                         datacenter = "dc1",
                     ),

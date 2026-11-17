@@ -187,7 +187,7 @@ Every path that installs a dashboard SHALL apply one install-time pass to it: th
 - the `current` value of each datasource picker to the stable datasource of its type (`mimir`, `loki` or `tempo`), which reads the cluster's own tenant;
 - the `current` value of `cluster`, `baseline_cluster` and `candidate_cluster` to the current cluster's `<name>-<id>`, as a one-element list when the variable is multi-select;
 - the options of `doc_tenant` to the tenant list, and its `current` value to the cluster's own tenant;
-- the documents host placeholder to the documents web server's address on the control node.
+- the documents host placeholder to nothing, so the documents URL is the relative path `/reports/...`, served on Grafana's own origin.
 
 #### Scenario: Core dashboards default to the current cluster
 
@@ -218,6 +218,11 @@ Every path that installs a dashboard SHALL apply one install-time pass to it: th
 
 - **WHEN** the pass runs on a dashboard that has no picker, no `cluster`, no run variable and no `doc_tenant`
 - **THEN** the installed dashboard has the same content as the file
+
+#### Scenario: The documents URL is relative
+
+- **WHEN** the pass runs on a dashboard whose documents iframe points at `__DOCUMENTS_URL__/reports/<tenant>/<name>-<id>/index.html`
+- **THEN** the installed iframe points at `/reports/<tenant>/<name>-<id>/index.html`, with no host and no port
 
 ### Requirement: System dashboards have a role picker
 

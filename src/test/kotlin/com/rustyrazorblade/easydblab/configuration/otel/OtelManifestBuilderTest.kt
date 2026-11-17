@@ -645,10 +645,10 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
 
         assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "endpoint"))
-            .isEqualTo("http://mimir.default.svc.cluster.local:9009/api/v1/push")
+            .isEqualTo("http://mimir.default.svc:9009/api/v1/push")
         assertThat(scalarAt(yaml, "exporters", "otlp_http/logs", "endpoint"))
-            .isEqualTo("http://loki.default.svc.cluster.local:3100/otlp")
-        assertThat(yaml).contains("tempo.default.svc.cluster.local:4320")
+            .isEqualTo("http://loki.default.svc:3100/otlp")
+        assertThat(yaml).contains("tempo.default.svc:4320")
         // No unresolved endpoint placeholders may survive substitution.
         assertThat(yaml).doesNotContain("__METRICS_ENDPOINT__")
         assertThat(yaml).doesNotContain("__LOGS_ENDPOINT__")
@@ -666,13 +666,13 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         val yaml = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = redirect))
 
-        assertThat(yaml).contains("http://10.0.0.9:9009/api/v1/push")
-        assertThat(yaml).contains("http://10.0.0.9:3100/otlp")
-        assertThat(yaml).contains("10.0.0.9:4320")
+        assertThat(yaml).contains("http://10.0.0.9:31009/api/v1/push")
+        assertThat(yaml).contains("http://10.0.0.9:31100/otlp")
+        assertThat(yaml).contains("10.0.0.9:31320")
         // Redirect must displace the in-cluster services entirely, not merely add alongside them.
-        assertThat(yaml).doesNotContain("mimir.default.svc.cluster.local")
-        assertThat(yaml).doesNotContain("loki.default.svc.cluster.local")
-        assertThat(yaml).doesNotContain("tempo.default.svc.cluster.local")
+        assertThat(yaml).doesNotContain("mimir.default.svc")
+        assertThat(yaml).doesNotContain("loki.default.svc")
+        assertThat(yaml).doesNotContain("tempo.default.svc")
         // Traces never target the query port.
         assertThat(yaml).doesNotContain("10.0.0.9:3200")
     }

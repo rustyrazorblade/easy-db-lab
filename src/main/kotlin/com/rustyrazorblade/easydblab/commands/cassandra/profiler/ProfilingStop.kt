@@ -7,7 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.profiling.DesiredProfilingState
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
-import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.profiling.nodeLocalProfilesRelay
 import picocli.CommandLine.Command
 import java.time.Instant
 
@@ -80,7 +80,7 @@ class ProfilingStop : ProfilingHostCommand() {
             loopInterval = Constants.Profiling.DEFAULT_LOOP_INTERVAL,
             retentionMinutes = Constants.Profiling.DEFAULT_RETENTION_MINUTES,
             maxBytes = Constants.Profiling.DEFAULT_MAX_BYTES,
-            pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp(), clusterState.initConfig?.telemetryRedirect),
+            pyroscopeUrl = nodeLocalProfilesRelay(),
             clusterName = clusterState.clusterLabelName(),
             tenant = clusterState.tenant(),
             updatedAt = Instant.now().toString(),

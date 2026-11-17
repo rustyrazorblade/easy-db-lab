@@ -277,13 +277,7 @@ class PodLogsWithoutJournalIntegrationTest : BaseKoinTest() {
                     .endMetadata()
                     .build(),
             ).create()
-        awaitReady(client, "the default ServiceAccount") {
-            client
-                .serviceAccounts()
-                .inNamespace(WORKLOAD_NAMESPACE)
-                .withName("default")
-                .get() != null
-        }
+        SharedK3s.ensurePodAdmission(client, WORKLOAD_NAMESPACE)
         client.resource(markerPod()).create()
     }
 

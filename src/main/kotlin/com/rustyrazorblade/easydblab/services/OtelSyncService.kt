@@ -14,9 +14,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  */
 interface OtelSyncService {
     /**
-     * Re-applies the collector. The K8s API is reached through the workspace kubeconfig; the control
-     * node in state is needed only where the backends publish their ports on it (see
-     * [ClusterConfigData.publishedNodeIp]).
+     * Re-applies the collector. The K8s API is reached through the workspace kubeconfig; nothing is
+     * needed from the control host in state.
      */
     fun syncConfigMap(): Result<Unit>
 }
@@ -32,9 +31,7 @@ interface OtelSyncService {
  * it again for nothing.
  *
  * @property contractSource the workspace's cluster contract, the same source
- *   [DefaultObservabilityStackService] reads, so both render the collector from the same capabilities
- *   and hosting. Where the backends are not published on a node, the collector this renders carries
- *   no node IP, so a sync needs nothing from the control host but the K8s API it reaches.
+ *   [DefaultObservabilityStackService] reads, so both render the collector from the same capabilities.
  */
 class DefaultOtelSyncService(
     private val k8sClientProvider: K8sClientProvider,
@@ -62,7 +59,6 @@ class DefaultOtelSyncService(
             val resources =
                 CollectorResources.build(
                     otelManifestBuilder,
-                    contract.hosting,
                     clusterState,
                     clusterState.region(profileRegion),
                     scrapeConfigs,

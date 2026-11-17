@@ -29,14 +29,4 @@ abstract class ProfilingHostCommand : PicoBaseCommand() {
             action(clusterHost.toHost())
         }
     }
-
-    /**
-     * The private address of the control node, which is where the Pyroscope server runs.
-     *
-     * Private rather than public deliberately: cluster services are always addressed over the
-     * private network.
-     */
-    protected fun controlNodePrivateIp(): String =
-        clusterState.getHosts(ServerType.Control).firstOrNull()?.private
-            ?: error("No control node found. Profiles ship to the Pyroscope server on the control node.")
 }

@@ -10,7 +10,7 @@ There are **two capture mechanisms** in the fleet, and which one applies depends
 
 ## Architecture
 
-Profiling data is collected from these sources and sent to the Pyroscope server on the control node (port 4040):
+Profiling data is collected from these sources and sent to the Pyroscope server. In-cluster agents reach it by its Service, `pyroscope.default.svc:4040`; the Cassandra node reconciler posts to the Alloy relay on its node's loopback (`127.0.0.1:4041`), which forwards to that Service; EMR reaches it on the control node's NodePort 31040:
 
 - **async-profiler, attached at runtime (Cassandra)** — A systemd timer on every Cassandra node runs `edl-profiling-reconcile`, which attaches async-profiler to the live Cassandra JVM, writes rotating JFR chunks to `/mnt/db1/cassandra/profiles`, uploads completed chunks to Pyroscope's `/ingest`, and prunes the directory. What is being profiled changes without restarting Cassandra.
 - **Pyroscope Java agent (Stress jobs)** — Runs as a `-javaagent` inside cassandra-easy-stress K8s Jobs. Collects CPU, allocation, and lock profiles. The agent JAR is mounted from the host via a hostPath volume.
@@ -211,7 +211,7 @@ Note also that CPU and wall sampling have very different costs. A CPU sample onl
 
 ### Profiling dashboard
 
-1. Open Grafana (port 3000)
+1. Open Grafana (NodePort 31300)
 2. Navigate to **Dashboards** and select the **Profiling** dashboard
 3. Use the **Service** dropdown to select a service (e.g. `cassandra`, `cassandra-easy-stress`, `clickhouse-server`)
 4. Use the **Hostname** dropdown to filter by specific nodes
@@ -245,18 +245,18 @@ not affected.
 
 ### Grafana Explore
 
-1. Open Grafana (port 3000) and navigate to **Explore**
+1. Open Grafana (NodePort 31300) and navigate to **Explore**
 2. Select the **Pyroscope** datasource
 3. Choose a profile type (e.g. `process_cpu`, `memory`, `mutex`, `wall`)
 4. Filter by labels: `service_name`, `hostname`, `cluster`
 
 Cassandra profiles arrive under `service_name=cassandra` with `hostname` and `cluster` labels.
 
-Pyroscope runs native multi-tenancy, and the Grafana Pyroscope datasource sends the cluster's tenant (`init --tenant`, default `default`) on every query, so Explore and the dashboards show the cluster's tenant. Every profile writer sends the same tenant in `X-Scope-OrgID`. A request made directly against Pyroscope's HTTP API (port 4040) must send it too: `curl -H 'X-Scope-OrgID: <tenant>' ...`.
+Pyroscope runs native multi-tenancy, and the Grafana Pyroscope datasource sends the cluster's tenant (`init --tenant`, default `default`) on every query, so Explore and the dashboards show the cluster's tenant. Every profile writer sends the same tenant in `X-Scope-OrgID`. A request made directly against Pyroscope's HTTP API (NodePort 31040 on the control node) must send it too: `curl -H 'X-Scope-OrgID: <tenant>' ...`.
 
 ### Pyroscope UI
 
-Pyroscope 2's own UI is served on port 4040, and the profiling dashboard links to it as **Pyroscope UI**. On the first visit the UI finds that the server runs multi-tenancy (its first query is refused with `401 no org id`) and shows an **Enter a Tenant ID** dialog. Enter the cluster's tenant: the value of `init --tenant`, `default` if none was given. The UI remembers it per browser (in localStorage, as `pyroscope:tenantID`) and sends it as `X-Scope-OrgID` on every query; the navbar can change it. The dashboard link cannot preselect the tenant, because the UI reads no URL parameter for it.
+Pyroscope 2's own UI is served on the control node's NodePort 31040, and the profiling dashboard links to it as **Pyroscope UI**. On the first visit the UI finds that the server runs multi-tenancy (its first query is refused with `401 no org id`) and shows an **Enter a Tenant ID** dialog. Enter the cluster's tenant: the value of `init --tenant`, `default` if none was given. The UI remembers it per browser (in localStorage, as `pyroscope:tenantID`) and sends it as `X-Scope-OrgID` on every query; the navbar can change it. The dashboard link cannot preselect the tenant, because the UI reads no URL parameter for it.
 
 ## Profile types
 
@@ -333,7 +333,7 @@ Cassandra JVM
     ▼
 /mnt/db1/cassandra/profiles/*.jfr
     │ (edl-profiling-reconcile.timer, every 60s: ship completed chunks, prune)
-    ├──────────────► Pyroscope Server (:4040) ──┐
+    ├──(Alloy relay 127.0.0.1:4041)──► Pyroscope Service (:4040) ──┐
     │                                            │
     └──(fetch / flamegraph)──► your workspace    │
                                                  │

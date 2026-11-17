@@ -122,7 +122,7 @@ A query that carries no tenant reads nothing, so always send `X-Scope-OrgID`:
 source env.sh
 with-proxy curl -G -H 'X-Scope-OrgID: <tenant>' \
   --data-urlencode 'query={service_name="cassandra"}' \
-  "http://control0:3100/loki/api/v1/query_range"
+  "http://control0:31100/loki/api/v1/query_range"
 ```
 
 ## Annotations

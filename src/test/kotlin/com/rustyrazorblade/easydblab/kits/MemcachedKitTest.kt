@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.kits
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.CollisionCheck
 import com.rustyrazorblade.easydblab.services.InstallStep
@@ -193,7 +194,7 @@ class MemcachedKitTest : BaseKoinTest() {
 
         private fun platformPvs() =
             kit.config.install
-                .filterIsInstance<InstallStep.PlatformPvs>()
+                .filterIsInstance<InstallStep.KitStorage>()
                 .single()
 
         private fun extstoreObjects() = kit.render("memcached-extstore.yaml.template")
@@ -311,22 +312,21 @@ class MemcachedKitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `the extstore volume is the claim bound to the PV install creates, mounted at data`() {
-            val pvs = platformPvs()
+        fun `the extstore volume is a claim on the kit's own class at the kit storage size, mounted at data`() {
             val claim = claim()
             val volume =
                 extstoreDeployment()
                     .spec.template.spec.volumes
                     .single { it.persistentVolumeClaim != null }
 
-            // platform-pvs names the PV <claim template>-<kit>-<ordinal>. Binding by name keeps the
-            // claim off any other kit's PV in the same storage class.
-            assertThat(claim.spec.volumeName).isEqualTo("${pvs.volumeClaimTemplateName}-memcached-0")
-            assertThat(claim.spec.storageClassName).isEqualTo(pvs.storageClass)
+            // The class is the kit's own, whose only PV is the one install creates, so the claim
+            // needs no PV name; with a PV name it could never bind on a provisioned class.
+            assertThat(claim.spec.volumeName).isNull()
+            assertThat(claim.spec.storageClassName).isEqualTo("edl-local-memcached")
             assertThat(
                 claim.spec.resources.requests["storage"]
                     ?.toString(),
-            ).isEqualTo(pvs.storageSize)
+            ).isEqualTo(Constants.K8s.LOCAL_KIT_STORAGE_SIZE)
             assertThat(volume.persistentVolumeClaim.claimName).isEqualTo(claim.metadata.name)
             assertThat(container(extstoreDeployment(), "memcached").volumeMounts).anySatisfy { mount ->
                 assertThat(mount.name).isEqualTo(volume.name)
@@ -379,7 +379,7 @@ class MemcachedKitTest : BaseKoinTest() {
         fun `uninstall deletes the kit's PVC and its PV`() {
             assertThat(labelDelete(kit.config.uninstall).kinds).contains("pvc")
             assertThat(labelDelete(kit.config.uninstall).selector).isEqualTo("$KIT_LABEL=memcached")
-            assertThat(kit.config.uninstall.last()).isInstanceOf(InstallStep.PlatformPvsDelete::class.java)
+            assertThat(kit.config.uninstall.last()).isInstanceOf(InstallStep.KitStorageDelete::class.java)
         }
     }
 

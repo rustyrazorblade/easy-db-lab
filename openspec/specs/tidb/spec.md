@@ -62,6 +62,7 @@ The TiDB kit SHALL expose the following args:
 
 - `--version` (string, default `v8.5.2`): TiDB image version
 - `--replicas` (int, default `${DB_NODE_COUNT}`): number of TiKV and TiFlash replicas
+- `--storage-size` (string, default `${KIT_STORAGE_SIZE}`): the claim size of each PD, TiKV and TiFlash node
 
 PD replicas SHALL be hardcoded to `1`. TiDB SQL replicas SHALL be derived from `${APP_NODE_COUNT}`.
 
@@ -106,4 +107,18 @@ The TiDB kit SHALL declare a `sql` capability using `com.mysql.cj.jdbc.Driver` a
 
 - **WHEN** the user runs `easy-db-lab tidb sql "SELECT /*+ read_from_storage(tiflash[t]) */ count(*) FROM t"`
 - **THEN** the query is routed to TiFlash and results are returned.
+
+### Requirement: TiDB Kit Storage
+
+PD, TiKV and TiFlash SHALL claim from `__KIT_STORAGE_CLASS__` at `__STORAGE_SIZE__`, and the `TidbCluster` SHALL set `pvReclaimPolicy: Retain`. `install` SHALL declare `kit-storage` steps: one PV on one app node for PD, and one PV per db node for each of TiKV and TiFlash. `uninstall` SHALL delete the claims the operator keeps, then run `kit-storage-delete` for the app and db pools. On AWS TiDB's data is on local PVs on the nodes' `/mnt/db1` NVMe, not on the root EBS volume.
+
+#### Scenario: TiDB on local volumes
+
+- **WHEN** the TiDB kit is installed and started on a cluster with no recorded kit StorageClass
+- **THEN** PD, TiKV and TiFlash claims bind to PVs of the class `edl-local-tidb` under `/mnt/db1/tidb/`
+
+#### Scenario: TiDB keeps its volumes
+
+- **WHEN** a PD, TiKV or TiFlash claim is deleted
+- **THEN** its volume is retained, not deleted
 

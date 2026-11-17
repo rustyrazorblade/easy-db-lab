@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 
 /**
  * Everything a consumer needs to know about the environment a cluster runs in, as capability data
@@ -62,7 +63,7 @@ data class ClusterContract(
                         storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Tunnel,
                         nodeCapabilities = capabilities,
-                        hosting = hosted(Placement.CONTROL_NODE, nodeLabels),
+                        hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.NodePorts),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
                         datacenter = state.initConfig?.region.orEmpty(),
                     )
@@ -76,8 +77,8 @@ data class ClusterContract(
                         storeKind = StoreKind.Volume,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
-                        // The node is a container: nothing outside the pod network dials its address.
-                        hosting = hosted(Placement.CONTROL_NODE.copy(publishOnNode = false), nodeLabels),
+                        // The node is a container: the CLI reaches Services by a port-forward, never a node port.
+                        hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.ClusterIp),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
                         datacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                     )
@@ -91,7 +92,7 @@ data class ClusterContract(
                         storeKind = StoreKind.Volume,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
-                        hosting = hosted(Placement.ANY_NODE, nodeLabels),
+                        hosting = hosted(Placement.ANY_NODE, nodeLabels, ServicePublishing.ClusterIp),
                         namespace = Constants.ContractDefaults.BROUGHT_NAMESPACE,
                         datacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                     )
@@ -102,6 +103,7 @@ data class ClusterContract(
         private fun hosted(
             placement: Placement,
             nodeLabels: Map<String, String>,
-        ): ObservabilityHosting = ObservabilityHosting.AWS.copy(placement = placement.withNodeLabels(nodeLabels))
+            publishing: ServicePublishing,
+        ): ObservabilityHosting = ObservabilityHosting.AWS.copy(placement = placement.withNodeLabels(nodeLabels), publishing = publishing)
     }
 }

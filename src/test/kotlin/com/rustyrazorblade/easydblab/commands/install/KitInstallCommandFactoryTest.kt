@@ -189,6 +189,31 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a storage size defaulting to the kit storage size resolves to the environment's size`() {
+        val provisioned = clusterState.copy(initConfig = InitConfig(kitStorageClass = "retain-x", kitStorageSize = "200Gi"))
+        val vars = TemplateVariables.from(state = provisioned, kitName = "", storageSize = "").toMap()
+        val cl =
+            KitInstallCommandFactory(vars).build(
+                config(arg("--storage-size", "STORAGE_SIZE", default = "\${KIT_STORAGE_SIZE}")),
+                directorySource,
+            )
+        val command = cl.commandSpec.userObject() as KitInstallCommand
+        cl.parseArgs()
+
+        assertThat(command.resolvedDefaults["STORAGE_SIZE"]).isEqualTo("200Gi")
+        assertThat(command.argValues["STORAGE_SIZE"]).isEqualTo("200Gi")
+    }
+
+    @Test
+    fun `an explicit storage size wins over the kit storage size`() {
+        val cl = factory.build(config(arg("--storage-size", "STORAGE_SIZE", default = "\${KIT_STORAGE_SIZE}")), directorySource)
+        val command = cl.commandSpec.userObject() as KitInstallCommand
+        cl.parseArgs("--storage-size", "50Gi")
+
+        assertThat(command.argValues["STORAGE_SIZE"]).isEqualTo("50Gi")
+    }
+
+    @Test
     fun `app node count is interpolated into default`() {
         val cl = factory.build(config(arg("--workers", "WORKERS", default = "\${APP_NODE_COUNT}")), directorySource)
         val opt = cl.commandSpec.findOption("--workers")

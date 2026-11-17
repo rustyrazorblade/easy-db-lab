@@ -81,11 +81,13 @@ data class StateVolume(
  * @property placement the node selector, tolerations and network.
  * @property storage where local state lives.
  * @property credentials how the backends authenticate to the store.
+ * @property publishing how the backends' and Grafana's Services reach callers outside the pod network.
  */
 data class ObservabilityHosting(
     val placement: Placement,
     val storage: BackendStorage,
     val credentials: StoreCredentials,
+    val publishing: ServicePublishing = ServicePublishing.ClusterIp,
 ) {
     /**
      * [deployment] hosted here: placed by [placement], its [state] volume on [storage], preceded by
@@ -224,8 +226,17 @@ data class ObservabilityHosting(
     companion object {
         private const val DEFAULT_SERVICE_ACCOUNT = "default"
 
-        /** A cluster easy-db-lab built on AWS: the control node, its disks, its instance role. */
-        val AWS = ObservabilityHosting(Placement.CONTROL_NODE, BackendStorage.HostPath, StoreCredentials.InstanceRole)
+        /**
+         * A cluster easy-db-lab built on AWS: the control node, its disks, its instance role, and its
+         * client ports on fixed NodePorts.
+         */
+        val AWS =
+            ObservabilityHosting(
+                Placement.CONTROL_NODE,
+                BackendStorage.HostPath,
+                StoreCredentials.InstanceRole,
+                ServicePublishing.NodePorts,
+            )
 
         /**
          * The hosting the cluster contract resolves for [state]'s recorded environment. The placement

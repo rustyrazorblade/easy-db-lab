@@ -60,11 +60,11 @@ class GrafanaFrontTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the front holds Grafana's client port, the one port Grafana's Service and the control node reach`() {
+    fun `the front holds Grafana's client port, the port Grafana's Service targets, with no host port`() {
         val web = container(GrafanaFront.FRONT_CONTAINER)
 
         assertThat(web.ports.map { it.containerPort }).containsExactly(Constants.K8s.GRAFANA_PORT)
-        assertThat(web.ports.single().hostPort).isEqualTo(Constants.K8s.GRAFANA_PORT)
+        assertThat(web.ports.map { it.hostPort }).containsOnlyNulls()
         assertThat(setOf(Constants.Grafana.INTERNAL_PORT, Constants.Grafana.Documents.PROXY_PORT))
             .doesNotContain(Constants.K8s.GRAFANA_PORT, 8081)
         assertThat(web.volumeMounts.single().mountPath).isEqualTo("/etc/nginx/nginx.conf")

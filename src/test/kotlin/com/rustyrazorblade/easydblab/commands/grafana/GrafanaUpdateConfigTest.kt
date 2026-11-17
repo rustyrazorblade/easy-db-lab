@@ -151,7 +151,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute on the AWS control node fails when the state has no control node, naming why it needs one`() {
+    fun `execute on host-path storage fails when the state has no control node, naming why it needs one`() {
         val emptyState =
             ClusterState(
                 name = "test-cluster",
@@ -167,7 +167,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("no control node")
-            .hasMessageContaining("publish their ports on the control node")
+            .hasMessageContaining("host directories on the control node")
     }
 
     @Test

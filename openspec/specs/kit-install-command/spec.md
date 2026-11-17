@@ -196,10 +196,10 @@ args:
     variable: REPLICAS
     description: "ClickHouse replica count"
     default: "${DB_NODE_COUNT}"
-  - flag: --size
+  - flag: --storage-size
     variable: STORAGE_SIZE
     description: "Storage per node (e.g. 100Gi)"
-    required: true
+    default: "${KIT_STORAGE_SIZE}"
   - flag: --s3-cache
     variable: S3_CACHE_SIZE
     description: "S3 disk cache size"
@@ -258,9 +258,10 @@ All templates receive the following standard variables from cluster state and co
 | `__APP_NODE_COUNT__` | Count of `ServerType.Stress` hosts |
 | `__BUCKET_NAME__` | `ClusterState.dataBucket` (falls back to `s3Bucket`) |
 | `__REGION__` | `InitConfig.region` |
-| `__STORAGE_CLASS_WFC__` | `Constants.K8s.LOCAL_STORAGE_WFC_CLASS` (`local-storage-wfc`) |
+| `__KIT_STORAGE_CLASS__` | `KitStorage.storageClassFor(kit)`: `edl-local-<kit>` on owned nodes, else the recorded kit StorageClass |
+| `__KIT_STORAGE_SIZE__` | `init --kit-storage-size`, else `10Ti` on local volumes or the provisioned-class default |
 | `__KIT_NAME__` | Kit name (e.g., `clickhouse`) |
-| `__STORAGE_SIZE__` | `--size` flag value (e.g., `100Gi`) |
+| `__STORAGE_SIZE__` | `--storage-size` flag value (e.g., `100Gi`), defaulting to `${KIT_STORAGE_SIZE}` |
 | `__KUBECONFIG__` | Path to local kubeconfig |
 | `__RUNNING_KITS__` | Comma-separated names of currently running kits |
 
@@ -297,7 +298,7 @@ dashboard into Grafana automatically.
 ## `kit install clickhouse`
 
 ```
-kit install clickhouse [--replicas N] [--size Gi] [--s3-cache Gi] [--s3-cache-on-write bool] [--s3-tier-move-factor N] [--force]
+kit install clickhouse [--replicas N] [--storage-size Gi] [--s3-cache Gi] [--s3-cache-on-write bool] [--s3-tier-move-factor N] [--force]
 ```
 
 Adds extra template variables:

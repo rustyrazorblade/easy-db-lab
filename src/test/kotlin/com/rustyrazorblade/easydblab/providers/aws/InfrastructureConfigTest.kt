@@ -105,6 +105,36 @@ class InfrastructureConfigTest {
         }
 
         @Test
+        fun `the observability NodePorts are open to the VPC and no backend port is open beyond it`() {
+            // EMR, redirect senders and the export script dial <node IP>:<NodePort> from inside the
+            // VPC; a browser goes through the SOCKS tunnel or Tailscale and so arrives from a node.
+            // Nothing outside the VPC gets more than SSH, so no old host-port rule survives.
+            val config =
+                InfrastructureConfig.forCluster(
+                    clusterName = "test-cluster",
+                    availabilityZones = listOf("us-west-2a"),
+                    sshCidrs = listOf("1.2.3.4/32"),
+                    sshPort = 22,
+                )
+            val nodePorts =
+                listOf(
+                    Constants.K8s.GRAFANA_NODE_PORT,
+                    Constants.K8s.MIMIR_NODE_PORT,
+                    Constants.K8s.LOKI_NODE_PORT,
+                    Constants.K8s.TEMPO_NODE_PORT,
+                    Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT,
+                    Constants.K8s.PYROSCOPE_NODE_PORT,
+                )
+            val vpcTcp = config.securityGroupRules.filter { it.protocol == "tcp" && it.cidr == Constants.Vpc.DEFAULT_CIDR }
+
+            nodePorts.forEach { port ->
+                assertThat(vpcTcp).anySatisfy { assertThat(port).isBetween(it.fromPort, it.toPort) }
+            }
+            assertThat(config.securityGroupRules.filter { it.cidr != Constants.Vpc.DEFAULT_CIDR })
+                .allSatisfy { assertThat(it.fromPort to it.toPort).isEqualTo(22 to 22) }
+        }
+
+        @Test
         fun `should use correct naming convention`() {
             val config =
                 InfrastructureConfig.forCluster(

@@ -126,14 +126,14 @@ class Neo4jKitTest : BaseKoinTest() {
         val sts = statefulSet()
         val pvs =
             kit.config.install
-                .filterIsInstance<InstallStep.PlatformPvs>()
+                .filterIsInstance<InstallStep.KitStorage>()
                 .single()
         val claim = sts.spec.volumeClaimTemplates.single()
 
         // platform-pvs names each PV <claim template>-<kit>-<ordinal>, the name the StatefulSet's PVC takes.
         assertThat(sts.metadata.name).isEqualTo("neo4j")
         assertThat(claim.metadata.name).isEqualTo(pvs.volumeClaimTemplateName)
-        assertThat(claim.spec.storageClassName).isEqualTo(pvs.storageClass)
+        assertThat(claim.spec.storageClassName).isEqualTo("edl-local-neo4j")
         assertThat(neo4jContainer().volumeMounts).anySatisfy { mount ->
             assertThat(mount.name).isEqualTo(claim.metadata.name)
             assertThat(mount.mountPath).isEqualTo("/data")
@@ -334,7 +334,7 @@ class Neo4jKitTest : BaseKoinTest() {
         assertThat(labelDelete(kit.config.stop).kinds).contains("statefulset", "service", "pod")
         assertThat(labelDelete(kit.config.uninstall).selector).isEqualTo("$KIT_LABEL=neo4j")
         assertThat(labelDelete(kit.config.uninstall).kinds).contains("pvc")
-        assertThat(kit.config.uninstall).anyMatch { it is InstallStep.PlatformPvsDelete }
+        assertThat(kit.config.uninstall).anyMatch { it is InstallStep.KitStorageDelete }
     }
 
     private companion object {
@@ -351,13 +351,15 @@ class Neo4jKitTest : BaseKoinTest() {
 /**
  * Runs a kit shell step the way `WorkloadStepExecutor` does, with a stub `kubectl` first on
  * `PATH` that records each invocation's arguments and passes stdin through, so a test can check
- * what the step would have applied without a cluster.
+ * what the step would have applied without a cluster. A verb given canned output with [respond]
+ * prints that output instead.
  */
 class StubKubectl(
     private val dir: File,
 ) {
     private val log = File(dir, "kubectl.log")
     private val out = File(dir, "script.out")
+    private val responses = File(dir, "responses")
 
     init {
         dir.mkdirs()
@@ -366,11 +368,35 @@ class StubKubectl(
                 """
                 #!/bin/bash
                 echo "$*" >> "${log.absolutePath}"
+                if [ -f "${responses.absolutePath}/$1.sh" ]; then bash "${responses.absolutePath}/$1.sh" "$@"; exit $?; fi
+                if [ -f "${responses.absolutePath}/$1" ]; then cat "${responses.absolutePath}/$1"; exit 0; fi
                 cat
                 """.trimIndent() + "\n",
             )
             setExecutable(true)
         }
+    }
+
+    /** Makes every `kubectl <verb> ...` call print [output] instead of passing stdin through. */
+    fun respond(
+        verb: String,
+        output: String,
+    ) {
+        responses.mkdirs()
+        File(responses, verb).writeText(output)
+    }
+
+    /**
+     * Makes every `kubectl <verb> ...` call run [body] under bash, with the call's arguments as
+     * `$@`; the call exits with the body's status. This models a server whose answer depends on
+     * the arguments, where [respond] answers every call the same way.
+     */
+    fun handle(
+        verb: String,
+        body: String,
+    ) {
+        responses.mkdirs()
+        File(responses, "$verb.sh").writeText(body)
     }
 
     /** Runs [script] under bash with [env] added, returning the exit code; see [output]. */

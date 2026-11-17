@@ -40,7 +40,7 @@ data class DocumentsBucket(
  * and the documents iframe is same-origin:
  *
  * - an nginx front on Grafana's client port, [Constants.K8s.GRAFANA_PORT], the port the grafana
- *   Service targets and the one the control node publishes on AWS. It forwards only `GET` and `HEAD`
+ *   Service targets (published on AWS as [Constants.K8s.GRAFANA_NODE_PORT]). It forwards only `GET` and `HEAD`
  *   for normalized paths under `/reports/` to the signing proxy, with the bucket fixed and the query
  *   string dropped, and every other request to Grafana on its loopback port,
  *   [Constants.Grafana.INTERNAL_PORT], keeping the Host header and the websocket upgrade Grafana Live
@@ -145,7 +145,6 @@ class GrafanaFront(
             .addNewPort()
             .withName("http")
             .withContainerPort(Constants.K8s.GRAFANA_PORT)
-            .withHostPort(Constants.K8s.GRAFANA_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewVolumeMount()

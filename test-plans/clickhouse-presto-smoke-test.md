@@ -35,7 +35,7 @@ $EDB init ch-presto-test --db 1 --app 1 \
 Install the ClickHouse kit files with a small storage size suitable for a quick test.
 
 ```bash
-$EDB kit install clickhouse --size 20Gi
+$EDB kit install clickhouse --storage-size 20Gi
 ```
 
 ### 3. Scaffold Presto kit

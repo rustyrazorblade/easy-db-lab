@@ -50,11 +50,11 @@ source env.sh
 
 # Every metric name
 with-proxy curl -H 'X-Scope-OrgID: <tenant>' \
-  "http://control0:9009/prometheus/api/v1/label/__name__/values"
+  "http://control0:31009/prometheus/api/v1/label/__name__/values"
 
 # An instant query
 with-proxy curl -H 'X-Scope-OrgID: <tenant>' \
-  "http://control0:9009/prometheus/api/v1/query?query=up"
+  "http://control0:31009/prometheus/api/v1/query?query=up"
 ```
 
 `easy-db-lab status` prints the tenant and the Mimir URL.

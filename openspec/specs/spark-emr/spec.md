@@ -156,7 +156,7 @@ The system SHALL run the OTel Collector as a persistent systemd service on every
 
 ### Requirement: Pyroscope agent attached to Spark driver and executor JVMs
 
-The system SHALL inject Pyroscope Java agent flags into Spark submit arguments so that driver and executor JVMs send continuous profiles to the Pyroscope server on the control node.
+The system SHALL inject Pyroscope Java agent flags into Spark submit arguments so that driver and executor JVMs send continuous profiles to the cluster's Pyroscope. EMR nodes are outside the cluster and cannot resolve cluster DNS, so the address SHALL be the control node's private IP at the Pyroscope NodePort, or the telemetry redirect's profiles endpoint when the cluster redirects.
 
 #### Scenario: Spark submit includes Pyroscope agent flags
 
@@ -165,8 +165,8 @@ The system SHALL inject Pyroscope Java agent flags into Spark submit arguments s
 
 #### Scenario: Pyroscope agent configured with correct server address
 
-- **WHEN** a Spark job is submitted
-- **THEN** the Pyroscope agent is configured with `pyroscope.server.address=http://<control_ip>:4040`
+- **WHEN** a Spark job is submitted on a cluster with no telemetry redirect
+- **THEN** the Pyroscope agent is configured with `pyroscope.server.address=http://<control_ip>:<Pyroscope NodePort>`
 
 #### Scenario: Pyroscope agent collects CPU, allocation, and lock profiles
 
@@ -226,4 +226,21 @@ If a step submitted with `spark submit --wait` fails, the command SHALL wait for
 - **WHEN** a step fails and no final `stderr.gz` arrives within the wait
 - **THEN** the command prints the S3 path where the step's `stderr.gz` will appear
 - **AND** it prints `easy-db-lab spark status --step-id <step-id> --logs` to fetch it later
+
+### Requirement: Spark job state is a project-owned vocabulary
+
+`spark status` and every Spark service result SHALL report a job's state as a project-owned state (`PENDING`, `CANCEL_PENDING`, `RUNNING`, `COMPLETED`, `CANCELLED`, `FAILED`, `INTERRUPTED`, `UNKNOWN`), mapped from the EMR step state inside the EMR adapter. A state that the SDK version does not know, or a missing state, SHALL map to `UNKNOWN`.
+
+#### Scenario: Every EMR step state maps to the state of the same name
+
+- **GIVEN** a step in each EMR `StepState` value
+- **WHEN** `spark status` reports it
+- **THEN** `PENDING`, `CANCEL_PENDING`, `RUNNING`, `COMPLETED`, `CANCELLED`, `FAILED` and `INTERRUPTED` are shown as the state of the same name, on the `State:` line
+- **AND** only `FAILED` adds the hint naming `easy-db-lab spark status --step-id <step-id> --verbose` and `easy-db-lab spark logs --step-id <step-id>`
+
+#### Scenario: Unknown EMR state
+
+- **GIVEN** a step whose EMR state is `UNKNOWN_TO_SDK_VERSION` or absent
+- **WHEN** `spark status` reports it
+- **THEN** the state shown is `UNKNOWN`, and the command does not fail
 

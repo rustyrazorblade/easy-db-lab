@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.configuration
 
-import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -52,15 +51,7 @@ class PlacementTest {
                 .withHostNetwork(true)
                 .withDnsPolicy("ClusterFirstWithHostNet")
                 .addToNodeSelector("stale", "yes")
-                .addToContainers(
-                    ContainerBuilder()
-                        .withName("c")
-                        .addNewPort()
-                        .withContainerPort(1)
-                        .withHostPort(1)
-                        .endPort()
-                        .build(),
-                ).build()
+                .build()
 
         val placed = Placement.ANY_NODE.applyTo(pod)
 
@@ -68,36 +59,5 @@ class PlacementTest {
         assertThat(placed.tolerations).isEmpty()
         assertThat(placed.hostNetwork).isFalse()
         assertThat(placed.dnsPolicy).isEqualTo("ClusterFirst")
-        assertThat(
-            placed.containers
-                .single()
-                .ports
-                .map { it.hostPort },
-        ).containsOnlyNulls()
-    }
-
-    @Test
-    fun `the AWS placement keeps each container's published node port`() {
-        val pod =
-            PodSpecBuilder()
-                .addToContainers(
-                    ContainerBuilder()
-                        .withName("c")
-                        .addNewPort()
-                        .withContainerPort(1)
-                        .withHostPort(1)
-                        .endPort()
-                        .build(),
-                ).build()
-
-        assertThat(
-            Placement.CONTROL_NODE
-                .applyTo(pod)
-                .containers
-                .single()
-                .ports
-                .single()
-                .hostPort,
-        ).isEqualTo(1)
     }
 }

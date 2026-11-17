@@ -470,18 +470,18 @@ class KitConfigTest {
     }
 
     @Test
-    fun `parses platform-pvs step`() {
+    fun `parses kit-storage step`() {
         val config =
             parse(
                 """
                 name: mydb
                 install:
-                  - type: platform-pvs
+                  - type: kit-storage
                     count: 3
                     node-type: app
                 """.trimIndent(),
             )
-        val step = config.install.single() as InstallStep.PlatformPvs
+        val step = config.install.single() as InstallStep.KitStorage
         assertThat(step.count).isEqualTo(3)
         assertThat(step.nodeType).isEqualTo("app")
     }

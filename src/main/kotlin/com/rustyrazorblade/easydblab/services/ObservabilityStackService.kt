@@ -47,9 +47,7 @@ interface ObservabilityStackService {
      * collector this deploy applies identical to the one a kit sync applies ([CollectorResources]).
      *
      * The control node in the cluster state is needed only where the stack uses the node itself: the
-     * host-path state directories and dashboard tree, and the node IP the backends publish on under
-     * [com.rustyrazorblade.easydblab.configuration.Placement.CONTROL_NODE]. Off owned nodes the deploy
-     * needs no control node.
+     * host-path state directories and dashboard tree. On claims the deploy needs no control node.
      *
      * @return success once the stack is applied and the namespace reaches Ready; failure otherwise.
      */
@@ -60,7 +58,7 @@ interface ObservabilityStackService {
  * Default implementation that applies the stack over the K8s API and configures on-node
  * directories over SSH. Its collaborators are grouped by concern: what the deploy reads
  * ([ObservabilityDeployInputs]), what it renders ([ObservabilityStageManifests]), and Grafana
- * ([GrafanaStage]).
+ * ([GrafanaStage]). Each has its own type, so no two can be swapped at a call site.
  */
 class DefaultObservabilityStackService(
     private val k8sService: K8sService,
@@ -295,7 +293,7 @@ class DefaultObservabilityStackService(
      * ([ClusterConfigData]), returning its data.
      */
     private fun createClusterConfigMap(reading: ObservabilityDeployInputs.Reading): Map<String, String> {
-        val configData = ClusterConfigData.of(reading.state, reading.contract.hosting, reading.region)
+        val configData = ClusterConfigData.of(reading.state, reading.region)
 
         k8sService
             .createConfigMap(

@@ -57,7 +57,7 @@ test_queries_only_series_live_in_the_window() {
   setup "${LIVE_RESPONSE}"
   run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
 
-  grep -Fqx 'http://10.0.0.5:9009/prometheus/api/v1/query' "${WORK}/curl.args" \
+  grep -Fqx 'http://10.0.0.5:31009/prometheus/api/v1/query' "${WORK}/curl.args" \
     || fail "expected an instant query at Mimir's /prometheus/api/v1/query, got: $(cat "${WORK}/curl.args")"
   grep -Fqx 'query={job="memcached"}' "${WORK}/curl.args" \
     || fail "expected an instant query of the workload's selector, got: $(cat "${WORK}/curl.args")"
@@ -216,12 +216,63 @@ test_error_status_fails() {
   grep -q "status=error" "${WORK}/out.txt" || fail "expected the status in the error, got: $(cat "${WORK}/out.txt")"
 }
 
+# A cluster whose backends are ClusterIP only (or a NodePort a firewall drops) refuses or times out
+# the connection. The script must say where it dialled and how to reach Mimir instead, not exit
+# with curl's bare status.
+test_an_unreachable_mimir_names_the_node_port_and_the_port_forward() {
+  tests_run=$((tests_run + 1))
+  setup '' 7
+  if run_script memcached; then
+    fail "expected a non-zero exit when Mimir cannot be reached"
+  fi
+  grep -q '10.0.0.5:31009' "${WORK}/out.txt" || fail "expected the dialled NodePort in the error, got: $(cat "${WORK}/out.txt")"
+  grep -q 'port-forward' "${WORK}/out.txt" || fail "expected the port-forward hint in the error, got: $(cat "${WORK}/out.txt")"
+  grep -q 'MIMIR_URL' "${WORK}/out.txt" || fail "expected the MIMIR_URL override in the error, got: $(cat "${WORK}/out.txt")"
+}
+
+test_mimir_url_overrides_the_node_port() {
+  tests_run=$((tests_run + 1))
+  setup "${LIVE_RESPONSE}"
+  (cd "${WORK}" && MIMIR_URL=http://127.0.0.1:19009/prometheus PATH="${WORK}/stubs:${PATH}" "${SCRIPT}" memcached) \
+    > "${WORK}/out.txt" 2>&1 || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  grep -Fqx 'http://127.0.0.1:19009/prometheus/api/v1/query' "${WORK}/curl.args" \
+    || fail "expected the query at MIMIR_URL, got: $(cat "${WORK}/curl.args")"
+}
+
 test_workload_name_is_required() {
   tests_run=$((tests_run + 1))
   setup "${LIVE_RESPONSE}"
   if run_script; then
     fail "expected a non-zero exit with no workload name"
   fi
+}
+
+# Under the SOCKS transport the private control IP is reachable only through the tunnel. The
+# workspace's bin/curl wrapper routes its own call through it, so the script uses it when present.
+test_uses_the_workspace_curl_wrapper_when_present() {
+  tests_run=$((tests_run + 1))
+  setup "${LIVE_RESPONSE}"
+  mkdir -p "${WORK}/bin"
+  cat > "${WORK}/bin/curl" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "${WORK}/wrapper.args"
+cat "${WORK}/response.json"
+STUB
+  chmod +x "${WORK}/bin/curl"
+  run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  [ -f "${WORK}/wrapper.args" ] || fail "expected the query through the workspace bin/curl wrapper"
+  [ ! -f "${WORK}/curl.args" ] || fail "expected the PATH curl to be unused when the wrapper exists"
+  grep -Fqx 'http://10.0.0.5:31009/prometheus/api/v1/query' "${WORK}/wrapper.args" 2>/dev/null \
+    || fail "expected the wrapper to dial Mimir's NodePort"
+}
+
+test_falls_back_to_curl_without_a_workspace_wrapper() {
+  tests_run=$((tests_run + 1))
+  setup "${LIVE_RESPONSE}"
+  run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  [ -f "${WORK}/curl.args" ] || fail "expected the PATH curl when the workspace has no bin/curl"
 }
 
 test_queries_only_series_live_in_the_window
@@ -234,7 +285,11 @@ test_caps_distinct_values_per_label_key
 test_output_order_is_deterministic
 test_no_live_series_fails_without_writing_a_catalog
 test_error_status_fails
+test_an_unreachable_mimir_names_the_node_port_and_the_port_forward
+test_mimir_url_overrides_the_node_port
 test_workload_name_is_required
+test_uses_the_workspace_curl_wrapper_when_present
+test_falls_back_to_curl_without_a_workspace_wrapper
 
 echo "${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

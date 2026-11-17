@@ -389,6 +389,12 @@ tasks.named<Test>("test") {
     // runs the test JVM from.
     systemProperty("easydblab.projectDir", projectDir.absolutePath)
 
+    // OperatorScriptPortsTest reads the Mimir NodePort out of this operator script.
+    inputs
+        .file("bin/export-workload-metrics")
+        .withPropertyName("exportWorkloadMetrics")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+
     // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
     inputs
         .file("bin/easy-db-lab")

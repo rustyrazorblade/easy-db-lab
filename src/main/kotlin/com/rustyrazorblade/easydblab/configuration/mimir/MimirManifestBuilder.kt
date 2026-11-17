@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.mimir
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
@@ -105,7 +106,7 @@ class MimirManifestBuilder(
      * @return ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
     fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
-        listOf(buildConfigMap(), buildService()) + hosting.host(buildPodTemplate(), STATE, isBackend = true)
+        listOf(buildConfigMap(), buildService(hosting.publishing)) + hosting.host(buildPodTemplate(), STATE, isBackend = true)
 
     /** The Mimir Deployment as [hosting] runs it. */
     fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
@@ -124,8 +125,16 @@ class MimirManifestBuilder(
                 templateService.fromString(storeBlocks.renderResource(MimirManifestBuilder::class.java, CONFIG_FILE)).substitute(),
             ).build()
 
-    /** The ClusterIP Service over Mimir's HTTP and gRPC ports. */
-    fun buildService(): Service =
+    /** Mimir's Service over HTTP and gRPC; [publishing] puts the HTTP port on [Constants.K8s.MIMIR_NODE_PORT]. */
+    fun buildService(publishing: ServicePublishing = ServicePublishing.ClusterIp): Service =
+        publishing.publish(
+            clusterIpService(),
+            mapOf(
+                "http" to Constants.K8s.MIMIR_NODE_PORT,
+            ),
+        )
+
+    private fun clusterIpService(): Service =
         ServiceBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
@@ -153,8 +162,8 @@ class MimirManifestBuilder(
     /**
      * The Mimir Deployment before it is hosted: one replica, `Recreate` so two ingesters never
      * share the TSDB directory, and no resource limits. [ObservabilityHosting] places it and sets
-     * where its state volume lives. Its HTTP port is published on the node, which the hosting keeps
-     * only on a node easy-db-lab owns.
+     * where its state volume lives. Callers outside the pod network reach its HTTP port through
+     * its Service's NodePort on nodes easy-db-lab owns.
      *
      * Liveness only checks that the HTTP server answers: readiness waits for the WAL replay, which
      * can outlast any liveness budget after a restart with a large head.
@@ -196,7 +205,6 @@ class MimirManifestBuilder(
             ).addNewPort()
             .withName("http")
             .withContainerPort(Constants.K8s.MIMIR_HTTP_PORT)
-            .withHostPort(Constants.K8s.MIMIR_HTTP_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewPort()

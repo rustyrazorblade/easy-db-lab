@@ -33,7 +33,7 @@ The install command SHALL list all ConfigMaps with label `easydblab.com/workload
 - **THEN** it is NOT included in the scrape config list
 
 ### Requirement: Static scrape jobs for host processes remain in the base OTel config
-The base `otel-collector-config.yaml` classpath resource SHALL continue to define static scrape jobs for host processes: `beyla` (`:9400`), `ebpf-exporter` (`:9435`), and `yace` (`:5001`). The existing bespoke `clickhouse` static scrape job SHALL be removed — ClickHouse metrics are registered dynamically when `install clickhouse start` runs. Built-in kits SHALL register pod-discovery scrape jobs (a `pod-selector` on the pod serving the metrics port), not static `localhost:<port>` targets, so only the collector on the pod's node scrapes it.
+The base `otel-collector-config.yaml` classpath resource SHALL continue to define static scrape jobs for host processes: `beyla` (`:9400`) and `ebpf-exporter` (`:9435`). The `yace` (`:5001`) job SHALL be rendered by the builder only where the environment provides CloudWatch. The existing bespoke `clickhouse` static scrape job SHALL be removed — ClickHouse metrics are registered dynamically when `install clickhouse start` runs. Built-in kits SHALL register pod-discovery scrape jobs (a `pod-selector` on the pod serving the metrics port), not static `localhost:<port>` targets, so only the collector on the pod's node scrapes it.
 
 Cassandra is NOT among them. It formerly had a `cassandra-maac` scrape job on `:9000`, serving the k8ssandra management-api agent. That agent emitted degenerate histograms and was replaced by the OpenTelemetry Java agent, which PUSHES over OTLP to `localhost:4318` rather than exposing a Prometheus endpoint to be pulled. Nothing listens on `:9000`, and the collector receives Cassandra metrics through the `otlp` receiver on the `metrics/otlp` pipeline instead of the `prometheus` receiver.
 
@@ -58,4 +58,9 @@ Cassandra is NOT among them. It formerly had a `cassandra-maac` scrape job on `:
 #### Scenario: No built-in kit declares a static scrape target
 - **WHEN** any built-in kit's `kit.yaml` declares a `scrape` metrics entry
 - **THEN** it carries a `pod-selector` AND `up` for that job has exactly one series per scraped pod
+
+#### Scenario: YACE scrape job only with CloudWatch
+- **WHEN** `OtelManifestBuilder` builds the ConfigMap for an environment without CloudWatch
+- **THEN** the resulting config SHALL NOT contain a `yace` scrape job
+- **AND** with CloudWatch it SHALL contain the `yace` job, found by node-local pod discovery on port 5001 so only the collector on YACE's node scrapes it
 

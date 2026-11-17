@@ -31,6 +31,7 @@ import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ObservabilityStage
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import io.fabric8.kubernetes.api.model.Quantity
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine
@@ -266,6 +267,26 @@ class Init :
     var nodeLabels: Map<String, String> = mutableMapOf()
 
     @Option(
+        names = ["--kit-storage-class"],
+        description = [
+            "StorageClass every kit claim names. Omit on an AWS cluster to keep kits on per-kit local " +
+                "volumes on the nodes' NVMe. The class must reclaim with Retain.",
+        ],
+    )
+    var kitStorageClass: String? = null
+
+    @Option(
+        names = ["--kit-storage-size"],
+        description = [
+            "Default size of a kit claim, as a Kubernetes quantity (e.g. 200Gi). Default: " +
+                "${Constants.K8s.LOCAL_KIT_STORAGE_SIZE} on local volumes, " +
+                "${Constants.K8s.DEFAULT_PROVISIONED_KIT_STORAGE_SIZE} on a --kit-storage-class. " +
+                "A kit's own --storage-size wins.",
+        ],
+    )
+    var kitStorageSize: String? = null
+
+    @Option(
         names = ["--clean"],
         description = ["Clean existing configuration before initializing"],
     )
@@ -321,9 +342,10 @@ class Init :
     @Option(
         names = ["--redirect-telemetry"],
         description = [
-            "Ship all telemetry to an external observability stack at this base host instead of " +
-                "standing up local backends. The four signal endpoints are derived from the host " +
-                "and the known stack ports; override any with the --redirect-*-endpoint options.",
+            "Ship all telemetry to another easy-db-lab cluster instead of standing up local " +
+                "backends. HOST is a bare host or IP of a node in that cluster (no scheme, no port): " +
+                "the four signal endpoints are derived from the NodePorts it publishes its backends on. " +
+                "For a stack that is not an easy-db-lab cluster, set all four --redirect-*-endpoint options.",
         ],
     )
     var redirectTelemetry: String? = null
@@ -392,6 +414,29 @@ class Init :
                     profilesOverride = redirectProfilesEndpoint,
                 )
             }
+
+    /**
+     * Why `--redirect-telemetry` cannot work as given, or null when it can (or is not supplied).
+     *
+     * The base host is a node of a receiving easy-db-lab cluster, and every derived endpoint uses
+     * that cluster's NodePorts, so a value carrying a scheme or a port (an external stack on its own
+     * ports) derives endpoints nothing listens on. That is allowed only when every signal is
+     * overridden, since then nothing is derived from the host.
+     */
+    internal fun redirectTelemetryProblem(): String? {
+        val host = redirectTelemetry ?: return null
+        val overrides = listOf(redirectMetricsEndpoint, redirectLogsEndpoint, redirectTracesEndpoint, redirectProfilesEndpoint)
+        val derivesSomething = overrides.any { it == null }
+        return when {
+            derivesSomething && (host.isBlank() || ':' in host || '/' in host) ->
+                "--redirect-telemetry '$host' must be a bare host or IP of a node in an easy-db-lab cluster: " +
+                    "the endpoints are derived from that cluster's NodePorts (Mimir ${Constants.K8s.MIMIR_NODE_PORT}, " +
+                    "Loki ${Constants.K8s.LOKI_NODE_PORT}, Tempo OTLP ${Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT}, " +
+                    "Pyroscope ${Constants.K8s.PYROSCOPE_NODE_PORT}). For any other stack, set --redirect-metrics-endpoint, " +
+                    "--redirect-logs-endpoint, --redirect-traces-endpoint and --redirect-profiles-endpoint."
+            else -> null
+        }
+    }
 
     /**
      * Resolved number of database instances: the namespaced `--db.count` when supplied, otherwise
@@ -525,6 +570,13 @@ class Init :
             "init $LOCAL_OPTION must be parsed by picocli, which records the options given; this one was built in code"
         }
 
+    private fun requireKitStorageSize(value: String) {
+        val bytes = runCatching { Quantity.getAmountInBytes(Quantity.parse(value)) }.getOrNull()
+        require(bytes != null && bytes.signum() > 0) {
+            "Invalid --kit-storage-size '$value': give a positive Kubernetes quantity such as 200Gi or 1Ti."
+        }
+    }
+
     private fun validateParameters() {
         require(resolvedDbCount > 0) { "Number of database instances must be positive" }
         require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
@@ -532,6 +584,7 @@ class Init :
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
         cidr?.let { CidrBlock(it) }
+        kitStorageSize?.let { requireKitStorageSize(it) }
         require(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(name)) {
             "Invalid cluster name '$name': a cluster name must match ${Constants.Observability.CLUSTER_NAME_PATTERN} " +
                 "(start with a lowercase letter; then lowercase letters, digits or '-'; at most 40 characters)."
@@ -544,6 +597,7 @@ class Init :
             "Invalid tenant '$tenant': '${Constants.Observability.RESERVED_TENANT}' is reserved " +
                 "(a Loki tenant with that name would collide with Loki's index path)."
         }
+        redirectTelemetryProblem()?.let { problem -> throw IllegalArgumentException(problem) }
         resolvedTelemetryRedirect?.validate()?.let { offending ->
             require(offending.isEmpty()) {
                 "Telemetry redirect endpoints are missing or malformed for: " +

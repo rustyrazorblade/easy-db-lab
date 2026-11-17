@@ -17,7 +17,7 @@ import picocli.CommandLine.Option
  * example, when a kit's uninstall phase cannot run cleanly, or when you want to
  * reset data between test runs without fully reinstalling the cluster.
  *
- * For kits that declare a `platform-pvs-delete` uninstall step, the normal
+ * For kits that declare a `kit-storage-delete` uninstall step, the normal
  * `easy-db-lab <kit> uninstall` command handles this automatically.
  */
 @RequireProfileSetup

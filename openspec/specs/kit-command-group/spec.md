@@ -1,7 +1,7 @@
 # kit-command-group Specification
 
 ## Purpose
-TBD - created by archiving change kit-subcommand-restructure. Update Purpose after archive.
+The `kit` command group, which installs, lists and uninstalls kits and registers each installed kit as its own top-level command.
 ## Requirements
 ### Requirement: `kit` top-level parent command
 The CLI SHALL expose a `kit` top-level parent command that groups all kit management operations.
@@ -24,8 +24,8 @@ The CLI SHALL expose `kit install` as a subcommand group. Each discoverable kit 
 registered as a subcommand under `kit install` (e.g. `kit install clickhouse`, `kit install presto`).
 
 #### Scenario: `kit install <kit>` scaffolds kit files
-- **WHEN** the user runs `easy-db-lab kit install clickhouse --size 100Gi`
-- **THEN** the kit template is rendered and written to disk exactly as before
+- **WHEN** the user runs `easy-db-lab kit install clickhouse --storage-size 100Gi`
+- **THEN** the kit template is rendered with `__STORAGE_SIZE__` set to `100Gi` and written to the kit directory
 
 #### Scenario: `kit install` with no subcommand prints help
 - **WHEN** the user runs `easy-db-lab kit install`
@@ -44,4 +44,21 @@ When the user types a top-level argument that matches an installable kit name, t
 #### Scenario: Hint message uses new command path
 - **WHEN** the user runs `easy-db-lab clickhouse` before installing the clickhouse kit
 - **THEN** the hint says `Run: easy-db-lab kit install clickhouse`
+
+### Requirement: Kit names that match a built-in command
+A workspace kit whose directory name matches a built-in top-level command SHALL NOT be skipped silently. At startup the CLI SHALL emit an event naming the kit and the built-in command it collides with, and SHALL keep the built-in command. `kit install` SHALL refuse an instance name that matches a built-in top-level command, with a message naming the command, before it writes any file.
+
+#### Scenario: Colliding workspace kit is reported
+- **WHEN** the workspace has a kit directory named `cassandra` with a `kit.yaml` and a `bin/` script, and the CLI starts
+- **THEN** an event names the kit `cassandra` and says it collides with the built-in `cassandra` command
+- **AND** the built-in `cassandra` command is unchanged
+
+#### Scenario: Install refuses a reserved name
+- **WHEN** `kit install` would produce an instance named after a built-in top-level command
+- **THEN** the command exits non-zero with a message naming the command
+- **AND** no kit directory is written
+
+#### Scenario: Non-colliding kit registers as before
+- **WHEN** the workspace has a kit named `cassandra-pods` and the CLI starts
+- **THEN** `cassandra-pods` is registered as a command and no collision event is emitted
 

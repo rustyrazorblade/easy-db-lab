@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import kotlinx.serialization.Serializable
 
@@ -55,16 +56,29 @@ fun parseProfilingConfig(
 ): ProfilingConfig? = decodeProfilingDocumentOrNull(document, ProfilingConfig.serializer(), source)
 
 /**
- * Builds the Pyroscope ingest base URL for a node's reconciler.
+ * The Pyroscope ingest base URL for an in-cluster profile producer (a pod's Pyroscope agent).
  *
- * Local mode addresses the control node on its private IP deliberately: cluster services are
- * always reached on the private (Tailscale) address, never the public one. A redirect cluster
- * ships profiles to the external stack instead, so [TelemetryRedirect.profiles] wins.
+ * Local mode is the Pyroscope Service ([BackendEndpoints.pyroscope]): every in-cluster producer
+ * resolves cluster DNS, so no node IP is involved. A redirect cluster ships profiles to the
+ * external stack instead, so [TelemetryRedirect.profiles] wins.
  *
- * @param controlNodeIp private IP of the control node (used only in local mode).
  * @param telemetryRedirect when non-null, the external Pyroscope ingest URL is returned instead.
  */
-fun pyroscopeIngestBaseUrl(
-    controlNodeIp: String,
-    telemetryRedirect: TelemetryRedirect? = null,
-): String = telemetryRedirect?.profiles ?: "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
+fun pyroscopeIngestBaseUrl(telemetryRedirect: TelemetryRedirect?): String = telemetryRedirect?.profiles ?: BackendEndpoints.pyroscope()
+
+/**
+ * The Pyroscope URL a host process on a cluster node sends profiles to: the node-local relay in the
+ * host-network Alloy eBPF agent, on loopback. A host process (the db-node profiling reconciler)
+ * cannot resolve cluster DNS; the relay forwards to the cluster's Pyroscope or, under telemetry
+ * redirect, to the external stack, so the URL is the same in both modes.
+ */
+fun nodeLocalProfilesRelay(): String = "http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}"
+
+/**
+ * Pyroscope as a caller outside the cluster reaches it on a node easy-db-lab owns: the node's
+ * private address at the Pyroscope NodePort. Only for callers that cannot resolve cluster DNS and
+ * do not run on a cluster node: EMR's Spark JVMs and a browser following the dashboard link.
+ *
+ * @param nodeIp private address of a cluster node (any node serves a NodePort; the control node by convention).
+ */
+fun pyroscopeNodePortUrl(nodeIp: String): String = "http://$nodeIp:${Constants.K8s.PYROSCOPE_NODE_PORT}"

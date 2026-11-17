@@ -76,6 +76,7 @@ val servicesModule =
         factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
+        factory { KitStorageResolver(get(), get()) }
         // Where helm and kubectl run follows the recorded environment: over SSH on the control node, or
         // locally through the workspace bin/ wrappers. A factory, resolved from state.json each time,
         // so an `init` inside the REPL or the server switches it for the next command. The SSH form's
@@ -140,10 +141,11 @@ val servicesModule =
         factoryOf(::JournaldOtelManifestBuilder)
         factoryOf(::OtelManifestBuilder)
         factoryOf(::OtelHostCollectorManifestBuilder)
-        // Explicit lambdas: factoryOf would resolve the defaulted StoreBlockRenderer through Koin, which binds none.
-        factory { PyroscopeManifestBuilder(get()) }
         factoryOf(::RegistryManifestBuilder)
         factoryOf(::S3ManagerManifestBuilder)
+        // Explicit factories, not factoryOf: factoryOf resolves every constructor parameter from
+        // Koin and ignores Kotlin defaults, so it would look up the defaulted StoreBlockRenderer.
+        factory { PyroscopeManifestBuilder(get()) }
         factory { TempoManifestBuilder(get()) }
         factory { MimirManifestBuilder(get()) }
         factory { LokiManifestBuilder(get()) }
@@ -156,6 +158,7 @@ val servicesModule =
         factory { TemplateService(get(), get()) }
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
+        factoryOf(::KitStorageProvisioner)
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }

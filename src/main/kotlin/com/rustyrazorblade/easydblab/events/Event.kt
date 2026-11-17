@@ -1114,15 +1114,19 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("K8s.StorageClassCreated")
-        data object StorageClassCreated : K8s {
-            override fun toDisplayString(): String = "Created local-storage StorageClass"
+        @SerialName("K8s.KitStorageClassCreated")
+        data class KitStorageClassCreated(
+            val storageClass: String,
+        ) : K8s {
+            override fun toDisplayString(): String = "Created StorageClass $storageClass"
         }
 
         @Serializable
-        @SerialName("K8s.StorageClassWfcCreated")
-        data object StorageClassWfcCreated : K8s {
-            override fun toDisplayString(): String = "Created local-storage-wfc StorageClass"
+        @SerialName("K8s.KitStorageClassDeleted")
+        data class KitStorageClassDeleted(
+            val storageClass: String,
+        ) : K8s {
+            override fun toDisplayString(): String = "Deleted StorageClass $storageClass"
         }
     }
 
@@ -5291,6 +5295,33 @@ sealed interface Event {
             override fun toDisplayString(): String = "Initializing directory"
         }
 
+        /**
+         * The kit StorageClass would not keep kit data: [storageClass] reclaims with
+         * [reclaimPolicy], or does not exist when that is null. [reason] is the refusal with its fix.
+         */
+        @Serializable
+        @SerialName("Setup.KitStorageClassRefused")
+        data class KitStorageClassRefused(
+            val storageClass: String,
+            val reclaimPolicy: String?,
+            val reason: String,
+        ) : Setup {
+            override fun toDisplayString(): String = reason
+
+            override fun isError(): Boolean = true
+        }
+
+        /** A cluster easy-db-lab did not build has no default StorageClass, and none was named. */
+        @Serializable
+        @SerialName("Setup.NoDefaultKitStorageClass")
+        data object NoDefaultKitStorageClass : Setup {
+            override fun toDisplayString(): String =
+                "The cluster has no default StorageClass for kit data. Pass init --kit-storage-class naming a " +
+                    "StorageClass with reclaimPolicy: Retain."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.ProvisioningInstances")
         data object ProvisioningInstances : Setup {
@@ -5649,6 +5680,20 @@ sealed interface Event {
             val count: Int,
         ) : Platform {
             override fun toDisplayString(): String = "Created $count PVs for '$kit'"
+        }
+
+        /**
+         * `platform create-pvs` on a provisioned kit StorageClass: [storageClass] retains, so
+         * [kit]'s claims may use it; the cluster provisions the volumes and nothing was created.
+         */
+        @Serializable
+        @SerialName("Platform.KitStorageClassChecked")
+        data class KitStorageClassChecked(
+            val kit: String,
+            val storageClass: String,
+        ) : Platform {
+            override fun toDisplayString(): String =
+                "StorageClass $storageClass retains and provisions the volumes for '$kit'; no PVs created"
         }
     }
 

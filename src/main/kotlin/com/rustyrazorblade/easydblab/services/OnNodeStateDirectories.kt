@@ -1,10 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -27,7 +27,7 @@ class OnNodeStateDirectories(
      */
     fun prepareBackends(controlNode: ClusterHost) {
         eventBus.emit(Event.Grafana.PyroscopeDirectoryPreparing)
-        owned(controlNode, "/mnt/db1/pyroscope", PyroscopeManifestBuilder.PYROSCOPE_UID)
+        owned(controlNode, "/mnt/db1/pyroscope", Constants.PyroscopeServer.UID)
 
         eventBus.emit(Event.Grafana.TempoDirectoryPreparing)
         owned(controlNode, TempoManifestBuilder.DATA_HOST_PATH, TempoManifestBuilder.TEMPO_UID)

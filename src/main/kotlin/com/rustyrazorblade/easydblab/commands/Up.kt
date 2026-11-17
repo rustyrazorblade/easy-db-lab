@@ -39,6 +39,7 @@ import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.KitStorageResolver
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
@@ -112,6 +113,7 @@ class Up(
     private val ciliumInstallAnnotator: CiliumInstallAnnotator by inject()
     private val ciliumNodeImageCheck: CiliumNodeImageCheck by inject()
     private val k8sService: K8sService by inject()
+    private val kitStorageResolver: KitStorageResolver by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
     private val registryService: RegistryService by inject()
     private val socksProxyService: SocksProxyService by inject()
@@ -815,9 +817,9 @@ class Up(
         // Label db and app nodes with ordinals for StatefulSet pod-to-node pinning
         labelNodesWithOrdinals(controlHosts.first())
 
-        // Ensure StorageClasses exist for Local PVs
-        k8sService.ensureLocalStorageClass().getOrThrow()
-        k8sService.ensureLocalStorageWfcClass().getOrThrow()
+        // Kits on local volumes get their own class at install (`kit-storage`). A recorded kit class
+        // is checked now, the first time the cluster's API is reachable, before anything claims from it.
+        workingState.initConfig?.kitStorageClass?.let { kitStorageResolver.resolve(it) }
 
         // Bring-up drives the observability stack service directly rather than the
         // `grafana update-config` command: on a redirect cluster that command refuses, but bring-up

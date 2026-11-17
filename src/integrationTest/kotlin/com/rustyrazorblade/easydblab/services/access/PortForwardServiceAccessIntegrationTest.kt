@@ -1,10 +1,15 @@
 package com.rustyrazorblade.easydblab.services.access
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
+import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.proxy.LoopbackPortSelector
 import com.rustyrazorblade.easydblab.proxy.ProxiedHttpClientFactory
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityHttp
+import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.IntOrString
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
@@ -17,6 +22,7 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import org.mockito.kotlin.mock
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -68,15 +74,19 @@ class PortForwardServiceAccessIntegrationTest {
         createService(SERVICE, nodePort = NODE_PORT)
     }
 
-    /** A busybox httpd pod labelled `app=`[name] that serves [BODY], once it is ready. */
-    private fun createWebPod(name: String) {
+    /** A busybox httpd pod with [labels] (`app=`[name] by default) that serves [BODY] on [port], once it is ready. */
+    private fun createWebPod(
+        name: String,
+        port: Int = HTTP_PORT,
+        labels: Map<String, String> = mapOf("app" to name),
+    ) {
         client
             .resource(
                 PodBuilder()
                     .withNewMetadata()
                     .withName(name)
                     .withNamespace(NAMESPACE)
-                    .withLabels<String, String>(mapOf("app" to name))
+                    .withLabels<String, String>(labels)
                     .endMetadata()
                     .withNewSpec()
                     .addNewContainer()
@@ -84,10 +94,10 @@ class PortForwardServiceAccessIntegrationTest {
                     .withImage(SharedK3s.BUSYBOX_IMAGE)
                     // Preloaded into K3s; never pulling makes a missing preload fail fast, not flake.
                     .withImagePullPolicy("Never")
-                    .withCommand("sh", "-c", "mkdir -p /www && echo $BODY > /www/index.html && httpd -f -p $HTTP_PORT -h /www")
+                    .withCommand("sh", "-c", "mkdir -p /www && echo $BODY > /www/index.html && httpd -f -p $port -h /www")
                     .withNewReadinessProbe()
                     .withNewTcpSocket()
-                    .withPort(IntOrString(HTTP_PORT))
+                    .withPort(IntOrString(port))
                     .endTcpSocket()
                     .withPeriodSeconds(1)
                     .endReadinessProbe()
@@ -241,6 +251,35 @@ class PortForwardServiceAccessIntegrationTest {
             // if it has not, this one request fails and records it. Either way it never hangs.
             runCatching { http.get(replacedTarget, "/", Duration.ofSeconds(STALE_READ_SECONDS)) }
             assertThat(http.get(replacedTarget, "/").body.trim()).isEqualTo(BODY)
+        }
+    }
+
+    /**
+     * Off owned nodes the backends' Services stay ClusterIP ([ServicePublishing.ClusterIp]) and the
+     * CLI reaches them only by port-forward. The real Mimir Service, rendered that way, must carry
+     * no node port and still answer through the forward the CLI opens for [ClusterServices.MIMIR].
+     */
+    @Test
+    fun `a backend Service published ClusterIP only is reached through the port-forward`() {
+        val templateService = TemplateService(mock<ClusterStateManager>())
+        val rendered = MimirManifestBuilder(templateService).buildService(ServicePublishing.ClusterIp)
+        assertThat(rendered.spec.type).isEqualTo("ClusterIP")
+        assertThat(rendered.spec.ports.mapNotNull { it.nodePort }).isEmpty()
+
+        createWebPod("mimir-backend", Constants.K8s.MIMIR_HTTP_PORT, rendered.spec.selector)
+        client
+            .resource(
+                ServiceBuilder(rendered)
+                    .editMetadata()
+                    .withNamespace(NAMESPACE)
+                    .endMetadata()
+                    .build(),
+            ).create()
+
+        newAccess().use { access ->
+            val endpoint = access.open(ClusterServices.MIMIR.copy(namespace = NAMESPACE)) as ServiceEndpoint.Plain
+
+            assertThat(get(endpoint.port)).isEqualTo(BODY)
         }
     }
 

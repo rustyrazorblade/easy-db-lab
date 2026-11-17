@@ -18,6 +18,7 @@ The system SHALL run at most one compactor service per AWS account: the ECS Farg
 #### Scenario: The task runs every compactor
 - **WHEN** the compactor task definition is built
 - **THEN** it holds a Mimir container with `-target=compactor` and `-compactor.cleanup-interval=1m`, a Loki container with `-target=compactor`, and a Tempo backend-scheduler and a Tempo backend-worker container
+- **AND** its `config` container writes `tempo-backend.yaml`, with the account store's block, to `/config` beside the Mimir and Loki configuration, and both Tempo containers run with `-config.file=/config/tempo-backend.yaml`
 - **AND** no container runs Pyroscope
 
 ### Requirement: The compactor compacts and never deletes data by retention
@@ -39,7 +40,7 @@ The compactor SHALL compact, and SHALL run with retention and every other deleti
 
 ### Requirement: Only the compactor's task role can delete observability objects
 
-The compactor's task role `EasyDBLabCompactorTaskRole` SHALL be allowed to list the account bucket and to get, put and delete objects under `mimir/`, `loki/` and `tempo/`, and SHALL have no access to `grafana/` or `pyroscope/`.  The task SHALL use the execution role `EasyDBLabCompactorExecutionRole`.  The user IAM policies SHALL grant what `up`, `down` and the compactor commands need to manage the service, its roles, its log group and its network.
+The compactor's task role `EasyDBLabCompactorTaskRole` SHALL be allowed to list the account bucket and to get, put and delete objects under `mimir/`, `loki/` and `tempo/`, and SHALL have no access to `grafana/` or `pyroscope/`.  When the store prefix is not empty, the same access SHALL also apply under `<prefix>/mimir/`, `<prefix>/loki/` and `<prefix>/tempo/`, and to no other path.  With an empty store prefix, the task role's policy SHALL be byte-identical to the document in use before the store prefix existed.  The task SHALL use the execution role `EasyDBLabCompactorExecutionRole`.  The user IAM policies SHALL grant what `up`, `down` and the compactor commands need to manage the service, its roles, its log group and its network.
 
 #### Scenario: The task role may delete under the compacted roots
 - **WHEN** the compactor task deletes a source object under `mimir/`, `loki/` or `tempo/` after merging it
@@ -48,6 +49,15 @@ The compactor's task role `EasyDBLabCompactorTaskRole` SHALL be allowed to list 
 #### Scenario: The task role cannot touch other roots
 - **WHEN** the compactor task tries to delete an object under `grafana/` or `pyroscope/`
 - **THEN** S3 refuses the delete
+
+#### Scenario: The task role policy is unchanged with an empty prefix
+- **WHEN** the task role's policy is built with an empty store prefix
+- **THEN** it is byte-identical to its golden file captured before the change
+
+#### Scenario: The task role reaches the compacted roots under a prefix
+- **WHEN** the task role's policy is built with the store prefix `team-a`
+- **THEN** it allows get, put and delete under `team-a/mimir/`, `team-a/loki/` and `team-a/tempo/` as well as the unprefixed roots
+- **AND** it allows nothing under `grafana/`, `pyroscope/`, `team-a/grafana/` or `team-a/pyroscope/`
 
 ### Requirement: The compactor is controlled by hand
 
@@ -81,4 +91,3 @@ The account VPC `easy-db-lab-compactor` SHALL carry the `easy_cass_lab=1` tag an
 #### Scenario: The compactor VPC is not counted as a cluster
 - **WHEN** `down` counts the clusters that name the account bucket
 - **THEN** the `easy-db-lab-compactor` VPC is not counted
-

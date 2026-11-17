@@ -202,6 +202,12 @@ data class InitConfig(
     // Labels a node must carry to run the observability backends, Grafana and kube-state-metrics,
     // merged into the environment's placement (`Placement.from`). Empty adds nothing.
     val nodeLabels: Map<String, String> = emptyMap(),
+    // The StorageClass every kit claim names (`KitStorage.from`). Null keeps kits on local volumes
+    // on nodes easy-db-lab owns; set, it must reclaim with Retain.
+    val kitStorageClass: String? = null,
+    // A Kubernetes quantity overriding the environment's default kit claim size. Null keeps the
+    // default (10Ti on local volumes, Constants.K8s.DEFAULT_PROVISIONED_KIT_STORAGE_SIZE otherwise).
+    val kitStorageSize: String? = null,
 ) {
     companion object {
         /**
@@ -261,6 +267,8 @@ data class InitConfig(
                 telemetryRedirect = init.resolvedTelemetryRedirect,
                 tenant = init.tenant,
                 nodeLabels = init.nodeLabels,
+                kitStorageClass = init.kitStorageClass,
+                kitStorageSize = init.kitStorageSize,
             )
 
         /**

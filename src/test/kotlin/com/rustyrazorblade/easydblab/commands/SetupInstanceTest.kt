@@ -113,7 +113,7 @@ class SetupInstanceTest : BaseKoinTest() {
         val config = configs.firstValue
         assertThat(config.enabled).isTrue()
         assertThat(config.asprofArgs).isEqualTo(Constants.Profiling.DEFAULT_ASPROF_ARGS)
-        assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
+        assertThat(config.pyroscopeUrl).isEqualTo("http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
         assertThat(config.tenant).isEqualTo("acme")
     }

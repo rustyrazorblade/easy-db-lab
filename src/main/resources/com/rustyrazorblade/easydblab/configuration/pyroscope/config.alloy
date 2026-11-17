@@ -84,8 +84,21 @@ pyroscope.ebpf "instance" {
   python_enabled   = false
 }
 
+// Node-local profiles relay. Host processes on this node that cannot resolve cluster DNS (the
+// db-node profiling reconciler) push JFR to http://127.0.0.1:4041/ingest; Alloy runs with host
+// networking, so this loopback is the node's. Pushes are forwarded, series name and labels intact,
+// to the same destination as the eBPF profiles below. Loopback only: nothing off the node reaches it.
+// The port is Constants.K8s.ALLOY_RELAY_PORT; this file takes no template substitution (see below).
+pyroscope.receive_http "relay" {
+  http {
+    listen_address = "127.0.0.1"
+    listen_port    = 4041
+  }
+  forward_to = [pyroscope.write.endpoint.receiver]
+}
+
 // Send profiles to the Pyroscope server. The write URL comes from the PYROSCOPE_WRITE_URL env var
-// set on the DaemonSet: local mode resolves it to the control node; a redirect cluster resolves it
+// set on the DaemonSet: local mode resolves it to the Pyroscope Service; a redirect cluster resolves it
 // to the external stack's Pyroscope ingest URL. The cluster's tenant (TENANT, from the cluster-config ConfigMap) rides on
 // every write in X-Scope-OrgID, in both modes. Both are read from the environment rather than
 // substituted into this file because Alloy's own `__meta_kubernetes_*` labels collide with the

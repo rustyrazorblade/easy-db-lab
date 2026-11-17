@@ -73,7 +73,7 @@ After a kit's `start` phase succeeds in an integration test, the test SHALL wait
 
 #### Scenario: Metrics assertion follows a successful start
 - **WHEN** an integration test's `start` step succeeds for a scrape-type kit
-- **THEN** the test SHALL query `http://$CONTROL_HOST_PRIVATE:9009/prometheus/api/v1/series?match[]={job="<kit>"}` with the cluster's tenant in the `X-Scope-OrgID` header
+- **THEN** the test SHALL query `http://$CONTROL_HOST_PRIVATE:31009/prometheus/api/v1/series?match[]={job="<kit>"}` with the cluster's tenant in the `X-Scope-OrgID` header
 - **AND** SHALL assert the response contains at least 10 series
 - **AND** SHALL fail with a clear error message if fewer than 10 series are found within 30 seconds
 

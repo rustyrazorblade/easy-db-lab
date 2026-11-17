@@ -390,11 +390,11 @@ class StatusTest : BaseKoinTest() {
         assertThat(capturedOutput()).contains(
             """
             Observability:
-              Grafana:         http://10.0.3.100:3000
-              Mimir:           http://10.0.3.100:9009/prometheus
-              Loki:            http://10.0.3.100:3100
-              Tempo:           http://10.0.3.100:3200
-              Pyroscope:       http://10.0.3.100:4040
+              Grafana:         http://10.0.3.100:31300
+              Mimir:           http://10.0.3.100:31009/prometheus
+              Loki:            http://10.0.3.100:31100
+              Tempo:           http://10.0.3.100:31200
+              Pyroscope:       http://10.0.3.100:31040
             """.trimIndent(),
         )
         assertThat(capturedOutput()).doesNotContain("run: bin/kubectl")

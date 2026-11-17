@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
  * Tests that the postgres-cluster.yaml.template renders correctly through install-time
  * __KEY__ substitution performed by TemplateService.
  *
- * All variables — INSTANCES, STORAGE_CLASS_WFC, STORAGE_SIZE, IMAGE,
+ * All variables — INSTANCES, KIT_STORAGE_CLASS, STORAGE_SIZE, IMAGE,
  * SHARED_PRELOAD_LIBRARIES, and POST_INIT_SQL — are substituted at install time.
  */
 class PostgresClusterTemplateTest {
@@ -32,7 +32,7 @@ class PostgresClusterTemplateTest {
         template
             .replace("__KIT_NAME__", kitName)
             .replace("__INSTANCES__", "1")
-            .replace("__STORAGE_CLASS_WFC__", "local-storage-wfc")
+            .replace("__KIT_STORAGE_CLASS__", "edl-local-postgres")
             .replace("__STORAGE_SIZE__", "10Gi")
             .replace("__IMAGE__", image)
             .replace("__SHARED_PRELOAD_LIBRARIES__", sharedPreloadLibraries)
@@ -75,7 +75,7 @@ class PostgresClusterTemplateTest {
         val rendered = simulateInstall(templateContent)
         assertThat(rendered).doesNotContain("__KIT_NAME__")
         assertThat(rendered).doesNotContain("__INSTANCES__")
-        assertThat(rendered).doesNotContain("__STORAGE_CLASS_WFC__")
+        assertThat(rendered).doesNotContain("__KIT_STORAGE_CLASS__")
         assertThat(rendered).doesNotContain("__STORAGE_SIZE__")
         assertThat(rendered).doesNotContain("__IMAGE__")
         assertThat(rendered).doesNotContain("__SHARED_PRELOAD_LIBRARIES__")

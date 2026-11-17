@@ -1,11 +1,10 @@
 package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
-import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -23,17 +22,18 @@ import org.mockito.kotlin.whenever
 
 /**
  * Proves that every Pyroscope profile producer resolves to the external stack when the cluster is
- * in telemetry-redirect mode, rather than to the in-cluster server on the control node.
+ * in telemetry-redirect mode, rather than to the in-cluster Pyroscope Service.
  *
- * The control node is deliberately given a concrete private IP so the local-mode Pyroscope URL is a
- * distinct, assertable string: a redirect must displace it, not merely add the external URL beside
- * it. Uses real TemplateService and real manifest builders (never mock configuration classes).
+ * A redirect must displace the local-mode Service URL, not merely add the external URL beside it.
+ * The control node keeps a concrete private IP so a test can also show no producer falls back to a
+ * node address. Uses real TemplateService and real manifest builders (never mock configuration
+ * classes).
  */
 class ProfilingRedirectTest : BaseKoinTest() {
     private val redirect = TelemetryRedirect.fromBaseHost("10.0.0.9")
 
-    /** The Pyroscope URL local mode would have produced for this control node. */
-    private val localPyroscopeUrl = "http://$CONTROL_NODE_IP:4040"
+    /** The Pyroscope URL local mode produces: the Pyroscope Service, which a redirect must displace. */
+    private val localPyroscopeUrl = BackendEndpoints.pyroscope()
 
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -71,7 +71,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
 
     @Test
     fun `pyroscopeIngestBaseUrl resolves to the external profiles endpoint under redirect`() {
-        val url = pyroscopeIngestBaseUrl(CONTROL_NODE_IP, redirect)
+        val url = pyroscopeIngestBaseUrl(redirect)
 
         assertThat(url).isEqualTo(redirect.profiles)
         assertThat(url).doesNotContain(CONTROL_NODE_IP)
@@ -86,25 +86,20 @@ class ProfilingRedirectTest : BaseKoinTest() {
     }
 
     @Test
-    fun `eBPF DaemonSet points the write URL at the control node in local mode`() {
+    fun `in local mode the eBPF agent writes to the Pyroscope Service, never a node IP`() {
         val writeUrl = ebpfWriteUrl(telemetryRedirect = null)
 
-        assertThat(writeUrl).isEqualTo(localPyroscopeUrl)
-    }
+        assertThat(writeUrl).isEqualTo("http://pyroscope.default.svc:4040")
+        assertThat(writeUrl).doesNotContain(CONTROL_NODE_IP)
 
-    @Test
-    fun `off owned nodes the eBPF agent writes to the Pyroscope Service, never a node IP`() {
-        val offAws = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE)
-        val alloy =
+        // A host-network pod resolves a Service name only under ClusterFirstWithHostNet; with the
+        // default policy it reads the node's resolv.conf and every profile is dropped silently.
+        val podSpec =
             PyroscopeManifestBuilder(templateService)
-                .buildAgentResources(telemetryRedirect = null, hosting = offAws)
-                .filterIsInstance<DaemonSet>()
-                .single()
-                .spec.template.spec.containers
-                .single { it.name == "alloy" }
-
-        assertThat(alloy.env.single { it.name == "PYROSCOPE_WRITE_URL" }.value)
-            .isEqualTo("http://pyroscope.default.svc:4040")
+                .buildEbpfDaemonSet(telemetryRedirect = null)
+                .spec.template.spec
+        assertThat(podSpec.hostNetwork).isTrue()
+        assertThat(podSpec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
     }
 
     @Test
@@ -165,7 +160,6 @@ class ProfilingRedirectTest : BaseKoinTest() {
         val daemonSet =
             builder
                 .buildAllResources(
-                    controlNodeIp = CONTROL_NODE_IP,
                     clusterName = "test-cluster",
                     tenant = "acme",
                     telemetryRedirect = redirect,
@@ -180,6 +174,28 @@ class ProfilingRedirectTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains(redirect.profiles)
         assertThat(javaToolOptions).doesNotContain(localPyroscopeUrl)
         assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=acme")
+    }
+
+    @Test
+    fun `sidecar Pyroscope agent sends to the Pyroscope Service in local mode`() {
+        val daemonSet =
+            SidecarManifestBuilder(templateService)
+                .buildAllResources(clusterName = "test-cluster", tenant = "acme")
+                .filterIsInstance<DaemonSet>()
+                .single()
+        val podSpec = daemonSet.spec.template.spec
+        val javaToolOptions =
+            podSpec.containers
+                .single { it.name == "cassandra-sidecar" }
+                .env
+                .single { it.name == "JAVA_TOOL_OPTIONS" }
+                .value
+
+        assertThat(javaToolOptions).contains("-Dpyroscope.server.address=http://pyroscope.default.svc:4040")
+        assertThat(javaToolOptions).doesNotContain(CONTROL_NODE_IP)
+        // The Service name resolves from the host network only under ClusterFirstWithHostNet.
+        assertThat(podSpec.hostNetwork).isTrue()
+        assertThat(podSpec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
     }
 
     companion object {

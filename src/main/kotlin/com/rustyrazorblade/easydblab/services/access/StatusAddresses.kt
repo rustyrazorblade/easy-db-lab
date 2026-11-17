@@ -53,8 +53,8 @@ data class ObservabilityAddresses(
  * The addresses `status` (the command and the server's status cache) prints for cluster Services
  * and kit endpoints, chosen by the cluster's recorded [Exposure].
  *
- * On Socks and Direct a Service runs on host networking, so it is shown at its node's private
- * address, which the tunnel or the routed network reaches. A port-forward cannot outlive `status`,
+ * On Socks and Direct a Service is shown at its node's private address and NodePort, which the
+ * tunnel or the routed network reaches. A port-forward cannot outlive `status`,
  * so on a port-forward cluster each one is shown by its Service DNS name with the
  * `bin/kubectl port-forward` command (through the workspace wrapper) the operator runs to reach it.
  *

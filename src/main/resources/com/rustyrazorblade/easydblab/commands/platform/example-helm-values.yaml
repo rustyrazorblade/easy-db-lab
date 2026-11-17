@@ -1,7 +1,7 @@
   nodeSelector:
     type: db                        # or 'app' for app-pool workloads
   persistence:
-    storageClass: local-storage-wfc
+    storageClass: edl-local-<your-workload>   # the class `platform create-pvs --kit <your-workload>` creates
   podAntiAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
     - labelSelector:

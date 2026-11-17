@@ -229,23 +229,37 @@ matches, the step succeeds and prints nothing. A failed cluster query fails the 
 `kinds` and `namespace` accept `${VAR}` interpolation. Use this form in `stop` and `uninstall` for
 kits that label every object they create, instead of a `shell` step.
 
-### `platform-pvs`
-Creates persistent volumes on cluster nodes using the platform substrate.
+### `kit-storage`
+Readies the kit's storage for its claims, as the environment says (see
+[Kit Storage](../user-guide/platform-substrate.md#kit-storage)).
 ```yaml
-- type: platform-pvs
-  node-type: db          # default: db
-  count: 3               # optional: defaults to node count
-  storage-size: 10Ti     # optional: PV capacity; defaults to the STORAGE_SIZE variable
-  if-set: EXTSTORE_SIZE  # optional: skip the step unless this kit variable is non-empty
+- type: kit-storage
+  node-type: db                       # default: db
+  count: 1                            # optional: defaults to node count
+  volume-claim-template-name: data    # default: data; names the PVs and their directory
+  storage-size: 10Ti                  # optional: PV capacity; defaults to the STORAGE_SIZE variable
+  if-set: EXTSTORE_SIZE               # optional: skip the step unless this kit variable is non-empty
 ```
-`if-set` makes the volume optional: the memcached kit creates its extstore PV only when
-`--extstore-size` is set. Pair it with `platform-pvs-delete` in `uninstall`, which is a no-op when
-no PV was created.
+On local volumes (owned nodes) it creates the kit's class `edl-local-<kit>`, the directory
+`/mnt/db1/<kit>/<claim template>` on each node, and one PV of that class per node, named
+`<claim template>-<kit>-<ordinal>`. A kit with two claim templates on one pool (TiDB's TiKV and
+TiFlash) declares one step per template. On a provisioned class it creates nothing and only checks
+that the class still reclaims with `Retain`, failing before any claim exists if it does not.
 
-Every kit's PVs share one storage class, and each PV is labelled `app.kubernetes.io/name=<kit>`.
-Every claim the kit creates — its own, a StatefulSet's, or one an operator generates — must select
-that label (`selector.matchLabels`, or Strimzi's `selector`) or name the PV in `volumeName`.
-Otherwise it can bind another kit's free PV.
+`if-set` makes the volume optional: the memcached kit creates its extstore PV only when
+`--extstore-size` is set. Pair the step with `kit-storage-delete` (`node-type`) in `uninstall`,
+which removes the kit's PVs, its class and `/mnt/db1/<kit>` on that pool, is a no-op when no PV
+was created, and does nothing on a provisioned class.
+
+Every claim the kit creates — its own, a StatefulSet's, or one an operator generates — names
+`__KIT_STORAGE_CLASS__` and requests `__STORAGE_SIZE__`, with no `selector` and no `volumeName`; a
+selector or a PV name can never bind on a provisioned class, and a claim with no class lands on
+the cluster's default class, which may delete. Declare the size arg as
+`--storage-size` / `STORAGE_SIZE` with `default: "${KIT_STORAGE_SIZE}"`. An operator that can
+delete claims on its own (Strimzi's `deleteClaim`, TiDB's `pvReclaimPolicy`) must keep them:
+`deleteClaim: false`, `pvReclaimPolicy: Retain`. A non-root image whose entrypoint does not
+chown its data directory needs `fsGroup` set to its uid, because a provisioned volume's root is
+root-owned. `KitClaimStorageTest` checks every built-in kit for all of this.
 
 ### `configmap`
 Creates or updates a K8s ConfigMap.
@@ -340,8 +354,9 @@ All scripts and shell steps receive the following environment variables:
 | `ACCOUNT_BUCKET` | S3 account-level bucket name |
 | `REGION` | AWS region |
 | `KIT_NAME` | Name of this kit |
-| `STORAGE_SIZE` | Storage size (from `--size` arg, if used) |
-| `STORAGE_CLASS_WFC` | K8s storage class name with WaitForFirstConsumer binding |
+| `STORAGE_SIZE` | Claim size (from the `--storage-size` arg, if used) |
+| `KIT_STORAGE_CLASS` | The StorageClass every kit claim names: `edl-local-<kit>` on local volumes, else the `init --kit-storage-class` class |
+| `KIT_STORAGE_SIZE` | The environment's default claim size: `init --kit-storage-size`, else `10Ti` on local volumes or `100Gi` |
 | `RUNNING_KITS` | Comma-separated names of currently running kits |
 | `EASY_DB_LAB_EXEC` | Path to the `easy-db-lab` binary |
 | `BACKUP_NAME` | First positional argument (backup and restore phases only) |
@@ -540,12 +555,25 @@ Only series with a sample in the last five minutes are exported, so series left 
 that have since been replaced do not end up in the catalog. Export while the kit is running and
 being scraped.
 
-The script sources `env.sh`, so run it **from the cluster workspace** (the directory holding
-`env.sh`, `state.json` and `kubeconfig`), calling it by its path in your checkout:
+The script is a kit-development tool and is **not packaged**: the Homebrew and release
+distributions carry only `packer/` and the agents, so it needs a source checkout. It sources
+`env.sh`, so run it **from the cluster workspace** (the directory holding `env.sh`, `state.json`
+and `kubeconfig`), calling it by its path in your checkout:
 
 ```bash
 cd <cluster-workspace>
 <checkout>/bin/export-workload-metrics <kit>
+```
+
+It queries Mimir on its NodePort, `http://<control private IP>:31009/prometheus`, which is
+reachable from inside the VPC. From the workspace it queries through the workspace's `bin/curl`
+wrapper, which routes through the SOCKS tunnel (`easy-db-lab socks start`); without that wrapper it
+uses plain `curl`. Where the address is unreachable, or the backends are ClusterIP only, it fails
+naming that address; port-forward Mimir and pass its URL in `MIMIR_URL` instead:
+
+```bash
+kubectl port-forward svc/mimir 19009:9009 &
+MIMIR_URL=http://127.0.0.1:19009/prometheus <checkout>/bin/export-workload-metrics <kit>
 ```
 
 It writes `<cluster-workspace>/<kit>/metrics-catalog.json`, not the kit's resource directory.
@@ -698,12 +726,12 @@ method-level CPU, allocation, and lock contention profiles — much richer than 
 
 The agent JAR lives on the host at `/usr/local/pyroscope`. Mount it into each JVM container via a
 `hostPath` volume, then inject `JAVA_TOOL_OPTIONS` via a `kubectl patch` in the `start` phase.
-`CONTROL_HOST_PRIVATE` and `CLUSTER_NAME` are available as environment variables at runtime.
+`CLUSTER_NAME` is available as an environment variable at runtime. The agent ships to the Pyroscope Service by its cluster DNS name; never point it at `CONTROL_HOST_PRIVATE`, as no backend listens on a node address (`BuiltinKitCollectorEndpointTest` fails on one). A kit template can use `__PYROSCOPE_URL__`, which is the Service or, on a redirect cluster, the external stack.
 
 ```bash
 PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar \
   -Dpyroscope.application.name=<kit> \
-  -Dpyroscope.server.address=http://${CONTROL_HOST_PRIVATE}:4040 \
+  -Dpyroscope.server.address=http://pyroscope.default.svc:4040 \
   -Dpyroscope.format=jfr \
   -Dpyroscope.profiler.event=cpu \
   -Dpyroscope.profiler.alloc=512k \

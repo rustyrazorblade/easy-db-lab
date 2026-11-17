@@ -58,6 +58,11 @@ args:
     description: "Number of TiKV and TiFlash replicas (one per db node)"
     type: int
     default: "${DB_NODE_COUNT}"
+  - flag: --storage-size
+    variable: STORAGE_SIZE
+    description: "Persistent volume size for each PD, TiKV and TiFlash node"
+    type: string
+    default: "${KIT_STORAGE_SIZE}"
 
 install:
   - type: helm-repo
@@ -72,6 +77,18 @@ install:
     release: tidb-operator
     namespace: tidb-admin
     version: v1.6.5
+  # PD on one app node; TiKV and TiFlash on every db node. TiKV and TiFlash share the kit's
+  # class and size, so either may bind either PV.
+  - type: kit-storage
+    node-type: app
+    count: 1
+    volume-claim-template-name: pd
+  - type: kit-storage
+    node-type: db
+    volume-claim-template-name: tikv
+  - type: kit-storage
+    node-type: db
+    volume-claim-template-name: tiflash
 
 start:
   - type: shell
@@ -131,13 +148,18 @@ uninstall:
         echo "Error: TiDB cluster is still running. Run 'tidb stop' before uninstalling." >&2
         exit 1
       fi
-  # TiDB Operator keeps the local-path PVCs of PD, TiKV and TiFlash after the TidbCluster is
-  # deleted; it labels them with the cluster's instance. Deleting them lets local-path remove the
-  # volumes.
+  # TiDB Operator keeps the PVCs of PD, TiKV and TiFlash after the TidbCluster is deleted; it
+  # labels them with the cluster's instance. Their volumes reclaim with Retain, so deleting the
+  # claims deletes no data; on local volumes kit-storage-delete then removes the PVs and their
+  # directories on each node.
   - type: delete
     kinds: [PersistentVolumeClaim]
     selector: app.kubernetes.io/instance=tidb
     namespace: default
+  - type: kit-storage-delete
+    node-type: app
+  - type: kit-storage-delete
+    node-type: db
   - type: helm-uninstall
     release: tidb-operator
     namespace: tidb-admin

@@ -58,7 +58,6 @@ class CoreCollectorManifests(
         val scrapeConfigs = k8sClientProvider.createClient().use { otelManifestBuilder.listWorkloadScrapeConfigs(it) }
         return CollectorResources.build(
             otelManifestBuilder,
-            reading.contract.hosting,
             reading.state,
             reading.region,
             scrapeConfigs,
@@ -97,7 +96,7 @@ class ObservabilityStageManifests(
             ObservabilityStage.TEMPO -> backends.tempo.buildAllResources(hosting)
             ObservabilityStage.PYROSCOPE -> backends.pyroscope.buildServerResources(hosting)
             // Every node, in both modes; under a redirect it points at the external Pyroscope.
-            ObservabilityStage.PYROSCOPE_AGENT -> backends.pyroscope.buildAgentResources(telemetryRedirect, hosting)
+            ObservabilityStage.PYROSCOPE_AGENT -> backends.pyroscope.buildAgentResources(telemetryRedirect)
             // The core collector already left its pod-log receiver out (CollectorResources).
             ObservabilityStage.POD_LOGS -> emptyList()
         }

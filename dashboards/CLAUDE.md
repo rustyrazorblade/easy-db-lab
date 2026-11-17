@@ -486,7 +486,7 @@ diff <(jq -S . dashboards/infrastructure/system-overview.json) \
 Then read the query back from Grafana, and evaluate it through Grafana's own datasource proxy:
 
 ```bash
-G=http://<control-ip>:3000
+G=http://<control-ip>:31300   # the Grafana NodePort
 curl -s "$G/api/search" | jq -r '.[] | "\(.uid)  \(.title)"'
 curl -s "$G/api/dashboards/uid/<uid>" | jq -r '.dashboard.panels[] | select(.title|test("CPU";"i")) | .targets[].expr'
 

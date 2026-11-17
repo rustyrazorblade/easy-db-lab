@@ -155,6 +155,8 @@ determined fails at `init`, before any instance is created.
 | `--vpc` | Use existing VPC ID | - |
 | `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
+| `--kit-storage-class` | StorageClass every kit claim names, for a cluster that provisions its own volumes. It must reclaim with `Retain`; `up` and every kit's `kit-storage` step refuse one that deletes, has no policy, or does not exist. Without it, kits use local volumes on `/mnt/db1`, one `edl-local-<kit>` class per kit. See [Kit Storage](../user-guide/platform-substrate.md#kit-storage) | - (local volumes) |
+| `--kit-storage-size` | Default size of a kit claim, a positive Kubernetes quantity such as `500Gi`; a kit's `--storage-size` overrides it | `10Ti` on local volumes, `100Gi` on a kit StorageClass |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--capability` | Override one node capability, as `<name>=true` or `<name>=false`; repeatable. Names: `systemd-journal`, `cloudwatch`, `s3`, `privileged`, `host-network`, `host-path`, `node-ssh`. An unknown name, a value other than `true`/`false`, or one name given both values fails `init` before anything is written. See [Node capabilities](#node-capabilities) | (the environment's declared set) |
 | `--up` | Auto-provision after init | false |
@@ -226,7 +228,7 @@ easy-db-lab up [options]
 Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Starts the [account compactor](../user-guide/compactor.md) when it is not running, and leaves it as it is when it runs; `up` does not wait for its task.
 
 `up` fails fast. If any provisioning step fails — EC2 setup, K3s, node labeling, the
-`local-storage`/`local-storage-wfc` StorageClasses, the observability stack, Tailscale, and so
+recorded kit StorageClass check, the observability stack, Tailscale, and so
 on — the command exits non-zero and stops rather than continuing with a partially-provisioned
 cluster. EC2 instances that were already launched are left running; there is no automatic
 rollback. Reclaim them with `easy-db-lab down`, fix the underlying issue, and re-run `up`.

@@ -97,11 +97,11 @@ Tailscale starts automatically with `easy-db-lab up`. Once connected:
 ```bash
 # Direct access to private IPs
 ssh ubuntu@10.0.1.50
-curl http://10.0.1.50:3100/ready
+curl http://10.0.1.50:31100/ready   # Loki on its NodePort
 kubectl get pods
 
 # Web UIs work directly in your browser
-# http://10.0.1.50:3000 (Grafana)
+# http://10.0.1.50:31300 (Grafana NodePort)
 ```
 
 `easy-db-lab down` and `easy-db-lab tailscale stop` remove the cluster's control node from the tailnet, using the device ID recorded when Tailscale started on it (`tailscale stop` does this even when Tailscale is already down), so a later `tailscale start` does not leave the old device beside the new one. If the OAuth client is not allowed to delete devices, or no credentials are configured, the command exits non-zero and says so; the device ID stays in the cluster state, so running it again once the scope is granted removes it. `tailscale start` likewise removes a previously recorded device when the control node registers as a new one; if that removal fails it reports the old device (and the `devices:core` scope, when the OAuth client lacks it) so you can remove it by hand, records the new one, and still succeeds, so `up` carries on.
@@ -154,7 +154,7 @@ If you don't want to set up Tailscale, the SOCKS proxy provides connectivity via
 ```bash
 source env.sh
 kubectl get pods
-curl http://control0:3100/ready
+curl http://control0:31100/ready
 ```
 
 The `easy-db-lab` CLI is the only thing that starts or stops the tunnel. Any command that needs to
@@ -231,7 +231,7 @@ command directly:
 
 ```bash
 with-proxy wget http://10.0.1.50:8080/api
-with-proxy http http://control0:3000/api/health
+with-proxy http http://control0:31300/api/health
 ```
 
 ### Kit commands over SOCKS
@@ -275,10 +275,10 @@ proxy:
 | SOCKS Port | the port `socks start` printed (`socks5-status` shows it too) |
 | SOCKS Version | 5 |
 
-Then access cluster services:
-- **Grafana**: `http://control0:3000`
-- **Mimir**: `http://control0:9009/prometheus` (send `X-Scope-OrgID: <tenant>`)
-- **Loki**: `http://control0:3100` (send `X-Scope-OrgID: <tenant>`)
+Then access cluster services on their NodePorts (see [Port Reference](../reference/ports.md)):
+- **Grafana**: `http://control0:31300`
+- **Mimir**: `http://control0:31009/prometheus` (send `X-Scope-OrgID: <tenant>`)
+- **Loki**: `http://control0:31100` (send `X-Scope-OrgID: <tenant>`)
 
 ### Proxy Management
 

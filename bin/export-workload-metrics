@@ -58,7 +58,16 @@ CONTROL_HOST_PRIVATE="${CONTROL_HOST_PRIVATE:-$(easy-db-lab ip control0 --privat
 # Mimir runs native multi-tenancy; a state written before tenants existed is the default tenant.
 TENANT="$(jq -r '.initConfig.tenant // "default"' state.json 2>/dev/null || echo default)"
 
-MIMIR_URL="http://${CONTROL_HOST_PRIVATE}:9009/prometheus"
+# Mimir is published on the Mimir NodePort (Constants.K8s.MIMIR_NODE_PORT) on every node of a cluster
+# easy-db-lab provisioned. Where the backends are ClusterIP only, set MIMIR_URL to a port-forward.
+MIMIR_URL="${MIMIR_URL:-http://${CONTROL_HOST_PRIVATE}:31009/prometheus}"
+# The private control IP is reachable from the laptop only through the SOCKS tunnel. The workspace's
+# bin/curl wrapper routes its own call through it (or not, under Tailscale); outside a workspace
+# with wrappers, plain curl is used.
+CURL="curl"
+if [ -x bin/curl ]; then
+    CURL="$(pwd)/bin/curl"
+fi
 OUTPUT_DIR="${WORKLOAD}"
 OUTPUT_FILE="${OUTPUT_DIR}/metrics-catalog.json"
 
@@ -69,7 +78,17 @@ echo "Querying Mimir at ${MIMIR_URL} (tenant ${TENANT}) for job=\"${WORKLOAD}\" 
 # An instant vector selector returns one result per series with a sample in the lookback window,
 # keeping __name__.
 QUERY="{job=\"${WORKLOAD}\"}"
-RAW=$(curl -sf "${MIMIR_URL}/api/v1/query" -H "X-Scope-OrgID: ${TENANT}" --data-urlencode "query=${QUERY}")
+if ! RAW=$("$CURL" -sf --connect-timeout 10 "${MIMIR_URL}/api/v1/query" -H "X-Scope-OrgID: ${TENANT}" --data-urlencode "query=${QUERY}"); then
+    cat <<EOF
+Error: could not reach Mimir at ${MIMIR_URL}.
+On a cluster easy-db-lab provisioned, Mimir is on NodePort 31009 of every node; run this from a host
+inside the VPC, or from the workspace with the SOCKS tunnel up (easy-db-lab socks start). Where the backends are ClusterIP only,
+port-forward Mimir and point MIMIR_URL at it:
+  kubectl port-forward svc/mimir 19009:9009 &
+  MIMIR_URL=http://127.0.0.1:19009/prometheus $0 ${WORKLOAD}
+EOF
+    exit 1
+fi
 
 STATUS=$(echo "$RAW" | jq -r '.status')
 if [ "$STATUS" != "success" ]; then

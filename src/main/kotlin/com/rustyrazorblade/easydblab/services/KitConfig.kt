@@ -115,21 +115,23 @@ data class KitEndpoint(
         }
 
     /**
-     * Produces TARGET_* environment variables for this endpoint given the resolved [ip]
-     * and the kit's [sqlCap]. The user variables come from the `sql` capability and are empty
-     * without one. Returns an empty map for endpoint types with no TARGET_* convention (HTTPS,
-     * CQL). The `when` names every type, so a new type does not compile until it states its
-     * variables.
+     * Produces TARGET_* environment variables for this endpoint given the resolved [ip] and
+     * [port] (the endpoint's declared port unless the caller resolved another, such as a Service
+     * port) and the kit's [sqlCap]. The user variables come from the `sql` capability and are
+     * empty without one. Returns an empty map for endpoint types with no TARGET_* convention
+     * (HTTPS, CQL). The `when` names every type, so a new type does not compile until it states
+     * its variables.
      */
     fun toTargetVars(
         ip: String,
         sqlCap: KitCapability?,
+        port: Int = this.port,
     ): Map<String, String> {
         val sqlUser = sqlCap?.user.orEmpty()
         return when (type) {
             EndpointType.JDBC ->
                 mapOf(
-                    "TARGET_JDBC_URL" to formatUrl(ip),
+                    "TARGET_JDBC_URL" to formatUrl(ip, port),
                     "TARGET_JDBC_USER" to sqlUser,
                     "TARGET_JDBC_DRIVER" to sqlCap?.driverClass.orEmpty(),
                 )
@@ -147,7 +149,7 @@ data class KitEndpoint(
                     "TARGET_MYSQL_USER" to sqlUser,
                     "TARGET_MYSQL_DATABASE" to database,
                 )
-            EndpointType.HTTP -> mapOf("TARGET_HTTP_URL" to formatUrl(ip))
+            EndpointType.HTTP -> mapOf("TARGET_HTTP_URL" to formatUrl(ip, port))
             EndpointType.NATIVE ->
                 mapOf(
                     "TARGET_NATIVE_HOST" to ip,
@@ -155,7 +157,7 @@ data class KitEndpoint(
                     "TARGET_NATIVE_USER" to sqlUser,
                     "TARGET_NATIVE_DATABASE" to database,
                 )
-            EndpointType.KAFKA -> mapOf("TARGET_KAFKA_BOOTSTRAP" to formatUrl(ip))
+            EndpointType.KAFKA -> mapOf("TARGET_KAFKA_BOOTSTRAP" to formatUrl(ip, port))
             EndpointType.HTTPS, EndpointType.CQL -> emptyMap()
         }
     }

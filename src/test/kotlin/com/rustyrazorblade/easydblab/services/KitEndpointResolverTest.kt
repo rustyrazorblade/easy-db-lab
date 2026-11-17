@@ -254,3 +254,105 @@ class KitEndpointResolverTest {
         assertThat(vars["TARGET_JDBC_DRIVER"]).isEmpty()
     }
 }
+
+/**
+ * A client kit's pods run in the cluster, so a target published on a Service is reached by its
+ * Service DNS name and Service port, whatever hosts `state.json` records (none on a cluster the
+ * user brings).
+ */
+class KitEndpointResolverServiceDnsTest {
+    @TempDir
+    lateinit var workspaceDir: File
+
+    private val noHosts = ClusterState(name = "byo", versions = mutableMapOf())
+
+    private fun installedKit(): File =
+        File(workspaceDir, "postgres").apply {
+            mkdirs()
+            File(this, "kit.yaml").writeText(
+                """
+                name: postgres
+                capabilities:
+                  - type: sql
+                    user: postgres
+                endpoints:
+                  - name: PostgreSQL
+                    node-type: db
+                    port: 30432
+                    type: postgresql
+                    database: postgres
+                  - name: JDBC
+                    node-type: db
+                    port: 30432
+                    type: jdbc
+                    scheme: postgresql
+                    path: /postgres
+                """.trimIndent(),
+            )
+            File(this, "nodeport-service.yaml").writeText(
+                """
+                apiVersion: v1
+                kind: Service
+                metadata:
+                  name: postgres-nodeport
+                  namespace: default
+                spec:
+                  type: NodePort
+                  ports:
+                    - name: postgres
+                      port: 5432
+                      targetPort: 5432
+                      nodePort: 30432
+                """.trimIndent(),
+            )
+        }
+
+    @Test
+    fun `an endpoint published on a Service resolves to its DNS name and Service port with no recorded hosts`() {
+        val vars = DefaultKitEndpointResolver().resolveTargetVars(installedKit(), noHosts)
+
+        assertThat(vars["TARGET_PG_HOST"]).isEqualTo("postgres-nodeport.default.svc")
+        assertThat(vars["TARGET_PG_PORT"]).isEqualTo("5432")
+        assertThat(vars["TARGET_JDBC_URL"]).isEqualTo("jdbc:postgresql://postgres-nodeport.default.svc:5432/postgres")
+    }
+
+    private fun httpKit(): File =
+        File(workspaceDir, "clickhouse").apply {
+            mkdirs()
+            File(this, "kit.yaml").writeText(
+                "name: clickhouse\nendpoints:\n  - name: HTTP\n    node-type: db\n    port: 30123\n    type: http\n",
+            )
+            File(this, "nodeport-service.yaml").writeText(
+                """
+                apiVersion: v1
+                kind: Service
+                metadata:
+                  name: clickhouse-nodeport
+                  namespace: default
+                spec:
+                  type: NodePort
+                  ports:
+                    - name: http
+                      port: 8123
+                      nodePort: 30123
+                """.trimIndent(),
+            )
+        }
+
+    @Test
+    fun `the HTTP endpoint, curled from the operator's machine, keeps a recorded node on the NodePort`() {
+        val dbHost = ClusterHost("1.2.3.4", "10.0.1.5", "db0", "us-west-2a", "i-db0")
+        val aws = noHosts.copy(hosts = mapOf(ServerType.Cassandra to listOf(dbHost)))
+
+        val vars = DefaultKitEndpointResolver().resolveTargetVars(httpKit(), aws)
+
+        assertThat(vars["TARGET_HTTP_URL"]).isEqualTo("http://10.0.1.5:30123")
+    }
+
+    @Test
+    fun `the HTTP endpoint with no recorded node falls back to the Service`() {
+        val vars = DefaultKitEndpointResolver().resolveTargetVars(httpKit(), noHosts)
+
+        assertThat(vars["TARGET_HTTP_URL"]).isEqualTo("http://clickhouse-nodeport.default.svc:8123")
+    }
+}

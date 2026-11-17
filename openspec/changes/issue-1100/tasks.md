@@ -39,6 +39,9 @@
 - [x] 6.4 Integration: Retain check against real StorageClasses — `local-path` refused, the retained copy accepted, a missing class reported missing.
 - [x] 6.5 Integration: Kafka stop then start rebinds its Retain local PVs.
 - [x] 6.6 Kafka keeps its KRaft cluster ID across stop/start: stop saves `.status.clusterId`, start applies paused, restores it, resumes (`KafkaKitTest`, shell steps against a stub kubectl). The end-to-end proof is 8.2.
+- [x] 6.7 postgres and clickhouse keep their data across stop/start on a provisioned class: `kit-storage` with `rebind-released: true` reopens the class's Released volumes (`K8sService.reopenReleasedVolumes`) before the operator recreates the claims (`KitStorageProvisionerTest`, `PostgresKitTest`, `ClickHouseKitTest`; real binding in `KitStorageIntegrationTest`).
+- [x] 6.8 A pre-existing `edl-local-<kit>` class is reused only when its provisioner, binding mode and reclaim policy match (`KitLocalStorageClass`, `KitLocalStorageClassTest`, `DefaultK8sStorageOperationsTest`).
+- [x] 6.9 Kit and claim template names are validated and shell-quoted before `sudo mkdir` / `sudo rm -rf`; a failed PV or class delete stops the release before any `rm -rf`; a failed class ensure stops before any mkdir; `init --kit-storage-size 0` is refused; a refused class emits `Setup.KitStorageClassRefused` on every path.
 
 ## 7. Docs and specs
 

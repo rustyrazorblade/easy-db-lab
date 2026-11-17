@@ -38,7 +38,7 @@ easy-db-lab kit install clickhouse --s3-cache 50Gi --s3-cache-on-write false
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--version` | string | `latest` | ClickHouse server image tag (`clickhouse/clickhouse-server:<version>`), e.g. `25.4`, `24.8` |
-| `--storage-size` | string | ``: `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) | Storage size per node (e.g. `100Gi`) |
+| `--storage-size` | string | `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) | Storage size per node (e.g. `100Gi`) |
 | `--replicas` | int | number of db nodes | Number of ClickHouse replicas; also the number of Keeper replicas |
 | `--s3-cache` | string | `10Gi` | Local cache size for the S3-backed storage policies |
 | `--s3-cache-on-write` | boolean | `true` | Populate the S3 disk cache on write |
@@ -378,8 +378,10 @@ easy-db-lab clickhouse stop
 ```
 
 This deletes the ClickHouseInstallation `clickhouse` (and with it the server pods) and the
-`clickhouse-nodeport` service. Keeper, the operator, and the PersistentVolumes stay in place, so
-`clickhouse start` redeploys onto the same volumes.
+`clickhouse-nodeport` service. The operator deletes the claims with the installation, but Keeper,
+the operator and the PersistentVolumes stay in place, so `clickhouse start` redeploys onto the same
+volumes. On a provisioned kit StorageClass, `start` first reopens the Released volumes for the new
+claims ([Stop and start on a provisioned class](platform-substrate.md#stop-and-start-on-a-provisioned-class)).
 
 To remove everything the kit created:
 

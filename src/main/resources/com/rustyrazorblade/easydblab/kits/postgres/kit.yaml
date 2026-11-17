@@ -77,6 +77,9 @@ install:
 start:
   - type: kit-storage
     node-type: db
+    # stop deletes the operator resource and the operator its claims; on a provisioned class
+    # the claims of the next start rebind the Released volumes that kept the data.
+    rebind-released: true
   - type: manifest
     template: postgres-cluster.yaml
   - type: shell

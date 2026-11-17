@@ -27,3 +27,9 @@ The `kit-storage` step in `start` MUST be idempotent: if PVs already exist (from
 
 - **WHEN** data is written to ClickHouse, then `clickhouse stop` is run, then `clickhouse start` is run again
 - **THEN** the data written before the stop is still accessible after the restart.
+
+#### Scenario: Released volumes rebind on a provisioned class
+
+- **GIVEN** a recorded kit StorageClass that reclaims with `Retain`
+- **WHEN** `clickhouse stop` is run (the operator deletes the claims) and then `clickhouse start`
+- **THEN** the `kit-storage` step (`rebind-released: true`) clears the claimRef UID of the class's Released volumes in the kit namespace, and the new claims of the same names bind them.

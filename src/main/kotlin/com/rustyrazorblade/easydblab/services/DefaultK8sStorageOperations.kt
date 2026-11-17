@@ -7,7 +7,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolume
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
 import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 
@@ -258,6 +257,39 @@ class DefaultK8sStorageOperations(
         }
 
         log.info { "PV $pvName has stale claimRef UID (PVC ${claimRef.name} no longer exists), clearing to allow rebinding" }
+        clearClaimRefUid(client, pvName)
+    }
+
+    override fun reopenReleasedVolumes(
+        storageClass: String,
+        namespace: String,
+    ): Result<List<String>> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                client
+                    .persistentVolumes()
+                    .list()
+                    .items
+                    .filter { pv ->
+                        pv.spec?.storageClassName == storageClass &&
+                            pv.status?.phase == RELEASED &&
+                            pv.spec?.claimRef?.namespace == namespace &&
+                            pv.spec?.claimRef?.uid != null
+                    }.map { pv ->
+                        clearClaimRefUid(client, pv.metadata.name)
+                        pv.metadata.name
+                    }
+            }
+        }
+
+    /**
+     * Clears PV [pvName]'s claimRef UID and resourceVersion, keeping the claim's name and
+     * namespace: the PV leaves Released, pre-bound to a new claim of that name only.
+     */
+    private fun clearClaimRefUid(
+        client: KubernetesClient,
+        pvName: String,
+    ) {
         client.persistentVolumes().withName(pvName).edit { pv ->
             pv.spec.claimRef.uid = null
             pv.spec.claimRef.resourceVersion = null
@@ -273,25 +305,14 @@ class DefaultK8sStorageOperations(
         runCatching {
             clientProvider.createClient().use { client ->
                 val classes = client.storage().v1().storageClasses()
-                if (classes.withName(name).get() != null) {
+                val existing = classes.withName(name).get()
+                if (existing != null) {
+                    KitLocalStorageClass.requireReusable(existing)
                     log.info { "StorageClass $name already exists" }
                     return@runCatching
                 }
 
-                val storageClass =
-                    StorageClassBuilder()
-                        .withNewMetadata()
-                        .withName(name)
-                        .addToLabels(Constants.K8s.MANAGED_BY_LABEL, Constants.K8s.MANAGED_BY_VALUE)
-                        .addToLabels(Constants.K8s.CLUSTER_LABEL, clusterId)
-                        .endMetadata()
-                        .withProvisioner(NO_PROVISIONER)
-                        // The scheduler picks the pod's node first, so the claim binds that node's PV.
-                        .withVolumeBindingMode("WaitForFirstConsumer")
-                        .withReclaimPolicy("Retain")
-                        .build()
-
-                classes.resource(storageClass).create()
+                classes.resource(KitLocalStorageClass.build(name, clusterId)).create()
                 log.info { "Created StorageClass $name" }
                 eventBus.emit(Event.K8s.KitStorageClassCreated(name))
             }
@@ -312,7 +333,6 @@ class DefaultK8sStorageOperations(
         }
 
     override fun storageClassReclaimPolicy(name: String): Result<String?> =
-
         runCatching {
             clientProvider.createClient().use { client ->
                 client
@@ -344,8 +364,8 @@ class DefaultK8sStorageOperations(
         /** What Kubernetes reclaims with when a StorageClass sets no `reclaimPolicy`. */
         const val DEFAULT_RECLAIM_POLICY = "Delete"
 
-        /** The provisioner of a StorageClass whose PVs are created by hand, as local PVs are. */
-        const val NO_PROVISIONER = "kubernetes.io/no-provisioner"
+        /** The phase of a PV whose claim was deleted and that a Retain policy kept. */
+        const val RELEASED = "Released"
 
         /** The annotation that marks a cluster's default StorageClass. */
         const val DEFAULT_CLASS_ANNOTATION = "storageclass.kubernetes.io/is-default-class"

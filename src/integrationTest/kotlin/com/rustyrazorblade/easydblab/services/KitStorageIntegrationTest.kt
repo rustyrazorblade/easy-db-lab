@@ -121,7 +121,7 @@ class KitStorageIntegrationTest {
                 .persistentVolumes()
                 .list()
                 .items.size
-        KitStorageProvisioner(k8sService, mock<RemoteOperationsService>())
+        KitStorageProvisioner(k8sService, mock<RemoteOperationsService>(), EventBus())
             .provision(KitVolumes("cassandra-pods", "db", "data", storage.defaultSize.toString()), storage, clusterState())
         assertThat(client.persistentVolumes().list().items).hasSize(pvsBefore)
 
@@ -159,7 +159,7 @@ class KitStorageIntegrationTest {
         val storage = KitStorage.LocalVolumes(Quantity("1Gi"))
         k3s.execInContainer("mkdir", "-p", "/mnt/db1/kafka/data-0")
         val remoteOps = mock<RemoteOperationsService>()
-        KitStorageProvisioner(k8sService, remoteOps)
+        KitStorageProvisioner(k8sService, remoteOps, EventBus())
             .provision(KitVolumes("kafka", "db", "data-0", "1Gi"), storage, clusterState())
         val kafkaClass = storage.storageClassFor("kafka")
         val claim =
@@ -195,6 +195,54 @@ class KitStorageIntegrationTest {
                 .get()
                 .status.phase,
         ).isEqualTo("Bound")
+    }
+
+    /**
+     * postgres and clickhouse `stop` delete the CNPG Cluster or the CHI, and the operator deletes
+     * the claims with it. On a provisioned Retain class the volume goes Released; the next start's
+     * `kit-storage` step (`rebind-released`) must hand it to the new claim of the same name.
+     */
+    @Test
+    fun `on a provisioned class a claim deleted at stop rebinds its Released volume on the next start`() {
+        val storage = KitStorage.Provisioned(RETAINED_CLASS, Quantity("1Gi"))
+        val provisioner = KitStorageProvisioner(k8sService, mock<RemoteOperationsService>(), EventBus())
+        val volumes = KitVolumes("postgres", "db", "data", "1Gi", rebindReleased = true)
+        val claim = {
+            PersistentVolumeClaimBuilder()
+                .withNewMetadata()
+                .withName(OPERATOR_CLAIM)
+                .withNamespace(NAMESPACE)
+                .endMetadata()
+                .withNewSpec()
+                .withAccessModes(Constants.K8s.READ_WRITE_ONCE)
+                .withStorageClassName(RETAINED_CLASS)
+                .withNewResources()
+                .addToRequests("storage", Quantity("1Gi"))
+                .endResources()
+                .endSpec()
+                .build()
+        }
+        provisioner.provision(volumes, storage, clusterState())
+        bindWithConsumer(claim(), "operator-first")
+        val firstVolume = claimNamed(OPERATOR_CLAIM).spec.volumeName
+
+        // stop: the operator deletes its pod and its claim; the Retain volume goes Released.
+        deleteConsumer("operator-first")
+        client
+            .persistentVolumeClaims()
+            .inNamespace(NAMESPACE)
+            .withName(OPERATOR_CLAIM)
+            .delete()
+        client
+            .persistentVolumes()
+            .withName(firstVolume)
+            .waitUntilCondition({ it?.status?.phase == "Released" }, TIMEOUT_SECONDS, TimeUnit.SECONDS)
+
+        // start: kit-storage runs before the operator recreates the claim.
+        provisioner.provision(volumes, storage, clusterState())
+        bindWithConsumer(claim(), "operator-second")
+
+        assertThat(claimNamed(OPERATOR_CLAIM).spec.volumeName).isEqualTo(firstVolume)
     }
 
     private fun createRetainedCopyOfLocalPath() {
@@ -324,6 +372,9 @@ class KitStorageIntegrationTest {
 
         /** The claim Strimzi makes for volume 0 of the `dual-role` node pool's broker 0. */
         const val STRIMZI_CLAIM = "data-0-kafka-dual-role-0"
+
+        /** A claim an operator deletes with its resource on `stop`, as CNPG names instance 1's. */
+        const val OPERATOR_CLAIM = "postgres-1"
         const val TIMEOUT_SECONDS = 180L
 
         /** The images local-path provisioning runs, so a claim never waits on a registry. */

@@ -29,7 +29,7 @@ minutes on first start while images pull.
 |---|---|---|
 | `--version` | `v8.5.2` | TiDB version to deploy |
 | `--replicas` | db node count | Number of TiKV and TiFlash replicas (one per db node) |
-| `--storage-size` | ``: `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) | Volume size of each PD, TiKV and TiFlash node |
+| `--storage-size` | `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) | Volume size of each PD, TiKV and TiFlash node |
 
 PD, TiKV and TiFlash keep their data on the kit storage class. On AWS that is local PVs on each
 node's `/mnt/db1` NVMe (PD on an app node), class `edl-local-tidb`; earlier releases put it on

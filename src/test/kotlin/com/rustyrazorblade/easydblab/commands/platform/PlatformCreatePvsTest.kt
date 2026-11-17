@@ -90,7 +90,7 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         listOf(
             module {
                 single<K8sService> { mockK8sService }
-                factory { KitStorageProvisioner(get(), get()) }
+                factory { KitStorageProvisioner(get(), get(), get()) }
                 single<ClusterStateManager> { mockClusterStateManager }
             },
         )

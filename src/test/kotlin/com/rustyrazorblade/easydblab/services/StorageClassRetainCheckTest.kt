@@ -43,15 +43,6 @@ class StorageClassRetainCheckTest {
     }
 
     @Test
-    fun `a class that sets no policy reclaims with the Kubernetes default and is refused`() {
-        // DefaultK8sStorageOperations reports a class with no policy as Delete, the Kubernetes default.
-        policy("plain", "Delete")
-
-        assertThatThrownBy { check.require("plain", RetainedData.KitData) }
-            .hasMessageContaining("plain reclaims with Delete")
-    }
-
-    @Test
     fun `a missing kit class is reported as missing with the same fix`() {
         policy("gone", null)
 

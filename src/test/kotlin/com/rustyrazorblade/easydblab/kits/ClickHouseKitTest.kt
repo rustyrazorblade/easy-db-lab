@@ -93,6 +93,21 @@ class ClickHouseKitTest : BaseKoinTest() {
         assertThat(applied).isGreaterThan(reserved)
     }
 
+    /**
+     * `stop` deletes the ClickHouseInstallation and the operator deletes its claims. On a
+     * provisioned class their Retain volumes go Released, so `start` must reopen them for the
+     * same-named claims, or ClickHouse comes back on empty volumes.
+     */
+    @Test
+    fun `start reopens the Released volumes the operator left at stop`() {
+        assertThat(
+            kit.config.start
+                .filterIsInstance<InstallStep.KitStorage>()
+                .single()
+                .rebindReleased,
+        ).isTrue()
+    }
+
     @Test
     fun `start waits for the installation to complete before waiting for the replica pods`() {
         assertThat(runAgainstStub()).isEqualTo(0)

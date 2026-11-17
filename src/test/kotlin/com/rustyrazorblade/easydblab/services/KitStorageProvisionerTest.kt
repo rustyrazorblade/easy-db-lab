@@ -5,6 +5,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.api.model.Quantity
 import org.assertj.core.api.Assertions.assertThat
@@ -29,7 +33,20 @@ import org.mockito.kotlin.whenever
 class KitStorageProvisionerTest {
     private val k8sService: K8sService = mock()
     private val remoteOps: RemoteOperationsService = mock()
-    private val provisioner = KitStorageProvisioner(k8sService, remoteOps)
+    private val events = mutableListOf<Event>()
+    private val eventBus =
+        EventBus().apply {
+            addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+        }
+    private val provisioner = KitStorageProvisioner(k8sService, remoteOps, eventBus)
 
     private fun host(alias: String) = ClusterHost("54.0.0.$alias", "10.0.0.$alias", alias, "us-west-2a", "i-$alias")
 
@@ -135,10 +152,127 @@ class KitStorageProvisionerTest {
                 .executeRemotely(hosts.capture(), eq("sudo rm -rf /mnt/db1/tidb"), any(), any())
             assertThat(hosts.allValues.map { it.alias }).containsExactly("db0", "db1")
         }
+
+        @Test
+        fun `a failed PV delete stops the release before the class or any directory is removed`() {
+            whenever(k8sService.deleteLocalPersistentVolumes("tidb")).thenReturn(Result.failure(IllegalStateException("PV still bound")))
+
+            assertThatThrownBy { provisioner.release("tidb", "db", local, state) }.hasMessageContaining("PV still bound")
+            verify(k8sService, never()).deleteKitLocalStorageClass(any())
+            verifyNoInteractions(remoteOps)
+        }
+
+        @Test
+        fun `a failed class delete stops the release before any directory is removed`() {
+            whenever(k8sService.deleteKitLocalStorageClass("edl-local-tidb")).thenReturn(Result.failure(IllegalStateException("API down")))
+
+            assertThatThrownBy { provisioner.release("tidb", "db", local, state) }.hasMessageContaining("API down")
+            verifyNoInteractions(remoteOps)
+        }
+
+        @Test
+        fun `a failed class ensure stops before any directory or PV is created`() {
+            whenever(k8sService.ensureKitLocalStorageClass(any(), any()))
+                .thenReturn(Result.failure(IllegalStateException("StorageClass edl-local-tidb already exists but is not")))
+
+            assertThatThrownBy { provisioner.provision(volumes(), local, state) }.hasMessageContaining("is not")
+            verifyNoInteractions(remoteOps)
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
+        }
+
+        @Test
+        fun `a kit or claim template name with shell characters reaches the node as one quoted word`() {
+            provisioner.provision(volumes(claimTemplate = "my data"), local, state)
+
+            verify(remoteOps, org.mockito.kotlin.times(2))
+                .executeRemotely(any(), eq("sudo mkdir -p '/mnt/db1/tidb/my data'"), any(), any())
+        }
+
+        @Test
+        fun `a blank or dot-dot kit name is refused before anything runs on a node`() {
+            for (kit in listOf("", " ", "..", "a/../b", "a/b")) {
+                assertThatThrownBy { provisioner.release(kit, "db", local, state) }
+                    .isInstanceOf(IllegalArgumentException::class.java)
+                    .hasMessageContaining("kit name")
+                assertThatThrownBy {
+                    provisioner.provision(volumes().copy(kit = kit), local, state)
+                }.isInstanceOf(IllegalArgumentException::class.java)
+            }
+            verifyNoInteractions(remoteOps)
+            verify(k8sService, never()).deleteLocalPersistentVolumes(any())
+        }
+
+        @Test
+        fun `a blank or dot-dot claim template name is refused`() {
+            for (template in listOf("", "..", "../x")) {
+                assertThatThrownBy { provisioner.provision(volumes(claimTemplate = template), local, state) }
+                    .isInstanceOf(IllegalArgumentException::class.java)
+                    .hasMessageContaining("claim template name")
+            }
+            verifyNoInteractions(remoteOps)
+        }
     }
 
     @Nested
     inner class OnAProvisionedClass {
+        /**
+         * postgres and clickhouse `stop` delete their CNPG Cluster or CHI, and the operator deletes
+         * the claims with it; the Retain PVs go Released. The next start must rebind them, or the
+         * class provisions empty volumes and the data stays stranded on the Released PVs.
+         */
+        @Test
+        fun `a retained class reopens its Released volumes in the kit namespace before any claim exists`() {
+            whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Retain"))
+            whenever(k8sService.reopenReleasedVolumes("retain-x", "default")).thenReturn(Result.success(listOf("pvc-1")))
+
+            provisioner.provision(volumes().copy(rebindReleased = true), provisioned, state)
+
+            verify(k8sService).reopenReleasedVolumes("retain-x", "default")
+        }
+
+        @Test
+        fun `a step that does not ask to rebind leaves Released volumes alone`() {
+            whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Retain"))
+
+            provisioner.provision(volumes(), provisioned, state)
+
+            verify(k8sService, never()).reopenReleasedVolumes(any(), any())
+        }
+
+        @Test
+        fun `a refused class reopens nothing`() {
+            whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Delete"))
+
+            assertThatThrownBy { provisioner.provision(volumes().copy(rebindReleased = true), provisioned, state) }
+            verify(k8sService, never()).reopenReleasedVolumes(any(), any())
+        }
+
+        @Test
+        fun `a failed reopen fails the step`() {
+            whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Retain"))
+            whenever(k8sService.reopenReleasedVolumes("retain-x", "default"))
+                .thenReturn(Result.failure(IllegalStateException("forbidden")))
+
+            assertThatThrownBy {
+                provisioner.provision(
+                    volumes().copy(rebindReleased = true),
+                    provisioned,
+                    state,
+                )
+            }.hasMessageContaining("forbidden")
+        }
+
+        @Test
+        fun `a refused class is reported as a typed event before the step fails`() {
+            whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Delete"))
+
+            assertThatThrownBy { provisioner.provision(volumes(), provisioned, state) }
+                .isInstanceOf(StorageClassRefusedException::class.java)
+            val refused = events.single() as Event.Setup.KitStorageClassRefused
+            assertThat(refused.storageClass).isEqualTo("retain-x")
+            assertThat(refused.reclaimPolicy).isEqualTo("Delete")
+        }
+
         @Test
         fun `a retained class is checked and nothing is created`() {
             whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Retain"))

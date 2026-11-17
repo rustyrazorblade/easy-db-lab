@@ -118,6 +118,10 @@ sealed interface InstallStep {
      * names a kit variable: when it is non-blank and that variable is blank or absent, the step
      * does nothing, so a kit whose volume is optional (memcached extstore) creates no PV when the
      * feature is off.
+     *
+     * [rebindReleased] is for a kit whose operator deletes its claims on `stop` (CNPG, Altinity):
+     * on a provisioned class the step reopens the class's Released volumes, so the claims the next
+     * apply makes rebind their data instead of getting new, empty volumes.
      */
     @Serializable
     @SerialName("kit-storage")
@@ -131,6 +135,8 @@ sealed interface InstallStep {
         val storageSize: String = "",
         @SerialName("if-set")
         val ifSet: String = "",
+        @SerialName("rebind-released")
+        val rebindReleased: Boolean = false,
     ) : InstallStep
 
     /**

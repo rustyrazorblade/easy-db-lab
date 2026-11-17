@@ -216,6 +216,7 @@ class WorkloadStepExecutor(
                                     volumeClaimTemplateName = interp(step.volumeClaimTemplateName),
                                     size = storageSize,
                                     count = step.count,
+                                    rebindReleased = step.rebindReleased,
                                 ),
                             storage = EnvironmentKitStorage.from(ctx.clusterState),
                             state = ctx.clusterState,

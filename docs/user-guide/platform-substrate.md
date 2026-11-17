@@ -47,6 +47,11 @@ The class is labelled `app.kubernetes.io/managed-by=easy-db-lab` and
 only bind its own kit's PVs. `WaitForFirstConsumer` makes Kubernetes wait until it knows which
 node a pod schedules on before it binds the volume.
 
+If a class named `edl-local-<kit>` already exists, the kit reuses it only when it has exactly that
+provisioner, binding mode and reclaim policy. Otherwise the kit's start fails, naming the fields
+that differ. Delete the class (`kubectl delete storageclass edl-local-<kit>`) and start again: the
+kit's PVs and their data are kept.
+
 ### A provisioned class must retain
 
 A class whose `reclaimPolicy` is `Delete` (the Kubernetes default, and the default of most cloud
@@ -55,6 +60,19 @@ class is therefore checked before any claim exists, at `up` and again by every k
 `kit-storage` step. A class that deletes, has no policy, or does not exist is refused. Copy the
 class with `reclaimPolicy: Retain` and pass that copy to `--kit-storage-class`. easy-db-lab never
 creates or deletes a provisioned class, its claims' volumes, or the cluster's default class.
+A refusal is also reported as a `Setup.KitStorageClassRefused` event, from `up`, a kit's
+`kit-storage` step and `platform create-pvs` alike.
+
+### Stop and start on a provisioned class
+
+postgres and clickhouse `stop` delete the CNPG `Cluster` or the `ClickHouseInstallation`, and the
+operator deletes the claims with it. Their `Retain` volumes stay, in the `Released` phase, holding
+the data. The next `start` reopens them before it applies the resource again. Its `kit-storage`
+step (`rebind-released: true`) clears the deleted claim's UID from each Released volume of the
+class whose claim was in the kit namespace, so the claim of the same name that the operator creates
+binds that volume, not a new empty one. A claim of any other name cannot take it. Kafka, TiDB and
+the StatefulSet kits keep their claims across `stop` and need no reopening.
+
 
 ## Node Labels
 

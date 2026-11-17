@@ -80,7 +80,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 kubectlService = kubectlService,
                 eventBus = get<EventBus>(),
                 kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), get()),
-                kitStorageProvisioner = KitStorageProvisioner(k8sService, get()),
+                kitStorageProvisioner = KitStorageProvisioner(k8sService, get(), get()),
             )
         workspace.mkdirs()
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
@@ -145,7 +145,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 kubectlService = kubectlService,
                 eventBus = get<EventBus>(),
                 kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), get()),
-                kitStorageProvisioner = KitStorageProvisioner(k8sService, remoteOps),
+                kitStorageProvisioner = KitStorageProvisioner(k8sService, remoteOps, get()),
             )
 
         val result =

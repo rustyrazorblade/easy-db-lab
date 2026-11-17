@@ -59,7 +59,7 @@ class KitInstallCommandTest : BaseKoinTest() {
                         mock(),
                         get(),
                         KitProcessEnvironment(ToolWrapperInstaller(), get()),
-                        KitStorageProvisioner(mock(), get()),
+                        KitStorageProvisioner(mock(), get(), get()),
                     )
                 }
             },

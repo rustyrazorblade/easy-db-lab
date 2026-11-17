@@ -86,6 +86,30 @@ class DefaultK8sStorageOperationsTest {
     }
 
     @Test
+    fun `ensureKitLocalStorageClass refuses a pre-existing class of that name that deletes, and leaves it`() {
+        server
+            .createClient()
+            .storage()
+            .v1()
+            .storageClasses()
+            .resource(
+                StorageClassBuilder()
+                    .withNewMetadata()
+                    .withName("edl-local-kafka")
+                    .endMetadata()
+                    .withProvisioner("kubernetes.io/no-provisioner")
+                    .withVolumeBindingMode("WaitForFirstConsumer")
+                    .withReclaimPolicy("Delete")
+                    .build(),
+            ).create()
+
+        val result = storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
+
+        assertThat(result.exceptionOrNull()).hasMessageContaining("reclaimPolicy Delete (expected Retain)")
+        assertThat(emitted()).isEmpty()
+    }
+
+    @Test
     fun `deleteKitLocalStorageClass removes only that kit's class and tolerates a missing one`() {
         storageOps.ensureKitLocalStorageClass("edl-local-kafka", "cid-1")
         storageOps.ensureKitLocalStorageClass("edl-local-tidb", "cid-1")
@@ -175,6 +199,59 @@ class DefaultK8sStorageOperationsTest {
         assertThat(storageOps.storageClassReclaimPolicy("defaulted").getOrThrow()).isEqualTo("Delete")
         assertThat(storageOps.storageClassReclaimPolicy("absent").getOrThrow()).isNull()
     }
+
+    @Test
+    fun `reopenReleasedVolumes clears the claim UID only on Released PVs of the class in the namespace`() {
+        val client = server.createClient()
+        listOf(
+            releasablePv("released-here", "retain-x", "default", "Released"),
+            releasablePv("released-other-class", "other", "default", "Released"),
+            releasablePv("released-other-namespace", "retain-x", "kube-system", "Released"),
+            releasablePv("bound-here", "retain-x", "default", "Bound"),
+        ).forEach { client.persistentVolumes().resource(it).create() }
+
+        val reopened = storageOps.reopenReleasedVolumes("retain-x", "default").getOrThrow()
+
+        assertThat(reopened).containsExactly("released-here")
+        val claimRef = { name: String ->
+            client
+                .persistentVolumes()
+                .withName(name)
+                .get()
+                .spec.claimRef
+        }
+        assertThat(claimRef("released-here").uid).isNull()
+        assertThat(claimRef("released-here").name).isEqualTo("claim-released-here")
+        assertThat(claimRef("released-here").namespace).isEqualTo("default")
+        assertThat(listOf("released-other-class", "released-other-namespace", "bound-here").map { claimRef(it).uid })
+            .containsOnly("uid-1")
+    }
+
+    private fun releasablePv(
+        name: String,
+        storageClass: String,
+        claimNamespace: String,
+        phase: String,
+    ) = PersistentVolumeBuilder()
+        .withNewMetadata()
+        .withName(name)
+        .endMetadata()
+        .withNewSpec()
+        .addToCapacity("storage", Quantity("1Gi"))
+        .withStorageClassName(storageClass)
+        .withNewClaimRef()
+        .withName("claim-$name")
+        .withNamespace(claimNamespace)
+        .withUid("uid-1")
+        .endClaimRef()
+        .withNewHostPath()
+        .withPath("/tmp")
+        .endHostPath()
+        .endSpec()
+        .withNewStatus()
+        .withPhase(phase)
+        .endStatus()
+        .build()
 
     @Test
     fun `listKitLocalPersistentVolumes returns every kit's PVs and no other PV`() {

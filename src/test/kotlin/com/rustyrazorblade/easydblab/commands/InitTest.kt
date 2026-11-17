@@ -516,6 +516,21 @@ class InitTest : BaseKoinTest() {
                 .hasMessageContaining("--kit-storage-size")
             verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
         }
+
+        @Test
+        fun `a zero or negative kit storage size is a quantity but is refused`() {
+            for (size in listOf("0", "0Gi", "-1Gi")) {
+                val command = Init()
+                picocli.CommandLine(command).parseArgs("--kit-storage-size", size)
+                command.clean = true
+
+                assertThatThrownBy { command.execute() }
+                    .isInstanceOf(IllegalArgumentException::class.java)
+                    .hasMessageContaining("'$size'")
+                    .hasMessageContaining("positive")
+            }
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
     }
 
     @Nested

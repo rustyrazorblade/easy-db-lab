@@ -31,7 +31,7 @@ Every claim a built-in kit creates SHALL name the StorageClass `__KIT_STORAGE_CL
 
 ### Requirement: Local kit volumes are reserved per kit on owned nodes
 
-Under `LocalVolumes`, the `kit-storage` step SHALL create a no-provisioner StorageClass `edl-local-<kit>` with `WaitForFirstConsumer` binding and `Retain` reclaim, labelled `app.kubernetes.io/managed-by=easy-db-lab` and `easydblab/cluster=<id>`, and SHALL create that kit's local PVs of that class at `/mnt/db1/<kit>/<claim template>`. A kit's claims SHALL bind only that kit's PVs. Under `Provisioned`, the step SHALL create no PV and no StorageClass. The `kit-storage-delete` step SHALL, under `LocalVolumes` only, delete the kit's PVs and class and the node directory as part of an explicit `kit uninstall`; under `Provisioned` it SHALL do nothing and SHALL never delete a claim or a volume.
+Under `LocalVolumes`, the `kit-storage` step SHALL create a no-provisioner StorageClass `edl-local-<kit>` with `WaitForFirstConsumer` binding and `Retain` reclaim, labelled `app.kubernetes.io/managed-by=easy-db-lab` and `easydblab/cluster=<id>`, and SHALL create that kit's local PVs of that class at `/mnt/db1/<kit>/<claim template>`. An existing class of that name SHALL be reused only when its provisioner, binding mode and reclaim policy match; otherwise the step SHALL fail naming each field that differs and create no directory or PV. The kit name and claim template name SHALL each be one directory name (not blank, no `/`, no `..`), and every path sent to a node SHALL be shell-quoted. A kit's claims SHALL bind only that kit's PVs. Under `Provisioned`, the step SHALL create no PV and no StorageClass. The `kit-storage-delete` step SHALL, under `LocalVolumes` only, delete the kit's PVs and class and the node directory as part of an explicit `kit uninstall`; under `Provisioned` it SHALL do nothing and SHALL never delete a claim or a volume.
 
 #### Scenario: Two kits never take each other's volumes
 - **GIVEN** local PVs and per-kit classes for two kits on the same nodes
@@ -47,9 +47,28 @@ Under `LocalVolumes`, the `kit-storage` step SHALL create a no-provisioner Stora
 - **WHEN** a kit's `kit-storage` and `kit-storage-delete` steps run
 - **THEN** no PersistentVolume and no StorageClass is created or deleted
 
+#### Scenario: A leftover class that deletes is not reused
+- **GIVEN** a StorageClass `edl-local-kafka` exists with `reclaimPolicy: Delete`
+- **WHEN** the kafka kit's `kit-storage` step runs on local volumes
+- **THEN** it fails naming `edl-local-kafka` and `reclaimPolicy Delete (expected Retain)`
+- **AND** no directory and no PV is created
+
+#### Scenario: A failed delete keeps the data directory
+- **WHEN** deleting the kit's PVs or its class fails during `kit-storage-delete`
+- **THEN** the step fails and no node directory is removed
+
+### Requirement: Released volumes rebind after an operator deletes its claims
+
+A kit whose operator deletes its claims on `stop` (postgres through CNPG, clickhouse through the Altinity operator) SHALL declare `rebind-released: true` on its `kit-storage` step. Under `Provisioned`, after the Retain check passes, that step SHALL clear the claimRef UID of every `Released` PV of the kit StorageClass whose claim was in the kit namespace, keeping the claim name, so the claim of the same name created by the next apply binds the volume that holds the data. It SHALL NOT delete or change any other PV. Under `LocalVolumes` the existing stale-UID clearing does the same.
+
+#### Scenario: postgres data survives stop and start on a provisioned class
+- **GIVEN** a recorded kit StorageClass that retains
+- **WHEN** `postgres stop` deletes the Cluster, CNPG deletes its claims, and `postgres start` runs
+- **THEN** each new claim binds the Released volume of the same claim name, not a new volume
+
 ### Requirement: Kit storage size precedence
 
-A kit's claim size SHALL be, from strongest to weakest: the kit's `--storage-size` named option; `init --kit-storage-size`; the environment default, which SHALL be `10Ti` under `LocalVolumes` and `Constants.K8s.DEFAULT_PROVISIONED_KIT_STORAGE_SIZE` under `Provisioned`. Every stateful kit SHALL declare its size arg with the default `${KIT_STORAGE_SIZE}`. `init` SHALL reject a `--kit-storage-size` that is not a Kubernetes quantity.
+A kit's claim size SHALL be, from strongest to weakest: the kit's `--storage-size` named option; `init --kit-storage-size`; the environment default, which SHALL be `10Ti` under `LocalVolumes` and `Constants.K8s.DEFAULT_PROVISIONED_KIT_STORAGE_SIZE` under `Provisioned`. Every stateful kit SHALL declare its size arg with the default `${KIT_STORAGE_SIZE}`. `init` SHALL reject a `--kit-storage-size` that is not a positive Kubernetes quantity (so `0` and `-1Gi` are refused).
 
 #### Scenario: The kit option wins
 - **GIVEN** `init --kit-storage-size 200Gi`
@@ -67,7 +86,7 @@ A kit's claim size SHALL be, from strongest to weakest: the kit's `--storage-siz
 
 ### Requirement: A kit StorageClass that does not retain is refused
 
-Where a kit StorageClass is recorded, the system SHALL refuse it when its `reclaimPolicy` is not `Retain` or it does not exist, naming the class and stating the fix: pass `init --kit-storage-class` naming a class with `reclaimPolicy: Retain`, or create a copy of the named class with `reclaimPolicy: Retain`. The check SHALL run at `up`, the first time the cluster's API is reachable, when `init` recorded a `--kit-storage-class`, before any kit or observability workload is deployed; and in the `kit-storage` step before any kit claim is created. `init` SHALL only record the class: on AWS it has no cluster API to check against. The resolver that picks and checks the class (`KitStorageResolver`) SHALL use the named class, else the cluster's default class, and SHALL fail naming `--kit-storage-class` when neither exists; running it at `init` against a cluster the user brings is left to the `init --kubeconfig` change (#1082). Under `LocalVolumes` no check is needed.
+Where a kit StorageClass is recorded, the system SHALL refuse it when its `reclaimPolicy` is not `Retain` or it does not exist, naming the class and stating the fix: pass `init --kit-storage-class` naming a class with `reclaimPolicy: Retain`, or create a copy of the named class with `reclaimPolicy: Retain`. The check SHALL run at `up`, the first time the cluster's API is reachable, when `init` recorded a `--kit-storage-class`, before any kit or observability workload is deployed; and in the `kit-storage` step before any kit claim is created. Every refusal, on any of these paths and in `platform create-pvs`, SHALL be emitted as `Setup.KitStorageClassRefused` before the command fails. `init` SHALL only record the class: on AWS it has no cluster API to check against. The resolver that picks and checks the class (`KitStorageResolver`) SHALL use the named class, else the cluster's default class, and SHALL fail naming `--kit-storage-class` when neither exists; running it at `init` against a cluster the user brings is left to the `init --kubeconfig` change (#1082). Under `LocalVolumes` no check is needed.
 
 #### Scenario: A deleting class fails up
 - **GIVEN** `init --kit-storage-class gp2` was run and `gp2` reclaims with `Delete`

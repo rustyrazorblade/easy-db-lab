@@ -24,18 +24,7 @@ class KitStorageResolver(
      */
     fun resolve(requested: String?): String {
         val storageClass = requested ?: defaultClass()
-        try {
-            retainCheck.require(storageClass, RetainedData.KitData)
-        } catch (refused: StorageClassRefusedException) {
-            eventBus.emit(
-                Event.Setup.KitStorageClassRefused(
-                    storageClass = refused.storageClass,
-                    reclaimPolicy = refused.reclaimPolicy,
-                    reason = refused.message.orEmpty(),
-                ),
-            )
-            throw refused
-        }
+        retainCheck.requireKitClass(storageClass, eventBus)
         return storageClass
     }
 

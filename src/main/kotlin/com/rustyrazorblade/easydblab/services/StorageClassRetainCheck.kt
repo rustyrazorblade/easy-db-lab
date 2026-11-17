@@ -1,5 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+
 /**
  * What a claim on a checked StorageClass holds, for the refusal: what a `Delete` class would lose,
  * and how the operator fixes it.
@@ -85,3 +88,26 @@ class StorageClassRefusedException(
     val reclaimPolicy: String?,
     message: String,
 ) : IllegalStateException(message)
+
+/**
+ * Runs the kit-data Retain check on [storageClass] and reports a refusal on [eventBus] as
+ * `Setup.KitStorageClassRefused` before rethrowing it, so every path that checks the kit class
+ * (`up`, the `kit-storage` step, `platform create-pvs`) tells subscribers the same typed fact.
+ */
+fun StorageClassRetainCheck.requireKitClass(
+    storageClass: String,
+    eventBus: EventBus,
+) {
+    try {
+        require(storageClass, RetainedData.KitData)
+    } catch (refused: StorageClassRefusedException) {
+        eventBus.emit(
+            Event.Setup.KitStorageClassRefused(
+                storageClass = refused.storageClass,
+                reclaimPolicy = refused.reclaimPolicy,
+                reason = refused.message.orEmpty(),
+            ),
+        )
+        throw refused
+    }
+}

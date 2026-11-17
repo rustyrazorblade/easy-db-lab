@@ -195,6 +195,17 @@ interface K8sStorageOperations {
         clusterId: String,
     ): Result<Unit>
 
+    /**
+     * Makes every Released PV of [storageClass] whose last claim was in [namespace] rebindable by
+     * a new claim of that same name: clears the deleted claim's UID from the PV's claimRef and
+     * keeps its name, so the PV is pre-bound and no claim of another name can take it. Returns
+     * the PVs it reopened.
+     */
+    fun reopenReleasedVolumes(
+        storageClass: String,
+        namespace: String,
+    ): Result<List<String>>
+
     /** Deletes the kit-local StorageClass [name]; a class already gone is not an error. */
     fun deleteKitLocalStorageClass(name: String): Result<Unit>
 

@@ -678,6 +678,20 @@ object Constants {
         /** The label the DaemonSet controller puts on each pod: the DaemonSet generation it was made from. */
         const val POD_TEMPLATE_GENERATION_LABEL = "pod-template-generation"
 
+        /**
+         * The DaemonSet annotation holding the generation of its current pod template; the controller
+         * copies it into [POD_TEMPLATE_GENERATION_LABEL]. Unlike `metadata.generation` it does not move
+         * on a spec change outside the template, such as the update strategy.
+         */
+        const val DAEMONSET_TEMPLATE_GENERATION_ANNOTATION = "deprecated.daemonset.template.generation"
+
+        /**
+         * At most this many nodes are read for each pending DaemonSet on each rollout look, for its
+         * oldest pods that are not Ready, so a fresh rollout on a large cluster does not read every node
+         * on every poll. A node is read once per look however many DaemonSets ask for it.
+         */
+        const val ROLLOUT_NODE_CHECKS_PER_LOOK = 20
+
         /** The annotation the Deployment controller keeps on a Deployment and its ReplicaSets: the revision. */
         const val DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
     }

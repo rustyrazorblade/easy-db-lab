@@ -70,6 +70,21 @@ class RolloutRevisionTest {
     }
 
     @Test
+    fun `a DaemonSet's current pods follow its template generation, not a spec-only generation bump`() {
+        // An update-strategy change bumps metadata.generation to 4 but leaves the template at 3.
+        val daemonSet =
+            DaemonSetBuilder()
+                .withNewMetadata()
+                .withGeneration(4)
+                .addToAnnotations("deprecated.daemonset.template.generation", "3")
+                .endMetadata()
+                .build()
+        val pods = listOf(dsPod("old", "2"), dsPod("current", "3"))
+
+        assertThat(RolloutRevision.currentPods(daemonSet, pods).map { it.metadata.name }).containsExactly("current")
+    }
+
+    @Test
     fun `a Deployment's current pods are those of the ReplicaSet at its revision`() {
         val deployment =
             DeploymentBuilder()

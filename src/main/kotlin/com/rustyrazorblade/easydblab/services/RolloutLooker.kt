@@ -34,8 +34,8 @@ sealed interface RolloutsLook {
  * It exists so a rollout wait sees more than the controller's counters. For each workload whose
  * rollout is still pending ([RolloutStatus]), it lists the workload's pods by its selector, keeps
  * those of its latest template ([RolloutRevision]), and asks [RolloutBlocker] whether one of them
- * means the rollout cannot finish. Nodes are listed at most once per look, and only when a DaemonSet
- * is pending.
+ * means the rollout cannot finish. It reads no node list: [RolloutBlocker] asks for the nodes of a
+ * pending DaemonSet's unready pods by name, and each is read at most once per look.
  */
 class RolloutLooker(
     private val client: KubernetesClient,
@@ -43,10 +43,16 @@ class RolloutLooker(
 ) {
     /** Looks at every workload in [workloads]; the first blocked one ends the look. */
     fun look(workloads: List<WorkloadRef>): RolloutsLook {
-        val nodes by lazy { client.nodes().list().items }
+        // A node is read by name, at most once per look, and only when RolloutBlocker asks for it.
+        val nodes = mutableMapOf<String, Node?>()
+        // Not getOrPut: it would treat a cached null (a node that is gone) as absent and read it again.
+        val node = { name: String ->
+            if (name !in nodes) nodes[name] = client.nodes().withName(name).get()
+            nodes[name]
+        }
         val pending = mutableListOf<String>()
         for (ref in workloads) {
-            when (val state = inspect(ref) { nodes }) {
+            when (val state = inspect(ref, node)) {
                 is RolloutsLook.Blocked -> return state
                 is RolloutsLook.Pending -> pending += state.reasons
             }
@@ -56,12 +62,12 @@ class RolloutLooker(
 
     private fun inspect(
         ref: WorkloadRef,
-        nodes: () -> List<Node>,
+        node: (String) -> Node?,
     ): RolloutsLook {
         val (progress, blocker) =
             when (ref.kind) {
                 WorkloadKind.Deployment -> inspectDeployment(ref)
-                WorkloadKind.DaemonSet -> inspectDaemonSet(ref, nodes)
+                WorkloadKind.DaemonSet -> inspectDaemonSet(ref, node)
             }
         return when {
             blocker != null -> RolloutsLook.Blocked(blocker)
@@ -90,12 +96,12 @@ class RolloutLooker(
                 .list()
                 .items
         val current = RolloutRevision.currentPods(deployment, replicaSets, pods(selector))
-        return progress to RolloutBlocker.find(ref, current, emptyList())
+        return progress to RolloutBlocker.find(ref, current) { null }
     }
 
     private fun inspectDaemonSet(
         ref: WorkloadRef,
-        nodes: () -> List<Node>,
+        node: (String) -> Node?,
     ): Pair<RolloutProgress, String?> {
         val daemonSet =
             client
@@ -108,7 +114,7 @@ class RolloutLooker(
         if (progress == RolloutProgress.Complete) return progress to null
         val selector = daemonSet.spec?.selector ?: return progress to null
         val current = RolloutRevision.currentPods(daemonSet, pods(selector))
-        return progress to RolloutBlocker.find(ref, current, nodes())
+        return progress to RolloutBlocker.find(ref, current, node)
     }
 
     private fun pods(selector: LabelSelector): List<Pod> =

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.NodeBuilder
 import io.fabric8.kubernetes.api.model.Pod
@@ -15,7 +16,8 @@ import java.util.stream.Stream
  * [RolloutBlocker] decides when a pending rollout can no longer finish, so the rollout wait ends at
  * once instead of at its deadline. The invariants: every terminal container reason of
  * [K8sPodUtils] blocks any workload; a DaemonSet pod on a node whose Ready condition is not True
- * blocks; a state a slow rollout passes through never blocks; and the reason names the workload,
+ * blocks unless that pod is already Ready; a state a slow rollout passes through never blocks; nodes
+ * are read only for unready pods, once each and within a bound; and the reason names the workload,
  * the pod, the node and why.
  */
 class RolloutBlockerTest {
@@ -27,6 +29,7 @@ class RolloutBlockerTest {
         node: String? = "db0",
         waitingReason: String? = null,
         terminating: Boolean = false,
+        ready: Boolean = false,
     ): Pod =
         PodBuilder()
             .withNewMetadata()
@@ -37,7 +40,8 @@ class RolloutBlockerTest {
             .withNodeName(node)
             .endSpec()
             .withNewStatus()
-            .withPhase("Pending")
+            .withPhase(if (ready) "Running" else "Pending")
+            .apply { if (ready) addNewCondition().withType("Ready").withStatus("True").endCondition() }
             .addNewContainerStatus()
             .withName("main")
             .withNewState()
@@ -69,6 +73,16 @@ class RolloutBlockerTest {
 
     private val readyNodes = listOf(node("db0", "True"))
 
+    /** Reads a node by name from [nodes], recording each name it was asked for in [reads]. */
+    private fun reader(
+        nodes: List<Node>,
+        reads: MutableList<String> = mutableListOf(),
+    ): (String) -> Node? =
+        { name ->
+            reads += name
+            nodes.firstOrNull { it.metadata.name == name }
+        }
+
     @ParameterizedTest(name = "{0} blocks a {1}")
     @MethodSource("terminalReasonsByKind")
     fun `a container in a terminal state blocks the rollout and is named`(
@@ -77,7 +91,7 @@ class RolloutBlockerTest {
     ) {
         val workload = WorkloadRef(kind, "agent")
 
-        val blocker = RolloutBlocker.find(workload, listOf(pod(waitingReason = reason)), readyNodes)
+        val blocker = RolloutBlocker.find(workload, listOf(pod(waitingReason = reason)), reader(readyNodes))
 
         assertThat(blocker)
             .contains("$kind/agent")
@@ -91,7 +105,7 @@ class RolloutBlockerTest {
     fun `a DaemonSet pod on a node that is not Ready blocks the rollout and is named`(ready: String?) {
         val nodes = listOf(node("db0", "True"), node("db7", ready))
 
-        val blocker = RolloutBlocker.find(daemonSet, listOf(pod(), pod(name = "otel-collector-zzz", node = "db7")), nodes)
+        val blocker = RolloutBlocker.find(daemonSet, listOf(pod(), pod(name = "otel-collector-zzz", node = "db7")), reader(nodes))
 
         assertThat(blocker)
             .contains("DaemonSet/otel-collector")
@@ -105,13 +119,13 @@ class RolloutBlockerTest {
     fun `a state a slow rollout passes through does not block`(waitingReason: String?) {
         val pods = listOf(pod(waitingReason = waitingReason), pod(name = "unscheduled", node = null))
 
-        assertThat(RolloutBlocker.find(daemonSet, pods, readyNodes)).isNull()
-        assertThat(RolloutBlocker.find(deployment, pods, readyNodes)).isNull()
+        assertThat(RolloutBlocker.find(daemonSet, pods, reader(readyNodes))).isNull()
+        assertThat(RolloutBlocker.find(deployment, pods, reader(readyNodes))).isNull()
     }
 
     @Test
     fun `a Deployment pod on a node that is not Ready does not block, since it can be rescheduled`() {
-        val blocker = RolloutBlocker.find(deployment, listOf(pod(node = "db7")), listOf(node("db7", "False")))
+        val blocker = RolloutBlocker.find(deployment, listOf(pod(node = "db7")), reader(listOf(node("db7", "False"))))
 
         assertThat(blocker).isNull()
     }
@@ -120,12 +134,40 @@ class RolloutBlockerTest {
     fun `a terminating pod does not block, since it is on its way out`() {
         val pods = listOf(pod(waitingReason = "CrashLoopBackOff", node = "db7", terminating = true))
 
-        assertThat(RolloutBlocker.find(daemonSet, pods, listOf(node("db7", "False")))).isNull()
+        assertThat(RolloutBlocker.find(daemonSet, pods, reader(listOf(node("db7", "False"))))).isNull()
     }
 
     @Test
     fun `a pod on a node the cluster no longer lists does not block`() {
-        assertThat(RolloutBlocker.find(daemonSet, listOf(pod(node = "gone")), readyNodes)).isNull()
+        assertThat(RolloutBlocker.find(daemonSet, listOf(pod(node = "gone")), reader(readyNodes))).isNull()
+    }
+
+    @Test
+    fun `a Ready DaemonSet pod on a node that is not Ready does not block, since it already counts`() {
+        val pods = listOf(pod(node = "db7", ready = true))
+
+        assertThat(RolloutBlocker.find(daemonSet, pods, reader(listOf(node("db7", "Unknown"))))).isNull()
+    }
+
+    @Test
+    fun `a fully Ready pod set reads no node`() {
+        val reads = mutableListOf<String>()
+        val pods = (0 until 50).map { pod(name = "p$it", node = "db$it", ready = true) }
+
+        RolloutBlocker.find(daemonSet, pods, reader(listOf(node("db0", "False")), reads))
+
+        assertThat(reads).isEmpty()
+    }
+
+    @Test
+    fun `unready pods read each of their nodes once, up to the per-look bound`() {
+        val reads = mutableListOf<String>()
+        val nodes = (0 until 50).map { node("db$it", "True") }
+        val pods = (0 until 100).map { pod(name = "p$it", node = "db${it % 50}") }
+
+        assertThat(RolloutBlocker.find(daemonSet, pods, reader(nodes, reads))).isNull()
+
+        assertThat(reads).doesNotHaveDuplicates().hasSize(Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK)
     }
 
     companion object {

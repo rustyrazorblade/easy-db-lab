@@ -17,12 +17,21 @@ import io.fabric8.kubernetes.api.model.apps.ReplicaSet
 object RolloutRevision {
     private const val REPLICA_SET_KIND = "ReplicaSet"
 
-    /** The pods in [pods] made from [daemonSet]'s current generation. */
+    /**
+     * The pods in [pods] made from [daemonSet]'s current template. The template's generation is the
+     * controller's annotation, which a spec change outside the template does not move; only when it is
+     * missing does `metadata.generation` stand in.
+     */
     fun currentPods(
         daemonSet: DaemonSet,
         pods: List<Pod>,
     ): List<Pod> {
-        val generation = daemonSet.metadata?.generation?.toString() ?: return emptyList()
+        val generation =
+            daemonSet.metadata
+                ?.annotations
+                ?.get(Constants.K8s.DAEMONSET_TEMPLATE_GENERATION_ANNOTATION)
+                ?: daemonSet.metadata?.generation?.toString()
+                ?: return emptyList()
         return pods.filter { it.metadata?.labels?.get(Constants.K8s.POD_TEMPLATE_GENERATION_LABEL) == generation }
     }
 

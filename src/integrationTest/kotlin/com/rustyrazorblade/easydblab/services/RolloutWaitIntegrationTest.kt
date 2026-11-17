@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.PodSpec
 import io.fabric8.kubernetes.api.model.PodSpecBuilder
@@ -15,7 +14,6 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.mockito.kotlin.any
 import java.time.Duration
 
 /**
@@ -45,15 +43,6 @@ class RolloutWaitIntegrationTest {
         /** An image on a reserved TLD (RFC 2606) that no registry can serve. */
         private const val UNPULLABLE_IMAGE = "registry.invalid/easy-db-lab/no-such-image:1"
     }
-
-    private val controlHost =
-        ClusterHost(
-            publicIp = "1.2.3.4",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-test",
-        )
 
     private lateinit var client: KubernetesClient
     private lateinit var ops: DefaultK8sNamespaceOperations

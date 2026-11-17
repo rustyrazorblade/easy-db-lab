@@ -81,7 +81,7 @@ after an upgrade so your user has it.
   waiting out the deadline.
 - The observability rollout wait, which runs before it, fails the same way: when a pod of a
   workload still rolling out (for example the collector or Fluent Bit on one node) is in one of
-  those states, or a DaemonSet's pod is on a node that is not `Ready`, it stops at once and names
+  those states, or a DaemonSet's pod that is not ready is on a node that is not `Ready`, it stops at once and names
   the workload, the pod, the node and the reason. A rollout that is only slow still waits.
 - K3s uses the pod range `10.224.0.0/12` and the service range `10.240.0.0/16`, which hold a
   `/24` for each of 4,096 nodes. K3s's default `10.42.0.0/16` holds 256. `init --cidr` refuses a

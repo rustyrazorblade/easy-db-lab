@@ -1,7 +1,7 @@
 # kit-command-group Specification
 
 ## Purpose
-TBD - created by archiving change kit-subcommand-restructure. Update Purpose after archive.
+The `kit` command group, which installs, lists and uninstalls kits and registers each installed kit as its own top-level command.
 ## Requirements
 ### Requirement: `kit` top-level parent command
 The CLI SHALL expose a `kit` top-level parent command that groups all kit management operations.

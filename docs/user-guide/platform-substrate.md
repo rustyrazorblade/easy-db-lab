@@ -137,7 +137,7 @@ Shows the pod-network datapath. On a Cilium cluster it reads the `cilium-config`
 The `install` command can render templates from a custom directory:
 
 ```bash
-easy-db-lab kit install --from ./my-kit/ --kit my-kit --storage-size 50Gi
+easy-db-lab kit install --from ./my-kit/ --kit my-kit --size 50Gi
 ```
 
 The directory must contain a `kit.yaml`. Without it the install is rejected before anything is

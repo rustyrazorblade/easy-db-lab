@@ -92,11 +92,13 @@ class DefaultStressJobServiceManifestTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the command Job is byte-identical to the pre-split rendering and loads no state`() {
+    fun `the command Job is byte-identical to the golden rendering and loads the state once for the app selector`() {
+        whenever(stateManager.load()).thenReturn(state())
+
         val job = service().buildCommandJob("cmd-1700000000", "ghcr.io/apache/cassandra-easy-stress:latest", listOf("list"))
 
         assertThat(Serialization.asYaml(job)).isEqualTo(golden("command-job.yaml"))
-        verify(stateManager, times(0)).load()
+        verify(stateManager, times(1)).load()
     }
 
     @Test

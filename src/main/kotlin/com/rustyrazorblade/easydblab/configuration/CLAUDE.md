@@ -252,10 +252,11 @@ async-profiler to the running JVM at runtime. Everything else still uses the age
    node-local pods via `discovery.kubernetes` and joining them to host processes by container id in
    `discovery.process` (see `config.alloy`); host processes with no pod are still profiled, just
    without pod labels. Also profiles ClickHouse and TiDB/TiKV/PD (CPU only, since they're C++/Go).
-3. **Pyroscope Java Agent (Stress Jobs)** — `/usr/local/pyroscope/pyroscope.jar` (v2.3.0, installed
-   by packer) mounted into stress K8s Jobs via hostPath volume. Configured via `JDK_JAVA_OPTIONS`
-   in `StressJobService.buildJob()`. Not `JAVA_TOOL_OPTIONS`: the stress image selects ZGC there, and a pod value would replace it. Collects `cpu`, `alloc`, `lock`. **This is why
-   `install_pyroscope_agent.sh` must stay** even though Cassandra no longer uses the jar.
+3. **Pyroscope Java Agent (Stress Jobs)** — copied into the stress pod by a `pyroscope-agent` init
+   container (`JavaAgentDelivery`, image `Constants.Agents.PYROSCOPE_IMAGE`) into the `java-agents`
+   emptyDir and loaded from `/edl/agents/pyroscope.jar`; no hostPath, so a stress pod runs on any node.
+   Configured via `JDK_JAVA_OPTIONS` in `StressJobManifestBuilder`. Not `JAVA_TOOL_OPTIONS`: the stress image selects ZGC there, and a pod value would replace it. Collects `cpu`, `alloc`, `lock`. The node jar from
+   `install_pyroscope_agent.sh` stays for the Cassandra sidecar, which still mounts it from the host.
 4. **Pyroscope Java Agent (Spark/EMR)** — `/opt/pyroscope/pyroscope.jar`, i.e.
    `Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH` (installed by EMR bootstrap action). Added to
    Spark driver and executor via `extraJavaOptions`. Service name: `spark-<job-name>`. Note the two
@@ -282,8 +283,8 @@ the flag until 4.5 accepted it. The full explanation lives on the reserved-set K
 3. `GrafanaUpdateConfig` deploys Pyroscope server to K8s (placed by `ObservabilityHosting`, pod network, port 4040; on AWS its Service publishes it on NodePort 31040).
 4. The reconciler attaches within one interval and starts shipping chunks. Nothing happens at
    Cassandra JVM startup.
-5. When a stress job starts, `StressJobService` mounts the agent JAR and sets `JDK_JAVA_OPTIONS`
-   with all Pyroscope properties.
+5. When a stress job starts, its init containers copy the agent JARs in and `JDK_JAVA_OPTIONS`
+   carries all the Pyroscope properties.
 
 See [`docs/user-guide/profiling.md`](../../../../../../docs/user-guide/profiling.md) for the
 operator-facing guide, including the reserved-parameter set and the cpu+wall hazard.
@@ -340,7 +341,7 @@ Two collectors run on every node. The core is unprivileged and the only exporter
 
 ## Stress Subpackage (`stress/`)
 
-`StressJobManifestBuilder` is a pure object that builds the stress Job (with its OTel sidecar) and the short-lived command Job from a `StressJobConfig` and a `StressCluster` (the region, control node IP, cluster label, tenant and telemetry redirect, read once from `ClusterState` by `StressCluster.from`). It loads no state and calls no cluster, so its tests need neither. `StressSidecarConfig` owns the sidecar's collector config and its ConfigMap (`CONFIG_MAP_NAME`, `FILE_NAME`). `DefaultStressJobService` (in `services/`) keeps only the lifecycle: load the state once, build, apply, wait. The golden Jobs in `src/test/resources/.../services/stress-golden/` pin the rendered YAML: a change to the pod spec changes them on purpose, in the same commit.
+`StressJobManifestBuilder` is a pure object that builds the stress Job (with its OTel sidecar) and the short-lived command Job from a `StressJobConfig` and a `StressCluster` (the region, cluster label, tenant, telemetry redirect and the app role's node selector from `RoleSelectors`, read once from `ClusterState` by `StressCluster.from`). It loads no state and calls no cluster, so its tests need neither. `StressSidecarConfig` owns the sidecar's collector config and its ConfigMap (`CONFIG_MAP_NAME`, `FILE_NAME`). `DefaultStressJobService` (in `services/`) keeps only the lifecycle: load the state once, build, apply, wait. The golden Jobs in `src/test/resources/.../services/stress-golden/` pin the rendered YAML: a change to the pod spec changes them on purpose, in the same commit.
 
 ## Registry Subpackage (`registry/`)
 

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.stress.StressCluster
 import com.rustyrazorblade.easydblab.configuration.stress.StressJobManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.stress.StressSidecarConfig
@@ -242,7 +243,7 @@ class DefaultStressJobService(
 
             log.info { "Running stress command: ${args.joinToString(" ")}" }
 
-            val job = StressJobManifestBuilder.buildCommandJob(jobName, image, args)
+            val job = buildCommandJob(jobName, image, args)
 
             k8sService
                 .createJob(Constants.Stress.NAMESPACE, job)
@@ -296,5 +297,5 @@ class DefaultStressJobService(
         jobName: String,
         image: String,
         args: List<String>,
-    ): Job = StressJobManifestBuilder.buildCommandJob(jobName, image, args)
+    ): Job = StressJobManifestBuilder.buildCommandJob(jobName, image, args, RoleSelectors.from(clusterStateManager.load()).app)
 }

@@ -9,7 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
 
 class RoleSelectorsTest {
-    private fun state(roleSelectors: RoleSelectors?) = ClusterState(name = "lab", versions = mutableMapOf(), roleSelectors = roleSelectors)
+    private fun state(roleSelectors: RoleSelectors?) = ClusterState(name = "lab", roleSelectors = roleSelectors)
 
     @Test
     fun `a state that records no role selectors reads as the nodes easy-db-lab owns, one type label per role`() {

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.stress
 
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.StressJobConfig
 import io.fabric8.kubernetes.client.utils.Serialization
@@ -10,9 +11,8 @@ import org.junit.jupiter.api.Test
  * [StressJobManifestBuilder] is pure: every test here builds a Job from a [StressJobConfig] and a
  * [StressCluster] and needs no state file, no Koin and no cluster.
  *
- * The golden files under `services/stress-golden/` are the Jobs the pre-split `DefaultStressJobService`
- * rendered for the same inputs. The split must not change a byte of what the cluster receives, so
- * these tests compare the rendered YAML with them.
+ * The golden files under `services/stress-golden/` pin the Jobs the cluster receives for these
+ * inputs, so these tests compare the rendered YAML with them.
  */
 class StressJobManifestBuilderTest {
     private val config =
@@ -31,6 +31,7 @@ class StressJobManifestBuilderTest {
             clusterName = "test-cluster-golden-cluster-id",
             tenant = "acme",
             telemetryRedirect = null,
+            appSelector = RoleSelectors.OWNED_NODES.app,
         )
 
     private fun golden(name: String): String =
@@ -58,6 +59,7 @@ class StressJobManifestBuilderTest {
                 "cmd-1700000000",
                 "ghcr.io/apache/cassandra-easy-stress:latest",
                 listOf("list"),
+                RoleSelectors.OWNED_NODES.app,
             )
 
         assertThat(Serialization.asYaml(job)).isEqualTo(golden("command-job.yaml"))
@@ -73,7 +75,7 @@ class StressJobManifestBuilderTest {
                 .single { it.name == "otel-sidecar-config" }
                 .configMap.name,
         ).isEqualTo(StressSidecarConfig.CONFIG_MAP_NAME)
-        assertThat(podSpec.initContainers.single().args)
+        assertThat(podSpec.initContainers.single { it.name == "otel-sidecar" }.args)
             .containsExactly("--config=/etc/otel/${StressSidecarConfig.FILE_NAME}")
     }
 

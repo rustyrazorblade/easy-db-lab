@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import org.assertj.core.api.Assertions.assertThat
@@ -41,6 +42,7 @@ class StressClusterTest {
                     clusterName = "lab-abc",
                     tenant = "default",
                     telemetryRedirect = null,
+                    appSelector = RoleSelectors.OWNED_NODES.app,
                 ),
             )
     }

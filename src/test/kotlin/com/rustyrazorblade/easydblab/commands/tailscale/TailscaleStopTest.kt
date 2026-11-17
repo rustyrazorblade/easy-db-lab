@@ -147,6 +147,29 @@ class TailscaleStopTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a failed auth key delete is reported, exits zero and clears the recorded key`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                initConfig = InitConfig(region = "us-west-2"),
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+                tailscaleAuthKeyId = "key-to-delete",
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        declareTailscaleUser()
+        stubRunningAndStops()
+        whenever(mockTailscaleService.deleteAuthKey(any(), any(), any())).thenThrow(TailscaleApiException("auth key not found"))
+
+        val exitCode = TailscaleStop().call()
+
+        assertThat(exitCode).isZero()
+        assertThat(state.tailscaleAuthKeyId).isNull()
+        val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+        assertThat(errorOutput).contains("key-to-delete").contains("auth key not found")
+    }
+
+    @Test
     fun `execute skips key deletion when no key stored`() {
         whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(true))
         whenever(mockTailscaleService.stopTailscale(any())).thenReturn(Result.success(Unit))

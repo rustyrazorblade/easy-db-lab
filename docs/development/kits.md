@@ -528,6 +528,14 @@ jar through its JVM options. Kotlin-built pods (stress Jobs) use `JavaAgentDeliv
 volume, one init container per agent and the mount. See `kits/cassandra-pods/statefulset.yaml.template`
 and `kits/neo4j/statefulset.yaml.template`.
 
+Both images must be in their registry before a pod can load the agent.
+`JavaAgentImagesPublishedIntegrationTest` asks the registry for each `JavaAgent` image and fails
+for any image it does not have. The Pyroscope image is built from `docker/pyroscope-java-agent/` by
+the `publish-pyroscope-agent` job of `publish-container.yml`. That job runs on a tag push, after PR
+Checks pass on main, or by manual dispatch, so a branch that changes the agent version can publish
+the image before it merges. When you bump `Constants.PyroscopeJavaAgent.VERSION`, dispatch the
+workflow on that branch.
+
 **Reserved NodePorts:** 30942 is the `cassandra-pods` CQL port. Pick a port no other kit uses
 (`BuiltinKitNodePortTest` fails on a duplicate).
 

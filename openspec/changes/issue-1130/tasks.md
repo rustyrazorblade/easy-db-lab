@@ -8,7 +8,7 @@
 
 - [x] 2.1 Add the release-line resource (`cassandra/release-lines.yaml`) with the per-ref entry `5.0-rustyrazorblade` (11, 17, 21) and a `@Serializable` loader (kaml); tests: `4.1.7` maps to 4.1, `5.0-HEAD` and `5.0.6` map to 5.0, `5.0-rustyrazorblade-HEAD` maps to `5.0-rustyrazorblade` (longest prefix at a `-` boundary), `5.0-rustyrazorbladeX` does not, `trunk` maps to trunk, `5.1-...` maps to nothing
 - [x] 2.1a Integration-tier test: fetch `build.xml` from the fork branch `cassandra-5.0-rustyrazorblade` and fail when its `java.supported` differs from the `5.0-rustyrazorblade` entry
-- [ ] 2.1b Follow-up: when cassandra-builds#1 ships the manifest with the supported JDKs, remove the `5.0-rustyrazorblade` entry and its test (open an issue for this when this change merges, linked to cassandra-builds#1)
+- [x] 2.1b Follow-up: when cassandra-builds#1 ships the manifest with the supported JDKs, remove the `5.0-rustyrazorblade` entry and its test (open an issue for this when this change merges, linked to cassandra-builds#1): #1193
 - [x] 2.1c `ProfileBuildSource`: read `<profile dir>/cassandra_versions/*.yaml` (`Context.cassandraVersionsExtra`) into `@Serializable` `ProfileBuild` entries (kaml: `version`, `url`, `branch`, `java_supported`, `java`, `python`, `ant_flags`; unknown keys ignored); tests with `@TempDir`: an entry loads; no directory gives no builds; an entry with no `url` fails and names the file and the entry; a name in two files fails and names both; a file that cannot be parsed fails and names it; `java` not in `java_supported` fails
 - [x] 2.2 `AsfReleaseSource`: parse the archive index into GA releases and release lines; tests with a captured index page (highest GA patch of a line, `-rc`/`-beta` not picked for a line, an exact name found)
 - [x] 2.3 `CassandraBuildsSource`: parse the GitHub release JSON of the `nightly` release into `<ref>` names and URLs, and read the manifest beside a tarball when it exists; tests with captured JSON, including a release with no manifest
@@ -75,8 +75,8 @@
 - [x] 10.3 A 3-node cluster with the off-hours tag that WORKFLOW.md names: `cassandra list` before `init` (no cluster) and after `up`; then `cassandra use 5.0` (ASF, JDK 17, cache miss then a second cluster or node shows a cache hit), `start`, `nodetool status`
 - [x] 10.4 `cassandra use 4.1.7` (ASF, not in any file), `start`; `cassandra use 5.0-rustyrazorblade-HEAD` (cassandra-builds), `start`, JDK checked on the node; a second `use` of the same version downloads nothing
 - [x] 10.5 `cassandra use 5.0.6 --java 21` fails and lists 11 and 17; a bad name fails before any node changes
-- [ ] 10.6 With AxonOps on: `start` on 4.1 installs the agent and it connects; on 5.0 with JDK 21, `start` fails before Cassandra starts and names `--skip-axonops`; `start --skip-axonops` starts on JDK 21
+- [ ] 10.6 With AxonOps on: `start` on 4.1 installs the agent and it connects; on 5.0 with JDK 21, `start` fails before Cassandra starts and names `--skip-axonops`; `start --skip-axonops` starts on JDK 21 (only the `--skip-axonops` path ran on AWS: the profile has no AxonOps credentials; the agent selection is covered by unit and shell tests)
 - [x] 10.7 `cassandra build` (local) then `cassandra use <build>` from the catalog; `cassandra install <name> --url <git> --branch <b> --java 11` builds as before
 - [x] 10.7a A profile build (a yaml in the profile `cassandra_versions/` directory with a tarball URL and `java`): `cassandra list` shows it with source `profile`; `cassandra use <it>` installs it with that JDK
 - [x] 10.7b `cassandra stop`, then `cassandra install 5.0-HEAD --reinstall`: the node downloads again and the record is updated; `cassandra start` works; with Cassandra running, the reinstall of the active version is refused
-- [ ] 10.8 `down`; put the commands, their output and the AWS-side result in the PR
+- [x] 10.8 `down`; put the commands, their output and the AWS-side result in the PR

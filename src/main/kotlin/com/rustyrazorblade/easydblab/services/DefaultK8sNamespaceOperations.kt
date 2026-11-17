@@ -181,18 +181,24 @@ class DefaultK8sNamespaceOperations(
             eventBus.emit(Event.K8s.RolloutsWaiting(workloads.map { it.toString() }))
 
             clientProvider.createClient().use { client ->
-                // Poll until nothing is pending or the deadline passes. The deadline, not an
-                // attempt count, bounds the wait, so a slow API server cannot stretch it.
-                val pending =
+                val looker = RolloutLooker(client, namespace)
+                // Poll until nothing is pending, a rollout cannot finish, or the deadline passes. The
+                // deadline, not an attempt count, bounds the wait, so a slow API server cannot stretch it.
+                val outcome =
                     pollUntil(
                         operationName = "rollout-status",
                         maxAttempts = Int.MAX_VALUE,
                         interval = podPollInterval,
                         deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
-                        done = { it.isEmpty() },
-                    ) { pendingRollouts(client, namespace, workloads) }
-                check(pending.isEmpty()) {
-                    "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: ${pending.joinToString("; ")}"
+                        done = RolloutsLook::isFinal,
+                    ) { looker.look(workloads) }
+                when (outcome) {
+                    is RolloutsLook.Blocked -> error("Rollout cannot complete: ${outcome.reason}")
+                    is RolloutsLook.Pending ->
+                        check(outcome.reasons.isEmpty()) {
+                            "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: " +
+                                outcome.reasons.joinToString("; ")
+                        }
                 }
             }
 
@@ -229,38 +235,6 @@ class DefaultK8sNamespaceOperations(
                         }
                     template?.metadata?.annotations?.get(Constants.K8s.CONFIG_HASH_ANNOTATION)
                 }
-            }
-        }
-
-    /** What each unfinished workload is waiting on; empty once every rollout is complete. */
-    private fun pendingRollouts(
-        client: KubernetesClient,
-        namespace: String,
-        workloads: List<WorkloadRef>,
-    ): List<String> =
-        workloads.mapNotNull { ref ->
-            val progress =
-                when (ref.kind) {
-                    WorkloadKind.Deployment ->
-                        client
-                            .apps()
-                            .deployments()
-                            .inNamespace(namespace)
-                            .withName(ref.name)
-                            .get()
-                            ?.let(RolloutStatus::of)
-                    WorkloadKind.DaemonSet ->
-                        client
-                            .apps()
-                            .daemonSets()
-                            .inNamespace(namespace)
-                            .withName(ref.name)
-                            .get()
-                            ?.let(RolloutStatus::of)
-                } ?: RolloutProgress.Pending("$ref not found")
-            when (progress) {
-                RolloutProgress.Complete -> null
-                is RolloutProgress.Pending -> progress.reason.also { log.debug { it } }
             }
         }
 

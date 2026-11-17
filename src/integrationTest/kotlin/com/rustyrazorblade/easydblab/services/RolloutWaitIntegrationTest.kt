@@ -38,6 +38,12 @@ class RolloutWaitIntegrationTest {
         private const val READY_DELAY_SECONDS = 5
         private const val TIMEOUT_SECONDS = 180
         private const val SHORT_TIMEOUT_SECONDS = 8
+
+        /** A broken pod must end the wait this long before [TIMEOUT_SECONDS], or it waited it out. */
+        private const val FAIL_FAST_LIMIT_SECONDS = 90L
+
+        /** An image on a reserved TLD (RFC 2606) that no registry can serve. */
+        private const val UNPULLABLE_IMAGE = "registry.invalid/easy-db-lab/no-such-image:1"
     }
 
     private val controlHost =
@@ -111,7 +117,10 @@ class RolloutWaitIntegrationTest {
         client.resource(deployment).create()
     }
 
-    private fun createDaemonSet(name: String) {
+    private fun createDaemonSet(
+        name: String,
+        spec: PodSpec = podSpec("true"),
+    ) {
         val daemonSet =
             DaemonSetBuilder()
                 .withNewMetadata()
@@ -126,7 +135,7 @@ class RolloutWaitIntegrationTest {
                 .withNewMetadata()
                 .addToLabels("app", name)
                 .endMetadata()
-                .withSpec(podSpec("true"))
+                .withSpec(spec)
                 .endTemplate()
                 .endSpec()
                 .build()
@@ -190,6 +199,64 @@ class RolloutWaitIntegrationTest {
         assertThat(after).hasSize(1)
         assertThat(after.keys).doesNotContainAnyElementsOf(before)
         assertThat(after.values).containsOnly(true)
+    }
+
+    /**
+     * Waits on DaemonSet [name] with the long [TIMEOUT_SECONDS] budget and asserts it failed well
+     * before it, with a message naming the workload, a pod of it, the node and [reason].
+     */
+    private fun assertFailsFast(
+        name: String,
+        reason: String,
+    ) {
+        val started = System.nanoTime()
+        val result = ops.waitForRollouts(listOf(WorkloadRef(WorkloadKind.DaemonSet, name)), NAMESPACE, TIMEOUT_SECONDS)
+        val elapsed = Duration.ofNanos(System.nanoTime() - started)
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(elapsed).isLessThan(Duration.ofSeconds(FAIL_FAST_LIMIT_SECONDS))
+        val nodeName =
+            client
+                .nodes()
+                .list()
+                .items
+                .single()
+                .metadata.name
+        assertThat(result.exceptionOrNull())
+            .hasMessageContaining("DaemonSet/$name")
+            .hasMessageContaining("Pod $name-")
+            .hasMessageContaining("node $nodeName")
+            .hasMessageContaining(reason)
+    }
+
+    @Test
+    fun `fails at once naming the pod when a DaemonSet's image cannot be pulled`() {
+        val name = "rollout-bad-image"
+        val spec =
+            PodSpecBuilder(podSpec("true"))
+                .editFirstContainer()
+                .withImage(UNPULLABLE_IMAGE)
+                .withImagePullPolicy("Always")
+                .endContainer()
+                .build()
+        createDaemonSet(name, spec)
+
+        // ErrImagePull and ImagePullBackOff alternate; whichever the poll sees first ends the wait.
+        assertFailsFast(name, "ImagePull")
+    }
+
+    @Test
+    fun `fails at once naming the pod when a DaemonSet's container exits at once`() {
+        val name = "rollout-crash"
+        val spec =
+            PodSpecBuilder(podSpec("true"))
+                .editFirstContainer()
+                .withCommand("sh", "-c", "exit 1")
+                .endContainer()
+                .build()
+        createDaemonSet(name, spec)
+
+        assertFailsFast(name, "CrashLoopBackOff")
     }
 
     @Test

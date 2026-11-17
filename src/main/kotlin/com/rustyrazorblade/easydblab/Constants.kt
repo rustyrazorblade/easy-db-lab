@@ -668,6 +668,18 @@ object Constants {
 
         /** Pod-template annotation carrying a hash of the ConfigMaps a workload reads; see ConfigHashAnnotator. */
         const val CONFIG_HASH_ANNOTATION = "easydblab.com/config-hash"
+
+        /** The Node condition the kubelet keeps True while the node can run pods. */
+        const val NODE_READY_CONDITION = "Ready"
+
+        /** The status of a Kubernetes condition that holds. */
+        const val CONDITION_TRUE = "True"
+
+        /** The label the DaemonSet controller puts on each pod: the DaemonSet generation it was made from. */
+        const val POD_TEMPLATE_GENERATION_LABEL = "pod-template-generation"
+
+        /** The annotation the Deployment controller keeps on a Deployment and its ReplicaSets: the revision. */
+        const val DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
     }
 
     // OpenSearch configuration

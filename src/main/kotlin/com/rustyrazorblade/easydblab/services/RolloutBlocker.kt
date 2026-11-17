@@ -23,6 +23,11 @@ import java.time.format.DateTimeParseException
  * `lastTransitionTime`, so a node that is still joining or misses a heartbeat does not fail the wait.
  * A missing or unparseable `lastTransitionTime`, or a node with no Ready condition at all, counts as
  * having just transitioned and does not block. A terminating pod is on its way out and never blocks.
+ *
+ * The grace is measured against the caller's clock (the operator's workstation), while
+ * `lastTransitionTime` is the control plane's. It relies on both clocks being synchronised (NTP or
+ * chrony); a skew of a few seconds is well within the grace, but a clock off by a minute or more would
+ * shorten or lengthen it by that much.
  */
 object RolloutBlocker {
     /**

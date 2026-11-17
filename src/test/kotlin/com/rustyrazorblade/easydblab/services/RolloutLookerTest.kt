@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import io.fabric8.kubernetes.api.model.Node
+import io.fabric8.kubernetes.api.model.NodeBuilder
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
@@ -8,6 +9,7 @@ import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.api.model.apps.ReplicaSet
+import io.fabric8.kubernetes.api.model.apps.ReplicaSetBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -22,6 +24,7 @@ class RolloutLookerTest {
         val deployments: Map<String, Deployment> = emptyMap(),
         val daemonSets: Map<String, DaemonSet> = emptyMap(),
         val pods: List<Pod> = emptyList(),
+        val replicaSets: List<ReplicaSet> = emptyList(),
         val nodes: Map<String, Node> = emptyMap(),
     ) : RolloutReader {
         var podLists = 0
@@ -34,7 +37,7 @@ class RolloutLookerTest {
 
         override fun pods(): List<Pod> = pods.also { podLists++ }
 
-        override fun replicaSets(): List<ReplicaSet> = emptyList<ReplicaSet>().also { replicaSetLists++ }
+        override fun replicaSets(): List<ReplicaSet> = replicaSets.also { replicaSetLists++ }
 
         override fun node(name: String): Node? = nodes[name].also { nodeReads += name }
     }
@@ -62,11 +65,17 @@ class RolloutLookerTest {
             .endStatus()
             .build()
 
-    private fun deployment(name: String): Deployment =
+    /** A Deployment at revision [revision] whose one replica is not available yet. */
+    private fun deployment(
+        name: String,
+        revision: String = "2",
+    ): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(name)
+            .withUid("$name-uid")
             .withGeneration(1)
+            .addToAnnotations("deployment.kubernetes.io/revision", revision)
             .endMetadata()
             .withNewSpec()
             .withReplicas(1)
@@ -82,18 +91,49 @@ class RolloutLookerTest {
             .endStatus()
             .build()
 
-    /** A pod of DaemonSet [app]'s generation 1 on [node], optionally crash-looping. */
+    /** A ReplicaSet of Deployment [deployment] at [revision], with the uid `<deployment>-rs<revision>`. */
+    private fun replicaSet(
+        deployment: String,
+        revision: String,
+    ): ReplicaSet =
+        ReplicaSetBuilder()
+            .withNewMetadata()
+            .withName("$deployment-rs$revision")
+            .withUid("$deployment-rs$revision")
+            .addToLabels("app", deployment)
+            .addToAnnotations("deployment.kubernetes.io/revision", revision)
+            .addNewOwnerReference()
+            .withKind("Deployment")
+            .withName(deployment)
+            .withUid("$deployment-uid")
+            .endOwnerReference()
+            .endMetadata()
+            .build()
+
+    /**
+     * A pod labelled for [app] on [node], optionally crash-looping. It carries DaemonSet generation 1,
+     * and when [replicaSet] is set it is owned by that ReplicaSet's uid.
+     */
     private fun pod(
         app: String,
         node: String,
         crashing: Boolean = false,
+        replicaSet: String? = null,
     ): Pod =
         PodBuilder()
             .withNewMetadata()
-            .withName("$app-$node")
+            .withName("$app-$node-${replicaSet ?: "ds"}")
             .addToLabels("app", app)
             .addToLabels("pod-template-generation", "1")
-            .endMetadata()
+            .apply {
+                if (replicaSet != null) {
+                    addNewOwnerReference()
+                        .withKind("ReplicaSet")
+                        .withName(replicaSet)
+                        .withUid(replicaSet)
+                        .endOwnerReference()
+                }
+            }.endMetadata()
             .withNewSpec()
             .withNodeName(node)
             .endSpec()
@@ -147,6 +187,38 @@ class RolloutLookerTest {
         assertThat(look).isInstanceOf(RolloutsLook.Blocked::class.java)
         assertThat((look as RolloutsLook.Blocked).reason).startsWith("DaemonSet/a:").contains("CrashLoopBackOff")
         assertThat(asked).isEqualTo(1)
+    }
+
+    @Test
+    fun `a crash loop in a pending Deployment's current ReplicaSet blocks the rollout`() {
+        val reader =
+            FakeReader(
+                deployments = mapOf("d" to deployment("d", revision = "2")),
+                replicaSets = listOf(replicaSet("d", "1"), replicaSet("d", "2")),
+                pods = listOf(pod("d", "app0", replicaSet = "d-rs1"), pod("d", "app0", crashing = true, replicaSet = "d-rs2")),
+            )
+
+        val look = RolloutLooker(reader).look(listOf(WorkloadRef(WorkloadKind.Deployment, "d")))
+
+        assertThat(look).isInstanceOf(RolloutsLook.Blocked::class.java)
+        assertThat((look as RolloutsLook.Blocked).reason)
+            .startsWith("Deployment/d:")
+            .contains("d-app0-d-rs2")
+            .contains("CrashLoopBackOff")
+    }
+
+    @Test
+    fun `a crash loop only in an old ReplicaSet leaves the Deployment pending`() {
+        val reader =
+            FakeReader(
+                deployments = mapOf("d" to deployment("d", revision = "2")),
+                replicaSets = listOf(replicaSet("d", "1"), replicaSet("d", "2")),
+                pods = listOf(pod("d", "app0", crashing = true, replicaSet = "d-rs1"), pod("d", "app0", replicaSet = "d-rs2")),
+            )
+
+        val look = RolloutLooker(reader).look(listOf(WorkloadRef(WorkloadKind.Deployment, "d")))
+
+        assertThat(look).isEqualTo(RolloutsLook.Pending(listOf("Deployment/d: 0 of 1 updated replicas are available")))
     }
 
     @Test
@@ -205,8 +277,7 @@ class RolloutLookerTest {
     }
 
     private fun readyNode(name: String): Node =
-        io.fabric8.kubernetes.api.model
-            .NodeBuilder()
+        NodeBuilder()
             .withNewMetadata()
             .withName(name)
             .endMetadata()

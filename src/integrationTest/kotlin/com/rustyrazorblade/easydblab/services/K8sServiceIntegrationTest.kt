@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -111,7 +112,12 @@ class K8sServiceIntegrationTest {
 
         val mockClusterStateManager = mock<ClusterStateManager>()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket"),
+            ClusterState(
+                name = "test",
+                versions = mutableMapOf(),
+                s3Bucket = "test-bucket",
+                initConfig = InitConfig(region = "us-west-2"),
+            ),
         )
         templateService = TemplateService(mockClusterStateManager)
 
@@ -127,6 +133,7 @@ class K8sServiceIntegrationTest {
                             name = "test",
                             versions = mutableMapOf(),
                             s3Bucket = "test-bucket",
+                            initConfig = InitConfig(region = "us-west-2"),
                             hosts =
                                 mapOf(
                                     ServerType.Control to

@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
@@ -54,6 +55,9 @@ class ConfigHashRolloutIntegrationTest {
         private const val NAMESPACE = "config-hash-rollout"
         private const val TEMPLATE_NAMESPACE = "config-hash-template-only"
 
+        /** How long a rollout may take to create its new ReplicaSet; see [awaitReplicaSets]. */
+        private val ROLLOUT_WAIT: Duration = Duration.ofMinutes(3)
+
         /**
          * The AWS hosting with ClusterIP Services: a fixed NodePort is cluster-wide, so the two
          * namespaces' Pyroscope Services on the shared K3s could not both claim it.
@@ -68,6 +72,7 @@ class ConfigHashRolloutIntegrationTest {
             name = "test",
             versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
+            initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
         )
 
@@ -166,13 +171,17 @@ class ConfigHashRolloutIntegrationTest {
             .map { it.metadata.name }
             .toSet()
 
-    /** Waits for the Deployment controller to have created a ReplicaSet for [app]'s current template. */
+    /**
+     * Waits for the Deployment controller to have created a ReplicaSet for [app]'s current template.
+     * Tempo rolls with `Recreate`: the new ReplicaSet appears only once the old pod has terminated,
+     * which on a loaded shared K3s took longer than a minute, so the wait allows [ROLLOUT_WAIT].
+     */
     private fun awaitReplicaSets(
         app: String,
         atLeast: Int,
         namespace: String = NAMESPACE,
     ): Set<String> {
-        val deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos()
+        val deadline = System.nanoTime() + ROLLOUT_WAIT.toNanos()
         var sets = replicaSets(app, namespace)
         while (sets.size < atLeast && System.nanoTime() < deadline) {
             Thread.sleep(500)

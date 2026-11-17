@@ -142,6 +142,8 @@ class StartK3sScriptsIntegrationTest {
             assertThat(node.exitCode).describedAs(node.output).isZero()
             assertThat(node.sh("grep -c '^cluster-init: true$' $DATASTORE_CONFIG")).isEqualTo("1")
             assertThat(node.sh("grep -c 'quota-backend-bytes=8589934592' $DATASTORE_CONFIG")).isEqualTo("1")
+            // The collector's k3s-etcd job scrapes etcd's metrics listener on the control node.
+            assertThat(node.sh("grep -c '^etcd-expose-metrics: true$' $DATASTORE_CONFIG")).isEqualTo("1")
             assertThat(node.sh("grep -c eviction-hard= $EVICTION_CONFIG")).isEqualTo("1")
         }
     }
@@ -162,7 +164,7 @@ class StartK3sScriptsIntegrationTest {
         runScript(AGENT, mounted = true) { node ->
             assertThat(node.exitCode).describedAs(node.output).isZero()
             assertThat(node.sh("test -e $DATASTORE_CONFIG && echo present || echo absent")).isEqualTo("absent")
-            assertThat(node.sh("grep -rl 'cluster-init\\|etcd-arg' /etc/rancher/k3s 2>/dev/null || true")).isEmpty()
+            assertThat(node.sh("grep -rl 'cluster-init\\|etcd-arg\\|etcd-expose-metrics' /etc/rancher/k3s 2>/dev/null || true")).isEmpty()
         }
     }
 }

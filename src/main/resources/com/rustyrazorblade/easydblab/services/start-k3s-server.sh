@@ -72,11 +72,14 @@ echo "Kubelet disk eviction signals set to 0% in /etc/rancher/k3s/config.yaml.d/
 # 0.4-1.0 s while agents registered and the apiserver rejected thousands of requests (#1134).
 # This is still one server, not high availability. The etcd backend quota is raised from the 2 GiB
 # default to 8 GiB (etcd's recommended maximum): at the quota etcd raises NOSPACE and the apiserver
-# refuses every write. Scheduled snapshots keep K3s's defaults (00:00 and 12:00, the five newest
-# kept, in /mnt/db1/k3s/server/db/snapshots); they are K3s's own control-plane recovery files, not
+# refuses every write. etcd's plain-HTTP metrics listener (port 2381, also bound on the node's
+# private IP, VPC-only) is exposed for the collector's k3s-etcd scrape (localhost:2381), so write latency, the backend size against that quota and leader changes are in Mimir.
+# Scheduled snapshots keep K3s's defaults (00:00 and 12:00, the five newest kept,
+# in /mnt/db1/k3s/server/db/snapshots); they are K3s's own control-plane recovery files, not
 # owner data. A config file, not an installer argument, so it is rewritten on every run.
 cat > /etc/rancher/k3s/config.yaml.d/20-datastore.yaml <<'EOF'
 cluster-init: true
+etcd-expose-metrics: true
 etcd-arg:
   - "quota-backend-bytes=8589934592"
 EOF

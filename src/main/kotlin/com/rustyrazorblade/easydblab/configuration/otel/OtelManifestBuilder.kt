@@ -229,9 +229,10 @@ class OtelManifestBuilder(
     /**
      * The infrastructure scrape jobs that carry Prometheus meta-labels in their relabel rules and
      * so cannot live in the YAML template (a bare `__x__` there is a template placeholder):
-     * kube-state-metrics on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
+     * kube-state-metrics and the K3s embedded etcd on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
      */
-    fun buildInfraScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> = listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni)
+    fun buildInfraScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> =
+        listOf(buildKubeStateMetricsScrapeJob(), buildEtcdScrapeJob()) + buildCniScrapeJobs(cni)
 
     /**
      * The scrape jobs for the local telemetry backends' own metrics: Mimir, Loki, Tempo and the
@@ -280,6 +281,45 @@ class OtelManifestBuilder(
             podLabel = "app.kubernetes.io/name",
             podLabelValue = Constants.KubeStateMetrics.NAME,
             port = Constants.KubeStateMetrics.METRICS_PORT,
+        )
+
+    /**
+     * The K3s server's embedded etcd, whose metrics listener is on `localhost:2381` of the
+     * control node (`etcd-expose-metrics` in the datastore drop-in). The collector is a DaemonSet,
+     * so a static `localhost` target would leave every other node's collector reporting the job
+     * down for the life of the cluster. Node discovery keeps only the collector's own node, and
+     * only when K3s labelled it an etcd node (`node-role.kubernetes.io/etcd=true`), so the
+     * control node's collector alone scrapes it. `instance` carries the node name and the port,
+     * like the other node-local jobs.
+     */
+    private fun buildEtcdScrapeJob() =
+        PrometheusScrapeJob(
+            jobName = Constants.K3s.ETCD_JOB_NAME,
+            scrapeInterval = SCRAPE_INTERVAL,
+            kubernetesSdConfigs = listOf(PrometheusKubernetesSdConfig(role = "node")),
+            metricsPath = "/metrics",
+            relabelConfigs =
+                listOf(
+                    PrometheusRelabelConfig(
+                        sourceLabels = listOf("__meta_kubernetes_node_label_node_role_kubernetes_io_etcd"),
+                        regex = "true",
+                        action = "keep",
+                    ),
+                    PrometheusRelabelConfig(
+                        sourceLabels = listOf("__meta_kubernetes_node_name"),
+                        regex = "\${env:HOSTNAME}",
+                        action = "keep",
+                    ),
+                    PrometheusRelabelConfig(
+                        targetLabel = "__address__",
+                        replacement = "localhost:${Constants.K3s.ETCD_METRICS_PORT}",
+                    ),
+                    PrometheusRelabelConfig(
+                        targetLabel = "instance",
+                        replacement = "\${env:HOSTNAME}:${Constants.K3s.ETCD_METRICS_PORT}",
+                    ),
+                    PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+                ),
         )
 
     /**

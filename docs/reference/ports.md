@@ -29,6 +29,7 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 3200 | Tempo (trace storage) |
 | 5001 | YACE CloudWatch exporter (Prometheus) |
 | 8080 | kube-state-metrics (Prometheus; ClusterIP Service, pod network) |
+| 2381 | K3s embedded etcd metrics (Prometheus, plain HTTP, control node; localhost and the private IP) |
 
 ## Observability Ports (All Nodes — DaemonSets)
 

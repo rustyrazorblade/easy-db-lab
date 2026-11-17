@@ -409,7 +409,7 @@ During `down`, the telemetry-sender stop SHALL delete and wait for both collecto
 - **WHEN** the telemetry-sender stop fails or times out
 - **THEN** the save reports a failure at the collector-stop step, `down` stops, and nothing is torn down
 
-### Requirement: Observability backends and Grafana run on the pod network behind ClusterIP Services
+### Requirement: Observability backends and Grafana run on the pod network behind Services, published as NodePorts on owned nodes
 
 Mimir, Loki, Tempo, Pyroscope and Grafana SHALL run as ordinary pod-network workloads behind Services, with no `hostNetwork`. Their placement SHALL come from a resolved `Placement` value — a node selector and tolerations — derived once from the recorded environment, never from testing an environment name. On AWS the resolved placement SHALL be the control-node selector and its matching toleration; where the environment declares no such node the selector and tolerations SHALL be empty. An `init` user node label SHALL merge into the selector. The same container specs SHALL be used on every environment.
 
@@ -474,6 +474,18 @@ Each backend's local state SHALL be stored on a `hostPath` where the environment
 - **GIVEN** an environment without `HOST_PATH`
 - **WHEN** a backend is rendered
 - **THEN** its state is on a per-backend claim whose StorageClass reclaims with `Retain`
+- **AND** no backend uses `emptyDir` for its state
+
+#### Scenario: On a claim the dashboards reach Grafana through the K8s API
+- **GIVEN** an environment without `HOST_PATH`, so Grafana's state is on its retained claim
+- **WHEN** the observability stack deploys
+- **THEN** the dashboard tree is applied as ConfigMaps the Grafana Deployment mounts at its dashboard path, with no copy to a node
+- **AND** each dashboard is filed in the folder named for its directory
+
+#### Scenario: A claim StorageClass that deletes its volumes is refused
+- **GIVEN** an environment without `HOST_PATH` whose backend StorageClass reclaims with `Delete`, sets no reclaim policy, or does not exist
+- **WHEN** the observability stack deploys
+- **THEN** it fails before applying anything, naming the StorageClass and that it must reclaim with `Retain`
 
 ### Requirement: Every in-cluster profile producer reaches Pyroscope by Service DNS
 

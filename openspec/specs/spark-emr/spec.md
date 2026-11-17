@@ -168,6 +168,16 @@ The system SHALL inject Pyroscope Java agent flags into Spark submit arguments s
 - **WHEN** a Spark job is submitted on a cluster with no telemetry redirect
 - **THEN** the Pyroscope agent is configured with `pyroscope.server.address=http://<control_ip>:<Pyroscope NodePort>`
 
+#### Scenario: Pyroscope agent collects CPU, allocation, and lock profiles
+
+- **WHEN** a Spark job is running with the Pyroscope agent
+- **THEN** the agent collects CPU profiles, allocation profiles (512k threshold), and lock contention profiles (10ms threshold) in JFR format
+
+#### Scenario: Profiles labeled with job identity
+
+- **WHEN** a Spark job is running with the Pyroscope agent
+- **THEN** profiles are labeled with `application.name=spark-<jobName>`, `hostname`, and `cluster` for identification in Pyroscope UI
+
 #### Scenario: No NodePort to send to
 
 - **WHEN** an EMR cluster is provisioned for a cluster with no telemetry redirect whose backends are published as ClusterIP Services only

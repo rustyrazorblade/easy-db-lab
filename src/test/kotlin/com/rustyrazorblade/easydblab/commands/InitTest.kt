@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -760,6 +761,46 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager).save(
                 argThat { initConfig?.cni == CniMode.Flannel },
             )
+        }
+    }
+
+    @Nested
+    inner class RoleNodeOptions {
+        @Test
+        fun `without --role-nodes each role keeps the owned nodes' type label`() {
+            Init().apply { clean = true }.execute()
+
+            verify(mockClusterStateManager).save(argThat { RoleSelectors.from(this) == RoleSelectors.OWNED_NODES })
+        }
+
+        @Test
+        fun `--role-nodes maps the roles it names and records them`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--role-nodes", "db=pool=databases", "--role-nodes", "app=pool=clients")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    val selectors = RoleSelectors.from(this)
+                    selectors.db.labels == mapOf("pool" to "databases") &&
+                        selectors.app.labels == mapOf("pool" to "clients") &&
+                        selectors.control == RoleSelectors.OWNED_NODES.control
+                },
+            )
+        }
+
+        @Test
+        fun `a malformed --role-nodes fails before anything is saved, naming the value and the form`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--role-nodes", "db=bad")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("db=bad")
+                .hasMessageContaining("<role>=<key=value>")
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 

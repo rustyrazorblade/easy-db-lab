@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
@@ -291,6 +292,16 @@ class Init :
     var nodeLabels: Map<String, String> = mutableMapOf()
 
     @Option(
+        names = [RoleSelectors.OPTION],
+        description = [
+            "Nodes one role's pods run on (format: <role>=<key=value>[,<key=value>...], role db, app or " +
+                "control; can be repeated, once per role). Replaces that role's default node selector; " +
+                "a role not given keeps the environment's.",
+        ],
+    )
+    var roleNodes: List<String> = mutableListOf()
+
+    @Option(
         names = ["--kit-storage-class"],
         description = [
             "StorageClass every kit claim names. Omit on an AWS cluster to keep kits on per-kit local " +
@@ -518,13 +529,14 @@ class Init :
     override fun execute() {
         refuseOptionsThatNeedOtherOptions()
         validateParameters()
-        // Parsed before anything is cleaned or written, so a bad override leaves the directory as it was.
+        // Parsed before anything is cleaned or written, so a bad override or mapping leaves the directory as it was.
         val capabilities = effectiveCapabilities()
+        val roleSelectors = RoleSelectors.OWNED_NODES.withMappings(RoleSelectors.parse(roleNodes))
 
         if (!clean) checkExistingFiles()
         // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker
         // architecture) leaves the directory as it was.
-        val clusterState = buildClusterState(capabilities)
+        val clusterState = buildClusterState(capabilities).copy(roleSelectors = roleSelectors)
         if (clean) {
             refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)

@@ -406,6 +406,9 @@ data class ClusterState(
     // The effective capability set `init` recorded (declared or probed, plus overrides). Null in a
     // state written before capabilities were recorded, which reads as AWS (NodeCapabilities.from).
     var capabilities: Set<NodeCapability>? = null,
+    // Where each role's pods run. Null in a state written before it was recorded, or by an
+    // environment easy-db-lab builds, which reads as one type=<role> label per node (RoleSelectors.from).
+    var roleSelectors: RoleSelectors? = null,
     // How the CLI reaches cluster Services; a state that records none predates the field and reads as Socks
     var exposure: Exposure = Exposure.Socks,
     // The execution environment `init` recorded; a state that records none predates the field and reads as EC2 + K3s

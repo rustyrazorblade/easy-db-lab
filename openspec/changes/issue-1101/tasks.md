@@ -15,8 +15,8 @@
 
 ## 3. Role selectors
 
-- [ ] 3.1 Test first: `RoleSelectors.from(state)` (null → `OWNED_NODES`), `--role-nodes` parsing and refusal, `NodeSelector.toJson` / `toLabelSelector`.
-- [ ] 3.2 Add `NodeSelector`, `RoleSelectors`, `ClusterState.roleSelectors`, `Init --role-nodes`.
+- [x] 3.1 Test first: `RoleSelectors.from(state)` (null → `OWNED_NODES`), `--role-nodes` parsing and refusal, `NodeSelector.toJson` / `toLabelSelector`.
+- [x] 3.2 Add `NodeSelector`, `RoleSelectors`, `ClusterState.roleSelectors`, `Init --role-nodes`.
 - [ ] 3.3 `RoleNodes` (via `K8sService.nodesMatching`) and `KitPlacementVariables` (`DB_/APP_NODE_SELECTOR`, `DB_/APP_/CONTROL_NODE_LABELS`, counts); `KitInstallCommand.requiredNodePoolIsMissing` uses `RoleNodes`.
 - [ ] 3.4 `KitEndpointResolver`: `TARGET_*` for in-cluster clients resolves to Service DNS and Service port via `KitEndpointServices` (#1110).
 - [ ] 3.5 Kits: replace every `type` nodeSelector / affinity with `__DB_NODE_SELECTOR__` / `__APP_NODE_SELECTOR__` in cassandra-pods, memcached (both), neo4j, postgres, clickhouse (+ keeper), tidb, presto, trino, flink.

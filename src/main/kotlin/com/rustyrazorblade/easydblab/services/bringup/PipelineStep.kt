@@ -21,6 +21,7 @@ enum class PipelineStep(
     REGISTRY_CERT("registry-cert"),
     REGISTRY_TLS("registry-tls"),
     CONTROL_PLANE("control-plane"),
+    CONTROL_PLANE_CLIENTS("control-plane-clients"),
     CNI("cni"),
     GATE("gate"),
     JOIN_WAIT("join-wait"),
@@ -31,9 +32,9 @@ enum class PipelineStep(
 
 /**
  * How one step is retried: [attempts] in all, each bounded by [timeout]. [replaceable] says
- * whether a new instance can fix a step whose attempts ran out (a Cilium image check cannot: the
- * replacement has the same AMI). With [forgiveWhileUnhealthy], a failure while the control plane
- * was unhealthy is not counted: the step waits for health and runs the attempt again.
+ * whether a new instance can fix a step whose attempts ran out. With [forgiveWhileUnhealthy], a
+ * failure while the control plane was unhealthy is not counted: the step waits for health and
+ * runs the attempt again.
  */
 data class StepPolicy(
     val attempts: Int,

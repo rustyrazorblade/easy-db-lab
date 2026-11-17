@@ -107,7 +107,8 @@ start. Then it runs `setup` and `image-check`, then:
 
 1. `tunnel`: this machine connects (the SOCKS tunnel, or the tailnet route).
 2. `registry-cert`: the registry certificate is made and installed on the control node.
-3. `control-plane`: the K3s server starts and the API server answers.
+3. `control-plane`: the K3s server starts and the API server answers; then
+   `control-plane-clients`: `up` opens its clients to the cluster API.
 4. `cni`: the control node is labelled and, under Cilium, Cilium is installed.
 5. `gate`: the control-plane gate opens.
 

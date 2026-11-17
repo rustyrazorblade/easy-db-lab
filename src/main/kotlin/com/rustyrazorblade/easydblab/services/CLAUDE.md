@@ -194,8 +194,8 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
   `NodeCleanup`, `ControlPlaneSampler`) are in `bringup/k3s/`. A second provider
   adds its own adapter package; it never changes the ports.
 - **Coordination**: one virtual thread per node. Shared limits are in `Limiters.kt` (join slots,
-  SSH sessions); the gate, the registry certificate and the control-plane connection are
-  latches in `BringUpRun`. Use `ReentrantLock`, not `synchronized`, so a virtual thread never pins.
+  SSH sessions); the workspace files, the registry certificate and the open control plane
+  (released by the gate) are latches in `BringUpRun`. Use `ReentrantLock`, not `synchronized`, so a virtual thread never pins.
 - **Failure**: `StepRunner` retries only an `AttemptFailed`; a node step that still fails goes to
   `NodeReplacer` (budget in `ReplacementBudget`). Control steps are retried and never replaced:
   `ControlNodeFailedException`. `ClusterStateWriter` is the only writer of hosts to `state.json`

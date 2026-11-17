@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneConnection
 import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneReader
@@ -29,7 +30,7 @@ class Fabric8ControlPlaneConnector(
             val nodes = NodeWatcher.open(clientProvider).also(opened::add)
             return Connection(reader, sampler, nodes, NodeCleanup(clientProvider))
         } catch (e: Exception) {
-            opened.forEach { runCatching { it.close() } }
+            opened.forEach { runCatchingException { it.close() } }
             throw e
         }
     }
@@ -48,7 +49,7 @@ class Fabric8ControlPlaneConnector(
         override fun cleanup(alias: String) = nodeCleanup.clean(alias)
 
         override fun close() {
-            listOf(watcher, fabric8Sampler, fabric8Reader).forEach { runCatching { it.close() } }
+            listOf(watcher, fabric8Sampler, fabric8Reader).forEach { runCatchingException { it.close() } }
         }
     }
 

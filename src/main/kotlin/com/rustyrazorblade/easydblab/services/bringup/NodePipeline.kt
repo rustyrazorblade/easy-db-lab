@@ -45,7 +45,7 @@ internal class NodePipeline(
             // A fault in the coordinator itself, not a step: the node fails, the others go on.
             log.error(e) { "$alias's pipeline failed" }
             val (host, replacements) = onInstance
-            failed(NodeEnd.Failed(host, replacements, current, e.message ?: e::class.java.simpleName))
+            failed(NodeEnd.Failed(host, replacements, current, e.messageOrString()))
         }
 
     private tailrec fun bringUp(

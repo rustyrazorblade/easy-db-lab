@@ -44,18 +44,14 @@ class Fabric8ControlPlaneReader private constructor(
                 ?.let { Replicas(it.status?.readyReplicas ?: 0, it.spec?.replicas ?: 1) }
         }
 
-    /** Which of [names] exist with the `Established` condition `True`. */
+    /**
+     * Which of [names] exist with the `Established` condition `True`. Each is read by name, so a
+     * gate poll fetches only these CRDs, not every CRD with its schema.
+     */
     fun establishedCrds(names: List<String>): Set<String> =
         read("the Cilium CRDs", emptySet()) {
-            client
-                .apiextensions()
-                .v1()
-                .customResourceDefinitions()
-                .list()
-                .items
-                .filter { crd -> crd.metadata.name in names && isEstablished(crd) }
-                .map { it.metadata.name }
-                .toSet()
+            val crds = client.apiextensions().v1().customResourceDefinitions()
+            names.filter { name -> crds.withName(name).get()?.let(::isEstablished) == true }.toSet()
         }
 
     override fun close() = client.close()

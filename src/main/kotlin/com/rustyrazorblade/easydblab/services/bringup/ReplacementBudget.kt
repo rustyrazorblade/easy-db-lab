@@ -62,7 +62,7 @@ class ReplacementBudget(
             val forNode = byAlias.getOrDefault(alias, 0)
             when {
                 forNode >= perNodeLimit -> Grant.NodeLimitReached(perNodeLimit)
-                byAlias.values.sum() >= clusterLimit -> Grant.ClusterLimitReached(clusterLimit)
+                used >= clusterLimit -> Grant.ClusterLimitReached(clusterLimit)
                 else -> {
                     byAlias[alias] = forNode + 1
                     Grant.Granted(forNode + 1, perNodeLimit)

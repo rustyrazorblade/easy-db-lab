@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
+import com.rustyrazorblade.easydblab.messageOrString
 import java.time.Clock
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
@@ -129,7 +130,7 @@ class NodeBringUp(
                         controlFailed(e)
                     } catch (e: RuntimeException) {
                         // A fault outside any step still fails the control node, or the coordinator would wait forever.
-                        controlFailed(ControlNodeFailedException(host.alias, CONTROL, e.message ?: e::class.java.simpleName))
+                        controlFailed(ControlNodeFailedException(host.alias, CONTROL, e.messageOrString()))
                     }
                 }
         }

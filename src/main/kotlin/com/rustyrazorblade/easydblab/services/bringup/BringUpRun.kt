@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Clock
 import java.util.concurrent.CompletableFuture
@@ -17,8 +18,8 @@ internal data class OpenControlPlane(
 /**
  * What every pipeline of one bring-up shares: the ports, the step runner, the limiters, the
  * health latch, the progress counts, the replacer, and the latches the control pipeline releases
- * (the [workspace] files every setup installs from, the registry [certificate], the
- * control-plane [connection], and [controlPlane] once the gate is open). It also owns the
+ * (the [workspace] files every setup installs from, the registry [certificate], and
+ * [controlPlane] once the gate is open). It also owns the
  * background work (tickers, the connection) and closes it in [close].
  */
 internal class BringUpRun(
@@ -35,7 +36,6 @@ internal class BringUpRun(
     val progress = BringUpProgress(settings.runCount, settings.joinLimit, clock)
     val workspace = CompletableFuture<Unit>()
     val certificate = CompletableFuture<Unit>()
-    val connection = CompletableFuture<ControlPlaneConnection>()
     val controlPlane = CompletableFuture<OpenControlPlane>()
     val versions = Once()
     val replacer =
@@ -54,7 +54,7 @@ internal class BringUpRun(
     /** Closes what the bring-up owns, newest first; a failed close is logged, so the others still close. */
     override fun close() {
         generateSequence { owned.poll() }.forEach { resource ->
-            runCatching { resource.close() }.onFailure { log.warn(it) { "Closing $resource failed" } }
+            runCatchingException { resource.close() }.onFailure { log.warn(it) { "Closing $resource failed" } }
         }
     }
 

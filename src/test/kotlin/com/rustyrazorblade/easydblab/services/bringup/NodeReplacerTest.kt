@@ -157,7 +157,7 @@ class NodeReplacerTest {
                 release.await()
             }
         }
-        val first = CompletableFuture.supplyAsync { replacer.replace(ServerType.Cassandra, host(0), failure) }
+        val first = onOwnThread { replacer.replace(ServerType.Cassandra, host(0), failure) }
         holding.await()
         val result = CompletableFuture<Any?>()
 
@@ -195,7 +195,7 @@ class NodeReplacerTest {
         val replacer = replacer()
         health.markUnhealthy()
 
-        val running = CompletableFuture.supplyAsync { replacer.replace(ServerType.Cassandra, host(1), failure) }
+        val running = onOwnThread { replacer.replace(ServerType.Cassandra, host(1), failure) }
         Thread.sleep(UNHEALTHY_WINDOW_MS)
         assertThat(fleet.calls).isEmpty()
 
@@ -222,6 +222,18 @@ class NodeReplacerTest {
         assertThat(saved).hasSize(nodes)
         assertThat(saved.count { it.instanceId.startsWith("i-db") }).isEqualTo(3)
     }
+
+    /**
+     * Runs [body] on its own virtual thread. The common ForkJoinPool that `supplyAsync` uses is
+     * shared by every test in the fork, and a pool busy with another test's blocked work never
+     * starts the body.
+     */
+    private fun <T> onOwnThread(body: () -> T): CompletableFuture<T> =
+        CompletableFuture<T>().also { future ->
+            Thread.ofVirtual().start {
+                runCatching(body).fold(future::complete, future::completeExceptionally)
+            }
+        }
 
     private companion object {
         const val UNHEALTHY_WINDOW_MS = 100L

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.bringup.k3s
 
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneHealth
 import com.rustyrazorblade.easydblab.services.bringup.HealthSampler
@@ -35,9 +36,9 @@ class ControlPlaneSampler private constructor(
             lastRejected = total
             ControlPlaneHealth.Sample.Reading(latencyMs, growth.toLong())
         } catch (e: KubernetesClientException) {
-            ControlPlaneHealth.Sample.Unreachable(e.message ?: e::class.java.simpleName)
+            ControlPlaneHealth.Sample.Unreachable(e.messageOrString())
         } catch (e: IOException) {
-            ControlPlaneHealth.Sample.Unreachable(e.message ?: e::class.java.simpleName)
+            ControlPlaneHealth.Sample.Unreachable(e.messageOrString())
         }
 
     override fun close() = client.close()

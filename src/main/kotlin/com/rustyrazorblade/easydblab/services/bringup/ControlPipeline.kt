@@ -55,8 +55,8 @@ internal class ControlPipeline(
                 PipelineStep.CONTROL_PLANE,
                 policy,
             ) { _ -> run.ssh.withSession { steps.startControlPlane(instance.host) } }
-        val connection = run.own(instance.step(PipelineStep.CONTROL_PLANE, policy) { _ -> steps.openControlPlane() })
-        run.connection.complete(connection)
+        val connection =
+            run.own(instance.step(PipelineStep.CONTROL_PLANE_CLIENTS, policy) { _ -> steps.openControlPlane() })
         startHealthMonitor(connection)
         instance.step(PipelineStep.CNI, policy) { _ -> run.ssh.withSession { steps.configureControlPlane(instance.host) } }
         instance.step(PipelineStep.GATE, run.timing.gatePolicy) { _ -> gate(connection, instance.host.alias).await() }

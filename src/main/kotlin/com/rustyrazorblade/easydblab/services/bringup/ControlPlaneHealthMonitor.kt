@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Clock
 
@@ -48,7 +49,7 @@ class ControlPlaneHealthMonitor(
             throw e
         } catch (e: Exception) {
             log.debug(e) { "Health sample failed" }
-            ControlPlaneHealth.Sample.Unreachable(e.message ?: e::class.java.simpleName)
+            ControlPlaneHealth.Sample.Unreachable(e.messageOrString())
         }
 
     private fun unhealthyEvent(sample: ControlPlaneHealth.Sample): Event.Provision.ControlPlaneUnhealthy =

@@ -469,6 +469,7 @@ Each backend's local state SHALL be stored on a `hostPath` where the environment
 - **WHEN** the observability stack deploys, or a kit start or stop resyncs the collector
 - **THEN** the `cluster-config` ConfigMap carries no `control_node_ip` key
 - **AND** the collector configuration has no endpoint at a node IP
+- **AND** the callers outside the cluster that need a node address, EMR's Spark Pyroscope agent address and the server's `accessInfo` URLs, read the control node's private IP from the cluster state on the caller's side, not from `cluster-config`
 
 #### Scenario: Off owned nodes, backend state is on a retained claim
 - **GIVEN** an environment without `HOST_PATH`

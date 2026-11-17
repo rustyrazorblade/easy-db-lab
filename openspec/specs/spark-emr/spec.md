@@ -178,11 +178,6 @@ The system SHALL inject Pyroscope Java agent flags into Spark submit arguments s
 - **WHEN** a Spark job is running with the Pyroscope agent
 - **THEN** profiles are labeled with `application.name=spark-<jobName>`, `hostname`, and `cluster` for identification in Pyroscope UI
 
-#### Scenario: No NodePort to send to
-
-- **WHEN** an EMR cluster is provisioned for a cluster with no telemetry redirect whose backends are published as ClusterIP Services only
-- **THEN** provisioning fails before creating the EMR cluster, saying the Spark Pyroscope agent needs the observability NodePorts, instead of configuring an address that would only time out
-
 ### Requirement: EMR nodes keep their own host name in metrics
 
 The control node's collector SHALL keep the `host.name` that an EMR node's collector sends over OTLP.  In the `metrics/otlp` pipeline, the control node's collector SHALL set aside the `host.name` of each resource whose `node_role` is `spark-master` or `spark-worker` before `resource_detection`, and SHALL restore it after.  Every other OTLP producer SHALL still get the control node's host name from `resource_detection`.

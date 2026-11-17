@@ -692,6 +692,12 @@ object Constants {
          */
         const val ROLLOUT_NODE_CHECKS_PER_LOOK = 20
 
+        /**
+         * How long a node's Ready condition must have been False or Unknown before a DaemonSet pod on it
+         * blocks a rollout. A node that is still joining, or misses one heartbeat, recovers within it.
+         */
+        const val ROLLOUT_NODE_NOT_READY_GRACE_SECONDS = 60L
+
         /** The annotation the Deployment controller keeps on a Deployment and its ReplicaSets: the revision. */
         const val DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
     }

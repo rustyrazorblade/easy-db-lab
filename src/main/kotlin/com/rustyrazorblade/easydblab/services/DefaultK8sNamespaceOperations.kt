@@ -181,7 +181,7 @@ class DefaultK8sNamespaceOperations(
             eventBus.emit(Event.K8s.RolloutsWaiting(workloads.map { it.toString() }))
 
             clientProvider.createClient().use { client ->
-                val looker = RolloutLooker(client, namespace)
+                val looker = RolloutLooker(Fabric8RolloutReader(client, namespace))
                 // Poll until nothing is pending, a rollout cannot finish, or the deadline passes. The
                 // deadline, not an attempt count, bounds the wait, so a slow API server cannot stretch it.
                 val outcome =

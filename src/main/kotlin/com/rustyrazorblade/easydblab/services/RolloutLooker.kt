@@ -1,10 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
-import io.fabric8.kubernetes.api.model.LabelSelector
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.Pod
-import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.api.model.apps.ReplicaSet
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.time.Clock
+import java.time.Instant
 
 private val log = KotlinLogging.logger {}
 
@@ -29,30 +30,29 @@ sealed interface RolloutsLook {
 }
 
 /**
- * Takes one look at the rollouts of workloads in [namespace] through [client].
+ * Takes one look at the rollouts of workloads through [reader].
  *
  * It exists so a rollout wait sees more than the controller's counters. For each workload whose
- * rollout is still pending ([RolloutStatus]), it lists the workload's pods by its selector, keeps
- * those of its latest template ([RolloutRevision]), and asks [RolloutBlocker] whether one of them
- * means the rollout cannot finish. It reads no node list: [RolloutBlocker] asks for the nodes of a
- * pending DaemonSet's unready pods by name, and each is read at most once per look.
+ * rollout is still pending ([RolloutStatus]), it picks the workload's pods out of the namespace by its
+ * selector, keeps those of its latest template ([RolloutRevision]), and asks [RolloutBlocker] whether
+ * one of them means the rollout cannot finish.
+ *
+ * What it reads is bounded per look, however many workloads are pending: the namespace's pods are
+ * listed at most once, and only when a workload is pending; its ReplicaSets at most once, and only
+ * when a Deployment is pending; and a node only when [RolloutBlocker] asks for it, by name, at most
+ * once (a node that is gone too). The pods are matched to each selector in memory
+ * ([LabelSelectorMatcher]), as the namespace readiness wait does.
  */
 class RolloutLooker(
-    private val client: KubernetesClient,
-    private val namespace: String,
+    private val reader: RolloutReader,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
-    /** Looks at every workload in [workloads]; the first blocked one ends the look. */
+    /** Looks at every workload in [workloads], in order; the first blocked one ends the look. */
     fun look(workloads: List<WorkloadRef>): RolloutsLook {
-        // A node is read by name, at most once per look, and only when RolloutBlocker asks for it.
-        val nodes = mutableMapOf<String, Node?>()
-        // Not getOrPut: it would treat a cached null (a node that is gone) as absent and read it again.
-        val node = { name: String ->
-            if (name !in nodes) nodes[name] = client.nodes().withName(name).get()
-            nodes[name]
-        }
+        val snapshot = Snapshot(reader, clock.instant())
         val pending = mutableListOf<String>()
         for (ref in workloads) {
-            when (val state = inspect(ref, node)) {
+            when (val state = inspect(ref, snapshot)) {
                 is RolloutsLook.Blocked -> return state
                 is RolloutsLook.Pending -> pending += state.reasons
             }
@@ -62,12 +62,12 @@ class RolloutLooker(
 
     private fun inspect(
         ref: WorkloadRef,
-        node: (String) -> Node?,
+        snapshot: Snapshot,
     ): RolloutsLook {
         val (progress, blocker) =
             when (ref.kind) {
-                WorkloadKind.Deployment -> inspectDeployment(ref)
-                WorkloadKind.DaemonSet -> inspectDaemonSet(ref, node)
+                WorkloadKind.Deployment -> inspectDeployment(ref, snapshot)
+                WorkloadKind.DaemonSet -> inspectDaemonSet(ref, snapshot)
             }
         return when {
             blocker != null -> RolloutsLook.Blocked(blocker)
@@ -76,54 +76,49 @@ class RolloutLooker(
         }
     }
 
-    private fun inspectDeployment(ref: WorkloadRef): Pair<RolloutProgress, String?> {
-        val deployment =
-            client
-                .apps()
-                .deployments()
-                .inNamespace(namespace)
-                .withName(ref.name)
-                .get() ?: return notFound(ref)
+    private fun inspectDeployment(
+        ref: WorkloadRef,
+        snapshot: Snapshot,
+    ): Pair<RolloutProgress, String?> {
+        val deployment = reader.deployment(ref.name) ?: return notFound(ref)
         val progress = RolloutStatus.of(deployment)
         if (progress == RolloutProgress.Complete) return progress to null
         val selector = deployment.spec?.selector ?: return progress to null
-        val replicaSets =
-            client
-                .apps()
-                .replicaSets()
-                .inNamespace(namespace)
-                .withLabelSelector(selector)
-                .list()
-                .items
-        val current = RolloutRevision.currentPods(deployment, replicaSets, pods(selector))
-        return progress to RolloutBlocker.find(ref, current) { null }
+        val replicaSets = snapshot.replicaSets.filter { LabelSelectorMatcher.matches(selector, it.metadata?.labels) }
+        val pods = snapshot.pods.filter { LabelSelectorMatcher.matches(selector, it.metadata?.labels) }
+        val current = RolloutRevision.currentPods(deployment, replicaSets, pods)
+        return progress to RolloutBlocker.find(snapshot.now, ref, current) { null }
     }
 
     private fun inspectDaemonSet(
         ref: WorkloadRef,
-        node: (String) -> Node?,
+        snapshot: Snapshot,
     ): Pair<RolloutProgress, String?> {
-        val daemonSet =
-            client
-                .apps()
-                .daemonSets()
-                .inNamespace(namespace)
-                .withName(ref.name)
-                .get() ?: return notFound(ref)
+        val daemonSet = reader.daemonSet(ref.name) ?: return notFound(ref)
         val progress = RolloutStatus.of(daemonSet)
         if (progress == RolloutProgress.Complete) return progress to null
         val selector = daemonSet.spec?.selector ?: return progress to null
-        val current = RolloutRevision.currentPods(daemonSet, pods(selector))
-        return progress to RolloutBlocker.find(ref, current, node)
+        val pods = snapshot.pods.filter { LabelSelectorMatcher.matches(selector, it.metadata?.labels) }
+        val current = RolloutRevision.currentPods(daemonSet, pods)
+        return progress to RolloutBlocker.find(snapshot.now, ref, current, snapshot::node)
     }
 
-    private fun pods(selector: LabelSelector): List<Pod> =
-        client
-            .pods()
-            .inNamespace(namespace)
-            .withLabelSelector(selector)
-            .list()
-            .items
-
     private fun notFound(ref: WorkloadRef): Pair<RolloutProgress, String?> = RolloutProgress.Pending("$ref not found") to null
+
+    /** The reads of one look, each made at most once and only when first needed. */
+    private class Snapshot(
+        private val reader: RolloutReader,
+        /** The time this look is taken at, against which a node's NotReady time is measured. */
+        val now: Instant,
+    ) {
+        val pods: List<Pod> by lazy { reader.pods() }
+        val replicaSets: List<ReplicaSet> by lazy { reader.replicaSets() }
+        private val nodes = mutableMapOf<String, Node?>()
+
+        // Not getOrPut: it would treat a cached null (a node that is gone) as absent and read it again.
+        fun node(name: String): Node? {
+            if (name !in nodes) nodes[name] = reader.node(name)
+            return nodes[name]
+        }
+    }
 }

@@ -159,7 +159,10 @@ start:
       echo "Restoring KRaft cluster ID $CLUSTER_ID saved by the last stop"
       kubectl annotate --local -f kafka.yaml strimzi.io/pause-reconciliation=true -o yaml > kafka-paused.yaml
       kubectl apply -f kafka-paused.yaml --namespace default
-      kubectl wait kafka/kafka --namespace default --for=condition=ReconciliationPaused --timeout=300s
+      # By jsonpath, not --for=condition: a paused Kafka keeps status.observedGeneration at 0, and
+      # kubectl's condition wait accepts a condition only once that matches metadata.generation.
+      kubectl wait kafka/kafka --namespace default \
+        --for=jsonpath='{.status.conditions[?(@.type=="ReconciliationPaused")].status}'=True --timeout=300s
       kubectl patch kafka kafka --namespace default --subresource status --type merge \
         -p "{\"status\":{\"clusterId\":\"$CLUSTER_ID\"}}"
       kubectl annotate kafka/kafka kafkanodepool/dual-role --namespace default strimzi.io/pause-reconciliation-

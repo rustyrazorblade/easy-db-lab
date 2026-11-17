@@ -368,6 +368,7 @@ class StubKubectl(
                 """
                 #!/bin/bash
                 echo "$*" >> "${log.absolutePath}"
+                if [ -f "${responses.absolutePath}/$1.sh" ]; then bash "${responses.absolutePath}/$1.sh" "$@"; exit $?; fi
                 if [ -f "${responses.absolutePath}/$1" ]; then cat "${responses.absolutePath}/$1"; exit 0; fi
                 cat
                 """.trimIndent() + "\n",
@@ -383,6 +384,19 @@ class StubKubectl(
     ) {
         responses.mkdirs()
         File(responses, verb).writeText(output)
+    }
+
+    /**
+     * Makes every `kubectl <verb> ...` call run [body] under bash, with the call's arguments as
+     * `$@`; the call exits with the body's status. This models a server whose answer depends on
+     * the arguments, where [respond] answers every call the same way.
+     */
+    fun handle(
+        verb: String,
+        body: String,
+    ) {
+        responses.mkdirs()
+        File(responses, "$verb.sh").writeText(body)
     }
 
     /** Runs [script] under bash with [env] added, returning the exit code; see [output]. */

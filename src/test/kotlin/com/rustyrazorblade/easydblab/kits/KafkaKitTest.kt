@@ -73,6 +73,18 @@ class KafkaKitTest : BaseKoinTest() {
     }
 
     @Test
+    fun `start after a stop sees the pause on a Kafka resource Strimzi has not observed`() {
+        savedId.writeText("$CLUSTER_ID\n")
+        File(kitDir, "kafka.yaml").writeText("kind: Kafka\n")
+        stub.handle("wait", PAUSED_KAFKA_WAIT)
+
+        val exit = stub.run(clusterIdStep(kit.config.start).script, emptyMap())
+
+        assertThat(exit).withFailMessage(stub.output()).isEqualTo(0)
+        assertThat(stub.invocations()).anyMatch { it.startsWith("patch kafka kafka") }
+    }
+
+    @Test
     fun `a first start applies the resources as they are, with no pause and no ID`() {
         File(kitDir, "kafka.yaml").writeText("kind: Kafka\n")
 
@@ -94,5 +106,33 @@ class KafkaKitTest : BaseKoinTest() {
     private companion object {
         const val CLUSTER_ID_FILE = "kafka-cluster-id"
         const val CLUSTER_ID = "Kx2b9fQ8T3uY7mN1pL0aZw"
+
+        /**
+         * `kubectl wait` (v1.36) on a paused Kafka resource. Strimzi 1.3.1 sets the
+         * `ReconciliationPaused` condition True but leaves `status.observedGeneration` at 0 while
+         * `metadata.generation` is 1. A `--for=condition=` wait accepts a condition only when the
+         * two generations match, so it times out; a `--for=jsonpath=` wait reads the condition's
+         * status as it is.
+         */
+        val PAUSED_KAFKA_WAIT =
+            """
+            generation=1
+            observed_generation=0
+            paused_status=True
+            for_arg=""
+            for arg in "${'$'}@"; do
+              case "${'$'}arg" in --for=*) for_arg="${'$'}arg" ;; esac
+            done
+            case "${'$'}for_arg" in
+              --for=condition=ReconciliationPaused)
+                if [ "${'$'}paused_status" = True ] && [ "${'$'}generation" = "${'$'}observed_generation" ]; then exit 0; fi
+                ;;
+              "--for=jsonpath={.status.conditions[?(@.type==\"ReconciliationPaused\")].status}=True")
+                if [ "${'$'}paused_status" = True ]; then exit 0; fi
+                ;;
+            esac
+            echo "error: timed out waiting for the condition on kafkas/kafka" >&2
+            exit 1
+            """.trimIndent()
     }
 }

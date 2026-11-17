@@ -337,11 +337,11 @@ test_sourcing_changes_no_option_and_defines_only_edl_names() {
   (
     PATH="${WORK}/stubs:${PATH}" "${BASH}" -c '
       set -euo pipefail
-      before_opts="$(set -o)"; before_vars="$(compgen -v | sort)"; before_fns="$( (compgen -A function || true) | sort)"; dir="$PWD"
+      before_opts="$(set -o)"; before_vars="$(compgen -v | sort)"; before_fns="$( (compgen -A function || true) | sort)"; before_traps="$(trap -p)"; dir="$PWD"
       . "$1"
       [ "$(set -o)" = "${before_opts}" ] || { echo "set -o changed"; exit 1; }
       [ "$PWD" = "${dir}" ] || { echo "working directory changed"; exit 1; }
-      [ -z "$(trap -p)" ] || { echo "a trap was set"; exit 1; }
+      [ "$(trap -p)" = "${before_traps}" ] || { echo "a trap was set"; exit 1; }
       new_vars="$(comm -13 <(echo "${before_vars}") <(compgen -v | sort) | grep -v -e "^EDL_" -e "^before_" -e "^dir$" || true)"
       [ -z "${new_vars}" ] || { echo "non-EDL_ variables: ${new_vars}"; exit 1; }
       new_fns="$(comm -13 <(echo "${before_fns}") <(compgen -A function | sort) | grep -v "^edl_" || true)"

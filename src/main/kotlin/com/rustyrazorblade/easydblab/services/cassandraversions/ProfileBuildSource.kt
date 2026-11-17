@@ -88,17 +88,24 @@ class ProfileBuildSource(
         file: File,
         build: ProfileBuild,
     ) {
-        if (build.url.isBlank()) {
-            throw ProfileBuildException(
+        problemOf(file, build)?.let { throw ProfileBuildException(it) }
+    }
+
+    /** Why the entry [build] of [file] cannot be used, or null when it can. */
+    private fun problemOf(
+        file: File,
+        build: ProfileBuild,
+    ): String? {
+        val nameProblem = VersionName.problem(build.version)
+        return when {
+            nameProblem != null -> "Cassandra build in ${file.path}: $nameProblem"
+            build.url.isBlank() ->
                 "Cassandra build '${build.version}' in ${file.path} has no url. Every entry needs a url " +
-                    "(a tarball, an s3:// URI or a git URL); an Apache release needs no entry.",
-            )
-        }
-        if (build.java != null && build.javaSupported.isNotEmpty() && build.java !in build.javaSupported) {
-            throw ProfileBuildException(
+                    "(a tarball, an s3:// URI or a git URL); an Apache release needs no entry."
+            build.java != null && build.javaSupported.isNotEmpty() && build.java !in build.javaSupported ->
                 "Cassandra build '${build.version}' in ${file.path} has java ${build.java}, " +
-                    "which is not in its java_supported (${build.javaSupported.joinToString(", ")})",
-            )
+                    "which is not in its java_supported (${build.javaSupported.joinToString(", ")})"
+            else -> null
         }
     }
 

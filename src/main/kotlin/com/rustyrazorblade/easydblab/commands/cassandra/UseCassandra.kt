@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -12,6 +13,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.cassandraversions.AxonOpsAgents
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraVersionResolver
 import com.rustyrazorblade.easydblab.services.cassandraversions.HostOutcome
@@ -41,6 +43,7 @@ class UseCassandra : PicoBaseCommand() {
     private val commandExecutor: CommandExecutor by inject()
     private val resolver: CassandraVersionResolver by inject()
     private val installer: CassandraInstaller by inject()
+    private val axonOpsAgents: AxonOpsAgents by inject()
 
     @Parameters(description = ["Cassandra version"], index = "0")
     lateinit var version: String
@@ -78,9 +81,9 @@ class UseCassandra : PicoBaseCommand() {
                 python = pythonVersion.ifBlank { null },
             )
         val spec = resolver.resolve(request, state)
-        eventBus.emit(Event.Cassandra.UsingVersion(spec.name, targeted.size, hosts.hostList))
+        eventBus.emit(Event.Cassandra.UsingVersion(spec.name, targeted.size, hosts.hostList, spec.source.name, spec.recordedUrl, spec.java))
 
-        val plan = installer.plan(spec, request, targeted, state, InstallMode.USE) { node -> resolver.forNode(spec, request, node) }
+        val plan = installer.plan(request, targeted, state, InstallMode.USE) { node -> resolver.forNode(spec, request, node) }
         eventBus.emit(
             Event.Cassandra.UseSideEffects(
                 version = spec.name,
@@ -109,11 +112,15 @@ class UseCassandra : PicoBaseCommand() {
         recordActive(state, activated.filterIsInstance<HostOutcome.Ready>())
         clusterStateManager.save(state)
 
+        // A node that switched runs the new version's conf directory, so it gets the patch even when
+        // another node failed to switch; a node that did not switch keeps its old version and config.
+        val switched = activated.filterIsInstance<HostOutcome.Ready>().map { it.host }
         val failed = activated.filterIsInstance<HostOutcome.Failed>().map { it.host.alias }
+        if (switched.isNotEmpty()) applyConfig(switched.map { it.alias })
+        refreshAxonOpsAgents(switched, state)
         if (failed.isNotEmpty()) {
             throw CommandFailedException("cassandra use: $version was not activated on ${failed.joinToString(", ")}")
         }
-        applyConfig(targeted.map { it.alias })
         eventBus.emit(Event.Cassandra.ConfigUpdateHint(version))
     }
 
@@ -146,9 +153,24 @@ class UseCassandra : PicoBaseCommand() {
         throw CommandFailedException("cassandra use: $version was not installed on ${notReady.joinToString(", ")}")
     }
 
-    /** Applies the patch file again on the targeted hosts, now on the version they run. */
+    /**
+     * A switched node whose last start loaded an AxonOps agent gets the agent of its new version
+     * and JDK in its drop-in, so `cassandra restart` does not load the old one. A node AxonOps
+     * ships no agent for fails `use`; it runs the new version, and `start --skip-axonops` starts it.
+     */
+    private fun refreshAxonOpsAgents(
+        switched: List<ClusterHost>,
+        state: ClusterState,
+    ) {
+        val unavailable = axonOpsAgents.refreshAfterSwitch(switched, state)
+        if (unavailable.isEmpty()) return
+        unavailable.forEach { eventBus.emit(it.error) }
+        throw CommandFailedException("cassandra use: no AxonOps agent for $version on ${unavailable.joinToString(", ") { it.host.alias }}")
+    }
+
+    /** Applies the patch file again on [aliases], now on the version they run. */
     private fun applyConfig(aliases: List<String>) {
-        val failedStep = reapplyPatch(commandExecutor, hosts) ?: return
+        val failedStep = reapplyPatch(commandExecutor, HostsMixin().apply { hostList = aliases.joinToString(",") }) ?: return
         eventBus.emit(Event.Cassandra.UseConfigNotApplied(version, failedStep, aliases))
         throw CommandFailedException("cassandra use: $failedStep failed after the version switch")
     }

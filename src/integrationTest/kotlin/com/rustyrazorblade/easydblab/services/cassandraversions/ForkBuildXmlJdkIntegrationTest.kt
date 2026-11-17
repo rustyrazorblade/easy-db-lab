@@ -12,7 +12,10 @@ import org.junit.jupiter.api.Test
 class ForkBuildXmlJdkIntegrationTest {
     @Test
     fun `the 5_0-rustyrazorblade entry matches java supported on the fork branch`() {
-        val buildXml = checkNotNull(PublicHttp().getOrNull(FORK_BUILD_XML)) { "$FORK_BUILD_XML is not there" }
+        val buildXml =
+            checkNotNull(PublicHttp().getOrNull(FORK_BUILD_XML)) {
+                "GitHub answered 404 for $FORK_BUILD_XML: the fork branch moved or was renamed (this is not table drift)"
+            }
         val entry = checkNotNull(ReleaseLines.load().lines.firstOrNull { it.name == "5.0-rustyrazorblade" })
 
         assertThat(BuildXml.javaSupported(buildXml)).isNotEmpty.isEqualTo(entry.javaSupported)

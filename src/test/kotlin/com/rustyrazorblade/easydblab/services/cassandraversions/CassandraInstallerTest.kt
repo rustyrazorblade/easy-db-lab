@@ -35,8 +35,10 @@ class CassandraInstallerTest : BaseKoinTest() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
     }
 
-    private fun installer(running: Set<String> = emptySet()) =
-        CassandraInstaller(nodes, HostOperationsService(mock()), FakeCassandraService(running), getKoin().get<EventBus>())
+    private fun installer(
+        running: Set<String> = emptySet(),
+        uncheckable: Set<String> = emptySet(),
+    ) = CassandraInstaller(nodes, HostOperationsService(mock()), FakeCassandraService(running, uncheckable), getKoin().get<EventBus>())
 
     private val tarball =
         InstallSpec
@@ -65,40 +67,40 @@ class CassandraInstallerTest : BaseKoinTest() {
         state: ClusterState,
         mode: InstallMode,
         running: Set<String> = emptySet(),
-    ): InstallPlan = installer(running).plan(spec, request, targets, state, mode) { spec }
+        uncheckable: Set<String> = emptySet(),
+    ): InstallPlan = installer(running, uncheckable).plan(request, targets, state, mode) { spec }
 
     @Nested
     inner class Planning {
         /**
-         * One row per case of the decision: the mode, whether the disk has the version, the node's
-         * record (none, the tarball, or a git build with JDK 11), whether it is the active version
-         * and Cassandra runs, and the requested JDK.
+         * One row per case of the decision: the mode, the version on the node (absent, on the
+         * disk, or on the disk as the active version with Cassandra running), the node's record
+         * (none, the tarball, or a git build with JDK 11), and the requested JDK.
          */
-        @ParameterizedTest(name = "{0} disk={1} record={2} running={3} java={4} -> {5}")
+        @ParameterizedTest(name = "{0} node={1} record={2} java={3} -> {4}")
         @CsvSource(
-            "INSTALL,   false, none, false, ,   download",
-            "INSTALL,   true,  none, false, ,   present",
-            "INSTALL,   true,  tar,  false, 11, present",
-            "INSTALL,   true,  git,  false, ,   present",
-            "INSTALL,   true,  git,  false, 11, present",
-            "INSTALL,   true,  git,  false, 17, mismatch",
-            "USE,       true,  git,  false, 17, present",
-            "USE,       false, git,  false, ,   download",
-            "REINSTALL, true,  git,  false, 17, reinstall",
-            "REINSTALL, false, none, false, ,   download",
-            "REINSTALL, true,  tar,  true,  ,   refused-running",
-            "INSTALL,   true,  tar,  true,  ,   present",
+            "INSTALL,   absent,  none, ,   download",
+            "INSTALL,   disk,    none, ,   present",
+            "INSTALL,   disk,    tar,  11, present",
+            "INSTALL,   disk,    git,  ,   present",
+            "INSTALL,   disk,    git,  11, present",
+            "INSTALL,   disk,    git,  17, mismatch",
+            "USE,       disk,    git,  17, present",
+            "USE,       absent,  git,  ,   download",
+            "REINSTALL, disk,    git,  17, reinstall",
+            "REINSTALL, absent,  none, ,   download",
+            "REINSTALL, running, tar,  ,   refused-running",
+            "INSTALL,   running, tar,  ,   present",
         )
         fun `each node's action follows from its mode, disk, record and Cassandra`(
             mode: InstallMode,
-            onDisk: Boolean,
+            onNode: String,
             record: String,
-            running: Boolean,
             java: String?,
             expected: String,
         ) {
             val spec = if (record == "git") gitBuild else tarball
-            if (onDisk) nodes.disk("db0") += spec.name
+            if (onNode != "absent") nodes.disk("db0") += spec.name
             val node =
                 NodeState(version = spec.name).apply {
                     if (record != "none") installed[spec.name] = spec.toRecord()
@@ -110,7 +112,7 @@ class CassandraInstallerTest : BaseKoinTest() {
                     listOf(FakeNodes.host("db0")),
                     ClusterState(name = "c", nodes = mutableMapOf("db0" to node)),
                     mode,
-                    running = if (running) setOf("db0") else emptySet(),
+                    running = if (onNode == "running") setOf("db0") else emptySet(),
                 )
 
             val action = plan.actions.single()
@@ -146,8 +148,58 @@ class CassandraInstallerTest : BaseKoinTest() {
             assertThat(plan.actions.single()).isInstanceOf(HostAction.Download::class.java)
         }
 
+        /**
+         * One row per field a git build records: the requested value, and the difference the plain
+         * install reports ("" when the request matches the record). The recorded URL is redacted,
+         * so the same URL with its credential is a match, not a difference.
+         */
+        @ParameterizedTest(name = "{0}={1}")
+        @CsvSource(
+            "java, 17, 'java: recorded 11, requested 17'",
+            "java, 11, ''",
+            "ant flags, -Dx=1, 'ant flags: recorded -Duse.jdk11=true, requested -Dx=1'",
+            "ant flags, -Duse.jdk11=true, ''",
+            "branch, other, 'branch: recorded feature, requested other'",
+            "branch, feature, ''",
+            "url, https://tok3n@github.test/me/cassandra.git, ''",
+            "url, https://other@github.test/me/cassandra.git, ''",
+            "url, https://github.test/you/cassandra.git, 'url: recorded https://***@github.test/me/cassandra.git, requested https://github.test/you/cassandra.git'",
+        )
+        fun `a plain install of a git build reports each recorded field the request contradicts`(
+            field: String,
+            requested: String,
+            expected: String,
+        ) {
+            nodes.disk("db0") += gitBuild.name
+            val node = NodeState(installed = mutableMapOf(gitBuild.name to gitBuild.toRecord()))
+            val request =
+                when (field) {
+                    "java" -> VersionRequest(gitBuild.name, java = requested)
+                    "ant flags" -> VersionRequest(gitBuild.name, antFlags = requested)
+                    "branch" -> VersionRequest(gitBuild.name, branch = requested)
+                    else -> VersionRequest(gitBuild.name, url = requested)
+                }
+
+            val action =
+                runPlan(
+                    gitBuild,
+                    request,
+                    listOf(FakeNodes.host("db0")),
+                    ClusterState(name = "c", nodes = mutableMapOf("db0" to node)),
+                    InstallMode.INSTALL,
+                ).actions.single()
+
+            val differences =
+                when (action) {
+                    is HostAction.Refused -> (action.error as Event.Cassandra.VersionRecordMismatch).differences
+                    else -> emptyList()
+                }
+            assertThat(differences).isEqualTo(listOfNotNull(expected.ifEmpty { null }))
+            assertThat(action).isInstanceOf(if (expected.isEmpty()) HostAction.Present::class.java else HostAction.Refused::class.java)
+        }
+
         @Test
-        fun `a mismatch names each field that disagrees`() {
+        fun `a mismatch names every field that disagrees`() {
             nodes.disk("db0") += gitBuild.name
             val node = NodeState(installed = mutableMapOf(gitBuild.name to gitBuild.toRecord()))
 
@@ -186,7 +238,53 @@ class CassandraInstallerTest : BaseKoinTest() {
                     .single()
                     .host.alias,
             ).isEqualTo("db1")
-            assertThat(nodes.scriptRuns("db0") + nodes.scriptRuns("db1")).isEmpty()
+        }
+
+        @Test
+        fun `a node that must download a build recorded with a redacted credential is refused and told to pass --url`() {
+            nodes.disk("db0") += gitBuild.name
+            val redacted = gitBuild.toBuilder().url("https://***@github.test/me/cassandra.git").build()
+
+            val plan =
+                runPlan(
+                    redacted,
+                    VersionRequest(redacted.name),
+                    listOf(FakeNodes.host("db0"), FakeNodes.host("db1")),
+                    ClusterState(name = "c"),
+                    InstallMode.USE,
+                )
+
+            val refusal = plan.refusals.single()
+            assertThat(refusal.host.alias).isEqualTo("db1")
+            assertThat((refusal.error as Event.Cassandra.VersionInstallFailed).reason)
+                .contains("without its credential", "--reinstall --url")
+            assertThat(plan.actions.first { it.host.alias == "db0" }).isInstanceOf(HostAction.Present::class.java)
+        }
+
+        @Test
+        fun `a reinstall on a node whose running check fails refuses that node and names the check`() {
+            val state =
+                ClusterState(
+                    name = "c",
+                    nodes = mutableMapOf("db0" to NodeState(version = tarball.name), "db1" to NodeState(version = tarball.name)),
+                )
+
+            val plan =
+                runPlan(
+                    tarball,
+                    VersionRequest(tarball.name, reinstall = true),
+                    listOf(FakeNodes.host("db0"), FakeNodes.host("db1")),
+                    state,
+                    InstallMode.REINSTALL,
+                    uncheckable = setOf("db1"),
+                )
+
+            val refusal = plan.refusals.single()
+            assertThat(refusal.host.alias).isEqualTo("db1")
+            assertThat((refusal.error as Event.Cassandra.VersionInstallFailed).reason)
+                .startsWith("could not be checked:")
+                .contains("systemctl timed out on db1")
+            assertThat(plan.actions.first { it.host.alias == "db0" }).isInstanceOf(HostAction.Download::class.java)
         }
 
         @Test
@@ -257,7 +355,12 @@ class CassandraInstallerTest : BaseKoinTest() {
         fun `every node that succeeded is recorded and every failed node keeps its old record`(count: Int) {
             val random = Random(count)
             val hosts = (0 until count).map { FakeNodes.host("db$it") }
-            val failing = hosts.filter { random.nextInt(4) == 0 }.map { it.alias }.toSet()
+            // db0 always fails and, past one node, the last always succeeds, so every fleet has both.
+            val failing =
+                hosts
+                    .filterIndexed { i, _ -> i == 0 || (i < count - 1 && random.nextInt(4) == 0) }
+                    .map { it.alias }
+                    .toSet()
             failing.forEach { nodes.installFailures[it] = "curl: (22) 404" }
             val old =
                 InstalledVersion(
@@ -282,7 +385,6 @@ class CassandraInstallerTest : BaseKoinTest() {
             val installer = installer()
             val plan =
                 installer.plan(
-                    tarball,
                     VersionRequest(tarball.name, reinstall = true),
                     hosts,
                     state,
@@ -307,7 +409,6 @@ class CassandraInstallerTest : BaseKoinTest() {
             val report =
                 installer.execute(
                     installer.plan(
-                        tarball,
                         VersionRequest(tarball.name),
                         listOf(FakeNodes.host("db0")),
                         state,
@@ -336,7 +437,6 @@ class CassandraInstallerTest : BaseKoinTest() {
             val report =
                 installer.execute(
                     installer.plan(
-                        tarball,
                         VersionRequest(tarball.name),
                         hosts,
                         ClusterState(name = "c"),
@@ -362,7 +462,6 @@ class CassandraInstallerTest : BaseKoinTest() {
             val installer = installer()
             val plan =
                 installer.plan(
-                    gitBuild,
                     VersionRequest(gitBuild.name),
                     listOf(FakeNodes.host("db0")),
                     ClusterState(name = "c"),

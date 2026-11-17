@@ -13,6 +13,7 @@
 CASSANDRA_INSTALL_DIR="${CASSANDRA_INSTALL_DIR:-/usr/local/cassandra}"
 CASSANDRA_CONF_LINK="${CASSANDRA_CONF_LINK:-/etc/cassandra}"
 PYTHON_BIN_DIR="${PYTHON_BIN_DIR:-/usr/bin}"
+JVM_DIR="${JVM_DIR:-/usr/lib/jvm}"
 
 usage() {
   echo "Usage: use-cassandra <version> --java N --python X.Y.Z"
@@ -24,8 +25,11 @@ PY_VERSION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --java) JAVA_VERSION="${2:-}"; shift 2 ;;
-    --python) PY_VERSION="${2:-}"; shift 2 ;;
+    --java|--python)
+      if [[ $# -lt 2 ]]; then echo "ERROR: $1 needs a value"; usage; exit 1; fi
+      if [[ "$1" == "--java" ]]; then JAVA_VERSION="$2"; else PY_VERSION="$2"; fi
+      shift 2
+      ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "ERROR: unknown option $1"; usage; exit 1 ;;
     *)
@@ -39,6 +43,11 @@ done
 
 if [[ -z "$VERSION" ]]; then
   usage
+  exit 1
+fi
+# The version names the directory `current` points at: one safe path segment, as the CLI checks.
+if [[ ! "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+  echo "ERROR: invalid version name [$VERSION]: use letters, digits, ., _, + and -, starting with a letter or a digit"
   exit 1
 fi
 if [[ -z "$JAVA_VERSION" ]]; then
@@ -78,6 +87,11 @@ case "$JAVA_VERSION" in
     ;;
 esac
 
+if [[ ! -d "$JVM_DIR/$JAVA_ALTERNATIVE" ]]; then
+  echo "Error: JDK $JAVA_VERSION ($JVM_DIR/$JAVA_ALTERNATIVE) is not installed on this node"
+  exit 1
+fi
+
 # Extract major.minor version from full version (e.g., "3.10.6" -> "3.10", "2.7.18" -> "2.7")
 PY_MAJOR_MINOR=$(echo "$PY_VERSION" | cut -d. -f1,2)
 PY_ALTERNATIVE="${PYTHON_BIN_DIR}/python${PY_MAJOR_MINOR}"
@@ -86,8 +100,11 @@ if [[ ! -f "$PY_ALTERNATIVE" ]]; then
   exit 1
 fi
 
-sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$VERSION" "$CASSANDRA_INSTALL_DIR/current"
-sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$VERSION/conf" "$CASSANDRA_CONF_LINK"
+if ! sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$VERSION" "$CASSANDRA_INSTALL_DIR/current" \
+  || ! sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$VERSION/conf" "$CASSANDRA_CONF_LINK"; then
+  echo "Error: could not point $CASSANDRA_INSTALL_DIR/current and $CASSANDRA_CONF_LINK at $VERSION"
+  exit 1
+fi
 
 # hacky, not really what I want long term but whatever.
 sudo chown -R cassandra:cassandra "$CASSANDRA_INSTALL_DIR"
@@ -99,5 +116,8 @@ if ! sudo update-java-alternatives -s "$JAVA_ALTERNATIVE"; then
 fi
 echo "Switched to JDK $JAVA_VERSION ($JAVA_ALTERNATIVE)"
 
-sudo update-alternatives --set python "$PY_ALTERNATIVE"
+if ! sudo update-alternatives --set python "$PY_ALTERNATIVE"; then
+  echo "Error: could not switch to Python $PY_VERSION ($PY_ALTERNATIVE)"
+  exit 1
+fi
 echo "Switched to Python $PY_VERSION (${PY_ALTERNATIVE})"

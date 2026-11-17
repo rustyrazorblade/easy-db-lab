@@ -172,13 +172,21 @@ class StartTest : BaseKoinTest() {
     @Test
     fun `when AxonOps ships no agent for a node, Cassandra starts on no node and the error names --skip-axonops`() {
         enableAxonOps()
-        testClusterState.nodes["db0"] = NodeState("5.0-rustyrazorblade-HEAD", "21")
-        nodes.respond("db0", "install-axonops-agent", "4.1-agent\n5.0-agent-jdk17\nedl-exit:3")
+        val db1 = FakeNodes.host("db1")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(
+                nodes = mutableMapOf("db0" to NodeState("5.0", "17"), "db1" to NodeState("5.0-rustyrazorblade-HEAD", "21")),
+                hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
+            ),
+        )
+        nodes.respond("db0", "install-axonops-agent", "5.0-agent-jdk17\nedl-exit:0")
+        nodes.respond("db1", "install-axonops-agent", "4.1-agent\n5.0-agent-jdk17\nedl-exit:3")
 
         assertThatThrownBy { Start().execute() }.isInstanceOf(CommandFailedException::class.java)
 
+        // db0 has an agent, yet neither node starts: the check of every node comes first.
         verify(mockCassandraService, never()).start(any(), any())
-        assertThat(dropIns("db0")).isEmpty()
+        assertThat(dropIns("db0") + dropIns("db1")).isEmpty()
         assertThat(outputHandler.errors.joinToString("\n") { it.first })
             .contains("Cassandra 5.0 on JDK 21", "4.1-agent, 5.0-agent-jdk17", "--skip-axonops")
     }

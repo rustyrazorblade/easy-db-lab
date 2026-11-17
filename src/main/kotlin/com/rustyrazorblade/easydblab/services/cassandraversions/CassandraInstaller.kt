@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
+import com.rustyrazorblade.easydblab.ssh.hasRedactedCredentials
 import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 
 /** What the caller is doing, which decides how a version already on a node is treated. */
@@ -147,16 +148,17 @@ class CassandraInstaller(
     /**
      * Decides what each of [targets] does, asking every node in parallel. Changes nothing.
      *
-     * @param specFor the spec of one node, given its state record (the resolver's `forNode`)
+     * @param specFor the spec of one node, given its state record (the resolver's `forNode`); for
+     *   no record it is the cluster's spec, which the plan carries
      */
     fun plan(
-        spec: InstallSpec,
         request: VersionRequest,
         targets: List<ClusterHost>,
         state: ClusterState,
         mode: InstallMode,
         specFor: (NodeState?) -> InstallSpec,
     ): InstallPlan {
+        val spec = specFor(null)
         val results =
             hostOperations.collectFromHosts(targets, parallel = true) { host ->
                 val node = state.nodes[host.alias]
@@ -192,7 +194,19 @@ class CassandraInstaller(
                 ?.get(spec.name)
                 ?.let { gitBuildDifferences(it, request) }
                 .orEmpty()
+        val mustDownload = reinstall || !onDisk
         return when {
+            mustDownload && hasRedactedCredentials(spec.url) ->
+                HostAction.Refused(
+                    host,
+                    Event.Cassandra.VersionInstallFailed(
+                        host.alias,
+                        spec.name,
+                        listOf(spec.url),
+                        "the cluster state records its URL without its credential. Install it again with: " +
+                            "easy-db-lab cassandra install ${spec.name} --reinstall --url <url with credential>",
+                    ),
+                )
             reinstall -> HostAction.Download(host, spec, reinstall = onDisk)
             !onDisk -> HostAction.Download(host, spec, reinstall = false)
             mode == InstallMode.INSTALL && differences.isNotEmpty() ->

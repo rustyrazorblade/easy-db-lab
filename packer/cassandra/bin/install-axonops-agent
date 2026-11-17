@@ -33,7 +33,10 @@ JAVA=""
 CACHE_PREFIX=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --cache-prefix) CACHE_PREFIX="${2:-}"; shift 2 ;;
+    --cache-prefix)
+      if [[ $# -lt 2 ]]; then echo "ERROR: --cache-prefix needs a value" >&2; usage; exit 1; fi
+      CACHE_PREFIX="$2"; shift 2
+      ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "ERROR: unknown option $1" >&2; usage; exit 1 ;;
     *)

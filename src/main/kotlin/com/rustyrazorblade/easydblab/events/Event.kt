@@ -259,9 +259,13 @@ sealed interface Event {
             val version: String,
             val hostCount: Int,
             val hostsFilter: String,
+            val source: String,
+            val url: String,
+            val java: String,
         ) : Cassandra {
             override fun toDisplayString(): String =
-                "Using version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}"
+                "Using version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}\n" +
+                    resolvedFrom(source, url, java)
         }
 
         /**
@@ -519,9 +523,13 @@ sealed interface Event {
             val version: String,
             val hostCount: Int,
             val hostsFilter: String,
+            val source: String,
+            val url: String,
+            val java: String,
         ) : Cassandra {
             override fun toDisplayString(): String =
-                "Installing version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}"
+                "Installing version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}\n" +
+                    resolvedFrom(source, url, java)
         }
 
         /** `use-cassandra` failed on [host], so [host] does not run [version]; [reason] is why. */
@@ -6717,6 +6725,16 @@ sealed interface Event {
         }
     }
 }
+
+/**
+ * Where a resolved Cassandra version comes from, as `install` and `use` show it before any node
+ * changes. [url] is already redacted; [source] is the `CassandraSource` name.
+ */
+private fun resolvedFrom(
+    source: String,
+    url: String,
+    java: String,
+): String = "  source: $source, url: $url, JDK $java"
 
 /** A CIDR as the ingress events show it, naming it as this machine's public IP when it was detected. */
 private fun cidrLabel(

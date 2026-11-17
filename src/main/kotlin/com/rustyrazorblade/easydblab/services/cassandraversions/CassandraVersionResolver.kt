@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.CassandraSource
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InstalledVersion
 import com.rustyrazorblade.easydblab.configuration.NodeState
+import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 
 /**
  * What the user asked for: a version name and the CLI options that shape its install.
@@ -47,11 +48,13 @@ class CassandraVersionResolver(
     fun resolve(
         request: VersionRequest,
         state: ClusterState,
-    ): InstallSpec =
-        recordOf(request.name, state)?.let { fromRecord(it, request) }
+    ): InstallSpec {
+        VersionName.problem(request.name)?.let { throw VersionResolutionException(it) }
+        return recordOf(request.name, state)?.let { fromRecord(it, request) }
             ?: sources.profileBuild(request.name)?.let { fromProfile(it, request) }
             ?: request.url?.let { fromUrl(it, request) }
             ?: fromReleaseLists(request)
+    }
 
     /**
      * [spec] for one node: with no `--java` or `--python`, the node keeps the JDK and Python it
@@ -90,21 +93,46 @@ class CassandraVersionResolver(
         record: InstalledVersion,
         request: VersionRequest,
     ): InstallSpec {
-        val url = request.url.takeIf { request.reinstall } ?: record.url
-        val asfRelease = AsfReleases.releaseOf(url).takeIf { record.source == CassandraSource.ASF }
-        val defaultJava = if (record.source == CassandraSource.PROFILE) sources.profileBuild(record.version)?.java else null
-        val antFlags = request.antFlags.takeIf { request.reinstall } ?: record.antFlags
+        val profile = if (record.source == CassandraSource.PROFILE) sources.profileBuild(record.version) else null
+        val url = recordUrl(record, request, profile)
+        // A reinstall from another URL is no longer the ASF release: it is never cached under the release.
+        val source = if (url == record.url || record.source != CassandraSource.ASF) record.source else CassandraSource.URL
+        val asfRelease = AsfReleases.releaseOf(url).takeIf { source == CassandraSource.ASF }
+        val java = chooseJava(request, record.javaSupported, profile?.java, noListHint(request.name))
+        val antFlags =
+            request.antFlags.takeIf { request.reinstall }
+                ?: record.antFlags.takeIf { java == record.java }
+                ?: releaseLines.entryFor(record.version)?.antFlagsFor(java)
         return InstallSpec
             .builder(record.version)
-            .source(record.source)
+            .source(source)
             .url(url)
             .fallbackUrl(asfRelease?.let(AsfReleases::archiveUrl))
             .cacheUri(asfRelease?.let(::cacheUri))
-            .jdks(record.javaSupported, chooseJava(request, record.javaSupported, defaultJava, noListHint(request.name)))
+            .jdks(record.javaSupported, java)
             .python(request.python ?: record.python.ifBlank { Constants.Cassandra.DEFAULT_PYTHON_VERSION })
-            .branch(record.branch)
+            .branch(request.branch.takeIf { request.reinstall && record.branch != null } ?: record.branch)
             .antFlags(antFlags.takeIf { record.branch != null })
             .build()
+    }
+
+    /**
+     * The URL a recorded version downloads from. `--reinstall` replaces it (and `--branch` the
+     * branch of a git build). The record holds the
+     * URL with its credential redacted, so the full URL comes from the profile entry, or from a
+     * `--url` that redacts to the recorded one; with neither, the redacted URL stays, and the
+     * installer refuses a node that would download it.
+     */
+    private fun recordUrl(
+        record: InstalledVersion,
+        request: VersionRequest,
+        profile: ProfileBuild?,
+    ): String {
+        val sameAsRecord = { candidate: String? -> candidate?.takeIf { redactUrlCredentials(it) == record.url } }
+        return request.url.takeIf { request.reinstall }
+            ?: sameAsRecord(profile?.url)
+            ?: sameAsRecord(request.url)
+            ?: record.url
     }
 
     private fun fromProfile(
@@ -184,7 +212,7 @@ class CassandraVersionResolver(
 
     private fun fromCatalog(request: VersionRequest): InstallSpec? {
         val build = sources.catalogBuild(request.name) ?: return null
-        return tarballSpec(request, CassandraSource.BUILD_CATALOG, build.url, build.javaSupported).build()
+        return tarballSpec(request, CassandraSource.BUILD_CATALOG, build.url, build.javaSupported, build.javaDefault).build()
     }
 
     private fun tarballSpec(
@@ -192,8 +220,9 @@ class CassandraVersionResolver(
         source: CassandraSource,
         url: String,
         supported: List<String>,
+        defaultJava: String? = null,
     ): InstallSpec.Builder {
-        val java = chooseJava(request, supported, null, noListHint(request.name))
+        val java = chooseJava(request, supported, defaultJava, noListHint(request.name))
         return InstallSpec
             .builder(request.name)
             .source(source)
@@ -205,7 +234,8 @@ class CassandraVersionResolver(
     private fun tableJdks(name: String): List<String> = releaseLines.entryFor(name)?.javaSupported.orEmpty()
 
     /**
-     * `--java` when given and supported; else [defaultJava] (a profile build's `java`); else the
+     * `--java` when given and supported; else [defaultJava] (a profile build's `java`, or the JDK a
+     * catalog build was built with); else the
      * highest supported JDK. With no list, `--java` alone, or a failure that says to pass it.
      */
     private fun chooseJava(

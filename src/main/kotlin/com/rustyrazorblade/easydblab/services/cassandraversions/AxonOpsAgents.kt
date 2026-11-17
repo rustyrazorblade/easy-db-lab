@@ -60,6 +60,49 @@ class AxonOpsAgents(
             }
     }
 
+    /**
+     * Before Cassandra starts or restarts on [targets]: with [withAxonOps], installs each node's
+     * agent for the release and JDK [state] records now (a `cassandra use` since the last start may
+     * have changed them), and names it in the node's drop-in; else names no agent. When any node
+     * has no agent, no drop-in changes and the nodes without one are returned.
+     */
+    fun selectForStart(
+        targets: List<ClusterHost>,
+        state: ClusterState,
+        withAxonOps: Boolean,
+    ): List<AgentOutcome.Unavailable> {
+        val outcomes = if (withAxonOps) install(targets, state) else emptyList()
+        val unavailable = outcomes.filterIsInstance<AgentOutcome.Unavailable>()
+        if (unavailable.isNotEmpty()) return unavailable
+        val agents = outcomes.filterIsInstance<AgentOutcome.Installed>().associate { it.host.alias to it.agent }
+        hostOperations.withHosts(targets, parallel = true) { host -> select(host, agents[host.alias]) }
+        return emptyList()
+    }
+
+    /**
+     * After `cassandra use` switched [switched], the agent the last start named in each drop-in
+     * belongs to the old release or JDK, and `cassandra restart` would load it. Each node whose
+     * drop-in names an agent gets the agent of the version and JDK [state] now records; a node
+     * whose drop-in names none (AxonOps off, or `start --skip-axonops`) is left alone. A node
+     * AxonOps ships no agent for gets no agent, and is returned with the reason.
+     */
+    fun refreshAfterSwitch(
+        switched: List<ClusterHost>,
+        state: ClusterState,
+    ): List<AgentOutcome.Unavailable> {
+        val withAgent =
+            hostOperations
+                .collectFromHosts(switched, parallel = true) { host ->
+                    remoteOps.executeRemotely(host.toHost(), READ_DROP_IN, output = false).text
+                }.filter { (_, result) -> agentNamedIn(result.getOrDefault("")) != null }
+                .map { it.host }
+        if (withAgent.isEmpty()) return emptyList()
+        val outcomes = install(withAgent, state)
+        val agents = outcomes.filterIsInstance<AgentOutcome.Installed>().associate { it.host.alias to it.agent }
+        hostOperations.withHosts(withAgent, parallel = true) { host -> select(host, agents[host.alias]) }
+        return outcomes.filterIsInstance<AgentOutcome.Unavailable>()
+    }
+
     /** Names [agent] in the drop-in of [host], or no agent when null, and reloads systemd. */
     fun select(
         host: ClusterHost,
@@ -92,6 +135,18 @@ class AxonOpsAgents(
             cachePrefix: String,
         ): String =
             "install-axonops-agent ${release.shellQuote()} ${java.shellQuote()} --cache-prefix ${cachePrefix.shellQuote()}; echo $EXIT_MARKER$?"
+
+        /** Prints the drop-in, or nothing when the node has none. */
+        const val READ_DROP_IN = "cat $DROP_IN 2>/dev/null || true"
+
+        /** The agent a drop-in names, or null when it names none. */
+        fun agentNamedIn(dropIn: String): String? =
+            dropIn
+                .lines()
+                .firstOrNull { it.trim().startsWith("Environment=EDL_AXONOPS_AGENT=") }
+                ?.substringAfter("EDL_AXONOPS_AGENT=")
+                ?.trim()
+                ?.ifEmpty { null }
 
         fun selectCommand(agent: String?): String {
             val line = "Environment=EDL_AXONOPS_AGENT=${agent.orEmpty()}"

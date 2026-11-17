@@ -54,7 +54,7 @@ class PublicHttp(
             when {
                 response.isSuccessful -> response.body.string()
                 response.code == Constants.HttpStatus.NOT_FOUND -> null
-                response.code == TOO_MANY_REQUESTS || response.code >= Constants.HttpStatus.SERVER_ERROR_MIN ->
+                response.code == Constants.HttpStatus.TOO_MANY_REQUESTS || response.code >= Constants.HttpStatus.SERVER_ERROR_MIN ->
                     throw TransientHttpStatusException(url, response.code)
                 else -> throw HttpStatusException(url, response.code)
             }
@@ -62,8 +62,6 @@ class PublicHttp(
     }
 
     companion object {
-        private const val TOO_MANY_REQUESTS = 429
-
         /** GitHub refuses an API request without a User-Agent. */
         private const val USER_AGENT = "easy-db-lab"
 

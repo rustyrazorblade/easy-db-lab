@@ -71,6 +71,13 @@ parse_args() {
         exit 1
     fi
 
+    # The version names a directory this script moves and deletes as root: one safe path segment.
+    # The CLI checks the same pattern (VersionName) before it calls the node.
+    if [[ ! "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+        echo "ERROR: invalid version name [$VERSION]: use letters, digits, ., _, + and -, starting with a letter or a digit" >&2
+        exit 1
+    fi
+
     if [ -z "$URL" ]; then
         echo "ERROR: --url is required for $VERSION; the CLI resolves the version and passes its URL" >&2
         exit 1

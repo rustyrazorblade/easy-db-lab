@@ -61,6 +61,8 @@ export PATH="${BIN}:${PATH}"
 export CASSANDRA_INSTALL_DIR="${SANDBOX}/cassandra"
 export CASSANDRA_CONF_LINK="${SANDBOX}/etc-cassandra"
 export PYTHON_BIN_DIR="${SANDBOX}/pybin"
+export JVM_DIR="${SANDBOX}/jvm"
+for jdk in 8 11 17 21 25; do mkdir -p "${JVM_DIR}/java-1.${jdk}.0-openjdk-amd64"; done
 
 mkdir -p "${CASSANDRA_INSTALL_DIR}/5.0/conf" "$PYTHON_BIN_DIR"
 touch "${PYTHON_BIN_DIR}/python3.11"
@@ -110,6 +112,14 @@ assert_refused "a missing --python is refused" "--python is required" 5.0 --java
 assert_refused "an unknown option is refused" "unknown option --bogus" 5.0 --java 17 --python 3.11.9 --bogus
 assert_refused "an unknown JDK is refused before the switch" "Unknown java version 9" 5.0 --java 9 --python 3.11.9
 assert_refused "a Python the node lacks is refused before the switch" "Python version 3.99.1" 5.0 --java 17 --python 3.99.1
+assert_refused "--java with no value is refused, not looped on" "--java needs a value" 5.0 --python 3.11.9 --java
+assert_refused "--python with no value is refused, not looped on" "--python needs a value" 5.0 --java 17 --python
+rm -rf "${JVM_DIR}/java-1.21.0-openjdk-amd64"
+assert_refused "a JDK missing from the image is refused before the symlinks move" "JDK 21" 5.0 --java 21 --python 3.11.9
+mkdir -p "${JVM_DIR}/java-1.21.0-openjdk-amd64"
+for bad in ".." "../../etc" "feature/x" "-x" ".hidden" "a b"; do
+  assert_refused "version name [$bad] is refused" "invalid version name" "$bad" --java 17 --python 3.11.9
+done
 
 for gone in yq cassandra_versions.yaml CASSANDRA_VERSIONS; do
   if grep -qF "$gone" "$SCRIPT"; then
@@ -189,6 +199,16 @@ if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"JDK 25"* ]]; then
   pass "a failed JDK switch exits non-zero and names the requested JDK"
 else
   fail "a failed JDK switch should exit non-zero naming JDK 25, got ${STATUS}: ${OUTPUT}"
+fi
+
+# --- a failed Python switch fails the script ----------------------------------
+touch "${SANDBOX}/update-alternatives.fail"
+run_script 5.0 --java 17 --python 3.11.9
+rm -f "${SANDBOX}/update-alternatives.fail"
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"Python 3.11.9"* ]]; then
+  pass "a failed Python switch exits non-zero and names the requested Python"
+else
+  fail "a failed Python switch should exit non-zero naming Python 3.11.9, got ${STATUS}: ${OUTPUT}"
 fi
 
 echo

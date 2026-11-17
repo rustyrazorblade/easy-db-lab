@@ -32,7 +32,9 @@ sealed interface RestoreResult {
  * node with no record of its own uses the cluster default, resolved as `cassandra use` would.
  *
  * The cluster state is not written here: the caller stores [RestoreResult.Restored.node] once,
- * with its other per-node results.
+ * with its other per-node results. The configuration is not applied here either: the activated
+ * version has its stock conf directory, so before Cassandra starts on the node the caller runs
+ * `download-config` and `update-config` for it (as `cassandra use` does, see `reapplyPatch`).
  */
 class CassandraNodeRestorer(
     private val resolver: CassandraVersionResolver,

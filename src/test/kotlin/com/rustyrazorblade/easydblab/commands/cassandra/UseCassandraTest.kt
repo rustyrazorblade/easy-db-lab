@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.cassandraversions.AxonOpsAgents
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraVersionResolver
 import com.rustyrazorblade.easydblab.services.cassandraversions.FakeCassandraService
@@ -25,6 +26,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -57,6 +59,7 @@ class UseCassandraTest : BaseKoinTest() {
                 single<CassandraService> { FakeCassandraService() }
                 single { CassandraVersionResolver(RecordOnlySources()) }
                 single { CassandraInstaller(get(), get(), get(), get()) }
+                single { AxonOpsAgents(get(), get(), RecordOnlySources()) }
                 single<CommandExecutor> {
                     object : CommandExecutor {
                         override fun <T : PicoCommand> execute(commandFactory: () -> T): Int {
@@ -119,6 +122,10 @@ class UseCassandraTest : BaseKoinTest() {
         }
         assertThat(state.default.version).isEqualTo("5.0")
         assertThat(saveCount).isEqualTo(1)
+        // Before any node changes, the user sees which release the name resolved to, and from where.
+        assertThat(
+            messages(),
+        ).contains("source: ASF, url: https://dlcdn.apache.org/cassandra/5.0.6/apache-cassandra-5.0.6-bin.tar.gz, JDK 17")
     }
 
     @Test
@@ -208,7 +215,7 @@ class UseCassandraTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a failed activation on a node fails use and records only the nodes that switched`() {
+    fun `a failed activation on a node fails use, records and configures only the nodes that switched`() {
         nodes.failOn("db1", "sudo use-cassandra", "ERROR: JDK 17 is not installed")
 
         assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
@@ -221,7 +228,61 @@ class UseCassandraTest : BaseKoinTest() {
                 .installed.keys,
         ).containsExactly("5.0")
         assertThat(errors()).contains("db1: failed to activate 5.0", "JDK 17 is not installed")
-        assertThat(chained).isEmpty()
+        // db0 now runs 5.0, so it gets the config for 5.0; db1 still runs its old version and is left alone.
+        assertThat(chained.map { it.javaClass.simpleName }).containsExactly("DownloadConfig", "UpdateConfig")
+        assertThat(
+            chained
+                .filterIsInstance<UpdateConfig>()
+                .single()
+                .hosts.hostList,
+        ).isEqualTo("db0")
+    }
+
+    /**
+     * One row per drop-in the last start left on db0: an agent (AxonOps on), an empty agent
+     * (`--skip-axonops` or AxonOps off), or none (never started). Only a drop-in naming an agent is
+     * rewritten, with the agent for the version and JDK `use` switched to.
+     */
+    @ParameterizedTest(name = "drop-in [{0}] -> [{1}]")
+    @CsvSource(
+        "'[Service]\nEnvironment=EDL_AXONOPS_AGENT=4.1-agent', 5.0-agent-jdk17",
+        "'[Service]\nEnvironment=EDL_AXONOPS_AGENT=', ",
+        "'', ",
+    )
+    fun `use names the new version's AxonOps agent only where the last start loaded one`(
+        dropIn: String,
+        expectedAgent: String?,
+    ) {
+        withNodes(1)
+        nodes.respond("db0", "cat ${AxonOpsAgents.DROP_IN}", dropIn)
+        nodes.respond("db0", "install-axonops-agent", "5.0-agent-jdk17\nedl-exit:0")
+
+        use("5.0").execute()
+
+        val writes = nodes.commandsOn("db0").filter { it.contains("tee ${AxonOpsAgents.DROP_IN}") }
+        when (expectedAgent) {
+            null -> assertThat(writes).isEmpty()
+            else -> assertThat(writes).singleElement().asString().contains("EDL_AXONOPS_AGENT=$expectedAgent")
+        }
+        assertThat(nodes.commandsOn("db0").any { it.startsWith("install-axonops-agent 5.0 17 ") })
+            .isEqualTo(expectedAgent != null)
+    }
+
+    @Test
+    fun `a switched node AxonOps ships no agent for fails use, names the node, and loads no stale agent`() {
+        withNodes(1)
+        nodes.respond("db0", "cat ${AxonOpsAgents.DROP_IN}", "[Service]\nEnvironment=EDL_AXONOPS_AGENT=4.1-agent")
+        nodes.respond("db0", "install-axonops-agent", "4.1-agent\nedl-exit:3")
+
+        assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(state.nodes.getValue("db0").version).isEqualTo("5.0")
+        assertThat(nodes.commandsOn("db0").filter { it.contains("tee ${AxonOpsAgents.DROP_IN}") })
+            .singleElement()
+            .asString()
+            .contains("EDL_AXONOPS_AGENT=")
+            .doesNotContain("4.1-agent")
+        assertThat(errors()).contains("db0", "--skip-axonops")
     }
 
     @Test

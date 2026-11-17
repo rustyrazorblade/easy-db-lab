@@ -27,6 +27,10 @@ class VersionSourceUnavailableException(
     cause: Throwable,
 ) : RuntimeException(message, cause)
 
+/**
+ * The on-disk form of one cached list: the list and when it was fetched, so a read can tell its age
+ * and a failed refresh can say how stale the copy it falls back to is.
+ */
 @Serializable
 private data class CacheFile<T>(
     val fetchedAtEpochMillis: Long,

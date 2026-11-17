@@ -177,3 +177,14 @@ myService.start(host).onSuccess {
 3. **Test Thoroughly**: Test both success and failure scenarios
 4. **Name the failures you handle**: A `catch` names the exception types its body can throw; never `catch (e: Exception)` and never `@Suppress("TooGenericExceptionCaught")`. A boundary that must turn any failure into a report or fallback uses `runCatchingException { }` (in `Throwables.kt`), which captures an `Exception` and still rethrows a JVM `Error`.
 5. **Document Custom Behavior**: Clearly document any overridden methods or custom logic
+
+## Cassandra Versions (`cassandraversions/`)
+
+The on-demand Cassandra install (#1130). The CLI resolves everything; the node scripts take it as arguments.
+
+- `CassandraVersionResolver` turns a name and the CLI options into one `InstallSpec`, reading the sources in order: the state record, a profile build, `--url`, the ASF releases, the cassandra-builds `nightly` release, the build catalog. `VersionName` is the one rule for a valid name, checked here and in `ProfileBuildSource`, and again by the node scripts.
+- `VersionSources` is the port for every source but the state (`DefaultVersionSources`: `ProfileBuildSource`, `PublicHttp` for the public hosts, `VersionSourceCache` for the ASF and cassandra-builds lists, the profile's build catalog). Tests use a fixed fake.
+- `ReleaseLines` is the release-line JDK table (`cassandra/release-lines.yaml`), the last layer of the JDK choice.
+- `CassandraInstaller` plans each node's action (download, present, refused) with no change, runs `install-cassandra-version` in parallel, records each node's outcome and runs `use-cassandra`. A node that would download a URL whose credential the record redacted is refused with the `--reinstall --url` to run.
+- `AxonOpsAgents` installs the agent for each node's release and JDK and writes the systemd drop-in: at `cassandra start`, and after `cassandra use` on a node whose last start loaded an agent.
+- `CassandraNodeRestorer` puts a replaced node back on its active version (design D7); its caller applies the config.

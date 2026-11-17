@@ -118,6 +118,10 @@ assert_fails_with "a second positional argument is rejected" "unexpected argumen
 assert_fails_with "missing version is rejected" "<version> is required"
 assert_fails_with "a missing --url is rejected; the script resolves no version itself" "--url is required" 5.0
 assert_no_reach_out "a missing --url downloads nothing"
+for bad in ".." "../../opt" "feature/x" "-x" ".hidden" "a b"; do
+  assert_fails_with "version name [$bad] is refused" "invalid version name" "$bad" --url https://example.test/x.tgz
+  assert_no_reach_out "version name [$bad] downloads nothing"
+done
 assert_fails_with "--cache-uri with a git build is rejected" "--cache-uri applies only to a tarball" \
   from-source --url https://github.com/apache/cassandra.git --branch trunk --java 17 --cache-uri s3://b/k
 

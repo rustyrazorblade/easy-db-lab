@@ -92,10 +92,12 @@ class CassandraInstall : PicoBaseCommand() {
         val request = request()
         val spec = resolver.resolve(request, state)
 
-        eventBus.emit(Event.Cassandra.InstallingVersion(spec.name, targets.size, hosts.hostList))
+        eventBus.emit(
+            Event.Cassandra.InstallingVersion(spec.name, targets.size, hosts.hostList, spec.source.name, spec.recordedUrl, spec.java),
+        )
 
         val mode = if (reinstall) InstallMode.REINSTALL else InstallMode.INSTALL
-        val plan = installer.plan(spec, request, targets, state, mode) { node -> resolver.forNode(spec, request, node) }
+        val plan = installer.plan(request, targets, state, mode) { node -> resolver.forNode(spec, request, node) }
         val report = installer.execute(plan, reportPresent = true)
 
         report.recordInto(state)

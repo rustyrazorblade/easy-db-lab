@@ -121,6 +121,13 @@ else
   fail "no arguments should exit 1 with the usage, got ${STATUS}: ${OUTPUT} ${ERR}"
 fi
 
+run_script 5.0 17 --cache-prefix
+if [[ "$STATUS" -eq 1 && "$ERR" == *"--cache-prefix needs a value"* && ! -s "$CALLS" ]]; then
+  pass "--cache-prefix with no value exits 1 instead of looping"
+else
+  fail "--cache-prefix with no value should exit 1, got ${STATUS}: ${OUTPUT} ${ERR}"
+fi
+
 run_script 5.0 17
 if [[ "$STATUS" -eq 1 && "$ERR" == *"--cache-prefix is required"* && ! -s "$CALLS" ]]; then
   pass "a missing --cache-prefix is refused before any lookup"

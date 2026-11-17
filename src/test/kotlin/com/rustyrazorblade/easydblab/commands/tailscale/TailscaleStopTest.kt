@@ -171,7 +171,6 @@ class TailscaleStopTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2"),
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
                 tailscaleAuthKeyId = "key-to-delete",

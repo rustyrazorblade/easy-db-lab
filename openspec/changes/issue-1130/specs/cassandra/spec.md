@@ -69,7 +69,10 @@ The system MUST record the installed version in the cluster state for each targe
 The system MUST treat installing a version that is already in `/usr/local/cassandra/<version>`
 on a node as a safe no-op on that node: no re-download, no re-build, no error.  The only exception
 is `cassandra install <version> --reinstall`, which downloads (or builds) the version again on each
-targeted node, replaces the install, and updates the record in the cluster state.  The system MUST
+targeted node, replaces the install, and updates the record in the cluster state.  For a git
+build, a reinstall MUST use the `--url`, `--branch` and `--ant-flags` given with it, and the
+recorded ones for any it is not given (ant flags on another JDK come from the release-line
+table).  The system MUST
 NOT detect a changed build by itself (no ETag or date check).  A failed reinstall MUST leave the
 old install and its record in place.  A reinstall of the active version of a node where Cassandra
 runs MUST fail for that node before it downloads, and MUST say to stop Cassandra first.
@@ -296,6 +299,14 @@ The CLI SHALL resolve a version name, with no version file, from these sources, 
 
 No URL that the system uses SHALL point at an easy-db-lab GitHub release.  When no source has the name, the command SHALL fail before it changes any node, and SHALL name the sources it checked.
 
+A version name SHALL be one path segment: letters, digits, `.`, `_`, `+` and `-`, starting with a letter or a digit.  The CLI SHALL refuse any other name, in a command or in a profile entry, before it reads a source or changes a node, and the node scripts SHALL refuse it too.
+
+Before it changes any node, `cassandra install` and `cassandra use` SHALL show the source, the URL (with any credential redacted) and the JDK that the name resolved to.
+
+#### Scenario: A name that is not one path segment
+- **WHEN** the user runs `cassandra use ../../opt`
+- **THEN** the command fails before it reads a source or changes a node, and names the characters a version name may use.
+
 #### Scenario: An unknown name
 - **WHEN** the user runs `cassandra use no-such-version`
 - **THEN** the command fails before any node changes, and the message names the profile builds, ASF, cassandra-builds and the build catalog.
@@ -334,7 +345,7 @@ The CLI SHALL choose the JDK of a version, and SHALL take the supported JDK list
 
 The `5.0-rustyrazorblade` entry SHALL hold the JDKs that `java.supported` sets in the `build.xml` of the fork branch `cassandra-5.0-rustyrazorblade`, and a test SHALL check it against that file.  The entry SHALL be removed when the cassandra-builds manifest gives the supported JDKs of the fork builds.
 
-When `--java N` is given and a lower layer has a list without N, the command SHALL fail before it changes any node, and SHALL list the supported JDKs.  With no `--java`, the CLI SHALL use the JDK that the node records for the version, else the default JDK of a profile build, and else the highest supported JDK.  When no layer has a list and no `--java` is given, the command SHALL fail, and the message SHALL say to pass `--java`.
+When `--java N` is given and a lower layer has a list without N, the command SHALL fail before it changes any node, and SHALL list the supported JDKs.  With no `--java`, the CLI SHALL use the JDK that the node records for the version, else the default JDK of a profile build, else the JDK a build catalog build was built with (its manifest's `javaVersion`), and else the highest supported JDK.  When no layer has a list and no `--java` is given, the command SHALL fail, and the message SHALL say to pass `--java`.
 
 Python SHALL be `--python` when it is given, else the Python of a profile build, else the default Python version (3.11.9).  The CLI SHALL pass the JDK and Python to the node script as explicit arguments.
 
@@ -465,6 +476,14 @@ When AxonOps is on, `cassandra start` SHALL, before it starts Cassandra on any n
 When AxonOps ships no agent for the release and the JDK of a targeted node, `cassandra start` SHALL fail before it starts Cassandra on any node.  The message SHALL name the release, the JDK, the agents that AxonOps ships, and `--skip-axonops`.
 
 `cassandra start --skip-axonops` SHALL start Cassandra with no AxonOps agent for that start, and SHALL NOT start `axon-agent`.  Cassandra SHALL load only the agent that the last start selected, and SHALL NOT select an agent by itself.
+
+After `cassandra use` switches a node whose last start selected an agent, `use` SHALL select the agent for the node's new release and JDK, installing it when the node does not have it, so a later `cassandra restart` does not load the agent of the old version.  A node whose last start selected no agent SHALL keep no agent.  When AxonOps ships no agent for the new release and JDK, `use` SHALL select no agent on that node, SHALL exit non-zero, and SHALL name the node and `--skip-axonops`.
+
+#### Scenario: `use` keeps the agent in step with the version
+
+- **GIVEN** AxonOps is on, and the nodes were started on `4.1` with the `4.1-agent` agent
+- **WHEN** the user runs `cassandra use 5.0`, then `cassandra restart`
+- **THEN** Cassandra restarts with the agent for 5.0 and its JDK, not `4.1-agent`.
 
 #### Scenario: The agent installs on demand and connects
 

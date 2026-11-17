@@ -8,10 +8,14 @@ import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 
-/** A build of the profile's build catalog, as the resolver needs it: where it is and the JDKs it runs on. */
+/**
+ * A build of the profile's build catalog, as the resolver needs it: where it is, the JDKs it runs
+ * on, and [javaDefault], the JDK it was built with, which it runs on when no `--java` is given.
+ */
 data class CatalogBuild(
     val url: String,
     val javaSupported: List<String>,
+    val javaDefault: String? = null,
 )
 
 /**
@@ -94,7 +98,7 @@ class DefaultVersionSources(
         build.manifestUrl?.let { http.getOrNull(it) }?.let(CassandraBuildsRelease::parseManifest)
 
     override fun catalogBuild(name: String): CatalogBuild? =
-        catalog.find(name)?.let { CatalogBuild(catalog.tarballUri(it), it.supportedJdks()) }
+        catalog.find(name)?.let { CatalogBuild(catalog.tarballUri(it), it.supportedJdks(), it.javaVersion) }
 
     override fun catalogBuildNames(): List<String> = catalog.list().map { it.name }
 

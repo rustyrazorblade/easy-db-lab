@@ -13,7 +13,6 @@ import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.SidecarService
-import com.rustyrazorblade.easydblab.services.cassandraversions.AgentOutcome
 import com.rustyrazorblade.easydblab.services.cassandraversions.AxonOpsAgents
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -109,21 +108,11 @@ class Start : PicoBaseCommand() {
      */
     private fun selectAxonOpsAgents(withAxonOps: Boolean) {
         val targets = hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
-        val agents: Map<String, String?> =
-            if (withAxonOps) {
-                val outcomes = axonOpsAgents.install(targets, clusterState)
-                val unavailable = outcomes.filterIsInstance<AgentOutcome.Unavailable>()
-                if (unavailable.isNotEmpty()) {
-                    unavailable.forEach { eventBus.emit(it.error) }
-                    throw CommandFailedException(
-                        "cassandra start: no AxonOps agent on ${unavailable.joinToString(", ") { it.host.alias }}",
-                    )
-                }
-                outcomes.filterIsInstance<AgentOutcome.Installed>().associate { it.host.alias to it.agent }
-            } else {
-                emptyMap()
-            }
-        hostOperationsService.withHosts(targets, parallel = true) { host -> axonOpsAgents.select(host, agents[host.alias]) }
+        val unavailable = axonOpsAgents.selectForStart(targets, clusterState, withAxonOps)
+        if (unavailable.isNotEmpty()) {
+            unavailable.forEach { eventBus.emit(it.error) }
+            throw CommandFailedException("cassandra start: no AxonOps agent on ${unavailable.joinToString(", ") { it.host.alias }}")
+        }
     }
 
     /**

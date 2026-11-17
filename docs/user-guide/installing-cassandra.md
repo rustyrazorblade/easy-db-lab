@@ -18,6 +18,9 @@ these sources has. The CLI checks them in this order:
 | The build catalog | The builds you published with [`cassandra build`](#build-your-working-branch-and-install-it-by-name) | `5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17` |
 
 A name no source has fails before any node changes, and the message names the sources it checked.
+A version name is one path segment: letters, digits, `.`, `_`, `+` and `-`, starting with a letter
+or a digit. `install` and `use` print the source, URL and JDK the name resolved to before any node
+changes.
 
 A release line such as `5.0` resolves to its latest ASF release the first time this cluster
 installs it. Later installs on this cluster, including a replaced node, get that same release.
@@ -48,7 +51,8 @@ A name uses the longest entry that is a prefix of it at a `-`, else the entry of
 `X.Y`. So `5.0-rustyrazorblade-HEAD` runs on JDK 21 and `5.0-HEAD` runs on JDK 17.
 
 With no `--java`, the CLI uses the JDK the cluster state records for the version on that node,
-else the profile build's `java`, else the highest supported JDK. `--java N` outside the supported
+else the profile build's `java`, else the JDK a build catalog build was built with, else the
+highest supported JDK. `--java N` outside the supported
 list fails before any node changes and lists the supported JDKs. A version with no list at all
 needs `--java`. Python is `--python`, else the profile build's `python`, else 3.11.9. cqlsh on the
 node runs under that Python: the node environment sets `CQLSH_PYTHON=/usr/bin/python`, the
@@ -146,6 +150,10 @@ AxonOps ships. The JDK is never changed to fit AxonOps. To start without the age
 ```bash
 easy-db-lab cassandra start --skip-axonops
 ```
+
+`cassandra use` keeps the agent in step: on a node that was started with an agent, it selects the
+agent for the new release and JDK, so `cassandra restart` loads the right one. A node started with
+`--skip-axonops` stays without an agent.
 
 ## Configuration
 
@@ -359,7 +367,9 @@ easy-db-lab cassandra start
 
 `--reinstall` downloads or builds the version again and replaces the install. It also re-applies
 `cassandra.patch.yaml` to the new install. A node where Cassandra runs the version is refused and
-left alone. If the download or build fails on a node, that node keeps its old install.
+left alone. If the download or build fails on a node, that node keeps its old install. For a git
+build, `--reinstall` takes a new `--url`, `--branch` or `--ant-flags`; without one it builds the
+recorded one again.
 
 #### Re-installing with different options
 

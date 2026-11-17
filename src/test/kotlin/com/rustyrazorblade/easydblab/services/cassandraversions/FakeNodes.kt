@@ -39,8 +39,8 @@ class FakeNodes : RemoteOperationsService {
         failures[alias] = prefix to stderr
     }
 
-    /** Per alias, the stdout of a command starting with a prefix: alias to (prefix to stdout). */
-    private val responses = ConcurrentHashMap<String, Pair<String, String>>()
+    /** Per alias, the stdout of each command prefix: alias to (prefix to stdout). */
+    private val responses = ConcurrentHashMap<String, MutableMap<String, String>>()
 
     /** Makes a command starting with [prefix] print [stdout] on [alias]. */
     fun respond(
@@ -48,7 +48,7 @@ class FakeNodes : RemoteOperationsService {
         prefix: String,
         stdout: String,
     ) {
-        responses[alias] = prefix to stdout
+        responses.getOrPut(alias) { ConcurrentHashMap() }[prefix] = stdout
     }
 
     /** Aliases whose listing fails. */
@@ -78,7 +78,7 @@ class FakeNodes : RemoteOperationsService {
     ): Response {
         commands += Command(host.alias, command, secret)
         failures[host.alias]?.takeIf { (prefix, _) -> command.startsWith(prefix) }?.let { (_, stderr) -> throw failure(command, stderr) }
-        responses[host.alias]?.takeIf { (prefix, _) -> command.startsWith(prefix) }?.let { (_, stdout) -> return Response(stdout) }
+        responses[host.alias]?.entries?.firstOrNull { command.startsWith(it.key) }?.let { return Response(it.value) }
         return when {
             command.startsWith("ls ") -> {
                 if (host.alias in unreachable) throw failure(command, "ssh: connect to host ${host.alias}: timed out")
@@ -153,9 +153,10 @@ class FakeNodes : RemoteOperationsService {
     }
 }
 
-/** Cassandra on each node: running or not. A fake because `isRunning` returns a Kotlin `Result`. */
+/** Cassandra on each node: running, not running, or [uncheckable] (the check fails). A fake because `isRunning` returns a Kotlin `Result`. */
 class FakeCassandraService(
     private val running: Set<String> = emptySet(),
+    private val uncheckable: Set<String> = emptySet(),
 ) : CassandraService {
     override fun start(
         host: Host,
@@ -168,7 +169,11 @@ class FakeCassandraService(
 
     override fun waitForUpNormal(host: Host): Result<Unit> = Result.success(Unit)
 
-    override fun isRunning(host: Host): Result<Boolean> = Result.success(host.alias in running)
+    override fun isRunning(host: Host): Result<Boolean> =
+        when (host.alias) {
+            in uncheckable -> Result.failure(IllegalStateException("systemctl timed out on ${host.alias}"))
+            else -> Result.success(host.alias in running)
+        }
 }
 
 /** Fixed version sources: the ASF releases [asf], and nothing in the other sources. */

@@ -4,6 +4,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
 
 /** The named builds of the profile's `cassandra_versions/` directory. */
@@ -100,5 +102,15 @@ class ProfileBuildSourceTest {
         assertThatThrownBy { source().builds() }
             .isInstanceOf(ProfileBuildException::class.java)
             .hasMessageContaining("j.yaml", "jb", "21", "11, 17")
+    }
+
+    @ParameterizedTest(name = "[{0}] is refused")
+    @ValueSource(strings = ["../escape", "feature/x", "..", "-rf", "a b"])
+    fun `a version name that is not one safe path segment fails, naming the file`(name: String) {
+        write("bad.yaml", "- version: \"$name\"\n  url: https://x")
+
+        assertThatThrownBy { source().builds() }
+            .isInstanceOf(ProfileBuildException::class.java)
+            .hasMessageContaining("bad.yaml", name, "letters, digits")
     }
 }

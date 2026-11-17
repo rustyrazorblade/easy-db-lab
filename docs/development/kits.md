@@ -537,6 +537,12 @@ Checks pass on main, or by manual dispatch, so a branch that changes the agent v
 the image before it merges. When you bump `Constants.PyroscopeJavaAgent.VERSION`, dispatch the
 workflow on that branch.
 
+An agent upgrade changes `PYROSCOPE_VERSION` and `PYROSCOPE_SHA256` in the Dockerfile together,
+and `Constants.PyroscopeJavaAgent.VERSION` to match. The build checks the downloaded jar against
+the SHA-256, so a version without its new checksum fails. A published tag never changes: the job
+skips a version that is already in the registry. To fix a published image, bump the version
+instead of pushing to its tag again.
+
 **Reserved NodePorts:** 30942 is the `cassandra-pods` CQL port. Pick a port no other kit uses
 (`BuiltinKitNodePortTest` fails on a duplicate).
 

@@ -201,6 +201,24 @@ class DownCommandTest : BaseKoinTest() {
 
             verify(mockTeardownService).teardownVpcByTags("vpc-specific", false)
         }
+
+        @Test
+        fun `a dry run on a named VPC only previews it by its tags`() {
+            whenever(mockTeardownService.teardownVpcByTags(eq("vpc-specific"), eq(true)))
+                .thenReturn(
+                    TeardownResult.success(
+                        DiscoveredResources(vpcId = "vpc-specific", instanceIds = listOf("i-1"), ownsVpc = false),
+                    ),
+                )
+
+            val command = Down()
+            command.vpcId = "vpc-specific"
+            command.dryRun = true
+            command.execute()
+
+            verify(mockTeardownService, never()).teardownVpcByTags(any(), eq(false))
+            assertThat(outputHandler.messages.joinToString("\n")).contains("kept")
+        }
     }
 
     @Nested

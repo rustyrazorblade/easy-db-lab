@@ -31,6 +31,13 @@ class VpcOwnershipTest {
                 Arguments.of("ClusterId without marker", mapOf("ClusterId" to "c-1"), false),
                 Arguments.of("marker with another value", mapOf("easy_cass_lab" to "0", "ClusterId" to "c-1"), false),
                 Arguments.of("marker and blank ClusterId", mapOf("easy_cass_lab" to "1", "ClusterId" to " "), false),
+                Arguments.of(
+                    "packer VPC: marker and its name, no ClusterId",
+                    mapOf("easy_cass_lab" to "1", "Name" to "easy-db-lab-packer"),
+                    true,
+                ),
+                Arguments.of("marker and some other name", mapOf("easy_cass_lab" to "1", "Name" to "shared"), false),
+                Arguments.of("packer name without marker", mapOf("Name" to "easy-db-lab-packer"), false),
                 Arguments.of("marker and ClusterId", mapOf("easy_cass_lab" to "1", "ClusterId" to "c-1", "Name" to "x"), true),
             )
     }

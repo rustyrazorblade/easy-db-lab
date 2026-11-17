@@ -1446,6 +1446,9 @@ object Constants {
         /** Tag value used to identify easy-db-lab resources */
         const val TAG_VALUE = "1"
 
+        /** Tag key naming the cluster that created a resource, set on every VPC and resource `up` creates */
+        const val CLUSTER_ID_TAG_KEY = "ClusterId"
+
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"
 

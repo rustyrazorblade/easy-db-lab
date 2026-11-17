@@ -228,6 +228,39 @@ class AwsInfrastructureServiceTest {
         }
 
         @Test
+        fun `a VPC with only part of the easy-db-lab tags is kept`() {
+            val partial =
+                listOf(
+                    mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
+                    mapOf("ClusterId" to "cluster-a"),
+                    mapOf(Constants.Vpc.TAG_KEY to "0", "ClusterId" to "cluster-a"),
+                )
+            whenever(vpcService.findEasyDbLabResourcesInVpc(vpcId)).thenReturn(ClusterVpcResources())
+
+            partial.forEach { tags ->
+                whenever(vpcService.getVpcTags(vpcId)).thenReturn(tags)
+
+                assertThat(service.teardownVpcByTags(vpcId).success).describedAs("tags $tags").isTrue()
+            }
+
+            verify(vpcService, never()).deleteVpc(any())
+            verify(vpcService, never()).findInstancesInVpc(any())
+        }
+
+        @Test
+        fun `a dry run on a VPC easy-db-lab tagged previews the whole VPC and deletes nothing`() {
+            whenever(vpcService.getVpcTags(vpcId))
+                .thenReturn(mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
+            setupEmptyResourcesFor(vpcId)
+
+            val previewed = service.teardownVpcByTags(vpcId, dryRun = true).resourcesDeleted.single()
+
+            assertThat(previewed.ownsVpc).isTrue()
+            verify(vpcService, never()).deleteVpc(any())
+            verify(vpcService, never()).terminateInstances(any())
+        }
+
+        @Test
         fun `a VPC easy-db-lab tagged is torn down whole, VPC included`() {
             whenever(vpcService.getVpcTags(vpcId))
                 .thenReturn(mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))

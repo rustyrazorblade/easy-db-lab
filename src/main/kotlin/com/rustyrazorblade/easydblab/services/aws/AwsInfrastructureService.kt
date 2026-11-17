@@ -401,7 +401,8 @@ class AwsInfrastructureService(
 
         log.info { "VPC $vpcId carries no easy-db-lab tags; removing only its tagged resources (dryRun=$dryRun)" }
         eventBus.emit(Event.Infra.ResourceDiscovering(vpcId))
-        eventBus.emit(Event.Infra.VpcKept(vpcId))
+        // The preview already names the VPC as kept; the real run reports it once, before removing anything.
+        if (!dryRun) eventBus.emit(Event.Infra.VpcKept(vpcId))
         return teardownOwned(vpcId, vpcService.findEasyDbLabResourcesInVpc(vpcId), dryRun)
     }
 

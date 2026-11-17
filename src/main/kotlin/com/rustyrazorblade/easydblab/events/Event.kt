@@ -1450,7 +1450,7 @@ sealed interface Event {
             val vpcId: String,
         ) : Infra {
             override fun toDisplayString(): String =
-                "VPC $vpcId carries no easy-db-lab tags, so it was not created by easy-db-lab and is kept; " +
+                "VPC $vpcId is not tagged as created by easy-db-lab, so it is kept; " +
                     "only the resources tagged with an easy-db-lab ClusterId are removed"
         }
 

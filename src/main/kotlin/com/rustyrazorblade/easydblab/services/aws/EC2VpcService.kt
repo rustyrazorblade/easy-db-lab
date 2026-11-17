@@ -15,7 +15,6 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupId
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupOperations
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
-import com.rustyrazorblade.easydblab.providers.aws.VpcOwnership
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
@@ -646,7 +645,7 @@ class EC2VpcService(
         clusterId: String,
     ): ClusterVpcResources {
         log.info { "Finding resources of cluster $clusterId in VPC: $vpcId" }
-        return findOwnedResources(vpcId, listOf(filterOf("tag:ClusterId", clusterId)))
+        return findOwnedResources(vpcId, listOf(filterOf("tag:${Constants.Vpc.CLUSTER_ID_TAG_KEY}", clusterId)))
     }
 
     override fun findEasyDbLabResourcesInVpc(vpcId: VpcId): ClusterVpcResources {
@@ -654,7 +653,7 @@ class EC2VpcService(
         return findOwnedResources(
             vpcId,
             listOf(
-                filterOf("tag-key", VpcOwnership.CLUSTER_ID_TAG),
+                filterOf("tag-key", Constants.Vpc.CLUSTER_ID_TAG_KEY),
                 filterOf("tag:${Constants.Vpc.TAG_KEY}", Constants.Vpc.TAG_VALUE),
             ),
         )

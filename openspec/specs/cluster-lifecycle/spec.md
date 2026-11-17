@@ -149,7 +149,7 @@ Rules for both phases:
 
 #### Scenario: Teardown by VPC id with no state deletes a VPC easy-db-lab created
 
-- **GIVEN** no cluster state, and a VPC that carries the `easy_cass_lab=1` marker and a `ClusterId` tag
+- **GIVEN** no cluster state, and a VPC that carries the `easy_cass_lab=1` marker and a `ClusterId` tag (or the packer VPC, which carries the marker and its name)
 - **WHEN** `down <vpc-id>` runs
 - **THEN** the VPC and everything in it are removed
 

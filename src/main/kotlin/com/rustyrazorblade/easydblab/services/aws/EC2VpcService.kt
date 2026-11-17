@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.Cidr
@@ -644,7 +645,27 @@ class EC2VpcService(
         clusterId: String,
     ): ClusterVpcResources {
         log.info { "Finding resources of cluster $clusterId in VPC: $vpcId" }
-        val owned = filterOf("tag:ClusterId", clusterId)
+        return findOwnedResources(vpcId, listOf(filterOf("tag:${Constants.Vpc.CLUSTER_ID_TAG_KEY}", clusterId)))
+    }
+
+    override fun findEasyDbLabResourcesInVpc(vpcId: VpcId): ClusterVpcResources {
+        log.info { "Finding resources of any easy-db-lab cluster in VPC: $vpcId" }
+        return findOwnedResources(
+            vpcId,
+            listOf(
+                filterOf("tag-key", Constants.Vpc.CLUSTER_ID_TAG_KEY),
+                filterOf("tag:${Constants.Vpc.TAG_KEY}", Constants.Vpc.TAG_VALUE),
+            ),
+        )
+    }
+
+    /**
+     * What carries every one of the [owned] tag filters inside [vpcId]. The filters are ANDed by EC2.
+     */
+    private fun findOwnedResources(
+        vpcId: VpcId,
+        owned: List<Filter>,
+    ): ClusterVpcResources {
         val inVpc = filterOf("vpc-id", vpcId)
 
         val instances =
@@ -654,15 +675,14 @@ class EC2VpcService(
                         DescribeInstancesRequest
                             .builder()
                             .filters(
-                                inVpc,
-                                owned,
-                                filterOf(
-                                    "instance-state-name",
-                                    InstanceStateName.PENDING.toString(),
-                                    InstanceStateName.RUNNING.toString(),
-                                    InstanceStateName.STOPPING.toString(),
-                                    InstanceStateName.STOPPED.toString(),
-                                ),
+                                listOf(inVpc) + owned +
+                                    filterOf(
+                                        "instance-state-name",
+                                        InstanceStateName.PENDING.toString(),
+                                        InstanceStateName.RUNNING.toString(),
+                                        InstanceStateName.STOPPING.toString(),
+                                        InstanceStateName.STOPPED.toString(),
+                                    ),
                             ).build(),
                     ).reservations()
             }.flatMap { it.instances() }.map { it.instanceId() }
@@ -670,14 +690,14 @@ class EC2VpcService(
         val subnets =
             withAwsRetry("find-cluster-subnets") {
                 ec2Client
-                    .describeSubnets(DescribeSubnetsRequest.builder().filters(inVpc, owned).build())
+                    .describeSubnets(DescribeSubnetsRequest.builder().filters(listOf(inVpc) + owned).build())
                     .subnets()
             }.map { it.subnetId() }
 
         val securityGroups =
             withAwsRetry("find-cluster-security-groups") {
                 ec2Client
-                    .describeSecurityGroups(DescribeSecurityGroupsRequest.builder().filters(inVpc, owned).build())
+                    .describeSecurityGroups(DescribeSecurityGroupsRequest.builder().filters(listOf(inVpc) + owned).build())
                     .securityGroups()
             }.filter { it.groupName() != "default" }.map { it.groupId() }
 
@@ -687,7 +707,7 @@ class EC2VpcService(
                     .describeInternetGateways(
                         DescribeInternetGatewaysRequest
                             .builder()
-                            .filters(filterOf("attachment.vpc-id", vpcId), owned)
+                            .filters(listOf(filterOf("attachment.vpc-id", vpcId)) + owned)
                             .build(),
                     ).internetGateways()
             }.firstOrNull()?.internetGatewayId()
@@ -696,12 +716,12 @@ class EC2VpcService(
         val routeTables =
             withAwsRetry("find-cluster-route-tables") {
                 ec2Client
-                    .describeRouteTables(DescribeRouteTablesRequest.builder().filters(inVpc, owned).build())
+                    .describeRouteTables(DescribeRouteTablesRequest.builder().filters(listOf(inVpc) + owned).build())
                     .routeTables()
             }.filter { rt -> rt.associations().none { it.main() } }.map { it.routeTableId() }
 
         return ClusterVpcResources(instances, subnets, securityGroups, internetGateway, routeTables).also {
-            log.info { "Cluster $clusterId owns $it in VPC: $vpcId" }
+            log.info { "Found $it in VPC: $vpcId" }
         }
     }
 

@@ -275,6 +275,27 @@ class EC2VpcServiceIntegrationTest {
         }
 
         @Test
+        fun `finds what carries both the marker and a ClusterId tag, whichever cluster, and nothing else or elsewhere`() {
+            val vpcId = vpcService.createVpc("test-untagged-vpc", "10.23.0.0/16", emptyMap())
+            val elsewhere = vpcService.createVpc("test-elsewhere-vpc", "10.24.0.0/16", emptyMap())
+            val easyDbLab = mapOf("ClusterId" to "cluster-a", "easy_cass_lab" to "1")
+            val otherEasyDbLab = mapOf("ClusterId" to "cluster-b", "easy_cass_lab" to "1")
+            val subnetA = vpcService.findOrCreateSubnet(vpcId, "a-subnet", "10.23.0.0/24", easyDbLab)
+            val subnetB = vpcService.findOrCreateSubnet(vpcId, "b-subnet", "10.23.1.0/24", otherEasyDbLab)
+            vpcService.findOrCreateSubnet(vpcId, "user-subnet", "10.23.2.0/24", emptyMap())
+            vpcService.findOrCreateSubnet(vpcId, "cluster-id-only-subnet", "10.23.3.0/24", mapOf("ClusterId" to "cluster-c"))
+            vpcService.findOrCreateSubnet(vpcId, "marker-only-subnet", "10.23.4.0/24", mapOf("easy_cass_lab" to "1"))
+            val sg = vpcService.findOrCreateSecurityGroup(vpcId, "a-sg", "a", easyDbLab)
+            vpcService.findOrCreateSecurityGroup(vpcId, "user-sg", "user", emptyMap())
+            vpcService.findOrCreateSubnet(elsewhere, "elsewhere-subnet", "10.24.0.0/24", easyDbLab)
+
+            val found = vpcService.findEasyDbLabResourcesInVpc(vpcId)
+
+            assertThat(found.subnetIds).containsExactlyInAnyOrder(subnetA, subnetB)
+            assertThat(found.securityGroupIds).containsExactly(sg)
+        }
+
+        @Test
         fun `waiting for a subnet's interfaces returns at once when it has none, and for no subnets at all`() {
             val vpcId = vpcService.createVpc("test-eni-wait-vpc", "10.22.0.0/16", emptyMap())
             val subnet = vpcService.findOrCreateSubnet(vpcId, "eni-subnet", "10.22.0.0/24", emptyMap())

@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.network.CidrBlock
+import com.rustyrazorblade.easydblab.providers.aws.ClusterVpcResources
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
 import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
@@ -12,6 +13,7 @@ import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
+import com.rustyrazorblade.easydblab.providers.aws.VpcOwnership
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.core.exception.SdkException
@@ -227,7 +229,7 @@ class AwsInfrastructureService(
         log.info { "Setting up VPC networking for cluster: ${config.clusterName}" }
         eventBus.emit(Event.Infra.VpcNetworkingSetup(config.clusterName))
 
-        val baseTags = config.tags + mapOf("easy_cass_lab" to "1", "ClusterId" to config.clusterId)
+        val baseTags = config.tags + mapOf("easy_cass_lab" to "1", Constants.Vpc.CLUSTER_ID_TAG_KEY to config.clusterId)
         val cidrBlock = CidrBlock(config.vpcCidr)
 
         // Construct full availability zone names
@@ -380,6 +382,54 @@ class AwsInfrastructureService(
     }
 
     /**
+     * Tears down [vpcId] when no cluster state says whether easy-db-lab created it.
+     *
+     * The VPC's own tags decide ([VpcOwnership]). A VPC easy-db-lab tagged is torn down whole, as
+     * [teardownVpc] does. Any other VPC is the user's: discovery is by ClusterId tag, never by VPC
+     * membership, the VPC is kept, and [Event.Infra.VpcKept] says so.
+     *
+     * @param vpcId The VPC named on the command line
+     * @param dryRun If true, only discover and report resources without deleting
+     */
+    fun teardownVpcByTags(
+        vpcId: VpcId,
+        dryRun: Boolean = false,
+    ): TeardownResult {
+        if (VpcOwnership.createdByEasyDbLab(vpcService.getVpcTags(vpcId))) {
+            return teardownVpc(vpcId, dryRun)
+        }
+
+        log.info { "VPC $vpcId carries no easy-db-lab tags; removing only its tagged resources (dryRun=$dryRun)" }
+        eventBus.emit(Event.Infra.ResourceDiscovering(vpcId))
+        // The preview already names the VPC as kept; the real run reports it once, before removing anything.
+        if (!dryRun) eventBus.emit(Event.Infra.VpcKept(vpcId))
+        return teardownOwned(vpcId, vpcService.findEasyDbLabResourcesInVpc(vpcId), dryRun)
+    }
+
+    /** Tears down [owned] inside a VPC that is kept: only what is listed goes, never the VPC. */
+    private fun teardownOwned(
+        vpcId: VpcId,
+        owned: ClusterVpcResources,
+        dryRun: Boolean,
+    ): TeardownResult {
+        val resources =
+            DiscoveredResources(
+                vpcId = vpcId,
+                vpcName = vpcService.getVpcName(vpcId),
+                instanceIds = owned.instanceIds,
+                emrClusterIds = emrService.findClustersInVpc(vpcId, owned.subnetIds),
+                openSearchDomainNames = openSearchService.findDomainsInVpc(owned.subnetIds),
+                securityGroupIds = owned.securityGroupIds,
+                subnetIds = owned.subnetIds,
+                internetGatewayId = owned.internetGatewayId,
+                routeTableIds = owned.routeTableIds,
+                ownsVpc = false,
+            )
+
+        return if (dryRun) TeardownResult.success(resources) else executeVpcTeardown(resources)
+    }
+
+    /**
      * Tears down one cluster inside a VPC the user supplied with `init --vpc`.
      *
      * The VPC is the user's, and other clusters or the user's own resources may share it, so
@@ -399,22 +449,7 @@ class AwsInfrastructureService(
         log.info { "Starting teardown of cluster $clusterId in supplied VPC: $vpcId (dryRun=$dryRun)" }
         eventBus.emit(Event.Infra.ResourceDiscovering(vpcId))
 
-        val owned = vpcService.findClusterResourcesInVpc(vpcId, clusterId)
-        val resources =
-            DiscoveredResources(
-                vpcId = vpcId,
-                vpcName = vpcService.getVpcName(vpcId),
-                instanceIds = owned.instanceIds,
-                emrClusterIds = emrService.findClustersInVpc(vpcId, owned.subnetIds),
-                openSearchDomainNames = openSearchService.findDomainsInVpc(owned.subnetIds),
-                securityGroupIds = owned.securityGroupIds,
-                subnetIds = owned.subnetIds,
-                internetGatewayId = owned.internetGatewayId,
-                routeTableIds = owned.routeTableIds,
-                ownsVpc = false,
-            )
-
-        return if (dryRun) TeardownResult.success(resources) else executeVpcTeardown(resources)
+        return teardownOwned(vpcId, vpcService.findClusterResourcesInVpc(vpcId, clusterId), dryRun)
     }
 
     /**

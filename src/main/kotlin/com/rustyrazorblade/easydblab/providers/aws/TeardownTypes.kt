@@ -57,7 +57,7 @@ data class DiscoveredResources(
      */
     fun summary(): String {
         val parts = mutableListOf<String>()
-        val kept = if (ownsVpc) "" else " (supplied with --vpc, kept)"
+        val kept = if (ownsVpc) "" else " (not created by easy-db-lab, kept)"
         parts.add("VPC: $vpcId" + (vpcName?.let { " ($it)" } ?: "") + kept)
         if (instanceIds.isNotEmpty()) parts.add("  EC2 Instances: ${instanceIds.size}")
         if (emrClusterIds.isNotEmpty()) parts.add("  EMR Clusters: ${emrClusterIds.size}")

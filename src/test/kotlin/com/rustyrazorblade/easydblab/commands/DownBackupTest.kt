@@ -686,11 +686,11 @@ class DownBackupTest : BaseKoinTest() {
     }
 
     @Test
-    fun `naming a VPC that is not the workspace's supplied VPC tears down that whole VPC`() {
+    fun `naming a VPC that is not the workspace's supplied VPC is decided by that VPC's own tags, not the workspace state`() {
         val supplied = upClusterState().apply { vpcSupplied = true }
         whenever(clusterStateManager.exists()).thenReturn(true)
         whenever(clusterStateManager.load()).thenReturn(supplied)
-        whenever(teardownService.teardownVpc(eq("vpc-other"), any()))
+        whenever(teardownService.teardownVpcByTags(eq("vpc-other"), any()))
             .thenReturn(TeardownResult.success(DiscoveredResources(vpcId = "vpc-other", instanceIds = listOf("i-1"))))
 
         Down()
@@ -700,6 +700,6 @@ class DownBackupTest : BaseKoinTest() {
             }.call()
 
         verify(teardownService, never()).teardownClusterInSuppliedVpc(any(), any(), any())
-        verify(teardownService).teardownVpc(eq("vpc-other"), eq(false))
+        verify(teardownService).teardownVpcByTags(eq("vpc-other"), eq(false))
     }
 }

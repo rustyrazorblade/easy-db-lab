@@ -299,7 +299,7 @@ class Up(
         val vpcTags =
             buildMap {
                 put(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
-                put("ClusterId", workingState.clusterId)
+                put(Constants.Vpc.CLUSTER_ID_TAG_KEY, workingState.clusterId)
                 put(
                     Constants.Vpc.BUCKET_TAG_KEY,
                     requireNotNull(workingState.s3Bucket) { "S3 bucket must be configured before VPC creation" },
@@ -339,7 +339,7 @@ class Up(
         val baseTags =
             mapOf(
                 "easy_cass_lab" to "1",
-                "ClusterId" to workingState.clusterId,
+                Constants.Vpc.CLUSTER_ID_TAG_KEY to workingState.clusterId,
             ) + initConfig.tags
 
         val existingHosts = awaitNotReady(existingInstances).mapValues { (_, instances) -> instances.map { it.toClusterHost() } }

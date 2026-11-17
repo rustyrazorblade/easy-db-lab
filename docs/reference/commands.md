@@ -188,7 +188,7 @@ easy-db-lab down [vpc-id] [options]
 
 | Argument | Description |
 |----------|-------------|
-| `vpc-id` | Optional: specific VPC to tear down |
+| `vpc-id` | Optional: specific VPC to tear down. With no cluster state, `down` reads the VPC's tags: a VPC tagged `easy_cass_lab=1` with a `ClusterId` (or the packer VPC, which has the marker and its name) was created by easy-db-lab and is deleted whole; any other VPC is kept, and only the resources in it that carry an easy-db-lab `ClusterId` tag are removed, for every easy-db-lab cluster in it, since no state names one |
 
 | Option | Description |
 |--------|-------------|

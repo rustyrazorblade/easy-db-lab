@@ -140,6 +140,19 @@ Rules for both phases:
 - **AND** the VPC and every untagged or differently tagged resource in it are left as they are
 - **AND** the dry-run preview names the VPC as kept
 
+#### Scenario: Teardown by VPC id with no state keeps a VPC easy-db-lab did not tag
+
+- **GIVEN** no cluster state, and a VPC with no easy-db-lab tags (no `easy_cass_lab=1` marker, or no `ClusterId`)
+- **WHEN** `down <vpc-id>` runs
+- **THEN** only the resources that carry an easy-db-lab `ClusterId` tag and the marker tag are removed
+- **AND** the VPC is kept, and `down` says it was kept
+
+#### Scenario: Teardown by VPC id with no state deletes a VPC easy-db-lab created
+
+- **GIVEN** no cluster state, and a VPC that carries the `easy_cass_lab=1` marker and a `ClusterId` tag (or the packer VPC, which carries the marker and its name)
+- **WHEN** `down <vpc-id>` runs
+- **THEN** the VPC and everything in it are removed
+
 #### Scenario: Teardown sets no expiry rule
 
 - **GIVEN** a running cluster with a data bucket

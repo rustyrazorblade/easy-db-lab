@@ -27,6 +27,7 @@ import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.RoleNodes
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
@@ -173,6 +174,39 @@ class KitEndToEndTest : BaseKoinTest() {
 
         val script = File(workingDir, "testdb/bin/start.sh").readText()
         assertThat(script).contains("REPLICAS=3")
+    }
+
+    @Test
+    fun `through the CLI an unpassed node-count default is the live role pool, not the startup value`() {
+        val resolver = get<InstallTemplateResolver>()
+        val source = resolver.resolve("testdb")
+        val config = requireNotNull(resolver.loadInstallConfig(source))
+        // At startup state.json records no db hosts, as on a cluster the user brings.
+        val startupVars = TemplateVariables.from(state = clusterState, kitName = "", storageSize = "").toMap()
+        val cl = KitInstallCommandFactory(startupVars).build(config, source)
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("a", "b", "c")))
+
+        cl.parseArgs("--size", "50Gi")
+        (cl.commandSpec.userObject() as KitInstallCommand).call()
+
+        val script = File(workingDir, "testdb/bin/start.sh").readText()
+        assertThat(script).contains("REPLICAS=3")
+    }
+
+    @Test
+    fun `through the CLI a passed node-count value wins over the live role pool`() {
+        val resolver = get<InstallTemplateResolver>()
+        val source = resolver.resolve("testdb")
+        val config = requireNotNull(resolver.loadInstallConfig(source))
+        val startupVars = TemplateVariables.from(state = clusterState, kitName = "", storageSize = "").toMap()
+        val cl = KitInstallCommandFactory(startupVars).build(config, source)
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("a", "b", "c")))
+
+        cl.parseArgs("--size", "50Gi", "--replicas", "7")
+        (cl.commandSpec.userObject() as KitInstallCommand).call()
+
+        val script = File(workingDir, "testdb/bin/start.sh").readText()
+        assertThat(script).contains("REPLICAS=7")
     }
 
     private fun collisionCheckedTestdb(): Pair<KitConfig, InstallTemplateResolver.TemplateSource> {

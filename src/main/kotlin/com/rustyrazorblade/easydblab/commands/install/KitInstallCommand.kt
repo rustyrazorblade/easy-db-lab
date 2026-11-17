@@ -48,6 +48,13 @@ class KitInstallCommand(
      */
     internal val resolvedDefaults: MutableMap<String, String> = mutableMapOf()
 
+    /**
+     * The variables of the args the user passed on the command line. Set by
+     * [KitInstallCommandFactory] from picocli's parse result; when nothing parsed the command line,
+     * every value already in [argValues] counts as passed.
+     */
+    internal var userSuppliedVariables: () -> Set<String> = { argValues.keys.toSet() }
+
     /** Non-zero when [execute] refused the install after reporting why through an error event. */
     private var exitCode: Int = 0
 
@@ -147,12 +154,19 @@ class KitInstallCommand(
      * Resolves every `${VAR}` default again against [placement]. The factory resolved them for the
      * help text when the CLI started, from the hosts state.json records; here `${DB_NODE_COUNT}` is
      * the nodes the db selector matches. A variable with no live value is kept as written.
+     *
+     * picocli has already written the startup default of every arg the user did not pass into
+     * [argValues], so a re-resolved default replaces any value that is not [userSuppliedVariables].
      */
     private fun resolveDefaultsAgainst(placement: KitPlacementVariables) {
+        val passed = userSuppliedVariables()
         val liveVars = TemplateVariables.from(clusterState, kitName = "", storageSize = "", placement = placement).toMap()
         for (arg in config.args.filter { Constants.Kit.SHELL_VAR_PATTERN.containsMatchIn(it.default) }) {
             resolvedDefaults[arg.variable] =
                 arg.default.replace(Constants.Kit.SHELL_VAR_PATTERN) { m -> liveVars[m.groupValues[1]] ?: m.value }
+        }
+        for ((variable, default) in resolvedDefaults) {
+            if (variable !in passed) argValues[variable] = default
         }
     }
 
@@ -163,13 +177,15 @@ class KitInstallCommand(
      */
     private fun requiredNodePoolIsMissing(placement: KitPlacementVariables): Boolean {
         val kitType = config.type ?: return false
-        val poolSize =
+        val (poolSize, selector) =
             when (kitType) {
-                KitType.DB -> placement.dbNodeCount
-                KitType.APP -> placement.appNodeCount
+                KitType.DB -> placement.dbNodeCount to placement.selectors.db
+                KitType.APP -> placement.appNodeCount to placement.selectors.app
             }
         if (poolSize > 0) return false
-        eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
+        eventBus.emit(
+            Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase(), selector = selector.describe()),
+        )
         return true
     }
 

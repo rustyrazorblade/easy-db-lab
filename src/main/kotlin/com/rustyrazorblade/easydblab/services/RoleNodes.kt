@@ -25,4 +25,5 @@ class RoleNodes(
 
     /** The placement variables for [selectors], with each role's pool counted from the cluster. */
     fun placement(selectors: RoleSelectors): KitPlacementVariables =
-        KitPlacementVariables(selectors, count(selectors.db), count(selectors.app))}
+        KitPlacementVariables(selectors, count(selectors.db), count(selectors.app))
+}

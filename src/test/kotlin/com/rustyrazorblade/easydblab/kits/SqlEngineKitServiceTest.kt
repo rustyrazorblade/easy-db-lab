@@ -33,7 +33,11 @@ class SqlEngineKitServiceTest : BaseKoinTest() {
         val coordinator = parseLabelSelector(fixture.scrapeMetrics.single().podSelector)
         assertThat(service.spec.type).isEqualTo("NodePort")
         assertThat(service.spec.selector).containsAllEntriesOf(coordinator)
-        assertThat(service.spec.ports.single().nodePort).isEqualTo(nodePort)
+        assertThat(
+            service.spec.ports
+                .single()
+                .nodePort,
+        ).isEqualTo(nodePort)
 
         val services = KitEndpointServices.read(dir, fixture.config)
         assertThat(fixture.config.endpoints).isNotEmpty.allSatisfy { endpoint ->

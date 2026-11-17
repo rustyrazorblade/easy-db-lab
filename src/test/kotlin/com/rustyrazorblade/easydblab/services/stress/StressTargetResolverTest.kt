@@ -20,10 +20,10 @@ class StressTargetResolverTest {
 
     private val cqlEndpoint =
         """
-          - name: "CQL"
-            node-type: db
-            port: 30942
-            type: native
+        - name: "CQL"
+          node-type: db
+          port: 30942
+          type: native
         """.trimIndent()
 
     private fun state(

@@ -794,10 +794,11 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `on a cluster the user brings, every role starts unconstrained`() {
-            Init().apply {
-                clean = true
-                nodeOrigin = NodeOrigin.BROUGHT
-            }.execute()
+            Init()
+                .apply {
+                    clean = true
+                    nodeOrigin = NodeOrigin.BROUGHT
+                }.execute()
 
             verify(mockClusterStateManager).save(argThat { RoleSelectors.from(this) == RoleSelectors.ANYWHERE })
         }

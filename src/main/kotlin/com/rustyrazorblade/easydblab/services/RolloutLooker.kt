@@ -47,12 +47,15 @@ class RolloutLooker(
     private val reader: RolloutReader,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    /** How many looks this looker has taken; each turns the window of nodes a DaemonSet reads. */
-    private var looks = 0L
+    /**
+     * The last node read for each DaemonSet, by name, so its next look reads on from there
+     * ([RolloutBlocker.find]).
+     */
+    private val lastNodeRead = mutableMapOf<String, String>()
 
     /** Looks at every workload in [workloads], in order; the first blocked one ends the look. */
     fun look(workloads: List<WorkloadRef>): RolloutsLook {
-        val snapshot = Snapshot(reader, clock.instant(), looks++)
+        val snapshot = Snapshot(reader, clock.instant())
         val pending = mutableListOf<String>()
         for (ref in workloads) {
             when (val state = inspect(ref, snapshot)) {
@@ -104,7 +107,8 @@ class RolloutLooker(
         val pods = snapshot.pods.filter { LabelSelectorMatcher.matches(selector, it.metadata?.labels) }
         val current = RolloutRevision.currentPods(daemonSet, pods)
         val stranded = RolloutRevision.strandedPods(daemonSet, pods)
-        return progress to RolloutBlocker.find(snapshot.now, ref, current, snapshot::node, stranded, snapshot.look)
+        val node = { name: String -> snapshot.node(name).also { lastNodeRead[ref.name] = name } }
+        return progress to RolloutBlocker.find(snapshot.now, ref, current, node, stranded, lastNodeRead[ref.name])
     }
 
     private fun notFound(ref: WorkloadRef): Pair<RolloutProgress, String?> = RolloutProgress.Pending("$ref not found") to null
@@ -114,8 +118,6 @@ class RolloutLooker(
         private val reader: RolloutReader,
         /** The time this look is taken at, against which a node's NotReady time is measured. */
         val now: Instant,
-        /** The number of this look, from 0, which turns the window of nodes a DaemonSet reads. */
-        val look: Long,
     ) {
         val pods: List<Pod> by lazy { reader.pods() }
         val replicaSets: List<ReplicaSet> by lazy { reader.replicaSets() }

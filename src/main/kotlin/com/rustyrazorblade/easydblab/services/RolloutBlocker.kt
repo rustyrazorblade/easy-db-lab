@@ -48,11 +48,13 @@ object RolloutBlocker {
      * time is measured. [stranded] are a DaemonSet's terminating older-template pods on nodes with no
      * current pod; their nodes share the same bound with the unready pods' nodes.
      *
-     * When more nodes are candidates than the bound, [look] (the number of the look, from 0) picks which
-     * window of them is read: the candidates, oldest pod first, are read in turn, the window moving on by
-     * the bound each look and wrapping round. A new DaemonSet's pods share one creation second, so the
-     * order alone would read the same nodes every look; turning the window reads every candidate node
-     * within `ceil(candidates / bound)` looks.
+     * When more nodes are candidates than the bound, [after] (the name of the last node the previous look
+     * read for this workload, null on the first) picks which are read: the first nodes, by name, that sort
+     * after it, wrapping round to the start. A look that does not read a given candidate node reads the
+     * bound's worth of nodes between [after] and it, by name, and moves [after] on to the last of them, so
+     * no two looks read the same node before they reach it. A node that stays a candidate is therefore read
+     * within `ceil(S / bound)` looks, where S is the number of distinct nodes that were candidates in any
+     * of them, however the other pods change between looks (becoming Ready, or new ones being scheduled).
      */
     fun find(
         now: Instant,
@@ -60,13 +62,13 @@ object RolloutBlocker {
         pods: List<Pod>,
         node: (String) -> Node?,
         stranded: List<Pod> = emptyList(),
-        look: Long = 0,
+        after: String? = null,
     ): String? {
         val live = pods.filter { it.metadata?.deletionTimestamp == null }
         return live.firstNotNullOfOrNull { pod ->
             containerFailure(pod)?.let { "$workload: $it (node ${pod.spec?.nodeName ?: "unscheduled"})" }
         } ?: when (workload.kind) {
-            WorkloadKind.DaemonSet -> onNotReadyNode(now, workload, live.filterNot(Readiness::isPodReady) + stranded, node, look)
+            WorkloadKind.DaemonSet -> onNotReadyNode(now, workload, live.filterNot(Readiness::isPodReady) + stranded, node, after)
             WorkloadKind.Deployment -> null
         }
     }
@@ -95,16 +97,16 @@ object RolloutBlocker {
         workload: WorkloadRef,
         waiting: List<Pod>,
         node: (String) -> Node?,
-        look: Long,
+        after: String?,
     ): String? {
         // [waiting] are the unready current pods and the stranded old ones. A fresh rollout makes every
         // pod briefly unready, and the bound keeps that from becoming one node read per pod each poll.
         val candidates =
             waiting
                 .filter { it.spec?.nodeName != null }
-                .sortedWith(compareBy({ it.metadata?.creationTimestamp.orEmpty() }, { it.spec?.nodeName.orEmpty() }))
+                .sortedBy { it.spec?.nodeName.orEmpty() }
                 .distinctBy { it.spec?.nodeName }
-        return window(candidates, look).firstNotNullOfOrNull { pod ->
+        return window(candidates, after).firstNotNullOfOrNull { pod ->
             val nodeName = pod.spec?.nodeName ?: return@firstNotNullOfOrNull null
             node(nodeName)?.let { notReadyReason(it, now) }?.let { reason ->
                 when (pod.metadata?.deletionTimestamp) {
@@ -117,15 +119,16 @@ object RolloutBlocker {
         }
     }
 
-    /** The [look]th window of [candidates], [Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK] wide, wrapping round. */
-    private fun <T> window(
-        candidates: List<T>,
-        look: Long,
-    ): List<T> {
-        val width = Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK
-        if (candidates.size <= width) return candidates
-        val start = Math.floorMod(look * width, candidates.size.toLong()).toInt()
-        return (0 until width).map { candidates[(start + it) % candidates.size] }
+    /**
+     * The first [Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK] of [candidates] (sorted by node name) whose
+     * node sorts after [after], wrapping round to the start.
+     */
+    private fun window(
+        candidates: List<Pod>,
+        after: String?,
+    ): List<Pod> {
+        val (behind, ahead) = candidates.partition { after != null && it.spec?.nodeName.orEmpty() <= after }
+        return (ahead + behind).take(Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK)
     }
 
     /**

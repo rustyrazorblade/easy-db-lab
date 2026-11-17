@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.CsvSource
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.random.Random
 
 /**
  * [RolloutLooker] decides what one look reads and how it combines the workloads. Its reads go through
@@ -27,13 +28,15 @@ import java.time.ZoneOffset
 class RolloutLookerTest {
     private companion object {
         val NOW: Instant = Instant.parse("2026-11-17T12:00:00Z")
+        const val SEED = 1198L
+        const val PROPERTY_TRIALS = 500
     }
 
     /** An in-memory namespace that counts every read. */
     private class FakeReader(
         val deployments: Map<String, Deployment> = emptyMap(),
         val daemonSets: Map<String, DaemonSet> = emptyMap(),
-        val pods: List<Pod> = emptyList(),
+        var pods: List<Pod> = emptyList(),
         val replicaSets: List<ReplicaSet> = emptyList(),
         val nodes: Map<String, Node> = emptyMap(),
     ) : RolloutReader {
@@ -372,6 +375,61 @@ class RolloutLookerTest {
         assertThat(perLook).containsOnly(bound)
         assertThat(reader.nodeReads.toSet()).containsExactlyInAnyOrderElementsOf(names)
     }
+
+    @Test
+    fun `a dead node is read within the bound while pods become Ready between looks`() {
+        // 41 candidates, so ceil(41 / 20) = 3 looks. n00 becomes Ready after the first look and n01 to
+        // n10 after the second; a window placed by look number alone never reaches n20.
+        val names = (0 until 41).map { "n%02d".format(it) }
+        val reader = shrinkingReader(names, dead = "n20")
+        val looker = RolloutLooker(reader, Clock.fixed(NOW, ZoneOffset.UTC))
+
+        val readyBeforeLook = listOf(emptySet(), setOf("n00"), (0..10).map { "n%02d".format(it) }.toSet())
+
+        val blocked =
+            readyBeforeLook.firstNotNullOfOrNull { ready ->
+                reader.pods = names.filterNot(ready::contains).map { pod("a", it) }
+                looker.look(listOf(a)) as? RolloutsLook.Blocked
+            }
+
+        assertThat(blocked?.reason).contains("node n20")
+    }
+
+    @Test
+    fun `a node that stays unready is read within ceil(nodes seen over bound) looks, however the others change`() {
+        val random = Random(SEED)
+        val bound = Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK
+        repeat(PROPERTY_TRIALS) { trial ->
+            val all = (0 until 120).map { "n%03d".format(it) }.shuffled(random)
+            val unready = all.take(random.nextInt(1, 90)).toMutableSet()
+            val joining = all.drop(unready.size).take(random.nextInt(0, 25))
+            val dead = unready.random(random)
+            val reader = shrinkingReader(all, dead)
+            val looker = RolloutLooker(reader, Clock.fixed(NOW, ZoneOffset.UTC))
+            val seen = unready.toMutableSet()
+            var looks = 0
+            do {
+                reader.pods = unready.sorted().map { pod("a", it) }
+                looks++
+                val look = looker.look(listOf(a))
+                // Some healthy pods become Ready; now and then new nodes join the rollout.
+                unready.removeAll(unready.filter { it != dead && random.nextBoolean() }.toSet())
+                if (looks == 1 && random.nextBoolean()) unready += joining.also { seen += it }
+            } while (look !is RolloutsLook.Blocked && looks <= all.size)
+
+            assertThat(looks).describedAs("trial %d", trial).isLessThanOrEqualTo((seen.size + bound - 1) / bound)
+        }
+    }
+
+    /** A pending DaemonSet over [names] in which only [dead] is NotReady past the grace. */
+    private fun shrinkingReader(
+        names: List<String>,
+        dead: String,
+    ): FakeReader =
+        FakeReader(
+            daemonSets = mapOf("a" to daemonSet("a", desired = names.size, available = 0)),
+            nodes = names.associateWith { if (it == dead) node(it, "False", NOW.minusSeconds(61)) else readyNode(it) },
+        )
 
     @Test
     fun `a node with a current pod beside a terminating old one is judged by the current pod alone`() {

@@ -257,6 +257,15 @@ The profile directory `<profile dir>/cassandra_versions/` stays (owner decision,
 
 Why a profile build is checked before `--url`: a name in the profile is the owner's chosen name for a build.  `cassandra install my-build` must get that build with no other arguments.  `--url` with a profile name replaces the entry's URL for that install (the CLI options win field by field), and the record shows the URL that was used.
 
+### D14. ASF checksums
+
+An ASF release is checked against the strongest checksum ASF publishes for it (owner decision, 2026-11-17): `.sha512`, then `.sha256`, then `.sha1`.  Requiring `.sha512` would stop 171 releases from installing, because `.sha512` is published for 2.1.21 and later 2.1, 2.2.14 and later 2.2, 3.0.18 and later 3.0, 3.11.4 and later 3.11, and every 4.x and 5.x release; older releases back to 0.7.5 publish only `.sha1` (and `.md5`, which is not used); 0.3.0 to 0.7.4 publish none.
+
+- The check runs on the node, in `install-cassandra-version`, after the download (or the cache hit) and before the extract.  The CLI passes `--verify-checksum` for the ASF source only (`InstallSpec.hasPublishedChecksum`); every other source has no published checksum and is not checked.
+- The checksum file is read from `--url`, then `--fallback-url`, for each algorithm, with `curl -fsSL` (redirects followed: dlcdn redirects an old release to the archive).
+- A mismatch, or no readable checksum file, fails the install and removes the cache object, so a bad tarball is never installed later from the cache.
+- The output names the algorithm, so a `sha1` check is visible.
+
 ## Conflicts with existing specs
 
 Each conflict below is resolved by a delta in this change.  The owner decisions in #1130 (2026-11-14 and 2026-11-16) are the authority for each one.

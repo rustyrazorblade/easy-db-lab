@@ -30,6 +30,15 @@ longer has it. It goes through your account's S3 download cache, so after the fi
 node reads it from S3. A cassandra-builds nightly, a `--url` tarball and a profile build always
 download from their origin.
 
+Before a node unpacks an ASF release, it checks the tarball against the strongest checksum that
+ASF publishes for it: `.sha512`, else `.sha256`, else `.sha1`. The install output names the one it
+used, for example `checksum sha512 OK`. ASF publishes `.sha512` for 2.1.21 and later 2.1, 2.2.14 and
+later 2.2, 3.0.18 and later 3.0, 3.11.4 and later 3.11, and every 4.x and 5.x release. Older
+releases back to 0.7.5 have only `.sha1`, and 0.3.0 to 0.7.4 have no checksum. When the hash does not
+match, or no checksum can be read, the install fails and the tarball is removed from the download
+cache. A nightly, a catalog build, a profile build and a `--url` tarball have no published checksum
+and are not checked.
+
 ### JDK choice
 
 The CLI picks the JDK a version runs on. It takes the list of supported JDKs from the first of:

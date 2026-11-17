@@ -352,6 +352,7 @@ class CassandraInstaller(
                 } else {
                     spec.fallbackUrl?.let { add("--fallback-url ${it.shellQuote()}") }
                     spec.cacheUri?.let { add("--cache-uri ${it.shellQuote()}") }
+                    if (spec.hasPublishedChecksum) add("--verify-checksum")
                 }
                 if (reinstall) add("--reinstall")
             }.joinToString(" ")

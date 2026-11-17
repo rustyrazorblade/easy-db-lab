@@ -231,12 +231,16 @@ mkdir -p "$CACHE_BIN" "${SANDBOX}/fixture/apache-cassandra-5.0.6/conf" "${SANDBO
 echo 'cluster_name: fixture' >"${SANDBOX}/fixture/apache-cassandra-5.0.6/conf/cassandra.yaml"
 echo '# fixture' >"${SANDBOX}/fixture/apache-cassandra-5.0.6/bin/cassandra.in.sh"
 tar -czf "$FIXTURE" -C "${SANDBOX}/fixture" apache-cassandra-5.0.6
+# Another file, whose hash a tampered or wrong checksum file would hold.
+OTHER_FIXTURE="${SANDBOX}/other.bin"
+echo other >"$OTHER_FIXTURE"
 
 # aws s3 cp <src> <dest>: a read under download-cache/ is a miss unless AWS_CACHE_HIT=1, a local
 # destination gets the fixture tarball, and a destination under download-cache/ is a write-back.
 cat >"${CACHE_BIN}/aws" <<SHIM
 #!/bin/bash
 echo "aws \$*" >> "${CALLS}"
+[[ "\$1" == s3 && "\$2" == rm ]] && exit 0
 [[ "\$1" == s3 && "\$2" == cp ]] || exit 1
 case "\$3" in
   *download-cache/*) [[ "\${AWS_CACHE_HIT:-}" == 1 ]] || exit 1 ;;
@@ -262,7 +266,22 @@ while [[ \$# -gt 0 ]]; do
   esac
 done
 [[ "\${CURL_FAILS:-}" == 1 ]] && exit 22
-[[ -n "\${CURL_FAIL_URL:-}" && "\$url" == "\${CURL_FAIL_URL}" ]] && exit 22
+# CURL_FAIL_URL fails that URL and the checksum files beside it, as a host without the release does.
+[[ -n "\${CURL_FAIL_URL:-}" && ( "\$url" == "\${CURL_FAIL_URL}" || "\$url" == "\${CURL_FAIL_URL}".* ) ]] && exit 22
+# A checksum file: served only for the algorithms in CURL_SUMS ("+"-separated, default sha512), holding the
+# fixture's hash (or CURL_SUM_BAD=1: another file's), bare or, with CURL_SUM_NAMED=1, as
+# "hash  filename" with no trailing newline.
+case "\$url" in
+  *.sha512|*.sha256|*.sha1)
+    alg="\${url##*.}"
+    [[ "+\${CURL_SUMS-sha512}+" == *"+\$alg+"* ]] || exit 22
+    src="${FIXTURE}"
+    [[ "\${CURL_SUM_BAD:-}" == 1 ]] && src="${OTHER_FIXTURE}"
+    hash="\$("\${alg}sum" "\$src" | awk '{print \$1}')"
+    if [[ "\${CURL_SUM_NAMED:-}" == 1 ]]; then printf '%s  %s' "\$hash" "\${url%.*}" > "\$dest"; else echo "\$hash" > "\$dest"; fi
+    exit 0
+    ;;
+esac
 # CURL_BODY_HTML=1: the URL is a web page (a repository URL with no .git), not a tarball.
 if [[ "\${CURL_BODY_HTML:-}" == 1 ]]; then echo "<html>repo</html>" > "\$dest"; exit 0; fi
 cp "${FIXTURE}" "\$dest"
@@ -403,6 +422,71 @@ assert_calls_lack "a release cache hit downloads nothing" "curl"
 run_cached CURL_FAIL_URL="$DLCDN_URL" "${RELEASE_ARGS[@]}"
 assert_calls_contain "a release dlcdn does not hold is downloaded from the archive" "curl -fsSL --retry 3 ${ARCHIVE_URL} -o"
 if [[ "$STATUS" -eq 0 ]]; then pass "an archive fallback install succeeds"; else fail "archive fallback failed: $OUTPUT"; fi
+
+# --- an Apache release is checked against the strongest checksum ASF publishes ------------------
+# --verify-checksum (the CLI passes it for an ASF release only) checks the tarball against
+# <url>.sha512, else .sha256, else .sha1, from the host that has the release, before extracting it.
+# Each row: description | stub environment (space-separated NAME=value) | expected exit (0 or 1) |
+# expected output fragment.
+VERIFY_ARGS=("${RELEASE_ARGS[@]}" --verify-checksum)
+checksum_rows=(
+  "a matching .sha512 installs|CURL_SUMS=sha512|0|checksum sha512 OK: ${DLCDN_URL}.sha512"
+  "a .sha512 in the hash-and-filename form installs|CURL_SUMS=sha512 CURL_SUM_NAMED=1|0|checksum sha512 OK"
+  "a release with only .sha256 is checked with sha256|CURL_SUMS=sha256|0|checksum sha256 OK: ${DLCDN_URL}.sha256"
+  "a release with only .sha1 is checked with sha1, and says so|CURL_SUMS=sha1|0|checksum sha1 OK: ${DLCDN_URL}.sha1"
+  "sha512 is preferred over sha1 when both are published|CURL_SUMS=sha1+sha512|0|checksum sha512 OK"
+  "a release dlcdn does not hold is checked against the archive's checksum|CURL_FAIL_URL=${DLCDN_URL}|0|checksum sha512 OK: ${ARCHIVE_URL}.sha512"
+  "a mismatch fails, naming the URL and both hashes|CURL_SUM_BAD=1|1|ERROR: checksum mismatch for ${DLCDN_URL}"
+  "a release that publishes no checksum fails, naming every file tried|CURL_SUMS=none|1|${ARCHIVE_URL}.sha1"
+)
+for row in "${checksum_rows[@]}"; do
+  IFS='|' read -r desc envs want_status want_output <<<"$row"
+  read -r -a env_list <<<"$envs"
+  run_cached "${env_list[@]}" "${VERIFY_ARGS[@]}"
+  install_dir="${SANDBOX}/cached-install-${case_number}"
+  if [[ "$want_status" == 0 ]]; then
+    if [[ "$STATUS" -eq 0 && -d "${install_dir}/5.0/conf" && "$OUTPUT" == *"$want_output"* ]]; then
+      pass "checksum: $desc"
+    else
+      fail "checksum: $desc: expected an install and [$want_output] (status $STATUS): $OUTPUT"
+    fi
+  else
+    if [[ "$STATUS" -ne 0 && ! -d "${install_dir}/5.0" && "$OUTPUT" == *"$want_output"* ]]; then
+      pass "checksum: $desc"
+    else
+      fail "checksum: $desc: expected a failure with [$want_output] and no install (status $STATUS): $OUTPUT"
+    fi
+    assert_calls_contain "checksum: $desc: the cache object is removed" "aws s3 rm ${CACHE_URI}"
+  fi
+done
+
+run_cached CURL_SUM_BAD=1 "${VERIFY_ARGS[@]}"
+expected_hash="$(sha512sum "$OTHER_FIXTURE" | awk '{print $1}')"
+actual_hash="$(sha512sum "$FIXTURE" | awk '{print $1}')"
+if [[ "$OUTPUT" == *"expected sha512 ${expected_hash}"* && "$OUTPUT" == *"got ${actual_hash}"* ]]; then
+  pass "checksum: a mismatch prints the expected and the actual hash"
+else
+  fail "checksum: a mismatch should print both hashes: $OUTPUT"
+fi
+assert_output_lacks "checksum: a mismatched tarball is never extracted" "Extracting"
+
+run_cached AWS_CACHE_HIT=1 CURL_SUM_BAD=1 "${VERIFY_ARGS[@]}"
+if [[ "$STATUS" -ne 0 ]] && grep -qF "aws s3 rm ${CACHE_URI}" "$CALLS"; then
+  pass "checksum: a cached tarball that fails the check fails the install and is removed from the cache"
+else
+  fail "checksum: a bad cache object should fail and be removed (status $STATUS): $(cat "$CALLS")"
+fi
+
+# Without --verify-checksum (a nightly, a catalog or profile build, a --url) nothing is checked,
+# so a source with no published checksum installs.
+run_cached CURL_SUMS=none 6.0-HEAD --url "$NIGHTLY_URL"
+if [[ "$STATUS" -eq 0 ]] && ! grep -qE '\.(sha512|sha256|sha1)' "$CALLS"; then
+  pass "checksum: a tarball outside ASF fetches no checksum file and installs"
+else
+  fail "checksum: a non-ASF tarball should install unchecked (status $STATUS): $(cat "$CALLS")"
+fi
+assert_fails_with "--verify-checksum with a git build is rejected" "--verify-checksum applies only to a tarball" \
+  from-source --url https://github.com/apache/cassandra.git --branch trunk --java 17 --verify-checksum
 
 run_cached CURL_FAILS=1 "${RELEASE_ARGS[@]}"
 if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"5.0"* && "$OUTPUT" == *"$DLCDN_URL"* && "$OUTPUT" == *"$ARCHIVE_URL"* ]]; then

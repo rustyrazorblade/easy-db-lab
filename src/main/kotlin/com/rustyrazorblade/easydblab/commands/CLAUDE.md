@@ -290,8 +290,9 @@ The CLI resolves everything (`services/cassandraversions/`: `CassandraVersionRes
 source, URL, JDK and Python; the cluster state holds the record) and passes it as arguments, so no
 script reads a version file:
 
-- `install-cassandra-version <name> --url URL [--fallback-url URL] [--cache-uri URI] [--reinstall]`,
-  or `--url GIT --branch B --java N [--ant-flags F]` for a git build. Run by `CassandraInstaller` for
+- `install-cassandra-version <name> --url URL [--fallback-url URL] [--cache-uri URI] [--verify-checksum] [--reinstall]`,
+  or `--url GIT --branch B --java N [--ant-flags F]` for a git build. `--verify-checksum` (an ASF
+  release only) checks the tarball against the strongest checksum ASF publishes beside it. Run by `CassandraInstaller` for
   `cassandra install`, `cassandra use` and `CassandraNodeRestorer` (a replaced db node; nothing calls
   the restorer yet, issue 1158 wires it into `up`).
 - `use-cassandra <version> --java N --python X.Y.Z`. Both flags are required; the script checks every

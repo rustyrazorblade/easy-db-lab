@@ -80,6 +80,12 @@ cache_put_uri() {
     aws s3 cp "$1" "$2" --no-progress 2>/dev/null
 }
 
+# cache_rm_uri <cache-uri> - remove a cache object (a tarball that failed its checksum).
+cache_rm_uri() {
+    cache_uri_supported "$1" || return 2
+    aws s3 rm "$1" >/dev/null 2>&1
+}
+
 # cached_fetch_uri <cache-uri> <dest> <url> [<fallback-url>]
 # The runtime download cache: the CLI names the cache object by its full URI (it knows the
 # account bucket of the user, which /etc/edl-cache.env does not), so this reads no config.

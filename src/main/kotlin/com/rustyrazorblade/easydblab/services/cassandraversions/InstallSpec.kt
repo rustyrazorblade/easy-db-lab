@@ -37,6 +37,12 @@ class InstallSpec private constructor(
     /** True when the node clones [url] and builds [branch] with ant. */
     val isGitBuild: Boolean get() = branch != null
 
+    /**
+     * True for an Apache release, the only source that publishes a checksum beside its tarball:
+     * the node checks the download against it. Other sources have none and are not checked.
+     */
+    val hasPublishedChecksum: Boolean get() = source == CassandraSource.ASF
+
     /** [url] with any userinfo credential replaced, for the state record, events and errors. */
     val recordedUrl: String get() = redactUrlCredentials(url)
 

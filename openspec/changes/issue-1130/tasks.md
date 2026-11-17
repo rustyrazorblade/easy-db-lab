@@ -32,6 +32,8 @@
 - [x] 4.7 `cassandra.in.sh`: load only the jar of `EDL_AXONOPS_AGENT`; no `edl_axonops_agent_for` call, no NOTE path; test the empty and the set cases
 - [x] 4.8 Run `./gradlew testCassandraScripts` and the base script tests (in a build-engineer subagent)
 
+- [x] 4.9 `install-cassandra-version --verify-checksum` (design D14): check an ASF tarball against `.sha512`, else `.sha256`, else `.sha1`, from `--url` then `--fallback-url`, before the extract; fail on a mismatch or no checksum, and remove the cache object; the CLI passes the flag for the ASF source only; a shell test table (match, both file forms, sha256 only, sha1 only, preference, dlcdn-to-archive, mismatch, none, a bad cache object, a non-ASF source) and a Kotlin table over every source
+
 ## 5. Commands
 
 - [x] 5.1 `CassandraInstall`: resolve with the resolver (replaces `candidateVersions` and `declaredCassandraVersions`); install with the new script arguments; record results in the state after all hosts (no write in the parallel lambda); keep the per-host outcome events; the mismatch check compares with the state record; remove the node yaml push and download; update `CassandraInstallTest`
@@ -79,4 +81,5 @@
 - [x] 10.7 `cassandra build` (local) then `cassandra use <build>` from the catalog; `cassandra install <name> --url <git> --branch <b> --java 11` builds as before
 - [x] 10.7a A profile build (a yaml in the profile `cassandra_versions/` directory with a tarball URL and `java`): `cassandra list` shows it with source `profile`; `cassandra use <it>` installs it with that JDK
 - [x] 10.7b `cassandra stop`, then `cassandra install 5.0-HEAD --reinstall`: the node downloads again and the record is updated; `cassandra start` works; with Cassandra running, the reinstall of the active version is refused
+- [ ] 10.7c After the AMI rebake with the checksum check: `cassandra use 4.1.7` shows `checksum sha512 OK`
 - [x] 10.8 `down`; put the commands, their output and the AWS-side result in the PR

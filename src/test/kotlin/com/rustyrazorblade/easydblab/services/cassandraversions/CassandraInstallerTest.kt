@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.EnumSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.kotlin.mock
 import kotlin.random.Random
@@ -323,8 +324,19 @@ class CassandraInstallerTest : BaseKoinTest() {
             assertThat(CassandraInstaller.installCommand(spec, reinstall = false)).isEqualTo(
                 "install-cassandra-version 5.0 --url ${AsfReleases.downloadUrl("5.0.6")} " +
                     "--fallback-url ${AsfReleases.archiveUrl("5.0.6")} " +
-                    "--cache-uri s3://b/download-cache/cassandra-dist/5.0.6/apache-cassandra-5.0.6-bin.tar.gz",
+                    "--cache-uri s3://b/download-cache/cassandra-dist/5.0.6/apache-cassandra-5.0.6-bin.tar.gz --verify-checksum",
             )
+        }
+
+        /** Only an ASF release has a published checksum, so only it asks the node to check one. */
+        @ParameterizedTest(name = "{0}")
+        @EnumSource(CassandraSource::class)
+        fun `only an ASF release asks the node to verify its checksum`(source: CassandraSource) {
+            val builder = if (source == CassandraSource.GIT) gitBuild.toBuilder() else tarball.toBuilder()
+            val spec = builder.source(source).build()
+
+            assertThat(CassandraInstaller.installCommand(spec, reinstall = false).split(" ").contains("--verify-checksum"))
+                .isEqualTo(source == CassandraSource.ASF)
         }
 
         @Test

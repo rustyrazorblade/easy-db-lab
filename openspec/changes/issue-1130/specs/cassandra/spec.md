@@ -340,6 +340,44 @@ Before it changes any node, `cassandra install` and `cassandra use` SHALL show t
 - **WHEN** the user runs `cassandra use 5.0-rustyrazorblade-HEAD`
 - **THEN** each node downloads `https://github.com/rustyrazorblade/cassandra-builds/releases/download/nightly/apache-cassandra-5.0-rustyrazorblade-HEAD-bin.tar.gz`.
 
+### Requirement: ASF downloads are checked against the published checksum
+
+Before it extracts an ASF release tarball, the node SHALL check it against the strongest checksum file that ASF publishes beside it: `<tarball>.sha512`, else `<tarball>.sha256`, else `<tarball>.sha1`.  It SHALL read each file from the host the tarball comes from, dlcdn and then the archive, following redirects.  The file holds the hash alone or `hash  filename`; the first word is the hash.  The install output SHALL name the algorithm and the file used.
+
+On the ASF dist archive, `.sha512` is published for 2.1.21 and later 2.1, 2.2.14 and later 2.2, 3.0.18 and later 3.0, 3.11.4 and later 3.11, and every 4.x and 5.x release; older releases back to 0.7.5 publish only `.sha1` (and `.md5`, which is not used); 0.3.0 to 0.7.4 publish none.
+
+- When the hash does not match, the install SHALL fail, naming the URL, the expected hash and the actual hash.  The node SHALL not extract the tarball, and SHALL remove it from the download cache.
+- When no checksum file can be read, the install SHALL fail and name every file it tried.  It SHALL not install the tarball unchecked.
+- A cassandra-builds nightly, an S3 catalog build, a profile build and a `--url` tarball have no published checksum.  They SHALL not be checked, and SHALL not fail because of the check.
+
+#### Scenario: A release with a .sha512
+- **WHEN** a node installs ASF release 4.1.7
+- **THEN** the output shows `checksum sha512 OK` and the `.sha512` URL, and the install completes.
+
+#### Scenario: An older release with only a .sha1
+- **GIVEN** an ASF release that publishes `.sha1` and no `.sha512` or `.sha256`, such as 3.11.0
+- **WHEN** a node installs it
+- **THEN** the output shows `checksum sha1 OK`, and the install completes.
+
+#### Scenario: The tarball does not match
+- **GIVEN** a downloaded or cached ASF tarball whose hash differs from the published one
+- **WHEN** a node installs it
+- **THEN** the install fails, naming the URL, the expected and the actual hash; nothing is extracted, and the cache object is removed.
+
+#### Scenario: No checksum is published
+- **GIVEN** an ASF release with no `.sha512`, `.sha256` or `.sha1` on either host
+- **WHEN** a node installs it
+- **THEN** the install fails and names every checksum file it tried.
+
+#### Scenario: dlcdn does not have the release
+- **GIVEN** an ASF release that only the archive holds
+- **WHEN** a node installs it
+- **THEN** the tarball and its checksum file both come from the archive.
+
+#### Scenario: A source with no published checksum
+- **WHEN** a node installs a cassandra-builds nightly, a catalog build, a profile build or a `--url` tarball
+- **THEN** no checksum file is fetched, and the install does not fail because of the check.
+
 ### Requirement: JDK and Python choice
 
 The CLI SHALL choose the JDK of a version, and SHALL take the supported JDK list from the first layer that has one:

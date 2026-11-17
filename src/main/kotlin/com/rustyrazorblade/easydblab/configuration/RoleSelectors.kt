@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.Constants
 import kotlinx.serialization.json.Json
 
 /**
@@ -126,13 +127,48 @@ data class RoleSelectors(
                 "Invalid $OPTION '$value': expected $EXPECTED_FORM, with <role> one of " +
                     "${ServerType.entries.joinToString(", ") { it.serverType }}."
             }
-            return role to NodeSelector(labels.filterNotNull().toMap())
+            val parsed = labels.filterNotNull()
+            parsed.forEach { (key, labelValue) -> requireLabel(value, key, labelValue) }
+            return role to NodeSelector(parsed.toMap())
         }
 
         private fun parseLabel(pair: String): Pair<String, String>? {
             val parts = pair.split("=")
             return parts.takeIf { it.size == 2 && it.all(String::isNotBlank) }?.let { it[0].trim() to it[1].trim() }
         }
+
+        /**
+         * Refuses a key or value Kubernetes would refuse as a label, so a bad mapping fails at
+         * `init` instead of leaving pods unschedulable. A key is an optional DNS-subdomain prefix
+         * and `/`, then a name; a name and a value are alphanumerics with `-`, `_` and `.` inside.
+         */
+        private fun requireLabel(
+            value: String,
+            key: String,
+            labelValue: String,
+        ) {
+            val prefix = key.substringBefore("/", "")
+            val name = key.substringAfter("/")
+            val validKey =
+                key.count { it == '/' } <= 1 &&
+                    isLabelName(name) &&
+                    (key.indexOf('/') < 0 || (prefix.length <= Constants.K8s.LABEL_PREFIX_MAX_LENGTH && DNS_SUBDOMAIN.matches(prefix)))
+            require(validKey) {
+                "Invalid $OPTION '$value': '$key' is not a valid Kubernetes label key " +
+                    "(an optional DNS-subdomain prefix and '/', then up to ${Constants.K8s.LABEL_NAME_MAX_LENGTH} " +
+                    "alphanumerics, '-', '_' or '.', beginning and ending alphanumeric)."
+            }
+            require(isLabelName(labelValue)) {
+                "Invalid $OPTION '$value': '$labelValue' is not a valid Kubernetes label value " +
+                    "(up to ${Constants.K8s.LABEL_NAME_MAX_LENGTH} alphanumerics, '-', '_' or '.', " +
+                    "beginning and ending alphanumeric)."
+            }
+        }
+
+        private fun isLabelName(text: String): Boolean = text.length <= Constants.K8s.LABEL_NAME_MAX_LENGTH && LABEL_NAME.matches(text)
+
+        private val LABEL_NAME = Regex("[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?")
+        private val DNS_SUBDOMAIN = Regex("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
     }
 }
 

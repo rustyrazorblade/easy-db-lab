@@ -937,6 +937,12 @@ object Constants {
     object K8s {
         const val NAMESPACE = "default"
 
+        /** The longest label name, and the longest label value, Kubernetes accepts. */
+        const val LABEL_NAME_MAX_LENGTH = 63
+
+        /** The longest label key prefix (a DNS subdomain) Kubernetes accepts. */
+        const val LABEL_PREFIX_MAX_LENGTH = 253
+
         /**
          * How many times a Service port-forward is opened, each on a freshly chosen loopback port,
          * when the port it was given was bound by another process after it was chosen: the first
@@ -1263,12 +1269,19 @@ object Constants {
 
         /** How long the probe waits for a namespace it created to get its default ServiceAccount. */
         const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
+    }
 
-        /** The seccomp profile type Pod Security "restricted" requires of the probe Pods. */
-        const val PROBE_SECCOMP_PROFILE = "RuntimeDefault"
+    /**
+     * What the Pod Security "restricted" standard requires of a container's security context. Every
+     * container easy-db-lab builds to pass it uses these: the restricted capability probe Pods and
+     * the Java agent init containers.
+     */
+    object PodSecurity {
+        /** The seccomp profile type "restricted" requires. */
+        const val RESTRICTED_SECCOMP_PROFILE = "RuntimeDefault"
 
-        /** The Linux capabilities the restricted probe Pods drop: all of them. */
-        const val PROBE_DROPPED_CAPABILITIES = "ALL"
+        /** The Linux capabilities a "restricted" container drops: all of them. */
+        const val RESTRICTED_DROPPED_CAPABILITIES = "ALL"
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

@@ -63,6 +63,48 @@ class RoleSelectorsTest {
             .hasMessageContaining("<role>=<key=value>")
     }
 
+    @ParameterizedTest
+    @ValueSource(
+        strings = [
+            "db=-pool=x", "db=pool-=x", "db=po ol=x", "db=a/b/c=x", "db=/pool=x", "db=Exa_mple.com/pool=x",
+            "db=pool=-x", "db=pool=x-", "db=pool=a b", "db=pool=a/b", "db=pool=a:b",
+        ],
+    )
+    fun `a key or value Kubernetes would refuse as a label is refused at init, naming it`(value: String) {
+        val label = value.substringAfter("=")
+
+        assertThatThrownBy { RoleSelectors.parse(listOf(value)) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining(label)
+            .hasMessageContaining("Kubernetes label")
+    }
+
+    @Test
+    fun `a key or value longer than Kubernetes allows is refused`() {
+        assertThatThrownBy { RoleSelectors.parse(listOf("db=${"k".repeat(64)}=x")) }
+            .hasMessageContaining("Kubernetes label")
+        assertThatThrownBy { RoleSelectors.parse(listOf("db=pool=${"v".repeat(64)}")) }
+            .hasMessageContaining("Kubernetes label")
+        assertThatThrownBy { RoleSelectors.parse(listOf("db=${"p".repeat(254)}/k=x")) }
+            .hasMessageContaining("Kubernetes label")
+    }
+
+    @Test
+    fun `prefixed keys and the full value alphabet are accepted`() {
+        val mapped =
+            RoleSelectors.parse(
+                listOf("db=node.kubernetes.io/instance-type=m5.xlarge,topology.kubernetes.io/zone=us-west-2a,a_b=C-1.x_2"),
+            )
+
+        assertThat(mapped.getValue(ServerType.Cassandra).labels).isEqualTo(
+            mapOf(
+                "node.kubernetes.io/instance-type" to "m5.xlarge",
+                "topology.kubernetes.io/zone" to "us-west-2a",
+                "a_b" to "C-1.x_2",
+            ),
+        )
+    }
+
     @Test
     fun `a role mapped to nothing is unconstrained`() {
         val mapped = RoleSelectors.OWNED_NODES.withMappings(RoleSelectors.parse(listOf("app=")))

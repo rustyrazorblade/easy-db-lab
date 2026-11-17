@@ -380,7 +380,9 @@ easy-db-lab cassandra start
 ```
 
 `--reinstall` downloads or builds the version again and replaces the install. It also re-applies
-`cassandra.patch.yaml` to the new install. A node where Cassandra runs the version is refused and
+`cassandra.patch.yaml` to the new install. On a node where the version is the active one, it
+activates the version again on the JDK of the reinstall (with `--java`, that JDK), so the next
+`cassandra start` runs the new install on it. A node where Cassandra runs the version is refused and
 left alone. If the download or build fails on a node, that node keeps its old install. For a git
 build, `--reinstall` takes a new `--url`, `--branch` or `--ant-flags`; without one it builds the
 recorded one again. `--reinstall --url <git-url> --branch <b>` turns a tarball version into a git

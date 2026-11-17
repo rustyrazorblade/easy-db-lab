@@ -285,6 +285,8 @@ class UseCassandraTest : BaseKoinTest() {
             .contains("EDL_AXONOPS_AGENT=")
             .doesNotContain("4.1-agent")
         assertThat(errors()).contains("db0", "--skip-axonops")
+        // The node runs the new version's conf directory, so the patch is applied to it all the same.
+        assertThat(chained.map { it.javaClass.simpleName }).containsExactly("DownloadConfig", "UpdateConfig")
     }
 
     @Test
@@ -305,6 +307,22 @@ class UseCassandraTest : BaseKoinTest() {
 
         assertThat(chained.filterIsInstance<UpdateConfig>()).isEmpty()
         assertThat(errors()).contains("5.0", "download-config failed", "update-config --hosts db0,db1")
+    }
+
+    @Test
+    fun `a failed config step still names the new version's AxonOps agent, so a restart loads no stale one`() {
+        withNodes(1)
+        nodes.respond("db0", "cat ${AxonOpsAgents.DROP_IN}", "[Service]\nEnvironment=EDL_AXONOPS_AGENT=4.1-agent")
+        nodes.respond("db0", "install-axonops-agent", "5.0-agent-jdk17\nedl-exit:0")
+        chainedExitCodes["DownloadConfig"] = 1
+
+        assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(nodes.commandsOn("db0").filter { it.contains("tee ${AxonOpsAgents.DROP_IN}") })
+            .singleElement()
+            .asString()
+            .contains("EDL_AXONOPS_AGENT=5.0-agent-jdk17")
+        assertThat(errors()).contains("download-config failed")
     }
 
     @Test

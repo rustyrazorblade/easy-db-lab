@@ -23,6 +23,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -162,6 +164,52 @@ class CassandraInstallTest : BaseKoinTest() {
         assertThat(nodes.scriptRuns("db1").single()).endsWith("--reinstall")
         assertThat(nested.map { it.javaClass.simpleName }).containsExactly("DownloadConfig", "UpdateConfig")
         assertThat(nested.map(::hostFilter)).containsOnly("db0")
+    }
+
+    /**
+     * A reinstall replaces the bits of the version a node runs, built or chosen for the JDK the
+     * reinstall resolved, so that node is activated again on that JDK and the state records it; a
+     * node where the version is not active keeps its active version and JDK.
+     */
+    @ParameterizedTest(name = "--java [{0}]")
+    @CsvSource("11, 11", "'', 17")
+    fun `a reinstall of a node's active version activates it again on the reinstalled JDK`(
+        java: String,
+        expectedJava: String,
+    ) {
+        nodes.disk("db0") += "5.0"
+        nodes.disk("db1") += "5.0"
+        state.nodes["db0"] = NodeState(version = "5.0", javaVersion = "17")
+        state.nodes["db1"] = NodeState(version = "4.1", javaVersion = "11")
+
+        install {
+            reinstall = true
+            javaVersion = java
+        }.execute()
+
+        assertThat(nodes.commandsOn("db0").filter { it.startsWith("sudo use-cassandra") })
+            .containsExactly("sudo use-cassandra 5.0 --java $expectedJava --python 3.11.9")
+        assertThat(state.nodes.getValue("db0").javaVersion).isEqualTo(expectedJava)
+        assertThat(nodes.commandsOn("db1").filter { it.startsWith("sudo use-cassandra") }).isEmpty()
+        assertThat(state.nodes.getValue("db1").javaVersion).isEqualTo("11")
+    }
+
+    @Test
+    fun `a reinstall whose activation fails on a node exits non-zero, names the node, and keeps its recorded JDK`() {
+        nodes.disk("db0") += "5.0"
+        state.nodes["db0"] = NodeState(version = "5.0", javaVersion = "17")
+        nodes.failOn("db0", "sudo use-cassandra", "use-cassandra: no JDK 11")
+
+        assertThatThrownBy {
+            install {
+                hosts.hostList = "db0"
+                reinstall = true
+                javaVersion = "11"
+            }.execute()
+        }.isInstanceOf(CommandExecutionException::class.java)
+            .hasMessageContaining("db0")
+        assertThat(state.nodes.getValue("db0").javaVersion).isEqualTo("17")
+        assertThat(errors()).contains("db0", "no JDK 11")
     }
 
     @Test

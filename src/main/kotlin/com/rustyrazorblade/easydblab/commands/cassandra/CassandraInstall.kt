@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraVersionResolver
+import com.rustyrazorblade.easydblab.services.cassandraversions.HostOutcome
 import com.rustyrazorblade.easydblab.services.cassandraversions.InstallMode
 import com.rustyrazorblade.easydblab.services.cassandraversions.InstallSpec
 import com.rustyrazorblade.easydblab.services.cassandraversions.VersionRequest
@@ -101,11 +102,36 @@ class CassandraInstall : PicoBaseCommand() {
         val report = installer.execute(plan, reportPresent = true)
 
         report.recordInto(state)
+        val reactivated = if (reinstall) reactivate(spec, report.ready) else null
         clusterStateManager.save(state)
 
         val reapplied = if (reinstall) reapplyConfig(spec, report.ready.map { it.host.alias }) else null
         report.failureMessage()?.let { throw CommandExecutionException(it) }
+        reactivated?.let { throw CommandExecutionException(it) }
         reapplied?.let { throw CommandExecutionException(it) }
+    }
+
+    /**
+     * A reinstall replaced the bits of the version that some nodes run, built or chosen for the
+     * JDK the reinstall resolved, so each such node is activated again with its spec's JDK and
+     * Python, and the state records that JDK; otherwise `cassandra start` would run the new bits on
+     * the old JDK. A node whose activation fails keeps its recorded JDK. Returns the error when a
+     * node failed, else null.
+     */
+    private fun reactivate(
+        spec: InstallSpec,
+        reinstalled: List<HostOutcome.Ready>,
+    ): String? {
+        val active = reinstalled.filter { clusterState.nodes[it.host.alias]?.version == spec.name }
+        if (active.isEmpty()) return null
+        val outcomes = installer.activate(active)
+        outcomes.filterIsInstance<HostOutcome.Ready>().forEach { outcome ->
+            clusterState.nodes.getValue(outcome.host.alias).javaVersion = outcome.spec.java
+        }
+        val failed = outcomes.filterIsInstance<HostOutcome.Failed>().map { it.host.alias }
+        return failed.takeIf { it.isNotEmpty() }?.let {
+            "cassandra install --reinstall: $version was not activated again on ${it.joinToString(", ")}"
+        }
     }
 
     private fun request() =

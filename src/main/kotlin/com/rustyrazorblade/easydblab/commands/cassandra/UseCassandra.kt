@@ -114,13 +114,17 @@ class UseCassandra : PicoBaseCommand() {
 
         // A node that switched runs the new version's conf directory, so it gets the patch even when
         // another node failed to switch; a node that did not switch keeps its old version and config.
+        // Both follow-up steps run whatever the other did, so a failed config step leaves no stale
+        // AxonOps agent behind, and a missing agent does not skip the config; the errors are joined.
         val switched = activated.filterIsInstance<HostOutcome.Ready>().map { it.host }
         val failed = activated.filterIsInstance<HostOutcome.Failed>().map { it.host.alias }
-        if (switched.isNotEmpty()) applyConfig(switched.map { it.alias })
-        refreshAxonOpsAgents(switched, state)
-        if (failed.isNotEmpty()) {
-            throw CommandFailedException("cassandra use: $version was not activated on ${failed.joinToString(", ")}")
-        }
+        val errors =
+            listOfNotNull(
+                failed.takeIf { it.isNotEmpty() }?.let { "$version was not activated on ${it.joinToString(", ")}" },
+                refreshAxonOpsAgents(switched, state),
+                switched.takeIf { it.isNotEmpty() }?.let { hosts -> applyConfig(hosts.map { it.alias }) },
+            )
+        if (errors.isNotEmpty()) throw CommandFailedException("cassandra use: ${errors.joinToString("; ")}")
         eventBus.emit(Event.Cassandra.ConfigUpdateHint(version))
     }
 
@@ -159,21 +163,22 @@ class UseCassandra : PicoBaseCommand() {
      * A switched node whose last start loaded an AxonOps agent gets the agent of its new version
      * and JDK in its drop-in, so `cassandra restart` does not load the old one. A node AxonOps
      * ships no agent for fails `use`; it runs the new version, and `start --skip-axonops` starts it.
+     * Returns the error when a node has no agent, else null.
      */
     private fun refreshAxonOpsAgents(
         switched: List<ClusterHost>,
         state: ClusterState,
-    ) {
+    ): String? {
         val unavailable = axonOpsAgents.refreshAfterSwitch(switched, state)
-        if (unavailable.isEmpty()) return
+        if (unavailable.isEmpty()) return null
         unavailable.forEach { eventBus.emit(it.error) }
-        throw CommandFailedException("cassandra use: no AxonOps agent for $version on ${unavailable.joinToString(", ") { it.host.alias }}")
+        return "no AxonOps agent for $version on ${unavailable.joinToString(", ") { it.host.alias }}"
     }
 
-    /** Applies the patch file again on [aliases], now on the version they run. */
-    private fun applyConfig(aliases: List<String>) {
-        val failedStep = reapplyPatch(commandExecutor, HostsMixin().apply { hostList = aliases.joinToString(",") }) ?: return
+    /** Applies the patch file again on [aliases], now on the version they run. Returns the error, else null. */
+    private fun applyConfig(aliases: List<String>): String? {
+        val failedStep = reapplyPatch(commandExecutor, HostsMixin().apply { hostList = aliases.joinToString(",") }) ?: return null
         eventBus.emit(Event.Cassandra.UseConfigNotApplied(version, failedStep, aliases))
-        throw CommandFailedException("cassandra use: $failedStep failed after the version switch")
+        return "$failedStep failed after the version switch"
     }
 }

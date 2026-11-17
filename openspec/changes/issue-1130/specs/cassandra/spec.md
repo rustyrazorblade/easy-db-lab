@@ -81,7 +81,11 @@ Without `--reinstall`, a `--url` that differs from the recorded URL of a tarball
 aside) SHALL fail before any node changes, and SHALL name the recorded URL and `--reinstall`.  The system MUST
 NOT detect a changed build by itself (no ETag or date check).  A failed reinstall MUST leave the
 old install and its record in place.  A reinstall of the active version of a node where Cassandra
-runs MUST fail for that node before it downloads, and MUST say to stop Cassandra first.
+runs MUST fail for that node before it downloads, and MUST say to stop Cassandra first.  On a
+node where the reinstalled version is the active one, the reinstall SHALL activate it again with
+the JDK and Python the reinstall resolved, and SHALL record that JDK as the node's active JDK, so
+`cassandra start` runs the new install on the JDK it was installed for; when that activation
+fails, the node SHALL keep its recorded JDK, and the command SHALL exit non-zero and name the node.
 
 The system MUST report success or failure per targeted host, and MUST fail the overall command
 when any targeted host fails to install, without leaving other hosts partially configured beyond
@@ -521,7 +525,7 @@ When AxonOps ships no agent for the release and the JDK of a targeted node, `cas
 
 `cassandra start --skip-axonops` SHALL start Cassandra with no AxonOps agent for that start, and SHALL NOT start `axon-agent`.  Cassandra SHALL load only the agent that the last start selected, and SHALL NOT select an agent by itself.
 
-After `cassandra use` switches a node whose last start selected an agent, `use` SHALL select the agent for the node's new release and JDK, installing it when the node does not have it, so a later `cassandra restart` does not load the agent of the old version.  A node whose last start selected no agent SHALL keep no agent.  When AxonOps ships no agent for the new release and JDK, `use` SHALL select no agent on that node, SHALL exit non-zero, and SHALL name the node and `--skip-axonops`.  When `use` cannot read the drop-in of a switched node, it SHALL exit non-zero and SHALL name the node, since that node's next restart may load the old agent.
+After `cassandra use` switches a node whose last start selected an agent, `use` SHALL select the agent for the node's new release and JDK, installing it when the node does not have it, so a later `cassandra restart` does not load the agent of the old version.  A node whose last start selected no agent SHALL keep no agent.  When AxonOps ships no agent for the new release and JDK, `use` SHALL select no agent on that node, SHALL exit non-zero, and SHALL name the node and `--skip-axonops`.  When `use` cannot read the drop-in of a switched node, it SHALL exit non-zero and SHALL name the node, since that node's next restart may load the old agent.  `use` SHALL select the agent and re-apply the configuration on every switched node whether or not the other step failed, and SHALL then exit non-zero naming each failure.
 
 #### Scenario: `use` keeps the agent in step with the version
 

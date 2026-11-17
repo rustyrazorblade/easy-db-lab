@@ -50,11 +50,12 @@ echo "Netid State  Recv-Q Send-Q Local Address:Port Peer Address:Port"
 if [[ $n -ge ${JMX_OPEN_AT:-999999} ]]; then echo "tcp   LISTEN 0      50     *:7199             *:*"; fi
 SHIM
 
-# OperationMode is NORMAL from call NORMAL_AT on.
+# OperationMode is NORMAL from call NORMAL_AT on.  Before that, as sjk does while StorageService is
+# not registered yet, each call prints a connection error on stderr.
 cat >"${BIN}/sjk-mx" <<'SHIM'
 #!/bin/bash
 n=$(count-call sjk-mx)
-if [[ $n -ge ${NORMAL_AT:-999999} ]]; then echo "NORMAL"; else echo "JOINING"; fi
+if [[ $n -ge ${NORMAL_AT:-999999} ]]; then echo "NORMAL"; else echo "sjk-poll-error" >&2; echo "JOINING"; fi
 SHIM
 
 cat >"${BIN}/systemctl" <<'SHIM'
@@ -207,6 +208,15 @@ if [[ "$OUTPUT" == *"Waiting for JMX"* && "$(tail -n 1 <<<"$OUTPUT")" == "OK" ]]
   pass "a node that reaches NORMAL prints 'Waiting for JMX' and ends with OK"
 else
   fail "expected 'Waiting for JMX' and a final OK, got: ${OUTPUT}"
+fi
+
+# The wait polls once a second and reads only the exit status, so the errors sjk prints before
+# NORMAL are not shown: each start would otherwise print one per poll.
+run_script JMX_OPEN_AT=1 NORMAL_AT=4
+if [[ "$STATUS" == "0" && "$OUTPUT" != *"sjk-poll-error"* ]]; then
+  pass "the polls before NORMAL print no sjk error"
+else
+  fail "expected no sjk error in the wait output, got ${STATUS}: ${OUTPUT}"
 fi
 
 # --- sjk-mx: the connection the JDK supports, once --------------------------------

@@ -37,7 +37,7 @@
 
 ## 6. Replacement
 
-- [x] 6.1 `NodeReplacer`: under one lock, wait for healthy, terminate and wait, K8s cleanup when registered, capacity and dry run for one instance, launch, atomic state write by alias, emit `NodeReplacing` and `NodeReplaced`.  Unit tests with `FakeInstanceFleet` and a recording state manager: terminate before launch; same alias and subnet; one host per alias in the saved state, in ordinal order; cleanup only when registered; a capacity refusal or a refused dry run fails the node with no launch
+- [x] 6.1 `NodeReplacer`: under one lock, wait for healthy, terminate and wait, capacity and dry run for one instance, launch, atomic state write by alias, emit `NodeReplacing` and `NodeReplaced`.  Unit tests with `FakeInstanceFleet` and a recording state manager: terminate before launch; same alias and subnet; one host per alias in the saved state, in ordinal order; a capacity refusal or a refused dry run fails the node with no launch.  The replacement's own pipeline deletes the alias's Node and node password once, before its first join, whatever step the old instance stopped at (`NodeBringUpTest`, one row per step)
 - [x] 6.2 State write: the replacement and the batched launch's `onHostsCreated` go through one writer under `Up`'s state lock; test that concurrent writes from many pipelines keep every host
 
 ## 7. Pipeline and coordinator

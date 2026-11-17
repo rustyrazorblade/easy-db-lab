@@ -37,16 +37,16 @@ interface InstanceFleet {
 /**
  * Replaces a node whose step failed for good or whose instance ended (design D6). It takes a
  * replacement from the [budget], then, one replacement at a time under its lock: waits for the
- * control plane to be healthy, terminates the old instance and waits until it is gone, deletes the
- * node's K8s objects when it had registered, checks capacity for one instance, launches it under
- * the same alias in the same subnet, and records it in the state by alias.
+ * control plane to be healthy, terminates the old instance and waits until it is gone, checks
+ * capacity for one instance, launches it under the same alias in the same subnet, and records it
+ * in the state by alias. The alias's K8s objects are removed by the replacement's own pipeline,
+ * just before its first join, once the control plane is open.
  *
  * Replacements are serialised because two capacity checks run together could both see room for
  * one instance; they are rare, so the lock costs nothing.
  */
 class NodeReplacer(
     private val fleet: InstanceFleet,
-    private val cleanup: (alias: String) -> Unit,
     private val state: ClusterStateWriter,
     private val budget: ReplacementBudget,
     private val health: HealthLatch,
@@ -75,13 +75,11 @@ class NodeReplacer(
     }
 
     /**
-     * Replaces [old], a [serverType] node, after [failure]. [registered] says whether its Node
-     * object may exist, so its K8s objects are deleted. An [InterruptedException] propagates.
+     * Replaces [old], a [serverType] node, after [failure]. An [InterruptedException] propagates.
      */
     fun replace(
         serverType: ServerType,
         old: ClusterHost,
-        registered: Boolean,
         failure: Failure,
     ): Outcome =
         when (val grant = budget.tryTake(old.alias)) {
@@ -100,21 +98,19 @@ class NodeReplacer(
                         grant.limit,
                     ),
                 )
-                lock.withLock { replaceNow(serverType, old, registered, grant.replacement) }
+                lock.withLock { replaceNow(serverType, old, grant.replacement) }
             }
         }
 
     private fun replaceNow(
         serverType: ServerType,
         old: ClusterHost,
-        registered: Boolean,
         replacement: Int,
     ): Outcome {
         val ordinal = requireNotNull(serverType.ordinalOf(old.alias)) { "${old.alias} is not a ${serverType.serverType} alias" }
         health.awaitHealthy()
         return try {
             fleet.terminate(old.instanceId)
-            if (registered) cleanup(old.alias)
             fleet.verifyReplacement(serverType, ordinal)
             val host = fleet.launch(serverType, ordinal)
             state.mergeHosts(serverType, listOf(host))

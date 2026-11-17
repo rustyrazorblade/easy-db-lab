@@ -201,11 +201,11 @@ A node step that fails MUST be retried under that step's policy.  When its attem
 
 1. wait until the control plane is healthy;
 2. terminate the old instance, and wait until EC2 reports it neither pending nor running;
-3. if the node had registered, delete its Node object and its K3s node password;
-4. check capacity and dry-run the launch for one instance;
-5. launch one instance with the same alias, in the subnet for that alias's ordinal, with the same instance type, AMI, tags and volumes;
-6. replace that alias's host in the cluster state with the new instance ID and addresses, in one atomic write, keeping one host per alias;
-7. start the node's pipeline again.
+3. check capacity and dry-run the launch for one instance;
+4. launch one instance with the same alias, in the subnet for that alias's ordinal, with the same instance type, AMI, tags and volumes;
+5. replace that alias's host in the cluster state with the new instance ID and addresses, in one atomic write, keeping one host per alias;
+6. start the node's pipeline again;
+7. before the replacement's first join attempt, delete the alias's Node object and its K3s node password, whatever step the old instance stopped at.  The old instance may have registered in this `up` or in an earlier one, so `up` MUST NOT skip this because the old instance did not reach its join step.  A first instance MUST NOT delete them.
 
 A replaced instance MUST always be terminated before its replacement is launched.  An instance that EC2 ends on its own (shutting-down, terminated, stopping or stopped) during any step MUST be replaced at once, with no retry.  A Cilium node image check failure MUST NOT be replaced: it MUST fail `up`, as before.  A replacement launch that fails for capacity, or whose dry run is refused, MUST fail the node and start no further replacement for it.  The control node MUST NOT be replaced: a control node step that fails after its retries MUST fail `up` at once.  Every instance launched so far MUST stay running and recorded.
 

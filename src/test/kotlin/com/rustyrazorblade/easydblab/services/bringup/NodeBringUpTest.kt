@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -8,8 +9,11 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
 import java.time.Duration
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -79,9 +83,48 @@ class NodeBringUpTest {
         assertThat(saved.map { it.alias }).containsExactly("db0", "db1", "db2")
         assertThat(saved.single { it.alias == "db1" }.instanceId).isEqualTo("i-db1-1")
         assertThat(saved.single { it.alias == "db1" }.publicIp).isEqualTo("pub-i-db1-1")
-        // It never registered, so there was nothing in the cluster to remove.
-        assertThat(h.plane.cleaned).isEmpty()
         assertThat(h.eventsOf<Event.Provision.NodeReplacing>().single().step).isEqualTo("setup")
+    }
+
+    /**
+     * Whatever step the first instance stopped at, the alias may hold a Node and a node password,
+     * left by this run or by an earlier `up` (which would make K3s refuse the replacement), so the
+     * replacement removes them once, before its first join. A first instance removes nothing.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = ["setup", "registry-tls", "join", "readiness", "ended"])
+    fun `a replacement removes its alias's old cluster objects once, before its first join`(stoppedAt: String) {
+        val h = harness(dbs = 2)
+        val first = { host: ClusterHost -> host.instanceId == "i-db1" }
+        when (stoppedAt) {
+            "readiness" -> h.plane.neverReady += h.dbs[1].privateIp
+            "ended" ->
+                h.steps.scripts["db1 setup"] = { host, _ ->
+                    if (first(host)) {
+                        h.tracker.end(host.instanceId)
+                        hang()
+                    }
+                }
+            else -> h.steps.scripts["db1 $stoppedAt"] = { host, _ -> check(!first(host)) { "$stoppedAt failed" } }
+        }
+        val cleanedAtJoin = Collections.synchronizedList(mutableListOf<String>())
+        val joinScript = h.steps.scripts["db1 join"]
+        h.steps.scripts["db1 join"] = { host, attempt ->
+            cleanedAtJoin += "${host.instanceId} ${h.plane.cleaned}"
+            joinScript?.invoke(host, attempt)
+        }
+
+        val result = h.run()
+
+        assertThat(result.nodes.values).allMatch { it is NodeEnd.Ready }
+        assertThat(
+            result.nodes
+                .getValue("db1")
+                .host.instanceId,
+        ).isEqualTo("i-db1-1")
+        assertThat(h.plane.cleaned).containsExactly("db1")
+        assertThat(cleanedAtJoin.filter { it.startsWith("i-db1 ") }).allMatch { it == "i-db1 []" }
+        assertThat(cleanedAtJoin.filter { it.startsWith("i-db1-1 ") }).containsExactly("i-db1-1 [db1]")
     }
 
     @Test
@@ -91,7 +134,6 @@ class NodeBringUpTest {
 
         val result = h.run()
 
-        assertThat(h.plane.cleaned).containsExactly("db1")
         assertThat(h.plane.registered.filter { it == "db1" }).hasSize(2)
         assertThat(result.nodes.getValue("db1").replacements).isEqualTo(1)
         assertThat(h.eventsOf<Event.Provision.NodeReplacing>().single().step).isEqualTo("readiness")

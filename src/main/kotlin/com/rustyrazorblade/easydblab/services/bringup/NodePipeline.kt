@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * One database or application node's pipeline (design D2 and D5): running, status checks, SSH,
@@ -52,7 +53,7 @@ internal class NodePipeline(
         if (!stopped.replaceable) return failed(NodeEnd.Failed(stopped.host, replacements, stopped.step, stopped.reason))
         enter(PipelineStep.REPLACING)
         val failure = NodeReplacer.Failure(stopped.step, stopped.reason)
-        return when (val outcome = run.replacer.replace(serverType, stopped.host, stopped.registered, failure)) {
+        return when (val outcome = run.replacer.replace(serverType, stopped.host, failure)) {
             is NodeReplacer.Outcome.NotReplaced -> failed(NodeEnd.Failed(stopped.host, replacements, stopped.step, outcome.reason))
             is NodeReplacer.Outcome.Replaced -> {
                 run.progress.replaced()
@@ -66,10 +67,13 @@ internal class NodePipeline(
         launched: ClusterHost,
         replacements: Int,
     ): NodeEnd {
-        var registered = false
+        // A replacement removes the alias's old Node and node password before its agent starts:
+        // the old instance may have registered in this run or in an earlier `up`.
+        // Each join attempt runs on its own thread, so the flag is shared safely across them.
+        val cleaned = AtomicBoolean(replacements == 0)
         val instance =
             InstanceRun(run, serverType, launched, ::enter) { step, reason, replaceable, host ->
-                throw Stopped(step, reason, replaceable, host, registered)
+                throw Stopped(step, reason, replaceable, host)
             }
         return instance.use {
             it.reachable()
@@ -85,8 +89,11 @@ internal class NodePipeline(
             val watch = nodes.watch(alias, it.host.privateIp)
             try {
                 run.joins.acquire().use { _ ->
-                    registered = true
                     it.step(PipelineStep.JOIN, run.timing.join) { attempt ->
+                        if (!cleaned.get()) {
+                            plane.connection.cleanup(alias)
+                            cleaned.set(true)
+                        }
                         run.ssh.withSession { run.ports.nodeSteps.join(it.host, serverType, plane.access, attempt) }
                         watch.registered.get()
                     }
@@ -129,13 +136,12 @@ internal class NodePipeline(
         return end
     }
 
-    /** A step of [host] did not succeed; [registered] says whether its Node object may exist. */
+    /** A step of [host] did not succeed. */
     private class Stopped(
         val step: PipelineStep,
         val reason: String,
         val replaceable: Boolean,
         val host: ClusterHost,
-        val registered: Boolean,
     ) : RuntimeException(reason)
 
     private companion object {

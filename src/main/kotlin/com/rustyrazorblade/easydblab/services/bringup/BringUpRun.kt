@@ -39,7 +39,6 @@ internal class BringUpRun(
     val replacer =
         NodeReplacer(
             ports.fleet,
-            { alias -> connection.getNow(null)?.cleanup(alias) },
             ports.state,
             ReplacementBudget(settings.nodeCount),
             health,

@@ -21,8 +21,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * [NodeReplacer]'s decisions (design D6): the old instance is gone before the new one launches,
- * the node's K8s objects are deleted only when it had registered, the new instance takes the old
- * alias and the saved state keeps one host per alias, a refused check or launch makes no instance,
+ * the new instance takes the old alias and the saved state keeps one host per alias, a refused check or launch makes no instance,
  * the budget is honoured, and no replacement starts while the control plane is unhealthy.
  */
 class NodeReplacerTest {
@@ -30,7 +29,6 @@ class NodeReplacerTest {
     lateinit var dir: File
 
     private val fleet = FakeInstanceFleet()
-    private val cleaned: MutableList<String> = Collections.synchronizedList(mutableListOf())
     private val health = HealthLatch()
     private val events: MutableList<Event> = Collections.synchronizedList(mutableListOf())
     private val eventBus =
@@ -64,18 +62,16 @@ class NodeReplacerTest {
         val state = ClusterState(name = "lab", versions = mutableMapOf())
         state.updateHosts(mapOf(ServerType.Cassandra to (0 until nodes).map(::host)))
         val writer = ClusterStateWriter(state, manager)
-        return NodeReplacer(fleet, { cleaned += it }, writer, budget, health, eventBus)
+        return NodeReplacer(fleet, writer, budget, health, eventBus)
     }
 
     private val failure = NodeReplacer.Failure(PipelineStep.SETUP, "setup_instance.sh exited 1")
 
-    @ParameterizedTest
-    @ValueSource(booleans = [true, false])
-    fun `the old instance is terminated before the new one launches, and K8s cleanup runs only for a registered node`(registered: Boolean) {
-        val outcome = replacer().replace(ServerType.Cassandra, host(1), registered, failure)
+    @Test
+    fun `the old instance is terminated before the new one launches`() {
+        val outcome = replacer().replace(ServerType.Cassandra, host(1), failure)
 
         assertThat(fleet.calls).containsExactly("terminate i-old1", "verify db1", "launch db1")
-        assertThat(cleaned).isEqualTo(if (registered) listOf("db1") else emptyList<String>())
         val replaced = outcome as NodeReplacer.Outcome.Replaced
         assertThat(replaced.host.alias).isEqualTo("db1")
         assertThat(replaced.host.availabilityZone).isEqualTo("us-west-2b")
@@ -84,7 +80,7 @@ class NodeReplacerTest {
 
     @Test
     fun `the saved state holds the new instance under the old alias, one host per alias, in ordinal order`() {
-        val replaced = replacer().replace(ServerType.Cassandra, host(1), registered = true, failure) as NodeReplacer.Outcome.Replaced
+        val replaced = replacer().replace(ServerType.Cassandra, host(1), failure) as NodeReplacer.Outcome.Replaced
 
         val saved = manager.load().hosts.getValue(ServerType.Cassandra)
         assertThat(saved.map { it.alias }).containsExactly("db0", "db1", "db2")
@@ -98,7 +94,7 @@ class NodeReplacerTest {
     fun `a refused capacity check or launch leaves the node with no instance and the state unchanged`(refused: String) {
         fleet.failing += refused
 
-        val outcome = replacer().replace(ServerType.Cassandra, host(1), registered = true, failure)
+        val outcome = replacer().replace(ServerType.Cassandra, host(1), failure)
 
         assertThat(outcome).isInstanceOf(NodeReplacer.Outcome.NotReplaced::class.java)
         assertThat((outcome as NodeReplacer.Outcome.NotReplaced).reason).contains("refused")
@@ -109,10 +105,10 @@ class NodeReplacerTest {
     @Test
     fun `a node that has had its replacements is not replaced, and no fleet call is made`() {
         val replacer = replacer(nodes = 100)
-        repeat(2) { replacer.replace(ServerType.Cassandra, host(1), registered = false, failure) }
+        repeat(2) { replacer.replace(ServerType.Cassandra, host(1), failure) }
         fleet.calls.clear()
 
-        val outcome = replacer.replace(ServerType.Cassandra, host(1), registered = false, failure)
+        val outcome = replacer.replace(ServerType.Cassandra, host(1), failure)
 
         assertThat((outcome as NodeReplacer.Outcome.NotReplaced).reason).contains("setup failed").contains("2 replacements")
         assertThat(fleet.calls).isEmpty()
@@ -123,7 +119,7 @@ class NodeReplacerTest {
         val replacer = replacer()
         health.markUnhealthy()
 
-        val running = CompletableFuture.supplyAsync { replacer.replace(ServerType.Cassandra, host(1), registered = false, failure) }
+        val running = CompletableFuture.supplyAsync { replacer.replace(ServerType.Cassandra, host(1), failure) }
         Thread.sleep(UNHEALTHY_WINDOW_MS)
         assertThat(fleet.calls).isEmpty()
 
@@ -139,7 +135,7 @@ class NodeReplacerTest {
         val outcomes =
             Executors.newVirtualThreadPerTaskExecutor().use { executor ->
                 (0 until nodes)
-                    .map { executor.submit<NodeReplacer.Outcome> { replacer.replace(ServerType.Cassandra, host(it), false, failure) } }
+                    .map { executor.submit<NodeReplacer.Outcome> { replacer.replace(ServerType.Cassandra, host(it), failure) } }
                     .map { it.get() }
             }
 

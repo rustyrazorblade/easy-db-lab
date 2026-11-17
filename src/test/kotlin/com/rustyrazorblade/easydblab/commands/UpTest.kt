@@ -87,6 +87,8 @@ class UpTest : UpTestFixture() {
         verify(mockK8sService).labelNode(eq("control0"), any())
         verify(mockK8sService).ensureLocalStorageClass()
         verify(mockK8sService).ensureLocalStorageWfcClass()
+        // No node was replaced, so no node's cluster objects are removed.
+        assertThat(plane.cleaned).isEmpty()
     }
 
     /**
@@ -452,8 +454,8 @@ class UpTest : UpTestFixture() {
         assertThat(replacing.alias).isEqualTo("db0")
         assertThat(replacing.step).isEqualTo("setup")
         assertThat(replacing.reason).contains("no data disk")
-        // It never registered, so it has no Node object to delete.
-        assertThat(plane.cleaned).isEmpty()
+        // An earlier `up` may have left db0's Node and node password, so the replacement removes them.
+        assertThat(plane.cleaned).containsExactly("db0")
         assertThat(events.filterIsInstance<Event.Provision.NodesFailed>()).isEmpty()
     }
 

@@ -126,11 +126,13 @@ A step that fails is retried. A node whose step still fails, or whose instance e
 it `shutting-down`, `terminated`, `stopping` or `stopped`), is replaced:
 
 1. the instance is terminated, and `up` waits until EC2 reports it gone;
-2. if the node had registered, its Node object and its `<alias>.node-password.k3s` secret are
-   deleted, so the replacement can join under the same name;
-3. a new instance launches under the same alias, in the same subnet, after the capacity checks
+2. a new instance launches under the same alias, in the same subnet, after the capacity checks
    and a dry run for that one instance;
-4. `state.json` is updated, and the new instance runs the pipeline from the start.
+3. `state.json` is updated, and the new instance runs the pipeline from the start;
+4. just before the new instance first joins, the alias's Node object and its
+   `<alias>.node-password.k3s` secret are deleted, so it can join under the same name. This
+   happens whatever step the old instance stopped at, because that instance, or one from an
+   earlier `up`, may have registered.
 
 An instance that ended is replaced at once, with no retry. A missing Cilium node fix is not
 replaced, because a new instance from the same AMI would lack the same files.

@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.NodeOrigin
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -526,12 +527,21 @@ class Init :
             .normalize()
             .toString()
 
+    /**
+     * Where this workspace's nodes come from, which decides the role selectors `--role-nodes`
+     * applies to. `init` builds AWS clusters, whose nodes it labels, so it is [NodeOrigin.OWNED];
+     * initialising a cluster the user brings (#1082) sets [NodeOrigin.BROUGHT], where every role
+     * runs on any node until it is mapped.
+     */
+    @get:JsonIgnore
+    internal var nodeOrigin: NodeOrigin = NodeOrigin.OWNED
+
     override fun execute() {
         refuseOptionsThatNeedOtherOptions()
         validateParameters()
         // Parsed before anything is cleaned or written, so a bad override or mapping leaves the directory as it was.
         val capabilities = effectiveCapabilities()
-        val roleSelectors = RoleSelectors.OWNED_NODES.withMappings(RoleSelectors.parse(roleNodes))
+        val roleSelectors = RoleSelectors.base(nodeOrigin).withMappings(RoleSelectors.parse(roleNodes))
 
         if (!clean) checkExistingFiles()
         // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker

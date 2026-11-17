@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.NodeOrigin
+import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
@@ -787,6 +789,43 @@ class InitTest : BaseKoinTest() {
                         selectors.app.labels == mapOf("pool" to "clients") &&
                         selectors.control == RoleSelectors.OWNED_NODES.control
                 },
+            )
+        }
+
+        @Test
+        fun `on a cluster the user brings, every role starts unconstrained`() {
+            Init().apply {
+                clean = true
+                nodeOrigin = NodeOrigin.BROUGHT
+            }.execute()
+
+            verify(mockClusterStateManager).save(argThat { RoleSelectors.from(this) == RoleSelectors.ANYWHERE })
+        }
+
+        @Test
+        fun `on a cluster the user brings, --role-nodes constrains only the role it maps`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--role-nodes", "db=pool=databases")
+            command.clean = true
+            command.nodeOrigin = NodeOrigin.BROUGHT
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    RoleSelectors.from(this) == RoleSelectors.ANYWHERE.copy(db = NodeSelector(mapOf("pool" to "databases")))
+                },
+            )
+        }
+
+        @Test
+        fun `--role-nodes with an empty selector unmaps that role`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--role-nodes", "app=")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { RoleSelectors.from(this) == RoleSelectors.OWNED_NODES.copy(app = NodeSelector.NONE) },
             )
         }
 

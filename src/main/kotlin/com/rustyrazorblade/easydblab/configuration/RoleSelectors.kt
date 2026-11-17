@@ -72,7 +72,7 @@ data class RoleSelectors(
         /** The option a user maps a role with. */
         const val OPTION = "--role-nodes"
 
-        private const val EXPECTED_FORM = "<role>=<key=value>[,<key=value>...]"
+        private const val EXPECTED_FORM = "<role>=<key=value>[,<key=value>...] (or <role>= for any node)"
 
         /** The nodes easy-db-lab builds (AWS and local): one `type=<role>` label per node. */
         val OWNED_NODES =
@@ -84,6 +84,13 @@ data class RoleSelectors(
 
         /** A cluster the user brings with no mapping: every role runs on any node. */
         val ANYWHERE = RoleSelectors()
+
+        /** The selectors a new workspace starts from, before `--role-nodes`, for nodes of [origin]. */
+        fun base(origin: NodeOrigin): RoleSelectors =
+            when (origin) {
+                NodeOrigin.OWNED -> OWNED_NODES
+                NodeOrigin.BROUGHT -> ANYWHERE
+            }
 
         /**
          * The selectors [state] records. A state that records none (written before they existed, or
@@ -112,8 +119,9 @@ data class RoleSelectors(
         private fun parseOne(value: String): Pair<ServerType, NodeSelector> {
             val roleName = value.substringBefore("=")
             val role = ServerType.entries.firstOrNull { it.serverType == roleName }
-            val pairs = value.substringAfter("=", "").split(",")
-            val labels = pairs.map(::parseLabel)
+            val selector = value.substringAfter("=", "")
+            // `<role>=` with nothing after it unmaps the role: its pods run on any node.
+            val labels = if (selector.isEmpty()) emptyList() else selector.split(",").map(::parseLabel)
             require(role != null && "=" in value && labels.all { it != null }) {
                 "Invalid $OPTION '$value': expected $EXPECTED_FORM, with <role> one of " +
                     "${ServerType.entries.joinToString(", ") { it.serverType }}."
@@ -126,4 +134,14 @@ data class RoleSelectors(
             return parts.takeIf { it.size == 2 && it.all(String::isNotBlank) }?.let { it[0].trim() to it[1].trim() }
         }
     }
+}
+
+/**
+ * Where a workspace's nodes come from, which decides the role selectors it starts from: nodes
+ * easy-db-lab builds (AWS, local) carry one `type=<role>` label each; a cluster the user brings
+ * carries no label easy-db-lab knows, so each role runs anywhere until `init --role-nodes` maps it.
+ */
+enum class NodeOrigin {
+    OWNED,
+    BROUGHT,
 }

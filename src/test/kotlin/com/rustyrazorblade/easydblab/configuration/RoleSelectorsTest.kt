@@ -55,12 +55,26 @@ class RoleSelectorsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["db=bad", "db", "db=", "db==x", "db=k=", "db=k=v,", "stress=k=v", "db=k=v,bad"])
+    @ValueSource(strings = ["db=bad", "db", "db==x", "db=k=", "db=k=v,", "stress=k=v", "db=k=v,bad"])
     fun `a malformed role mapping is refused, naming the value and the expected form`(value: String) {
         assertThatThrownBy { RoleSelectors.parse(listOf(value)) }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining(value)
             .hasMessageContaining("<role>=<key=value>")
+    }
+
+    @Test
+    fun `a role mapped to nothing is unconstrained`() {
+        val mapped = RoleSelectors.OWNED_NODES.withMappings(RoleSelectors.parse(listOf("app=")))
+
+        assertThat(mapped.app).isEqualTo(NodeSelector.NONE)
+        assertThat(mapped.db).isEqualTo(RoleSelectors.OWNED_NODES.db)
+    }
+
+    @Test
+    fun `the base selectors follow where the nodes come from`() {
+        assertThat(RoleSelectors.base(NodeOrigin.OWNED)).isEqualTo(RoleSelectors.OWNED_NODES)
+        assertThat(RoleSelectors.base(NodeOrigin.BROUGHT)).isEqualTo(RoleSelectors.ANYWHERE)
     }
 
     @Test

@@ -95,8 +95,9 @@
           "editorMode": "code",
           "expr": "label_replace(min by (cluster) (up{job=\"k3s-etcd\", cluster=~\"$cluster\"}) or 0 * max by (cluster) (up{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
-          "range": true,
-          "refId": "A"
+          "range": false,
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "etcd up",
@@ -167,8 +168,9 @@
           "editorMode": "code",
           "expr": "label_replace(100 * max by (cluster) (etcd_mvcc_db_total_size_in_bytes{job=\"k3s-etcd\", cluster=~\"$cluster\"}) / on (cluster) max by (cluster) (etcd_server_quota_backend_bytes{job=\"k3s-etcd\", cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
-          "range": true,
-          "refId": "A"
+          "range": false,
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "DB size, % of quota",
@@ -234,8 +236,9 @@
           "editorMode": "code",
           "expr": "label_replace(sum by (cluster) (round(increase(etcd_server_leader_changes_seen_total{job=\"k3s-etcd\", cluster=~\"$cluster\"}[$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
-          "range": true,
-          "refId": "A"
+          "range": false,
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Leader changes (range)",
@@ -301,8 +304,9 @@
           "editorMode": "code",
           "expr": "label_replace(sum by (cluster) (round(increase(etcd_server_proposals_failed_total{job=\"k3s-etcd\", cluster=~\"$cluster\"}[$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
-          "range": true,
-          "refId": "A"
+          "range": false,
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Failed proposals (range)",

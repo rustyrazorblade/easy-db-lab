@@ -624,6 +624,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         clusterName: String,
     ): Map<String, String>? {
         val labels = discovered.toMutableMap()
+
         fun expand(text: String) = text.replace("\${env:HOSTNAME}", hostname).replace("\${env:CLUSTER_NAME}", clusterName)
         for (rule in rules) {
             when (rule.action) {

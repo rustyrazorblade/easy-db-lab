@@ -87,12 +87,18 @@ jobs:
 
   # The Pyroscope Java agent image kit and stress pods copy their agent jar from
   # (Constants.Kit.Agents.PYROSCOPE_IMAGE). Its tag is the agent version and its content is fixed by
-  # the Dockerfile's checksum, so republishing the same tag on every run rebuilds identical content.
+  # the Dockerfile's checksum and pinned base images. It is published only from trusted refs (a tag
+  # push, or PR Checks passing on a push to main, never a pull request's branch), and a version that
+  # is already published is never overwritten.
   publish-pyroscope-agent:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'push' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository)
     permissions:
       contents: read
       packages: write
@@ -122,7 +128,19 @@ jobs:
           VERSION=$(sed -n 's/^ARG PYROSCOPE_VERSION=//p' docker/pyroscope-java-agent/Dockerfile)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Skip a version that is already published
+        id: published
+        run: |
+          IMAGE="ghcr.io/rustyrazorblade/pyroscope-java-agent:${{ steps.version.outputs.version }}"
+          if docker buildx imagetools inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "$IMAGE is already published; not overwriting it."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push the multi-arch agent image
+        if: steps.published.outputs.exists == 'false'
         uses: docker/build-push-action@v6
         with:
           context: docker/pyroscope-java-agent

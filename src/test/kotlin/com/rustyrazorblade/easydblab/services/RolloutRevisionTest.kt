@@ -12,7 +12,8 @@ import org.junit.jupiter.api.Test
 /**
  * [RolloutRevision] keeps only the pods of a workload's latest template. A rollout that replaces
  * crash-looping pods with a fixed template must not be failed by the old pods it is replacing, so
- * the rollout wait inspects only the new ones.
+ * the rollout wait inspects only the new ones, and none at all until the controller has observed
+ * the latest generation.
  */
 class RolloutRevisionTest {
     private fun dsPod(
@@ -63,6 +64,9 @@ class RolloutRevisionTest {
                 .withNewMetadata()
                 .withGeneration(3)
                 .endMetadata()
+                .withNewStatus()
+                .withObservedGeneration(3)
+                .endStatus()
                 .build()
         val pods = listOf(dsPod("old", "2"), dsPod("new", "3"), dsPod("unlabelled", null))
 
@@ -78,10 +82,49 @@ class RolloutRevisionTest {
                 .withGeneration(4)
                 .addToAnnotations("deprecated.daemonset.template.generation", "3")
                 .endMetadata()
+                .withNewStatus()
+                .withObservedGeneration(4)
+                .endStatus()
                 .build()
         val pods = listOf(dsPod("old", "2"), dsPod("current", "3"))
 
         assertThat(RolloutRevision.currentPods(daemonSet, pods).map { it.metadata.name }).containsExactly("current")
+    }
+
+    @Test
+    fun `a DaemonSet whose controller has not observed its latest generation has no current pods`() {
+        // Just applied: the template is at 4, but the controller still acts on 3.
+        val daemonSet =
+            DaemonSetBuilder()
+                .withNewMetadata()
+                .withGeneration(4)
+                .addToAnnotations("deprecated.daemonset.template.generation", "4")
+                .endMetadata()
+                .withNewStatus()
+                .withObservedGeneration(3)
+                .endStatus()
+                .build()
+
+        assertThat(RolloutRevision.currentPods(daemonSet, listOf(dsPod("old", "3"), dsPod("new", "4")))).isEmpty()
+    }
+
+    @Test
+    fun `a Deployment whose controller has not observed its latest generation has no current pods`() {
+        // Just applied: the revision annotation still names the old ReplicaSet, whose pods crash.
+        val deployment =
+            DeploymentBuilder()
+                .withNewMetadata()
+                .withUid("deploy-uid")
+                .withGeneration(2)
+                .addToAnnotations("deployment.kubernetes.io/revision", "1")
+                .endMetadata()
+                .withNewStatus()
+                .withObservedGeneration(1)
+                .endStatus()
+                .build()
+
+        assertThat(RolloutRevision.currentPods(deployment, listOf(replicaSet("rs-1", "1")), listOf(rsPod("old", "rs-1"))))
+            .isEmpty()
     }
 
     @Test

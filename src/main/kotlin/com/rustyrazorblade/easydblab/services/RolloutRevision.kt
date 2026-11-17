@@ -13,6 +13,11 @@ import io.fabric8.kubernetes.api.model.apps.ReplicaSet
  * replaces crash-looping pods with a fixed template still has the old, crashing pods until they are
  * replaced, and those must not fail it. A DaemonSet labels each pod with the generation it was made
  * from; a Deployment's current pods belong to the ReplicaSet at the Deployment's revision.
+ *
+ * Until the controller has observed the workload's latest generation, no pod is current. The
+ * Deployment controller moves the revision annotation only when it syncs the new spec, so right after
+ * an apply the annotation still names the old ReplicaSet; judging its crashing pods then would fail
+ * the very rollout that replaces them. The same guard holds for a DaemonSet, for symmetry.
  */
 object RolloutRevision {
     private const val REPLICA_SET_KIND = "ReplicaSet"
@@ -20,12 +25,13 @@ object RolloutRevision {
     /**
      * The pods in [pods] made from [daemonSet]'s current template. The template's generation is the
      * controller's annotation, which a spec change outside the template does not move; only when it is
-     * missing does `metadata.generation` stand in.
+     * missing does `metadata.generation` stand in. Empty until the controller observed the latest generation.
      */
     fun currentPods(
         daemonSet: DaemonSet,
         pods: List<Pod>,
     ): List<Pod> {
+        if (!RolloutStatus.observed(daemonSet.metadata?.generation, daemonSet.status?.observedGeneration)) return emptyList()
         val generation =
             daemonSet.metadata
                 ?.annotations
@@ -37,13 +43,15 @@ object RolloutRevision {
 
     /**
      * The pods in [pods] owned by the ReplicaSet of [deployment]'s current revision, found among
-     * [replicaSets]. Empty while the controller has not yet given the Deployment a revision.
+     * [replicaSets]. Empty while the controller has not yet given the Deployment a revision, or has
+     * not yet observed its latest generation.
      */
     fun currentPods(
         deployment: Deployment,
         replicaSets: List<ReplicaSet>,
         pods: List<Pod>,
     ): List<Pod> {
+        if (!RolloutStatus.observed(deployment.metadata?.generation, deployment.status?.observedGeneration)) return emptyList()
         val revision = revisionOf(deployment.metadata?.annotations) ?: return emptyList()
         val uid = deployment.metadata?.uid ?: return emptyList()
         val current =

@@ -11,10 +11,12 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.time.Duration
+import java.util.concurrent.TimeUnit
 
 /**
  * Proves [DefaultK8sNamespaceOperations.waitForRollouts] against a real K3s cluster.
@@ -47,6 +49,9 @@ class RolloutWaitIntegrationTest {
     private lateinit var client: KubernetesClient
     private lateinit var ops: DefaultK8sNamespaceOperations
 
+    /** Every workload a test created, deleted after it so the shared cluster keeps no broken pods. */
+    private val created = mutableListOf<WorkloadRef>()
+
     @BeforeAll
     fun setup() {
         SharedK3s.createNamespace(NAMESPACE)
@@ -54,6 +59,29 @@ class RolloutWaitIntegrationTest {
         // Each operation closes the client it is handed, so every call gets a fresh one.
         val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         ops = DefaultK8sNamespaceOperations(clientProvider, EventBus(), podPollInterval = Duration.ofMillis(500))
+    }
+
+    @AfterEach
+    fun deleteWorkloads() {
+        created.forEach { ref ->
+            when (ref.kind) {
+                WorkloadKind.Deployment ->
+                    client
+                        .apps()
+                        .deployments()
+                        .inNamespace(NAMESPACE)
+                        .withName(ref.name)
+                        .delete()
+                WorkloadKind.DaemonSet ->
+                    client
+                        .apps()
+                        .daemonSets()
+                        .inNamespace(NAMESPACE)
+                        .withName(ref.name)
+                        .delete()
+            }
+        }
+        created.clear()
     }
 
     @AfterAll
@@ -83,6 +111,7 @@ class RolloutWaitIntegrationTest {
     private fun createDeployment(
         name: String,
         readinessCommand: String = "true",
+        spec: PodSpec = podSpec(readinessCommand),
     ) {
         val deployment =
             DeploymentBuilder()
@@ -99,11 +128,12 @@ class RolloutWaitIntegrationTest {
                 .withNewMetadata()
                 .addToLabels("app", name)
                 .endMetadata()
-                .withSpec(podSpec(readinessCommand))
+                .withSpec(spec)
                 .endTemplate()
                 .endSpec()
                 .build()
         client.resource(deployment).create()
+        created += WorkloadRef(WorkloadKind.Deployment, name)
     }
 
     private fun createDaemonSet(
@@ -129,6 +159,7 @@ class RolloutWaitIntegrationTest {
                 .endSpec()
                 .build()
         client.resource(daemonSet).create()
+        created += WorkloadRef(WorkloadKind.DaemonSet, name)
     }
 
     /** Names of the app's pods that are not terminating, paired with whether each is Ready. */
@@ -190,16 +221,35 @@ class RolloutWaitIntegrationTest {
         assertThat(after.values).containsOnly(true)
     }
 
+    /** A pod spec whose container exits at once, so the kubelet puts it in CrashLoopBackOff. */
+    private fun crashingSpec(): PodSpec =
+        PodSpecBuilder(podSpec("true"))
+            .editFirstContainer()
+            .withCommand("sh", "-c", "exit 1")
+            .endContainer()
+            .build()
+
+    /** Waits until a pod of [app] has a container in CrashLoopBackOff, so a fix lands on broken pods. */
+    private fun awaitCrashLoop(app: String) {
+        client
+            .pods()
+            .inNamespace(NAMESPACE)
+            .withLabel("app", app)
+            .informOnCondition { pods -> pods.any { K8sPodUtils.failureOf(it)?.contains("CrashLoopBackOff") == true } }
+            .get(FAIL_FAST_LIMIT_SECONDS, TimeUnit.SECONDS)
+    }
+
     /**
-     * Waits on DaemonSet [name] with the long [TIMEOUT_SECONDS] budget and asserts it failed well
-     * before it, with a message naming the workload, a pod of it, the node and [reason].
+     * Waits on [workloads] with the long [TIMEOUT_SECONDS] budget and asserts it failed well before
+     * it, with a message naming [ref], a pod of it, the node and [reason].
      */
     private fun assertFailsFast(
-        name: String,
+        ref: WorkloadRef,
         reason: String,
+        workloads: List<WorkloadRef> = listOf(ref),
     ) {
         val started = System.nanoTime()
-        val result = ops.waitForRollouts(listOf(WorkloadRef(WorkloadKind.DaemonSet, name)), NAMESPACE, TIMEOUT_SECONDS)
+        val result = ops.waitForRollouts(workloads, NAMESPACE, TIMEOUT_SECONDS)
         val elapsed = Duration.ofNanos(System.nanoTime() - started)
 
         assertThat(result.isFailure).isTrue()
@@ -212,8 +262,8 @@ class RolloutWaitIntegrationTest {
                 .single()
                 .metadata.name
         assertThat(result.exceptionOrNull())
-            .hasMessageContaining("DaemonSet/$name")
-            .hasMessageContaining("Pod $name-")
+            .hasMessageContaining(ref.toString())
+            .hasMessageContaining("Pod ${ref.name}-")
             .hasMessageContaining("node $nodeName")
             .hasMessageContaining(reason)
     }
@@ -231,21 +281,84 @@ class RolloutWaitIntegrationTest {
         createDaemonSet(name, spec)
 
         // ErrImagePull and ImagePullBackOff alternate; whichever the poll sees first ends the wait.
-        assertFailsFast(name, "ImagePull")
+        assertFailsFast(WorkloadRef(WorkloadKind.DaemonSet, name), "ImagePull")
     }
 
     @Test
     fun `fails at once naming the pod when a DaemonSet's container exits at once`() {
         val name = "rollout-crash"
-        val spec =
-            PodSpecBuilder(podSpec("true"))
-                .editFirstContainer()
-                .withCommand("sh", "-c", "exit 1")
-                .endContainer()
-                .build()
-        createDaemonSet(name, spec)
+        createDaemonSet(name, crashingSpec())
 
-        assertFailsFast(name, "CrashLoopBackOff")
+        assertFailsFast(WorkloadRef(WorkloadKind.DaemonSet, name), "CrashLoopBackOff")
+    }
+
+    @Test
+    fun `fails at once naming the pod when a Deployment's container exits at once`() {
+        val name = "rollout-deploy-crash"
+        createDeployment(name, spec = crashingSpec())
+
+        assertFailsFast(WorkloadRef(WorkloadKind.Deployment, name), "CrashLoopBackOff")
+    }
+
+    @Test
+    fun `fails naming the broken workload when it is waited on with a healthy one`() {
+        val healthy = "rollout-mixed-healthy"
+        val broken = "rollout-mixed-broken"
+        createDaemonSet(healthy)
+        createDeployment(broken, spec = crashingSpec())
+        val brokenRef = WorkloadRef(WorkloadKind.Deployment, broken)
+
+        assertFailsFast(brokenRef, "CrashLoopBackOff", listOf(WorkloadRef(WorkloadKind.DaemonSet, healthy), brokenRef))
+    }
+
+    @Test
+    fun `a fixed template replacing a crash-looping Deployment rolls out`() {
+        val name = "rollout-deploy-fixed"
+        createDeployment(name, spec = crashingSpec())
+        awaitCrashLoop(name)
+
+        client
+            .apps()
+            .deployments()
+            .inNamespace(NAMESPACE)
+            .withName(name)
+            .edit {
+                DeploymentBuilder(it)
+                    .editSpec()
+                    .editTemplate()
+                    .withSpec(podSpec("true"))
+                    .endTemplate()
+                    .endSpec()
+                    .build()
+            }
+        awaitRollout(WorkloadRef(WorkloadKind.Deployment, name))
+
+        assertThat(livePods(name).values).containsExactly(true)
+    }
+
+    @Test
+    fun `a fixed template replacing a crash-looping DaemonSet rolls out`() {
+        val name = "rollout-ds-fixed"
+        createDaemonSet(name, crashingSpec())
+        awaitCrashLoop(name)
+
+        client
+            .apps()
+            .daemonSets()
+            .inNamespace(NAMESPACE)
+            .withName(name)
+            .edit {
+                DaemonSetBuilder(it)
+                    .editSpec()
+                    .editTemplate()
+                    .withSpec(podSpec("true"))
+                    .endTemplate()
+                    .endSpec()
+                    .build()
+            }
+        awaitRollout(WorkloadRef(WorkloadKind.DaemonSet, name))
+
+        assertThat(livePods(name).values).containsExactly(true)
     }
 
     @Test

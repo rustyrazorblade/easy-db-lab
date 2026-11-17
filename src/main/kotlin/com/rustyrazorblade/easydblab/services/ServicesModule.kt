@@ -64,6 +64,7 @@ import com.rustyrazorblade.easydblab.services.cassandraversions.DefaultVersionSo
 import com.rustyrazorblade.easydblab.services.cassandraversions.VersionSources
 import com.rustyrazorblade.easydblab.services.documents.DefaultDocumentService
 import com.rustyrazorblade.easydblab.services.documents.DocumentService
+import com.rustyrazorblade.easydblab.services.stress.StressTargetResolver
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -255,6 +256,7 @@ val servicesModule =
         // Explicit single (not singleOf) so the jobPollInterval constructor default applies
         // instead of Koin trying to resolve a Duration binding.
         single<StressJobService> { DefaultStressJobService(get(), get(), get(), get()) }
+        factory { StressTargetResolver() }
         // Explicit single (not singleOf) so the maxConcurrency constructor default applies
         // instead of Koin trying to resolve an Int binding.
         single { HostOperationsService(get()) }

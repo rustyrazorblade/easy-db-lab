@@ -42,6 +42,7 @@ import picocli.CommandLine.Parameters
 class StressStart : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val stressJobService: StressJobService by inject()
+    private val stressTargetResolver: StressTargetResolver by inject()
 
     @Option(
         names = ["--name", "-n"],
@@ -68,7 +69,7 @@ class StressStart : PicoBaseCommand() {
     var stressArgs: List<String> = emptyList()
 
     override fun execute() {
-        val target = StressTargetResolver().resolve(clusterState, context.workingDirectory)
+        val target = stressTargetResolver.resolve(clusterState, context.workingDirectory)
         val contactPoints = target.contactPoint
         log.info { "Cassandra contact point: $contactPoints:${target.port}, datacenter ${target.datacenter}" }
 

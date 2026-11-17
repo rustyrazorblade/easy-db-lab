@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.StartedStressJob
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.stress.StressTarget
+import com.rustyrazorblade.easydblab.services.stress.StressTargetResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -68,6 +69,8 @@ class StressStartTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
+                factory { StressTargetResolver() }
+
                 single {
                     mock<StressJobService>().also {
                         mockStressJobService = it

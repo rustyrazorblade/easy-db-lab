@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.services.DefaultStressJobService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.stress.StressTargetResolver
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -47,6 +48,7 @@ class StressStartImagePullTest : BaseKoinTest() {
             module {
                 single { clusterStateManager }
                 single { TemplateService(get(), get()) }
+                factory { StressTargetResolver() }
                 single<StressJobService> {
                     DefaultStressJobService(k8sService, get(), get(), get(), podReadyPollInterval = Duration.ZERO)
                 }

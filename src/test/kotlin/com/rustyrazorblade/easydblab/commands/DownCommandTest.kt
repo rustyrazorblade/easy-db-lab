@@ -184,14 +184,14 @@ class DownCommandTest : BaseKoinTest() {
     @Nested
     inner class SpecificVpcMode {
         @Test
-        fun `execute tears down specific VPC`() {
-            whenever(mockTeardownService.teardownVpc(eq("vpc-specific"), eq(true)))
+        fun `execute tears down a named VPC by its tags when no state names it`() {
+            whenever(mockTeardownService.teardownVpcByTags(eq("vpc-specific"), eq(true)))
                 .thenReturn(
                     TeardownResult.success(
                         DiscoveredResources(vpcId = "vpc-specific", instanceIds = listOf("i-1")),
                     ),
                 )
-            whenever(mockTeardownService.teardownVpc(eq("vpc-specific"), eq(false)))
+            whenever(mockTeardownService.teardownVpcByTags(eq("vpc-specific"), eq(false)))
                 .thenReturn(TeardownResult.success(DiscoveredResources(vpcId = "vpc-specific")))
 
             val command = Down()
@@ -199,7 +199,7 @@ class DownCommandTest : BaseKoinTest() {
             command.autoApprove = true
             command.execute()
 
-            verify(mockTeardownService).teardownVpc("vpc-specific", false)
+            verify(mockTeardownService).teardownVpcByTags("vpc-specific", false)
         }
     }
 

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -155,6 +156,91 @@ class AwsInfrastructureServiceTest {
             assertThat(result.success).isTrue()
             verify(vpcService, never()).deleteVpc(any())
             verify(vpcService, never()).deleteRoutesToInternetGateway(any(), any())
+        }
+    }
+
+    /**
+     * `down <vpc-id>` with no cluster state cannot tell a VPC easy-db-lab created from one it did
+     * not, so the VPC's own tags decide: an untagged VPC keeps its place and loses only the
+     * resources that carry an easy-db-lab ClusterId tag.
+     */
+    @Nested
+    inner class TeardownVpcByTags {
+        private val vpcId = "vpc-by-tags"
+        private val received = CopyOnWriteArrayList<Event>()
+
+        @BeforeEach
+        fun stubDiscovery() {
+            eventBus.addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        received += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+            whenever(vpcService.getVpcName(vpcId)).thenReturn("someone-elses-vpc")
+            whenever(emrService.findClustersInVpc(any(), any())).thenReturn(emptyList())
+            whenever(openSearchService.findDomainsInVpc(any())).thenReturn(emptyList())
+        }
+
+        @Test
+        fun `a VPC with no easy-db-lab tag loses only its tagged resources and is kept and reported`() {
+            whenever(vpcService.getVpcTags(vpcId)).thenReturn(mapOf("Name" to "someone-elses-vpc"))
+            whenever(vpcService.findEasyDbLabResourcesInVpc(vpcId))
+                .thenReturn(
+                    ClusterVpcResources(
+                        instanceIds = listOf("i-tagged"),
+                        subnetIds = listOf("subnet-tagged"),
+                        securityGroupIds = listOf("sg-tagged"),
+                        internetGatewayId = "igw-tagged",
+                        routeTableIds = listOf("rtb-tagged"),
+                    ),
+                )
+
+            val result = service.teardownVpcByTags(vpcId)
+
+            assertThat(result.success).isTrue()
+            verify(vpcService).terminateInstances(listOf("i-tagged"))
+            verify(vpcService).deleteSubnet("subnet-tagged")
+            verify(vpcService).deleteSecurityGroup("sg-tagged")
+            verify(vpcService).deleteInternetGateway("igw-tagged")
+            verify(vpcService, never()).deleteVpc(any())
+            verify(vpcService, never()).findInstancesInVpc(any())
+            verify(vpcService, never()).findSubnetsInVpc(any())
+            assertThat(received).contains(Event.Infra.VpcKept(vpcId))
+        }
+
+        @Test
+        fun `a dry run on a VPC with no easy-db-lab tag previews the tagged resources as kept`() {
+            whenever(vpcService.getVpcTags(vpcId)).thenReturn(emptyMap())
+            whenever(vpcService.findEasyDbLabResourcesInVpc(vpcId))
+                .thenReturn(ClusterVpcResources(instanceIds = listOf("i-tagged")))
+
+            val previewed = service.teardownVpcByTags(vpcId, dryRun = true).resourcesDeleted.single()
+
+            assertThat(previewed.ownsVpc).isFalse()
+            assertThat(previewed.instanceIds).containsExactly("i-tagged")
+            assertThat(previewed.summary()).contains("kept")
+            verify(vpcService, never()).terminateInstances(any())
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @Test
+        fun `a VPC easy-db-lab tagged is torn down whole, VPC included`() {
+            whenever(vpcService.getVpcTags(vpcId))
+                .thenReturn(mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
+            setupEmptyResourcesFor(vpcId)
+            whenever(vpcService.findInstancesInVpc(vpcId)).thenReturn(listOf("i-1"))
+
+            val result = service.teardownVpcByTags(vpcId)
+
+            assertThat(result.success).isTrue()
+            verify(vpcService).terminateInstances(listOf("i-1"))
+            verify(vpcService).deleteVpc(vpcId)
+            verify(vpcService, never()).findEasyDbLabResourcesInVpc(any())
+            assertThat(received).noneMatch { it is Event.Infra.VpcKept }
         }
     }
 

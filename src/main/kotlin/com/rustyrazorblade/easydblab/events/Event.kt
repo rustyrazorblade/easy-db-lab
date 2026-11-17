@@ -1445,6 +1445,16 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcKept")
+        data class VpcKept(
+            val vpcId: String,
+        ) : Infra {
+            override fun toDisplayString(): String =
+                "VPC $vpcId carries no easy-db-lab tags, so it was not created by easy-db-lab and is kept; " +
+                    "only the resources tagged with an easy-db-lab ClusterId are removed"
+        }
+
+        @Serializable
         @SerialName("Infra.PackerVpcSkipping")
         data class PackerVpcSkipping(
             val vpcId: String,

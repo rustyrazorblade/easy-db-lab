@@ -65,6 +65,7 @@ class DownDryRunTest : BaseKoinTest() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         whenever(teardownService.teardownVpc(eq("vpc-123"), any())).thenReturn(TeardownResult.success(resources))
+        whenever(teardownService.teardownVpcByTags(eq("vpc-123"), any())).thenReturn(TeardownResult.success(resources))
         whenever(teardownService.teardownAllTagged(any(), any())).thenReturn(TeardownResult.success(listOf(resources)))
         whenever(teardownService.teardownPackerInfrastructure(any())).thenReturn(TeardownResult.success(resources))
 
@@ -108,6 +109,7 @@ class DownDryRunTest : BaseKoinTest() {
     fun `a dry run that finds nothing to remove changes nothing`(mode: String) {
         val empty = TeardownResult(success = true, resourcesDeleted = emptyList())
         whenever(teardownService.teardownVpc(eq("vpc-123"), any())).thenReturn(empty)
+        whenever(teardownService.teardownVpcByTags(eq("vpc-123"), any())).thenReturn(empty)
         whenever(teardownService.teardownAllTagged(any(), any())).thenReturn(empty)
         whenever(teardownService.teardownPackerInfrastructure(any())).thenReturn(empty)
 

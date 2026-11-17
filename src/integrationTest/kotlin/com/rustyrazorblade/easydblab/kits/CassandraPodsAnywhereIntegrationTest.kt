@@ -193,7 +193,6 @@ class CassandraPodsAnywhereIntegrationTest {
         whenever(stateManager.load()).thenReturn(
             ClusterState(
                 name = "cassandra-pods-anywhere",
-                versions = mutableMapOf(),
                 // The sidecar configuration names the store; nothing here reads or writes it.
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", name = "cassandra-pods-anywhere"),

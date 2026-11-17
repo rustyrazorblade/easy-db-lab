@@ -12,8 +12,9 @@ import com.rustyrazorblade.easydblab.network.Ipv4Cidr
  * with `init --client-network` (for a CNI, such as EKS VPC-CNI, whose pods take node-network
  * addresses and so have no pod CIDR). The result is recorded in state at `init`.
  *
- * Not called on the nodes easy-db-lab builds, whose networks are the VPC and the K3s cluster CIDR
- * ([ClientNetworks.from]). `init --kubeconfig` (#1082) calls it.
+ * `Init` calls it, before anything is written, when it is given a brought cluster's API. It is not
+ * called on the nodes easy-db-lab builds, whose networks are the VPC and the K3s cluster CIDR
+ * ([ClientNetworks.from]). The `init --kubeconfig` option that hands `Init` that API is #1082.
  *
  * @param clientFactory builds the client for the cluster named by the [KubeApi]
  */

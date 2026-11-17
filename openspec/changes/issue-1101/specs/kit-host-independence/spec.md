@@ -59,7 +59,7 @@ A kit step that connects to a node over SSH SHALL run only when `EDL_NODE_SSH` r
 
 ### Requirement: Database kits allow the environment's client networks
 
-ClickHouse's `default` user networks and Postgres's `pg_hba` trust lines SHALL list the environment's client networks, not a fixed `10.0.0.0/8`. On AWS these SHALL be the VPC CIDR and the K3s cluster CIDR (`Constants.K3s.CLUSTER_CIDR`, passed explicitly to K3s). Elsewhere they SHALL be probed at `init` from the nodes' pod CIDRs and InternalIPs, plus each `init --client-network <cidr>`. The set SHALL be recorded in state.
+ClickHouse's `default` user networks and Postgres's `pg_hba` trust lines SHALL list the environment's client networks, not a fixed `10.0.0.0/8`. On AWS these SHALL be the VPC CIDR and the K3s cluster CIDR (`Constants.K3s.CLUSTER_CIDR`, passed explicitly to K3s). Elsewhere they SHALL be probed at `init` from the nodes' pod CIDRs and InternalIPs, plus each `init --client-network <cidr>`, before anything is cleaned or written, whenever `init` is given the API of a cluster the user brings (the `init --kubeconfig` option that supplies it is #1082). The set SHALL be recorded in state.
 
 #### Scenario: ClickHouse allows the AWS VPC and pod CIDRs
 - **GIVEN** an AWS cluster with `init --cidr 172.16.0.0/16`

@@ -99,6 +99,8 @@ val servicesModule =
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
         factory { KitStorageResolver(get(), get()) }
+        // Run by `init` on a cluster the user brings; the nodes easy-db-lab builds need no probe.
+        factory { ClientNetworkProbe(get()) }
         // Where helm and kubectl run follows the recorded environment: over SSH on the control node, or
         // locally through the workspace bin/ wrappers. A factory, resolved from state.json each time,
         // so an `init` inside the REPL or the server switches it for the next command. The SSH form's

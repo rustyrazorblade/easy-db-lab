@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
-import com.rustyrazorblade.easydblab.configuration.NodeOrigin
 import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
@@ -18,6 +17,8 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.kubernetes.KubeApi
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
@@ -27,8 +28,16 @@ import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.ClientNetworkProbe
+import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
+import io.fabric8.kubernetes.api.model.Node
+import io.fabric8.kubernetes.api.model.NodeBuilder
+import io.fabric8.kubernetes.api.model.NodeList
+import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation
+import io.fabric8.kubernetes.client.dsl.Resource
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -41,12 +50,36 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Path
+
+/** The API of a cluster the user brings, as `init --kubeconfig` (#1082) gives it. */
+private val BROUGHT_API = KubeApi(Path.of("/brought/kubeconfig"), "brought")
+
+/** The brought cluster's one node: pod CIDR `10.244.0.0/24`, InternalIP `192.168.1.5`. */
+private val BROUGHT_NODE =
+    NodeBuilder()
+        .withNewSpec()
+        .withPodCIDRs("10.244.0.0/24")
+        .endSpec()
+        .withNewStatus()
+        .addNewAddress()
+        .withType("InternalIP")
+        .withAddress("192.168.1.5")
+        .endAddress()
+        .addNewAddress()
+        .withType("Hostname")
+        .withAddress("node0")
+        .endAddress()
+        .endStatus()
+        .build()
 
 class InitTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -70,6 +103,19 @@ class InitTest : BaseKoinTest() {
                         }
                     }
                 }
+                // The real probe, over a client that reports one node as the scenario's cluster does.
+                single {
+                    ClientNetworkProbe(
+                        object : KubernetesClientFactory {
+                            override fun createClient(api: KubeApi): KubernetesClient {
+                                probedApis += api
+                                val nodes = mock<NonNamespaceOperation<Node, NodeList, Resource<Node>>>()
+                                whenever(nodes.list()).thenReturn(NodeList().apply { items = listOf(BROUGHT_NODE) })
+                                return mock<KubernetesClient> { on { nodes() } doReturn nodes }
+                            }
+                        },
+                    )
+                }
             },
         )
 
@@ -78,6 +124,9 @@ class InitTest : BaseKoinTest() {
 
     /** When set, the exit code every nested command reports instead of running. */
     private var nestedFailure: Int? = null
+
+    /** The APIs the probe was asked to reach. */
+    private val probedApis = mutableListOf<KubeApi>()
 
     @BeforeEach
     fun setupMocks() {
@@ -798,7 +847,7 @@ class InitTest : BaseKoinTest() {
             Init()
                 .apply {
                     clean = true
-                    nodeOrigin = NodeOrigin.BROUGHT
+                    broughtCluster = BROUGHT_API
                 }.execute()
 
             verify(mockClusterStateManager).save(argThat { RoleSelectors.from(this) == RoleSelectors.ANYWHERE })
@@ -809,7 +858,7 @@ class InitTest : BaseKoinTest() {
             val command = Init()
             picocli.CommandLine(command).parseArgs("--role-nodes", "db=pool=databases")
             command.clean = true
-            command.nodeOrigin = NodeOrigin.BROUGHT
+            command.broughtCluster = BROUGHT_API
             command.execute()
 
             verify(mockClusterStateManager).save(
@@ -867,6 +916,38 @@ class InitTest : BaseKoinTest() {
                         listOf("172.16.0.0/16", Constants.K3s.CLUSTER_CIDR, "192.168.0.0/16", "203.0.113.7/32")
                 },
             )
+        }
+
+        /**
+         * Off AWS no VPC is known: `init` probes the cluster the user brings, through the API it
+         * is given, and records the nodes' pod CIDRs and InternalIPs with the extra networks.
+         */
+        @Test
+        fun `on a cluster the user brings, init records the probed networks and the extra ones`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "192.168.0.0/16")
+            command.clean = true
+            command.broughtCluster = BROUGHT_API
+            command.execute()
+
+            val saved = argumentCaptor<ClusterState>()
+            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            val state = saved.lastValue
+            assertThat(state.clientNetworks).containsExactly("10.244.0.0/24", "192.168.1.5/32", "192.168.0.0/16")
+            assertThat(probedApis).containsExactly(BROUGHT_API)
+            assertThat(TemplateVariables.from(state, kitName = "postgres", storageSize = "10Gi").toMap()["CLIENT_NETWORKS_HBA_JSON"])
+                .isEqualTo(
+                    "[\"host all all 10.244.0.0/24 trust\",\"host all all 192.168.1.5/32 trust\"," +
+                        "\"host all all 192.168.0.0/16 trust\"]",
+                )
+        }
+
+        @Test
+        fun `on the nodes init builds, no cluster is probed`() {
+            Init().apply { clean = true }.execute()
+
+            assertThat(probedApis).isEmpty()
+            verify(mockClusterStateManager).save(argThat { clientNetworks == null })
         }
 
         @Test

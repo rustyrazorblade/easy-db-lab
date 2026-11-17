@@ -29,11 +29,13 @@ import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
+import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.network.Ipv4Cidr
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
+import com.rustyrazorblade.easydblab.services.ClientNetworkProbe
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.LiveInfrastructureLookup
 import com.rustyrazorblade.easydblab.services.ObservabilityStage
@@ -104,6 +106,7 @@ class Init :
 
     // Only init --local resolves it: the nodes are containers, so they run the Docker daemon's architecture.
     private val dockerClientProvider: DockerClientProvider by inject()
+    private val clientNetworkProbe: ClientNetworkProbe by inject()
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
@@ -539,13 +542,19 @@ class Init :
             .toString()
 
     /**
-     * Where this workspace's nodes come from, which decides the role selectors `--role-nodes`
-     * applies to. `init` builds AWS clusters, whose nodes it labels, so it is [NodeOrigin.OWNED];
-     * initialising a cluster the user brings (#1082) sets [NodeOrigin.BROUGHT], where every role
-     * runs on any node until it is mapped.
+     * The API of a cluster the user brings, or null when `init` builds the nodes (AWS). The
+     * `init --kubeconfig` option (#1082) sets it; until then only tests do.
      */
     @get:JsonIgnore
-    internal var nodeOrigin: NodeOrigin = NodeOrigin.OWNED
+    internal var broughtCluster: KubeApi? = null
+
+    /**
+     * Where this workspace's nodes come from, which decides the role selectors `--role-nodes`
+     * applies to: [NodeOrigin.OWNED] for the AWS nodes `init` builds and labels, and
+     * [NodeOrigin.BROUGHT] for a [broughtCluster], where every role runs on any node until it is mapped.
+     */
+    private val nodeOrigin: NodeOrigin
+        get() = if (broughtCluster == null) NodeOrigin.OWNED else NodeOrigin.BROUGHT
 
     override fun execute() {
         refuseOptionsThatNeedOtherOptions()
@@ -553,12 +562,20 @@ class Init :
         // Parsed before anything is cleaned or written, so a bad override or mapping leaves the directory as it was.
         val capabilities = effectiveCapabilities()
         val roleSelectors = RoleSelectors.base(nodeOrigin).withMappings(RoleSelectors.parse(roleNodes))
-        val extraClientNetworks = clientNetworks.map { Ipv4Cidr.parse(it).getOrThrow().value }
+        val extraClients = clientNetworks.map { Ipv4Cidr.parse(it).getOrThrow() }
+        val extraClientNetworks = extraClients.map { it.value }
+        // Probed before anything is cleaned or written too: a cluster that reports no network leaves the directory as it was.
+        val probedClientNetworks = broughtCluster?.let { api -> clientNetworkProbe.probe(api, extraClients).cidrs.map { it.value } }
 
         if (!clean) checkExistingFiles()
         // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker
         // architecture) leaves the directory as it was.
-        val clusterState = buildClusterState(capabilities).copy(roleSelectors = roleSelectors, extraClientNetworks = extraClientNetworks)
+        val clusterState =
+            buildClusterState(capabilities).copy(
+                roleSelectors = roleSelectors,
+                clientNetworks = probedClientNetworks,
+                extraClientNetworks = extraClientNetworks,
+            )
         if (clean) {
             refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)

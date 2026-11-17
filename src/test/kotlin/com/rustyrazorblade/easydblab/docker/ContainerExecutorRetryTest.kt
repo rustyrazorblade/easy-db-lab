@@ -19,6 +19,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
@@ -155,7 +156,10 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("removeFailures")
-    fun `a remove that fails in a way Docker reports is reported as an event and does not throw`(failure: Exception) {
+    fun `a remove that fails in a way Docker reports is reported as an event and does not throw`(
+        failure: Exception,
+        expectedMessage: String,
+    ) {
         doAnswer { throw failure }.whenever(client).removeContainer("c1", true)
 
         executor().removeContainer("c1")
@@ -163,7 +167,7 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
         assertThat(events.filterIsInstance<Event.Docker.ContainerRemoveError>().map { it.error })
             .singleElement()
             .asString()
-            .contains(failure.message.orEmpty())
+            .contains(expectedMessage)
     }
 
     @Test
@@ -176,14 +180,15 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
 
     companion object {
         @JvmStatic
-        fun removeFailures(): Stream<Exception> =
+        fun removeFailures(): Stream<Arguments> =
             Stream.of(
-                ConflictException("removal of container c1 is already in progress"),
-                InternalServerErrorException("daemon error"),
-                DockerClientException("client failure"),
-                IOException("Broken pipe"),
-                java.io.UncheckedIOException(IOException("Stream closed")),
-                IllegalStateException("Connection pool shut down"),
+                Arguments.of(ConflictException("removal of container c1 is already in progress"), "already in progress"),
+                Arguments.of(InternalServerErrorException("daemon error"), "daemon error"),
+                Arguments.of(DockerClientException("client failure"), "client failure"),
+                Arguments.of(IOException("Broken pipe"), "Broken pipe"),
+                // The transport's wrapper is read as the I-O error inside it.
+                Arguments.of(java.io.UncheckedIOException(IOException("Stream closed")), "Stream closed"),
+                Arguments.of(IllegalStateException("Connection pool shut down"), "Connection pool shut down"),
             )
     }
 }

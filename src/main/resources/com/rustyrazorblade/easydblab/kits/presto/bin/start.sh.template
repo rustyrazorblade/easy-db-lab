@@ -13,8 +13,8 @@ helm repo add prestodb https://prestodb.github.io/presto-helm-charts 2>/dev/null
 # Install and configure catalogs in one step (update-catalogs.sh owns the helm install)
 "${SCRIPT_DIR}/update-catalogs.sh"
 
-echo "Patching coordinator: hostPorts + Pyroscope profiling agent..."
-edl_patch_pyroscope presto-coordinator coordinator presto "${CLUSTER_LABEL}" coordinator 8080 9090
+echo "Patching coordinator: Pyroscope profiling agent..."
+edl_patch_pyroscope presto-coordinator coordinator presto "${CLUSTER_LABEL}" coordinator
 
 echo "Patching worker: Pyroscope profiling agent..."
 edl_patch_pyroscope presto-worker worker presto "${CLUSTER_LABEL}" worker
@@ -34,5 +34,9 @@ kubectl wait --for=condition=Ready pods \
   -l app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator \
   --namespace default \
   --timeout=180s
+
+# Clients reach the coordinator through its NodePort Service on any node; the pod declares no hostPort.
+echo "Publishing the coordinator on its NodePort Service..."
+kubectl apply -f - < "${SCRIPT_DIR}/../nodeport-service.yaml"
 
 echo "Presto is ready. Workers: __WORKERS__"

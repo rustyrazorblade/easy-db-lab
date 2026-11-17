@@ -1204,6 +1204,16 @@ object Constants {
             /** NodePort and native transport port; no other kit uses it. */
             const val CQL_NODE_PORT = 30942
         }
+
+        object Presto {
+            /** NodePort of the coordinator's HTTP port (UI, REST, JDBC); no other kit uses it. */
+            const val NODE_PORT = 30882
+        }
+
+        object Trino {
+            /** NodePort of the coordinator's HTTP port (UI, REST, JDBC); no other kit uses it. */
+            const val NODE_PORT = 30881
+        }
     }
 
     // The fixed per-environment values ClusterContract.of resolves, until #1094/#1097 add their flags

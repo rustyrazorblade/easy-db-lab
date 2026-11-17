@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
 # Unit tests for the Pyroscope agent the presto and trino kits' bin/start.sh.template attach: the
-# labels on their profiles, and that the jar comes from an init container, never a host path.
+# labels on their profiles, and that the jar comes from an init container, never a host path. Also
+# that the coordinator is published on the kit's NodePort Service, never a hostPort, and that no
+# script deletes the coordinator pod.
 #
 # Every profile must carry cluster=<name>-<id>, the value every other signal carries, or the
 # profiling dashboards' cluster filter hides it. The kit's CLUSTER_NAME is the bare name, so the
@@ -41,7 +43,9 @@ setup() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "${WORK}/stubs/helm"
   cat > "${WORK}/stubs/kubectl" <<EOF
 #!/usr/bin/env bash
+printf '%s\n' "\$*" >> "${WORK}/kubectl.calls"
 case " \$* " in
+  *" apply -f "*) cat >> "${WORK}/applied.yaml" ;;
   *" get configmap cluster-config "*) printf '%s' "$2" ;;
   *" get deployment "*) printf '[]' ;;
   *" patch deployment "*)
@@ -114,6 +118,41 @@ ok" ]; then
     fail "${kit}: agent not delivered by an init container into a read-only emptyDir: ${got}"
     cat "${WORK}/patches/all.json"
   fi
+done
+
+# The coordinator is reached through a NodePort Service, never a hostPort: no patch declares a
+# hostPort, start applies the kit's Service, and nothing deletes the coordinator pod to free a
+# host port, neither start nor update-catalogs.sh (which every catalog change runs).
+for kit in presto trino; do
+  tests_run=$((tests_run + 1))
+  setup "${kit}" "${LABEL}"
+  cp "${KITS}/${kit}/nodeport-service.yaml.template" "${WORK}/kit/nodeport-service.yaml" 2>/dev/null
+  run_script || fail "${kit}: start failed: $(cat "${WORK}/out.txt")"
+  if grep -q hostPort "${WORK}/patches/all.json"; then
+    fail "${kit}: a patch declares a hostPort: $(cat "${WORK}/patches/all.json")"
+  fi
+  grep -q "kind: Service" "${WORK}/applied.yaml" 2>/dev/null \
+    || fail "${kit}: start did not apply the NodePort Service: $(cat "${WORK}/kubectl.calls")"
+  if grep -q "^delete pod" "${WORK}/kubectl.calls"; then
+    fail "${kit}: start deleted the coordinator pod: $(grep "^delete pod" "${WORK}/kubectl.calls")"
+  fi
+
+  tests_run=$((tests_run + 1))
+  setup "${kit}" "${LABEL}"
+  cp "${KITS}/${kit}/bin/update-catalogs.sh.template" "${WORK}/kit/bin/update-catalogs.sh"
+  (cd "${WORK}" && PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${KIT_LIB}" bash "${WORK}/kit/bin/update-catalogs.sh") > "${WORK}/out.txt" 2>&1 \
+    || fail "${kit}: update-catalogs failed: $(cat "${WORK}/out.txt")"
+  if grep -q "^delete pod" "${WORK}/kubectl.calls" 2>/dev/null; then
+    fail "${kit}: update-catalogs deleted the coordinator pod: $(grep "^delete pod" "${WORK}/kubectl.calls")"
+  fi
+
+  tests_run=$((tests_run + 1))
+  setup "${kit}" "${LABEL}"
+  cp "${KITS}/${kit}/bin/stop.sh.template" "${WORK}/kit/bin/stop.sh"
+  (cd "${WORK}" && PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${KIT_LIB}" bash "${WORK}/kit/bin/stop.sh") > "${WORK}/out.txt" 2>&1 \
+    || fail "${kit}: stop failed: $(cat "${WORK}/out.txt")"
+  grep -q "^delete service ${kit}-nodeport" "${WORK}/kubectl.calls" 2>/dev/null \
+    || fail "${kit}: stop did not delete the NodePort Service: $(cat "${WORK}/kubectl.calls" 2>/dev/null)"
 done
 
 echo "${tests_run} tests, ${tests_failed} failed"

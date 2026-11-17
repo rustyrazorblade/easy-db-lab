@@ -13,21 +13,18 @@ runtime:
   type: helm
   release: presto
   namespace: default
-# The chart's coordinator Service is named for the release and serves HTTP on 8080.
+# The coordinator's HTTP port is published on the kit's NodePort Service (nodeport-service.yaml,
+# applied by bin/start.sh), which each endpoint resolves to by its NodePort.
 endpoints:
   - name: "Presto UI"
     node-type: app
-    port: 8080
+    port: 30882
     type: http
-    service: presto
-    service-port: 8080
   - name: "JDBC"
     node-type: app
-    port: 8080
+    port: 30882
     type: jdbc
     scheme: presto
-    service: presto
-    service-port: 8080
 args:
   - flag: --workers
     variable: WORKERS

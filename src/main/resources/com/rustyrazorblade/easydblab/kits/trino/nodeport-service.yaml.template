@@ -1,0 +1,18 @@
+# The coordinator's HTTP port (UI, REST and JDBC) on a fixed NodePort, so clients reach it on any
+# node and the pod needs no hostPort. bin/start.sh applies it; bin/stop.sh deletes it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: trino-nodeport
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: trino
+    app.kubernetes.io/instance: trino
+    app.kubernetes.io/component: coordinator
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30881

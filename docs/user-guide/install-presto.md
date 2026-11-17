@@ -99,10 +99,10 @@ Presto workers are scheduled on `type=app` nodes using `nodeSelector: type: app`
 
 ## Connecting
 
-After `easy-db-lab presto start` completes, the Presto coordinator is accessible within the cluster. Use `kubectl port-forward` or the SOCKS5 proxy to connect from your workstation:
+After `easy-db-lab presto start` completes, the Presto coordinator is published on the NodePort Service `presto-nodeport`, port 30882 on any node's private IP. Reach it through the SOCKS5 proxy at `<node-ip>:30882`, or port-forward the Service:
 
 ```bash
-kubectl port-forward svc/presto 8080:8080
+kubectl port-forward svc/presto-nodeport 8080:8080
 ```
 
 Then connect with any Presto-compatible client at `localhost:8080`.

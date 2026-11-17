@@ -18,19 +18,19 @@
 - [x] 3.1 Test first: `RoleSelectors.from(state)` (null → `OWNED_NODES`), `--role-nodes` parsing and refusal, `NodeSelector.toJson` / `toLabelSelector`.
 - [x] 3.2 Add `NodeSelector`, `RoleSelectors`, `ClusterState.roleSelectors`, `Init --role-nodes`.
 - [x] 3.3 `RoleNodes` (via `K8sService.nodesMatching`) and `KitPlacementVariables` (`DB_/APP_NODE_SELECTOR`, `DB_/APP_/CONTROL_NODE_LABELS`, counts); `KitInstallCommand.requiredNodePoolIsMissing` uses `RoleNodes`.
-- [ ] 3.4 `KitEndpointResolver`: `TARGET_*` for in-cluster clients resolves to Service DNS and Service port via `KitEndpointServices` (#1110).
+- [x] 3.4 `KitEndpointResolver`: `TARGET_*` for in-cluster clients resolves to Service DNS and Service port via `KitEndpointServices` (#1110).
 - [ ] 3.5 Kits: replace every `type` nodeSelector / affinity with `__DB_NODE_SELECTOR__` / `__APP_NODE_SELECTOR__` in cassandra-pods, memcached (both), neo4j, postgres, clickhouse (+ keeper), tidb, presto, trino, flink.
 - [ ] 3.6 Rendering test: every templated kit with `OWNED_NODES` equals today's `type=<role>`; with `ANYWHERE`, no role constraint.
 
 ## 4. Shell library
 
-- [ ] 4.1 Test first (`src/test/shell/kit-lib.test.sh`, bash 3.2): `edl_pod_overrides` with `{}` and `{"type":"app"}`; `edl_require_app_node` with empty and set labels; gauge-push pod choice with and without a control selector.
-- [ ] 4.2 `edl-kit-lib.sh`: read `APP_NODE_LABELS` / `APP_NODE_SELECTOR` / `CONTROL_NODE_LABELS`; `edl_push_gauges` per D9; keep function names.
+- [x] 4.1 Test first (`src/test/shell/kit-lib.test.sh`, bash 3.2): `edl_pod_overrides` with `{}` and `{"type":"app"}`; `edl_require_app_node` with empty and set labels; gauge-push pod choice with and without a control selector.
+- [x] 4.2 `edl-kit-lib.sh`: read `APP_NODE_LABELS` / `APP_NODE_SELECTOR` / `CONTROL_NODE_LABELS`; `edl_push_gauges` per D9; keep function names.
 
 ## 5. Presto and Trino Services
 
-- [ ] 5.1 Kit-owned `nodeport-service.yaml.template` (presto 30880, trino 30881); `kit.yaml` endpoints declare the NodePort; `Constants.Kit.Presto.NODE_PORT` / `Trino.NODE_PORT`.
-- [ ] 5.2 Remove hostPort patches and Trino's coordinator-delete workaround; use `kubectl rollout restart` where ConfigMap pickup is still needed.
+- [x] 5.1 Kit-owned `nodeport-service.yaml.template` (presto 30882, trino 30881); `kit.yaml` endpoints declare the NodePort; `Constants.Kit.Presto.NODE_PORT` / `Trino.NODE_PORT`.
+- [x] 5.2 Remove hostPort patches and Trino's coordinator-delete workaround; use `kubectl rollout restart` where ConfigMap pickup is still needed.
 
 ## 6. Client networks
 
@@ -47,7 +47,7 @@
 
 ## 8. Docs and specs
 
-- [ ] 8.1 `docs/development/kits.md` (agents, role variables, shell library), `docs/reference/ports.md` (30880, 30881), `docs/reference/commands.md` (`init --role-nodes`, `--client-network`), kit user guides, `neo4j/METRICS.md`, `configuration/CLAUDE.md`, `Constants.kt:752-761` KDoc.
+- [ ] 8.1 `docs/development/kits.md` (agents, role variables, shell library), `docs/reference/ports.md` (30882, 30881), `docs/reference/commands.md` (`init --role-nodes`, `--client-network`), kit user guides, `neo4j/METRICS.md`, `configuration/CLAUDE.md`, `Constants.kt:752-761` KDoc.
 - [ ] 8.2 Specs: `clickhouse-benchmark-kit`, `tidb`, `kit-install-command`, `networking`.
 - [ ] 8.3 Root CLAUDE.md kit section: role variables replace `type=app`.
 

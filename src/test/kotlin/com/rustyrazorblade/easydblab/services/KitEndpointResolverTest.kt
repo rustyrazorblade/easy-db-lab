@@ -264,7 +264,7 @@ class KitEndpointResolverServiceDnsTest {
     @TempDir
     lateinit var workspaceDir: File
 
-    private val noHosts = ClusterState(name = "byo", versions = mutableMapOf())
+    private val noHosts = ClusterState(name = "byo")
 
     private fun installedKit(): File =
         File(workspaceDir, "postgres").apply {

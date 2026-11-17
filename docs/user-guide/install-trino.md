@@ -79,10 +79,10 @@ Trino workers are scheduled on `type=app` nodes using `nodeSelector: type: app`.
 
 ## Connecting
 
-After `easy-db-lab trino start` completes, the Trino coordinator is accessible within the cluster. Connect using the SOCKS5 proxy or a port-forward:
+After `easy-db-lab trino start` completes, the Trino coordinator is published on the NodePort Service `trino-nodeport`, port 30881 on any node's private IP. Reach it through the SOCKS5 proxy at `jdbc:trino://<node-ip>:30881`, or port-forward the Service:
 
 ```bash
-kubectl port-forward svc/trino 8080:8080
+kubectl port-forward svc/trino-nodeport 8080:8080
 ```
 
 Then connect with any Trino-compatible client at `jdbc:trino://localhost:8080`.

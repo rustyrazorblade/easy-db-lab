@@ -601,11 +601,12 @@ tasks.register<Exec>("testBaseJdkInstall") {
     commandLine = listOf("bash", "packer/base/install/install_jdks.test.sh")
 }
 
-// Unit-test the Pyroscope labels the presto and trino start scripts put on their profiles: the
-// cluster label from cluster-config, not the bare cluster name. kubectl and helm are stubbed.
+// Unit-test the presto and trino start, stop and catalog scripts: the Pyroscope labels on their
+// profiles (the cluster label from cluster-config), the init-container agent, and the coordinator
+// on its NodePort Service with no hostPort and no pod delete. kubectl and helm are stubbed.
 tasks.register<Exec>("testPyroscopeKitLabels") {
     group = "Verification"
-    description = "Unit-test the Pyroscope labels of the presto and trino kit start scripts"
+    description = "Unit-test the presto and trino kit start, stop and catalog scripts"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/pyroscope-kit-labels.test.sh")
 }

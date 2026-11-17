@@ -46,7 +46,7 @@ Owner, 2026-11-16: every decision D1-D9 below is decided as its option (a). D6: 
 - (c) Download the Pyroscope jar at pod start (curl + SHA). No image, but every start depends on GitHub and fails air-gapped.
 
 ### D2. Presto and Trino coordinator exposure (decided (a), owner 2026-11-16)
-- **(a) Chosen (owner 2026-11-16):** a NodePort Service owned by each kit, presto 30880, trino 30881, selecting `app.kubernetes.io/component=coordinator`. Follows the root CLAUDE.md rule; works through every #1090 seam; fixes the multi-app-node bug.
+- **(a) Chosen (owner 2026-11-16):** a NodePort Service owned by each kit, presto 30882, trino 30881, selecting `app.kubernetes.io/component=coordinator`. Follows the root CLAUDE.md rule; works through every #1090 seam; fixes the multi-app-node bug.
 - (b) ClusterIP only. Works only through port-forward; the SOCKS seam dials node IPs.
 - (c) Switch each chart's own Service to NodePort through values. Ties the port to chart value names that differ between charts.
 
@@ -100,7 +100,7 @@ Owner, 2026-11-16: every decision D1-D9 below is decided as its option (a). D6: 
 | `KitPlacementVariables` | `services/` | selector, label and count variables merged into `TemplateVariables` |
 | `ClientNetworks`, `ClientNetworkProbe` | `configuration/`, `services/` | allowed CIDRs; probe at `init` off AWS |
 | `StressTarget` (`VmCassandra`, `CassandraKit`), `StressTargetResolver` | `services/stress` | contact point, port, DC |
-| Constants | | `Constants.Kit.Agents.*`, `Constants.Kit.Presto.NODE_PORT = 30880`, `Constants.Kit.Trino.NODE_PORT = 30881`, `Constants.K3s.CLUSTER_CIDR`, `Constants.Kit.AGENTS_MOUNT = "/edl/agents"` |
+| Constants | | `Constants.Kit.Agents.*`, `Constants.Kit.Presto.NODE_PORT = 30882`, `Constants.Kit.Trino.NODE_PORT = 30881`, `Constants.K3s.CLUSTER_CIDR`, `Constants.Kit.AGENTS_MOUNT = "/edl/agents"` |
 
 ## Split with #1100 and #1135
 

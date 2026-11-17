@@ -439,7 +439,7 @@ edl_collect_catalogs() {
 
 # Installs or upgrades the helm release $1 of chart $2 at version $3, with the values file $4 and,
 # when edl_collect_catalogs found any catalog, a second values file <dir of $4>/.catalogs-override.yaml
-# that sets the chart value $5 to them. It does not wait for the rollout: see edl_replace_hostport_pod.
+# that sets the chart value $5 to them. It does not wait for the rollout.
 edl_helm_upgrade_with_catalogs() {
   local release="$1" chart="$2" version="$3" values="$4" key="$5"
   local override extra=()
@@ -454,14 +454,6 @@ edl_helm_upgrade_with_catalogs() {
     --create-namespace \
     --values "${values}" \
     ${extra[@]+"${extra[@]}"}
-}
-
-# Replaces the pod of deployment $2, found by label selector $1, and waits for its rollout.
-# The coordinator uses hostPort, so on a single app node a rolling update deadlocks: the new pod
-# cannot bind the port while the old pod holds it. Deleting the pod lets the controller replace it.
-edl_replace_hostport_pod() {
-  kubectl delete pod -n default -l "$1" --ignore-not-found
-  kubectl rollout status "deployment/$2" --namespace default --timeout=180s
 }
 
 # Prints the cluster label (<name>-<id>) from the cluster-config ConfigMap, which every other
@@ -485,28 +477,18 @@ edl_pyroscope_opts() {
 }
 
 # Patches the container $2 of deployment $1 to load the Pyroscope agent for application $3, with
-# the profile labels cluster=$4 and component=$5. Any further arguments are container ports that
-# get a hostPort of the same number; a strategic merge patch matches a port by its containerPort.
-# The agent comes from an init container that copies it from PYROSCOPE_AGENT_IMAGE (set by the kit
-# runner) into an emptyDir the JVM container mounts read-only, never from a host path, so the pods
-# run on any node.
+# the profile labels cluster=$4 and component=$5. The agent comes from an init
+# container that copies it from PYROSCOPE_AGENT_IMAGE (set by the kit runner) into an emptyDir the
+# JVM container mounts read-only, never from a host path, so the pods run on any node. The pod
+# declares no hostPort: clients reach a coordinator through its kit's NodePort Service.
 edl_patch_pyroscope() {
-  local deployment="$1" container="$2" app="$3" cluster_label="$4" component="$5" ports="" sep="" opts patch
+  local deployment="$1" container="$2" app="$3" cluster_label="$4" component="$5" opts patch
   local image="${PYROSCOPE_AGENT_IMAGE:?run this through easy-db-lab, which sets PYROSCOPE_AGENT_IMAGE}"
-  shift 5
-  while [ "$#" -ge 1 ]; do
-    case "$1" in
-      *[!0-9]* | "") edl_fail "edl_patch_pyroscope: '$1' is not a port number" ;;
-    esac
-    ports="${ports}${sep}{\"containerPort\":$1,\"hostPort\":$1}"
-    sep=","
-    shift
-  done
-  [ -z "${ports}" ] || ports=",\"ports\":[${ports}]"
+  [ "$#" -eq 5 ] || edl_fail "edl_patch_pyroscope: expected 5 arguments, got $#"
   opts="$(edl_pyroscope_opts "${app}") -Dpyroscope.labels=cluster=${cluster_label},component=${component}"
   opts="${opts//\\/\\\\}"
   opts="${opts//\"/\\\"}"
-  patch="{\"spec\":{\"template\":{\"spec\":{\"volumes\":[{\"name\":\"java-agents\",\"emptyDir\":{}}],\"initContainers\":[{\"name\":\"pyroscope-agent\",\"image\":\"${image}\",\"imagePullPolicy\":\"IfNotPresent\",\"command\":[\"cp\",\"/pyroscope.jar\",\"/agents/pyroscope.jar\"],\"securityContext\":{\"runAsNonRoot\":true,\"runAsUser\":65532,\"allowPrivilegeEscalation\":false,\"capabilities\":{\"drop\":[\"ALL\"]},\"seccompProfile\":{\"type\":\"RuntimeDefault\"}},\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/agents\"}]}],\"containers\":[{\"name\":\"${container}\"${ports},\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"${opts}\"}],\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/edl/agents\",\"readOnly\":true}]}]}}}}"
+  patch="{\"spec\":{\"template\":{\"spec\":{\"volumes\":[{\"name\":\"java-agents\",\"emptyDir\":{}}],\"initContainers\":[{\"name\":\"pyroscope-agent\",\"image\":\"${image}\",\"imagePullPolicy\":\"IfNotPresent\",\"command\":[\"cp\",\"/pyroscope.jar\",\"/agents/pyroscope.jar\"],\"securityContext\":{\"runAsNonRoot\":true,\"runAsUser\":65532,\"allowPrivilegeEscalation\":false,\"capabilities\":{\"drop\":[\"ALL\"]},\"seccompProfile\":{\"type\":\"RuntimeDefault\"}},\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/agents\"}]}],\"containers\":[{\"name\":\"${container}\",\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"${opts}\"}],\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/edl/agents\",\"readOnly\":true}]}]}}}}"
   kubectl patch deployment "${deployment}" \
     --namespace default \
     --type=strategic \

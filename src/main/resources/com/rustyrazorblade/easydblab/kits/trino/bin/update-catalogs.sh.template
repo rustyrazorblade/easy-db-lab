@@ -13,8 +13,9 @@ TRINO_CHART_VERSION="1.42.2"
 edl_collect_catalogs trino "${SCRIPT_DIR}/../catalogs" "$(cd "${SCRIPT_DIR}/../.." && pwd)" opensearch
 edl_helm_upgrade_with_catalogs trino trinodb/trino "${TRINO_CHART_VERSION}" "${SCRIPT_DIR}/../values.yaml" additionalCatalogs
 
-# The coordinator uses hostPort 8080. On a single app node a rolling update deadlocks: the new pod
-# cannot bind the port while the old pod holds it, so replace the pod instead.
-edl_replace_hostport_pod 'app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator' trino-coordinator
+# A catalog lives in a ConfigMap the coordinator reads only at startup, so restart it to load the
+# change. The pod declares no hostPort, so the rolling restart brings the new pod up beside the old.
+kubectl rollout restart deployment/trino-coordinator --namespace default
+kubectl rollout status deployment/trino-coordinator --namespace default --timeout=180s
 
 echo "Trino catalog update complete."

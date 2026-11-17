@@ -121,7 +121,9 @@ val pods = pollUntil("wait-for-pod", maxAttempts = 10, interval = Duration.ofSec
 
 // The AWS waits (EC2, EMR, OpenSearch) use pollUntilOrTimeout: it retries a look that throws
 // (a throttle) within the timeout and throws AwsTimeoutException when the condition never holds.
-// Never write a while-sleep loop for a wait.
+// Never write a while-sleep loop for a wait. A wait that must stop on a failure of its own besides the
+// timeout (EC2InstanceService.waitForInstancesRunning stops on an ended instance, through `done`) calls
+// pollUntil directly and passes isTransient = ::isTransientAwsFailure, so a permanent failure still fails at once.
 val states = pollUntilOrTimeout("instances to terminate", timeout, interval, done = { it.all { s -> s == TERMINATED } }) {
     describeStates()
 }

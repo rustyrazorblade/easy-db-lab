@@ -72,11 +72,11 @@ installed on a node as installed there.
 ### Requirement: Installing a published build
 
 `cassandra install <name>` and `cassandra use <name>` MUST install a published build when `<name>`
-is not recorded in the cluster state and no ASF or cassandra-builds source has it, resolving its
+is not recorded in the cluster state and no profile build, ASF release or cassandra-builds build has it, resolving its
 parameters from the build's manifest.
 
-The bucket MUST only be consulted when no other source has the name, so that installing an ASF
-release or a cassandra-builds build costs no bucket lookup.
+The bucket MUST only be consulted when no other source has the name, so that installing a profile
+build, an ASF release or a cassandra-builds build costs no bucket lookup.
 
 The tarball MUST be referenced by an `s3://` URI rather than a presigned HTTPS URL, so that nodes
 fetch it with their instance profile and the URL still ends in `.tar.gz`. The node-side fetch

@@ -5,8 +5,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
+import java.io.IOException
+
+private val log = KotlinLogging.logger {}
 
 /**
  * A build of the profile's build catalog, as the resolver needs it: where it is, the JDKs it runs
@@ -94,8 +98,12 @@ class DefaultVersionSources(
             CassandraBuildsRelease.parse(fetchRequired(Constants.Cassandra.CASSANDRA_BUILDS_RELEASE_API))
         }
 
+    /**
+     * The manifest is optional: when it cannot be fetched after the retries, the build has none,
+     * and the release-line table gives its JDKs.
+     */
     override fun cassandraBuildsManifest(build: CassandraBuild): CassandraBuildsManifest? =
-        build.manifestUrl?.let { http.getOrNull(it) }?.let(CassandraBuildsRelease::parseManifest)
+        build.manifestUrl?.let(::fetchOptional)?.let(CassandraBuildsRelease::parseManifest)
 
     override fun catalogBuild(name: String): CatalogBuild? =
         catalog.find(name)?.let { CatalogBuild(catalog.tarballUri(it), it.supportedJdks(), it.javaVersion) }
@@ -103,6 +111,17 @@ class DefaultVersionSources(
     override fun catalogBuildNames(): List<String> = catalog.list().map { it.name }
 
     override fun downloadCacheRoot(): ClusterS3Path = ClusterS3Path.downloadCacheRoot(bucketService.ensureAccountBucket(user))
+
+    private fun fetchOptional(url: String): String? =
+        try {
+            http.getOrNull(url)
+        } catch (e: IOException) {
+            log.warn(e) { "Reading the manifest $url failed; using the release-line table" }
+            null
+        } catch (e: TransientHttpStatusException) {
+            log.warn(e) { "Reading the manifest $url failed; using the release-line table" }
+            null
+        }
 
     private fun fetchRequired(url: String): String = http.getOrNull(url) ?: throw HttpStatusException(url, Constants.HttpStatus.NOT_FOUND)
 }

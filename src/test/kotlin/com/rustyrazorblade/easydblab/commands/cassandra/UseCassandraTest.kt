@@ -227,6 +227,8 @@ class UseCassandraTest : BaseKoinTest() {
                 .getValue("db1")
                 .installed.keys,
         ).containsExactly("5.0")
+        // db1 does not run 5.0, so 5.0 is not the cluster default either.
+        assertThat(state.default.version).isEmpty()
         assertThat(errors()).contains("db1: failed to activate 5.0", "JDK 17 is not installed")
         // db0 now runs 5.0, so it gets the config for 5.0; db1 still runs its old version and is left alone.
         assertThat(chained.map { it.javaClass.simpleName }).containsExactly("DownloadConfig", "UpdateConfig")
@@ -283,6 +285,16 @@ class UseCassandraTest : BaseKoinTest() {
             .contains("EDL_AXONOPS_AGENT=")
             .doesNotContain("4.1-agent")
         assertThat(errors()).contains("db0", "--skip-axonops")
+    }
+
+    @Test
+    fun `a drop-in that cannot be read fails use and names the node, instead of keeping a stale agent`() {
+        withNodes(1)
+        nodes.failOn("db0", "cat ${AxonOpsAgents.DROP_IN}", "ssh: connect to host db0: timed out")
+
+        assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(errors()).contains("db0", "AxonOps drop-in", "timed out")
     }
 
     @Test

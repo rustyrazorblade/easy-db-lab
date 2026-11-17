@@ -210,6 +210,23 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `cassandra use` could not read the AxonOps drop-in of [host], so it cannot tell whether the
+         * node's next restart would load the agent of the version it ran before.
+         */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsDropInUnreadable")
+        data class AxonOpsDropInUnreadable(
+            val host: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: could not read the AxonOps drop-in: $reason. The node runs the new version, but its " +
+                    "next restart may load the old version's agent; start it with: easy-db-lab cassandra start --hosts $host"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Cassandra.AxonOpsWorkbenchInfo")
         data class AxonOpsWorkbenchInfo(

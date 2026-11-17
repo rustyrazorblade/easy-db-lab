@@ -122,6 +122,13 @@ for bad in ".." "../../opt" "feature/x" "-x" ".hidden" "a b"; do
   assert_fails_with "version name [$bad] is refused" "invalid version name" "$bad" --url https://example.test/x.tgz
   assert_no_reach_out "version name [$bad] downloads nothing"
 done
+# Every option that takes a value names itself when it is the last argument, instead of dying on set -u.
+for opt in --url --fallback-url --cache-uri --branch --java --ant-flags; do
+  assert_fails_with "$opt with no value is rejected" "$opt needs a value" 5.0 --url https://example.test/x.tar.gz "$opt"
+done
+assert_fails_with "a git --url with no --branch is refused" "pass --branch" \
+  from-source --url https://github.com/apache/cassandra.git
+assert_no_reach_out "a git --url with no --branch downloads nothing"
 assert_fails_with "--cache-uri with a git build is rejected" "--cache-uri applies only to a tarball" \
   from-source --url https://github.com/apache/cassandra.git --branch trunk --java 17 --cache-uri s3://b/k
 

@@ -33,6 +33,9 @@ class DefaultVersionSourcesTest : BaseKoinTest() {
     private val answers = mutableMapOf<String, String>()
     private val requests = mutableListOf<String>()
 
+    /** URLs that answer 503 on every attempt. */
+    private val unavailable = mutableSetOf<String>()
+
     private fun sources(): DefaultVersionSources {
         val client =
             OkHttpClient
@@ -42,11 +45,17 @@ class DefaultVersionSourcesTest : BaseKoinTest() {
                         val url = chain.request().url.toString()
                         requests += url
                         val body = answers[url]
+                        val code =
+                            when {
+                                url in unavailable -> SERVICE_UNAVAILABLE
+                                body == null -> Constants.HttpStatus.NOT_FOUND
+                                else -> Constants.HttpStatus.OK
+                            }
                         Response
                             .Builder()
                             .request(chain.request())
                             .protocol(Protocol.HTTP_1_1)
-                            .code(if (body == null) Constants.HttpStatus.NOT_FOUND else Constants.HttpStatus.OK)
+                            .code(code)
                             .message("")
                             .body((body ?: "").toResponseBody("text/plain".toMediaType()))
                             .build()
@@ -105,6 +114,19 @@ class DefaultVersionSourcesTest : BaseKoinTest() {
 
         assertThat(sources().cassandraBuildsManifest(build)).isNull()
         assertThat(requests).isEmpty()
+    }
+
+    @Test
+    fun `a manifest that stays unavailable is read as no manifest, so the release-line table decides`() {
+        val build = CassandraBuildsRelease.parse(nightly).first().copy(manifestUrl = "https://example.test/manifest.json")
+        unavailable += "https://example.test/manifest.json"
+
+        assertThat(sources().cassandraBuildsManifest(build)).isNull()
+        assertThat(requests).contains("https://example.test/manifest.json")
+    }
+
+    private companion object {
+        const val SERVICE_UNAVAILABLE = 503
     }
 
     private fun fixture(name: String): String =

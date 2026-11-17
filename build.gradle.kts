@@ -781,6 +781,15 @@ tasks.register<Exec>("testCassandraWaitScript") {
     commandLine = listOf("bash", "packer/cassandra/bin/wait-for-up-normal.test.sh")
 }
 
+// Unit-test sjk-gc: it picks the JMX connection from the JDK and runs sjk once, so a stream ended
+// with Ctrl-C does not start a second session.
+tasks.register<Exec>("testCassandraSjkGc") {
+    group = "Verification"
+    description = "Unit-test the sjk-gc script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/sjk-gc.test.sh")
+}
+
 // Unit-test install-axonops-agent, which `cassandra start` runs on each node to install the AxonOps
 // agent for its release and JDK: the exit-3 refusal with the shipped list, the no-op when
 // installed, and the download cache keyed by the package version. apt, aws and dpkg-deb are stubbed.
@@ -821,6 +830,7 @@ tasks.register("testCassandraScripts") {
         "testCassandraInstallLoop",
         "testCassandraUseScript",
         "testCassandraWaitScript",
+        "testCassandraSjkGc",
         "testCassandraAgentSelection",
         "testCassandraAxonOpsAgentScript",
         "testCacheLib",

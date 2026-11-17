@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraVersionResolver
 import com.rustyrazorblade.easydblab.services.cassandraversions.InstallMode
+import com.rustyrazorblade.easydblab.services.cassandraversions.InstallSpec
 import com.rustyrazorblade.easydblab.services.cassandraversions.VersionRequest
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -103,7 +104,7 @@ class CassandraInstall : PicoBaseCommand() {
         report.recordInto(state)
         clusterStateManager.save(state)
 
-        val reapplied = if (reinstall) reapplyConfig(report.ready.map { it.host.alias }) else null
+        val reapplied = if (reinstall) reapplyConfig(spec, report.ready.map { it.host.alias }) else null
         report.failureMessage()?.let { throw CommandExecutionException(it) }
         reapplied?.let { throw CommandExecutionException(it) }
     }
@@ -135,12 +136,15 @@ class CassandraInstall : PicoBaseCommand() {
     }
 
     /**
-     * After a reinstall, the conf directory of each node where [version] is the active version is
+     * After a reinstall, the conf directory of each node where [spec] is the active version is
      * the fresh one of the new install, so `cassandra.patch.yaml` is applied again there, as
      * `cassandra use` does. Returns the error when a step failed, else null.
      */
-    private fun reapplyConfig(reinstalled: List<String>): String? {
-        val active = reinstalled.filter { clusterState.nodes[it]?.version == version }
+    private fun reapplyConfig(
+        spec: InstallSpec,
+        reinstalled: List<String>,
+    ): String? {
+        val active = reinstalled.filter { clusterState.nodes[it]?.version == spec.name }
         if (active.isEmpty()) return null
         val failedStep = reapplyPatch(commandExecutor, HostsMixin().apply { hostList = active.joinToString(",") }) ?: return null
         eventBus.emit(Event.Cassandra.UseConfigNotApplied(version, failedStep, active))

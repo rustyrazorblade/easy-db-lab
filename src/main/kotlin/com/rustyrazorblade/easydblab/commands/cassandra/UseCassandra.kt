@@ -109,7 +109,7 @@ class UseCassandra : PicoBaseCommand() {
         }
 
         val activated = installer.activate(report.ready)
-        recordActive(state, activated.filterIsInstance<HostOutcome.Ready>())
+        recordActive(state, activated.filterIsInstance<HostOutcome.Ready>(), allActivated = activated.all { it is HostOutcome.Ready })
         clusterStateManager.save(state)
 
         // A node that switched runs the new version's conf directory, so it gets the patch even when
@@ -125,12 +125,14 @@ class UseCassandra : PicoBaseCommand() {
     }
 
     /**
-     * Each activated node runs its spec's version and JDK. With no `--hosts`, the choice is also
-     * the cluster default, which a node with no record of its own (a new node) uses.
+     * Each activated node runs its spec's version and JDK. With no `--hosts`, and when every node
+     * switched, the choice is also the cluster default, which a node with no record of its own (a
+     * new node) uses; a default that some nodes do not run would describe no cluster.
      */
     private fun recordActive(
         state: ClusterState,
         activated: List<HostOutcome.Ready>,
+        allActivated: Boolean,
     ) {
         activated.forEach { outcome ->
             state.nodes.getOrPut(outcome.host.alias) { NodeState() }.apply {
@@ -139,7 +141,7 @@ class UseCassandra : PicoBaseCommand() {
             }
         }
         val first = activated.firstOrNull() ?: return
-        if (hosts.hostList.isBlank()) {
+        if (hosts.hostList.isBlank() && allActivated) {
             state.default = state.default.copy(version = first.spec.name, javaVersion = first.spec.java)
         }
     }

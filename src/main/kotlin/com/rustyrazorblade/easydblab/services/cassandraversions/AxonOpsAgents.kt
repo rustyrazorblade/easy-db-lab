@@ -84,23 +84,29 @@ class AxonOpsAgents(
      * belongs to the old release or JDK, and `cassandra restart` would load it. Each node whose
      * drop-in names an agent gets the agent of the version and JDK [state] now records; a node
      * whose drop-in names none (AxonOps off, or `start --skip-axonops`) is left alone. A node
-     * AxonOps ships no agent for gets no agent, and is returned with the reason.
+     * AxonOps ships no agent for gets no agent, and is returned with the reason. A node whose
+     * drop-in cannot be read is returned too: what its next restart loads is unknown.
      */
     fun refreshAfterSwitch(
         switched: List<ClusterHost>,
         state: ClusterState,
     ): List<AgentOutcome.Unavailable> {
-        val withAgent =
-            hostOperations
-                .collectFromHosts(switched, parallel = true) { host ->
-                    remoteOps.executeRemotely(host.toHost(), READ_DROP_IN, output = false).text
-                }.filter { (_, result) -> agentNamedIn(result.getOrDefault("")) != null }
-                .map { it.host }
-        if (withAgent.isEmpty()) return emptyList()
+        val reads =
+            hostOperations.collectFromHosts(switched, parallel = true) { host ->
+                remoteOps.executeRemotely(host.toHost(), READ_DROP_IN, output = false).text
+            }
+        val unreadable =
+            reads.mapNotNull { (host, result) ->
+                result.exceptionOrNull()?.let {
+                    AgentOutcome.Unavailable(host, Event.Cassandra.AxonOpsDropInUnreadable(host.alias, it.reason()))
+                }
+            }
+        val withAgent = reads.filter { (_, result) -> result.getOrNull()?.let(::agentNamedIn) != null }.map { it.host }
+        if (withAgent.isEmpty()) return unreadable
         val outcomes = install(withAgent, state)
         val agents = outcomes.filterIsInstance<AgentOutcome.Installed>().associate { it.host.alias to it.agent }
         hostOperations.withHosts(withAgent, parallel = true) { host -> select(host, agents[host.alias]) }
-        return outcomes.filterIsInstance<AgentOutcome.Unavailable>()
+        return unreadable + outcomes.filterIsInstance<AgentOutcome.Unavailable>()
     }
 
     /** Names [agent] in the drop-in of [host], or no agent when null, and reloads systemd. */

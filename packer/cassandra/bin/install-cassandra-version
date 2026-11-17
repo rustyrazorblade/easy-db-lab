@@ -43,16 +43,26 @@ BRANCH=""
 JAVA_VERSION=""
 ANT_FLAGS=""
 
+# need_value OPTION ARGC - refuses OPTION when it is the last argument, so set -u never stops the
+# script with an unbound-variable error that names no option.
+need_value() {
+    if [[ "$2" -lt 2 ]]; then
+        echo "ERROR: $1 needs a value" >&2
+        usage >&2
+        exit 1
+    fi
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --url) URL="$2"; shift 2 ;;
-            --fallback-url) FALLBACK_URL="$2"; shift 2 ;;
-            --cache-uri) CACHE_URI="$2"; shift 2 ;;
+            --url) need_value "$1" $#; URL="$2"; shift 2 ;;
+            --fallback-url) need_value "$1" $#; FALLBACK_URL="$2"; shift 2 ;;
+            --cache-uri) need_value "$1" $#; CACHE_URI="$2"; shift 2 ;;
             --reinstall) REINSTALL=1; shift ;;
-            --branch) BRANCH="$2"; shift 2 ;;
-            --java) JAVA_VERSION="$2"; shift 2 ;;
-            --ant-flags) ANT_FLAGS="$2"; shift 2 ;;
+            --branch) need_value "$1" $#; BRANCH="$2"; shift 2 ;;
+            --java) need_value "$1" $#; JAVA_VERSION="$2"; shift 2 ;;
+            --ant-flags) need_value "$1" $#; ANT_FLAGS="$2"; shift 2 ;;
             -h|--help) usage; exit 0 ;;
             --*) echo "ERROR: unknown option $1" >&2; usage >&2; exit 1 ;;
             *)
@@ -92,6 +102,12 @@ parse_args() {
     # --branch here would install something other than what was asked for.
     if [[ -n "$BRANCH" && "$URL" == *.tar.gz ]]; then
         echo "ERROR: --branch $BRANCH cannot be used with a tarball --url ($URL); pass a git repository URL" >&2
+        exit 1
+    fi
+
+    # A git repository is not a tarball: downloading it would fail later with an unclear extract error.
+    if [[ -z "$BRANCH" && "$URL" == *.git ]]; then
+        echo "ERROR: $URL is a git repository; pass --branch to build $VERSION from it" >&2
         exit 1
     fi
 }

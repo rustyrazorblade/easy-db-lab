@@ -12,8 +12,10 @@
 #   3  AxonOps ships no agent for that release and JDK; stdout lists the agents it ships, one a line
 #   1  anything else: bad arguments, no package version from apt, a failed download or unpack
 #
-# The package version is part of the cache key, so a new agent release is a cache miss rather
-# than a stale hit.
+# An agent already installed on the node is kept as is: the script makes no apt lookup for it, so
+# a start does not wait on an apt update. A node without one gets the version apt offers now, and
+# that version is part of the cache key, so a new agent release is a cache miss rather than a
+# stale hit for the nodes that install it.
 
 set -uo pipefail
 

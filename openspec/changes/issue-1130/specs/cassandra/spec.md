@@ -479,7 +479,7 @@ When AxonOps ships no agent for the release and the JDK of a targeted node, `cas
 
 `cassandra start --skip-axonops` SHALL start Cassandra with no AxonOps agent for that start, and SHALL NOT start `axon-agent`.  Cassandra SHALL load only the agent that the last start selected, and SHALL NOT select an agent by itself.
 
-After `cassandra use` switches a node whose last start selected an agent, `use` SHALL select the agent for the node's new release and JDK, installing it when the node does not have it, so a later `cassandra restart` does not load the agent of the old version.  A node whose last start selected no agent SHALL keep no agent.  When AxonOps ships no agent for the new release and JDK, `use` SHALL select no agent on that node, SHALL exit non-zero, and SHALL name the node and `--skip-axonops`.
+After `cassandra use` switches a node whose last start selected an agent, `use` SHALL select the agent for the node's new release and JDK, installing it when the node does not have it, so a later `cassandra restart` does not load the agent of the old version.  A node whose last start selected no agent SHALL keep no agent.  When AxonOps ships no agent for the new release and JDK, `use` SHALL select no agent on that node, SHALL exit non-zero, and SHALL name the node and `--skip-axonops`.  When `use` cannot read the drop-in of a switched node, it SHALL exit non-zero and SHALL name the node, since that node's next restart may load the old agent.
 
 #### Scenario: `use` keeps the agent in step with the version
 

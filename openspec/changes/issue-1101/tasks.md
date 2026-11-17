@@ -39,7 +39,7 @@
 
 ## 7. Guard and integration tests
 
-- [ ] 7.1 `BuiltinKitHostDependencyTest` over packaged kit resources and `edl-kit-lib.sh`, plus a self-test that each pattern matches its forms.
+- [x] 7.1 `BuiltinKitHostDependencyTest` over packaged kit resources and `edl-kit-lib.sh`, plus a self-test that each pattern matches its forms.
 - [ ] 7.2 Integration (K3s, one unlabelled node, `ANYWHERE`): a stress Job from the real `StressJobService` reaches Running and both agent jars exist.
 - [ ] 7.3 Integration: `CassandraPodsKitIntegrationTest` unlabelled-node variant runs cassandra-easy-stress against the kit; Job Succeeded.
 - [ ] 7.4 Integration (K3s, one unlabelled node): install the CNPG operator, start postgres, run sysbench prepare and start; the run pod Succeeded. Repeat in the AWS lab run (9.2).

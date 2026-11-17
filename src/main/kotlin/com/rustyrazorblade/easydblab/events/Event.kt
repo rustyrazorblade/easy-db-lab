@@ -35,6 +35,13 @@ sealed interface Event {
      */
     fun isError(): Boolean = false
 
+    /**
+     * Whether the console prints this event. An event that comes in high volume and exists for
+     * subscribers (a node step's start and completion) returns false; every other listener still
+     * receives it. [ConsoleEventListener] prints an error event whatever this returns.
+     */
+    fun showOnConsole(): Boolean = true
+
     /** A simple message event for use in tests and as a transitional type during migration. */
     @Serializable
     @SerialName("Message")
@@ -823,12 +830,6 @@ sealed interface Event {
     @Serializable
     sealed interface K3s : Event {
         @Serializable
-        @SerialName("K3s.ClusterStarting")
-        data object ClusterStarting : K3s {
-            override fun toDisplayString(): String = "Starting K3s cluster..."
-        }
-
-        @Serializable
         @SerialName("K3s.ServerStarting")
         data class ServerStarting(
             val controlHost: String,
@@ -878,12 +879,6 @@ sealed interface Event {
         @SerialName("K3s.KubeconfigInstruction")
         data object KubeconfigInstruction : K3s {
             override fun toDisplayString(): String = "Use 'source env.sh' to configure kubectl for cluster access"
-        }
-
-        @Serializable
-        @SerialName("K3s.ClusterStarted")
-        data object ClusterStarted : K3s {
-            override fun toDisplayString(): String = "K3s cluster started successfully"
         }
 
         @Serializable
@@ -1080,24 +1075,6 @@ sealed interface Event {
         @SerialName("K8s.ObservabilityPodsReady")
         data object ObservabilityPodsReady : K8s {
             override fun toDisplayString(): String = "All observability pods are ready"
-        }
-
-        /** `up` started waiting for [count] nodes to register with K3s (their agents label them). */
-        @Serializable
-        @SerialName("K8s.NodesRegistering")
-        data class NodesRegistering(
-            val count: Int,
-        ) : K8s {
-            override fun toDisplayString(): String = "Waiting for $count node(s) to register with K3s..."
-        }
-
-        /** All [count] expected nodes are registered with K3s and carry their labels. */
-        @Serializable
-        @SerialName("K8s.NodesRegistered")
-        data class NodesRegistered(
-            val count: Int,
-        ) : K8s {
-            override fun toDisplayString(): String = "All $count node(s) registered with K3s"
         }
 
         @Serializable
@@ -3989,30 +3966,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Provision.SshWaiting")
-        data object SshWaiting : Provision {
-            override fun toDisplayString(): String = "Waiting for SSH to come up.."
-        }
-
-        /**
-         * `up`'s SSH readiness check failed and will run again.
-         *
-         * @property attempt how many attempts have failed so far
-         * @property lastError the message of the failure that triggered this retry, so an
-         *   operator can tell a node still booting from a fault that will never clear
-         */
-        @Serializable
-        @SerialName("Provision.SshRetrying")
-        data class SshRetrying(
-            val attempt: Int,
-            val lastError: String? = null,
-        ) : Provision {
-            override fun toDisplayString(): String =
-                "SSH still not up yet, waiting... (attempt $attempt)" +
-                    lastError?.let { ": ${it.lineSequence().first()}" }.orEmpty()
-        }
-
-        @Serializable
         @SerialName("Provision.SkippingNodeSetup")
         data object SkippingNodeSetup : Provision {
             override fun toDisplayString(): String =
@@ -4069,6 +4022,315 @@ sealed interface Event {
             val configFile: String,
         ) : Provision {
             override fun toDisplayString(): String = "AxonOps Workbench configuration written to $configFile"
+        }
+
+        // --- Per-node bring-up (services/bringup) ---
+
+        /** A node's pipeline started [step], attempt [attempt]. For subscribers; the console skips it. */
+        @Serializable
+        @SerialName("Provision.NodeStepStarted")
+        data class NodeStepStarted(
+            val alias: String,
+            val step: String,
+            val attempt: Int,
+        ) : Provision {
+            override fun toDisplayString(): String = "$alias: $step started (attempt $attempt)"
+
+            override fun showOnConsole(): Boolean = false
+        }
+
+        /** A node's pipeline finished [step] in [durationMs]. For subscribers; the console skips it. */
+        @Serializable
+        @SerialName("Provision.NodeStepCompleted")
+        data class NodeStepCompleted(
+            val alias: String,
+            val step: String,
+            val attempt: Int,
+            val durationMs: Long,
+        ) : Provision {
+            override fun toDisplayString(): String = "$alias: $step completed in ${durationMs}ms (attempt $attempt)"
+
+            override fun showOnConsole(): Boolean = false
+        }
+
+        /**
+         * Attempt [attempt] of [maxAttempts] of a node's [step] failed for [reason]. [willRetry] says
+         * whether the step runs again; when it does not, the node is replaced or fails.
+         */
+        @Serializable
+        @SerialName("Provision.NodeStepFailed")
+        data class NodeStepFailed(
+            val alias: String,
+            val step: String,
+            val attempt: Int,
+            val maxAttempts: Int,
+            val reason: String,
+            val willRetry: Boolean,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias: $step failed (attempt $attempt of $maxAttempts): $reason" + if (willRetry) "; retrying" else ""
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `up` is replacing [alias]: [oldInstanceId] failed [step] for [reason]. This is the node's
+         * [replacement]th replacement of at most [limit].
+         */
+        @Serializable
+        @SerialName("Provision.NodeReplacing")
+        data class NodeReplacing(
+            val alias: String,
+            val oldInstanceId: String,
+            val step: String,
+            val reason: String,
+            val replacement: Int,
+            val limit: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Replacing $alias ($oldInstanceId, replacement $replacement of $limit): $step failed: $reason"
+        }
+
+        /** [alias] runs on [newInstanceId] at [privateIp]; [oldInstanceId] is terminated. */
+        @Serializable
+        @SerialName("Provision.NodeReplaced")
+        data class NodeReplaced(
+            val alias: String,
+            val oldInstanceId: String,
+            val newInstanceId: String,
+            val privateIp: String,
+        ) : Provision {
+            override fun toDisplayString(): String = "Replaced $alias: $oldInstanceId terminated, now $newInstanceId ($privateIp)"
+        }
+
+        /**
+         * Replacing [alias] failed at [phase] (`terminate`, `capacity-check` or `launch`) for
+         * [reason]. [oldInstanceKept] is false when [oldInstanceId] was already terminated, so the
+         * node has no instance; no further replacement is made for it.
+         */
+        @Serializable
+        @SerialName("Provision.NodeReplaceFailed")
+        data class NodeReplaceFailed(
+            val alias: String,
+            val oldInstanceId: String,
+            val phase: String,
+            val reason: String,
+            val oldInstanceKept: Boolean,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Replacing $alias failed at $phase: $reason; " +
+                    if (oldInstanceKept) "$oldInstanceId is kept" else "$oldInstanceId is terminated and $alias has no instance"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** [alias] is a Ready K3s node, [elapsedSeconds] after `up` started its pipeline. */
+        @Serializable
+        @SerialName("Provision.NodeReady")
+        data class NodeReady(
+            val alias: String,
+            val instanceId: String,
+            val elapsedSeconds: Long,
+            val replacements: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias ($instanceId) is Ready after ${elapsedSeconds}s" +
+                    if (replacements > 0) ", after $replacements replacement(s)" else ""
+        }
+
+        /**
+         * [alias] could not be brought up: [step] failed for [reason], on [instanceId] (kept for
+         * debugging unless [instanceKept] is false). Emitted the moment the node fails; the other
+         * nodes go on, and [NodesFailed] lists every failed node once they finish.
+         */
+        @Serializable
+        @SerialName("Provision.NodeFailed")
+        data class NodeFailed(
+            val alias: String,
+            val step: String,
+            val reason: String,
+            val instanceId: String,
+            val instanceKept: Boolean,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias failed at $step: $reason" + if (instanceKept) "" else " ($instanceId terminated)"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The control node [alias] failed at [step] for [reason], after its retries, or its control
+         * plane stayed unhealthy past the deadline. The control node is never replaced: every
+         * pipeline is stopped, every instance is kept, and `up` exits non-zero.
+         */
+        @Serializable
+        @SerialName("Provision.ControlNodeFailed")
+        data class ControlNodeFailed(
+            val alias: String,
+            val step: String,
+            val reason: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Control node $alias failed at $step: $reason. Every instance is kept; run up again after fixing the cause."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * One node `up` could not bring up: the step it last failed, why, and its last instance.
+         * [instanceKept] is false when that instance was terminated for a replacement that then
+         * could not launch.
+         */
+        @Serializable
+        data class FailedNode(
+            val alias: String,
+            val step: String,
+            val reason: String,
+            val instanceId: String,
+            val instanceKept: Boolean,
+        ) {
+            /** The node as one line of the failure list. */
+            fun toDisplayLine(): String =
+                "  $alias ($instanceId, ${if (instanceKept) "kept for debugging" else "terminated, no instance left"}): $step: $reason"
+        }
+
+        /** The nodes that could not be brought up. `up` exits non-zero after the others finished. */
+        @Serializable
+        @SerialName("Provision.NodesFailed")
+        data class NodesFailed(
+            val nodes: List<FailedNode>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "${nodes.size} node(s) could not be brought up:\n" + nodes.joinToString("\n") { it.toDisplayLine() }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A health sample crossed a limit: [latencyMs] for a minimal `get nodes` (null when the API
+         * could not be reached, [unreachableReason] saying why) or [rejections] new API-server
+         * rejections since the last sample. Joins and replacements wait until it is healthy again.
+         */
+        @Serializable
+        @SerialName("Provision.ControlPlaneUnhealthy")
+        data class ControlPlaneUnhealthy(
+            val latencyMs: Long?,
+            val rejections: Long,
+            val latencyLimitMs: Long,
+            val rejectionLimit: Long,
+            val unreachableReason: String? = null,
+        ) : Provision {
+            override fun toDisplayString(): String {
+                val latency =
+                    latencyMs?.let { "get nodes took ${it}ms (limit ${latencyLimitMs}ms)" }
+                        ?: "API server unreachable (${unreachableReason.orEmpty()})"
+                return "Control plane unhealthy: $latency" +
+                    ", $rejections rejected requests (limit $rejectionLimit). Joins and replacements wait until it recovers."
+            }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The control-plane gate opened after [waitedSeconds]: nodes may now join. [conditions]
+         * names every condition that held, the network plugin's among them.
+         */
+        @Serializable
+        @SerialName("Provision.ControlPlaneGateOpen")
+        data class ControlPlaneGateOpen(
+            val waitedSeconds: Long,
+            val conditions: List<String>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Control plane ready after ${waitedSeconds}s (${conditions.size} conditions hold); nodes may join"
+        }
+
+        /** The control-plane gate did not open in time; [conditions] names each one still false. */
+        @Serializable
+        @SerialName("Provision.ControlPlaneGateTimedOut")
+        data class ControlPlaneGateTimedOut(
+            val waitedSeconds: Long,
+            val conditions: List<String>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Control plane not ready after ${waitedSeconds}s; still waiting on: ${conditions.joinToString(", ")}"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The control plane is healthy again after [unhealthySeconds]. Joins resume. */
+        @Serializable
+        @SerialName("Provision.ControlPlaneHealthy")
+        data class ControlPlaneHealthy(
+            val unhealthySeconds: Long,
+        ) : Provision {
+            override fun toDisplayString(): String = "Control plane healthy again after ${unhealthySeconds}s; joins resume"
+        }
+
+        /** The control plane's state as the progress line reports it. */
+        @Serializable
+        enum class ControlPlaneState(
+            val label: String,
+        ) {
+            @SerialName("starting")
+            STARTING("starting"),
+
+            @SerialName("healthy")
+            HEALTHY("healthy"),
+
+            @SerialName("unhealthy")
+            UNHEALTHY("unhealthy"),
+        }
+
+        /**
+         * Where every node is, every `Constants.Scale.PROGRESS_INTERVAL_SECONDS` while pipelines run:
+         * [byStep] counts the nodes in each step before join, in pipeline order; [joining] holds a
+         * join permit of [joinLimit]. [controlStep] is the step the control node is in, or null
+         * once its pipeline is done.
+         */
+        @Serializable
+        @SerialName("Provision.BringUpProgress")
+        data class BringUpProgress(
+            val elapsedSeconds: Long,
+            val total: Int,
+            val byStep: Map<String, Int>,
+            val joining: Int,
+            val joinLimit: Int,
+            val ready: Int,
+            val replacements: Int,
+            val failed: Int,
+            val controlPlane: ControlPlaneState,
+            val controlStep: String? = null,
+        ) : Provision {
+            override fun toDisplayString(): String {
+                val control = listOfNotNull(controlStep?.let { "control $it" })
+                val steps = control + byStep.filterValues { it > 0 }.map { (step, count) -> "$step $count" }
+                val totals =
+                    listOf(
+                        "join $joining/$joinLimit",
+                        "ready $ready",
+                        "replaced $replacements",
+                        "failed $failed",
+                        "control plane ${controlPlane.label}",
+                    )
+                return "[${elapsed()}] $total nodes: " + (steps + totals).joinToString(", ")
+            }
+
+            private fun elapsed(): String {
+                val hours = elapsedSeconds / SECONDS_PER_HOUR
+                val minutes = elapsedSeconds % SECONDS_PER_HOUR / SECONDS_PER_MINUTE
+                val seconds = elapsedSeconds % SECONDS_PER_MINUTE
+                return when {
+                    hours > 0 -> "%dh%02dm%02ds".format(hours, minutes, seconds)
+                    minutes > 0 -> "%dm%02ds".format(minutes, seconds)
+                    else -> "${seconds}s"
+                }
+            }
+
+            private companion object {
+                const val SECONDS_PER_MINUTE = 60L
+                const val SECONDS_PER_HOUR = 3600L
+            }
         }
     }
 

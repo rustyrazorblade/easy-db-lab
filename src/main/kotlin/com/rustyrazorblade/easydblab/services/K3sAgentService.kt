@@ -10,7 +10,6 @@ import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.io.File
 
@@ -46,6 +45,24 @@ interface K3sAgentService : SystemDServiceManager {
         token: String,
         labels: Map<String, String> = emptyMap(),
     ): Result<Unit>
+
+    /**
+     * Starts the configured agent with [mode], without waiting for systemd: the script queues the
+     * start and returns, and the caller reads the node's registration from the K8s API. A first
+     * join uses [AgentStartMode.START]; a retried join uses [AgentStartMode.RESTART].
+     */
+    fun start(
+        host: Host,
+        mode: AgentStartMode,
+    ): Result<Unit>
+}
+
+/** How `start-k3s-agent.sh` starts the agent unit; [arg] is the script's third argument. */
+enum class AgentStartMode(
+    val arg: String,
+) {
+    START("start"),
+    RESTART("restart"),
 }
 
 /**
@@ -87,65 +104,31 @@ class DefaultK3sAgentService(
      * The start-k3s-agent.sh script handles:
      * - Checking if k3s-agent.service already exists
      * - Running airgap installation if needed
-     * - Starting the k3s-agent.service
+     * - Queueing the k3s-agent.service start (`systemctl start --no-block`)
      *
      * The agent must be configured via configure() before calling start().
      *
      * @param host The worker node where the K3s agent should run
      * @return Result indicating success or failure
      */
-    override fun start(host: Host): Result<Unit> =
+    override fun start(host: Host): Result<Unit> = start(host, AgentStartMode.START)
+
+    override fun start(
+        host: Host,
+        mode: AgentStartMode,
+    ): Result<Unit> =
         runCatching {
-            log.debug { "Starting K3s agent on ${host.alias}" }
+            log.debug { "Starting K3s agent on ${host.alias} (${mode.arg})" }
 
             // Upload the startup script from classpath resources
             remoteOps.installFile(host, AGENT_SCRIPT_RESOURCE, AGENT_SCRIPT_PATH, "0755")
 
-            // Read and parse config to get server URL and token
-            val configResult =
-                remoteOps.executeRemotely(
-                    host,
-                    "cat $CONFIG_FILE_PATH",
-                    output = false,
-                )
-
-            val (serverUrl, token) = parseAgentConfig(configResult.text, host.alias)
-
-            // Call the uploaded script with server URL and token
-            remoteOps.executeRemotely(
-                host,
-                "sudo $AGENT_SCRIPT_PATH '$serverUrl' '$token'",
-                output = true,
-            )
+            // The script reads the server URL and token from the config configure() wrote. They stay
+            // off the command line, which reaches failure messages and events.
+            remoteOps.executeRemotely(host, "sudo $AGENT_SCRIPT_PATH ${mode.arg}", output = true)
 
             log.info { "Successfully started K3s agent on ${host.alias}" }
         }
-
-    /**
-     * Parses K3s agent configuration YAML to extract server URL and token.
-     *
-     * @param configText The YAML configuration file content
-     * @param hostAlias The host alias for error messages
-     * @return Pair of (serverUrl, token)
-     * @throws IllegalStateException if parsing fails or required fields are missing
-     */
-    private fun parseAgentConfig(
-        configText: String,
-        hostAlias: String,
-    ): Pair<String, String> {
-        val config =
-            try {
-                yaml.decodeFromString<K3sAgentConfig>(configText)
-            } catch (e: Exception) {
-                throw IllegalStateException(
-                    "Failed to parse k3s config on $hostAlias. " +
-                        "Ensure configure() was called before start().",
-                    e,
-                )
-            }
-
-        return config.server to config.token
-    }
 
     override fun configure(
         host: Host,

@@ -31,7 +31,9 @@ import kotlin.concurrent.thread
  * what only a whole process shows: the exit status after the first and the second signal.
  *
  * The workspace is a Tailscale cluster whose control node is 127.0.0.1, so the stream starts no
- * tunnel and queries this machine's port 9009 directly.
+ * tunnel and queries this machine's port 9009 directly.  That port is the machine's, not the
+ * test's: every test here holds [MachinePortLock] on it until its stream has ended, so a stream from
+ * another build running this class at the same time can never reach this test's fake Mimir.
  */
 class MetricsStreamSignalIntegrationTest {
     @TempDir
@@ -41,9 +43,12 @@ class MetricsStreamSignalIntegrationTest {
     private lateinit var workspace: File
     private lateinit var output: File
     private var process: Process? = null
+    private lateinit var mimirPort: MachinePortLock
 
     @BeforeEach
     fun prepare() {
+        // Held before any stream starts: every stream here queries 127.0.0.1:9009, a fake Mimir or not.
+        mimirPort = MachinePortLock.acquire(Constants.K8s.MIMIR_HTTP_PORT)
         redis.start()
         workspace = File(root, "workspace").apply { mkdirs() }
         output = File(root, "out.log")
@@ -62,8 +67,10 @@ class MetricsStreamSignalIntegrationTest {
 
     @AfterEach
     fun cleanUp() {
-        process?.destroyForcibly()
+        // The stream must be gone before the port is released, or it can reach the next holder's Mimir.
+        process?.destroyForcibly()?.waitFor()
         redis.stop()
+        mimirPort.close()
     }
 
     private fun startStream(redisUrl: String = RedisTestSupport.url(redis, "camera")): Process =

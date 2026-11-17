@@ -21,8 +21,8 @@ the nodes that are missing, in the zones they go to. When nothing is to be launc
 call.
 
 A node an earlier `up` launched that is still starting (pending, or without a public IP yet) is
-kept, not launched again: `up` waits until it runs and passes its status checks, and records it
-with its public IP.
+kept, not launched again: its own pipeline waits until it runs and passes its status checks, and
+records it with its public IP.
 
 | Check | What it compares |
 |-------|------------------|
@@ -76,16 +76,133 @@ after an upgrade so your user has it.
   launched, and a re-run does not launch them again. Each instance carries launch tags
   (`easydblab/first-ordinal`, `easydblab/ordinal-stride`) from which its name is known even if
   its `Name` tag was never set.
-- The wait for instances to run fails as soon as EC2 reports one `shutting-down`, `terminated`,
-  `stopping` or `stopped`, naming its ID, name and state, instead of waiting out the deadline.
-  A re-run of `up` launches a replacement under the same name.
 - The pod readiness wait fails as soon as a pod's container is in `CrashLoopBackOff`,
   `ImagePullBackOff`, `ErrImagePull` or `Error`, naming the pod and the reason, instead of
   waiting out the deadline.
-- Per-node work (setup, the SSH readiness wait, K3s agents, registry TLS) runs on at most 50
-  nodes at once.
-- After K3s starts, `up` waits until every node is registered. The wait grows with the node
-  count, and a node that never registers is named.
 - K3s uses the pod range `10.224.0.0/12` and the service range `10.240.0.0/16`, which hold a
   `/24` for each of 4,096 nodes. K3s's default `10.42.0.0/16` holds 256. `init --cidr` refuses a
   VPC block that overlaps either range, and `up` never picks one.
+
+## One pipeline per node
+
+Each node is brought up by its own pipeline, which starts as soon as its launch call returns.
+A slow node never holds another back. A database or app node runs these steps, in order:
+
+1. `running`: the instance runs with a public IP.
+2. `status-checks`: it passes EC2's own instance and system status checks.
+3. `ssh`: it answers on SSH.
+4. `workspace`: it waits until the control node's pipeline has written the workspace files, which
+   setup installs.
+5. `setup`: `setup_instance.sh`, and for the first database node the database versions file.
+6. `image-check`: under Cilium, the AMI carries the Cilium node fixes.
+7. `registry-tls`: the node trusts the cluster registry's certificate, once the control node has
+   made it.
+8. `join-wait`, then `join`: it waits for the control-plane gate and a join slot, starts its K3s
+   agent, and holds the slot until its Node registers.
+9. `readiness`: its Node is Ready.
+
+The control node runs `running`, `status-checks` and `ssh`, then `workspace`: once every launch
+call has returned, the workspace files are written for every host, and every node's setup may
+start. Then it runs `setup` and `image-check`, then:
+
+1. `tunnel`: this machine connects (the SOCKS tunnel, or the tailnet route).
+2. `registry-cert`: the registry certificate is made and installed on the control node.
+3. `control-plane`: the K3s server starts and the API server answers; then
+   `control-plane-clients`: `up` opens its clients to the cluster API.
+4. `cni`: the control node is labelled and, under Cilium, Cilium is installed.
+5. `gate`: the control-plane gate opens.
+
+When every pipeline has ended, `up` writes the final workspace files, applies the storage classes,
+deploys the observability stack and configures AxonOps on the database nodes that are Ready.
+
+### The control-plane gate and the join limit
+
+No node joins until the gate opens: the API server answers `/readyz`, the control node is registered, and under
+Cilium the operator is ready and every CRD its agents wait for is established. The gate waits up to 10 minutes.
+
+At most 16 nodes are in their join step at once, from starting the agent until the Node
+registers. 79 agents registering at once saturated the datastore; 16 at a time join 1,000 nodes
+in about 16 minutes. SSH steps across all pipelines share a limit of 50 sessions.
+
+### Retry and replacement
+
+A step that fails is retried. A node whose step still fails, or whose instance ends (EC2 reports
+it `shutting-down`, `terminated`, `stopping` or `stopped`), is replaced:
+
+1. the instance is terminated, and `up` waits until EC2 reports it gone;
+2. a new instance launches under the same alias, in the same subnet, after the capacity checks
+   and a dry run for that one instance;
+3. `state.json` is updated, and the new instance runs the pipeline from the start;
+4. just before the new instance first joins, the alias's Node object and its
+   `<alias>.node-password.k3s` secret are deleted, so it can join under the same name. This
+   happens whatever step the old instance stopped at, because that instance, or one from an
+   earlier `up`, may have registered.
+
+A node whose instance was terminated outside `up` after it joined, and that a later `up`
+launches again, gets the same cleanup before its first join, so it joins under its name
+without using a replacement. A node `up` finds still running keeps its Node and password.
+
+An instance that ended is replaced at once, with no retry. A missing Cilium node fix is not
+replaced, because a new instance from the same AMI would lack the same files. An image check
+that could not run at all, for example because its SSH command died, is retried and replaced
+like any other step.
+
+Each node may be replaced twice, so one alias uses at most 3 instances. The whole cluster may
+make at most `max(3, ceil(5% of the nodes))` replacements: 3 up to 60 nodes, 50 at 1,000. The
+cluster limit stops a fault every node has, such as a broken AMI, from replacing every node.
+
+The control node is never replaced. Each of its steps is tried twice; if one still fails, `up`
+fails at once, stops every node pipeline and keeps every instance. It prints the control node, its
+step and the reason once.
+
+### Control-plane health
+
+While nodes join, `up` samples the API server every 5 seconds. A sample is unhealthy when a
+minimal `get nodes` takes more than 2 seconds, or the API server rejects more than 25 requests
+(API priority and fairness) since the last sample. It reports:
+
+```
+Control plane unhealthy: get nodes took 3400ms (limit 2000ms), 41 rejected requests (limit 25). Joins and replacements wait until it recovers.
+```
+
+While unhealthy, no node starts a join and no replacement starts, and a join that times out is
+not counted against the node. Three healthy samples in a row end the unhealthy period. If the
+control plane stays unhealthy for 15 minutes, `up` fails; it does not restart K3s itself.
+
+### Progress
+
+Every 15 seconds `up` prints where every node is:
+
+```
+[4m30s] 1000 nodes: setup 120, join-wait 300, readiness 40, join 16/16, ready 520, replaced 2, failed 0, control plane healthy
+```
+
+The total is the db and app nodes being brought up: all of them, or the ones `--hosts` names.
+While the control node's own steps run, the line starts with its step, for example
+`control control-plane`. The per-step counts are the nodes in that step now. `join` is the join
+slots in use against the limit. Each step's start and end is published to Redis only, not printed.
+
+### When a node fails
+
+When a node has used its replacements, or the cluster has used its limit, the node fails and
+keeps its last instance for debugging. `up` prints the failure as it happens
+(`db7 failed at setup: ...`). The other nodes and the cluster-wide steps still finish.
+Then `up` names each failed node, its instance, its step and the reason, and exits non-zero:
+
+```
+2 node(s) could not be brought up:
+  db7 (i-0abc..., kept for debugging): setup: setup failed (ERROR: no data disk); the node had its 2 replacements
+  db9 (i-0def..., terminated, no instance left): join: join failed (...); the replacement failed at launch: ...
+```
+
+A failed join's reason says what it was waiting for (for example, that the agent started but no
+node registered) and ends with the last lines of the node's K3s agent log.
+
+A replacement terminates the old instance before it checks capacity and launches the new one.
+When that check or launch is refused (for example, no capacity in the zone), the node fails with
+no instance left, `Provision.NodeReplaceFailed` names the phase that failed, and no further
+replacement is tried for it. A Cilium node image that is missing its node fixes fails the node at
+once, with no replacement, because a new instance from the same image would fail the same way.
+
+Run `up` again after fixing the cause. `down` removes the kept instances with the rest of the
+cluster.

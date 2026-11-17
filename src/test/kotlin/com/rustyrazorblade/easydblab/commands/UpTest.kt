@@ -15,25 +15,25 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
-import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
-import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
-import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.SsmTool
 import com.rustyrazorblade.easydblab.services.SsmToolFault
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleAuthKey
 import com.rustyrazorblade.easydblab.services.TailscaleService
+import com.rustyrazorblade.easydblab.services.bringup.ControlNodeFailedException
 import org.apache.sshd.common.SshException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
@@ -44,6 +44,7 @@ import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
@@ -61,6 +62,8 @@ import java.time.Instant
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Tests for [Up], the command that provisions and configures the complete cluster.
@@ -84,27 +87,34 @@ class UpTest : UpTestFixture() {
         verify(mockK8sService).labelNode(eq("control0"), any())
         verify(mockK8sService).ensureLocalStorageClass()
         verify(mockK8sService).ensureLocalStorageWfcClass()
+        // Every node was launched in this `up`, so each removes what an earlier instance under its alias left, once.
+        assertThat(plane.cleaned).containsExactlyInAnyOrder("db0", "app0")
     }
 
     /**
-     * At 1,000 nodes one-at-a-time registry TLS is 1,000 SSH round trips. The latch opens only once
-     * every node is inside its TLS step together, so a serial loop times out on it.
+     * At 1,000 nodes one-at-a-time registry TLS is 1,000 SSH round trips. The control node
+     * configures its own TLS before it releases the certificate; every other node then configures
+     * its own in its pipeline. The latch opens only once db0 and app0 are inside their TLS step
+     * together, so a serial loop times out on it.
      */
     @Test
-    fun `up configures registry TLS on every node in parallel`() {
-        val registry = getKoin().get<RegistryService>()
-        val allInside = CountDownLatch(happyHosts().values.flatten().size)
+    fun `up configures registry TLS on every node, the db and app nodes in parallel`() {
+        val nodes = CountDownLatch(2)
         val configured = Collections.synchronizedList(mutableListOf<String>())
-        whenever(registry.configureTlsOnNode(any(), any(), any())).thenAnswer { invocation ->
-            allInside.countDown()
-            check(allInside.await(OVERLAP_WAIT_SECONDS, TimeUnit.SECONDS)) { "registry TLS ran one node at a time" }
-            configured.add(invocation.getArgument<Host>(0).alias)
+        whenever(mockRegistryService.configureTlsOnNode(any(), any(), any())).thenAnswer { invocation ->
+            val alias = invocation.getArgument<Host>(0).alias
+            if (alias != "control0") {
+                nodes.countDown()
+                check(nodes.await(OVERLAP_WAIT_SECONDS, TimeUnit.SECONDS)) { "registry TLS ran one node at a time" }
+            }
+            configured.add(alias)
             Unit
         }
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(configured).containsExactlyInAnyOrder("control0", "db0", "app0")
+        assertThat(configured.first()).isEqualTo("control0")
     }
 
     /** Every `up` re-applies the bucket policy's delete deny, even on a bucket it configured before. */
@@ -185,17 +195,14 @@ class UpTest : UpTestFixture() {
     @Test
     fun `up provisions successfully with zero db nodes and emits no error output`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 0))
-        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenReturn(
-            ProvisioningResult(
-                hosts = mapOf(ServerType.Control to listOf(testControlHost), ServerType.Stress to listOf(testAppHost)),
-                errors = emptyMap(),
-            ),
-        )
+        launching(mapOf(ServerType.Control to listOf(testControlHost), ServerType.Stress to listOf(testAppHost)))
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(outputHandler.errors).isEmpty()
-        verify(mockK8sService).waitForNodesRegistered(eq(listOf("control0", "app0")), any())
+        assertThat(plane.registered).containsExactly("app0")
+        // With no database node the app node's stress service is pointed at no host.
+        assertThat(uploadsNamed("stress.env").single()).contains("CASSANDRA_EASY_STRESS_CASSANDRA_HOST=\n")
     }
 
     /**
@@ -232,17 +239,19 @@ class UpTest : UpTestFixture() {
                 .neededCount,
         ).isEqualTo(2)
         assertThat(existing.firstValue[ServerType.Cassandra]?.map { it.alias }).containsExactly("db0")
+        // db0 was found running and may own its Node and node password; the launched nodes remove an old one's.
+        assertThat(plane.cleaned).doesNotContain("db0").contains("app0")
     }
 
     /**
      * A re-run inside an earlier `up`'s pending window discovers db0 not ready: still pending, or
-     * already running but with no public IP yet (null or blank). `up` keeps it, so it must give it
-     * what a new instance gets: wait until it runs and passes its status checks, and record the
-     * public IP it was given, never a blank address.
+     * already running but with no public IP yet (null or blank). `up` keeps it and gives it what a
+     * new instance gets: its own pipeline waits until it runs and passes its status checks, and
+     * records the public IP it was given, never a blank address. No wait holds the launch back.
      */
     @ParameterizedTest(name = "state {0}, public IP [{1}]")
     @CsvSource(value = ["pending,NULL", "running,NULL", "running,''"], nullValues = ["NULL"])
-    fun `up waits for a discovered instance that is not ready and keeps it with its assigned public IP`(
+    fun `up waits for a discovered instance that is not ready in its own pipeline and keeps it with its assigned public IP`(
         state: String,
         publicIp: String?,
     ) {
@@ -261,18 +270,17 @@ class UpTest : UpTestFixture() {
             pendingDb0.copy(instanceId = "i-db1", publicIp = "54.1.1.5", privateIp = "10.0.0.5", alias = "db1", state = "running")
         whenever(mockEc2InstanceService.findInstancesByClusterId(any()))
             .thenReturn(mapOf(ServerType.Cassandra to listOf(pendingDb0, runningDb1)))
-        whenever(mockEc2InstanceService.waitForInstancesRunning(any(), any())).thenReturn(
-            listOf(InstanceDetails("i-db0", "running", "54.7.7.7", "10.0.0.2", "us-west-2a")),
-        )
+        launching(mapOf(ServerType.Control to listOf(testControlHost), ServerType.Stress to listOf(testAppHost)))
+        publicIps["i-db0"] = "54.7.7.7"
+        publicIps["i-db1"] = "54.1.1.5"
+        val saved = captureSaves()
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
-        verify(mockEc2InstanceService).waitForInstancesRunning(eq(listOf("i-db0")), any())
-        verify(mockEc2InstanceService).waitForInstanceStatusOk(eq(listOf("i-db0")), any())
-        val existing = argumentCaptor<Map<ServerType, List<ClusterHost>>>()
-        verify(mockClusterProvisioningService).provisionAll(any(), any(), existing.capture(), any())
-        assertThat(existing.firstValue[ServerType.Cassandra]?.associate { it.alias to it.publicIp })
+        verify(mockEc2InstanceService, never()).waitForInstancesRunning(any(), any())
+        assertThat(saved.last().hosts[ServerType.Cassandra]?.associate { it.alias to it.publicIp })
             .containsExactlyEntriesOf(mapOf("db0" to "54.7.7.7", "db1" to "54.1.1.5"))
+        assertThat(plane.registered).contains("db0", "db1")
     }
 
     /**
@@ -314,11 +322,12 @@ class UpTest : UpTestFixture() {
     }
 
     /**
-     * Provisioning reports each batch twice: at launch with no public IP, then with its final IPs.
-     * State already holds db0..db2. Each report must merge by alias into what state holds: the
-     * hosts saved are db0..db4, in order, once each, and db3 and db4 end with their final IPs.
-     * The gap case holds db0, db2 and db10 and launches db1, db9 and db11: the hosts fill in by
-     * alias, never duplicated, in numeric order (db2 before db9 before db10), not text order.
+     * Provisioning may report a batch twice: at launch with no public IP, then with its final IPs.
+     * Discovery finds db0..db2. Each report must merge by alias into what state holds: the hosts
+     * saved are db0..db4, in order, once each, and db3 and db4 end with their final IPs. The gap
+     * case finds db0, db2 and db10 and launches db1, db9 and db11: the hosts fill in by alias,
+     * never duplicated, in numeric order (db2 before db9 before db10), not text order. Only the
+     * saves the launch makes are compared; each node's pipeline saves its own from its own thread.
      */
     @ParameterizedTest
     @ValueSource(strings = ["contiguous", "gap"])
@@ -330,25 +339,43 @@ class UpTest : UpTestFixture() {
             ordinal: Int,
             publicIp: String,
         ) = ClusterHost(publicIp, "10.0.0.$ordinal", "db$ordinal", "us-west-2a", "i-db$ordinal")
-        val state =
-            happyState(cassandraInstances = (held + launched).max() + 1).apply {
-                updateHosts(mapOf(ServerType.Cassandra to held.map { host(it, "54.0.0.$it") }))
-            }
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = (held + launched).max() + 1))
+        whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(
+            mapOf(
+                ServerType.Cassandra to
+                    held.map {
+                        DiscoveredInstance(
+                            "i-db$it",
+                            "54.0.0.$it",
+                            "10.0.0.$it",
+                            "db$it",
+                            "us-west-2a",
+                            ServerType.Cassandra,
+                            "running",
+                        )
+                    },
+            ),
+        )
+        // The provider reports what the launch does, so a pipeline's own save never changes an address.
+        held.forEach { publicIps["i-db$it"] = "54.0.0.$it" }
+        launched.forEach { publicIps["i-db$it"] = "54.9.9.$it" }
+        val launchThread = AtomicReference<Thread>()
         val saves = Collections.synchronizedList(mutableListOf<List<ClusterHost>>())
         whenever(mockClusterStateManager.save(any())).thenAnswer {
-            saves += it.getArgument<ClusterState>(0).hosts[ServerType.Cassandra].orEmpty()
+            if (Thread.currentThread() == launchThread.get()) saves += it.getArgument<ClusterState>(0).hosts[ServerType.Cassandra].orEmpty()
             Unit
         }
         whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenAnswer { invocation ->
+            launchThread.set(Thread.currentThread())
             val callbacks = invocation.getArgument<ProvisioningCallbacks>(3)
+            callbacks.onHostsCreated(ServerType.Control, listOf(testControlHost))
             callbacks.onHostsCreated(ServerType.Cassandra, launched.map { host(it, "") })
             callbacks.onHostsCreated(ServerType.Cassandra, launched.map { host(it, "54.9.9.$it") })
+            callbacks.onInstancesLaunched()
             ProvisioningResult(hosts = happyHosts(), errors = emptyMap())
         }
 
-        // Only the callbacks are under test; what follows provisioning is the fixture's.
-        runCatching { newUp().execute() }
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         val afterLaunch = saves.first { hosts -> hosts.any { it.alias == "db${launched.last()}" } }
         val afterFinalIps = saves[saves.indexOf(afterLaunch) + 1]
@@ -383,12 +410,7 @@ class UpTest : UpTestFixture() {
                     ),
             ),
         )
-        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenReturn(
-            ProvisioningResult(
-                hosts = mapOf(ServerType.Control to listOf(testControlHost), ServerType.Cassandra to listOf(testDbHost)),
-                errors = emptyMap(),
-            ),
-        )
+        launching(mapOf(ServerType.Control to listOf(testControlHost), ServerType.Cassandra to listOf(testDbHost)))
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
@@ -400,26 +422,150 @@ class UpTest : UpTestFixture() {
     // Group 5: `up` fails fast at every swallow site
     // =========================================================================
 
+    /** The workspace files are written in the control node's workspace step, so their failure is the control node's. */
     @Test
-    fun `up aborts when the nested WriteConfig command fails`() {
+    fun `up fails at once when the nested WriteConfig command fails, before K3s starts`() {
         nestedCommandExitCodes["WriteConfig"] = 1
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("WriteConfig")
+            .isInstanceOf(ControlNodeFailedException::class.java)
+            .hasMessageContaining("control0 failed at workspace")
+            .hasMessageContaining("write-config exited with code 1")
+            // The control node's own event reported it; the executor must not print it again.
+            .isInstanceOf(CommandFailedException::class.java)
 
-        verify(mockK3sClusterService, never()).setupCluster(any())
+        verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
+        assertThat(fleet.calls).isEmpty()
     }
 
+    // =========================================================================
+    // Per-node failure handling: replacement, its limits, and the control node
+    // =========================================================================
+
+    /** A node whose setup fails on its first instance is replaced under the same alias, and `up` succeeds. */
     @Test
-    fun `up aborts when the nested SetupInstance command fails`() {
-        nestedCommandExitCodes["SetupInstance"] = 1
+    fun `a db node whose setup fails is replaced under the same alias and up succeeds`() {
+        remoteFault = { host, command -> setupFailure().takeIf { host.instanceId == "i-db0" && command == SETUP_COMMAND } }
+        val saved = captureSaves()
+        val events = captureEvents()
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(fleet.calls).containsExactly("terminate i-db0", "verify db0", "launch db0")
+        val db0 = saved.last().hosts[ServerType.Cassandra].orEmpty()
+        assertThat(db0.map { it.alias to it.instanceId }).containsExactly("db0" to "i-db0-1")
+        val replacing = events.filterIsInstance<Event.Provision.NodeReplacing>().single()
+        assertThat(replacing.alias).isEqualTo("db0")
+        assertThat(replacing.step).isEqualTo("setup")
+        assertThat(replacing.reason).contains("no data disk")
+        // An earlier `up` may have left db0's Node and node password, so the replacement removes them;
+        // the first instance never reached its join, so it removed nothing.
+        assertThat(plane.cleaned.filter { it == "db0" }).hasSize(1)
+        assertThat(events.filterIsInstance<Event.Provision.NodesFailed>()).isEmpty()
+    }
+
+    /**
+     * db0 names the database host in every node's environment and in the app nodes' `stress.env`,
+     * so a replaced db0 has those pushed again with its new private IP.
+     */
+    @Test
+    fun `a replaced db0 has the app nodes' stress environment pushed again with its new address`() {
+        remoteFault = { host, command -> setupFailure().takeIf { host.instanceId == "i-db0" && command == SETUP_COMMAND } }
+
+        newUp().execute()
+
+        val stressEnv = uploadsNamed("stress.env")
+        assertThat(stressEnv).hasSize(2)
+        assertThat(stressEnv.last()).contains("CASSANDRA_EASY_STRESS_CASSANDRA_HOST=10.0.1.1")
+    }
+
+    /**
+     * A node whose setup fails on every instance uses its two replacements, then fails, keeping its
+     * last instance. The other nodes and the cluster-wide steps still finish, then `up` exits
+     * non-zero naming the node and its step.
+     */
+    @Test
+    fun `a db node that runs out of replacements fails up after the others and the post-steps finish`() {
+        remoteFault = { host, command -> setupFailure().takeIf { host.alias == "db0" && command == SETUP_COMMAND } }
+        val events = captureEvents()
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("SetupInstance")
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining("1 node(s)")
 
-        verify(mockK3sClusterService, never()).setupCluster(any())
+        assertThat(fleet.calls.filter { it.startsWith("launch") }).containsExactly("launch db0", "launch db0")
+        val failed =
+            events
+                .filterIsInstance<Event.Provision.NodesFailed>()
+                .single()
+                .nodes
+                .single()
+        assertThat(failed.alias).isEqualTo("db0")
+        assertThat(failed.step).isEqualTo("setup")
+        assertThat(failed.instanceId).isEqualTo("i-db0-2")
+        assertThat(failed.reason).contains("2 replacements")
+        assertThat(fleet.calls).doesNotContain("terminate i-db0-2")
+        assertThat(plane.registered).contains("app0")
+        verify(mockK8sService).ensureLocalStorageWfcClass()
+        verify(mockObservabilityStackService).deploy(any())
+    }
+
+    /** A registered node that never becomes Ready leaves its Node object, which is deleted before its replacement joins. */
+    @Test
+    fun `a registered node that never becomes Ready is removed from K3s and replaced`() {
+        plane.neverReady += testDbHost.privateIp
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        // The first instance cleaned before its join, and the replacement again before its own.
+        assertThat(plane.cleaned.filter { it == "db0" }).hasSize(2)
+        assertThat(plane.registered.filter { it == "db0" }).hasSize(2)
+        assertThat(fleet.calls).containsSubsequence("terminate i-db0", "launch db0")
+    }
+
+    /** An instance the provider ends mid-setup is replaced at once, with no retry of setup. */
+    @Test
+    fun `a db instance that ends during setup is replaced with no retry`() {
+        val setupRuns = AtomicInteger()
+        remoteFault = { host, command ->
+            if (host.instanceId == "i-db0" && command == SETUP_COMMAND) {
+                setupRuns.incrementAndGet()
+                tracker.end("i-db0")
+                IllegalStateException("connection reset")
+            } else {
+                null
+            }
+        }
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(setupRuns.get()).isEqualTo(1)
+        assertThat(fleet.calls).containsExactly("terminate i-db0", "verify db0", "launch db0")
+    }
+
+    /** The control node is never replaced: a step that fails after its retries fails `up` at once, keeping every instance. */
+    @Test
+    fun `up fails at once and keeps every instance when the K3s server does not start`() {
+        whenever(mockK3sClusterService.startServer(any(), any(), anyOrNull(), any()))
+            .thenThrow(IllegalStateException("K3s server start failed: connection refused"))
+        val saved = captureSaves()
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(ControlNodeFailedException::class.java)
+            .hasMessageContaining("control0 failed at control-plane")
+            .hasMessageContaining("connection refused")
+
+        verify(mockK3sClusterService, times(Constants.Scale.CONTROL_STEP_ATTEMPTS)).startServer(any(), any(), anyOrNull(), any())
+        verify(mockK3sClusterService, never()).joinAgent(any(), any(), any(), any())
+        verify(mockK8sService, never()).labelNode(any(), any())
+        assertThat(fleet.calls).isEmpty()
+        assertThat(
+            saved
+                .last()
+                .hosts.values
+                .flatten()
+                .map { it.alias },
+        ).containsExactlyInAnyOrder("control0", "db0", "app0")
     }
 
     @Test
@@ -430,8 +576,8 @@ class UpTest : UpTestFixture() {
         nestedCommandExitCodes["ConfigureAxonOps"] = 1
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("ConfigureAxonOps")
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining("configure-axonops exited with code 1")
     }
 
     @Test
@@ -453,23 +599,10 @@ class UpTest : UpTestFixture() {
             .thenReturn(Result.failure(RuntimeException("disk full")))
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
+            .isInstanceOf(ControlNodeFailedException::class.java)
             .hasMessageContaining("disk full")
 
-        verify(mockK3sClusterService, never()).setupCluster(any())
-    }
-
-    @Test
-    fun `up aborts when k3s cluster setup reports failure`() {
-        whenever(mockK3sClusterService.setupCluster(any())).thenReturn(
-            K3sSetupResult(serverStarted = false, errors = mapOf("K3s server start" to Exception("connection refused"))),
-        )
-
-        assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("K3s cluster setup failed")
-
-        verify(mockK8sService, never()).labelNode(any(), any())
+        verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
     }
 
     @Test
@@ -501,37 +634,31 @@ class UpTest : UpTestFixture() {
             .thenReturn(Result.failure(RuntimeException("k8s api unreachable")))
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
+            .isInstanceOf(ControlNodeFailedException::class.java)
+            .hasMessageContaining("control0 failed at cni")
             .hasMessageContaining("k8s api unreachable")
 
-        verify(mockK8sService, times(1)).labelNode(any(), any())
+        verify(mockK8sService, times(Constants.Scale.CONTROL_STEP_ATTEMPTS)).labelNode(eq("control0"), any())
+        verify(mockK3sClusterService, never()).joinAgent(any(), any(), any(), any())
     }
 
     /**
-     * db and app nodes are labeled by their K3s agents when they register, so `up` waits for every
-     * node to register (one bounded wait, not a label call per node) before anything schedules on
-     * them. Every node in state is expected, the control node included.
+     * db and app nodes are labeled by their K3s agents when they register, so every node's
+     * pipeline ends with it registered and Ready before anything schedules on it: the storage
+     * classes come after every pipeline.
      */
     @Test
-    fun `up waits for every node to register with K3s before the storage classes`() {
+    fun `every node is registered before the storage classes`() {
+        val registeredAtStorage = mutableListOf<String>()
+        whenever(mockK8sService.ensureLocalStorageClass()).thenAnswer {
+            registeredAtStorage += plane.registered
+            Result.success(Unit)
+        }
+
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
-        val order = inOrder(mockK8sService)
-        order.verify(mockK8sService).waitForNodesRegistered(eq(listOf("control0", "db0", "app0")), any())
-        order.verify(mockK8sService).ensureLocalStorageClass()
+        assertThat(registeredAtStorage).containsExactlyInAnyOrder("db0", "app0")
         verify(mockK8sService, never()).labelNode(eq("db0"), any())
-    }
-
-    @Test
-    fun `up aborts when a node never registers with K3s`() {
-        whenever(mockK8sService.waitForNodesRegistered(any(), any()))
-            .thenReturn(Result.failure(IllegalStateException("1 node(s) did not register: db0")))
-
-        assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("db0")
-
-        verify(mockK8sService, never()).ensureLocalStorageClass()
     }
 
     /** A role made by an older version must carry the Session Manager policy before any node launches under it. */
@@ -573,10 +700,10 @@ class UpTest : UpTestFixture() {
         nestedCommandExitCodes["TailscaleStart"] = 1
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
+            .isInstanceOf(CommandFailedException::class.java)
             .hasMessageContaining("easy-db-lab tailscale start")
 
-        verify(mockK3sClusterService, never()).setupCluster(any())
+        verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
     }
 
     /**
@@ -609,7 +736,7 @@ class UpTest : UpTestFixture() {
 
         assertThat(state.tailscaleDeviceId).isEqualTo("nNewCNTRL")
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("nOldCNTRL")
-        verify(mockK3sClusterService).setupCluster(any())
+        verify(mockK3sClusterService).startServer(any(), any(), anyOrNull(), any())
     }
 
     @Test
@@ -622,7 +749,7 @@ class UpTest : UpTestFixture() {
         assertThat(
             outputHandler.messages,
         ).contains("Skipping node setup.  You will need to run easy-db-lab setup-instance to complete setup")
-        verify(mockK3sClusterService, never()).setupCluster(any())
+        verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
     }
 
     // =========================================================================
@@ -668,9 +795,7 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(sshCheckedAliases.count { it == "control0" }).isEqualTo(4)
-        val retries = outputHandler.messages.filter { it.startsWith("SSH still not up yet") }
-        assertThat(retries).hasSize(3).allMatch { it.contains("exited (exit code 254) before it was ready") }
-        verify(mockK3sClusterService).setupCluster(any())
+        verify(mockK3sClusterService).startServer(any(), any(), anyOrNull(), any())
     }
 
     /**
@@ -686,10 +811,7 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(sshCheckedAliases.count { it == "control0" }).isEqualTo(4)
-        assertThat(outputHandler.messages.filter { it.startsWith("SSH still not up yet") })
-            .hasSize(3)
-            .allMatch { it.contains("Connection refused") }
-        verify(mockK3sClusterService).setupCluster(any())
+        verify(mockK3sClusterService).startServer(any(), any(), anyOrNull(), any())
     }
 
     /** An IOException that is not a connection failure will not clear by waiting, so `up` stops at once. */
@@ -699,11 +821,12 @@ class UpTest : UpTestFixture() {
         sshFailureException = IOException("No such file or directory")
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IOException::class.java)
+            .isInstanceOf(ControlNodeFailedException::class.java)
+            .hasMessageContaining("control0 failed at ssh")
             .hasMessageContaining("No such file or directory")
 
         assertThat(sshCheckedAliases.count { it == "control0" }).isEqualTo(1)
-        verify(mockK3sClusterService, never()).setupCluster(any())
+        verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
     }
 
     @Test
@@ -714,10 +837,10 @@ class UpTest : UpTestFixture() {
         sshFailureException = IllegalStateException("connection refused")
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
+            .isInstanceOf(ControlNodeFailedException::class.java)
             .hasMessageContaining("connection refused")
 
-        verify(mockK3sClusterService, never()).setupCluster(any())
+        verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
     }
 
     // =========================================================================
@@ -985,7 +1108,7 @@ class UpTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         assertThat(probedTargets).hasSize(3)
-        verify(mockK3sClusterService).setupCluster(any())
+        verify(mockK3sClusterService).startServer(any(), any(), anyOrNull(), any())
     }
 
     @Test
@@ -993,14 +1116,16 @@ class UpTest : UpTestFixture() {
         tailnetReachable = false
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
+            .isInstanceOf(CommandFailedException::class.java)
             .hasMessageContaining("cannot reach it at 10.0.0.1:22 over the tailnet")
             .hasMessageContaining("after ${Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS} attempts")
             .hasMessageContaining("approve the subnet route 10.0.0.0/16")
 
-        // Every attempt was spent before giving up; one failed connect is not a missing route.
-        assertThat(probedTargets).hasSize(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS)
-        verify(mockK3sClusterService, never()).setupCluster(any())
+        // Every probe was spent before giving up, in each attempt at the control node's tunnel step:
+        // one failed connect is not a missing route.
+        assertThat(probedTargets)
+            .hasSize(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS * Constants.Scale.CONTROL_STEP_ATTEMPTS)
+        verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
     }
 
     // =========================================================================
@@ -1063,7 +1188,22 @@ class UpTest : UpTestFixture() {
 
     private fun ssmUser(): User = getKoin().get<User>().copy(sshTransport = SshTransport.Ssm)
 
+    /** A copy of the state at every save, in order. */
+    private fun captureSaves(): List<ClusterState> {
+        val saved = Collections.synchronizedList(mutableListOf<ClusterState>())
+        whenever(mockClusterStateManager.save(any())).thenAnswer {
+            val state = it.getArgument<ClusterState>(0)
+            synchronized(saved) { saved += state.copy(hosts = state.hosts) }
+            Unit
+        }
+        return saved
+    }
+
+    /** `setup_instance.sh` failing as a node with no data disk does. */
+    private fun setupFailure() = RemoteCommandFailedException(SETUP_COMMAND, "", "ERROR: no data disk", "setup failed")
+
     private companion object {
         const val OVERLAP_WAIT_SECONDS = 5L
+        const val SETUP_COMMAND = "sudo bash setup_instance.sh"
     }
 }

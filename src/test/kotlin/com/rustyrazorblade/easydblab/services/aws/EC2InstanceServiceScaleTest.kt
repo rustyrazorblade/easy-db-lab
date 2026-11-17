@@ -135,6 +135,10 @@ class EC2InstanceServiceScaleTest {
             .placement(Placement.builder().availabilityZone("us-west-2a").build())
             .build()
 
+    /** The IDs a running-wait look asks about: it names them in an `instance-id` filter, so an unknown one fails nothing. */
+    private fun filteredIds(request: DescribeInstancesRequest): List<String> =
+        request.filters().filter { it.name() == "instance-id" }.flatMap { it.values() }
+
     private fun reservation(vararg instances: Instance) =
         DescribeInstancesResponse
             .builder()
@@ -513,8 +517,9 @@ class EC2InstanceServiceScaleTest {
 
     @Test
     fun `the running wait tolerates ids EC2 does not know yet and a response missing some of them`() {
+        // EC2 leaves out of a filtered answer the IDs it does not know yet.
         whenever(ec2.describeInstances(any<DescribeInstancesRequest>()))
-            .thenThrow(notFound())
+            .thenReturn(reservation())
             .thenReturn(reservation(running("i-1")))
             .thenReturn(reservation(running("i-2")))
 
@@ -524,7 +529,9 @@ class EC2InstanceServiceScaleTest {
         val requests = argumentCaptor<DescribeInstancesRequest>()
         verify(ec2, times(3)).describeInstances(requests.capture())
         // Once i-1 answered running, only i-2 was asked about again.
-        assertThat(requests.thirdValue.instanceIds()).containsExactly("i-2")
+        assertThat(filteredIds(requests.firstValue)).containsExactly("i-1", "i-2")
+        assertThat(requests.firstValue.instanceIds()).isEmpty()
+        assertThat(filteredIds(requests.thirdValue)).containsExactly("i-2")
     }
 
     @Test
@@ -537,8 +544,7 @@ class EC2InstanceServiceScaleTest {
             // The first full poll leaves three instances pending; the next one finds them running.
             val firstPoll = poll++ < 3
             reservation(
-                *request
-                    .instanceIds()
+                *filteredIds(request)
                     .filterNot { firstPoll && it in slow }
                     .map(::running)
                     .toTypedArray(),
@@ -550,8 +556,8 @@ class EC2InstanceServiceScaleTest {
         assertThat(details.map { it.instanceId }).containsExactlyElementsOf(ids)
         val requests = argumentCaptor<DescribeInstancesRequest>()
         verify(ec2, times(4)).describeInstances(requests.capture())
-        assertThat(requests.allValues.map { it.instanceIds().size }).containsExactly(100, 100, 50, 3)
-        assertThat(requests.allValues.last().instanceIds()).containsExactlyInAnyOrderElementsOf(slow)
+        assertThat(requests.allValues.map { filteredIds(it).size }).containsExactly(100, 100, 50, 3)
+        assertThat(filteredIds(requests.allValues.last())).containsExactlyInAnyOrderElementsOf(slow)
     }
 
     @Test
@@ -710,8 +716,7 @@ class EC2InstanceServiceScaleTest {
             // The first look's second batch fails after its first batch reported i-0 ended.
             if (call++ == 1) throw throttled()
             reservation(
-                *request
-                    .instanceIds()
+                *filteredIds(request)
                     .map { if (it == "i-0") endedInstance(it, "Name" to "db0") else running(it) }
                     .toTypedArray(),
             )

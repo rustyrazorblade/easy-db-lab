@@ -86,46 +86,6 @@ class DefaultK8sNamespaceOperations(
             eventBus.emit(Event.K8s.PodsReady(namespace))
         }
 
-    override fun waitForNodesRegistered(
-        nodeNames: List<String>,
-        timeout: Duration,
-    ): Result<Unit> =
-        runCatching {
-            if (nodeNames.isEmpty()) return@runCatching
-            eventBus.emit(Event.K8s.NodesRegistering(nodeNames.size))
-            clientProvider.createClient().use { client ->
-                // One list per poll for the whole cluster, not one GET per node; a deadline, not
-                // an attempt count, bounds the wait.
-                val missing =
-                    pollUntil(
-                        operationName = "node-registration",
-                        maxAttempts = Int.MAX_VALUE,
-                        interval = podPollInterval,
-                        deadline = Instant.now().plus(timeout),
-                        done = { it.isEmpty() },
-                    ) {
-                        val registered =
-                            client
-                                .nodes()
-                                .list()
-                                .items
-                                .mapNotNull { it.metadata?.name }
-                                .toSet()
-                        nodeNames.filterNot { it in registered }
-                    }
-                check(missing.isEmpty()) {
-                    "${missing.size} of ${nodeNames.size} node(s) did not register with K3s within " +
-                        "${timeout.toSeconds()}s: " +
-                        missing.joinToString(
-                            ", ",
-                            limit = Constants.Scale.MAX_NAMED_IN_ERROR,
-                            truncated = "and ${missing.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
-                        )
-                }
-            }
-            eventBus.emit(Event.K8s.NodesRegistered(nodeNames.size))
-        }
-
     override fun getNamespaceStatus(namespace: String): Result<String> =
         runCatching {
             log.debug { "Getting status for namespace $namespace via SOCKS proxy" }

@@ -121,8 +121,8 @@ object Constants {
      */
     object Scale {
         /**
-         * The most hosts a parallel per-host operation (SSH setup, K3s agents, registry TLS, the
-         * Cilium image check, SSH readiness) works on at once. One thread per host at 1,000 nodes
+         * The most hosts a parallel per-host operation works on at once, and the most SSH sessions
+         * the per-node bring-up pipelines hold together. One thread per host at 1,000 nodes
          * is 1,000 SSH sessions from the operator's machine.
          */
         const val HOST_CONCURRENCY = 50
@@ -154,12 +154,6 @@ object Constants {
         /** How long `up` waits for SSH on every node, however many there are. */
         const val SSH_READY_TIMEOUT_SECONDS = 600L
 
-        /** How long `up` waits for every K3s agent to register its node with the server, at least. */
-        const val NODE_REGISTRATION_BASE_SECONDS = 300L
-
-        /** Extra registration wait per expected node, on top of [NODE_REGISTRATION_BASE_SECONDS]. */
-        const val NODE_REGISTRATION_PER_NODE_SECONDS = 1L
-
         /** Extra observability rollout wait per cluster node; DaemonSets roll one pod per node. */
         const val ROLLOUT_PER_NODE_SECONDS = 2L
 
@@ -171,6 +165,104 @@ object Constants {
 
         /** Launch tag: how far apart the ordinals of one RunInstances call's instances are. */
         const val ORDINAL_STRIDE_TAG = "easydblab/ordinal-stride"
+
+        /**
+         * The most nodes in their join step at once: from the agent configuration until the Node
+         * registers. The registration burst (Node, lease, node-password secret, CiliumNode) is
+         * what saturated the datastore at 79 nodes (#1134); 16 joins 1,000 nodes in about 16 minutes.
+         */
+        const val JOIN_CONCURRENCY = 16
+
+        /** Replacements one node may take, so one alias uses at most 3 instances (owner decision). */
+        const val MAX_NODE_REPLACEMENTS = 2
+
+        /** The cluster-wide replacement limit is at least this, however small the cluster. */
+        const val MIN_CLUSTER_REPLACEMENTS = 3
+
+        /**
+         * The share of the nodes the cluster may replace, rounded up, when that is above
+         * [MIN_CLUSTER_REPLACEMENTS]. It stops a fault every node has from replacing the whole cluster.
+         */
+        const val CLUSTER_REPLACEMENT_FRACTION = 0.05
+
+        /** The pause between two attempts of one bring-up step. */
+        const val STEP_RETRY_INTERVAL_SECONDS = 10L
+
+        /**
+         * How long a timed-out step attempt has to stop after its interrupt. The next attempt
+         * starts only once it has, so two attempts never run together on one instance; one that
+         * does not stop fails the step, and the node is replaced.
+         */
+        const val ATTEMPT_STOP_GRACE_SECONDS = 30L
+
+        /** How long removing a stale Node and its node password waits for each to be gone. */
+        const val NODE_CLEANUP_DELETE_WAIT_SECONDS = 60L
+
+        /** How long the control-plane gate waits for the API server, the control node and Cilium. */
+        const val GATE_TIMEOUT_SECONDS = 600L
+
+        /** How often the control-plane gate reads its conditions. */
+        const val GATE_POLL_INTERVAL_SECONDS = 5L
+
+        /** One attempt of a node's setup step; `setup_instance.sh` installs packages and formats disks. */
+        const val NODE_SETUP_TIMEOUT_SECONDS = 900L
+
+        /** One attempt of a node's join step, from the agent configuration until its Node registers. */
+        const val NODE_REGISTRATION_TIMEOUT_SECONDS = 300L
+
+        /** How long a launched instance has to run with a public IP. */
+        const val INSTANCE_RUNNING_TIMEOUT_SECONDS = 600L
+
+        /** How long a running instance has to pass the provider's own health checks. */
+        const val INSTANCE_STATUS_TIMEOUT_SECONDS = 600L
+
+        /** How often a node's SSH readiness is probed while it boots. */
+        const val SSH_PROBE_INTERVAL_SECONDS = 5L
+
+        /** Lines of the K3s agent log a failed join's reason carries. */
+        const val JOIN_LOG_LINES = 20
+
+        /** One attempt of a node's image check. */
+        const val IMAGE_CHECK_TIMEOUT_SECONDS = 120L
+
+        /** Attempts of a node's image check that could not run, before the node is replaced. */
+        const val IMAGE_CHECK_ATTEMPTS = 2
+
+        /** One attempt of a control node step: the tunnel, the registry certificate, the K3s server, the CNI. */
+        const val CONTROL_STEP_TIMEOUT_SECONDS = 900L
+
+        /** Attempts of a control node step; the control node is never replaced. */
+        const val CONTROL_STEP_ATTEMPTS = 2
+
+        /** How long a registered node has to become Ready: its Cilium agent and image pulls. */
+        const val NODE_READY_TIMEOUT_SECONDS = 600L
+
+        /** How long a replacement waits for EC2 to report the old instance out of pending and running. */
+        const val REPLACEMENT_TERMINATE_TIMEOUT_SECONDS = 600L
+
+        /** One attempt of a node's registry TLS step. */
+        const val REGISTRY_TLS_TIMEOUT_SECONDS = 120L
+
+        /** How often the control-plane health monitor samples the API server. */
+        const val HEALTH_SAMPLE_INTERVAL_SECONDS = 5L
+
+        /**
+         * A minimal `get nodes` slower than this marks the control plane unhealthy. The SOCKS tunnel
+         * or Tailscale adds tens of milliseconds, so the limit sits well above that.
+         */
+        const val HEALTH_LATENCY_LIMIT_MS = 2000L
+
+        /** More new APF rejections than this in one sample marks the control plane unhealthy. */
+        const val HEALTH_REJECTION_LIMIT = 25L
+
+        /** Healthy samples in a row that end an unhealthy period, so one good sample is not trusted. */
+        const val HEALTH_RECOVERY_SAMPLES = 3
+
+        /** An unhealthy control plane for this long fails `up`; `up` does not restart K3s itself. */
+        const val HEALTH_UNHEALTHY_TIMEOUT_SECONDS = 900L
+
+        /** How often `up` prints where every node is, so a long bring-up is never silent. */
+        const val PROGRESS_INTERVAL_SECONDS = 15L
     }
 
     /**
@@ -636,6 +728,29 @@ object Constants {
     object Cilium {
         const val VERSION = "1.19.4"
         const val NAMESPACE = "kube-system"
+
+        /** The operator Deployment the control-plane gate waits on. */
+        const val OPERATOR_DEPLOYMENT = "cilium-operator"
+
+        /**
+         * The CRDs the Cilium agent waits for before it starts, at [VERSION] with the flags
+         * `CiliumService` installs: `agentCRDResourceNames()` in `pkg/k8s/synced/crd.go`. The
+         * control-plane gate lets no agent join until each one is Established. A [VERSION] bump
+         * MUST re-read that function and update this list; a stale entry makes the gate time out
+         * naming it, never let an agent through early.
+         */
+        val REQUIRED_CRDS =
+            listOf(
+                "ciliumidentities.cilium.io",
+                "ciliumpodippools.cilium.io",
+                "ciliumendpoints.cilium.io",
+                "ciliumnodes.cilium.io",
+                "ciliumnetworkpolicies.cilium.io",
+                "ciliumclusterwidenetworkpolicies.cilium.io",
+                "ciliumcidrgroups.cilium.io",
+                "ciliumloadbalancerippools.cilium.io",
+                "ciliuml2announcementpolicies.cilium.io",
+            )
 
         // The agent and the operator both run hostNetwork, so their metrics ports are node ports.
         // The agent is a DaemonSet: every collector scrapes its own node's agent at localhost.

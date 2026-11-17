@@ -1,8 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
+import kotlinx.serialization.encodeToString
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.images.builder.Transferable
@@ -24,11 +28,25 @@ class StartK3sScriptsIntegrationTest {
         private const val SERVER = "start-k3s-server.sh"
         private const val AGENT = "start-k3s-agent.sh"
 
-        /** systemctl reports no installed unit, so the script runs the (stubbed) installer. */
-        private const val SYSTEMCTL_STUB = "#!/bin/sh\necho systemctl >> /tmp/calls.log\nexit 0\n"
+        /**
+         * systemctl reports no installed unit, so the script runs the (stubbed) installer. Each call
+         * is logged to [CALLS_LOG] as `systemctl <args>`, one call a line.
+         */
+        private const val SYSTEMCTL_STUB = "#!/bin/sh\necho \"systemctl $*\" >> $CALLS_LOG\nexit 0\n"
 
-        /** The k3s installer is not run; the script only has to reach it. */
-        private const val INSTALLER_STUB = "#!/bin/sh\necho installer >> /tmp/calls.log\nexit 0\n"
+        /** The k3s installer is not run; it logs the server and token it was given. */
+        private const val INSTALLER_STUB =
+            "#!/bin/sh\necho \"installer url=${'$'}K3S_URL token=${'$'}K3S_TOKEN\" >> /tmp/calls.log\nexit 0\n"
+
+        /** The agent config `configure()` writes: the agent script reads the server and token from it. */
+        private const val AGENT_CONFIG_PATH = "/etc/rancher/k3s/config.yaml"
+        private const val AGENT_SERVER = "https://10.0.0.5:6443"
+        private const val AGENT_TOKEN = "K10abc::server:def"
+
+        /** Written as `configure()` writes it, by the same serializer. */
+        private val AGENT_CONFIG =
+            Yaml(configuration = YamlConfiguration(encodeDefaults = false))
+                .encodeToString(K3sAgentConfig(server = AGENT_SERVER, token = AGENT_TOKEN, nodeLabel = listOf("role=db")))
     }
 
     /** What a script run left on the node. */
@@ -49,6 +67,8 @@ class StartK3sScriptsIntegrationTest {
         mounted: Boolean,
         seed: String = "true",
         runs: Int = 1,
+        extraArgs: String = "",
+        agentConfig: String? = AGENT_CONFIG,
         check: (NodeAfterRun) -> Unit,
     ) {
         val container =
@@ -57,13 +77,16 @@ class StartK3sScriptsIntegrationTest {
                 .withCopyToContainer(Transferable.of(SYSTEMCTL_STUB, EXECUTABLE_MODE), "/usr/local/bin/systemctl")
                 .withCopyToContainer(Transferable.of(INSTALLER_STUB, EXECUTABLE_MODE), "/usr/local/bin/install-k3s.sh")
                 .withCopyFileToContainer(MountableFile.forClasspathResource("$RESOURCE_DIR/$script", EXECUTABLE_MODE), "/tmp/$script")
+        if (script == AGENT && agentConfig != null) {
+            container.withCopyToContainer(Transferable.of(agentConfig, CONFIG_MODE), AGENT_CONFIG_PATH)
+        }
         if (mounted) container.withTmpFs(mapOf("/mnt/db1" to "rw"))
 
         container.use {
             it.start()
             // The AMI has k3s installed, so /var/lib/rancher exists before the script runs.
             assertThat(it.execInContainer("sh", "-c", "mkdir -p /var/lib/rancher && $seed").exitCode).describedAs("seed").isZero()
-            val args = if (script == AGENT) " https://10.0.0.5:6443 token" else ""
+            val args = if (script == AGENT) extraArgs else ""
             var last = it.execInContainer("bash", "-c", "/tmp/$script$args")
             repeat(runs - 1) { _ -> last = it.execInContainer("bash", "-c", "/tmp/$script$args") }
             check(NodeAfterRun(last.exitCode, last.stdout + last.stderr, it))
@@ -127,6 +150,61 @@ class StartK3sScriptsIntegrationTest {
         }
     }
 
+    /**
+     * The agent is started without waiting on systemd: registration is read from the K8s API, so
+     * no SSH session is held while the agent waits on the server (#1134). A retry of the join
+     * restarts the agent. A mode the script does not know fails it before systemd is touched.
+     */
+    @ParameterizedTest
+    @CsvSource(
+        "'', start --no-block k3s-agent",
+        "' start', start --no-block k3s-agent",
+        "' restart', restart --no-block k3s-agent",
+    )
+    fun `the agent start does not wait on systemd, and a retry restarts it`(
+        mode: String,
+        expected: String,
+    ) {
+        runScript(AGENT, mounted = false, extraArgs = mode) { node ->
+            assertThat(node.exitCode).describedAs(node.output).isZero()
+            val agentCalls = "grep '^systemctl .*k3s-agent' $CALLS_LOG | grep -v list-unit-files | sed 's/^systemctl //'"
+            assertThat(node.sh(agentCalls)).isEqualTo(expected)
+        }
+    }
+
+    /**
+     * The server and the node token come from the agent config `configure()` wrote (mode 0600), not
+     * from the command line, which reaches failure messages and events. The token is never printed.
+     */
+    @Test
+    fun `the agent installs with the server and token from its config and never prints the token`() {
+        runScript(AGENT, mounted = false) { node ->
+            assertThat(node.exitCode).describedAs(node.output).isZero()
+            assertThat(node.sh("grep ^installer $CALLS_LOG")).isEqualTo("installer url=$AGENT_SERVER token=$AGENT_TOKEN")
+            assertThat(node.output).doesNotContain(AGENT_TOKEN)
+        }
+    }
+
+    /** Without the agent config there is nothing to join with: the script fails before the installer or systemd runs. */
+    @ParameterizedTest
+    @ValueSource(strings = ["", "server: \"https://10.0.0.5:6443\"\n", "token: \"K10abc::server:def\"\n"])
+    fun `an agent whose config lacks the server or the token fails before anything is installed`(config: String) {
+        runScript(AGENT, mounted = false, agentConfig = config.ifEmpty { null }) { node ->
+            assertThat(node.exitCode).isNotZero()
+            assertThat(node.output).contains(AGENT_CONFIG_PATH)
+            assertThat(node.sh("cat $CALLS_LOG 2>/dev/null || true")).isEmpty()
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = [" stop", " bogus"])
+    fun `an unknown agent start mode fails before systemd is touched`(mode: String) {
+        runScript(AGENT, mounted = false, extraArgs = mode) { node ->
+            assertThat(node.exitCode).isNotZero()
+            assertThat(node.sh("cat $CALLS_LOG 2>/dev/null || true")).isEmpty()
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = [SERVER, AGENT])
     fun `running the script again rewrites the same eviction settings`(script: String) {
@@ -170,3 +248,4 @@ class StartK3sScriptsIntegrationTest {
 }
 
 private const val EXECUTABLE_MODE = 0b111_101_101
+private const val CONFIG_MODE = 0b110_000_000

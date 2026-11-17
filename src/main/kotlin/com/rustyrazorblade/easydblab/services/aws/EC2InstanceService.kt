@@ -477,7 +477,7 @@ class EC2InstanceService(
                 .filters(
                     Filter
                         .builder()
-                        .name("tag:ClusterId")
+                        .name("tag:${Constants.Vpc.CLUSTER_ID_TAG_KEY}")
                         .values(clusterId)
                         .build(),
                     Filter

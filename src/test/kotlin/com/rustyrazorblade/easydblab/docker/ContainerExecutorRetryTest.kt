@@ -156,7 +156,7 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("removeFailures")
-    fun `a remove that fails in a way Docker reports is reported as an event and does not throw`(
+    fun `a remove that fails is reported as an event and does not throw`(
         failure: Exception,
         expectedMessage: String,
     ) {
@@ -171,10 +171,10 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a remove that fails for a reason Docker does not report propagates`() {
-        doAnswer { throw IllegalArgumentException("invalid container id") }.whenever(client).removeContainer("c1", true)
+    fun `a JVM error while removing a container is not swallowed`() {
+        doAnswer { throw OutOfMemoryError("heap") }.whenever(client).removeContainer("c1", true)
 
-        assertThatThrownBy { executor().removeContainer("c1") }.isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { executor().removeContainer("c1") }.isInstanceOf(OutOfMemoryError::class.java)
         assertThat(events.filterIsInstance<Event.Docker.ContainerRemoveError>()).isEmpty()
     }
 
@@ -189,6 +189,7 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
                 // The transport's wrapper is read as the I-O error inside it.
                 Arguments.of(java.io.UncheckedIOException(IOException("Stream closed")), "Stream closed"),
                 Arguments.of(IllegalStateException("Connection pool shut down"), "Connection pool shut down"),
+                Arguments.of(RuntimeException("Container not found"), "Container not found"),
             )
     }
 }

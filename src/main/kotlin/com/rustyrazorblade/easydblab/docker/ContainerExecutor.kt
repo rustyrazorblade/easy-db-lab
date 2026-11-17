@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.docker
 
 import com.github.dockerjava.api.async.ResultCallback
 import com.github.dockerjava.api.command.InspectContainerResponse
-import com.github.dockerjava.api.exception.DockerClientException
 import com.github.dockerjava.api.exception.NotFoundException
 import com.github.dockerjava.api.model.Frame
 import com.rustyrazorblade.easydblab.DockerClientInterface
@@ -11,6 +10,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
@@ -21,7 +21,6 @@ import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.time.Duration
 import kotlin.concurrent.thread
-import com.github.dockerjava.api.exception.DockerException as DockerJavaException
 
 /**
  * Manages the execution lifecycle of a Docker container.
@@ -124,40 +123,32 @@ class ContainerExecutor(
      * Remove a container and its volumes.
      *
      * Retries transient Docker API failures. A container that is already gone (a 404) counts as
-     * removed: nothing is retried and no error is reported.
+     * removed: nothing is retried and no error is reported. Removal is best-effort cleanup that runs
+     * after the container has finished, so any other failure is reported as an event rather than
+     * thrown and costing the caller the container's result. A JVM [Error] still propagates.
      *
      * @param containerId The ID of the container to remove
      */
     fun removeContainer(containerId: String) {
         val retry = Retry.of("docker-remove-$containerId", retryConfig)
 
-        try {
-            Retry
-                .decorateCheckedRunnable(retry) {
-                    surfacingTransportIo { dockerClient.removeContainer(containerId, true) }
-                }.run()
-        } catch (e: NotFoundException) {
-            // Already gone: the removal has nothing left to do.
-            log.debug(e) { "Container $containerId was already removed" }
-        } catch (e: IOException) {
-            reportRemoveFailure(containerId, "IO error", e)
-        } catch (e: DockerJavaException) {
-            reportRemoveFailure(containerId, "Docker error", e)
-        } catch (e: DockerClientException) {
-            reportRemoveFailure(containerId, "Docker client error", e)
-        } catch (e: IllegalStateException) {
-            // For example a closed HTTP client pool: the container already finished, so removal is best effort.
-            reportRemoveFailure(containerId, "Docker client error", e)
-        }
-    }
+        val failure =
+            runCatchingException {
+                Retry
+                    .decorateCheckedRunnable(retry) {
+                        surfacingTransportIo { dockerClient.removeContainer(containerId, true) }
+                    }.run()
+            }.exceptionOrNull()
 
-    private fun reportRemoveFailure(
-        containerId: String,
-        kind: String,
-        e: Exception,
-    ) {
-        log.error(e) { "$kind while removing container $containerId" }
-        eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
+        when (failure) {
+            null -> Unit
+            // Already gone: the removal has nothing left to do.
+            is NotFoundException -> log.debug(failure) { "Container $containerId was already removed" }
+            else -> {
+                log.error(failure) { "Failed to remove container $containerId" }
+                eventBus.emit(Event.Docker.ContainerRemoveError(failure.message.orEmpty()))
+            }
+        }
     }
 }
 

@@ -109,6 +109,10 @@ The system SHALL deploy a dedicated Fluent Bit DaemonSet (`fluent-bit-journald`)
 
 - **GIVEN** the environment lacks `SYSTEMD_JOURNAL`, **WHEN** the observability stack is deployed, **THEN** no `fluent-bit-journald` DaemonSet SHALL be applied or awaited, and a `StageSkipped` event SHALL be emitted.
 
+#### Scenario: Journald collector reads host journal
+
+- **GIVEN** the journald collector starts, **WHEN** it initializes, **THEN** its Fluent Bit `systemd` input SHALL read the host's journal from `/var/log/journal`, mounted read-only from the host at the same path, with no host `journalctl` binary.
+
 #### Scenario: Journal entries forwarded to main collector
 
 - **GIVEN** journal entries are read, **WHEN** they are processed, **THEN** they SHALL be exported via OTLP gRPC to `localhost:4317` (the main OTel collector's OTLP receiver).

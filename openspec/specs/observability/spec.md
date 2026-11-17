@@ -292,6 +292,13 @@ The system SHALL run the OTel collector as two DaemonSets. The **core** collecto
 - **WHEN** a host process that is not a pod (the Cassandra Java agent on an AMI node, the profiling reconcile script, Fluent Bit, or an EMR node) sends OTLP to the node or control node on port 4317 or 4318
 - **THEN** the host add-on receives it and it reaches the backends through the core
 
+#### Scenario: Host-network scrapes stay on localhost
+
+- **GIVEN** an environment that has `PRIVILEGED`
+- **WHEN** the host add-on, on the host network, scrapes Beyla, ebpf_exporter or the Cilium agent and Hubble
+- **THEN** it scrapes them at `localhost:<port>` on its own node
+- **AND** the `instance` label is `<node>:<port>`
+
 #### Scenario: Node identity comes from the node name
 
 - **WHEN** the core collector, on the pod network, stamps `host.name` on a resource

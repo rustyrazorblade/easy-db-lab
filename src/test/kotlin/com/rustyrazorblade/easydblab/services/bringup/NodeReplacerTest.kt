@@ -115,6 +115,25 @@ class NodeReplacerTest {
     }
 
     @Test
+    fun `a state write that fails after the launch names the launched instance`() {
+        val state = ClusterState(name = "lab", versions = mutableMapOf())
+        state.updateHosts(mapOf(ServerType.Cassandra to (0 until 3).map(::host)))
+        // The state file's directory does not exist, so every save fails.
+        val unwritable = ClusterStateWriter(state, ClusterStateManager(File(dir, "missing/state.json")))
+        val replacer = NodeReplacer(fleet, unwritable, ReplacementBudget(3), health, eventBus)
+
+        val outcome = replacer.replace(ServerType.Cassandra, host(1), failure) as NodeReplacer.Outcome.NotReplaced
+
+        assertThat(fleet.calls).containsExactly("terminate i-old1", "verify db1", "launch db1")
+        assertThat(outcome.oldInstanceKept).isFalse()
+        assertThat(outcome.reason).contains("failed at record").contains("i-db1-1 runs but is not in the state")
+        val event = events.filterIsInstance<Event.Provision.NodeReplaceFailed>().single()
+        assertThat(event.phase).isEqualTo("record")
+        assertThat(event.reason).contains("i-db1-1")
+        assertThat(events.filterIsInstance<Event.Provision.NodeReplaced>()).isEmpty()
+    }
+
+    @Test
     fun `a failed terminate keeps the old instance, and nothing launches`() {
         fleet.failing += "terminate"
 

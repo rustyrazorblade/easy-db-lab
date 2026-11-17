@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.IOException
+import java.io.UncheckedIOException
 import java.util.concurrent.locks.ReentrantLock
 
 /**
@@ -127,13 +129,15 @@ class NodeReplacer(
         health.awaitHealthy()
         if (Thread.interrupted()) throw InterruptedException("replacing ${old.alias} was interrupted before its instance was terminated")
         var phase = Phase.TERMINATE
+        var launched: ClusterHost? = null
         return try {
             fleet.terminate(old.instanceId)
             phase = Phase.VERIFY
             fleet.verifyReplacement(serverType, ordinal)
             phase = Phase.LAUNCH
-            val host = fleet.launch(serverType, ordinal)
-            state.mergeHosts(serverType, listOf(host))
+            val host = fleet.launch(serverType, ordinal).also { launched = it }
+            phase = Phase.RECORD
+            record(serverType, host)
             eventBus.emit(Event.Provision.NodeReplaced(old.alias, old.instanceId, host.instanceId, host.privateIp))
             Outcome.Replaced(host, replacement)
         } catch (e: RuntimeException) {
@@ -141,11 +145,25 @@ class NodeReplacer(
             if (Thread.interrupted()) throw InterruptedException("replacing ${old.alias} was interrupted at ${phase.wireName}")
             log.warn(e) { "Replacing ${old.alias} failed at ${phase.wireName}" }
             val kept = phase == Phase.TERMINATE
-            eventBus.emit(Event.Provision.NodeReplaceFailed(old.alias, old.instanceId, phase.wireName, e.messageOrString(), kept))
+            // A launched instance the state could not record still runs; name it, so the owner can find it.
+            val reason = launched?.let { "${e.messageOrString()}; ${it.instanceId} runs but is not in the state" } ?: e.messageOrString()
+            eventBus.emit(Event.Provision.NodeReplaceFailed(old.alias, old.instanceId, phase.wireName, reason, kept))
             Outcome.NotReplaced(
-                "${failure.describe()}; the replacement failed at ${phase.wireName}: ${e.messageOrString()}",
+                "${failure.describe()}; the replacement failed at ${phase.wireName}: $reason",
                 oldInstanceKept = kept,
             )
+        }
+    }
+
+    /** Saves [host] in the state; a failed save is unchecked, so the replacement reports it like any failed phase. */
+    private fun record(
+        serverType: ServerType,
+        host: ClusterHost,
+    ) {
+        try {
+            state.mergeHosts(serverType, listOf(host))
+        } catch (e: IOException) {
+            throw UncheckedIOException("saving the state failed", e)
         }
     }
 
@@ -156,6 +174,7 @@ class NodeReplacer(
         TERMINATE("terminate"),
         VERIFY("capacity-check"),
         LAUNCH("launch"),
+        RECORD("record"),
     }
 
     private companion object {

@@ -144,6 +144,7 @@ class StepRunner(
             val worker =
                 Thread.ofVirtual().name("$alias-${step.wireName}-$number").start {
                     commandName?.let(EventContext::push)
+                    // Every throwable, an Error too, goes to the future: a worker that died with it uncompleted would hang the step.
                     runCatching { action(number) }.fold(outcome::complete, outcome::completeExceptionally)
                 }
             return try {

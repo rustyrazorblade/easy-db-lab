@@ -136,7 +136,13 @@ jobs:
       - name: Read the agent version
         id: version
         run: |
-          VERSION=$(sed -n 's/^ARG PYROSCOPE_VERSION=//p' docker/pyroscope-java-agent/Dockerfile)
+          DOCKERFILE=docker/pyroscope-java-agent/Dockerfile
+          VERSION=$(sed -n 's/^ARG PYROSCOPE_VERSION=//p' "$DOCKERFILE")
+          SHA256=$(sed -n 's/^ARG PYROSCOPE_SHA256=//p' "$DOCKERFILE")
+          # An edited ARG line must stop the publish, never push to an empty tag or build an
+          # unverified jar.
+          [ -n "$VERSION" ] || { echo "No 'ARG PYROSCOPE_VERSION=<version>' line in $DOCKERFILE" >&2; exit 1; }
+          [ -n "$SHA256" ] || { echo "No 'ARG PYROSCOPE_SHA256=<sha256>' line in $DOCKERFILE" >&2; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Skip a version that is already published

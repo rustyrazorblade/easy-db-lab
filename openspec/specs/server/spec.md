@@ -55,7 +55,7 @@ The server MUST expose REST HTTP endpoints for programmatic access to cluster st
 - **GIVEN** a running cluster with a reachable control node
 - **WHEN** a client sends GET /status
 - **THEN** the `accessInfo.observability` object SHALL include `grafana`, `mimir`, `loki`, `tempo` and `pyroscope` URL fields
-- **AND** `mimir` is `http://<controlPrivateIp>:9009`, `loki` is `http://<controlPrivateIp>:3100`, `tempo` is `http://<controlPrivateIp>:3200` and `pyroscope` is `http://<controlPrivateIp>:4040`
+- **AND** `mimir` is `http://<controlPrivateIp>:31009`, `loki` is `http://<controlPrivateIp>:31100`, `tempo` is `http://<controlPrivateIp>:31200` and `pyroscope` is `http://<controlPrivateIp>:31040`, the published NodePorts
 
 ### Requirement: Background Status Cache
 

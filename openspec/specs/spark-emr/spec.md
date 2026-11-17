@@ -156,7 +156,7 @@ The system SHALL run the OTel Collector as a persistent systemd service on every
 
 ### Requirement: Pyroscope agent attached to Spark driver and executor JVMs
 
-The system SHALL inject Pyroscope Java agent flags into Spark submit arguments so that driver and executor JVMs send continuous profiles to the Pyroscope server on the control node.
+The system SHALL inject Pyroscope Java agent flags into Spark submit arguments so that driver and executor JVMs send continuous profiles to the cluster's Pyroscope. EMR nodes are outside the cluster and cannot resolve cluster DNS, so the address SHALL be the control node's private IP at the Pyroscope NodePort, or the telemetry redirect's profiles endpoint when the cluster redirects.
 
 #### Scenario: Spark submit includes Pyroscope agent flags
 
@@ -165,8 +165,8 @@ The system SHALL inject Pyroscope Java agent flags into Spark submit arguments s
 
 #### Scenario: Pyroscope agent configured with correct server address
 
-- **WHEN** a Spark job is submitted
-- **THEN** the Pyroscope agent is configured with `pyroscope.server.address=http://<control_ip>:4040`
+- **WHEN** a Spark job is submitted on a cluster with no telemetry redirect
+- **THEN** the Pyroscope agent is configured with `pyroscope.server.address=http://<control_ip>:<Pyroscope NodePort>`
 
 #### Scenario: Pyroscope agent collects CPU, allocation, and lock profiles
 
@@ -177,6 +177,11 @@ The system SHALL inject Pyroscope Java agent flags into Spark submit arguments s
 
 - **WHEN** a Spark job is running with the Pyroscope agent
 - **THEN** profiles are labeled with `application.name=spark-<jobName>`, `hostname`, and `cluster` for identification in Pyroscope UI
+
+#### Scenario: No NodePort to send to
+
+- **WHEN** an EMR cluster is provisioned for a cluster with no telemetry redirect whose backends are published as ClusterIP Services only
+- **THEN** provisioning fails before creating the EMR cluster, saying the Spark Pyroscope agent needs the observability NodePorts, instead of configuring an address that would only time out
 
 ### Requirement: EMR nodes keep their own host name in metrics
 

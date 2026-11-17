@@ -30,7 +30,7 @@ Every kit database (ClickHouse, Kafka, TiDB, Postgres, FerrosaDB, ...) runs in a
 - A setup failure names the setting that did not take.
 
 **Non-Goals:**
-- Per-pod network sysctls inside pod network namespaces (see Open Question 1).
+- Per-pod network sysctls inside pod network namespaces (follow-up #1202, owner decision A).
 - Manual IRQ affinity pinning.
 - Kernel command-line changes (they need a reboot and a GRUB edit).
 - Any `packer/` change.
@@ -63,7 +63,7 @@ Pods: containerd is a child of `k3s(-agent).service`, so `LimitMEMLOCK=infinity`
 
 ### D3. `fs.nr_open` and `fs.file-max` are a floor, not a write
 
-systemd (≥ 240) raises both at boot: `fs.nr_open` to 1073741816 and `fs.file-max` to `LONG_MAX`.  Writing `fs.nr_open = 1048576` would lower them by three orders of magnitude.  The sysctl file does not set them; `verify` checks each is ≥ 1048576 and fails the node otherwise.  This meets the issue's intent ("raise to match") without lowering anything.  See Owner Decision B.
+systemd (≥ 240) raises both at boot: `fs.nr_open` to 1073741816 and `fs.file-max` to `LONG_MAX`.  Writing `fs.nr_open = 1048576` would lower them by three orders of magnitude.  The sysctl file does not set them; `verify` checks each is ≥ 1048576 and fails the node otherwise.  This meets the issue's intent ("raise to match") without lowering anything.  Owner decision B (2026-11-17): the minimum check is approved.
 
 ### D4. `vm.zone_reclaim_mode` and the "missing sudo" bug
 
@@ -115,7 +115,7 @@ Checks:
 - **NodePorts**: D5.
 - **`tcp_rmem` / `tcp_wmem`**: only the maximum is raised to 16 MiB; the minimum and default stay at the kernel's values (`4096 131072` / `4096 16384`), so autotuning keeps small sockets small.
 
-**Scope limit (Open Question 1):** most `net.ipv4.*` and `net.core.somaxconn` are per network namespace, and a new pod namespace starts at kernel defaults, not the host's values.  These settings reach the host network namespace: Cassandra and the stress server on systemd, every host-network pod (the observability backends, Cilium, the OTel collector).  They do not reach a kit database in the pod network.  The global keys (`netdev_max_backlog`, `rmem_max`, `wmem_max`, `rps_sock_flow_entries`) and the RPS masks do reach pods: in ENI native routing, pod traffic arrives on host ENA interfaces.
+**Scope limit (follow-up #1202):** most `net.ipv4.*` and `net.core.somaxconn` are per network namespace, and a new pod namespace starts at kernel defaults, not the host's values.  These settings reach the host network namespace: Cassandra and the stress server on systemd, every host-network pod (the observability backends, Cilium, the OTel collector).  They do not reach a kit database in the pod network.  The global keys (`netdev_max_backlog`, `rmem_max`, `wmem_max`, `rps_sock_flow_entries`) and the RPS masks do reach pods: in ENI native routing, pod traffic arrives on host ENA interfaces.
 
 ### D9. CPU governor and C-states: detect, apply or skip
 
@@ -139,7 +139,7 @@ Setup is the SETUP step of each node's pipeline (`StepPolicy.SETUP`: two attempt
 ## Risks / Trade-offs
 
 - [Pods may not inherit `RLIMIT_NOFILE` from `k3s-agent.service`] → Task 1 measures it first; the fix is K3s's containerd config template (D2).
-- [Pod-network kit databases do not get the per-namespace network values] → stated in the docs; Open Question 1.
+- [Pod-network kit databases do not get the per-namespace network values] → stated in the docs, which point to follow-up #1202.
 - [`irqbalance` might be missing from the AMI] → Task 1 checks.  If it is missing, installing it at setup would need network access from the node; the right fix is the base AMI, which adds `requires-ami-bake` to the issue.
 - [`ip_local_reserved_ports` drifts from the real host ports] → the unit test in D5.
 - [`daemon-reexec` on a re-run against a live node] → it keeps every unit running; it is the documented way to load `system.conf.d`.
@@ -151,8 +151,9 @@ Setup is the SETUP step of each node's pipeline (`StepPolicy.SETUP`: two attempt
 
 None.  Clusters are ephemeral; a new `up` picks it up.  Old file names (`60-cassandra.conf`, `limits.d/cassandra.conf`) are removed by setup when present.
 
-## Open Questions
+## Owner Decisions (2026-11-17, spec approved)
 
-1. Should the per-namespace network values also reach kit databases in the pod network?  That needs the kubelet's `--allowed-unsafe-sysctls` for `net.core.somaxconn` and `net.ipv4.tcp_*`, plus a `securityContext.sysctls` block in each kit's pod spec.  Recommendation: not in this change; a follow-up issue.
-2. `fs.nr_open` / `fs.file-max`: a floor check, as D3 describes, instead of the literal "raise to match".  Recommendation: the floor.
-3. #1087's second criterion (a 6-node kind cluster on one host starts with no inotify errors) is not in #1199's acceptance criteria.  Recommendation: drop it; the inotify values are four times what #1087 asked for.
+- **A.** The per-namespace network values for kit databases in the pod network (kubelet `--allowed-unsafe-sysctls` plus a `securityContext.sysctls` block per kit) are out of this change.  They are follow-up #1202.
+- **B.** `fs.nr_open` / `fs.file-max` get the minimum check of D3, not a write.
+- **C.** #1087's second criterion (a 6-node kind cluster on one host) is dropped.  #1087 closes with this change on the inotify values alone.
+- **D.** The tuning files are pushed from the classpath at setup time (D1), not extracted into the workspace at `init`.

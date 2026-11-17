@@ -1,6 +1,6 @@
 ## Why
 
-easy-db-lab clusters exist so that test results transfer to real, production database clusters.  Today every node runs close to kernel and AMI defaults: `setup_instance.sh` sets only `vm.max_map_count`, `zone_reclaim_mode`, swap off, a 4 KiB readahead and a PAM `limits.d` file.  Two of those probably do not do what they claim.  The `limits.d` file reaches PAM sessions only, so `cassandra.service` and every other systemd-run database get systemd's default limits (memlock 8 MiB, so `mlockall` fails).  The `kernel.*` perf sysctls and the readahead are set at run time and lost on a reboot.  The owner chose the full production tuning set (#1199, option A), and it absorbs #1087 (inotify limits).
+easy-db-lab clusters exist so that test results transfer to real, production database clusters.  Today every node runs close to kernel and AMI defaults: `setup_instance.sh` sets only `vm.max_map_count`, `zone_reclaim_mode`, swap off, a 4 KiB readahead and a PAM `limits.d` file.  Two of those probably do not do what they claim.  The `limits.d` file reaches PAM sessions only, so `cassandra.service` and every other systemd-run database get systemd's default limits (memlock 8 MiB, so `mlockall` fails).  The `kernel.*` perf sysctls and the readahead are set at run time and lost on a reboot.  The owner chose the full production tuning set (#1199, option A), and it absorbs #1087 (inotify limits; its kind-cluster criterion is dropped by owner decision).  Network values inside kit pod namespaces are follow-up #1202.
 
 ## What Changes
 

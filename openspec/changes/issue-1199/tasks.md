@@ -24,7 +24,7 @@
 
 ## 4. Docs
 
-- [ ] 4.1 New `docs/user-guide/node-tuning.md`: every value and why, the units the limits drop-in covers, the reboot persistence, the governor and C-state skip, the pod-namespace limit (design D8), and that a running service picks up new limits only at its next restart.  Link it in `docs/SUMMARY.md`.
+- [ ] 4.1 New `docs/user-guide/node-tuning.md`: every value and why, the units the limits drop-in covers, the reboot persistence, the governor and C-state skip, the pod-namespace limit (design D8, follow-up #1202), and that a running service picks up new limits only at its next restart.  Link it in `docs/SUMMARY.md`.
 - [ ] 4.2 Update `services/CLAUDE.md` (node setup stages `node-tuning/`) and `configuration/CLAUDE.md` (a new fixed host port must be added to the reserved list).
 
 ## 5. Verify on a real cluster after the fix

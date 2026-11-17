@@ -13,9 +13,13 @@ data class ReleaseLine(
     val name: String,
     @SerialName("java_supported") val javaSupported: List<String>,
     @SerialName("ant_flags") val antFlags: Map<String, String> = emptyMap(),
+    @SerialName("build_java") val buildJava: String? = null,
 ) {
     init {
         require(javaSupported.isNotEmpty()) { "Release line $name lists no JDK" }
+        require(buildJava == null || buildJava in javaSupported) {
+            "Release line $name builds on JDK $buildJava, which it does not support"
+        }
         val unknown = antFlags.keys - javaSupported.toSet()
         require(unknown.isEmpty()) {
             "Release line $name has ant flags for JDK ${unknown.joinToString(", ")}, which it does not support"
@@ -24,6 +28,15 @@ data class ReleaseLine(
 
     /** The ant flags of a git build of this line on [java], or null when it needs none. */
     fun antFlagsFor(java: String): String? = antFlags[java]
+
+    /**
+     * The JDKs a cassandra-builds nightly of this line runs on: the ones from its build JDK up,
+     * because a class file compiled on JDK N does not load on a lower one.
+     */
+    fun nightlyJdks(): List<String> {
+        val floor = buildJava?.toInt() ?: return javaSupported
+        return javaSupported.filter { it.toInt() >= floor }
+    }
 }
 
 /**

@@ -50,6 +50,10 @@ The CLI picks the JDK a version runs on. It takes the list of supported JDKs fro
 A name uses the longest entry that is a prefix of it at a `-`, else the entry of its leading
 `X.Y`. So `5.0-rustyrazorblade-HEAD` runs on JDK 21 and `5.0-HEAD` runs on JDK 17.
 
+A cassandra-builds nightly is compiled on JDK 17 (5.0 lines) or JDK 21 (6.0 and trunk), and
+cannot run on a lower JDK, so its list starts there: `5.0-HEAD` supports only 17, and
+`cassandra use 5.0-HEAD --java 11` fails before any node changes.
+
 With no `--java`, the CLI uses the JDK the cluster state records for the version on that node,
 else the profile build's `java`, else the JDK a build catalog build was built with, else the
 highest supported JDK. `--java N` outside the supported
@@ -369,7 +373,9 @@ easy-db-lab cassandra start
 `cassandra.patch.yaml` to the new install. A node where Cassandra runs the version is refused and
 left alone. If the download or build fails on a node, that node keeps its old install. For a git
 build, `--reinstall` takes a new `--url`, `--branch` or `--ant-flags`; without one it builds the
-recorded one again.
+recorded one again. `--reinstall --url <git-url> --branch <b>` turns a tarball version into a git
+build. Without `--reinstall`, a `--url` other than the one a tarball version was installed from
+fails before any node changes, and names the recorded URL.
 
 #### Re-installing with different options
 

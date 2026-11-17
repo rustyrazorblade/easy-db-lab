@@ -4,6 +4,11 @@
 #
 # ant_flags are passed to a git build on that JDK only.
 #
+# build_java is the JDK the cassandra-builds nightly of the line is compiled on (the auto-map in
+# .github/cassandra-image/resolve-build-plan.sh).  A nightly with no manifest runs only on that
+# JDK and newer: a lower one fails with UnsupportedClassVersionError.  ReleaseLinesBuildPlanTest
+# fails when the two disagree.
+#
 # 5.0-rustyrazorblade is a per-ref entry: that fork branch supports JDK 21, the upstream 5.0 line
 # does not.  Remove it when the cassandra-builds manifest publishes the supported JDKs
 # (cassandra-builds#1).  ForkBuildXmlJdkIntegrationTest fails when the fork's build.xml differs.
@@ -15,14 +20,20 @@ lines:
   - name: "4.0"
     java_supported: ["8", "11"]
     ant_flags: {"11": "-Duse.jdk11=true"}
+    build_java: "11"
   - name: "4.1"
     java_supported: ["8", "11"]
     ant_flags: {"11": "-Duse.jdk11=true"}
+    build_java: "11"
   - name: "5.0"
     java_supported: ["11", "17"]
+    build_java: "17"
   - name: "5.0-rustyrazorblade"
     java_supported: ["11", "17", "21"]
+    build_java: "17"
   - name: "6.0"
     java_supported: ["11", "17", "21"]
+    build_java: "21"
   - name: "trunk"
     java_supported: ["11", "17", "21"]
+    build_java: "21"

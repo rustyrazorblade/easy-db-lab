@@ -93,10 +93,11 @@ class CassandraVersionResolver(
         record: InstalledVersion,
         request: VersionRequest,
     ): InstallSpec {
+        refuseOtherTarballUrl(record, request)
         val profile = if (record.source == CassandraSource.PROFILE) sources.profileBuild(record.version) else null
         val url = recordUrl(record, request, profile)
-        // A reinstall from another URL is no longer the ASF release: it is never cached under the release.
-        val source = if (url == record.url || record.source != CassandraSource.ASF) record.source else CassandraSource.URL
+        val branch = if (request.reinstall) request.branch ?: record.branch else record.branch
+        val source = recordSource(record, url, branch)
         val asfRelease = AsfReleases.releaseOf(url).takeIf { source == CassandraSource.ASF }
         val java = chooseJava(request, record.javaSupported, profile?.java, noListHint(request.name))
         val antFlags =
@@ -111,9 +112,42 @@ class CassandraVersionResolver(
             .cacheUri(asfRelease?.let(::cacheUri))
             .jdks(record.javaSupported, java)
             .python(request.python ?: record.python.ifBlank { Constants.Cassandra.DEFAULT_PYTHON_VERSION })
-            .branch(request.branch.takeIf { request.reinstall && record.branch != null } ?: record.branch)
-            .antFlags(antFlags.takeIf { record.branch != null })
+            .branch(branch)
+            .antFlags(antFlags.takeIf { branch != null })
             .build()
+    }
+
+    /**
+     * The source of the reinstall or install of [record] from [url]: a reinstall with `--branch` of a
+     * tarball record is a git build, and a reinstall of an ASF release from another URL is a plain
+     * URL install, never cached under the release.
+     */
+    private fun recordSource(
+        record: InstalledVersion,
+        url: String,
+        branch: String?,
+    ): CassandraSource =
+        when {
+            branch != null && record.branch == null -> CassandraSource.GIT
+            record.source == CassandraSource.ASF && url != record.url -> CassandraSource.URL
+            else -> record.source
+        }
+
+    /**
+     * A tarball record holds no build parameters for the installer to compare, so a plain install
+     * with a `--url` that is not the recorded one would be silently ignored: refuse it, and name the
+     * recorded URL and `--reinstall`. A git record is compared per node by the installer.
+     */
+    private fun refuseOtherTarballUrl(
+        record: InstalledVersion,
+        request: VersionRequest,
+    ) {
+        val url = request.url ?: return
+        if (request.reinstall || record.branch != null || redactUrlCredentials(url) == record.url) return
+        throw VersionResolutionException(
+            "${record.version} is already installed from ${record.url}, not ${redactUrlCredentials(url)}. " +
+                "To install it from the new URL, run: easy-db-lab cassandra install ${record.version} --reinstall --url <url>",
+        )
     }
 
     /**
@@ -207,7 +241,14 @@ class CassandraVersionResolver(
     private fun fromCassandraBuilds(request: VersionRequest): InstallSpec? {
         val build = sources.cassandraBuilds().value.firstOrNull { it.ref == request.name } ?: return null
         val manifestJdks = sources.cassandraBuildsManifest(build)?.javaSupported.orEmpty()
-        return tarballSpec(request, CassandraSource.CASSANDRA_BUILDS, build.url, manifestJdks.ifEmpty { tableJdks(request.name) }).build()
+        return tarballSpec(
+            request,
+            CassandraSource.CASSANDRA_BUILDS,
+            build.url,
+            manifestJdks.ifEmpty {
+                releaseLines.entryFor(request.name)?.nightlyJdks().orEmpty()
+            },
+        ).build()
     }
 
     private fun fromCatalog(request: VersionRequest): InstallSpec? {

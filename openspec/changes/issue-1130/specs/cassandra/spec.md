@@ -72,7 +72,9 @@ is `cassandra install <version> --reinstall`, which downloads (or builds) the ve
 targeted node, replaces the install, and updates the record in the cluster state.  For a git
 build, a reinstall MUST use the `--url`, `--branch` and `--ant-flags` given with it, and the
 recorded ones for any it is not given (ant flags on another JDK come from the release-line
-table).  The system MUST
+table); a reinstall with `--branch` of a version recorded as a tarball SHALL build it from git.
+Without `--reinstall`, a `--url` that differs from the recorded URL of a tarball (its credential
+aside) SHALL fail before any node changes, and SHALL name the recorded URL and `--reinstall`.  The system MUST
 NOT detect a changed build by itself (no ETag or date check).  A failed reinstall MUST leave the
 old install and its record in place.  A reinstall of the active version of a node where Cassandra
 runs MUST fail for that node before it downloads, and MUST say to stop Cassandra first.
@@ -341,7 +343,7 @@ The CLI SHALL choose the JDK of a version, and SHALL take the supported JDK list
 1. `--java N` on `cassandra use` or `cassandra install`.
 2. For a named build in the profile, its entry: its supported JDKs, else its default JDK.  For a profile build, the manifest and the table SHALL NOT be read.
 3. The build's manifest: the manifest published beside a cassandra-builds tarball, or the build catalog manifest.
-4. The release-line table in the CLI resources: 3.0 and 3.11 support 8; 4.0 and 4.1 support 8 and 11; 5.0 supports 11 and 17; `5.0-rustyrazorblade` supports 11, 17 and 21; 6.0 and trunk support 11, 17 and 21.  A name maps to the longest table entry that is a prefix of it at a `-` boundary or the end of the name, and else to the release line of its leading `X.Y`.
+4. The release-line table in the CLI resources: 3.0 and 3.11 support 8; 4.0 and 4.1 support 8 and 11; 5.0 supports 11 and 17; `5.0-rustyrazorblade` supports 11, 17 and 21; 6.0 and trunk support 11, 17 and 21.  A name maps to the longest table entry that is a prefix of it at a `-` boundary or the end of the name, and else to the release line of its leading `X.Y`.  For a cassandra-builds build with no manifest list, the list SHALL keep only the JDKs from the JDK its line is built on (11 for 4.0 and 4.1, 17 for 5.0 and `5.0-rustyrazorblade`, 21 for 6.0 and trunk, as the cassandra-builds build plan maps them) up, because a build does not run on a JDK lower than the one it was compiled on.  A test SHALL check the table against the build plan.
 
 The `5.0-rustyrazorblade` entry SHALL hold the JDKs that `java.supported` sets in the `build.xml` of the fork branch `cassandra-5.0-rustyrazorblade`, and a test SHALL check it against that file.  The entry SHALL be removed when the cassandra-builds manifest gives the supported JDKs of the fork builds.
 

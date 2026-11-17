@@ -365,6 +365,36 @@ class CassandraVersionResolverTest {
             assertThat(spec.java).isEqualTo("25")
         }
 
+        /**
+         * A cassandra-builds nightly is compiled on its line's build JDK, and dies on a lower one with
+         * `UnsupportedClassVersionError`, so with no manifest its list starts at that JDK. An ASF
+         * release of the same line keeps the whole list.
+         */
+        @ParameterizedTest(name = "{0} -> {1}")
+        @CsvSource(
+            "5.0-HEAD, 17",
+            "5.0-rustyrazorblade-HEAD, '17,21'",
+            "6.0-HEAD, 21",
+            "6.0-rustyrazorblade-HEAD, 21",
+            "trunk, 21",
+        )
+        fun `a nightly with no manifest runs only on its build JDK and newer`(
+            ref: String,
+            expected: String,
+        ) {
+            val sources = FakeSources(nightly = listOf(CassandraBuild(ref, "https://gh/$ref.tgz")))
+
+            assertThat(resolve(sources, VersionRequest(ref)).javaSupported).containsExactlyElementsOf(expected.split(","))
+        }
+
+        @Test
+        fun `--java below a nightly's build JDK fails before any node is touched`() {
+            assertThatThrownBy { resolve(FakeSources(), VersionRequest("5.0-HEAD", java = "11")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContaining("11")
+                .hasMessageContaining("17")
+        }
+
         @Test
         fun `the cassandra-builds manifest beats the table`() {
             val sources = FakeSources(manifests = mapOf("5.0-HEAD" to CassandraBuildsManifest(listOf("11", "17", "21"), "11")))
@@ -663,6 +693,51 @@ class CassandraVersionResolverTest {
 
             assertThat(spec.url).isEqualTo("https://github.com/me/c.git")
             assertThat(spec.antFlags).isEqualTo("-Dold=1")
+        }
+
+        /**
+         * A tarball record has no build parameters for the installer to compare, so a `--url` that is
+         * not the recorded one fails in the resolver and names `--reinstall`; the same URL, with or
+         * without its credential, is no conflict.
+         */
+        @ParameterizedTest(name = "--url {0} -> refused={1}")
+        @CsvSource(
+            "https://mirror.test/apache-cassandra-5.0.6-bin.tar.gz, true",
+            "https://tok3n@dl.test/c.tgz, false",
+            "https://dl.test/c.tgz, false",
+        )
+        fun `a plain install of a recorded tarball from another URL is refused and names --reinstall`(
+            url: String,
+            refused: Boolean,
+        ) {
+            val record = InstalledVersion("c", "17", listOf("17"), "3.11.9", CassandraSource.URL, "https://***@dl.test/c.tgz")
+            val withUrl = record.copy(url = if (url.contains("tok3n")) record.url else "https://dl.test/c.tgz")
+            val run = { resolve(FakeSources(), VersionRequest("c", url = url), state("db0" to node(withUrl))) }
+
+            when (refused) {
+                true ->
+                    assertThatThrownBy { run() }
+                        .isInstanceOf(VersionResolutionException::class.java)
+                        .hasMessageContaining(withUrl.url)
+                        .hasMessageContaining("--reinstall")
+                false -> assertThat(run().url).isEqualTo(url)
+            }
+        }
+
+        @Test
+        fun `a reinstall of a tarball record with --url and --branch builds that branch from git`() {
+            val record = InstalledVersion("c", "17", listOf("17"), "3.11.9", CassandraSource.URL, "https://dl.test/c.tgz")
+
+            val spec =
+                resolve(
+                    FakeSources(),
+                    VersionRequest("c", url = "https://github.com/me/c.git", branch = "b", reinstall = true),
+                    state("db0" to node(record)),
+                )
+
+            assertThat(spec.source).isEqualTo(CassandraSource.GIT)
+            assertThat(spec.url).isEqualTo("https://github.com/me/c.git")
+            assertThat(spec.branch).isEqualTo("b")
         }
     }
 }

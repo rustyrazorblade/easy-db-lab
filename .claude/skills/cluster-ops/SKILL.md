@@ -124,7 +124,7 @@ easy-db-lab cassandra start
 ### ClickHouse
 
 ```bash
-easy-db-lab install clickhouse --size 100Gi
+easy-db-lab kit install clickhouse --storage-size 100Gi
 easy-db-lab clickhouse start
 easy-db-lab clickhouse status
 kubectl wait --for=condition=Ready pods -l clickhouse.altinity.com/chi=clickhouse --namespace default --timeout=300s

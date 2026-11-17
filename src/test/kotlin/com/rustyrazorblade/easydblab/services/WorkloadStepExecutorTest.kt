@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -70,14 +71,16 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         k8sService = get()
         helmService = get()
         kubectlService = get()
+        whenever(k8sService.ensureKitLocalStorageClass(any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.deleteKitLocalStorageClass(any())).thenReturn(Result.success(Unit))
         executor =
             WorkloadStepExecutor(
                 k8sService = k8sService,
                 helmService = helmService,
                 kubectlService = kubectlService,
-                remoteOps = get(),
                 eventBus = get<EventBus>(),
                 kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), get()),
+                kitStorageProvisioner = KitStorageProvisioner(k8sService, get(), get()),
             )
         workspace.mkdirs()
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
@@ -132,7 +135,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a platform-pvs-delete step interpolates its node-type`() {
+    fun `a kit-storage-delete step interpolates its node-type`() {
         val remoteOps = mock<RemoteOperationsService>()
         whenever(k8sService.deleteLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
         val recordingExecutor =
@@ -140,14 +143,14 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 k8sService = k8sService,
                 helmService = helmService,
                 kubectlService = kubectlService,
-                remoteOps = remoteOps,
                 eventBus = get<EventBus>(),
                 kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), get()),
+                kitStorageProvisioner = KitStorageProvisioner(k8sService, remoteOps, get()),
             )
 
         val result =
             recordingExecutor.execute(
-                steps = listOf(InstallStep.PlatformPvsDelete(nodeType = "\${POOL}")),
+                steps = listOf(InstallStep.KitStorageDelete(nodeType = "\${POOL}")),
                 phase = "uninstall",
                 context =
                     StepExecutionContext(
@@ -340,12 +343,12 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
     }
 
     @Nested
-    inner class PlatformPvsStep {
+    inner class KitStorageStep {
         @Test
         fun `fails with invalid node-type`() {
             val result =
                 execute(
-                    steps = listOf(InstallStep.PlatformPvs(nodeType = "invalid")),
+                    steps = listOf(InstallStep.KitStorage(nodeType = "invalid")),
                     variables = mapOf("STORAGE_SIZE" to "100Gi"),
                 )
             assertThat(result.isFailure).isTrue()
@@ -354,7 +357,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `fails when STORAGE_SIZE variable is missing`() {
-            val result = execute(listOf(InstallStep.PlatformPvs(nodeType = "db")))
+            val result = execute(listOf(InstallStep.KitStorage(nodeType = "db")))
             assertThat(result.isFailure).isTrue()
             assertThat(result.exceptionOrNull()?.message).contains("STORAGE_SIZE")
         }
@@ -366,7 +369,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             val result =
                 execute(
-                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db")),
+                    steps = listOf(InstallStep.KitStorage(nodeType = "db")),
                     variables = mapOf("STORAGE_SIZE" to "100Gi"),
                 )
             assertThat(result.isSuccess).isTrue()
@@ -376,7 +379,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         fun `if-set skips the step when the named variable is blank`() {
             val result =
                 execute(
-                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db", ifSet = "EXTSTORE_SIZE")),
+                    steps = listOf(InstallStep.KitStorage(nodeType = "db", ifSet = "EXTSTORE_SIZE")),
                     variables = mapOf("EXTSTORE_SIZE" to "", "STORAGE_SIZE" to "100Gi"),
                 )
 
@@ -390,7 +393,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             val result =
                 execute(
-                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db", ifSet = "EXTSTORE_SIZE")),
+                    steps = listOf(InstallStep.KitStorage(nodeType = "db", ifSet = "EXTSTORE_SIZE")),
                     variables = mapOf("EXTSTORE_SIZE" to "100G", "STORAGE_SIZE" to "100Gi"),
                 )
 
@@ -404,7 +407,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             val result =
                 execute(
-                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db", storageSize = "10Ti")),
+                    steps = listOf(InstallStep.KitStorage(nodeType = "db", storageSize = "10Ti")),
                     variables = mapOf("STORAGE_SIZE" to ""),
                 )
 
@@ -419,7 +422,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         fun `the PVs are pinned to the node pool the step names`() {
             whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
 
-            execute(steps = listOf(InstallStep.PlatformPvs(nodeType = "app")), variables = mapOf("STORAGE_SIZE" to "1Gi"))
+            execute(steps = listOf(InstallStep.KitStorage(nodeType = "app")), variables = mapOf("STORAGE_SIZE" to "1Gi"))
 
             val config = argumentCaptor<PersistentVolumeConfig>()
             verify(k8sService).createLocalPersistentVolumes(config.capture())
@@ -428,30 +431,24 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `node-type accepts a variable`() {
-            val config = createdConfig(InstallStep.PlatformPvs(nodeType = "\${POOL}"), "POOL" to "app")
+            val config = createdConfig(InstallStep.KitStorage(nodeType = "\${POOL}"), "POOL" to "app")
 
             assertThat(config.nodeType).isEqualTo("app")
         }
 
+        /** The step names no class: the kit's own local class comes from the environment. */
         @Test
-        fun `storage-class accepts a variable`() {
-            val config = createdConfig(InstallStep.PlatformPvs(storageClass = "\${CLASS}"), "CLASS" to "fast-local")
+        fun `on local volumes the PVs take the kit's own class`() {
+            val config = createdConfig(InstallStep.KitStorage(), "OTHER" to "x")
 
-            assertThat(config.storageClass).isEqualTo("fast-local")
-        }
-
-        /** An unset variable stays a literal `${NAME}`, as it does in every other step field. */
-        @Test
-        fun `an unset variable in storage-class is passed on as the literal placeholder`() {
-            val config = createdConfig(InstallStep.PlatformPvs(storageClass = "\${UNSET}"), "OTHER" to "x")
-
-            assertThat(config.storageClass).isEqualTo("\${UNSET}")
+            assertThat(config.storageClass).isEqualTo("edl-local-testdb")
+            assertThat(config.localPath).isEqualTo("/mnt/db1/testdb/data")
         }
 
         /** A literal placeholder is no node pool, so the step fails naming it instead of finding no nodes. */
         @Test
         fun `an unset variable in node-type fails the step and names the placeholder`() {
-            val result = execute(listOf(InstallStep.PlatformPvs(nodeType = "\${UNSET}")), mapOf("STORAGE_SIZE" to "1Gi"))
+            val result = execute(listOf(InstallStep.KitStorage(nodeType = "\${UNSET}")), mapOf("STORAGE_SIZE" to "1Gi"))
 
             assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("'\${UNSET}'")
             verify(k8sService, never()).createLocalPersistentVolumes(any())
@@ -459,14 +456,14 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `volume-claim-template-name accepts a variable`() {
-            val config = createdConfig(InstallStep.PlatformPvs(volumeClaimTemplateName = "\${CLAIM}"), "CLAIM" to "scratch")
+            val config = createdConfig(InstallStep.KitStorage(volumeClaimTemplateName = "\${CLAIM}"), "CLAIM" to "scratch")
 
             assertThat(config.volumeClaimTemplateName).isEqualTo("scratch")
         }
 
         /** Runs [step] with [variable] and a storage size, and returns the PV config the step created. */
         private fun createdConfig(
-            step: InstallStep.PlatformPvs,
+            step: InstallStep.KitStorage,
             variable: Pair<String, String>,
         ): PersistentVolumeConfig {
             whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
@@ -483,13 +480,38 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         fun `a blank STORAGE_SIZE fails the step instead of creating a PV with no capacity`() {
             val result =
                 execute(
-                    steps = listOf(InstallStep.PlatformPvs(nodeType = "db")),
+                    steps = listOf(InstallStep.KitStorage(nodeType = "db")),
                     variables = mapOf("STORAGE_SIZE" to ""),
                 )
 
             assertThat(result.isFailure).isTrue()
             assertThat(result.exceptionOrNull()?.message).contains("STORAGE_SIZE")
             verify(k8sService, never()).createLocalPersistentVolumes(any())
+        }
+
+        /** On a recorded kit class the step only checks it: no PV, no class, no node directory. */
+        @Test
+        fun `on a provisioned class the step checks the class and creates nothing`() {
+            whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Retain"))
+
+            val result =
+                executor.execute(
+                    steps = listOf(InstallStep.KitStorage()),
+                    phase = "install",
+                    context =
+                        StepExecutionContext(
+                            kitName = "testdb",
+                            clusterState = clusterState.copy(initConfig = InitConfig(kitStorageClass = "retain-x")),
+                            variables = mapOf("STORAGE_SIZE" to "100Gi"),
+                            kitDir = tempDir,
+                            workspaceDir = workspace,
+                        ),
+                )
+
+            assertThat(result.isSuccess).isTrue()
+            verify(k8sService).storageClassReclaimPolicy("retain-x")
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
+            verify(k8sService, never()).ensureKitLocalStorageClass(any(), any())
         }
     }
 

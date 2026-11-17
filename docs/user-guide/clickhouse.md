@@ -29,7 +29,7 @@ installed: the manifests in the workspace's `clickhouse/` directory are rendered
 
 ```bash
 # Pin the server version and give each replica a 100Gi volume
-easy-db-lab kit install clickhouse --version 25.4 --size 100Gi
+easy-db-lab kit install clickhouse --version 25.4 --storage-size 100Gi
 
 # Larger S3 cache, no caching on write
 easy-db-lab kit install clickhouse --s3-cache 50Gi --s3-cache-on-write false
@@ -38,7 +38,7 @@ easy-db-lab kit install clickhouse --s3-cache 50Gi --s3-cache-on-write false
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `--version` | string | `latest` | ClickHouse server image tag (`clickhouse/clickhouse-server:<version>`), e.g. `25.4`, `24.8` |
-| `--size` | string | `10Ti` | Storage size per node (e.g. `100Gi`) |
+| `--storage-size` | string | `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) | Storage size per node (e.g. `100Gi`) |
 | `--replicas` | int | number of db nodes | Number of ClickHouse replicas; also the number of Keeper replicas |
 | `--s3-cache` | string | `10Gi` | Local cache size for the S3-backed storage policies |
 | `--s3-cache-on-write` | boolean | `true` | Populate the S3 disk cache on write |
@@ -366,7 +366,7 @@ easy-db-lab down
 
 # In a new cluster workspace: create the cluster, install, start, and restore
 easy-db-lab init my-cluster --db 3 --up
-easy-db-lab kit install clickhouse --size 100Gi
+easy-db-lab kit install clickhouse --storage-size 100Gi
 easy-db-lab clickhouse start
 easy-db-lab clickhouse restore --name my-dataset
 ```
@@ -378,8 +378,10 @@ easy-db-lab clickhouse stop
 ```
 
 This deletes the ClickHouseInstallation `clickhouse` (and with it the server pods) and the
-`clickhouse-nodeport` service. Keeper, the operator, and the PersistentVolumes stay in place, so
-`clickhouse start` redeploys onto the same volumes.
+`clickhouse-nodeport` service. The operator deletes the claims with the installation, but Keeper,
+the operator and the PersistentVolumes stay in place, so `clickhouse start` redeploys onto the same
+volumes. On a provisioned kit StorageClass, `start` first reopens the Released volumes for the new
+claims ([Stop and start on a provisioned class](platform-substrate.md#stop-and-start-on-a-provisioned-class)).
 
 To remove everything the kit created:
 
@@ -420,8 +422,8 @@ ClickHouse uses Local PersistentVolumes to guarantee pod-to-node pinning:
 
 1. During cluster creation, each `db` node is labeled with its ordinal (`easydblab.com/node-ordinal=0`, etc.)
 2. Local PVs are created with node affinity matching these ordinals and the `type=db` label
-3. Each PV is labelled `app.kubernetes.io/name=clickhouse`, and the claims select that label, so they never bind another kit's PV
-4. The installation's volumeClaimTemplate requests `--size` of storage from these PVs
+3. The PVs are of the kit's own class `edl-local-clickhouse`, which the claims name, so they never bind another kit's PV
+4. The installation's volumeClaimTemplate requests `--storage-size` of storage from these PVs
 
 Once a replica's claim binds a PV, that replica always runs on the PV's db node, providing:
 

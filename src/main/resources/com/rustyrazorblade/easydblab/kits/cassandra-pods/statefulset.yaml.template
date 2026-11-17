@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  # platform-pvs names the PV data-<kit>-<ordinal>; the StatefulSet's claim takes the same name
+  # kit-storage names the PV data-<kit>-<ordinal>; the StatefulSet's claim takes the same name
   # only when the StatefulSet is named after the kit and its claim template is `data`.
   name: cassandra-pods
   namespace: default
@@ -190,11 +190,7 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
-        storageClassName: "__STORAGE_CLASS_WFC__"
-        # Binds only this kit's platform PVs; every kit's PVs share the storage class.
-        selector:
-          matchLabels:
-            app.kubernetes.io/name: "__KIT_NAME__"
+        storageClassName: "__KIT_STORAGE_CLASS__"
         resources:
           requests:
             storage: "__STORAGE_SIZE__"

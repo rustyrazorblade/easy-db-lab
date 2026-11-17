@@ -127,7 +127,7 @@ class KitInfoTest : BaseKoinTest() {
         val output = buildInfo("clickhouse")
         assertThat(output).contains("Args:")
         assertThat(output).contains("--version")
-        assertThat(output).contains("--size")
+        assertThat(output).contains("--storage-size")
         assertThat(output).contains("--replicas")
         assertThat(output).contains("(default:")
     }

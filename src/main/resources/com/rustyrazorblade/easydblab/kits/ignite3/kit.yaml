@@ -36,6 +36,11 @@ args:
     description: "Apache Ignite 3 Docker image version"
     type: string
     default: "3.1.0"
+  - flag: --storage-size
+    variable: STORAGE_SIZE
+    description: "Persistent volume size per Ignite node"
+    type: string
+    default: "${KIT_STORAGE_SIZE}"
 
 start:
   - type: shell
@@ -70,6 +75,10 @@ start:
 
   - type: manifest
     template: services.yaml
+
+  - type: kit-storage
+    node-type: db
+    volume-claim-template-name: persistence
 
   - type: manifest
     template: statefulset.yaml
@@ -174,6 +183,8 @@ uninstall:
       echo "Deleting Ignite 3 PersistentVolumeClaims..."
       kubectl delete pvc -l app=ignite --namespace default --ignore-not-found=true
       echo "PVCs deleted."
+  - type: kit-storage-delete
+    node-type: db
 
 capabilities:
   - type: sql

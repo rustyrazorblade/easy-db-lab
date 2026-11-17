@@ -56,11 +56,11 @@ args:
     description: "ClickHouse server image version (e.g. 25.4, 24.8)"
     type: string
     default: "latest"
-  - flag: --size
+  - flag: --storage-size
     variable: STORAGE_SIZE
     description: Storage size per node (e.g. 100Gi)
     type: string
-    default: "10Ti"
+    default: "${KIT_STORAGE_SIZE}"
   - flag: --replicas
     variable: REPLICAS
     description: "Number of ClickHouse replicas (default: db node count)"
@@ -92,8 +92,11 @@ install:
     namespace: kube-system
 
 start:
-  - type: platform-pvs
+  - type: kit-storage
     node-type: db
+    # stop deletes the operator resource and the operator its claims; on a provisioned class
+    # the claims of the next start rebind the Released volumes that kept the data.
+    rebind-released: true
   - type: manifest
     template: clickhouse-keeper.yaml
   - type: shell
@@ -202,11 +205,10 @@ uninstall:
     kind: ClickHouseKeeperInstallation
     name: clickhouse-keeper
     namespace: default
-  - type: platform-pvs-delete
+  - type: kit-storage-delete
   - type: helm-uninstall
     release: clickhouse-operator
     namespace: kube-system
-
 
 capabilities:
   - type: sql

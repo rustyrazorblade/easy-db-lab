@@ -13,23 +13,66 @@ The platform substrate is the set of Kubernetes primitives that easy-db-lab prov
                  │ uses
 ┌────────────────▼────────────────────┐
 │        Platform Substrate           │
-│  StorageClasses · Node Labels · PVs │
-│  provisioned at cluster `up` time   │
+│ Node Labels · Kit Storage (per kit) │
+│  labels at `up`, storage per kit    │
 └─────────────────────────────────────┘
 ```
 
 The platform substrate is provisioned automatically when you run `easy-db-lab up`. You do not need to configure it manually.
 
-## StorageClasses
+## Kit Storage
 
-Two StorageClasses are created at `up` time:
+A kit's claims never name a fixed StorageClass. Every claim names `__KIT_STORAGE_CLASS__` and
+requests `__STORAGE_SIZE__`, with no selector and no PV name, and the environment decides what
+those resolve to. `init` records the choice:
 
-| Name | Binding Mode | Reclaim Policy | Use |
+| `init` options | Kit storage | Class a kit's claims name | Default size |
 |---|---|---|---|
-| `local-storage` | `Immediate` | `Retain` | Legacy / direct-bound PVs |
-| `local-storage-wfc` | `WaitForFirstConsumer` | `Delete` | Per-kit PVs via `install` / `platform create-pvs` |
+| none (AWS, owned nodes) | Local volumes on `/mnt/db1` | `edl-local-<kit>`, one per kit | `10Ti` |
+| `--kit-storage-class <name>` | The cluster provisions volumes | `<name>` | `100Gi` |
 
-`local-storage-wfc` is used for StatefulSet kits. Kubernetes must know which node a pod schedules on before binding the volume — `WaitForFirstConsumer` enforces this ordering.
+`--kit-storage-size <quantity>` (e.g. `500Gi`) replaces either default, and a kit's own
+`--storage-size` replaces both. A size that is not a positive Kubernetes quantity is refused at
+`init`. On local volumes the size is metadata only: the local provisioner does not enforce it.
+
+On local volumes `up` creates no StorageClass. Each kit's `kit-storage` step creates the kit's
+own class:
+
+| Name | Provisioner | Binding Mode | Reclaim Policy |
+|---|---|---|---|
+| `edl-local-<kit>` | `kubernetes.io/no-provisioner` | `WaitForFirstConsumer` | `Retain` |
+
+The class is labelled `app.kubernetes.io/managed-by=easy-db-lab` and
+`easydblab/cluster=<cluster id>`. Because only that kit's PVs carry its class, a kit's claim can
+only bind its own kit's PVs. `WaitForFirstConsumer` makes Kubernetes wait until it knows which
+node a pod schedules on before it binds the volume.
+
+If a class named `edl-local-<kit>` already exists, the kit reuses it only when it has exactly that
+provisioner, binding mode and reclaim policy. Otherwise the kit's start fails, naming the fields
+that differ. Delete the class (`kubectl delete storageclass edl-local-<kit>`) and start again: the
+kit's PVs and their data are kept.
+
+### A provisioned class must retain
+
+A class whose `reclaimPolicy` is `Delete` (the Kubernetes default, and the default of most cloud
+classes such as `gp2`) deletes a volume, and so the kit's data, when its claim is deleted. The
+class is therefore checked before any claim exists, at `up` and again by every kit's
+`kit-storage` step. A class that deletes, has no policy, or does not exist is refused. Copy the
+class with `reclaimPolicy: Retain` and pass that copy to `--kit-storage-class`. easy-db-lab never
+creates or deletes a provisioned class, its claims' volumes, or the cluster's default class.
+A refusal is also reported as a `Setup.KitStorageClassRefused` event, from `up`, a kit's
+`kit-storage` step and `platform create-pvs` alike.
+
+### Stop and start on a provisioned class
+
+postgres and clickhouse `stop` delete the CNPG `Cluster` or the `ClickHouseInstallation`, and the
+operator deletes the claims with it. Their `Retain` volumes stay, in the `Released` phase, holding
+the data. The next `start` reopens them before it applies the resource again. Its `kit-storage`
+step (`rebind-released: true`) clears the deleted claim's UID from each Released volume of the
+class whose claim was in the kit namespace, so the claim of the same name that the operator creates
+binds that volume, not a new empty one. A claim of any other name cannot take it. Kafka, TiDB and
+the StatefulSet kits keep their claims across `stop` and need no reopening.
+
 
 ## Node Labels
 
@@ -40,22 +83,26 @@ All cluster nodes are labeled at `up` time:
 | `type` | `db`, `app`, `control` | All nodes |
 | `easydblab.com/node-ordinal` | `0`, `1`, `2`, … | `db` and `app` nodes |
 
-Use `nodeSelector: type: db` (or `app`) in pod specs to constrain placement. The ordinal label is used by the PV pre-binding mechanism so each StatefulSet replica lands on the right node.
+Use `nodeSelector: type: db` (or `app`) in pod specs to constrain placement. Each local PV's node affinity names an ordinal, so PV N can only bind on node N of its pool.
 
 ## Persistent Volumes
 
-Per-kit PVs are created lazily at install time, not at cluster-up time. Run `platform create-pvs` before starting a stateful kit:
+On local volumes, a kit's PVs are created lazily by its `kit-storage` step, at install or start,
+not at cluster-up time. A built-in kit does this itself. `platform create-pvs` runs the same
+provisioning by hand:
 
 ```bash
 easy-db-lab platform create-pvs --kit clickhouse --size 100Gi
 ```
 
-This creates one PV per db node with:
-- **Path**: `/mnt/db1/<kit>` on each host
-- **StorageClass**: `local-storage-wfc`
+This creates the class `edl-local-<kit>` and one PV per db node with:
+- **Path**: `/mnt/db1/<kit>/<claim template>` on each host, so two claim templates of one kit on
+  one node (TiDB's TiKV and TiFlash) keep separate directories
+- **StorageClass**: `edl-local-<kit>`
+- **Reclaim policy**: `Retain`
 - **Node affinity**: `type=<node-type>` and `easydblab.com/node-ordinal=N` for deterministic binding.
   Both pools carry ordinals, so the node type keeps a db PV off the app node with the same ordinal.
-- **ClaimRef**: pre-bound to `<volumeClaimTemplateName>-<kit>-N`
+PVs are not pre-bound by `claimRef`; the per-kit class is what reserves them.
 
 The command is safe to re-run. If a PV exists with a stale claimRef (the PVC was deleted), the UID is cleared and the PV is returned to `Available`.
 
@@ -67,7 +114,7 @@ The command is safe to re-run. If a PV exists with a stale claimRef (the PVC was
 easy-db-lab platform create-pvs --kit <name> --size <Gi> [--node-type db|app] [--pvc-name <name>]
 ```
 
-Creates one PV per node of the specified type. Defaults to `db` nodes. For stateless kits that need app-node storage, use `--node-type app`. `--pvc-name` sets the volumeClaimTemplate name to pre-bind against (default: `data`).
+Creates the kit's class and one PV per node of the specified type. Defaults to `db` nodes; use `--node-type app` for app-node storage. `--pvc-name` sets the claim template the PVs serve, which names them `<pvc-name>-<kit>-N` and their directory `/mnt/db1/<kit>/<pvc-name>` (default: `data`). On a cluster with a provisioned kit StorageClass the cluster makes the volumes, so it creates nothing: it only checks that the class reclaims with `Retain`, and fails, naming the class, when it would delete the kit's data.
 
 ### `platform info`
 
@@ -75,7 +122,7 @@ Creates one PV per node of the specified type. Defaults to `db` nodes. For state
 easy-db-lab platform info
 ```
 
-Displays StorageClasses, available PV counts per node pool, node selector labels, and the ordinal label key. Use this to verify substrate readiness before deploying a kit.
+Displays the kit storage (local volumes or the provisioned class, and the default size), available PV counts per node pool, node selector labels, and the ordinal label key. Use this to verify substrate readiness before deploying a kit.
 
 ### `platform cni`
 
@@ -90,7 +137,7 @@ Shows the pod-network datapath. On a Cilium cluster it reads the `cilium-config`
 The `install` command can render templates from a custom directory:
 
 ```bash
-easy-db-lab kit install --from ./my-kit/ --kit my-kit --size 50Gi
+easy-db-lab kit install --from ./my-kit/ --kit my-kit --storage-size 50Gi
 ```
 
 The directory must contain a `kit.yaml`. Without it the install is rejected before anything is
@@ -114,9 +161,10 @@ All templates receive these standard variables from cluster state:
 | `__ACCOUNT_BUCKET__` | Account-level S3 bucket (survives cluster teardown) |
 | `__REGION__` | AWS region |
 | `__VPC_CIDR__` | VPC CIDR block |
-| `__STORAGE_CLASS_WFC__` | `local-storage-wfc` |
+| `__KIT_STORAGE_CLASS__` | The class every kit claim names: `edl-local-<kit>`, or the `init --kit-storage-class` class |
+| `__KIT_STORAGE_SIZE__` | The environment's default claim size: `init --kit-storage-size`, else `10Ti` or `100Gi` |
 | `__KIT_NAME__` | Kit name |
-| `__STORAGE_SIZE__` | Storage size (e.g., `100Gi`) |
+| `__STORAGE_SIZE__` | The kit's `--storage-size` (e.g. `100Gi`); a kit declares it with default `${KIT_STORAGE_SIZE}` |
 | `__KUBECONFIG__` | Path to local kubeconfig |
 | `__EASY_DB_LAB_EXEC__` | Path to the easy-db-lab executable |
 | `__RUNNING_KITS__` | Names of currently running kits |
@@ -232,7 +280,7 @@ This is fully automatic — no manual OTel configuration is required when starti
 ## Verifying the Substrate
 
 ```bash
-# Check StorageClasses and PV availability
+# Check kit storage and PV availability
 easy-db-lab platform info
 
 # List all nodes and their labels

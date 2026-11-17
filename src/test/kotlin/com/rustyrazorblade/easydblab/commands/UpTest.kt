@@ -75,8 +75,6 @@ class UpTest : UpTestFixture() {
         verify(mockK8sService).labelNode(eq("control0"), any())
         verify(mockK8sService).labelNode(eq("db0"), any())
         verify(mockK8sService).labelNode(eq("app0"), any())
-        verify(mockK8sService).ensureLocalStorageClass()
-        verify(mockK8sService).ensureLocalStorageWfcClass()
     }
 
     /** Every `up` re-applies the bucket policy's delete deny, then makes sure the compactor runs, once. */
@@ -301,26 +299,36 @@ class UpTest : UpTestFixture() {
     }
 
     @Test
-    fun `up aborts when ensureLocalStorageClass fails`() {
-        whenever(mockK8sService.ensureLocalStorageClass()).thenReturn(Result.failure(RuntimeException("apply failed")))
+    fun `up creates no cluster-wide StorageClass for kits, which get theirs at install`() {
+        newUp().execute()
+
+        verify(mockK8sService, never()).storageClassReclaimPolicy(any())
+    }
+
+    @Test
+    fun `up refuses a recorded kit StorageClass that deletes before deploying the stack`() {
+        val state = happyState()
+        whenever(mockClusterStateManager.load())
+            .thenReturn(state.copy(initConfig = state.initConfig?.copy(kitStorageClass = "gp2")))
+        whenever(mockK8sService.storageClassReclaimPolicy("gp2")).thenReturn(Result.success("Delete"))
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
-            .hasMessageContaining("apply failed")
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("StorageClass gp2 reclaims with Delete")
+            .hasMessageContaining("init --kit-storage-class")
 
-        verify(mockK8sService, never()).ensureLocalStorageWfcClass()
-        // Storage classes are set up before the observability stack, so aborting here means the
-        // stack deploy is never reached.
         verify(mockObservabilityStackService, never()).deploy()
     }
 
     @Test
-    fun `up aborts when ensureLocalStorageWfcClass fails`() {
-        whenever(mockK8sService.ensureLocalStorageWfcClass()).thenReturn(Result.failure(RuntimeException("apply failed")))
+    fun `up accepts a recorded kit StorageClass that retains`() {
+        val state = happyState()
+        whenever(mockClusterStateManager.load())
+            .thenReturn(state.copy(initConfig = state.initConfig?.copy(kitStorageClass = "retain-x")))
+        whenever(mockK8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Retain"))
 
-        assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
-            .hasMessageContaining("apply failed")
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+        verify(mockObservabilityStackService).deploy()
     }
 
     @Test

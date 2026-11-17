@@ -497,8 +497,22 @@ object Constants {
         fun serviceHost(service: String): String = "$service.$NAMESPACE.svc.cluster.local"
 
         const val MANIFEST_DIR = "k8s"
-        const val LOCAL_STORAGE_CLASS = "local-storage"
-        const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
+
+        /** Prefix of the per-kit local StorageClass, `edl-local-<kit>`, on nodes easy-db-lab owns. */
+        const val KIT_LOCAL_CLASS_PREFIX = "edl-local-"
+
+        /** A kit claim's default size on local volumes; a local PV does not enforce its capacity. */
+        const val LOCAL_KIT_STORAGE_SIZE = "10Ti"
+
+        /** A kit claim's default size on a provisioned StorageClass, which bills what it is asked for. */
+        const val DEFAULT_PROVISIONED_KIT_STORAGE_SIZE = "100Gi"
+
+        /** The label marking a cluster-scoped object easy-db-lab created, with [MANAGED_BY_VALUE]. */
+        const val MANAGED_BY_LABEL = "app.kubernetes.io/managed-by"
+        const val MANAGED_BY_VALUE = "easy-db-lab"
+
+        /** The label naming the cluster (its id) a cluster-scoped object belongs to. */
+        const val CLUSTER_LABEL = "easydblab/cluster"
 
         /** The access mode of a volume one node mounts read-write, as every easy-db-lab claim is. */
         const val READ_WRITE_ONCE = "ReadWriteOnce"

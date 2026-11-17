@@ -82,7 +82,7 @@ class CassandraPodsKitIntegrationTest {
                 n.metadata.labels[Constants.NODE_ORDINAL_LABEL] = "0"
                 n
             }
-        k3s.execInContainer("mkdir", "-p", PV_PATH)
+        k3s.execInContainer("mkdir", "-p", "$PV_PATH/data")
         fixture =
             BuiltinKitFixture(
                 "cassandra-pods",
@@ -372,20 +372,17 @@ class CassandraPodsKitIntegrationTest {
             KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
         }
         val ops = DefaultK8sStorageOperations(provider, mock<EventBus>())
-        ops.ensureLocalStorageWfcClass().getOrThrow()
+        ops.ensureKitLocalStorageClass(KIT_CLASS, "test-cluster").getOrThrow()
         ops
             .createLocalPersistentVolumes(
                 PersistentVolumeConfig(
                     dbName = "cassandra-pods",
-                    localPath = PV_PATH,
+                    localPath = "$PV_PATH/data",
                     count = 1,
-                    // The PV must offer what the kit's claim requests (its STORAGE_SIZE default),
-                    // or the claim never binds and the pod stays Pending.
-                    storageSize =
-                        fixture.config.args
-                            .single { it.variable == "STORAGE_SIZE" }
-                            .default,
-                    storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
+                    // The PV must offer what the kit's claim requests (its STORAGE_SIZE default, the
+                    // local-volumes kit storage size), or the claim never binds and the pod stays Pending.
+                    storageSize = Constants.K8s.LOCAL_KIT_STORAGE_SIZE,
+                    storageClass = KIT_CLASS,
                 ),
             ).getOrThrow()
     }
@@ -393,6 +390,9 @@ class CassandraPodsKitIntegrationTest {
     private companion object {
         const val CASSANDRA_IMAGE = "cassandra:5.0"
         const val PV_PATH = "/mnt/db1/cassandra-pods"
+
+        /** The class the kit's claims name on local volumes: `edl-local-<kit>`. */
+        const val KIT_CLASS = "edl-local-cassandra-pods"
         const val POD_TIMEOUT_SECONDS = 600L
         const val EXEC_TIMEOUT_SECONDS = 120L
         const val UN_TIMEOUT_SECONDS = 300L

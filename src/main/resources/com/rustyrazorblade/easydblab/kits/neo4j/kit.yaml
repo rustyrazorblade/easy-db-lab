@@ -36,10 +36,10 @@ args:
     variable: STORAGE_SIZE
     description: "Persistent volume size for the Neo4j data directory"
     type: string
-    default: "10Ti"
+    default: "${KIT_STORAGE_SIZE}"
 
 install:
-  - type: platform-pvs
+  - type: kit-storage
     node-type: db
     count: 1
     volume-claim-template-name: data
@@ -95,5 +95,5 @@ uninstall:
     kinds: [statefulset, service, pod, configmap, pvc]
     selector: easydblab/kit=neo4j
     namespace: default
-  - type: platform-pvs-delete
+  - type: kit-storage-delete
     node-type: db

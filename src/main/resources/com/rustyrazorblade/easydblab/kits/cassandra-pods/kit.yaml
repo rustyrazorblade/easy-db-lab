@@ -56,10 +56,10 @@ args:
     variable: STORAGE_SIZE
     description: "Persistent volume size per node"
     type: string
-    default: "10Ti"
+    default: "${KIT_STORAGE_SIZE}"
 
 install:
-  - type: platform-pvs
+  - type: kit-storage
     node-type: db
     volume-claim-template-name: data
 
@@ -104,5 +104,5 @@ uninstall:
     kinds: [statefulset, service, configmap, pvc]
     selector: easydblab/kit=cassandra-pods
     namespace: default
-  - type: platform-pvs-delete
+  - type: kit-storage-delete
     node-type: db

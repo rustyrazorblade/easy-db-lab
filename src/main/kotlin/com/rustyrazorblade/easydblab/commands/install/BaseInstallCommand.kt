@@ -60,7 +60,7 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
 
             // Persist all resolved kit arg values so later phases (start, stop, etc.) can
             // use the values the user actually passed at install time rather than the kit
-            // defaults. Critical for platform-pvs: without this, STORAGE_SIZE reverts to
+            // defaults. Critical for kit-storage: without this, STORAGE_SIZE reverts to
             // the kit default (e.g. 10Ti) instead of the installed value (e.g. 100Gi),
             // causing PV capacity to mismatch the PVC request in the rendered manifest.
             // A kit that declares no storage arg has no storage size, so it gets no entry at

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.environment
 
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -7,8 +8,11 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
+import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
@@ -56,6 +60,58 @@ class ClusterContractTest {
 
         assertThat(ClusterContract.of(state).nodeCapabilities).isEqualTo(NodeCapabilities.AWS)
         assertThat(NodeCapabilities.from(state)).isEqualTo(NodeCapabilities.AWS)
+    }
+
+    /**
+     * Every backend still writes to the account bucket from the node's host directories, whatever the
+     * environment; #1035 changes the store kind and the storage together when it renders a volume.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("environments")
+    fun `the store kind agrees with the storage and credentials the backends are rendered with`(environment: Environment) {
+        val contract = ClusterContract.of(stateFor(environment))
+
+        assertThat(contract.storeKind).isEqualTo(StoreKind.ObjectStore)
+        assertThat(contract.hosting.storage).isEqualTo(BackendStorage.HostPath)
+        assertThat(contract.hosting.credentials).isEqualTo(StoreCredentials.InstanceRole)
+    }
+
+    @Test
+    fun `an EC2 state with no initConfig is a contract whose datacenter is the profile's region`() {
+        val state = ClusterState(name = "test", versions = mutableMapOf())
+
+        assertThat(state.initConfig).isNull()
+        assertThat(ClusterContract.of(state).datacenter { "eu-west-1" }).isEqualTo("eu-west-1")
+    }
+
+    @Test
+    fun `an EC2 state that records a blank region takes its datacenter from the profile's region`() {
+        val state = ClusterState(name = "test", versions = mutableMapOf(), initConfig = InitConfig(region = " "))
+
+        assertThat(ClusterContract.of(state).datacenter { "eu-west-1" }).isEqualTo("eu-west-1")
+    }
+
+    @Test
+    fun `an EC2 state that records no region takes its datacenter from the profile's region`() {
+        val contract = ClusterContract.of(ClusterState(name = "test", versions = mutableMapOf()))
+
+        assertThat(contract.datacenter { "eu-west-1" }).isEqualTo("eu-west-1")
+    }
+
+    @Test
+    fun `an EC2 state that records no region, with no profile to ask, fails instead of naming a blank datacenter`() {
+        val contract = ClusterContract.of(ClusterState(name = "test", versions = mutableMapOf()))
+
+        assertThatThrownBy { contract.datacenter(ProfileRegion.NONE) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("records no region")
+    }
+
+    @Test
+    fun `a recorded region is the datacenter, and the profile is never asked`() {
+        val contract = ClusterContract.of(stateFor(Environment.Ec2K3s))
+
+        assertThat(contract.datacenter { error("the profile must not be loaded") }).isEqualTo("us-east-1")
     }
 
     @Test
@@ -122,6 +178,9 @@ class ClusterContractTest {
 
     companion object {
         @JvmStatic
+        fun environments(): List<Environment> = listOf(Environment.Ec2K3s, Environment.K3sDocker("/d"), Environment.Kubeconfig("/k"))
+
+        @JvmStatic
         fun table(): List<Arguments> =
             listOf(
                 Arguments.of(
@@ -137,7 +196,7 @@ class ClusterContractTest {
                         nodeCapabilities = NodeCapabilities.AWS,
                         hosting = ObservabilityHosting.AWS,
                         namespace = "default",
-                        datacenter = "us-east-1",
+                        recordedDatacenter = "us-east-1",
                     ),
                 ),
                 Arguments.of(
@@ -148,12 +207,18 @@ class ClusterContractTest {
                         localDataDirectory = "/d",
                         toolingForm = ToolingForm.Local,
                         nodeAccessForm = NodeAccessForm.ContainerExec,
-                        storeKind = StoreKind.Volume,
+                        storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = NodeCapabilities.LOCAL_DOCKER,
-                        hosting = ObservabilityHosting.AWS.copy(publishing = ServicePublishing.ClusterIp),
+                        hosting =
+                            ObservabilityHosting(
+                                Placement.CONTROL_NODE,
+                                BackendStorage.HostPath,
+                                StoreCredentials.InstanceRole,
+                                ServicePublishing.ClusterIp,
+                            ),
                         namespace = "default",
-                        datacenter = "dc1",
+                        recordedDatacenter = "dc1",
                     ),
                 ),
                 Arguments.of(
@@ -164,12 +229,18 @@ class ClusterContractTest {
                         localDataDirectory = null,
                         toolingForm = ToolingForm.Local,
                         nodeAccessForm = NodeAccessForm.None,
-                        storeKind = StoreKind.Volume,
+                        storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = NodeCapabilities.NONE,
-                        hosting = ObservabilityHosting.AWS.copy(placement = Placement.ANY_NODE, publishing = ServicePublishing.ClusterIp),
+                        hosting =
+                            ObservabilityHosting(
+                                Placement.ANY_NODE,
+                                BackendStorage.HostPath,
+                                StoreCredentials.InstanceRole,
+                                ServicePublishing.ClusterIp,
+                            ),
                         namespace = "easy-db-lab",
-                        datacenter = "dc1",
+                        recordedDatacenter = "dc1",
                     ),
                 ),
             )

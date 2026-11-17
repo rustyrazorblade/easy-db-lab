@@ -11,11 +11,16 @@ import com.fasterxml.jackson.databind.JsonNode
  * type, an unknown type, or a variant field that is missing or blank.
  */
 object EnvironmentRecord {
-    /** The fields each variant cannot be read without; a variant not listed needs none. */
-    private val requiredFields: Map<String, String> =
+    /**
+     * The fields each variant cannot be read without, for every id in [Environment.TYPE_IDS]. A variant
+     * that needs none is listed with no fields, so one left out of this map is a failing test, never a
+     * variant read without checking its fields.
+     */
+    internal val requiredFields: Map<String, List<String>> =
         mapOf(
-            Environment.K3S_DOCKER to "dataDir",
-            Environment.KUBECONFIG to "source",
+            Environment.EC2_K3S to emptyList(),
+            Environment.K3S_DOCKER to listOf("dataDir"),
+            Environment.KUBECONFIG to listOf("source"),
         )
 
     /**
@@ -38,11 +43,11 @@ object EnvironmentRecord {
         }
         val id = type.asText()
         if (id !in Environment.TYPE_IDS) return "Unknown execution environment '$id' in $path. $known"
-        val field = requiredFields[id] ?: return null
-        val value = node.get(field)
-        if (value == null || !value.isTextual || value.asText().isBlank()) {
-            return "The '$id' execution environment in $path has no '$field'."
-        }
-        return null
+        val missing =
+            requiredFields.getValue(id).firstOrNull { field ->
+                val value = node.get(field)
+                value == null || !value.isTextual || value.asText().isBlank()
+            }
+        return missing?.let { "The '$id' execution environment in $path has no '$it'." }
     }
 }

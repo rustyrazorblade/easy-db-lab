@@ -1,11 +1,14 @@
 package com.rustyrazorblade.easydblab.configuration.environment
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
+import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 
 /**
  * Everything a consumer needs to know about the environment a cluster runs in, as capability data
@@ -17,7 +20,9 @@ import com.rustyrazorblade.easydblab.configuration.ServicePublishing
  * inside the REPL or the server takes effect on the next command.
  *
  * [nodeAccessForm], [storeKind] and [namespace] are the slots #1039, #1035 and #1094 plug into; they
- * are fixed per environment now (design D1), so those changes touch no consumer.
+ * are fixed per environment now (design D1), so those changes touch no consumer. [storeKind] names
+ * what the backends are rendered with today, [StoreKind.ObjectStore] in every environment, so it never
+ * disagrees with [hosting]; #1035 moves the two together.
  *
  * @property environment the recorded environment, for messages only.
  * @property hasProvisioner whether `up` and `down` can provision and tear it down (#1041 adds K3s in Docker).
@@ -30,8 +35,9 @@ import com.rustyrazorblade.easydblab.configuration.ServicePublishing
  * @property nodeCapabilities the recorded capability set, or the environment's declared one.
  * @property hosting where the observability backends and Grafana run, with the `init` node labels.
  * @property namespace the namespace easy-db-lab's workloads run in (#1094 adds the flag).
- * @property datacenter the datacenter name the database nodes are given; blank for an EC2 state
- *   that records no region.
+ * @property recordedDatacenter the datacenter name the database nodes are given, or null for an EC2
+ *   state that records no region, whose datacenter is the AWS profile's region; read it through
+ *   [datacenter], never directly.
  */
 data class ClusterContract(
     val environment: Environment,
@@ -44,8 +50,15 @@ data class ClusterContract(
     val nodeCapabilities: NodeCapabilities,
     val hosting: ObservabilityHosting,
     val namespace: String,
-    val datacenter: String,
+    val recordedDatacenter: String?,
 ) {
+    /**
+     * The datacenter name: the recorded one, or for an EC2 state that records no region the AWS
+     * profile's region, the same fallback as [ClusterState.region]. Never blank: with no profile to
+     * ask ([ProfileRegion.NONE]) it fails.
+     */
+    fun datacenter(profileRegion: ProfileRegion): String = recordedDatacenter ?: profileRegion.region()
+
     companion object {
         /** The contract [state]'s recorded environment resolves to. Pure: it reads only [state]. */
         fun of(state: ClusterState): ClusterContract {
@@ -65,7 +78,7 @@ data class ClusterContract(
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.NodePorts),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
-                        datacenter = state.initConfig?.region.orEmpty(),
+                        recordedDatacenter = state.initConfig?.region?.ifBlank { null },
                     )
                 is Environment.K3sDocker ->
                     ClusterContract(
@@ -74,13 +87,13 @@ data class ClusterContract(
                         localDataDirectory = environment.dataDir,
                         toolingForm = ToolingForm.Local,
                         nodeAccessForm = NodeAccessForm.ContainerExec,
-                        storeKind = StoreKind.Volume,
+                        storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
                         // The node is a container: the CLI reaches Services by a port-forward, never a node port.
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.ClusterIp),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
-                        datacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
+                        recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                     )
                 is Environment.Kubeconfig ->
                     ClusterContract(
@@ -89,21 +102,31 @@ data class ClusterContract(
                         localDataDirectory = null,
                         toolingForm = ToolingForm.Local,
                         nodeAccessForm = NodeAccessForm.None,
-                        storeKind = StoreKind.Volume,
+                        storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.ANY_NODE, nodeLabels, ServicePublishing.ClusterIp),
                         namespace = Constants.ContractDefaults.BROUGHT_NAMESPACE,
-                        datacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
+                        recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                     )
             }
         }
 
-        // The storage and credential slots stay AWS's until #1035 and #1061 supply the others.
+        /**
+         * Every environment's backends keep their local state in a host directory and write to the
+         * account bucket with the node's credentials, which is what [StoreKind.ObjectStore] names:
+         * #1035 changes the store kind and the storage together, and #1061 the credentials.
+         */
         private fun hosted(
             placement: Placement,
             nodeLabels: Map<String, String>,
             publishing: ServicePublishing,
-        ): ObservabilityHosting = ObservabilityHosting.AWS.copy(placement = placement.withNodeLabels(nodeLabels), publishing = publishing)
+        ): ObservabilityHosting =
+            ObservabilityHosting(
+                placement = placement.withNodeLabels(nodeLabels),
+                storage = BackendStorage.HostPath,
+                credentials = StoreCredentials.InstanceRole,
+                publishing = publishing,
+            )
     }
 }

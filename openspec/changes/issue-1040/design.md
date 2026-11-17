@@ -66,12 +66,12 @@ sealed interface Environment {
 | --- | --- | --- | --- |
 | `toolingForm` (#1034) | `Ssh` | `Local` | `Local` |
 | `nodeAccessForm` (#1039) | `Ssh` | `ContainerExec` | `None` |
-| `storeKind` (#1035) | `ObjectStore` | `Volume` | `Volume` (#1082 may refine) |
+| `storeKind` (#1035) | `ObjectStore` | `ObjectStore` until #1035 renders `Volume` | `ObjectStore` until #1035 (#1082 may refine) |
 | `networkMode` | `Tunnel` (Tailscale keeps its own flag) | `Direct` | `Direct` |
 | `nodeCapabilities` | recorded, else AWS | recorded, else LOCAL_DOCKER | recorded (probed, #1096) |
 | `hosting.placement` | `CONTROL_NODE` | `CONTROL_NODE`, not published on the node | `ANY_NODE` plus `--node-label` |
 | `namespace` | `default` | `default` | `easy-db-lab` |
-| `datacenter` | `initConfig.region` | `dc1` | `dc1` |
+| `datacenter` | `initConfig.region`, else the profile region (fails when none) | `dc1` | `dc1` |
 
 `exposure` stays a recorded `ClusterState` field (#1090), written by `init` from the environment (Decision 5).
 

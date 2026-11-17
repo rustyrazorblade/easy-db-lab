@@ -24,7 +24,7 @@ enum class NodeAccessForm {
     None,
 }
 
-/** Where the observability backends keep their data (#1035 renders [Volume]). */
+/** Where the observability backends keep their data. Nothing renders [Volume] yet; #1035 adds it. */
 enum class StoreKind {
     /** An object store bucket. */
     ObjectStore,

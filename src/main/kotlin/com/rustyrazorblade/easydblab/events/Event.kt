@@ -3087,6 +3087,22 @@ sealed interface Event {
             override fun toDisplayString(): String = "Deleted Tailscale auth key: $keyId"
         }
 
+        /**
+         * `tailscale stop` could not delete the auth key `tailscale start` recorded, so it stays valid in
+         * the tailnet until it expires or is revoked in the Tailscale admin console.
+         */
+        @Serializable
+        @SerialName("Tailscale.AuthKeyNotDeleted")
+        data class AuthKeyNotDeleted(
+            val keyId: String,
+            val reason: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                "Tailscale auth key $keyId was not deleted and stays valid until it expires or is revoked: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         /** `down` or `tailscale stop` removed the control node's device from the tailnet. */
         @Serializable
         @SerialName("Tailscale.DeviceDeleted")

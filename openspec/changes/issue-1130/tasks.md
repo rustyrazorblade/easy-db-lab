@@ -82,5 +82,6 @@
 - [x] 10.7 `cassandra build` (local) then `cassandra use <build>` from the catalog; `cassandra install <name> --url <git> --branch <b> --java 11` builds as before
 - [x] 10.7a A profile build (a yaml in the profile `cassandra_versions/` directory with a tarball URL and `java`): `cassandra list` shows it with source `profile`; `cassandra use <it>` installs it with that JDK
 - [x] 10.7b `cassandra stop`, then `cassandra install 5.0-HEAD --reinstall`: the node downloads again and the record is updated; `cassandra start` works; with Cassandra running, the reinstall of the active version is refused
-- [ ] 10.7c After the AMI rebake with the checksum check: `cassandra use 4.1.7` shows `checksum sha512 OK`
+- [x] 10.7c After the AMI rebake with the checksum check: `cassandra use 4.1.7` shows `checksum sha512 OK`
+- [x] 10.7d On the same AMI: `cassandra stop --hosts db0`, `cassandra install 4.1.7 --reinstall --java 8 --hosts db0` leaves db0 on JDK 8 with `javaVersion` 8 recorded, and `cassandra start` reaches NORMAL on JDK 8 with no sjk error in the output
 - [x] 10.8 `down`; put the commands, their output and the AWS-side result in the PR

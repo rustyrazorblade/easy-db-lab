@@ -7,7 +7,7 @@
 # directory on the root volume.
 #
 # The script is sourced, which defines its functions without running setup. sudo, lsblk, findmnt,
-# mountpoint, blkid, mkfs.xfs, mount, mkdir, sed, tee, systemctl and blockdev are stubbed on PATH
+# mountpoint, blkid, mkfs.xfs, mount, mkdir, sed, tee and systemctl are stubbed on PATH
 # and keep the mount state in a file; yq is the real one. No root, no disks, no Docker.
 #
 # Run directly:  bash src/test/shell/setup-instance-data-disk.test.sh
@@ -83,7 +83,9 @@ EOF
 #!/bin/bash
 echo "mount \$*" >> "${WORK}/calls.log"
 [ "\${MOUNT_FAILS:-0}" = 1 ] && exit 32
-if [ "\${MOUNT_ON_ROOT:-0}" = 1 ]; then echo /dev/nvme0n1p1 > "${WORK}/mounted"; else echo "\$1" > "${WORK}/mounted"; fi
+case " \$* " in *" remount,"*) exit 0 ;; esac
+dev="\${@: -2:1}"
+if [ "\${MOUNT_ON_ROOT:-0}" = 1 ]; then echo /dev/nvme0n1p1 > "${WORK}/mounted"; else echo "\$dev" > "${WORK}/mounted"; fi
 EOF
   cat > "${WORK}/bin/blkid" <<EOF
 #!/bin/bash
@@ -97,7 +99,7 @@ EOF
 echo "tee \$*" >> "${WORK}/calls.log"
 echo "stdin: \$(cat)" >> "${WORK}/calls.log"
 EOF
-  for tool in mkfs.xfs mkdir sed systemctl blockdev; do
+  for tool in mkfs.xfs mkdir sed systemctl; do
     cat > "${WORK}/bin/${tool}" <<EOF
 #!/bin/bash
 echo "${tool} \$*" >> "${WORK}/calls.log"
@@ -124,7 +126,7 @@ DATA_DISK=',
 setup "$(lsblk_json "${DATA_DISK}")"
 OUTPUT="$(run_mount)"
 STATUS=$?
-if [[ "$STATUS" -eq 0 ]] && grep -q '^mount /dev/nvme1n1 /mnt/db1$' "${WORK}/calls.log"; then
+if [[ "$STATUS" -eq 0 ]] && grep -q '^mount -o noatime /dev/nvme1n1 /mnt/db1$' "${WORK}/calls.log"; then
   pass "an unused disk is mounted at /mnt/db1"
 else
   fail "expected nvme1n1 mounted at /mnt/db1, got ${STATUS}: ${OUTPUT} / $(cat "${WORK}/calls.log")"
@@ -147,6 +149,11 @@ if grep -q '^stdin: UUID=1111-2222 /mnt/db1 xfs ' "${WORK}/calls.log"; then
   pass "a disk formatted by setup is persisted as xfs"
 else
   fail "expected an xfs fstab entry for a formatted disk, got: $(cat "${WORK}/calls.log")"
+fi
+if grep -q '^stdin: UUID=1111-2222 /mnt/db1 xfs defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2$' "${WORK}/calls.log"; then
+  pass "the fstab entry mounts the data disk noatime on every boot"
+else
+  fail "expected noatime in the fstab entry, got: $(cat "${WORK}/calls.log")"
 fi
 setup "$(lsblk_json "${DATA_DISK}")"
 OUTPUT="$(FS_TYPE=ext4 run_mount)"
@@ -171,7 +178,7 @@ setup "$(lsblk_json ',
   {"name": "nvme2n1", "type": "disk", "mountpoints": [null]}')"
 OUTPUT="$(run_mount)"
 STATUS=$?
-if [[ "$STATUS" -eq 0 ]] && grep -q '^mount /dev/nvme2n1 /mnt/db1$' "${WORK}/calls.log"; then
+if [[ "$STATUS" -eq 0 ]] && grep -q '^mount -o noatime /dev/nvme2n1 /mnt/db1$' "${WORK}/calls.log"; then
   pass "a data disk named nvme2n1 is found and a disk in use is skipped"
 else
   fail "expected nvme2n1 mounted, got ${STATUS}: ${OUTPUT} / $(cat "${WORK}/calls.log")"
@@ -231,12 +238,19 @@ fi
 setup "$(lsblk_json ',
   {"name": "nvme1n1", "type": "disk", "mountpoints": ["/mnt/db1"]}')"
 echo /dev/nvme1n1 > "${WORK}/mounted"
-OUTPUT="$(run_mount)"
+OUTPUT="$(FS_TYPE=xfs run_mount)"
 STATUS=$?
-if [[ "$STATUS" -eq 0 ]] && ! grep -q -e '^mount' -e '^mkfs' "${WORK}/calls.log"; then
+if [[ "$STATUS" -eq 0 ]] && ! grep -q -e '^mount -o noatime /dev' -e '^mkfs' "${WORK}/calls.log"; then
   pass "a re-run keeps the mounted data disk"
 else
   fail "a re-run should keep the mount, got ${STATUS}: ${OUTPUT} / $(cat "${WORK}/calls.log")"
+fi
+if grep -q '^mount -o remount,noatime /mnt/db1$' "${WORK}/calls.log" &&
+  grep -q '^stdin: UUID=1111-2222 /mnt/db1 xfs defaults,noatime,' "${WORK}/calls.log" &&
+  [[ $(grep -c '^tee -a /etc/fstab$' "${WORK}/calls.log") -eq 1 ]]; then
+  pass "a re-run remounts the data disk noatime and rewrites its one fstab entry"
+else
+  fail "a re-run should remount noatime and rewrite fstab once, got: $(cat "${WORK}/calls.log")"
 fi
 
 # --- on_root_disk: a partition belongs to the root disk, a disk with a longer name does not ---

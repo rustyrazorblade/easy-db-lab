@@ -542,6 +542,39 @@ object Constants {
         const val BYTES_PER_MIB = 1024L * 1024
     }
 
+    /**
+     * The OS tuning every node runs with (node-os-tuning): files packaged under [RESOURCE_DIR],
+     * uploaded by node setup into [REMOTE_DIR] beside `setup_instance.sh`, which installs them.
+     */
+    object NodeTuning {
+        /** The classpath directory that holds the tuning files. */
+        const val RESOURCE_DIR = "/com/rustyrazorblade/easydblab/commands/node-tuning"
+
+        /** Where node setup uploads them, relative to the login directory `setup_instance.sh` runs from. */
+        const val REMOTE_DIR = "node-tuning"
+
+        /** The sysctl file, which also holds the reserved ports. */
+        const val SYSCTL_FILE = "60-easydblab.conf"
+
+        /** Every file in [RESOURCE_DIR]; `setup_instance.sh` installs each one. */
+        val FILES =
+            listOf(
+                SYSCTL_FILE,
+                "90-easydblab.rules",
+                "easydblab-limits.conf",
+                "edl-node-tuning",
+                "edl-node-tuning.service",
+                "limits.conf",
+                "system.conf",
+            )
+
+        /** The first port of the Kubernetes NodePort range and the Linux default ephemeral range. */
+        const val NODE_PORT_MIN = 30000
+
+        /** The last port of the Kubernetes NodePort range. */
+        const val NODE_PORT_MAX = 32767
+    }
+
     // Configuration file paths
     object ConfigPaths {
         // Local config files

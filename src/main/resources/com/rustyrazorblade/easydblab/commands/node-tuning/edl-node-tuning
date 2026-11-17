@@ -1,0 +1,294 @@
+#!/bin/sh
+#
+# easy-db-lab node tuning: the settings no config file persists, and a read-back of all of them.
+#
+#   edl-node-tuning apply        transparent huge pages, CPU governor and idle states, and packet
+#                                steering on every ENA interface. Run by edl-node-tuning.service at
+#                                boot and by setup_instance.sh at setup.
+#   edl-node-tuning rps <iface>  packet steering on one interface. Run by udev when an ENA
+#                                interface appears, such as a secondary ENI the CNI attaches later.
+#   edl-node-tuning verify       reads back every value node setup applies. Prints one
+#                                "ERROR: <setting>: wanted <x>, got <y>" line per mismatch and
+#                                exits 1 when there is any.
+#
+# CPU frequency and idle states are tuned only where the instance exposes them; otherwise apply
+# logs one line naming the node, the instance type and what it skipped, and carries on.
+#
+# The paths are overridable only so edl-node-tuning.test.sh can run this against a fake sysfs.
+
+SYS="${EDL_SYS_ROOT:-/sys}"
+PROC="${EDL_PROC_ROOT:-/proc}"
+SYSCTL_CONF="${EDL_SYSCTL_CONF:-/etc/sysctl.d/60-easydblab.conf}"
+
+THP_ENABLED=madvise
+THP_DEFRAG=never
+GOVERNOR=performance
+RPS_FLOW_ENTRIES=32768
+MIN_KERNEL_FILES=1048576
+SERVICE_NOFILE=1048576
+DISK_READAHEAD_KB=4
+DISK_SCHEDULER=none
+
+# The units node setup gives the service limits, when they are installed on this node.
+LIMITED_UNITS="cassandra cassandra-easy-stress k3s k3s-agent"
+
+say() {
+  echo "edl-node-tuning: $*"
+  command -v logger > /dev/null 2>&1 && logger -t edl-node-tuning "$*"
+  return 0
+}
+
+# The instance type from instance metadata (IMDSv2), or "unknown instance type".
+instance_type() {
+  if [ -n "${EDL_INSTANCE_TYPE:-}" ]; then
+    echo "$EDL_INSTANCE_TYPE"
+    return
+  fi
+  token=$(curl -s -m 2 -X PUT http://169.254.169.254/latest/api/token \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2> /dev/null)
+  type=$(curl -s -m 2 -H "X-aws-ec2-metadata-token: $token" \
+    http://169.254.169.254/latest/meta-data/instance-type 2> /dev/null)
+  echo "${type:-unknown instance type}"
+}
+
+skip() {
+  say "skipped $1 on $(hostname): $(instance_type) $2"
+}
+
+# Writes [value] to [file]; a write the kernel refuses is reported by verify, not here.
+put() {
+  echo "$2" > "$1" 2> /dev/null || say "could not write $2 to $1"
+}
+
+# The CPU numbers in a kernel CPU list such as 0-3,8,10-11, one per line.
+cpu_numbers() {
+  echo "$1" | tr ',' '\n' | while IFS=- read -r first last; do
+    [ -z "$first" ] && continue
+    n=$first
+    while [ "$n" -le "${last:-$first}" ]; do
+      echo "$n"
+      n=$((n + 1))
+    done
+  done
+}
+
+# The RPS mask that covers every online CPU, in the kernel's comma-grouped 32-bit hex words:
+# 2 CPUs give 3, 33 give 1,ffffffff.
+rps_mask() {
+  cpus=$(cpu_numbers "$(cat "$SYS/devices/system/cpu/online")")
+  max=0
+  for c in $cpus; do [ "$c" -gt "$max" ] && max=$c; done
+  word=$((max / 32))
+  mask=""
+  while [ "$word" -ge 0 ]; do
+    value=0
+    for c in $cpus; do
+      [ $((c / 32)) -eq "$word" ] && value=$((value | (1 << (c % 32))))
+    done
+    if [ -z "$mask" ]; then mask=$(printf '%x' "$value"); else mask="$mask,$(printf '%08x' "$value")"; fi
+    word=$((word - 1))
+  done
+  echo "$mask"
+}
+
+# A mask without its separators and leading zeros, so the kernel's padded form compares equal.
+normal_mask() {
+  m=$(echo "$1" | tr -d ',' | sed 's/^0*//')
+  echo "${m:-0}"
+}
+
+rx_queues() {
+  ls -d "$SYS/class/net/$1/queues"/rx-* 2> /dev/null
+}
+
+flow_count() {
+  count=$(rx_queues "$1" | wc -l)
+  [ "$count" -gt 0 ] || count=1
+  echo $((RPS_FLOW_ENTRIES / count))
+}
+
+# The kernel announces a new interface before it creates its receive queues, so a call from udev
+# waits briefly for them.
+wait_for_queues() {
+  tries=0
+  while [ -z "$(rx_queues "$1")" ] && [ "$tries" -lt "${EDL_QUEUE_WAIT_TRIES:-20}" ]; do
+    sleep 0.25
+    tries=$((tries + 1))
+  done
+}
+
+rps() {
+  iface="$1"
+  [ -n "$iface" ] || { echo "usage: edl-node-tuning rps <iface>" >&2; return 1; }
+  wait_for_queues "$iface"
+  mask=$(rps_mask)
+  flows=$(flow_count "$iface")
+  for q in $(rx_queues "$iface"); do
+    put "$q/rps_cpus" "$mask"
+    put "$q/rps_flow_cnt" "$flows"
+  done
+}
+
+ena_links() {
+  for link in "$SYS/class/net"/*; do
+    driver=$(readlink "$link/device/driver" 2> /dev/null)
+    [ "${driver##*/}" = ena ] && echo "${link##*/}"
+  done
+}
+
+cpus() {
+  ls -d "$SYS/devices/system/cpu"/cpu[0-9]* 2> /dev/null
+}
+
+# The exit latency of C1, the shallowest real idle state: the state named C1 (C1_ACPI on some
+# kernels), else the first state after POLL.
+c1_latency() {
+  for state in "$SYS/devices/system/cpu/cpu0/cpuidle"/state*; do
+    case "$(cat "$state/name" 2> /dev/null)" in
+      C1 | C1_ACPI | C1-*) cat "$state/latency"; return ;;
+    esac
+  done
+  cat "$SYS/devices/system/cpu/cpu0/cpuidle/state1/latency" 2> /dev/null || echo 0
+}
+
+# The idle states of [cpu] deeper than C1, one directory per line.
+deep_states() {
+  c1=$(c1_latency)
+  for state in "$1/cpuidle"/state*; do
+    [ -f "$state/latency" ] || continue
+    [ "$(cat "$state/latency")" -gt "$c1" ] && echo "$state"
+  done
+}
+
+has_governor() {
+  grep -qw "$GOVERNOR" "$SYS/devices/system/cpu/cpu0/cpufreq/scaling_available_governors" 2> /dev/null
+}
+
+has_idle_states() {
+  [ -f "$SYS/devices/system/cpu/cpu0/cpuidle/state0/latency" ]
+}
+
+apply() {
+  put "$SYS/kernel/mm/transparent_hugepage/enabled" "$THP_ENABLED"
+  put "$SYS/kernel/mm/transparent_hugepage/defrag" "$THP_DEFRAG"
+
+  if has_governor; then
+    for cpu in $(cpus); do put "$cpu/cpufreq/scaling_governor" "$GOVERNOR"; done
+  else
+    skip "CPU governor" "exposes no frequency scaling"
+  fi
+
+  if has_idle_states; then
+    for cpu in $(cpus); do
+      for state in $(deep_states "$cpu"); do put "$state/disable" 1; done
+    done
+  else
+    skip "CPU idle states" "exposes no idle states"
+  fi
+
+  for iface in $(ena_links); do rps "$iface"; done
+}
+
+FAILED=0
+
+mismatch() {
+  echo "ERROR: $1: wanted $2, got $3"
+  FAILED=1
+}
+
+check() {
+  [ "$3" = "$2" ] || mismatch "$1" "$2" "$3"
+}
+
+# The selected value of a sysfs choice such as "always [madvise] never", or the file's value when
+# it holds just one.
+selected() {
+  value=$(cat "$1" 2> /dev/null)
+  case "$value" in
+    *\[*\]*) echo "$value" | sed 's/.*\[\(.*\)\].*/\1/' ;;
+    *) echo "$value" ;;
+  esac
+}
+
+read_sysctl() {
+  tr -s '\t ' '  ' < "$PROC/sys/$(echo "$1" | tr . /)" 2> /dev/null
+}
+
+verify_sysctls() {
+  grep -E '^[a-z]' "$SYSCTL_CONF" | while IFS='=' read -r key value; do
+    key=$(echo "$key" | tr -d ' ')
+    value=$(echo "$value" | sed 's/^ *//; s/ *$//' | tr -s ' ')
+    actual=$(read_sysctl "$key")
+    [ "$actual" = "$value" ] || echo "ERROR: $key: wanted $value, got ${actual:-nothing}"
+  done
+}
+
+verify() {
+  errors=$(verify_sysctls)
+  if [ -n "$errors" ]; then
+    echo "$errors"
+    FAILED=1
+  fi
+
+  for key in fs.nr_open fs.file-max; do
+    actual=$(read_sysctl "$key")
+    [ -n "$actual" ] && [ "$actual" -ge "$MIN_KERNEL_FILES" ] ||
+      mismatch "$key" "at least $MIN_KERNEL_FILES" "${actual:-nothing}"
+  done
+
+  check "transparent_hugepage/enabled" "$THP_ENABLED" "$(selected "$SYS/kernel/mm/transparent_hugepage/enabled")"
+  check "transparent_hugepage/defrag" "$THP_DEFRAG" "$(selected "$SYS/kernel/mm/transparent_hugepage/defrag")"
+
+  if has_governor; then
+    for cpu in $(cpus); do
+      check "${cpu##*/} scaling_governor" "$GOVERNOR" "$(cat "$cpu/cpufreq/scaling_governor" 2> /dev/null)"
+    done
+  fi
+  if has_idle_states; then
+    for cpu in $(cpus); do
+      for state in $(deep_states "$cpu"); do
+        check "${cpu##*/} idle ${state##*/} disable" 1 "$(cat "$state/disable" 2> /dev/null)"
+      done
+    done
+  fi
+
+  mask=$(normal_mask "$(rps_mask)")
+  for iface in $(ena_links); do
+    flows=$(flow_count "$iface")
+    for q in $(rx_queues "$iface"); do
+      check "$iface ${q##*/} rps_cpus" "$mask" "$(normal_mask "$(cat "$q/rps_cpus" 2> /dev/null)")"
+      check "$iface ${q##*/} rps_flow_cnt" "$flows" "$(cat "$q/rps_flow_cnt" 2> /dev/null)"
+    done
+  done
+
+  for disk in "$SYS/block"/nvme*n* "$SYS/block"/xvd*; do
+    [ -d "$disk/queue" ] || continue
+    check "${disk##*/} scheduler" "$DISK_SCHEDULER" "$(selected "$disk/queue/scheduler")"
+    check "${disk##*/} read_ahead_kb" "$DISK_READAHEAD_KB" "$(cat "$disk/queue/read_ahead_kb")"
+  done
+
+  swaps=$(($(wc -l < "$PROC/swaps") - 1))
+  check "swap devices" 0 "$swaps"
+
+  check "irqbalance" active "$(systemctl is-active irqbalance 2> /dev/null)"
+
+  check "systemd DefaultLimitNOFILE" "$SERVICE_NOFILE" "$(systemctl show -p DefaultLimitNOFILE --value)"
+  check "systemd DefaultLimitMEMLOCK" infinity "$(systemctl show -p DefaultLimitMEMLOCK --value)"
+  for unit in $LIMITED_UNITS; do
+    [ "$(systemctl show -p LoadState --value "$unit.service")" = loaded ] || continue
+    check "$unit LimitNOFILE" "$SERVICE_NOFILE" "$(systemctl show -p LimitNOFILE --value "$unit.service")"
+    check "$unit LimitMEMLOCK" infinity "$(systemctl show -p LimitMEMLOCK --value "$unit.service")"
+  done
+
+  return "$FAILED"
+}
+
+case "${1:-}" in
+  apply) apply ;;
+  rps) rps "${2:-}" ;;
+  verify) verify ;;
+  *)
+    echo "usage: edl-node-tuning apply | rps <iface> | verify" >&2
+    exit 2
+    ;;
+esac

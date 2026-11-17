@@ -36,6 +36,7 @@
 - [Pod Networking (CNI)](user-guide/networking.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
 - [Large Clusters](user-guide/large-clusters.md)
+- [Node OS Tuning](user-guide/node-tuning.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 
 # Integrations

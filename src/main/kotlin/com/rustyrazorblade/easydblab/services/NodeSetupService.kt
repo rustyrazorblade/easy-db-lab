@@ -72,6 +72,7 @@ data class NodeSetupContext(
 class NodeSetupService(
     private val remoteOps: RemoteOperationsService,
     private val profilingService: CassandraProfilingService,
+    private val tuningFiles: NodeTuningFiles = NodeTuningFiles(),
 ) {
     /** Sets up [host] as a node of [serverType]. */
     fun setup(
@@ -185,9 +186,14 @@ class NodeSetupService(
         )
     }
 
-    // A non-zero setup (no data disk, a failed mount) fails the node, naming the host and the
-    // reason the script printed, so the node never joins K3s.
+    // A non-zero setup (no data disk, a failed mount, a tuning value that did not take) fails the
+    // node, naming the host and the reason the script printed, so the node never joins K3s. The
+    // packaged OS tuning files go beside the script, which installs them.
     private fun runSetupScript(host: Host) {
+        tuningFiles.stage { dir ->
+            remoteOps.executeRemotely(host, "rm -rf ${Constants.NodeTuning.REMOTE_DIR}", output = false).text
+            remoteOps.uploadDirectory(host, dir, Constants.NodeTuning.REMOTE_DIR)
+        }
         remoteOps.upload(host, Path.of(SETUP_SCRIPT), SETUP_SCRIPT)
         try {
             remoteOps.executeRemotely(host, "sudo bash $SETUP_SCRIPT").text

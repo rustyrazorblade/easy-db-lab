@@ -1,0 +1,12 @@
+# easy-db-lab node tuning, applied whenever a device appears, so a disk or a network interface
+# that shows up after setup or after a reboot gets the same settings. Installed to
+# /etc/udev/rules.d/ by setup_instance.sh.
+
+# Every NVMe and Xen whole disk: no I/O scheduler, 4 KiB readahead.
+ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="nvme[0-9]*n[0-9]*|xvd[a-z]*", ATTR{queue/scheduler}="none", ATTR{queue/read_ahead_kb}="4"
+
+# Every ENA interface, including a secondary ENI the CNI attaches for pod IPs: packet steering
+# to every CPU. A new interface arrives as eth0 and 80-net-setup-link.rules names it (ens6), so
+# this file sorts after 80: $name is then the final name. Before 80 it is still eth0, which no
+# longer exists when RUN executes, and the interface is left without steering.
+ACTION=="add", SUBSYSTEM=="net", DRIVERS=="ena", RUN+="/usr/local/sbin/edl-node-tuning rps $name"

@@ -4,7 +4,12 @@
 ## ANY VARIABLE NEEDED IN THIS SCRIPT
 ## SHOULD BE SET IN THIS BLOCK
 
-export READAHEAD=8
+# The packaged tuning files (node-os-tuning), uploaded beside this script by node setup.
+TUNING_DIR="$(dirname "${BASH_SOURCE[0]}")/node-tuning"
+
+# The units that get the database process limits. A drop-in for a unit that is not installed yet
+# (k3s and k3s-agent come from the K3s installer later in `up`) is read when the unit appears.
+LIMITED_UNITS="cassandra cassandra-easy-stress k3s k3s-agent"
 
 # Every node writes its data here: databases and kit PVs, the observability backends, the K3s
 # data directory and pod logs. It must be the data disk, never the 20 GB root volume.
@@ -66,6 +71,13 @@ mount_data_disk() {
     # A re-run of setup on a node whose data disk is already mounted.
     disk=$(findmnt -n -o SOURCE "$DATA_MOUNT")
     echo "$DATA_MOUNT is already mounted from $disk"
+    # A node set up before noatime, or mounted by hand, gets it now and on every boot.
+    fs_uuid=$(sudo blkid -o value -s UUID "$disk")
+    fs_type=$(sudo blkid -o value -s TYPE "$disk")
+    if [[ -n "$fs_uuid" ]]; then
+      persist_mount "$fs_uuid" "$fs_type"
+    fi
+    sudo mount -o remount,noatime "$DATA_MOUNT" || fail "remounting $DATA_MOUNT with noatime failed"
   else
     name=$(find_data_disk)
     if [[ -z "$name" || "$name" == "null" ]]; then
@@ -84,20 +96,11 @@ mount_data_disk() {
     fi
 
     sudo mkdir -p "$DATA_MOUNT"
-    sudo mount "$disk" "$DATA_MOUNT" || fail "mounting $disk at $DATA_MOUNT failed"
+    sudo mount -o noatime "$disk" "$DATA_MOUNT" || fail "mounting $disk at $DATA_MOUNT failed"
 
-    # Persist the mount so it is restored on every boot; without it k3s (whose data dir is a
-    # symlink onto /mnt/db1) crash-loops after a reboot with "extracting data: no such file or
-    # directory". Device names can change across reboots, so key the entry on the file system
-    # UUID. 'nofail' keeps the node bootable if a stop/terminate wiped the instance store, and
-    # 'x-systemd.device-timeout' avoids a long boot hang in that case.
     fs_uuid=$(sudo blkid -o value -s UUID "$disk")
     if [[ -n "$fs_uuid" ]]; then
-      # Remove any previous entry (e.g. a stale device path) before adding the current one.
-      sudo sed -i "\#[[:space:]]$DATA_MOUNT[[:space:]]#d" /etc/fstab
-      echo "UUID=$fs_uuid $DATA_MOUNT $fs_type defaults,nofail,x-systemd.device-timeout=10s 0 2" | sudo tee -a /etc/fstab
-      # Pick up the fstab-generated mnt-db1.mount unit so services can order against it.
-      sudo systemctl daemon-reload
+      persist_mount "$fs_uuid" "$fs_type"
     fi
   fi
 
@@ -107,36 +110,70 @@ mount_data_disk() {
     fail "$DATA_MOUNT is mounted from $mounted_source, which is on the root volume"
   fi
   echo "$DATA_MOUNT is mounted from $mounted_source"
+}
 
-  sudo blockdev --setra "$READAHEAD" "$mounted_source"
+# Persists the data disk mount (file system [$1] UUID, type [$2]) in /etc/fstab, replacing any
+# earlier entry for $DATA_MOUNT. Without it k3s (whose data dir is a symlink onto /mnt/db1)
+# crash-loops after a reboot with "extracting data: no such file or directory". Device names can
+# change across reboots, so the entry is keyed on the UUID. 'noatime' saves a metadata write per
+# read, 'nofail' keeps the node bootable if a stop/terminate wiped the instance store, and
+# 'x-systemd.device-timeout' avoids a long boot hang in that case.
+persist_mount() {
+  sudo sed -i "\#[[:space:]]${DATA_MOUNT}[[:space:]]#d" /etc/fstab
+  echo "UUID=$1 $DATA_MOUNT $2 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2" | sudo tee -a /etc/fstab
+  # Pick up the fstab-generated mnt-db1.mount unit so services can order against it.
+  sudo systemctl daemon-reload
+}
+
+# Installs one packaged tuning file with [mode] at [target], creating its directory. A file this
+# script names but the upload lacks (a workspace setup_instance.sh older than the CLI that
+# uploaded the files) fails setup, naming it, rather than leaving the node half tuned.
+install_tuning_file() {
+  sudo install -m "$1" -D "$TUNING_DIR/$2" "$3" || fail "could not install the node tuning file $2 to $3"
+}
+
+# Installs the packaged tuning files (node-os-tuning) and applies them now; each also applies at
+# every boot. Re-running replaces the files in place. Fails, naming the setting, when one did not
+# take.
+tune_node() {
+  [[ -d "$TUNING_DIR" ]] || fail "the node tuning files are missing: no $TUNING_DIR beside setup_instance.sh"
+
+  # The files earlier versions of setup wrote; the new ones replace them.
+  sudo rm -f /etc/sysctl.d/60-cassandra.conf /etc/security/limits.d/cassandra.conf
+
+  install_tuning_file 0644 60-easydblab.conf /etc/sysctl.d/60-easydblab.conf
+  install_tuning_file 0644 limits.conf /etc/security/limits.d/50-easydblab.conf
+  install_tuning_file 0644 system.conf /etc/systemd/system.conf.d/50-easydblab-limits.conf
+  local unit
+  for unit in $LIMITED_UNITS; do
+    install_tuning_file 0644 easydblab-limits.conf "/etc/systemd/system/$unit.service.d/50-easydblab-limits.conf"
+  done
+  install_tuning_file 0755 edl-node-tuning /usr/local/sbin/edl-node-tuning
+  install_tuning_file 0644 edl-node-tuning.service /etc/systemd/system/edl-node-tuning.service
+  install_tuning_file 0644 90-easydblab.rules /etc/udev/rules.d/90-easydblab.rules
+
+  sudo sysctl --system > /dev/null || fail "sysctl --system failed applying /etc/sysctl.d/60-easydblab.conf"
+
+  sudo swapoff --all
+  # Keep swap off after a reboot too.
+  sudo sed -i -E '/^[^#].*[[:space:]]swap[[:space:]]/s/^/#/' /etc/fstab
+
+  sudo udevadm control --reload
+  sudo udevadm trigger --subsystem-match=block --action=change
+  sudo udevadm settle
+
+  # PID 1 reads DefaultLimit* only on a re-exec; it keeps every service running.
+  sudo systemctl daemon-reexec
+  sudo systemctl daemon-reload
+  sudo systemctl enable edl-node-tuning.service
+  sudo systemctl restart edl-node-tuning.service || fail "edl-node-tuning.service failed: $(sudo systemctl status edl-node-tuning.service --no-pager 2>&1 | tail -5 | tr '\n' ' ')"
+  sudo systemctl enable --now irqbalance
+
+  sudo /usr/local/sbin/edl-node-tuning verify || exit 1
 }
 
 main() {
-###### SYSTEM SETTINGS // OS TUNINGS #####
-
-sudo sysctl kernel.perf_event_paranoid=1
-sudo sysctl kernel.kptr_restrict=0
-
-echo 0 > /proc/sys/vm/zone_reclaim_mode
-
-cat <<EOF | sudo tee /etc/security/limits.d/cassandra.conf
-cassandra soft memlock unlimited
-cassandra hard memlock unlimited
-cassandra soft nofile 100000
-cassandra hard nofile 100000
-cassandra soft nproc 32768
-cassandra hard nproc 32768
-cassandra - as unlimited
-EOF
-
-cat <<EOF | sudo tee /etc/sysctl.d/60-cassandra.conf
-vm.max_map_count = 1048575
-EOF
-
-sudo swapoff --all
-
-sudo sysctl -p /etc/sysctl.d/60-cassandra.conf
-########
+tune_node
 
 mount_data_disk
 

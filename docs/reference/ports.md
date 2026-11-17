@@ -2,6 +2,10 @@
 
 This page documents the ports used by easy-db-lab and the services it provisions.
 
+Every node uses the ephemeral port range 1024-65535 and reserves the NodePort range and every
+fixed host listener port below it, so no outbound connection takes one. A new fixed host port must
+be added to the reserved list. See [Node OS Tuning](../user-guide/node-tuning.md#network-settings).
+
 ## Cassandra Ports
 
 | Port | Purpose |

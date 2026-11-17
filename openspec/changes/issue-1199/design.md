@@ -44,12 +44,12 @@ New classpath directory `src/main/resources/com/rustyrazorblade/easydblab/comman
 - `60-easydblab.conf`: the sysctl drop-in, installed to `/etc/sysctl.d/`.
 - `easydblab-limits.conf`: the service limits drop-in, installed as `/etc/systemd/system/<unit>.d/50-easydblab-limits.conf` for `cassandra.service`, `cassandra-easy-stress.service`, `k3s.service` and `k3s-agent.service`.  A drop-in for a unit that does not exist yet is harmless, so the K3s drop-ins can be written before the K3s installer creates the units.
 - `system.conf`: `[Manager] DefaultLimitNOFILE=1048576` / `DefaultLimitMEMLOCK=infinity` / `DefaultLimitNPROC=infinity` / `DefaultLimitAS=infinity`, installed as `/etc/systemd/system.conf.d/50-easydblab-limits.conf`.
-- `limits.conf`: the PAM limits for login sessions (`* - nofile 1048576`, `* - memlock unlimited`, `* - nproc unlimited`, `* - as unlimited`), installed as `/etc/security/limits.d/50-easydblab.conf`.  It replaces `cassandra.conf`.
-- `60-easydblab.rules`: one udev rules file: block queue settings and the ENA RPS hook.
+- `limits.conf`: the PAM limits for login sessions (`* - nofile 1048576`, `* - memlock unlimited`, `* - nproc unlimited`, `* - as unlimited`, and the same for `root`, which `*` does not cover), installed as `/etc/security/limits.d/50-easydblab.conf`.  It replaces `cassandra.conf`.
+- `90-easydblab.rules`: one udev rules file: block queue settings and the ENA RPS hook.
 - `edl-node-tuning`: one POSIX script with subcommands `apply` (sysfs settings: THP, governor, C-states, RPS on every ENA link), `rps <iface>` (one link, called from udev) and `verify` (reads back every value; exit 1 naming the first mismatch).
 - `edl-node-tuning.service`: oneshot, `ExecStart=/usr/local/sbin/edl-node-tuning apply`, `Before=k3s.service k3s-agent.service cassandra.service`, `WantedBy=multi-user.target`.  It restores the sysfs values that no config file persists (THP, governor, C-states).
 
-`NodeSetupService.runSetupScript` copies the directory from the classpath to a temporary local directory and uploads it with `uploadDirectory` beside `setup_instance.sh` (one upload per node, not one per file), before it runs the script.  `setup_instance.sh` installs each file with `install -m`, then `sysctl --system`, `udevadm control --reload && udevadm trigger --subsystem-match=block --subsystem-match=net --action=change`, `systemctl daemon-reexec` (so PID 1 picks up `DefaultLimit*`), `systemctl daemon-reload`, `systemctl enable --now edl-node-tuning.service`, and finally `edl-node-tuning verify`.  A non-zero `verify` prints `ERROR: <setting>: wanted <x>, got <y>`, which `setupFailureReason` already reports.
+`NodeSetupService.runSetupScript` copies the directory from the classpath to a temporary local directory and uploads it with `uploadDirectory` beside `setup_instance.sh` (one upload per node, not one per file), before it runs the script.  `setup_instance.sh` installs each file with `install -m`, then `sysctl --system`, `udevadm control --reload && udevadm trigger --subsystem-match=block --action=change` (the net rule matches only `add`, so `apply` steers the existing links itself), `systemctl daemon-reexec` (so PID 1 picks up `DefaultLimit*`), `systemctl daemon-reload`, `systemctl enable --now edl-node-tuning.service`, and finally `edl-node-tuning verify`.  A non-zero `verify` prints `ERROR: <setting>: wanted <x>, got <y>`, which `setupFailureReason` already reports.
 
 *Why not heredocs in `setup_instance.sh`:* the codebase already ships node files as classpath resources (`start-k3s-agent.sh` via `installFile`, `install-tailscale-masquerade.sh`).  Separate files can be unit-tested, the sysctl file is parsed by the port-reservation test (D5), and the docs can quote them.
 *Why from the classpath, not the workspace:* the files are product configuration, not per-cluster settings an operator edits; `init` stays as it is, and the backup list does not grow.  Nothing reads a repo path at run time.
@@ -59,7 +59,7 @@ New classpath directory `src/main/resources/com/rustyrazorblade/easydblab/comman
 
 PAM `limits.d` applies only to sessions opened through `pam_limits` (ssh, `su`).  systemd services never pass through PAM, so `cassandra.service` today gets systemd's defaults (`LimitNOFILE=1024:524288`, `LimitMEMLOCK=8M` on systemd ≥ 253).  The per-unit drop-in sets the values for each named unit; `DefaultLimit*` covers any service that is not named, including future AMI units.
 
-Pods: containerd is a child of `k3s(-agent).service`, so `LimitMEMLOCK=infinity` on that unit reaches every container (containerd's CRI does not set `RLIMIT_MEMLOCK` in the OCI spec).  `RLIMIT_NOFILE` is the open point: depending on the containerd version K3s 1.35 embeds, CRI may write its own `RLIMIT_NOFILE` into each container's spec instead of inheriting.  Task 1 measures it on a live node before any code.  If pods do not inherit 1048576, the fix is configuration: K3s's containerd config template (`/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl`) with the CRI base runtime spec carrying the rlimits.  That would be one more packaged file; the design does not change.
+Pods: containerd is a child of `k3s(-agent).service`, so `LimitMEMLOCK=infinity` on that unit reaches every container (containerd's CRI does not set `RLIMIT_MEMLOCK` in the OCI spec).  Task 1 measured it (2026-11-17, containerd 2.1.5-k3s1): a pod on a db node had nofile 1048576 and memlock 8 MiB, the same as `k3s-agent.service`.  Pods inherit both limits from the unit, so the unit drop-in is enough and no containerd template is needed.
 
 ### D3. `fs.nr_open` and `fs.file-max` are a floor, not a write
 
@@ -67,7 +67,7 @@ systemd (≥ 240) raises both at boot: `fs.nr_open` to 1073741816 and `fs.file-m
 
 ### D4. `vm.zone_reclaim_mode` and the "missing sudo" bug
 
-`NodeSetupService` runs the whole script as `sudo bash setup_instance.sh`, so the unsudoed `echo 0 > /proc/sys/vm/zone_reclaim_mode` does run as root and probably does apply.  The real defect is that it, and the two `kernel.*` values, are not persisted.  Task 1 confirms which on a live node.  Either way the fix is the same: all three move into the sysctl file.
+`NodeSetupService` runs the whole script as `sudo bash setup_instance.sh`, so the unsudoed `echo 0 > /proc/sys/vm/zone_reclaim_mode` does run as root and probably does apply.  The real defect is that it, and the two `kernel.*` values, are not persisted.  Task 1 (2026-11-17): `zone_reclaim_mode` was 0 before and after a reboot (the AMI kernel default), `perf_event_paranoid` went from 1 to 4 on reboot, and `kptr_restrict` already read 1, the kernel default, by the time of the check.  Either way the fix is the same: all three move into the sysctl file.
 
 ### D5. Ephemeral port range and reserved ports
 
@@ -76,7 +76,7 @@ systemd (≥ 240) raises both at boot: `fs.nr_open` to 1073741816 and `fs.file-m
 - `30000-32767` (NodePorts, including Hubble UI 31234 and every kit NodePort).
 - Every fixed port below 32768 that a host-network listener binds: K3s and the control plane (6443, 6444, 2379-2381, 10248-10260), Cilium and Hubble (4240, 4244, 4245, 9234, 9962-9965), the observability stack on the control node (3000, 3080, 3081, 3100, 3200, 4040, 4317, 4318, 4320, 4321, 5000, 5001, 6831, 7946, 7947, 8080, 8888, 9009, 9095-9098, 9400, 9435, 11211, 13133), and the db-node host services (Cassandra 7000, 7001, 7199, 9042, 9142, the sidecar and the JMX exporter ports).  The implementation takes the exact list from `Constants` and the host-network manifest builders.
 
-The packaged sysctl file holds the literal list.  A unit test parses it and fails when a port that a host-network builder or `Constants` names below 32768 is not reserved, so a new fixed host port cannot be forgotten.  Pod-network listeners are in their own network namespace with their own port range and need no reservation.  A reservation blocks only automatic source-port choice, so an explicit `bind` of a reserved port still works.
+The packaged sysctl file holds the literal list.  A unit test parses it and fails when a port that a host-network builder or `Constants` names below 32768 is not reserved, so a new fixed host port cannot be forgotten.  Pod-network listeners are in their own network namespace with their own port range and need no reservation.  A reservation blocks only automatic source-port choice, so an explicit `bind` of a reserved port still works.  Three loopback listeners that no manifest or Constants names were found with `ss -tlnp` on the first post-fix cluster and added to the list and to the test's host-service set: etcd's loopback client 2382, containerd's CRI stream server 10010, and Pyroscope's metastore Raft default 9099.  Cilium's agent also binds a random loopback port (16967, 27959, 32769 on three nodes); it is chosen per start, so it cannot be reserved and cannot collide.
 
 ### D6. Disk: `noatime`, scheduler and readahead by udev
 
@@ -129,7 +129,7 @@ On EC2 these are exposed only on instance sizes with processor state control (wh
 ### D10. IRQ: `irqbalance` and RPS/RFS
 
 - `irqbalance` stays; setup runs `systemctl enable --now irqbalance` and `verify` checks it is active.  If the AMI does not have the package, the change needs an AMI bake (Task 1 checks; see Risks).
-- RPS/RFS: `net.core.rps_sock_flow_entries = 32768` in the sysctl file.  `edl-node-tuning rps <iface>` writes the all-CPU mask (built from `/sys/devices/system/cpu/online`, comma-grouped for more than 32 CPUs) to every `queues/rx-*/rps_cpus` and `32768 / <rx queues>` to every `rps_flow_cnt`.  The udev rule runs it on `ACTION=="add", SUBSYSTEM=="net", DRIVERS=="ena"`, so a secondary ENI the Cilium operator attaches later gets it too.  A rename (`eth0` to `ens6`) does not reset queue settings.  `apply` also runs it on every ENA link at setup and at boot.
+- RPS/RFS: `net.core.rps_sock_flow_entries = 32768` in the sysctl file.  `edl-node-tuning rps <iface>` writes the all-CPU mask (built from `/sys/devices/system/cpu/online`, comma-grouped for more than 32 CPUs) to every `queues/rx-*/rps_cpus` and `32768 / <rx queues>` to every `rps_flow_cnt`.  The udev rule runs it on `ACTION=="add", SUBSYSTEM=="net", DRIVERS=="ena"`, so a secondary ENI the Cilium operator attaches later gets it too.  The file is numbered 90, after `80-net-setup-link.rules`: a hot-attached ENI arrives as `eth0` and that rule renames it, so a rule numbered before 80 passes `eth0` to `RUN`, which by then no longer exists.  The first post-fix cluster showed exactly that (ens6 on control0 at RPS 0 with the rule at 60), and an unbind/bind of the ENI on the node confirmed it fails at 60 and works at 90.  A rename itself does not reset queue settings, nor does a link down/up.  `apply` also runs it on every ENA link at setup and at boot.
 - Cilium compatibility: RPS runs in `netif_receive_skb` before the tc ingress hook, so Cilium's tc BPF programs run on the steered CPU.  Cilium XDP is not enabled (kube-proxy replacement is off), so nothing runs before RPS.  MTU is not touched (the networking spec requires 9001 on ENA).
 
 ### D11. Setup order and re-runs
@@ -138,9 +138,9 @@ Setup is the SETUP step of each node's pipeline (`StepPolicy.SETUP`: two attempt
 
 ## Risks / Trade-offs
 
-- [Pods may not inherit `RLIMIT_NOFILE` from `k3s-agent.service`] → Task 1 measures it first; the fix is K3s's containerd config template (D2).
+- [Pods may not inherit `RLIMIT_NOFILE` from `k3s-agent.service`] → ruled out by Task 1: they inherit it (D2).
 - [Pod-network kit databases do not get the per-namespace network values] → stated in the docs, which point to follow-up #1202.
-- [`irqbalance` might be missing from the AMI] → Task 1 checks.  If it is missing, installing it at setup would need network access from the node; the right fix is the base AMI, which adds `requires-ami-bake` to the issue.
+- [`irqbalance` might be missing from the AMI] → ruled out by Task 1: it is installed and active on every node type.  If it is missing, installing it at setup would need network access from the node; the right fix is the base AMI, which adds `requires-ami-bake` to the issue.
 - [`ip_local_reserved_ports` drifts from the real host ports] → the unit test in D5.
 - [`daemon-reexec` on a re-run against a live node] → it keeps every unit running; it is the documented way to load `system.conf.d`.
 - [The udev readahead also applies to the root volume] → accepted (D6).

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
 # Stream Cassandra's GC activity with sjk until Ctrl-C. As in sjk-mx, the pid attach fails on JDK 8
-# and the local JMX port fails on JDK 9 and later. sjk-mx tries one and falls back to the other,
-# but a stream ended with Ctrl-C exits non-zero and would start a second session, so this script
-# picks the connection from the node's JDK (the one Cassandra runs on) and runs sjk once. Both run
-# as root: only the JVM's owner or root may attach to it.
+# and the local JMX port fails on JDK 9 and later, so, as sjk-mx does, this script picks the
+# connection from the node's JDK (the one Cassandra runs on) and runs sjk once: a stream ended with
+# Ctrl-C exits non-zero and must not start a second session. Both run as root: only the JVM's
+# owner or root may attach to it.
 
 if java -version 2>&1 | head -n 1 | grep -q '"1\.'; then
   exec sudo java -jar /usr/local/lib/sjk.jar gc -s localhost:7199 "$@"

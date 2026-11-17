@@ -244,6 +244,12 @@ install_cassandra_version() {
         return 1
     fi
 
+    # gzip begins with the bytes 1f 8b; a URL that gives anything else (a repository page) is no tarball.
+    if [[ "$(head -c 2 "$archive_file" | od -An -tx1 | tr -d ' \n')" != "1f8b" ]]; then
+        echo "ERROR: $URL is not a gzip tarball; for a git repository pass --branch to build $version from it" >&2
+        return 1
+    fi
+
     echo "Extracting $archive_file"
     tar zxf "$archive_file" || {
         echo "ERROR: Failed to extract $archive_file for version $version" >&2

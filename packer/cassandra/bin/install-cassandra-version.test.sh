@@ -263,6 +263,8 @@ while [[ \$# -gt 0 ]]; do
 done
 [[ "\${CURL_FAILS:-}" == 1 ]] && exit 22
 [[ -n "\${CURL_FAIL_URL:-}" && "\$url" == "\${CURL_FAIL_URL}" ]] && exit 22
+# CURL_BODY_HTML=1: the URL is a web page (a repository URL with no .git), not a tarball.
+if [[ "\${CURL_BODY_HTML:-}" == 1 ]]; then echo "<html>repo</html>" > "\$dest"; exit 0; fi
 cp "${FIXTURE}" "\$dest"
 SHIM
 
@@ -361,6 +363,14 @@ fi
 assert_output_contains "a failed url download names the version and the URL" "Failed to download version 6.0-HEAD from: ${NIGHTLY_URL}"
 assert_calls_contain "a failed url download was attempted from its url" "curl -fsSL --retry 3 ${NIGHTLY_URL} -o"
 assert_calls_lack "a failed url download does not fall back to the cache" "download-cache/"
+
+run_cached CURL_BODY_HTML=1 6.0-HEAD --url "https://github.example/me/cassandra"
+if [[ "$STATUS" -ne 0 ]]; then
+  pass "a --url that downloads no gzip tarball exits non-zero"
+else
+  fail "a web page --url should exit non-zero, got 0: ${OUTPUT}"
+fi
+assert_output_contains "a --url that is no tarball says to pass --branch for a git repository" "is not a gzip tarball; for a git repository pass --branch"
 
 run_cached 5.0-my-build --url "$S3_URL"
 assert_calls_contain "an s3 url is copied directly from S3" "aws s3 cp ${S3_URL} "

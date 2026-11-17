@@ -4,7 +4,9 @@ import com.rustyrazorblade.easydblab.configuration.CassandraSource
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.MethodSource
 
 /** The rules of the `cassandra list` table (design D9), on synthetic source lists. */
 class VersionTableTest {
@@ -30,6 +32,21 @@ class VersionTableTest {
         assertThat(rows.single { it.version == "5.0" }.details).isEqualTo("latest 5.0.6; releases 5.0.5, 5.0.6")
         assertThat(rows).allMatch { it.installed == null }
         assertThat(VersionTable.render(rows).lines().first()).doesNotContain("INSTALLED")
+    }
+
+    /** A profile build names its JDKs; one that declares none says so, since its install needs `--java`. */
+    @ParameterizedTest(name = "java_supported={0} java={1} -> {2}")
+    @MethodSource("profileJdkRows")
+    fun `a profile build row names its JDKs`(
+        supported: List<String>,
+        java: String?,
+        expected: String,
+    ) {
+        val build = ProfileBuild(version = "p", url = "https://x.test/a.tgz", javaSupported = supported, java = java)
+
+        val row = VersionTable.rows(listOf(build), AsfReleases(emptyList()), emptyList(), emptyList(), null).single()
+
+        assertThat(row.details).isEqualTo(expected)
     }
 
     /** `db0` and `db1` have 5.0, `db2` also has trunk; [unreachable] adds a node that could not be listed. */
@@ -85,5 +102,15 @@ class VersionTableTest {
         assertThat(lines.first()).startsWith("VERSION").contains("SOURCE", "INSTALLED", "DETAILS")
         val sourceColumn = lines.first().indexOf("SOURCE")
         assertThat(lines.drop(1)).allSatisfy { assertThat(it.substring(sourceColumn)).doesNotStartWith(" ") }
+    }
+
+    companion object {
+        @JvmStatic
+        fun profileJdkRows(): List<Arguments> =
+            listOf(
+                Arguments.of(listOf("11", "17"), null, "JDK 11, 17"),
+                Arguments.of(emptyList<String>(), "8", "JDK 8"),
+                Arguments.of(emptyList<String>(), null, "JDK not declared (pass --java)"),
+            )
     }
 }

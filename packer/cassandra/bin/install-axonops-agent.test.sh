@@ -164,8 +164,9 @@ fi
 # --- a version name with no X.Y: the release comes from the install's jar --------
 export CASSANDRA_INSTALL_DIR="${SANDBOX}/cassandra"
 mkdir -p "$CASSANDRA_INSTALL_DIR/cep-45/lib"
-touch "$CASSANDRA_INSTALL_DIR/cep-45/lib/apache-cassandra-5.0.4-SNAPSHOT.jar" \
-  "$CASSANDRA_INSTALL_DIR/cep-45/lib/apache-cassandra-clientutil-5.0.4-SNAPSHOT.jar"
+# The clientutil jar sorts before the server jar, so a glob that took it would read no release.
+touch "$CASSANDRA_INSTALL_DIR/cep-45/lib/apache-cassandra-clientutil-4.0.jar" \
+  "$CASSANDRA_INSTALL_DIR/cep-45/lib/apache-cassandra-5.0.4-SNAPSHOT.jar"
 reset_agents
 run_script cep-45 17 --cache-prefix "$PREFIX"
 if [[ "$STATUS" -eq 0 && "$(printf '%s\n' "$OUTPUT" | tail -n 1)" == "5.0-agent-jdk17" ]]; then

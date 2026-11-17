@@ -29,6 +29,10 @@ object VersionTable {
     private const val ALL = "all"
     private const val GAP = 2
 
+    /** A profile build's JDKs, or that it declares none: its install then needs `--java`. */
+    private fun profileJdks(build: ProfileBuild): String =
+        build.jdks().takeIf { it.isNotEmpty() }?.let { "JDK ${it.joinToString(", ")}" } ?: "JDK not declared (pass --java)"
+
     /** The source label of a version the state records but no source lists. */
     fun label(source: CassandraSource): String =
         when (source) {
@@ -53,7 +57,7 @@ object VersionTable {
         cluster: ClusterListing?,
     ): List<VersionRow> {
         val fromSources =
-            profile.map { VersionRow(it.version, label(CassandraSource.PROFILE), "JDK ${it.jdks().joinToString(", ")}") } +
+            profile.map { VersionRow(it.version, label(CassandraSource.PROFILE), profileJdks(it)) } +
                 asf.lines().map {
                     VersionRow(it.line, label(CassandraSource.ASF), "latest ${it.latest}; releases ${it.patches.joinToString(", ")}")
                 } +

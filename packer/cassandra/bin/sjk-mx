@@ -6,7 +6,10 @@
 #     user owns ("Failed to access MBean server");
 #   - the local JMX port (-s) fails on JDK 9 and later, where sjk cannot reach the java.rmi
 #     internals it patches.
-# So try the pid first and fall back to the port.
+# So the connection comes from `java -version` (JDK 8 prints "1.8..."), and sjk runs once: a
+# failed query is not run again on the other connection, and its error is shown.
 
-sudo java -jar /usr/local/lib/sjk.jar mx -p "$(cassandra-pid)" "$@" 2>/dev/null \
-  || sudo java -jar /usr/local/lib/sjk.jar mx -s localhost:7199 "$@" 2>/dev/null
+if java -version 2>&1 | head -n 1 | grep -q '"1\.'; then
+  exec sudo java -jar /usr/local/lib/sjk.jar mx -s localhost:7199 "$@"
+fi
+exec sudo java -jar /usr/local/lib/sjk.jar mx -p "$(cassandra-pid)" "$@"

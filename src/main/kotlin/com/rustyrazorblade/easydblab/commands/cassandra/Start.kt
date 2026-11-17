@@ -124,15 +124,19 @@ class Start : PicoBaseCommand() {
      * far downstream, so we reject it up front with an actionable message before touching any node.
      */
     private fun validateVersionsAssigned() {
-        val missing =
+        val targets =
             hostOperationsService
                 .filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
                 .map { it.alias }
-                .filter { clusterState.nodes[it]?.version.isNullOrBlank() }
-
+        val missing = targets.filter { clusterState.nodes[it]?.version.isNullOrBlank() }
         check(missing.isEmpty()) {
             "No version assigned for node(s): ${missing.joinToString(", ")}. " +
                 "Run 'cassandra use <version>' (e.g. 'cassandra use 5.0') to assign a version before starting."
+        }
+        val noJdk = targets.filter { clusterState.nodes[it]?.javaVersion.isNullOrBlank() }
+        check(noJdk.isEmpty()) {
+            "No JDK recorded for the active version of node(s): ${noJdk.joinToString(", ")}. " +
+                "Run 'cassandra use <version>' on them to record it before starting."
         }
     }
 }

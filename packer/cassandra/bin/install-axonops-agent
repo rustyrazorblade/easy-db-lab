@@ -78,7 +78,9 @@ if [[ ! "$RELEASE" =~ ^[0-9]+\.[0-9]+$ ]]; then
   fi
   NAME="$RELEASE"
   RELEASE=""
-  for jar in "$CASSANDRA_INSTALL_DIR/$NAME"/lib/apache-cassandra-*.jar; do
+  # Only the server jar is named for its release (apache-cassandra-5.0.4.jar); the library rejects
+  # the clientutil and thrift jars beside it.
+  for jar in "$CASSANDRA_INSTALL_DIR/$NAME"/lib/apache-cassandra-[0-9]*.jar; do
     if line="$(edl_cassandra_version_from_jar "$jar")"; then
       RELEASE="$line"
       break

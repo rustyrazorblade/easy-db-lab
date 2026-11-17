@@ -55,7 +55,7 @@ class StartTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            nodes = mutableMapOf("db0" to NodeState("5.0")),
+            nodes = mutableMapOf("db0" to NodeState("5.0", "17")),
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(
@@ -204,7 +204,7 @@ class StartTest : BaseKoinTest() {
             )
         val stateMissingVersion =
             testClusterState.copy(
-                nodes = mutableMapOf("db0" to NodeState("5.0")),
+                nodes = mutableMapOf("db0" to NodeState("5.0", "17")),
                 hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
             )
         whenever(mockClusterStateManager.load()).thenReturn(stateMissingVersion)
@@ -221,6 +221,18 @@ class StartTest : BaseKoinTest() {
     }
 
     @Test
+    fun `execute fails fast naming a node whose version has no JDK recorded`() {
+        val stateNoJdk = testClusterState.copy(nodes = mutableMapOf("db0" to NodeState("5.0", "")))
+        whenever(mockClusterStateManager.load()).thenReturn(stateNoJdk)
+
+        assertThatThrownBy { Start().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContainingAll("db0", "JDK", "cassandra use")
+
+        verify(mockCassandraService, never()).start(any(), any())
+    }
+
+    @Test
     fun `execute proceeds when every node has a version`() {
         val db1 =
             ClusterHost(
@@ -232,7 +244,7 @@ class StartTest : BaseKoinTest() {
             )
         val stateAllVersions =
             testClusterState.copy(
-                nodes = mutableMapOf("db0" to NodeState("5.0"), "db1" to NodeState("5.0")),
+                nodes = mutableMapOf("db0" to NodeState("5.0", "17"), "db1" to NodeState("5.0", "17")),
                 hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
             )
         whenever(mockClusterStateManager.load()).thenReturn(stateAllVersions)
@@ -257,7 +269,7 @@ class StartTest : BaseKoinTest() {
             )
         val state =
             testClusterState.copy(
-                nodes = mutableMapOf("db0" to NodeState("5.0")),
+                nodes = mutableMapOf("db0" to NodeState("5.0", "17")),
                 hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)

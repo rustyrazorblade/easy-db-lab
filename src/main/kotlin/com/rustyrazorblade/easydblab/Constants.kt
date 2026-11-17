@@ -467,6 +467,10 @@ object Constants {
         const val NODE_TOKEN_PATH = "/var/lib/rancher/k3s/server/node-token"
         const val DEFAULT_SERVER_URL = "https://127.0.0.1:6443"
 
+        /** The embedded etcd's plain-HTTP metrics port on the control node, and its scrape job name. */
+        const val ETCD_METRICS_PORT = 2381
+        const val ETCD_JOB_NAME = "k3s-etcd"
+
         /**
          * The pod range K3s hands node CIDRs out of (`--cluster-cidr`). K3s's default,
          * 10.42.0.0/16 with a /24 per node, runs out at 256 nodes: under Flannel a node with no

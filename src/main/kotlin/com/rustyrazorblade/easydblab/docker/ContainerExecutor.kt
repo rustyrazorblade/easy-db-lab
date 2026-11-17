@@ -19,8 +19,10 @@ import org.koin.core.component.inject
 import java.io.IOException
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
+import java.io.UncheckedIOException
 import java.time.Duration
 import kotlin.concurrent.thread
+import com.github.dockerjava.api.exception.DockerException as DockerJavaException
 
 /**
  * Manages the execution lifecycle of a Docker container.
@@ -140,9 +142,14 @@ class ContainerExecutor(
             log.debug(e) { "Container $containerId was already removed" }
         } catch (e: IOException) {
             reportRemoveFailure(containerId, "IO error", e)
-        } catch (e: com.github.dockerjava.api.exception.DockerException) {
+        } catch (e: DockerJavaException) {
             reportRemoveFailure(containerId, "Docker error", e)
         } catch (e: DockerClientException) {
+            reportRemoveFailure(containerId, "Docker client error", e)
+        } catch (e: UncheckedIOException) {
+            reportRemoveFailure(containerId, "IO error", e)
+        } catch (e: IllegalStateException) {
+            // For example a closed HTTP client pool: the container already finished, so removal is best effort.
             reportRemoveFailure(containerId, "Docker client error", e)
         }
     }

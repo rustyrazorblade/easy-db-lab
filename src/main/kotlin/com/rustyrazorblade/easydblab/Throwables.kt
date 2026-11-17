@@ -32,7 +32,13 @@ fun Throwable.messageOrString(): String = message ?: toString()
 /**
  * Runs [block] and captures an [Exception] it throws as a failed [Result], like [runCatching], but
  * an [Error] (an out-of-memory error, a stack overflow, a failed assertion) is rethrown, not
- * captured. Use it where a boundary must turn any failure of the work into a report or a fallback,
- * and an error in the JVM itself must still stop the process.
+ * captured. A captured [InterruptedException] sets the thread's interrupt flag again, so the
+ * caller's own blocking calls still see the interrupt. Use it where a boundary must turn any
+ * failure of the work into a report or a fallback, and an error in the JVM itself must still stop
+ * the process.
  */
-inline fun <T> runCatchingException(block: () -> T): Result<T> = runCatching(block).onFailure { if (it !is Exception) throw it }
+inline fun <T> runCatchingException(block: () -> T): Result<T> =
+    runCatching(block).onFailure {
+        if (it !is Exception) throw it
+        if (it is InterruptedException) Thread.currentThread().interrupt()
+    }

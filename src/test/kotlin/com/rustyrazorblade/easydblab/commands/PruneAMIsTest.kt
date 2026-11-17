@@ -118,7 +118,7 @@ class PruneAMIsTest : BaseKoinTest() {
 
             verify(mockAMIService).deregisterAMI("ami-old1")
             verify(mockAMIService).deleteSnapshot("snap-old1")
-            assertThat(outputHandler.messages.joinToString("\n")).contains("Deleted")
+            assertThat(outputHandler.messages.joinToString("\n")).contains("Deleted: 1")
         }
 
         @Test

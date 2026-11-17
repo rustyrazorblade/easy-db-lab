@@ -101,7 +101,7 @@ class ExecRun : PicoBaseCommand() {
      *
      * The failures that reach here are the ones the SSH layer reports: a transport [IOException], a
      * [RemoteCommandFailedException] or other [EasyDBLabException], and an [SsmForwardNotReadyException]
-     * from the `ssm` transport. Anything else is a bug and propagates.
+     * from the `ssm` transport, and an [IllegalArgumentException] from routing a host. Anything else is a bug and propagates.
      */
     private fun executeOnHost(
         host: Host,
@@ -125,6 +125,9 @@ class ExecRun : PicoBaseCommand() {
             } catch (e: EasyDBLabException) {
                 e
             } catch (e: SsmForwardNotReadyException) {
+                e
+            } catch (e: IllegalArgumentException) {
+                // The ssm route refuses a host that has no instance ID.
                 e
             }
         eventBus.emit(Event.Command.HostExecError(host.alias, failure.message ?: failure::class.simpleName ?: "Unknown error"))

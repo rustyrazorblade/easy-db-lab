@@ -182,6 +182,8 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
                 InternalServerErrorException("daemon error"),
                 DockerClientException("client failure"),
                 IOException("Broken pipe"),
+                java.io.UncheckedIOException(IOException("Stream closed")),
+                IllegalStateException("Connection pool shut down"),
             )
     }
 }

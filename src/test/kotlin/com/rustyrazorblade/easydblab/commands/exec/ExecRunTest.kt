@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
@@ -152,6 +153,28 @@ class ExecRunTest : BaseKoinTest() {
         verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[1].toHost()), any(), any(), any())
         val output = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
         assertThat(output).contains("=== db0 ===\nError executing command: Remote command failed (1)")
+    }
+
+    @Test
+    fun `a host whose SSM forward is not ready is reported as a host failure`() {
+        doAnswer { throw SsmForwardNotReadyException("i-0abc", "plugin said no", "Forward not ready.") }
+            .whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), any(), any(), any())
+
+        assertThatThrownBy { ExecRun().apply { command = listOf("false") }.execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining("db0")
+    }
+
+    @Test
+    fun `a host the ssm route refuses is reported as a host failure`() {
+        doAnswer { throw IllegalArgumentException("host has no instance ID") }
+            .whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), any(), any(), any())
+
+        assertThatThrownBy { ExecRun().apply { command = listOf("false") }.execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining("db0")
     }
 
     @Test

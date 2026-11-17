@@ -293,6 +293,9 @@ class CommandLineParser : KoinComponent {
             } catch (e: IllegalStateException) {
                 log.debug(e) { "Cluster state invalid during install subcommand registration; using raw defaults" }
                 emptyMap()
+            } catch (e: IllegalArgumentException) {
+                log.debug(e) { "Cluster state unreadable during install subcommand registration; using raw defaults" }
+                emptyMap()
             }
 
         val factory = KitInstallCommandFactory(templateVars)
@@ -393,7 +396,9 @@ class CommandLineParser : KoinComponent {
  * PicoCLI parameter exception handler that prints a targeted "not installed" hint when the
  * user types a top-level argument that matches an installable kit template name.
  *
- * Falls through to [delegate] for all other parse errors.
+ * Falls through to [delegate] for all other parse errors. Listing the templates cannot fail the
+ * parse error's report: [InstallTemplateResolver.listAvailableTemplates] only lists directories, and
+ * the kit sources file it reads falls back to an empty list when it cannot be read.
  */
 internal class UninstalledKitHintHandler(
     private val resolver: InstallTemplateResolver,

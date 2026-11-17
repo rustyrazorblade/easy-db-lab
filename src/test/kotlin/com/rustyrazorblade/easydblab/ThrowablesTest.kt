@@ -88,6 +88,18 @@ class ThrowablesTest {
         assertThat(runCatchingException { 42 }.getOrNull()).isEqualTo(42)
     }
 
+    @Test
+    fun `a captured interrupt leaves the thread's interrupt flag set`() {
+        val result = runCatchingException { throw InterruptedException("stop") }
+
+        try {
+            assertThat(result.exceptionOrNull()).isInstanceOf(InterruptedException::class.java)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("errors")
     fun `an error in the JVM is rethrown, not captured`(error: Error) {

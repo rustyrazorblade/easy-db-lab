@@ -200,11 +200,7 @@ class PortableObservabilityPlacementIntegrationTest {
     fun setup() {
         SharedLocalStack.s3Client().use { SharedLocalStack.createBucketIfMissing(it, bucket) }
         client = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
-        client
-            .serviceAccounts()
-            .inNamespace(NAMESPACE)
-            .withName("default")
-            .waitUntilCondition({ it != null }, EXEC_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        SharedK3s.ensurePodAdmission(client, NAMESPACE)
         val node =
             client
                 .nodes()

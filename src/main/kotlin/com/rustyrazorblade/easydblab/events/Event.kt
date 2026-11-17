@@ -234,6 +234,22 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /** `cassandra use` could not write a switched node's AxonOps drop-in, so its next restart may load the old agent. */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsDropInNotWritten")
+        data class AxonOpsDropInNotWritten(
+            val host: String,
+            val agent: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: could not write the AxonOps drop-in for agent $agent: $reason. The node runs the new " +
+                    "version, but its next restart may load the old version's agent; start it with: " +
+                    "easy-db-lab cassandra start --hosts $host"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Cassandra.AxonOpsWorkbenchInfo")
         data class AxonOpsWorkbenchInfo(

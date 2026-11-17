@@ -28,8 +28,13 @@ mkdir -p "$BIN"
 CALLS="${SANDBOX}/calls"
 export CALLS SANDBOX
 
+# SUDO_FAIL=<command> makes that one sudo call fail, as a full or read-only disk would.
 cat >"${BIN}/sudo" <<'SHIM'
 #!/bin/bash
+if [[ -n "${SUDO_FAIL:-}" && "$1" == "$SUDO_FAIL" ]]; then
+  echo "sudo: $1: Read-only file system" >&2
+  exit 1
+fi
 exec "$@"
 SHIM
 
@@ -260,6 +265,23 @@ if [[ ! -d "${EDL_AXONOPS_BASE}/4.1-agent" ]]; then
 else
   fail "a failed download left ${EDL_AXONOPS_BASE}/4.1-agent"
 fi
+
+# --- a failed move into place fails, prints no agent, leaves no staging -------
+# A zero exit with the agent name would make the CLI name an agent whose jar is not there.
+for step in chown mv; do
+  reset_agents
+  SUDO_FAIL="$step" run_script 4.1 11 --cache-prefix "$PREFIX"
+  if [[ "$STATUS" -eq 1 && "$OUTPUT" != *"4.1-agent"* && "$ERR" == *"4.1-agent"* ]]; then
+    pass "a failed sudo $step exits 1, names the agent on stderr and prints no agent name"
+  else
+    fail "a failed sudo $step should exit 1 with no agent on stdout, got ${STATUS}: [${OUTPUT}] ${ERR}"
+  fi
+  if [[ -z "$(find "$EDL_AXONOPS_BASE" -maxdepth 1 -name '.*.new' 2>/dev/null)" ]]; then
+    pass "a failed sudo $step leaves no staging directory"
+  else
+    fail "a failed sudo $step left $(find "$EDL_AXONOPS_BASE" -maxdepth 1 -name '.*.new')"
+  fi
+done
 
 echo
 echo "${tests_run} tests, ${tests_failed} failed"

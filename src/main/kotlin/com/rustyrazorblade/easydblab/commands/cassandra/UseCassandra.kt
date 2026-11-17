@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstall
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraVersionResolver
 import com.rustyrazorblade.easydblab.services.cassandraversions.HostOutcome
 import com.rustyrazorblade.easydblab.services.cassandraversions.InstallMode
+import com.rustyrazorblade.easydblab.services.cassandraversions.InstallSpec
 import com.rustyrazorblade.easydblab.services.cassandraversions.VersionRequest
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -109,7 +110,7 @@ class UseCassandra : PicoBaseCommand() {
         }
 
         val activated = installer.activate(report.ready)
-        recordActive(state, activated.filterIsInstance<HostOutcome.Ready>(), allActivated = activated.all { it is HostOutcome.Ready })
+        recordActive(state, spec, activated.filterIsInstance<HostOutcome.Ready>(), allActivated = activated.all { it is HostOutcome.Ready })
         clusterStateManager.save(state)
 
         // A node that switched runs the new version's conf directory, so it gets the patch even when
@@ -131,10 +132,12 @@ class UseCassandra : PicoBaseCommand() {
     /**
      * Each activated node runs its spec's version and JDK. With no `--hosts`, and when every node
      * switched, the choice is also the cluster default, which a node with no record of its own (a
-     * new node) uses; a default that some nodes do not run would describe no cluster.
+     * new node) uses; a default that some nodes do not run would describe no cluster. The default
+     * JDK is [spec]'s, the cluster-wide choice, not the JDK one node keeps from its own record.
      */
     private fun recordActive(
         state: ClusterState,
+        spec: InstallSpec,
         activated: List<HostOutcome.Ready>,
         allActivated: Boolean,
     ) {
@@ -144,9 +147,8 @@ class UseCassandra : PicoBaseCommand() {
                 javaVersion = outcome.spec.java
             }
         }
-        val first = activated.firstOrNull() ?: return
-        if (hosts.hostList.isBlank() && allActivated) {
-            state.default = state.default.copy(version = first.spec.name, javaVersion = first.spec.java)
+        if (activated.isNotEmpty() && hosts.hostList.isBlank() && allActivated) {
+            state.default = state.default.copy(version = spec.name, javaVersion = spec.java)
         }
     }
 

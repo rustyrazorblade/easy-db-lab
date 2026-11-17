@@ -187,7 +187,7 @@ The on-demand Cassandra install (#1130). The CLI resolves everything; the node s
 - `ReleaseLines` is the release-line JDK table (`cassandra/release-lines.yaml`), the last layer of the JDK choice.  Its `build_java` is the JDK a cassandra-builds nightly of the line is compiled on; a nightly with no manifest runs only on that JDK and newer, and `ReleaseLinesBuildPlanTest` checks it against `.github/cassandra-image/resolve-build-plan.sh`.
 - `CassandraInstaller` plans each node's action (download, present, refused) with no change, runs `install-cassandra-version` in parallel, records each node's outcome and runs `use-cassandra`. A node that would download a URL whose credential the record redacted is refused with the `--reinstall --url` to run.
 - `AxonOpsAgents` installs the agent for each node's release and JDK and writes the systemd drop-in: at `cassandra start`, and after `cassandra use` on a node whose last start loaded an agent.
-- `CassandraNodeRestorer` puts a replaced node back on its active version (design D7); its caller applies the config. Nothing calls it yet: a follow-up wires it into the `up` replacement path.
+- `CassandraNodeRestorer` puts a replaced node back on its active version (design D7); its caller applies the config. Nothing calls it yet: issue 1158 left the replacement path without it, and a follow-up wires it in.
 
 ## Per-Node Bring-Up (`bringup/`)
 

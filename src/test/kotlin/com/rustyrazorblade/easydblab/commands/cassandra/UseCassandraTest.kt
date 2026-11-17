@@ -193,6 +193,21 @@ class UseCassandraTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the cluster default JDK is the resolved one, not the JDK one node keeps from its own record`() {
+        use("5.0") {
+            javaVersion = "11"
+            hosts.hostList = "db0"
+        }.execute()
+
+        use("5.0").execute()
+
+        assertThat(state.nodes.getValue("db0").javaVersion).isEqualTo("11")
+        assertThat(state.nodes.getValue("db1").javaVersion).isEqualTo("17")
+        assertThat(state.default.version).isEqualTo("5.0")
+        assertThat(state.default.javaVersion).isEqualTo("17")
+    }
+
+    @Test
     fun `--hosts switches only the named nodes and leaves the cluster default alone`() {
         state.nodes["db0"] = NodeState(version = "4.1")
 
@@ -323,6 +338,21 @@ class UseCassandraTest : BaseKoinTest() {
             .asString()
             .contains("EDL_AXONOPS_AGENT=5.0-agent-jdk17")
         assertThat(errors()).contains("download-config failed")
+    }
+
+    @Test
+    fun `a drop-in that cannot be written still re-applies the config, and fails use naming the node`() {
+        withNodes(1)
+        nodes.respond("db0", "cat ${AxonOpsAgents.DROP_IN}", "[Service]\nEnvironment=EDL_AXONOPS_AGENT=4.1-agent")
+        nodes.respond("db0", "install-axonops-agent", "5.0-agent-jdk17\nedl-exit:0")
+        nodes.failOn("db0", "sudo mkdir -p /etc/systemd/system/cassandra.service.d", "sudo: tee: Read-only file system")
+
+        assertThatThrownBy { use("5.0").execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining("db0")
+
+        assertThat(chained.map { it.javaClass.simpleName }).containsExactly("DownloadConfig", "UpdateConfig")
+        assertThat(errors()).contains("db0", "AxonOps drop-in", "Read-only file system")
     }
 
     @Test

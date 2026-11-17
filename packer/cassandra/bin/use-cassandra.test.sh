@@ -211,6 +211,25 @@ else
   fail "a failed Python switch should exit non-zero naming Python 3.11.9, got ${STATUS}: ${OUTPUT}"
 fi
 
+# --- a failed switch leaves the version links where they were -----------------
+# The CLI keeps the old version in the cluster state when the script fails, so `current` and the
+# conf link must still name it: else the next start runs the new bits on the old JDK.
+mkdir -p "${CASSANDRA_INSTALL_DIR}/4.1/conf"
+for tool in update-java-alternatives update-alternatives; do
+  run_script 4.1 --java 11 --python 3.11.9
+  touch "${SANDBOX}/${tool}.fail"
+  OUTPUT="$(bash "$SCRIPT" 5.0 --java 17 --python 3.11.9 2>&1)"
+  STATUS=$?
+  rm -f "${SANDBOX}/${tool}.fail"
+  if [[ "$STATUS" -ne 0 \
+    && "$(readlink "${CASSANDRA_INSTALL_DIR}/current")" == "${CASSANDRA_INSTALL_DIR}/4.1" \
+    && "$(readlink "$CASSANDRA_CONF_LINK")" == "${CASSANDRA_INSTALL_DIR}/4.1/conf" ]]; then
+    pass "a failed ${tool} leaves current and the conf link on the previous version"
+  else
+    fail "a failed ${tool} should leave current on 4.1, got ${STATUS}, current -> $(readlink "${CASSANDRA_INSTALL_DIR}/current"), conf -> $(readlink "$CASSANDRA_CONF_LINK")"
+  fi
+done
+
 echo
 echo "${tests_run} tests, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

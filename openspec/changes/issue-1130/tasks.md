@@ -45,6 +45,7 @@
 - [x] 5.6 `CassandraNodeRestorer.restore(host, nodeState)` for #1158 (design D7); tests: it uses the recorded URL, JDK and Python and not a new resolution; it installs only the active version when `installed` lists more; afterwards the node's `installed` holds only the active version
 - [x] 5.7 `cassandra build`: write `javaSupported` from `build.xml` (else the table, else `[java]`); `CassandraBuildManifest` reads an old manifest as `[javaVersion]`; tests
 - [x] 5.9 Review fixes: `cassandra install --reinstall` activates the version again, on the reinstalled JDK, on each node where it is active, and records the JDK; `cassandra use` selects the AxonOps agent and re-applies the config whatever the other step did; `wait-for-up-normal` hides the sjk error of each poll before NORMAL
+- [x] 5.10 Review fixes: `cassandra use` re-applies the config even when an AxonOps drop-in cannot be written (`AxonOpsDropInNotWritten`); the cluster default JDK is the resolved one; `use-cassandra` switches the JDK and Python before the version links; `install-axonops-agent` fails when the agent cannot be moved into place
 - [x] 5.8 New typed events in `events/Event.kt` for the download hosts, the install failure with URLs, the AxonOps refusal and the stale cache; update `events/CLAUDE.md`
 
 ## 6. Remove the yaml

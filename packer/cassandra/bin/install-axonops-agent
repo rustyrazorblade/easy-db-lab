@@ -167,9 +167,16 @@ if ! sudo cp unpacked/usr/share/axonops/*.jar "$STAGED/lib/"; then
   echo "ERROR: $DEB holds no agent jar under usr/share/axonops" >&2
   exit 1
 fi
-sudo chown -R cassandra:cassandra "$STAGED"
-sudo rm -rf "$EDL_AXONOPS_BASE/$AGENT"
-sudo mv "$STAGED" "$EDL_AXONOPS_BASE/$AGENT"
+# Each step is checked: a zero exit with the agent name would make the CLI name an agent whose jar
+# is not there. STAGED stays set on a failure, so the trap removes the staging directory.
+if ! sudo chown -R cassandra:cassandra "$STAGED"; then
+  echo "ERROR: failed to give the cassandra user the staged agent $AGENT" >&2
+  exit 1
+fi
+if ! sudo rm -rf "$EDL_AXONOPS_BASE/$AGENT" || ! sudo mv "$STAGED" "$EDL_AXONOPS_BASE/$AGENT"; then
+  echo "ERROR: failed to move the agent $AGENT into $EDL_AXONOPS_BASE/$AGENT" >&2
+  exit 1
+fi
 STAGED=""
 
 echo "installed AxonOps agent $AGENT ($PACKAGE $VERSION) in $TARGET" >&2

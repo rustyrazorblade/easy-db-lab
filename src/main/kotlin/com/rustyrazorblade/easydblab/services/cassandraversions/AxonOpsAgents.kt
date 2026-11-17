@@ -85,7 +85,8 @@ class AxonOpsAgents(
      * drop-in names an agent gets the agent of the version and JDK [state] now records; a node
      * whose drop-in names none (AxonOps off, or `start --skip-axonops`) is left alone. A node
      * AxonOps ships no agent for gets no agent, and is returned with the reason. A node whose
-     * drop-in cannot be read is returned too: what its next restart loads is unknown.
+     * drop-in cannot be read or written is returned too: what its next restart loads is unknown.
+     * Throws nothing, so the caller's config step runs whatever happened here.
      */
     fun refreshAfterSwitch(
         switched: List<ClusterHost>,
@@ -105,8 +106,16 @@ class AxonOpsAgents(
         if (withAgent.isEmpty()) return unreadable
         val outcomes = install(withAgent, state)
         val agents = outcomes.filterIsInstance<AgentOutcome.Installed>().associate { it.host.alias to it.agent }
-        hostOperations.withHosts(withAgent, parallel = true) { host -> select(host, agents[host.alias]) }
-        return unreadable + outcomes.filterIsInstance<AgentOutcome.Unavailable>()
+        val notWritten =
+            hostOperations
+                .collectFromHosts(withAgent, parallel = true) { host -> select(host, agents[host.alias]) }
+                .mapNotNull { (host, result) ->
+                    result.exceptionOrNull()?.let {
+                        val agent = agents[host.alias].orEmpty()
+                        AgentOutcome.Unavailable(host, Event.Cassandra.AxonOpsDropInNotWritten(host.alias, agent, it.reason()))
+                    }
+                }
+        return unreadable + outcomes.filterIsInstance<AgentOutcome.Unavailable>() + notWritten
     }
 
     /** Names [agent] in the drop-in of [host], or no agent when null, and reloads systemd. */

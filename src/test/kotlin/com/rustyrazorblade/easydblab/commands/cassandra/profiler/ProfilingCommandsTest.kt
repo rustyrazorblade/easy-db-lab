@@ -353,26 +353,46 @@ class ProfilingCommandsTest : BaseKoinTest() {
         assertThat(config.loopInterval).isEqualTo("30s")
         assertThat(config.retentionMinutes).isEqualTo(15)
         assertThat(config.maxBytes).isEqualTo(8L * 1024 * 1024)
-        assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
+        assertThat(config.pyroscopeUrl).isEqualTo("http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
         assertThat(config.tenant).isEqualTo("acme")
         assertThat(config.updatedAt).isNotEmpty()
     }
 
     @Test
-    fun `start ships profiles to the external Pyroscope on a redirect cluster`() {
-        // On a redirect cluster the control node runs no Pyroscope server. Writing the local
-        // control-node URL here would silently stop profiles reaching the external stack the
-        // cluster was pointed at — the redirect must win.
+    fun `start ships profiles through the node-local relay on a redirect cluster too`() {
+        // The relay in the node's Alloy agent forwards to the redirect target, so the node never
+        // needs the external address, a node IP or a cluster DNS name.
         useRedirectState()
 
         ProfilingStart().execute()
 
         val config = capturedConfigs().first()
-        assertThat(config.pyroscopeUrl).isEqualTo(redirect.profiles)
-        assertThat(config.pyroscopeUrl)
-            .describedAs("a redirect cluster must not profile-ship to the control node")
-            .doesNotContain(controlNodePrivateIp)
+        assertThat(config.pyroscopeUrl).isEqualTo("http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}")
+        assertThat(config.pyroscopeUrl).doesNotContain(controlNodePrivateIp)
+    }
+
+    @Test
+    fun `start and stop need no control node, since nodes ship through their own relay`() {
+        // An environment with no control host (the backends run on any node) must still profile:
+        // the URL is the node-local relay, so nothing looks a control node up.
+        whenever(clusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                clusterId = "abc123",
+                versions = mutableMapOf(),
+                hosts = hosts - ServerType.Control,
+            ),
+        )
+
+        ProfilingStart().execute()
+        ProfilingStop().execute()
+
+        val configs = capturedConfigs()
+        assertThat(configs.map { it.enabled }).containsExactly(true, true, false, false)
+        assertThat(configs).allSatisfy {
+            assertThat(it.pyroscopeUrl).isEqualTo("http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}")
+        }
     }
 
     @Test
@@ -466,7 +486,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
         val config = capturedConfigs().first()
         assertThat(config.enabled).isFalse()
         assertThat(config.retentionMinutes).isEqualTo(Constants.Profiling.DEFAULT_RETENTION_MINUTES)
-        assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
+        assertThat(config.pyroscopeUrl).isEqualTo("http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
         assertThat(config.tenant).isEqualTo("acme")
 
@@ -494,16 +514,15 @@ class ProfilingCommandsTest : BaseKoinTest() {
     }
 
     @Test
-    fun `stop writes the external Pyroscope URL on a redirect cluster`() {
-        // The disabled document still carries a pyroscopeUrl. Defaulting it to the control node on a
-        // redirect cluster would point the reconciler's final in-flight chunk at a server that does
-        // not exist there.
+    fun `stop writes the node-local relay URL on a redirect cluster too`() {
+        // The disabled document still carries a pyroscopeUrl, for the reconciler's final in-flight
+        // chunk. The relay forwards it to the redirect target.
         useRedirectState()
 
         ProfilingStop().execute()
 
         val config = capturedConfigs().first()
-        assertThat(config.pyroscopeUrl).isEqualTo(redirect.profiles)
+        assertThat(config.pyroscopeUrl).isEqualTo("http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}")
         assertThat(config.pyroscopeUrl).doesNotContain(controlNodePrivateIp)
     }
 

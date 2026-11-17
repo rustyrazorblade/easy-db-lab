@@ -210,18 +210,6 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the front's Grafana client port is the pod's only published port`() {
-        val published =
-            builder
-                .buildDeployment(documents, ObservabilityHosting.AWS)
-                .spec.template.spec.containers
-                .flatMap { it.ports.orEmpty() }
-                .mapNotNull { it.hostPort }
-
-        assertThat(published).containsExactly(Constants.K8s.GRAFANA_PORT)
-    }
-
-    @Test
     fun `off owned nodes the applied Deployment carries no control-node selector, no host path and the grafana-data claim`() {
         val claimed =
             ObservabilityHosting(

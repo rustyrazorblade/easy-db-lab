@@ -391,10 +391,10 @@ class TemplateVariablesTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a kit's profile endpoint is the control node's Pyroscope on a local cluster`() {
+    fun `a kit's profile endpoint is the Pyroscope Service on a local cluster`() {
         val vars = TemplateVariables.from(state = stateWith(), kitName = "trino", storageSize = "1Gi").toMap()
 
-        assertThat(vars).containsEntry("PYROSCOPE_URL", "http://10.0.1.1:${Constants.K8s.PYROSCOPE_PORT}")
+        assertThat(vars).containsEntry("PYROSCOPE_URL", "http://pyroscope.default.svc:${Constants.K8s.PYROSCOPE_PORT}")
     }
 
     @Test

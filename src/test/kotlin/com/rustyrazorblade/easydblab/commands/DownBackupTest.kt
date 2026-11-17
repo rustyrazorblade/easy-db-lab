@@ -458,7 +458,7 @@ class DownBackupTest : BaseKoinTest() {
         verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
         verify(socksProxyService, never()).ensureRunning(any())
         verify(teardownService).teardownVpc(eq("vpc-123"), eq(false))
-        assertThat(messageOutput()).contains("redirected to http://10.9.9.9:9009")
+        assertThat(messageOutput()).contains("redirected to http://10.9.9.9:31009")
     }
 
     @Test

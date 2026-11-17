@@ -15,7 +15,6 @@
     <ID>HasPlatformType:OtelManifestBuilder.kt$OtelManifestBuilder$fun buildClusterRoleBinding()</ID>
     <ID>HasPlatformType:OtelManifestBuilder.kt$OtelManifestBuilder$fun buildConfigMap(scrapeConfigs: List&lt;WorkloadScrapeConfig&gt; = emptyList())</ID>
     <ID>HasPlatformType:OtelManifestBuilder.kt$OtelManifestBuilder$fun buildServiceAccount()</ID>
-    <ID>HasPlatformType:PyroscopeManifestBuilder.kt$PyroscopeManifestBuilder$@Suppress("LongMethod") fun buildEbpfDaemonSet()</ID>
     <ID>HasPlatformType:PyroscopeManifestBuilder.kt$PyroscopeManifestBuilder$fun buildEbpfConfigMap()</ID>
     <ID>HasPlatformType:PyroscopeManifestBuilder.kt$PyroscopeManifestBuilder$fun buildServerConfigMap()</ID>
     <ID>HasPlatformType:PyroscopeManifestBuilder.kt$PyroscopeManifestBuilder$fun buildServerDeployment()</ID>

@@ -311,9 +311,10 @@ class Init : PicoBaseCommand() {
     @Option(
         names = ["--redirect-telemetry"],
         description = [
-            "Ship all telemetry to an external observability stack at this base host instead of " +
-                "standing up local backends. The four signal endpoints are derived from the host " +
-                "and the known stack ports; override any with the --redirect-*-endpoint options.",
+            "Ship all telemetry to another easy-db-lab cluster instead of standing up local " +
+                "backends. HOST is a bare host or IP of a node in that cluster (no scheme, no port): " +
+                "the four signal endpoints are derived from the NodePorts it publishes its backends on. " +
+                "For a stack that is not an easy-db-lab cluster, set all four --redirect-*-endpoint options.",
         ],
     )
     var redirectTelemetry: String? = null
@@ -359,6 +360,29 @@ class Init : PicoBaseCommand() {
                     profilesOverride = redirectProfilesEndpoint,
                 )
             }
+
+    /**
+     * Why `--redirect-telemetry` cannot work as given, or null when it can (or is not supplied).
+     *
+     * The base host is a node of a receiving easy-db-lab cluster, and every derived endpoint uses
+     * that cluster's NodePorts, so a value carrying a scheme or a port (an external stack on its own
+     * ports) derives endpoints nothing listens on. That is allowed only when every signal is
+     * overridden, since then nothing is derived from the host.
+     */
+    internal fun redirectTelemetryProblem(): String? {
+        val host = redirectTelemetry ?: return null
+        val overrides = listOf(redirectMetricsEndpoint, redirectLogsEndpoint, redirectTracesEndpoint, redirectProfilesEndpoint)
+        val derivesSomething = overrides.any { it == null }
+        return when {
+            derivesSomething && (host.isBlank() || ':' in host || '/' in host) ->
+                "--redirect-telemetry '$host' must be a bare host or IP of a node in an easy-db-lab cluster: " +
+                    "the endpoints are derived from that cluster's NodePorts (Mimir ${Constants.K8s.MIMIR_NODE_PORT}, " +
+                    "Loki ${Constants.K8s.LOKI_NODE_PORT}, Tempo OTLP ${Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT}, " +
+                    "Pyroscope ${Constants.K8s.PYROSCOPE_NODE_PORT}). For any other stack, set --redirect-metrics-endpoint, " +
+                    "--redirect-logs-endpoint, --redirect-traces-endpoint and --redirect-profiles-endpoint."
+            else -> null
+        }
+    }
 
     /**
      * Resolved number of database instances: the namespaced `--db.count` when supplied, otherwise
@@ -457,6 +481,7 @@ class Init : PicoBaseCommand() {
             "Invalid tenant '$tenant': '${Constants.Observability.RESERVED_TENANT}' is reserved " +
                 "(a Loki tenant with that name would collide with Loki's index path)."
         }
+        redirectTelemetryProblem()?.let { problem -> throw IllegalArgumentException(problem) }
         resolvedTelemetryRedirect?.validate()?.let { offending ->
             require(offending.isEmpty()) {
                 "Telemetry redirect endpoints are missing or malformed for: " +

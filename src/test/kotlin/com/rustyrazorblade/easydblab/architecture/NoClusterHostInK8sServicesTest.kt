@@ -123,12 +123,10 @@ class NoClusterHostInK8sServicesTest {
         /**
          * Classes that reach Kubernetes and also use a control host for SSH or its IP. Only shrinks.
          * - `DefaultGrafanaDeployService` uploads the dashboard tree to the control node over SSH.
-         * - `DefaultSidecarService` points the sidecar at the control node's private IP.
          */
         val ALLOW_LIST =
             setOf(
                 "$ROOT.services.DefaultGrafanaDeployService",
-                "$ROOT.services.DefaultSidecarService",
             )
     }
 }

@@ -9,7 +9,6 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeW
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -86,7 +85,7 @@ class GrafanaDashboardTreeUploaderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the uploaded profiling dashboard carries the control node's Pyroscope URL`() {
+    fun `the uploaded profiling dashboard links to Pyroscope at the control node's published NodePort`() {
         val profiling =
             catalog.dashboards.single {
                 checkNotNull(javaClass.getResource(catalog.resourcePathOf(it))).readText().contains(PYROSCOPE_URL_PLACEHOLDER)
@@ -95,7 +94,7 @@ class GrafanaDashboardTreeUploaderTest : BaseKoinTest() {
 
         uploader().upload(controlHost, installContext)
 
-        assertThat(uploaded[profiling.relativePath]).contains(pyroscopeIngestBaseUrl("10.0.1.5"))
+        assertThat(uploaded[profiling.relativePath]).contains("http://10.0.1.5:31040")
     }
 
     @Test

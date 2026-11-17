@@ -186,7 +186,7 @@ internal class EMRProvisioningServiceTest {
         assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"])
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
             .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
-            .contains("-Dpyroscope.server.address=http://10.0.1.5:4040")
+            .contains("-Dpyroscope.server.address=http://10.0.1.5:31040")
             .contains("-Dpyroscope.tenant.id=default")
         assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
@@ -238,10 +238,10 @@ internal class EMRProvisioningServiceTest {
             configCaptor.firstValue.configurations.first { it.classification == "spark-defaults" }
         assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"])
             .contains("-Dpyroscope.server.address=${redirect.profiles}")
-            .doesNotContain("http://10.0.1.5:4040")
+            .doesNotContain("http://10.0.1.5:")
         assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
             .contains("-Dpyroscope.server.address=${redirect.profiles}")
-            .doesNotContain("http://10.0.1.5:4040")
+            .doesNotContain("http://10.0.1.5:")
         assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"]).contains("-Dpyroscope.tenant.id=acme")
         assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"]).contains("-Dpyroscope.tenant.id=acme")
     }

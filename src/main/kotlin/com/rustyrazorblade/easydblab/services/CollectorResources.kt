@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
-import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.PodLogSource
 import com.rustyrazorblade.easydblab.configuration.otel.WorkloadScrapeConfig
@@ -22,8 +21,7 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 object CollectorResources {
     /**
      * Builds the collector's resources for [clusterState] with [scrapeConfigs], hashed against its
-     * own ConfigMaps and the `cluster-config` data for [hosting], which holds a node IP only where the
-     * backends publish on the control node.
+     * own ConfigMaps and the cluster's `cluster-config` data.
      *
      * The export destinations are read from the cluster's recorded init config. The CNI scrape jobs
      * are the host add-on's, so the core does not depend on the CNI.
@@ -34,7 +32,6 @@ object CollectorResources {
      */
     fun build(
         otelManifestBuilder: OtelManifestBuilder,
-        hosting: ObservabilityHosting,
         clusterState: ClusterState,
         region: String,
         scrapeConfigs: List<WorkloadScrapeConfig>,
@@ -48,7 +45,7 @@ object CollectorResources {
                 initConfig?.telemetryRedirect,
                 podLogSource(capabilities),
             ),
-            mapOf(ClusterConfigData.NAME to ClusterConfigData.of(clusterState, hosting, region)),
+            mapOf(ClusterConfigData.NAME to ClusterConfigData.of(clusterState, region)),
         )
     }
 

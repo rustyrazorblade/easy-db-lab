@@ -20,11 +20,11 @@ import java.net.URI
  * This is a plain data class (not `@Serializable`) because it is persisted inside `state.json`
  * via the Jackson [ClusterStateManager], like the rest of [InitConfig].
  *
- * @property metrics Mimir Prometheus remote-write URL (`http://<host>:9009/api/v1/push`).
- * @property logs Loki OTLP base URL (`http://<host>:3100/otlp`); the exporter appends `/v1/logs`.
- * @property traces Tempo OTLP gRPC endpoint (`<host>:4320`) — the OTLP receiver port, NOT 3200,
- *   Tempo's query port. No scheme: the OTLP exporter takes a bare host:port.
- * @property profiles Pyroscope ingest base URL (`http://<host>:4040`).
+ * @property metrics Mimir Prometheus remote-write URL (`http://<host>:31009/api/v1/push`).
+ * @property logs Loki OTLP base URL (`http://<host>:31100/otlp`); the exporter appends `/v1/logs`.
+ * @property traces Tempo OTLP gRPC endpoint (`<host>:31320`) — the OTLP receiver NodePort, NOT 31200,
+ *   Tempo's query NodePort. No scheme: the OTLP exporter takes a bare host:port.
+ * @property profiles Pyroscope ingest base URL (`http://<host>:31040`).
  */
 data class TelemetryRedirect(
     val metrics: String = "",
@@ -57,13 +57,13 @@ data class TelemetryRedirect(
         const val SIGNAL_PROFILES = "profiles"
 
         /**
-         * Derives the four endpoints from one base host and the known [Constants.K8s] ports,
-         * honoring optional per-signal overrides. Deriving from the same ports the local stack
-         * uses keeps local and redirect in lockstep; an override wins over the derived value so a
-         * target whose layout differs is still reachable.
+         * Derives the four endpoints from one base host, a node of the receiving easy-db-lab
+         * cluster, and the NodePorts that cluster publishes its backends on ([Constants.K8s]),
+         * honoring optional per-signal overrides. An override wins over the derived value so a
+         * target whose layout differs (not an easy-db-lab cluster) is still reachable.
          *
-         * Traces derive from [Constants.K8s.TEMPO_OTLP_GRPC_PORT] (4320), never Tempo's query port
-         * (3200) — sending OTLP to the query port silently drops every span.
+         * Traces derive from [Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT], never Tempo's query NodePort
+         * — sending OTLP to the query port silently drops every span.
          *
          * @param baseHost external stack host (hostname or IP); overrides may replace any signal.
          */
@@ -75,10 +75,10 @@ data class TelemetryRedirect(
             profilesOverride: String? = null,
         ): TelemetryRedirect =
             TelemetryRedirect(
-                metrics = metricsOverride ?: "http://$baseHost:${Constants.K8s.MIMIR_HTTP_PORT}/api/v1/push",
-                logs = logsOverride ?: "http://$baseHost:${Constants.K8s.LOKI_HTTP_PORT}/otlp",
-                traces = tracesOverride ?: "$baseHost:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}",
-                profiles = profilesOverride ?: "http://$baseHost:${Constants.K8s.PYROSCOPE_PORT}",
+                metrics = metricsOverride ?: "http://$baseHost:${Constants.K8s.MIMIR_NODE_PORT}/api/v1/push",
+                logs = logsOverride ?: "http://$baseHost:${Constants.K8s.LOKI_NODE_PORT}/otlp",
+                traces = tracesOverride ?: "$baseHost:${Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT}",
+                profiles = profilesOverride ?: "http://$baseHost:${Constants.K8s.PYROSCOPE_NODE_PORT}",
             )
 
         /** True when [value] is a non-blank absolute http/https URL with a host. */

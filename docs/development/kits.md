@@ -552,12 +552,25 @@ Only series with a sample in the last five minutes are exported, so series left 
 that have since been replaced do not end up in the catalog. Export while the kit is running and
 being scraped.
 
-The script sources `env.sh`, so run it **from the cluster workspace** (the directory holding
-`env.sh`, `state.json` and `kubeconfig`), calling it by its path in your checkout:
+The script is a kit-development tool and is **not packaged**: the Homebrew and release
+distributions carry only `packer/` and the agents, so it needs a source checkout. It sources
+`env.sh`, so run it **from the cluster workspace** (the directory holding `env.sh`, `state.json`
+and `kubeconfig`), calling it by its path in your checkout:
 
 ```bash
 cd <cluster-workspace>
 <checkout>/bin/export-workload-metrics <kit>
+```
+
+It queries Mimir on its NodePort, `http://<control private IP>:31009/prometheus`, which is
+reachable from inside the VPC. From the workspace it queries through the workspace's `bin/curl`
+wrapper, which routes through the SOCKS tunnel (`easy-db-lab socks start`); without that wrapper it
+uses plain `curl`. Where the address is unreachable, or the backends are ClusterIP only, it fails
+naming that address; port-forward Mimir and pass its URL in `MIMIR_URL` instead:
+
+```bash
+kubectl port-forward svc/mimir 19009:9009 &
+MIMIR_URL=http://127.0.0.1:19009/prometheus <checkout>/bin/export-workload-metrics <kit>
 ```
 
 It writes `<cluster-workspace>/<kit>/metrics-catalog.json`, not the kit's resource directory.
@@ -710,12 +723,12 @@ method-level CPU, allocation, and lock contention profiles — much richer than 
 
 The agent JAR lives on the host at `/usr/local/pyroscope`. Mount it into each JVM container via a
 `hostPath` volume, then inject `JAVA_TOOL_OPTIONS` via a `kubectl patch` in the `start` phase.
-`CONTROL_HOST_PRIVATE` and `CLUSTER_NAME` are available as environment variables at runtime.
+`CLUSTER_NAME` is available as an environment variable at runtime. The agent ships to the Pyroscope Service by its cluster DNS name; never point it at `CONTROL_HOST_PRIVATE`, as no backend listens on a node address (`BuiltinKitCollectorEndpointTest` fails on one). A kit template can use `__PYROSCOPE_URL__`, which is the Service or, on a redirect cluster, the external stack.
 
 ```bash
 PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar \
   -Dpyroscope.application.name=<kit> \
-  -Dpyroscope.server.address=http://${CONTROL_HOST_PRIVATE}:4040 \
+  -Dpyroscope.server.address=http://pyroscope.default.svc:4040 \
   -Dpyroscope.format=jfr \
   -Dpyroscope.profiler.event=cpu \
   -Dpyroscope.profiler.alloc=512k \

@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.RedisTestSupport
+import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import org.assertj.core.api.Assertions.assertThat
@@ -30,7 +31,7 @@ import kotlin.concurrent.thread
  * what only a whole process shows: the exit status after the first and the second signal.
  *
  * The workspace is a Tailscale cluster whose control node is 127.0.0.1, so the stream starts no
- * tunnel and queries this machine's port 9009 directly.
+ * tunnel and queries Mimir's NodePort on this machine directly.
  */
 class MetricsStreamSignalIntegrationTest {
     @TempDir
@@ -112,7 +113,7 @@ class MetricsStreamSignalIntegrationTest {
     @Test
     fun `the first SIGTERM in the middle of a cycle stops the stream with exit 0 and nothing more`() {
         // Mimir accepts the query and never answers, so the signal arrives while the cycle waits on it.
-        ServerSocket(Constants.K8s.MIMIR_HTTP_PORT, 1, InetAddress.getByName("127.0.0.1")).use { mimir ->
+        ServerSocket(ClusterServices.MIMIR.nodePort, 1, InetAddress.getByName("127.0.0.1")).use { mimir ->
             val accepted = CompletableFuture<Socket>()
             thread(isDaemon = true) { runCatching { accepted.complete(mimir.accept()) } }
             val stream = startStream()

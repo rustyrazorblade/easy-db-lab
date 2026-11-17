@@ -53,9 +53,14 @@ class ProfilingConfigTest {
     }
 
     @Test
-    fun `assembles the pyroscope url from the control node ip and the pyroscope port`() {
-        assertThat(pyroscopeIngestBaseUrl("10.0.1.5"))
-            .isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
+    fun `an in-cluster producer sends to the Pyroscope Service`() {
+        assertThat(pyroscopeIngestBaseUrl(telemetryRedirect = null))
+            .isEqualTo("http://pyroscope.default.svc:${Constants.K8s.PYROSCOPE_PORT}")
+    }
+
+    @Test
+    fun `a host process sends to the node-local relay on loopback`() {
+        assertThat(nodeLocalProfilesRelay()).isEqualTo("http://127.0.0.1:${Constants.K8s.ALLOY_RELAY_PORT}")
     }
 
     @Test

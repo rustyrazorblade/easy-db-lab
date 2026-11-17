@@ -6,7 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeW
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.profiling.pyroscopeNodePortUrl
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import kotlin.io.path.createTempDirectory
 
@@ -53,7 +53,7 @@ class DefaultGrafanaDashboardTreeUploader(
         val hostPath = GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH
         val localTree = createTempDirectory(LOCAL_TEMP_PREFIX)
         try {
-            val count = writer.writeTo(localTree, pyroscopeIngestBaseUrl(controlHost.privateIp), context)
+            val count = writer.writeTo(localTree, pyroscopeNodePortUrl(controlHost.privateIp), context)
             eventBus.emit(Event.Grafana.DashboardTreeUploading(count, hostPath))
             remoteOps.replaceDirectory(controlHost.toHost(), localTree.toFile(), hostPath, GRAFANA_OWNER)
             eventBus.emit(Event.Grafana.DashboardTreeUploaded(count, hostPath))

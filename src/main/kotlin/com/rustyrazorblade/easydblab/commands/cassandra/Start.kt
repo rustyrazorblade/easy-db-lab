@@ -63,10 +63,9 @@ class Start : PicoBaseCommand() {
         }
 
         // Deploy cassandra-sidecar DaemonSet via K3s
-        val controlHost = clusterState.getControlHost()
-        if (controlHost != null) {
+        if (clusterState.getControlHost() != null) {
             sidecarService
-                .deploy(controlHost, sidecarImage)
+                .deploy(sidecarImage)
                 .onFailure { e ->
                     eventBus.emit(Event.Cassandra.SidecarStartFailed("${e.message}"))
                 }

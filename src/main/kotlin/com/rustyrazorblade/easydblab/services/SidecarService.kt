@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -16,13 +15,9 @@ interface SidecarService {
     /**
      * Deploys the sidecar DaemonSet to all database nodes via K3s.
      *
-     * @param controlHost The control node running K3s
      * @param image Container image to deploy (e.g. ghcr.io/apache/cassandra-sidecar:latest)
      */
-    fun deploy(
-        controlHost: ClusterHost,
-        image: String,
-    ): Result<Unit>
+    fun deploy(image: String): Result<Unit>
 
     /**
      * Removes the sidecar DaemonSet and its ConfigMap from K3s.
@@ -55,10 +50,7 @@ class DefaultSidecarService(
         private const val APP_LABEL_KEY = "app.kubernetes.io/name"
     }
 
-    override fun deploy(
-        controlHost: ClusterHost,
-        image: String,
-    ): Result<Unit> =
+    override fun deploy(image: String): Result<Unit> =
         runCatching {
             val state = clusterStateManager.load()
             // The cluster label every signal carries, <name>-<id>, not the bare name.
@@ -70,7 +62,6 @@ class DefaultSidecarService(
             val resources =
                 manifestBuilder.buildAllResources(
                     image = image,
-                    controlNodeIp = controlHost.privateIp,
                     clusterName = clusterName,
                     tenant = state.tenant(),
                     imagePullSecretName = pullSecretName,

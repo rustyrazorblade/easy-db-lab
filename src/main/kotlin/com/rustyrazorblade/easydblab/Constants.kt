@@ -493,9 +493,6 @@ object Constants {
          */
         const val PORT_FORWARD_BIND_ATTEMPTS = 2
 
-        /** The fully qualified in-cluster DNS name of [service], a Service in [NAMESPACE]. */
-        fun serviceHost(service: String): String = "$service.$NAMESPACE.svc.cluster.local"
-
         const val MANIFEST_DIR = "k8s"
 
         /** Prefix of the per-kit local StorageClass, `edl-local-<kit>`, on nodes easy-db-lab owns. */
@@ -524,6 +521,26 @@ object Constants {
         const val TEMPO_PORT = 3200
         const val PYROSCOPE_PORT = 4040
 
+        /**
+         * The node-local profiles relay: the host-network Alloy eBPF agent listens for Pyroscope
+         * pushes on `127.0.0.1` at this port on every node and forwards them to the cluster's
+         * Pyroscope (or the redirect target). Host processes that cannot resolve cluster DNS, such
+         * as the db-node profiling reconciler, send here.
+         */
+        const val ALLOY_RELAY_PORT = 4041
+
+        // Fixed NodePorts the observability Services publish where the environment owns its nodes, so
+        // callers outside the pod network (the CLI under Socks or Direct exposure, browsers, redirect
+        // senders, EMR, operator scripts) reach them at <node private IP>:<port>. Only client ports are
+        // published. Chosen outside every NodePort a kit declares and Cilium's Hubble UI
+        // (BuiltinKitNodePortTest guards this).
+        const val GRAFANA_NODE_PORT = 31300
+        const val MIMIR_NODE_PORT = 31009
+        const val LOKI_NODE_PORT = 31100
+        const val TEMPO_NODE_PORT = 31200
+        const val TEMPO_OTLP_GRPC_NODE_PORT = 31320
+        const val PYROSCOPE_NODE_PORT = 31040
+
         /** Tempo's `app.kubernetes.io/name` label; the collector finds the Tempo pod by it. */
         const val TEMPO_APP_LABEL = "tempo"
 
@@ -539,13 +556,16 @@ object Constants {
         /** Mimir's HTTP port: remote write (`/api/v1/push`), PromQL (`/prometheus`), `/ingester/shutdown`. */
         const val MIMIR_HTTP_PORT = 9009
 
-        /** Mimir's gRPC port; not Tempo's 9096 or Pyroscope's 9095, since all share the control node's network. */
+        /**
+         * Mimir's gRPC port; clear of Pyroscope's 9095 and Tempo's 9096, so the ports stay distinct
+         * if the backends ever share one network namespace again (they are separate pods today).
+         */
         const val MIMIR_GRPC_PORT = 9097
 
         /** Mimir's gossip listener, bound to loopback; Pyroscope holds the default 7946. */
         const val MIMIR_MEMBERLIST_PORT = 7947
 
-        /** The memcached sidecar in the Mimir pod, on the control node's loopback: Mimir's caches. */
+        /** The memcached sidecar in the Mimir pod, on the Mimir pod's loopback: Mimir's caches. */
         const val MIMIR_MEMCACHED_PORT = 11211
 
         /** The memcached sidecar's image, a released version. */
@@ -557,7 +577,7 @@ object Constants {
         /** Loki's HTTP port: OTLP push (`/otlp`), LogQL (`/loki/api/v1`), `/ingester/shutdown`. */
         const val LOKI_HTTP_PORT = 3100
 
-        /** Loki's gRPC port; clear of Pyroscope's 9095, Tempo's 9096 and Mimir's 9097 on the control node. */
+        /** Loki's gRPC port; clear of Pyroscope's 9095, Tempo's 9096 and Mimir's 9097, for the same reason. */
         const val LOKI_GRPC_PORT = 9098
         const val BEYLA_METRICS_PORT = 9400
         const val EBPF_EXPORTER_METRICS_PORT = 9435
@@ -773,6 +793,12 @@ object Constants {
         const val DOWNLOAD_URL =
             "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
         const val EMR_INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+    }
+
+    // The in-cluster Pyroscope server's identity.
+    object PyroscopeServer {
+        /** The UID the grafana/pyroscope image runs as; its state directory is owned by this user. */
+        const val UID = 10001L
     }
 
     // Probe timings for the in-cluster Pyroscope 2.x server.

@@ -444,7 +444,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
 
         assertThat(javaToolOptions).contains("-javaagent:/usr/local/pyroscope/pyroscope.jar")
         assertThat(javaToolOptions).contains("-Dpyroscope.application.name=cassandra-easy-stress")
-        assertThat(javaToolOptions).contains("-Dpyroscope.server.address=http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
+        assertThat(javaToolOptions).contains("-Dpyroscope.server.address=http://pyroscope.default.svc:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(javaToolOptions).contains("-Dpyroscope.format=jfr")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.event=cpu")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.alloc=512k")
@@ -586,6 +586,24 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(javaToolOptions)
             .describedAs("a redirect cluster must not point the stress agent at the control node")
             .doesNotContain("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
+    }
+
+    @Test
+    fun `a stress job builds with no control node and sends profiles to the Pyroscope Service`() {
+        val clusterStateManager: ClusterStateManager = getKoin().get()
+        whenever(clusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test",
+                infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
+                hosts = emptyMap(),
+            ),
+        )
+
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig())
+
+        assertThat(javaToolOptions).contains("-Dpyroscope.server.address=http://pyroscope.default.svc:${Constants.K8s.PYROSCOPE_PORT}")
     }
 
     private fun stressJobConfig(tags: Map<String, String> = emptyMap()) =

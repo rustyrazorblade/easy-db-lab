@@ -4,11 +4,12 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
+import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.profiling.pyroscopeNodePortUrl
 import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
@@ -191,10 +192,14 @@ class DefaultEMRProvisioningService(
                 ?: error("No control node found in cluster state for spark-defaults configuration")
 
         val otelAgentFlag = "-javaagent:${Constants.OtelJavaAgent.INSTALL_PATH}"
-        // On a redirect cluster the local Pyroscope never exists, so Spark profiles must ship to
-        // the external stack — the same resolution every other profile producer uses.
+        // EMR nodes are outside the cluster and cannot resolve its DNS, so Spark profiles go to the
+        // Pyroscope NodePort on the control node. On a redirect cluster the local Pyroscope never
+        // exists, so they ship to the external stack instead.
         val pyroscopeServerAddress =
-            pyroscopeIngestBaseUrl(controlIp, clusterState.initConfig?.telemetryRedirect)
+            clusterState.initConfig?.telemetryRedirect?.profiles
+                ?: pyroscopeNodePortUrl(controlIp).also {
+                    ObservabilityHosting.from(clusterState).publishing.requireNodePorts("EMR's Spark Pyroscope agent")
+                }
         val pyroscopeFlags =
             listOf(
                 "-javaagent:${Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH}",

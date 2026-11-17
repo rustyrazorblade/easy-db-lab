@@ -68,7 +68,7 @@ class ObservabilityHttpTest {
 
         assertThat(response).isEqualTo(ObservabilityResponse(204, "done"))
         val request = requests.single()
-        assertThat(request.url.toString()).isEqualTo("http://10.0.1.5:3100/loki/api/v1/labels")
+        assertThat(request.url.toString()).isEqualTo("http://10.0.1.5:31100/loki/api/v1/labels")
         assertThat(request.header("X-Scope-OrgID")).isEqualTo("acme")
         assertThat(opened).containsExactly(ClusterServices.LOKI)
     }
@@ -79,7 +79,7 @@ class ObservabilityHttpTest {
 
         val request = requests.single()
         assertThat(request.method).isEqualTo("POST")
-        assertThat(request.url.toString()).isEqualTo("http://10.0.1.5:9009/ingester/shutdown")
+        assertThat(request.url.toString()).isEqualTo("http://10.0.1.5:31009/ingester/shutdown")
         assertThat(request.header("X-Scope-OrgID")).isEqualTo("acme")
         assertThat(request.body?.contentType().toString()).startsWith("application/json")
         assertThat(Buffer().also { request.body?.writeTo(it) }.readUtf8()).isEqualTo("{}")

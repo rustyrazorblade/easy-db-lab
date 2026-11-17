@@ -278,7 +278,7 @@ echo "curl $*" >>"$CURL_LOG"
 [[ "${STUB_CURL_SLEEP:-0}" != "0" ]] && sleep "$STUB_CURL_SLEEP"
 echo "${STUB_HTTP_STATUS:-200}"
 if [[ "${STUB_CURL_EXIT:-0}" != "0" ]]; then
-  echo "${STUB_CURL_STDERR:-curl: (7) Failed to connect to 10.0.1.5 port 4040}" >&2
+  echo "${STUB_CURL_STDERR:-curl: (7) Failed to connect to 127.0.0.1 port 4041}" >&2
   exit "${STUB_CURL_EXIT}"
 fi
 exit 0
@@ -301,7 +301,7 @@ write_config() {
   "loopInterval": "$loop",
   "retentionMinutes": $retention,
   "maxBytes": $max_bytes,
-  "pyroscopeUrl": "http://10.0.1.5:4040",
+  "pyroscopeUrl": "http://127.0.0.1:4041",
   "clusterName": "test-cluster",
   "tenant": "$tenant",
   "updatedAt": "2026-08-24T10:15:30Z"
@@ -317,7 +317,7 @@ write_effective_state() {
   cat >"$PROFILE_DIR/effective-state.json" <<EOF
 {"running": true, "desiredEnabled": true, "pid": $pid, "args": $args_json,
  "loopInterval": "1m", "retentionMinutes": $retention, "maxBytes": 2147483648,
- "pyroscopeUrl": "http://10.0.1.5:4040", "clusterName": "test-cluster", "tenant": "acme",
+ "pyroscopeUrl": "http://127.0.0.1:4041", "clusterName": "test-cluster", "tenant": "acme",
  "startedAt": 1755999000,
  "chunksPending": 0, "chunksShipped": 0, "chunksRejected": 0, "shipFailures": 0,
  "prunedForAge": 0, "prunedForSize": 0,
@@ -558,7 +558,7 @@ test_a_rejected_bound_is_never_used_on_a_node_with_no_prior_state() {
   "loopInterval": "1m",
   "retentionMinutes": "x[$(touch /tmp/edl-pwned)]",
   "maxBytes": "lots",
-  "pyroscopeUrl": "http://10.0.1.5:4040",
+  "pyroscopeUrl": "http://127.0.0.1:4041",
   "clusterName": "test-cluster",
   "updatedAt": "2026-08-24T10:15:30Z"
 }
@@ -597,7 +597,7 @@ test_a_malformed_loop_interval_is_refused_wholesale() {
   "loopInterval": "30s\"",
   "retentionMinutes": 60,
   "maxBytes": 2147483648,
-  "pyroscopeUrl": "http://10.0.1.5:4040",
+  "pyroscopeUrl": "http://127.0.0.1:4041",
   "clusterName": "test-cluster",
   "updatedAt": "2026-08-24T10:15:30Z"
 }
@@ -935,7 +935,7 @@ test_successful_upload_is_marked_shipped() {
   assert_file "a 2xx marks the chunk shipped" "$PROFILE_DIR/cassandra-1-100-shipped.jfr"
   local log
   log="$(curl_log)"
-  assert_contains "the upload targets the ingest endpoint" "$log" "http://10.0.1.5:4040/ingest"
+  assert_contains "the upload targets the ingest endpoint" "$log" "http://127.0.0.1:4041/ingest"
   assert_contains "the upload declares JFR format" "$log" "format=jfr"
   assert_contains "the upload is labelled with hostname and cluster" "$log" "name=cassandra%7Bhostname%3Ddb0%2Ccluster%3Dtest-cluster%7D"
   assert_contains "the upload sends raw octet-stream bytes" "$log" "application/octet-stream"
@@ -1054,12 +1054,35 @@ test_network_failure_reports_what_curl_said() {
   make_chunk "cassandra-1-200.jfr" 500
   # status 000 is curl's "no HTTP response at all", which on its own says nothing about why.
   run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=000 \
-    STUB_CURL_EXIT=7 STUB_CURL_STDERR="curl: (7) Failed to connect to 10.0.1.5 port 4040" >/dev/null
+    STUB_CURL_EXIT=7 STUB_CURL_STDERR="curl: (7) Failed to connect to 127.0.0.1 port 4041" >/dev/null
 
   local output
   output="$(cat "$OUTPUT")"
   assert_contains "a network failure carries curl's exit code" "$output" "curl_exit=7"
-  assert_contains "a network failure carries curl's own message" "$output" "Failed to connect to 10.0.1.5 port 4040"
+  assert_contains "a network failure carries curl's own message" "$output" "Failed to connect to 127.0.0.1 port 4041"
+  teardown
+}
+
+# The reconciler posts to the Alloy relay on the node's loopback, so a restarting or not-yet-scheduled
+# Alloy pod refuses the connection. That chunk is the only copy of its interval: it must stay pending
+# past both prune bounds and ship on the first pass after the relay is back.
+test_a_chunk_the_relay_refuses_is_kept_until_the_relay_is_back() {
+  setup
+  write_config true '["-e", "cpu"]' "1m" "60" "1024"
+  make_chunk "cassandra-1-100.jfr" 7300 2048
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=000 \
+    STUB_CURL_EXIT=7 STUB_CURL_STDERR="curl: (7) Failed to connect to 127.0.0.1 port 4041: Connection refused" >/dev/null
+
+  assert_file "a chunk the relay refused is kept, past the age and byte bounds" "$PROFILE_DIR/cassandra-1-100.jfr"
+  assert_no_file "a refused chunk is not marked shipped" "$PROFILE_DIR/cassandra-1-100-shipped.jfr"
+  assert_no_file "a refused chunk is not marked rejected" "$PROFILE_DIR/cassandra-1-100.jfr.rejected"
+  assert_contains "the refusal names the relay" "$(cat "$OUTPUT")" "127.0.0.1 port 4041"
+
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=200 >/dev/null
+
+  assert_no_file "the next pass with the relay back ships it" "$PROFILE_DIR/cassandra-1-100.jfr"
+  assert_contains "the chunk reaches the relay" "$(curl_log)" "http://127.0.0.1:4041/ingest"
   teardown
 }
 
@@ -1097,7 +1120,7 @@ test_a_non_ascii_cluster_name_encodes_as_utf8_bytes() {
   "loopInterval": "1m",
   "retentionMinutes": 60,
   "maxBytes": 2147483648,
-  "pyroscopeUrl": "http://10.0.1.5:4040",
+  "pyroscopeUrl": "http://127.0.0.1:4041",
   "clusterName": "café-😀",
   "updatedAt": "2026-08-24T10:15:30Z"
 }
@@ -1957,7 +1980,7 @@ test_hostile_labels_cannot_corrupt_the_otlp_payload() {
   "loopInterval": "1m",
   "retentionMinutes": 60,
   "maxBytes": 2147483648,
-  "pyroscopeUrl": "http://10.0.1.5:4040",
+  "pyroscopeUrl": "http://127.0.0.1:4041",
   "clusterName": $(jq -Rn --arg c "$hostile_cluster" '$c'),
   "updatedAt": "2026-08-24T10:15:30Z"
 }
@@ -2151,6 +2174,7 @@ test_a_freshly_rotated_chunk_is_not_yet_a_backlog
 test_chunks_the_shipper_failed_to_send_are_counted_as_pending
 test_server_error_leaves_the_chunk_for_retry
 test_network_failure_reports_what_curl_said
+test_a_chunk_the_relay_refuses_is_kept_until_the_relay_is_back
 test_client_error_is_rejected_and_never_retried
 test_a_non_ascii_cluster_name_encodes_as_utf8_bytes
 test_a_chunk_exactly_on_the_grace_boundary_ships

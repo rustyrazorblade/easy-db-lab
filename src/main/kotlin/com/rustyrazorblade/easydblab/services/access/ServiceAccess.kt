@@ -4,13 +4,13 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 
 /**
  * A cluster Service the CLI reads: the Kubernetes Service and port a port-forward targets, plus the
- * node role and port the Socks and Direct seams dial, since those Services run on host networking.
+ * node role and NodePort the Socks and Direct seams dial at that node's address.
  *
  * @property namespace the Service's namespace
  * @property service the Service's name
  * @property servicePort the Service port a port-forward opens
  * @property nodeRole the node type that runs the workload
- * @property nodePort the port the workload listens on at that node's address
+ * @property nodePort the Service's NodePort, open at that node's address
  */
 data class ServiceTarget(
     val namespace: String,

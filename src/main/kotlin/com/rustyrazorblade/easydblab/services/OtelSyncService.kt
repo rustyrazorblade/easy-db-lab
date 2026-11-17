@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
-import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -15,9 +14,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  */
 interface OtelSyncService {
     /**
-     * Re-applies the collector. The K8s API is reached through the workspace kubeconfig; the control
-     * node in state is needed only where the backends publish their ports on it (see
-     * [ClusterConfigData.publishedNodeIp]).
+     * Re-applies the collector. The K8s API is reached through the workspace kubeconfig; nothing is
+     * needed from the control host in state.
      */
     fun syncConfigMap(): Result<Unit>
 }
@@ -34,9 +32,6 @@ interface OtelSyncService {
  *
  * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
  *   like the one on [DefaultObservabilityStackService] (consolidated by #1040).
- * @property hostingOf derives how the stack is hosted from cluster state, the same seam. Where the
- *   backends are not published on a node, the collector this renders carries no node IP, so a sync
- *   needs nothing from the control host but the K8s API it reaches.
  */
 class DefaultOtelSyncService(
     private val k8sClientProvider: K8sClientProvider,
@@ -46,7 +41,6 @@ class DefaultOtelSyncService(
     private val user: User,
     private val configChangeReport: ConfigChangeReport,
     private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
-    private val hostingOf: (ClusterState) -> ObservabilityHosting = ObservabilityHosting::from,
 ) : OtelSyncService {
     private val log = KotlinLogging.logger {}
 
@@ -64,7 +58,6 @@ class DefaultOtelSyncService(
             val resources =
                 CollectorResources.build(
                     otelManifestBuilder,
-                    hostingOf(clusterState),
                     clusterState,
                     user.region,
                     scrapeConfigs,

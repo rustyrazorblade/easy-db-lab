@@ -20,16 +20,16 @@ class NodeServiceAccessTest {
         val tunnelPorts = ArrayDeque(listOf(21000, 22000))
         val access = SocksServiceAccess({ state }) { tunnelPorts.removeFirst() }
 
-        assertThat(access.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.ViaSocks("10.0.1.5", 3100, 21000))
+        assertThat(access.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.ViaSocks("10.0.1.5", 31100, 21000))
         // A replaced tunnel is followed on the next open; no port is held between calls.
-        assertThat(access.open(ClusterServices.GRAFANA)).isEqualTo(ServiceEndpoint.ViaSocks("10.0.1.5", 3000, 22000))
+        assertThat(access.open(ClusterServices.GRAFANA)).isEqualTo(ServiceEndpoint.ViaSocks("10.0.1.5", 31300, 22000))
     }
 
     @Test
     fun `direct access dials the node's private address with no proxy`() {
         val access = DirectServiceAccess { state }
 
-        assertThat(access.open(ClusterServices.MIMIR)).isEqualTo(ServiceEndpoint.Plain("10.0.1.5", 9009))
+        assertThat(access.open(ClusterServices.MIMIR)).isEqualTo(ServiceEndpoint.Plain("10.0.1.5", 31009))
     }
 
     @Test
@@ -44,13 +44,13 @@ class NodeServiceAccessTest {
     fun `a looked-up SOCKS route is used as it is, never starting a tunnel`() {
         val access = RouteServiceAccess(state, ObservabilityRoute.Socks(24000))
 
-        assertThat(access.open(ClusterServices.MIMIR)).isEqualTo(ServiceEndpoint.ViaSocks("10.0.1.5", 9009, 24000))
+        assertThat(access.open(ClusterServices.MIMIR)).isEqualTo(ServiceEndpoint.ViaSocks("10.0.1.5", 31009, 24000))
     }
 
     @Test
     fun `a looked-up direct route dials the node with no proxy`() {
         val access = RouteServiceAccess(state, ObservabilityRoute.Direct)
 
-        assertThat(access.open(ClusterServices.MIMIR)).isEqualTo(ServiceEndpoint.Plain("10.0.1.5", 9009))
+        assertThat(access.open(ClusterServices.MIMIR)).isEqualTo(ServiceEndpoint.Plain("10.0.1.5", 31009))
     }
 }

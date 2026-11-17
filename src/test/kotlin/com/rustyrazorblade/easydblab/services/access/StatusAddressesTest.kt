@@ -31,7 +31,7 @@ class StatusAddressesTest {
         listOf(Exposure.Socks, Exposure.Direct).forEach { exposure ->
             val addresses = StatusAddresses(state(exposure))
 
-            assertThat(addresses.service(ClusterServices.GRAFANA)).isEqualTo(StatusAddress("http://10.0.1.200:3000"))
+            assertThat(addresses.service(ClusterServices.GRAFANA)).isEqualTo(StatusAddress("http://10.0.1.200:31300"))
         }
     }
 
@@ -191,10 +191,10 @@ class StatusAddressesTest {
     fun `the observability backends are the five Services, Mimir under its Prometheus path`() {
         val shown = StatusAddresses(state(Exposure.Socks)).observability()
 
-        assertThat(shown.grafana.address).isEqualTo("http://10.0.1.200:3000")
-        assertThat(shown.mimir.address).isEqualTo("http://10.0.1.200:9009/prometheus")
-        assertThat(shown.loki.address).isEqualTo("http://10.0.1.200:3100")
-        assertThat(shown.tempo.address).isEqualTo("http://10.0.1.200:3200")
-        assertThat(shown.pyroscope.address).isEqualTo("http://10.0.1.200:4040")
+        assertThat(shown.grafana.address).isEqualTo("http://10.0.1.200:31300")
+        assertThat(shown.mimir.address).isEqualTo("http://10.0.1.200:31009/prometheus")
+        assertThat(shown.loki.address).isEqualTo("http://10.0.1.200:31100")
+        assertThat(shown.tempo.address).isEqualTo("http://10.0.1.200:31200")
+        assertThat(shown.pyroscope.address).isEqualTo("http://10.0.1.200:31040")
     }
 }

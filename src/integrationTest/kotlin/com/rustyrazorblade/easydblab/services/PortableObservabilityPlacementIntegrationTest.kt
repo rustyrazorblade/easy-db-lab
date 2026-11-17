@@ -483,8 +483,10 @@ class PortableObservabilityPlacementIntegrationTest {
                 .inNamespace(NAMESPACE)
                 .list()
                 .items
-        val published = services.filter { it.spec.type == "NodePort" }.flatMap { it.spec.ports }.mapNotNull { it.nodePort }
-        assertThat(published).containsAll(PUBLISHED.keys)
+        // Read back from the API server, which assigns a random node port to any port of a NodePort
+        // Service that has none: exactly the fixed ports means no internal port was published.
+        val published = services.filter { it.spec.type == "NodePort" }.flatMap { it.spec.ports }.map { it.nodePort }
+        assertThat(published).containsExactlyInAnyOrderElementsOf(PUBLISHED.keys + Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT)
 
         PUBLISHED.forEach { (nodePort, path) ->
             val url = "http://${k3s.host}:${k3s.getMappedPort(nodePort)}$path"

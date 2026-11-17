@@ -121,11 +121,11 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
         expected.forEach { (hostPath, nodePorts) ->
             val service = rendered.getValue(hostPath).filterIsInstance<Service>().single()
             assertThat(service.spec.type).describedAs(hostPath).isEqualTo("NodePort")
-            assertThat(
-                service.spec.ports
-                    .filter { it.nodePort != null }
-                    .associate { it.port to it.nodePort },
-            ).describedAs(hostPath)
+            // Kubernetes gives every port of a NodePort Service a node port, picking a random one in
+            // 30000-32767 when none is set, so the Service may list no port without a fixed one.
+            assertThat(service.spec.ports.map { it.nodePort }).describedAs(hostPath).doesNotContainNull()
+            assertThat(service.spec.ports.associate { it.port to it.nodePort })
+                .describedAs(hostPath)
                 .containsExactlyInAnyOrderEntriesOf(nodePorts)
         }
     }

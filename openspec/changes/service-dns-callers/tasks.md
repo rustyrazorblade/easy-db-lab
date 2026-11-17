@@ -35,7 +35,9 @@
 - [x] 6.1 `TelemetryRedirect.fromBaseHost` derives the NodePorts (D3a); unit test with and without overrides.
 - [x] 6.2 `EMRProvisioningService`: Pyroscope at `controlIp:<Pyroscope NodePort>` or redirect (D4a).
 - [x] 6.3 `GrafanaDashboardTreeUploader`: Pyroscope UI link at the NodePort on owned nodes (D6a).
-- [x] 6.4 `bin/export-workload-metrics`: Mimir NodePort.
+- [x] 6.4 `bin/export-workload-metrics`: Mimir NodePort, `MIMIR_URL` override, the workspace `bin/curl` tunnel wrapper when present (plain `curl` otherwise), and an unreachable Mimir named with the port-forward fix.
+- [x] 6.5 `init --redirect-telemetry` refuses a base host with a scheme or port unless all four endpoints are overridden.
+- [x] 6.6 EMR provisioning on a ClusterIP-only cluster fails up front (`ServicePublishing.requireNodePorts`); an empty NodePort mapping is refused.
 
 ## 7. Integration tier
 
@@ -51,5 +53,5 @@
 
 ## 9. Verify
 
-- [ ] 9.1 `./gradlew check` (JDK 21) in a subagent; ktlint and detekt clean with no suppressions.
+- [x] 9.1 `./gradlew check` (JDK 21): unit tier locally, full suite in CI (green on 23940ee6); ktlint and detekt clean with no suppressions.
 - [ ] 9.2 AWS lab run (`/easy-db-lab:plan`, `/easy-db-lab:run`): profiles arrive from eBPF, sidecar, stress, reconciler and EMR; `status`, `logs query`, `grafana annotate` work; `down` flushes and tears down; a redirected second cluster lands all four signals.

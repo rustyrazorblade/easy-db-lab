@@ -247,6 +247,34 @@ test_workload_name_is_required() {
   fi
 }
 
+# Under the SOCKS transport the private control IP is reachable only through the tunnel. The
+# workspace's bin/curl wrapper routes its own call through it, so the script uses it when present.
+test_uses_the_workspace_curl_wrapper_when_present() {
+  tests_run=$((tests_run + 1))
+  setup "${LIVE_RESPONSE}"
+  mkdir -p "${WORK}/bin"
+  cat > "${WORK}/bin/curl" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "${WORK}/wrapper.args"
+cat "${WORK}/response.json"
+STUB
+  chmod +x "${WORK}/bin/curl"
+  run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  [ -f "${WORK}/wrapper.args" ] || fail "expected the query through the workspace bin/curl wrapper"
+  [ ! -f "${WORK}/curl.args" ] || fail "expected the PATH curl to be unused when the wrapper exists"
+  grep -Fqx 'http://10.0.0.5:31009/prometheus/api/v1/query' "${WORK}/wrapper.args" 2>/dev/null \
+    || fail "expected the wrapper to dial Mimir's NodePort"
+}
+
+test_falls_back_to_curl_without_a_workspace_wrapper() {
+  tests_run=$((tests_run + 1))
+  setup "${LIVE_RESPONSE}"
+  run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  [ -f "${WORK}/curl.args" ] || fail "expected the PATH curl when the workspace has no bin/curl"
+}
+
 test_queries_only_series_live_in_the_window
 test_a_state_without_a_tenant_queries_the_default_tenant
 test_writes_one_entry_per_metric_name_with_label_values
@@ -260,6 +288,8 @@ test_error_status_fails
 test_an_unreachable_mimir_names_the_node_port_and_the_port_forward
 test_mimir_url_overrides_the_node_port
 test_workload_name_is_required
+test_uses_the_workspace_curl_wrapper_when_present
+test_falls_back_to_curl_without_a_workspace_wrapper
 
 echo "${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

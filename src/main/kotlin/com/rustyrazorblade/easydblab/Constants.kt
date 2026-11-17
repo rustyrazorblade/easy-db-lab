@@ -781,6 +781,12 @@ object Constants {
         const val EMR_INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
     }
 
+    // The in-cluster Pyroscope server's identity.
+    object PyroscopeServer {
+        /** The UID the grafana/pyroscope image runs as; its state directory is owned by this user. */
+        const val UID = 10001L
+    }
+
     // Probe timings for the in-cluster Pyroscope 2.x server.
     //
     // Pyroscope 2.3.1 answers /ready with 503 through two fixed waits that run back to back. First the

@@ -548,7 +548,9 @@ cd <cluster-workspace>
 ```
 
 It queries Mimir on its NodePort, `http://<control private IP>:31009/prometheus`, which is
-reachable from inside the VPC. Elsewhere, or where the backends are ClusterIP only, it fails
+reachable from inside the VPC. From the workspace it queries through the workspace's `bin/curl`
+wrapper, which routes through the SOCKS tunnel (`easy-db-lab socks start`); without that wrapper it
+uses plain `curl`. Where the address is unreachable, or the backends are ClusterIP only, it fails
 naming that address; port-forward Mimir and pass its URL in `MIMIR_URL` instead:
 
 ```bash

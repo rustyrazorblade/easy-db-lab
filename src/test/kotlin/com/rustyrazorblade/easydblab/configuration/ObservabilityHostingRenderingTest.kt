@@ -205,7 +205,7 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
             mapOf(
                 "/mnt/db1/loki" to LokiManifestBuilder.LOKI_UID,
                 "/mnt/db1/tempo" to TempoManifestBuilder.TEMPO_UID,
-                "/mnt/db1/pyroscope" to PyroscopeManifestBuilder.PYROSCOPE_UID,
+                "/mnt/db1/pyroscope" to Constants.PyroscopeServer.UID,
                 GRAFANA to GrafanaManifestBuilder.GRAFANA_UID.toLong(),
             )
 

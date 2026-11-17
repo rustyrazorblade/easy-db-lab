@@ -54,13 +54,11 @@ class PyroscopeManifestBuilder(
         /** The server's data directory on the control node: the v2 metastore index and Raft state. */
         const val DATA_HOST_PATH = "/mnt/db1/pyroscope"
 
-        private val STATE = StateVolume(SERVER_APP_LABEL, "data", DATA_HOST_PATH, owner = PYROSCOPE_UID)
+        private val STATE =
+            StateVolume(SERVER_APP_LABEL, "data", DATA_HOST_PATH, owner = Constants.PyroscopeServer.UID)
 
         /** Where [DATA_HOST_PATH] is mounted in the server container; config.yaml names paths under it. */
         private const val DATA_MOUNT_PATH = "/data"
-
-        @Suppress("MagicNumber")
-        const val PYROSCOPE_UID = 10001L
 
         // eBPF agent constants
         private const val EBPF_APP_LABEL = "pyroscope-ebpf"

@@ -16,6 +16,10 @@
 | Risk | Relay down loses data | profiling: "Relay unreachable is a shipping failure, not data loss" | Covered |
 | Risk | NodePort collision | networking: "Published ports do not collide", "Off owned nodes the Services stay ClusterIP" | Covered |
 | Risk | EMR loses Pyroscope | spark-emr: "Pyroscope agent configured with correct server address" | Covered |
+| Risk | A caller outside the cluster times out where there are no NodePorts | spark-emr: "No NodePort to send to" (`ServicePublishing.requireNodePorts`); `bin/export-workload-metrics` names the port-forward and takes `MIMIR_URL` (script tests); the ClusterIP path is reached through `kubectl port-forward` (`PortForwardServiceAccessIntegrationTest`) | Covered |
+| Risk | The laptop cannot reach a NodePort on a private IP | service-access: "AWS reads go through the SOCKS tunnel to the NodePort"; `bin/export-workload-metrics` queries through the workspace `bin/curl` tunnel wrapper when present (script tests); the security group opens every port to the VPC CIDR only (`InfrastructureConfigTest`) | Covered |
+| Risk | A redirect base host that cannot carry derived endpoints | telemetry-redirect: "A base host that cannot carry the derived endpoints is refused" | Covered |
+| Verify | AWS lab run (task 9.2) | — | Open: not yet run |
 | Risk | Port numbers change for users | — | Intentional exclusion: ephemeral clusters, no migration; docs updated (task 8) |
 | Risk | CoreDNS restart blips host-network lookups | — | Intentional exclusion: agents retry; already true off AWS |
 | Risk | Config-hash rolls once | — | Intentional exclusion: expected behaviour of `ConfigHashAnnotator` |

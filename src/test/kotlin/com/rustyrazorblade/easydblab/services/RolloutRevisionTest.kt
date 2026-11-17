@@ -19,13 +19,57 @@ class RolloutRevisionTest {
     private fun dsPod(
         name: String,
         generation: String?,
+        node: String? = null,
+        terminating: Boolean = false,
     ): Pod =
         PodBuilder()
             .withNewMetadata()
             .withName(name)
             .apply { if (generation != null) addToLabels("pod-template-generation", generation) }
+            .apply { if (terminating) withDeletionTimestamp("2026-11-17T00:00:00Z") }
             .endMetadata()
+            .withNewSpec()
+            .withNodeName(node)
+            .endSpec()
             .build()
+
+    @Test
+    fun `a DaemonSet's stranded pods are terminating old pods on nodes with no current pod`() {
+        val daemonSet =
+            DaemonSetBuilder()
+                .withNewMetadata()
+                .withGeneration(3)
+                .endMetadata()
+                .withNewStatus()
+                .withObservedGeneration(3)
+                .endStatus()
+                .build()
+        val pods =
+            listOf(
+                dsPod("stranded", "2", node = "db7", terminating = true),
+                dsPod("replaced", "2", node = "db0", terminating = true),
+                dsPod("current", "3", node = "db0"),
+                dsPod("old-not-deleted", "2", node = "db8"),
+                dsPod("unscheduled", "2", node = null, terminating = true),
+            )
+
+        assertThat(RolloutRevision.strandedPods(daemonSet, pods).map { it.metadata.name }).containsExactly("stranded")
+    }
+
+    @Test
+    fun `a DaemonSet whose controller has not observed its latest generation has no stranded pods`() {
+        val daemonSet =
+            DaemonSetBuilder()
+                .withNewMetadata()
+                .withGeneration(4)
+                .endMetadata()
+                .withNewStatus()
+                .withObservedGeneration(3)
+                .endStatus()
+                .build()
+
+        assertThat(RolloutRevision.strandedPods(daemonSet, listOf(dsPod("old", "3", node = "db7", terminating = true)))).isEmpty()
+    }
 
     private fun rsPod(
         name: String,

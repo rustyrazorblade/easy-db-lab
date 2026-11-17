@@ -53,29 +53,57 @@ object K8sPodUtils {
      * It returns rather than throws, so a poll can end on it at once instead of treating it as a
      * failed look to retry.
      */
-    fun failureOf(pod: Pod?): String? {
+    fun failureOf(pod: Pod?): String? = failingContainer(pod)?.description
+
+    /**
+     * The first container of [pod] in a terminal failure state, among those [considered] accepts:
+     * its containers first, then its init containers. Null when none is. A caller that needs more
+     * than [failureOf]'s text (the container's restart count, say) reads it from [ContainerFailure.status].
+     */
+    fun failingContainer(
+        pod: Pod?,
+        considered: (ContainerStatus) -> Boolean = { true },
+    ): ContainerFailure? {
         val podName = pod?.metadata?.name ?: "unknown"
-        return containerFailure(pod?.status?.containerStatuses, podName, "container")
-            ?: containerFailure(pod?.status?.initContainerStatuses, podName, "init container")
+        return containerFailure(pod?.status?.containerStatuses, podName, "container", considered)
+            ?: containerFailure(pod?.status?.initContainerStatuses, podName, "init container", considered)
     }
 
     private fun containerFailure(
         statuses: List<ContainerStatus>?,
         podName: String,
         containerType: String,
-    ): String? =
-        statuses.orEmpty().firstNotNullOfOrNull { containerStatus ->
-            val waitingReason = containerStatus.state?.waiting?.reason
-            if (waitingReason in TERMINAL_FAILURE_REASONS) {
-                val containerName = containerStatus.name ?: "unknown"
-                val suffix =
-                    containerStatus.state
-                        ?.waiting
-                        ?.message
-                        ?.let { ": $it" } ?: ""
-                "Pod $podName $containerType $containerName is in $waitingReason state$suffix"
-            } else {
-                null
+        considered: (ContainerStatus) -> Boolean,
+    ): ContainerFailure? =
+        statuses
+            .orEmpty()
+            .filter(considered)
+            .firstNotNullOfOrNull { containerStatus ->
+                val waitingReason = containerStatus.state?.waiting?.reason
+                if (waitingReason in TERMINAL_FAILURE_REASONS) {
+                    val containerName = containerStatus.name ?: "unknown"
+                    val suffix =
+                        containerStatus.state
+                            ?.waiting
+                            ?.message
+                            ?.let { ": $it" } ?: ""
+                    ContainerFailure(
+                        status = containerStatus,
+                        reason = waitingReason.orEmpty(),
+                        description = "Pod $podName $containerType $containerName is in $waitingReason state$suffix",
+                    )
+                } else {
+                    null
+                }
             }
-        }
 }
+
+/**
+ * A container of a pod in a terminal failure state: its [status], the waiting [reason] (one of
+ * [K8sPodUtils.TERMINAL_FAILURE_REASONS]) and a [description] naming the pod, the container and why.
+ */
+data class ContainerFailure(
+    val status: ContainerStatus,
+    val reason: String,
+    val description: String,
+)

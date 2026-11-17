@@ -31,15 +31,39 @@ object RolloutRevision {
         daemonSet: DaemonSet,
         pods: List<Pod>,
     ): List<Pod> {
-        if (!RolloutStatus.observed(daemonSet.metadata?.generation, daemonSet.status?.observedGeneration)) return emptyList()
-        val generation =
-            daemonSet.metadata
-                ?.annotations
-                ?.get(Constants.K8s.DAEMONSET_TEMPLATE_GENERATION_ANNOTATION)
-                ?: daemonSet.metadata?.generation?.toString()
-                ?: return emptyList()
-        return pods.filter { it.metadata?.labels?.get(Constants.K8s.POD_TEMPLATE_GENERATION_LABEL) == generation }
+        val generation = currentGeneration(daemonSet) ?: return emptyList()
+        return pods.filter { generationOf(it) == generation }
     }
+
+    /**
+     * The terminating pods in [pods] of an older template of [daemonSet], each on a node that has no
+     * pod of the current template. A rolling update deletes a node's old pod before it creates the
+     * new one, so on a node that stopped answering the old pod never goes and the new one never
+     * comes: only this pod points at the node. Empty until the controller observed the latest
+     * generation, as for [currentPods].
+     */
+    fun strandedPods(
+        daemonSet: DaemonSet,
+        pods: List<Pod>,
+    ): List<Pod> {
+        val generation = currentGeneration(daemonSet) ?: return emptyList()
+        val nodesWithCurrent = pods.filter { generationOf(it) == generation }.mapNotNull { it.spec?.nodeName }.toSet()
+        return pods.filter { pod ->
+            pod.metadata?.deletionTimestamp != null &&
+                generationOf(pod) != generation &&
+                pod.spec?.nodeName.let { it != null && it !in nodesWithCurrent }
+        }
+    }
+
+    private fun currentGeneration(daemonSet: DaemonSet): String? {
+        if (!RolloutStatus.observed(daemonSet.metadata?.generation, daemonSet.status?.observedGeneration)) return null
+        return daemonSet.metadata
+            ?.annotations
+            ?.get(Constants.K8s.DAEMONSET_TEMPLATE_GENERATION_ANNOTATION)
+            ?: daemonSet.metadata?.generation?.toString()
+    }
+
+    private fun generationOf(pod: Pod): String? = pod.metadata?.labels?.get(Constants.K8s.POD_TEMPLATE_GENERATION_LABEL)
 
     /**
      * The pods in [pods] owned by the ReplicaSet of [deployment]'s current revision, found among

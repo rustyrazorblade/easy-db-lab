@@ -87,7 +87,7 @@ class RolloutLooker(
         val replicaSets = snapshot.replicaSets.filter { LabelSelectorMatcher.matches(selector, it.metadata?.labels) }
         val pods = snapshot.pods.filter { LabelSelectorMatcher.matches(selector, it.metadata?.labels) }
         val current = RolloutRevision.currentPods(deployment, replicaSets, pods)
-        return progress to RolloutBlocker.find(snapshot.now, ref, current) { null }
+        return progress to RolloutBlocker.find(snapshot.now, ref, current, node = { null })
     }
 
     private fun inspectDaemonSet(
@@ -100,7 +100,8 @@ class RolloutLooker(
         val selector = daemonSet.spec?.selector ?: return progress to null
         val pods = snapshot.pods.filter { LabelSelectorMatcher.matches(selector, it.metadata?.labels) }
         val current = RolloutRevision.currentPods(daemonSet, pods)
-        return progress to RolloutBlocker.find(snapshot.now, ref, current, snapshot::node)
+        val stranded = RolloutRevision.strandedPods(daemonSet, pods)
+        return progress to RolloutBlocker.find(snapshot.now, ref, current, snapshot::node, stranded)
     }
 
     private fun notFound(ref: WorkloadRef): Pair<RolloutProgress, String?> = RolloutProgress.Pending("$ref not found") to null

@@ -13,6 +13,11 @@ import io.fabric8.kubernetes.api.model.apps.ReplicaSet
 import io.fabric8.kubernetes.api.model.apps.ReplicaSetBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 /**
  * [RolloutLooker] decides what one look reads and how it combines the workloads. Its reads go through
@@ -20,6 +25,10 @@ import org.junit.jupiter.api.Test
  * look however many workloads are pending, none when nothing is pending, and each node at most once.
  */
 class RolloutLookerTest {
+    private companion object {
+        val NOW: Instant = Instant.parse("2026-11-17T12:00:00Z")
+    }
+
     /** An in-memory namespace that counts every read. */
     private class FakeReader(
         val deployments: Map<String, Deployment> = emptyMap(),
@@ -47,11 +56,12 @@ class RolloutLookerTest {
         name: String,
         desired: Int,
         available: Int,
+        generation: Long = 1,
     ): DaemonSet =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(name)
-            .withGeneration(1)
+            .withGeneration(generation)
             .endMetadata()
             .withNewSpec()
             .withNewSelector()
@@ -59,7 +69,7 @@ class RolloutLookerTest {
             .endSelector()
             .endSpec()
             .withNewStatus()
-            .withObservedGeneration(1)
+            .withObservedGeneration(generation)
             .withDesiredNumberScheduled(desired)
             .withUpdatedNumberScheduled(desired)
             .withNumberAvailable(available)
@@ -120,12 +130,15 @@ class RolloutLookerTest {
         node: String,
         crashing: Boolean = false,
         replicaSet: String? = null,
+        generation: Long = 1,
+        terminating: Boolean = false,
     ): Pod =
         PodBuilder()
             .withNewMetadata()
-            .withName("$app-$node-${replicaSet ?: "ds"}")
+            .withName("$app-$node-${replicaSet ?: "ds"}-g$generation")
             .addToLabels("app", app)
-            .addToLabels("pod-template-generation", "1")
+            .addToLabels("pod-template-generation", generation.toString())
+            .apply { if (terminating) withDeletionTimestamp("2026-11-17T11:00:00Z") }
             .apply {
                 if (replicaSet != null) {
                     addNewOwnerReference()
@@ -277,6 +290,76 @@ class RolloutLookerTest {
         assertThat(reader.podLists).isEqualTo(2)
         assertThat(reader.nodeReads).containsExactly("db0", "db0")
     }
+
+    @ParameterizedTest(name = "node {0} for {1}s blocks: {2}")
+    @CsvSource(
+        "False, 61, true",
+        "Unknown, 61, true",
+        "False, 30, false",
+        "True, 600, false",
+    )
+    fun `a node holding only a terminating old pod of a pending DaemonSet blocks once NotReady past the grace`(
+        ready: String,
+        seconds: Long,
+        blocks: Boolean,
+    ) {
+        // A template update deleted the generation-1 pod on db7; with db7 unreachable it never goes,
+        // and generation 2 is never created there. db0 has rolled.
+        val reader =
+            FakeReader(
+                daemonSets = mapOf("a" to daemonSet("a", desired = 2, available = 1, generation = 2)),
+                pods = listOf(pod("a", "db0", generation = 2), pod("a", "db7", generation = 1, terminating = true)),
+                nodes = mapOf("db0" to readyNode("db0"), "db7" to node("db7", ready, NOW.minusSeconds(seconds))),
+            )
+
+        val look = RolloutLooker(reader, Clock.fixed(NOW, ZoneOffset.UTC)).look(listOf(a))
+
+        when {
+            blocks -> {
+                assertThat(look).isInstanceOf(RolloutsLook.Blocked::class.java)
+                assertThat((look as RolloutsLook.Blocked).reason)
+                    .startsWith("DaemonSet/a:")
+                    .contains("node db7")
+                    .contains("not Ready")
+                    .contains("a-db7-ds-g1")
+            }
+            else -> assertThat(look).isInstanceOf(RolloutsLook.Pending::class.java)
+        }
+    }
+
+    @Test
+    fun `a node with a current pod beside a terminating old one is judged by the current pod alone`() {
+        val reader =
+            FakeReader(
+                daemonSets = mapOf("a" to daemonSet("a", desired = 1, available = 0, generation = 2)),
+                pods = listOf(pod("a", "db7", generation = 2), pod("a", "db7", generation = 1, terminating = true)),
+                nodes = mapOf("db7" to node("db7", "False", NOW.minusSeconds(61))),
+            )
+
+        val look = RolloutLooker(reader, Clock.fixed(NOW, ZoneOffset.UTC)).look(listOf(a))
+
+        assertThat((look as RolloutsLook.Blocked).reason).contains("a-db7-ds-g2").doesNotContain("a-db7-ds-g1")
+        assertThat(reader.nodeReads).containsExactly("db7")
+    }
+
+    private fun node(
+        name: String,
+        ready: String,
+        since: Instant,
+    ): Node =
+        NodeBuilder()
+            .withNewMetadata()
+            .withName(name)
+            .endMetadata()
+            .withNewStatus()
+            .addNewCondition()
+            .withType("Ready")
+            .withStatus(ready)
+            .withReason("NodeStatusUnknown")
+            .withLastTransitionTime(since.toString())
+            .endCondition()
+            .endStatus()
+            .build()
 
     private fun readyNode(name: String): Node =
         NodeBuilder()

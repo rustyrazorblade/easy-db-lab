@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.ContainerStatus
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.Pod
-import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.client.readiness.Readiness
 import java.time.Duration
 import java.time.Instant
@@ -28,7 +27,11 @@ import java.time.format.DateTimeParseException
  * [Constants.K8s.ROLLOUT_NODE_NOT_READY_GRACE_SECONDS], measured from the condition's
  * `lastTransitionTime`, so a node that is still joining or misses a heartbeat does not fail the wait.
  * A missing or unparseable `lastTransitionTime`, or a node with no Ready condition at all, counts as
- * having just transitioned and does not block. A terminating pod is on its way out and never blocks.
+ * having just transitioned and does not block. A terminating pod is on its way out and never blocks
+ * through its containers. It does point at its node when it is a DaemonSet's older-template pod on a
+ * node with no current pod ([RolloutRevision.strandedPods]): a rolling update waits for it to go before
+ * it creates the new pod there, so a node that stopped answering holds the rollout with no current pod
+ * on it. Its node is judged by the same grace.
  *
  * The grace is measured against the caller's clock (the operator's workstation), while
  * `lastTransitionTime` is the control plane's. It relies on both clocks being synchronised (NTP or
@@ -42,45 +45,35 @@ object RolloutBlocker {
      * node by name; it is called only for a DaemonSet, only for the nodes of its pods that are not
      * Ready, once per node, oldest pod first, and for at most [Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK]
      * nodes, so a fully Ready pod set reads no node at all. [now] is the time of the look, against
-     * which a node's NotReady time is measured.
+     * which a node's NotReady time is measured. [stranded] are a DaemonSet's terminating older-template
+     * pods on nodes with no current pod; their nodes share the same bound with the unready pods' nodes.
      */
     fun find(
         now: Instant,
         workload: WorkloadRef,
         pods: List<Pod>,
         node: (String) -> Node?,
+        stranded: List<Pod> = emptyList(),
     ): String? {
         val live = pods.filter { it.metadata?.deletionTimestamp == null }
         return live.firstNotNullOfOrNull { pod ->
             containerFailure(pod)?.let { "$workload: $it (node ${pod.spec?.nodeName ?: "unscheduled"})" }
         } ?: when (workload.kind) {
-            WorkloadKind.DaemonSet -> onNotReadyNode(now, workload, live, node)
+            WorkloadKind.DaemonSet -> onNotReadyNode(now, workload, live.filterNot(Readiness::isPodReady) + stranded, node)
             WorkloadKind.Deployment -> null
         }
     }
 
     /**
-     * [K8sPodUtils.failureOf] of [pod], judged without its containers in an early crash loop, so one
-     * that has not crashed often enough neither blocks nor hides another container's failure. A crash
-     * loop's reason carries its restart count.
+     * The terminal failure of [pod] ([K8sPodUtils.failingContainer]), judged without its containers in
+     * an early crash loop, so one that has not crashed often enough neither blocks nor hides another
+     * container's failure. A crash loop's reason carries its restart count.
      */
     private fun containerFailure(pod: Pod): String? {
-        val status = pod.status ?: return null
-        val containers = status.containerStatuses.orEmpty().filterNot(::isEarlyCrashLoop)
-        val initContainers = status.initContainerStatuses.orEmpty().filterNot(::isEarlyCrashLoop)
-        val judged =
-            PodBuilder(pod)
-                .editStatus()
-                .withContainerStatuses(containers)
-                .withInitContainerStatuses(initContainers)
-                .endStatus()
-                .build()
-        val failure = K8sPodUtils.failureOf(judged) ?: return null
-        // failureOf names the first failing container, containers before init containers.
-        val failed = (containers + initContainers).firstOrNull { it.state?.waiting?.reason in K8sPodUtils.TERMINAL_FAILURE_REASONS }
-        return when (failed?.state?.waiting?.reason) {
-            CRASH_LOOP_REASON -> "$failure, after ${failed.restartCount ?: 0} restarts"
-            else -> failure
+        val failure = K8sPodUtils.failingContainer(pod) { !isEarlyCrashLoop(it) } ?: return null
+        return when (failure.reason) {
+            CRASH_LOOP_REASON -> "${failure.description}, after ${failure.status.restartCount ?: 0} restarts"
+            else -> failure.description
         }
     }
 
@@ -93,14 +86,14 @@ object RolloutBlocker {
     private fun onNotReadyNode(
         now: Instant,
         workload: WorkloadRef,
-        pods: List<Pod>,
+        waiting: List<Pod>,
         node: (String) -> Node?,
     ): String? {
-        // The oldest unready pods are the ones most likely stuck; a fresh rollout makes every pod
-        // briefly unready, and the bound keeps that from becoming one node read per pod each poll.
+        // [waiting] are the unready current pods and the stranded old ones. The oldest are the ones
+        // most likely stuck; a fresh rollout makes every pod briefly unready, and the bound keeps that
+        // from becoming one node read per pod each poll.
         val podByNode =
-            pods
-                .filterNot(Readiness::isPodReady)
+            waiting
                 .filter { it.spec?.nodeName != null }
                 .sortedBy { it.metadata?.creationTimestamp.orEmpty() }
                 .distinctBy { it.spec?.nodeName }
@@ -108,7 +101,12 @@ object RolloutBlocker {
         return podByNode.firstNotNullOfOrNull { pod ->
             val nodeName = pod.spec?.nodeName ?: return@firstNotNullOfOrNull null
             node(nodeName)?.let { notReadyReason(it, now) }?.let { reason ->
-                "$workload: pod ${pod.metadata?.name} is on node $nodeName, which is not Ready ($reason)"
+                when (pod.metadata?.deletionTimestamp) {
+                    null -> "$workload: pod ${pod.metadata?.name} is on node $nodeName, which is not Ready ($reason)"
+                    else ->
+                        "$workload: old pod ${pod.metadata?.name} is still terminating on node $nodeName, which is " +
+                            "not Ready ($reason), so the new pod cannot start there"
+                }
             }
         }
     }

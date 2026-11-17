@@ -84,7 +84,8 @@ after an upgrade so your user has it.
   those states. An image pull failure or `Error` stops it at once. A crash loop stops it after 3
   restarts, since a pod may crash once or twice while a backend it needs comes up. When a DaemonSet's pod that is not ready is on a node that is
   not `Ready`, it fails after the node has been NotReady for 60 s, so a node that is still joining
-  or misses a heartbeat does not fail it. Either error names the workload, the pod, the node and
+  or misses a heartbeat does not fail it. The same holds for a node where an update left only the
+  DaemonSet's old pod, stuck terminating, so the new pod cannot start there. Either error names the workload, the pod, the node and
   the reason. A rollout that is only slow still waits.
 - K3s uses the pod range `10.224.0.0/12` and the service range `10.240.0.0/16`, which hold a
   `/24` for each of 4,096 nodes. K3s's default `10.42.0.0/16` holds 256. `init --cidr` refuses a

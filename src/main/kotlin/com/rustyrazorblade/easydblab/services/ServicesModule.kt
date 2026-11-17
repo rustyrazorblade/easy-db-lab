@@ -47,6 +47,7 @@ import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
 import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2InstanceStateWatcher
 import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2K3sBringUp
 import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneConnector
+import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
 import com.rustyrazorblade.easydblab.services.bringup.k3s.Fabric8ControlPlaneConnector
 import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
 import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
@@ -272,9 +273,7 @@ val servicesModule =
                 get<CiliumNodeImageCheck>(),
                 get<RegistryService>(),
                 get<K3sClusterService>(),
-                get<K8sManifestOperations>(),
-                get<CiliumService>(),
-                get<ControlPlaneConnector>(),
+                ControlPlaneTools(get<K8sManifestOperations>(), get<CiliumService>(), get<ControlPlaneConnector>()),
             )
         }
         factory<Ec2BringUpPorts> {

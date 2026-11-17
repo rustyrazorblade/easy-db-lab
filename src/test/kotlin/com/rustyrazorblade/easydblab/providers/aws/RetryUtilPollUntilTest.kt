@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import io.github.resilience4j.retry.Retry
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test

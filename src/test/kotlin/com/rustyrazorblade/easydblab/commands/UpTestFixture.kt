@@ -68,6 +68,7 @@ import com.rustyrazorblade.easydblab.services.bringup.FakeInstanceFleet
 import com.rustyrazorblade.easydblab.services.bringup.FakeInstanceTracker
 import com.rustyrazorblade.easydblab.services.bringup.InstanceAddresses
 import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
+import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
 import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -257,7 +258,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<K8sStorageOperations> { get<K8sService>() }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
             single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), get()) }
-            single { K3sBringUpSteps(get(), get(), get(), get(), get(), get<K8sService>(), get(), { plane }) }
+            single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { plane })) }
             single<Ec2BringUpPorts> {
                 val steps = get<K3sBringUpSteps>()
                 Ec2BringUpPorts { request ->

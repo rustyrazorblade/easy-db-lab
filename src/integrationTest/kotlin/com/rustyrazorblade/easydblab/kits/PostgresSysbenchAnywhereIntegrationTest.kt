@@ -207,10 +207,18 @@ class PostgresSysbenchAnywhereIntegrationTest {
             kitVariables(SYSBENCH, config) +
                 args +
                 ("KUBECONFIG" to File(workspace, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
-        val builder = ProcessBuilder(File(kitDir, "bin/$phase.sh").absolutePath).directory(workspace).redirectErrorStream(true)
+        // Output goes to a file, not a pipe read to its end, so a script that never ends still
+        // reaches the timeout below.
+        val log = File(workspace, "$SYSBENCH-$phase.log")
+        val builder =
+            ProcessBuilder(File(kitDir, "bin/$phase.sh").absolutePath)
+                .directory(workspace)
+                .redirectErrorStream(true)
+                .redirectOutput(log)
         val process = processEnvironment.applyTo(builder, workspace, variables).start()
-        val output = process.inputStream.bufferedReader().readText()
         val exited = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        if (!exited) process.descendants().forEach { it.destroyForcibly() }.also { process.destroyForcibly() }
+        val output = log.readText()
         assertThat(exited && process.exitValue() == 0)
             .describedAs("sysbench $phase failed\n$output\n${clusterDiagnostics(client, NAMESPACE)}")
             .isTrue()

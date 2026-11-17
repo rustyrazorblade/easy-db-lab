@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.DefaultK8sStorageOperations
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
@@ -398,7 +399,6 @@ class CassandraPodsKitIntegrationTest {
         const val LOG_LINES = 100
         const val EVENT_LINES = 40
 
-        fun agentImage(): String =
-            "${Constants.Kit.CassandraPods.AGENT_IMAGE_REPOSITORY}:${System.getProperty("easydblab.otelAgentVersion")}"
+        fun agentImage(): String = "${JavaAgent.OTEL.image}"
     }
 }

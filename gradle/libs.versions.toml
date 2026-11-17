@@ -70,7 +70,7 @@ resilience4j = "2.4.0"
 fabric8-kubernetes = "7.8.0"
 
 # OpenTelemetry
-opentelemetry-agent = "2.26.0"
+opentelemetry-agent = "2.31.1"
 
 # Pyroscope Java agent, for PyroscopeAgentReplayIntegrationTest only; the cluster installs the
 # release jar. Must equal Constants.PyroscopeJavaAgent.VERSION (the test checks it).

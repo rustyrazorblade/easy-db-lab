@@ -1169,18 +1169,12 @@ tasks.named("jibDockerBuild") {
 }
 
 // The cassandra-pods kit's JMX rules have one source, the file the AMI path also uses. Copy it
-// into the kit's resources at build time, and stamp the OpenTelemetry agent version from the
-// version catalog into the kit's init-container image tag, so the two cannot drift apart.
+// into the kit's resources at build time. Its agent image comes from __OTEL_AGENT_IMAGE__
+// (JavaAgent.OTEL), like every other kit's.
 tasks.named<ProcessResources>("processResources") {
     val kitResources = "com/rustyrazorblade/easydblab/kits/cassandra-pods"
     from("src/main/resources/com/rustyrazorblade/easydblab/configuration/cassandra/cassandra-jmx-rules.yaml") {
         into(kitResources)
-    }
-    val agentVersion =
-        libs.versions.opentelemetry.agent
-            .get()
-    filesMatching("$kitResources/statefulset.yaml.template") {
-        filter { it.replace("@OTEL_AGENT_VERSION@", agentVersion) }
     }
 }
 

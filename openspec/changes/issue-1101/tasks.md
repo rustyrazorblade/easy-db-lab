@@ -1,10 +1,10 @@
 ## 1. Agent delivery
 
-- [ ] 1.1 Add the Pyroscope agent image (multi-arch, checksummed jar) to `publish-container.yml`.
-- [ ] 1.2 Raise `opentelemetry-agent` in `gradle/libs.versions.toml` to 2.31.1.
-- [ ] 1.3 Test first: `JavaAgentDelivery.applyTo` adds the emptyDir, one init container per agent (restricted security context) and a read-only mount; `flag(agent)` names a file an init container writes.
-- [ ] 1.4 Add `JavaAgent`, `JavaAgentDelivery`, `Constants.Kit.Agents.*`, `AGENTS_MOUNT`; publish `__OTEL_AGENT_IMAGE__` / `__PYROSCOPE_AGENT_IMAGE__`; move cassandra-pods off build-time `@OTEL_AGENT_VERSION@`.
-- [ ] 1.5 neo4j `statefulset.yaml.template`, presto and trino `start.sh.template` jq patches: init container + emptyDir, no hostPath.
+- [x] 1.1 Add the Pyroscope agent image (multi-arch, checksummed jar) to `publish-container.yml`.
+- [x] 1.2 Raise `opentelemetry-agent` in `gradle/libs.versions.toml` to 2.31.1.
+- [x] 1.3 Test first: `JavaAgentDelivery.applyTo` adds the emptyDir, one init container per agent (restricted security context) and a read-only mount; `flag(agent)` names a file an init container writes.
+- [x] 1.4 Add `JavaAgent`, `JavaAgentDelivery`, `Constants.Kit.Agents.*`, `AGENTS_MOUNT`; publish `__OTEL_AGENT_IMAGE__` / `__PYROSCOPE_AGENT_IMAGE__`; move cassandra-pods off build-time `@OTEL_AGENT_VERSION@`.
+- [x] 1.5 neo4j `statefulset.yaml.template`, presto and trino `start.sh.template` jq patches: init container + emptyDir, no hostPath.
 
 ## 2. Stress jobs (split with #1135 per D6; starts after #1135 merges)
 

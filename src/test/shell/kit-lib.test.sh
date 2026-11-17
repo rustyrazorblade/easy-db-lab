@@ -482,16 +482,25 @@ test_pyroscope_patch_rejects_a_port_that_is_not_a_number() {
   local bad
   for bad in 8080x "" -1; do
     : > "${STUB_STATE}/kubectl.calls"
-    run_lib "edl_patch_pyroscope presto-coordinator coordinator presto lab-1 coordinator 8080 \"${bad}\""
+    run_lib "PYROSCOPE_AGENT_IMAGE=agent:1 edl_patch_pyroscope presto-coordinator coordinator presto lab-1 coordinator 8080 \"${bad}\""
     [ "${rc}" -ne 0 ] || fail "port '${bad}' exited 0"
     [ "${err}" = "edl_patch_pyroscope: '${bad}' is not a port number" ] || fail "message for '${bad}': ${err}"
     grep -q "patch" <<< "$(calls)" && fail "patched with port '${bad}': $(calls)"
   done
 }
 
+test_pyroscope_patch_needs_the_agent_image() {
+  start_test "pyroscope patch without an agent image"
+  : > "${STUB_STATE}/kubectl.calls"
+  run_lib "PYROSCOPE_URL=http://p:4040 TENANT=t edl_patch_pyroscope trino-worker trino-worker trino lab-1 worker"
+  [ "${rc}" -ne 0 ] || fail "exited 0 with no PYROSCOPE_AGENT_IMAGE"
+  grep -qF "PYROSCOPE_AGENT_IMAGE" <<< "${err}" || fail "message does not name PYROSCOPE_AGENT_IMAGE: ${err}"
+  grep -q "patch" <<< "$(calls)" && fail "patched without an agent image: $(calls)"
+}
+
 test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options() {
   start_test "pyroscope patch body"
-  run_lib "PYROSCOPE_URL=http://10.0.0.5:4040 TENANT='a\"b' edl_patch_pyroscope trino-coordinator trino-coordinator trino lab-1 coordinator 8080 9090"
+  run_lib "PYROSCOPE_AGENT_IMAGE=agent:1 PYROSCOPE_URL=http://10.0.0.5:4040 TENANT='a\"b' edl_patch_pyroscope trino-coordinator trino-coordinator trino lab-1 coordinator 8080 9090"
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
   local patch
   patch="$(sed -n "s/^patch deployment trino-coordinator --namespace default --type=strategic -p=//p" "${STUB_STATE}/kubectl.calls")"
@@ -502,6 +511,11 @@ test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options() 
     fail "the tenant was not carried through escaping: ${patch}"
   jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-Dpyroscope.labels=cluster=lab-1,component=coordinator" ||
     fail "labels: ${patch}"
+  jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-javaagent:/edl/agents/pyroscope.jar " ||
+    fail "agent path: ${patch}"
+  [ "$(jq -c ".spec.template.spec.initContainers[0] | [.image, .command[-1]]" <<< "${patch}")" = '["agent:1","/agents/pyroscope.jar"]' ] ||
+    fail "init container: ${patch}"
+  grep -q -e hostPath -e /usr/local/pyroscope <<< "${patch}" && fail "the agent comes from a host path: ${patch}"
 }
 
 test_the_cluster_label_fails_when_cluster_config_has_none() {
@@ -576,6 +590,7 @@ test_a_push_leaves_the_callers_traps_as_they_were
 test_sourcing_changes_no_option_and_defines_only_edl_names
 test_a_script_run_outside_easy_db_lab_says_so
 test_pyroscope_patch_rejects_a_port_that_is_not_a_number
+test_pyroscope_patch_needs_the_agent_image
 test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options
 test_the_cluster_label_fails_when_cluster_config_has_none
 

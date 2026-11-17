@@ -452,19 +452,24 @@ edl_cluster_label() {
 }
 
 # Prints the JAVA_TOOL_OPTIONS that load the Pyroscope agent for application $1. Needs
-# PYROSCOPE_URL and TENANT, which the kit runner sets. The format and profiler options are
+# PYROSCOPE_URL and TENANT, which the kit runner sets. The agent is the jar edl_patch_pyroscope's
+# init container copies to /edl/agents. The format and profiler options are
 # Constants.PyroscopeJavaAgent.PROFILER_FLAGS. The last two options make the agent retry without
 # limit and hold an hour of snapshots through a Pyroscope outage; they are the values of
 # Constants.PyroscopeJavaAgent.OUTAGE_FLAGS.
 edl_pyroscope_opts() {
-  printf '%s' "-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=$1 -Dpyroscope.server.address=${PYROSCOPE_URL} -Dpyroscope.tenant.id=${TENANT} -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms -Dpyroscope.ingest.max.tries=-1 -Dpyroscope.push.queue.capacity=360"
+  printf '%s' "-javaagent:/edl/agents/pyroscope.jar -Dpyroscope.application.name=$1 -Dpyroscope.server.address=${PYROSCOPE_URL} -Dpyroscope.tenant.id=${TENANT} -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms -Dpyroscope.ingest.max.tries=-1 -Dpyroscope.push.queue.capacity=360"
 }
 
 # Patches the container $2 of deployment $1 to load the Pyroscope agent for application $3, with
 # the profile labels cluster=$4 and component=$5. Any further arguments are container ports that
 # get a hostPort of the same number; a strategic merge patch matches a port by its containerPort.
+# The agent comes from an init container that copies it from PYROSCOPE_AGENT_IMAGE (set by the kit
+# runner) into an emptyDir the JVM container mounts read-only, never from a host path, so the pods
+# run on any node.
 edl_patch_pyroscope() {
   local deployment="$1" container="$2" app="$3" cluster_label="$4" component="$5" ports="" sep="" opts patch
+  local image="${PYROSCOPE_AGENT_IMAGE:?run this through easy-db-lab, which sets PYROSCOPE_AGENT_IMAGE}"
   shift 5
   while [ "$#" -ge 1 ]; do
     case "$1" in
@@ -478,7 +483,7 @@ edl_patch_pyroscope() {
   opts="$(edl_pyroscope_opts "${app}") -Dpyroscope.labels=cluster=${cluster_label},component=${component}"
   opts="${opts//\\/\\\\}"
   opts="${opts//\"/\\\"}"
-  patch="{\"spec\":{\"template\":{\"spec\":{\"volumes\":[{\"name\":\"pyroscope-agent\",\"hostPath\":{\"path\":\"/usr/local/pyroscope\"}}],\"containers\":[{\"name\":\"${container}\"${ports},\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"${opts}\"}],\"volumeMounts\":[{\"name\":\"pyroscope-agent\",\"mountPath\":\"/usr/local/pyroscope\",\"readOnly\":true}]}]}}}}"
+  patch="{\"spec\":{\"template\":{\"spec\":{\"volumes\":[{\"name\":\"java-agents\",\"emptyDir\":{}}],\"initContainers\":[{\"name\":\"pyroscope-agent\",\"image\":\"${image}\",\"imagePullPolicy\":\"IfNotPresent\",\"command\":[\"cp\",\"/pyroscope.jar\",\"/agents/pyroscope.jar\"],\"securityContext\":{\"runAsNonRoot\":true,\"runAsUser\":65532,\"allowPrivilegeEscalation\":false,\"capabilities\":{\"drop\":[\"ALL\"]},\"seccompProfile\":{\"type\":\"RuntimeDefault\"}},\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/agents\"}]}],\"containers\":[{\"name\":\"${container}\"${ports},\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"${opts}\"}],\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/edl/agents\",\"readOnly\":true}]}]}}}}"
   kubectl patch deployment "${deployment}" \
     --namespace default \
     --type=strategic \

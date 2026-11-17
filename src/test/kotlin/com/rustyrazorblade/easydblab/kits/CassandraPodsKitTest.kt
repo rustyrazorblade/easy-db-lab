@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.kits
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgentDelivery
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitMetrics
@@ -174,16 +176,16 @@ class CassandraPodsKitTest : BaseKoinTest() {
         val spec = statefulSet().spec.template.spec
         val init = spec.initContainers.single()
         val agentVolume = spec.volumes.single { it.name == init.volumeMounts.single().name }
+        val agentMount = cassandra().volumeMounts.single { it.name == agentVolume.name }
 
-        assertThat(init.image).doesNotContain("@OTEL_AGENT_VERSION@")
         assertThat(kit.resource("statefulset.yaml.template")).doesNotContain("@OTEL_AGENT_VERSION@")
-        assertThat(
-            init.image,
-        ).isEqualTo("${Constants.Kit.CassandraPods.AGENT_IMAGE_REPOSITORY}:${System.getProperty("easydblab.otelAgentVersion")}")
+        assertThat(init.image).isEqualTo(JavaAgent.OTEL.image)
+        assertThat(init.securityContext.runAsNonRoot).isTrue()
         assertThat(agentVolume.emptyDir).isNotNull()
         assertThat(spec.volumes.mapNotNull { it.hostPath?.path }).noneMatch { it.startsWith("/usr/local/otel") }
-        assertThat(cassandra().volumeMounts.map { it.name }).contains(agentVolume.name)
-        assertThat(cassandra().env.single { it.name == "JVM_EXTRA_OPTS" }.value).contains("-javaagent:")
+        assertThat(agentMount.mountPath).isEqualTo(Constants.Kit.AGENTS_MOUNT)
+        assertThat(agentMount.readOnly).isTrue()
+        assertThat(cassandra().env.single { it.name == "JVM_EXTRA_OPTS" }.value).contains(JavaAgentDelivery.flag(JavaAgent.OTEL))
     }
 
     @Test

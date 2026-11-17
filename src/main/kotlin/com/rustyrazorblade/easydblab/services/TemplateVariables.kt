@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
 import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import java.io.File
@@ -68,6 +69,10 @@ data class TemplateVariables(
             "OTEL_COLLECTOR_HOST" to OtelEndpoints.serviceHost(),
             "OTEL_OTLP_HTTP_ENDPOINT" to OtelEndpoints.otlpHttpEndpoint(),
             "OTEL_OTLP_GRPC_ENDPOINT" to OtelEndpoints.otlpGrpcEndpoint(),
+            // The Java agent images init containers copy agents from: one source for kit templates
+            // and Kotlin (JavaAgent), pinned to the versions the AMI ships.
+            "OTEL_AGENT_IMAGE" to JavaAgent.OTEL.image,
+            "PYROSCOPE_AGENT_IMAGE" to JavaAgent.PYROSCOPE.image,
         )
 
     companion object {

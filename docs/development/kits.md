@@ -847,7 +847,7 @@ the environment. A function that fails prints why to stderr and exits the script
 | `edl_helm_upgrade_with_catalogs <release> <chart> <version> <values-file> <catalog-key>` | `helm upgrade --install` at the pinned version, with the collected catalogs under the chart value `<catalog-key>`; it does not wait for the rollout |
 | `edl_replace_hostport_pod <label-selector> <deployment>` | Deletes the coordinator pod and waits for the rollout: a rolling update deadlocks on a single app node, because the new pod cannot bind the old pod's hostPort |
 | `edl_cluster_label` | Prints the cluster label (`<name>-<id>`) from the `cluster-config` ConfigMap; fails when it is empty |
-| `edl_patch_pyroscope <deployment> <container> <app> <cluster-label> <component> [<port>...]` | Patches a deployment to load the Pyroscope agent with the cluster and component profile labels, and gives each listed container port a hostPort of the same number |
+| `edl_patch_pyroscope <deployment> <container> <app> <cluster-label> <component> [<port>...]` | Patches a deployment to load the Pyroscope agent with the cluster and component profile labels, and gives each listed container port a hostPort of the same number. The agent comes from an init container that copies it from `PYROSCOPE_AGENT_IMAGE` into an `emptyDir` mounted read-only at `/edl/agents`, never a host path |
 | `edl_scale_to_zero <deployment>...` and `edl_helm_uninstall <release>` | The `stop` and `uninstall` steps of a helm kit |
 
 Every wait fails with `pod <name> was deleted` when the pod is gone, for example after a `stop` in

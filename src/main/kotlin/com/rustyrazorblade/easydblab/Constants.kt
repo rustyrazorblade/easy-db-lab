@@ -1181,13 +1181,28 @@ object Constants {
         /** A kit name is a directory name under the workspace: letters, digits, `-` and `_`, never leading with a dash. */
         val NAME_PATTERN = Regex("^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
-        /** The `cassandra-pods` kit: the CQL NodePort and the agent-carrying image. The UN wait bound lives in `lib/wait-un.sh`. */
+        /** Where a kit or stress JVM container mounts its Java agents, read-only (`configuration/agents/JavaAgentDelivery`). */
+        const val AGENTS_MOUNT = "/edl/agents"
+
+        /**
+         * The agent images init containers copy Java agents from (`configuration/agents/JavaAgent`).
+         * Kit templates receive them as `__OTEL_AGENT_IMAGE__` and `__PYROSCOPE_AGENT_IMAGE__`.
+         */
+        object Agents {
+            /** Upstream image whose `/javaagent.jar` is the OTel agent; tagged with [OtelJavaAgent.VERSION]. */
+            const val OTEL_IMAGE_REPOSITORY = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java"
+
+            /** The multi-arch image easy-db-lab publishes from `docker/pyroscope-java-agent/`, holding `/pyroscope.jar`. */
+            const val PYROSCOPE_IMAGE = "ghcr.io/rustyrazorblade/pyroscope-java-agent:${PyroscopeJavaAgent.VERSION}"
+
+            /** The non-root user each agent init container runs as, as Pod Security "restricted" requires. */
+            const val RUN_AS_USER = 65532L
+        }
+
+        /** The `cassandra-pods` kit's CQL NodePort. The UN wait bound lives in `lib/wait-un.sh`. */
         object CassandraPods {
             /** NodePort and native transport port; no other kit uses it. */
             const val CQL_NODE_PORT = 30942
-
-            /** Image whose `/javaagent.jar` the init container copies; its tag is the build's agent version. */
-            const val AGENT_IMAGE_REPOSITORY = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java"
         }
     }
 

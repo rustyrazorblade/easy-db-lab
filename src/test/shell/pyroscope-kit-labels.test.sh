@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Unit tests for the Pyroscope labels the presto and trino kits' bin/start.sh.template put on their
-# profiles.
+# Unit tests for the Pyroscope agent the presto and trino kits' bin/start.sh.template attach: the
+# labels on their profiles, and that the jar comes from an init container, never a host path.
 #
 # Every profile must carry cluster=<name>-<id>, the value every other signal carries, or the
 # profiling dashboards' cluster filter hides it. The kit's CLUSTER_NAME is the bare name, so the
@@ -19,6 +19,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KITS="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits"
 KIT_LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
 LABEL="lab1-0f3c2a1e-1111-2222-3333-444455556666"
+AGENT_IMAGE="ghcr.io/rustyrazorblade/pyroscope-java-agent:2.3.0"
 
 tests_run=0
 tests_failed=0
@@ -56,7 +57,7 @@ EOF
 run_script() {
   (
     cd "${WORK}" &&
-      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${KIT_LIB}" CLUSTER_NAME=lab1 PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default \
+      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${KIT_LIB}" PYROSCOPE_AGENT_IMAGE="${AGENT_IMAGE}" CLUSTER_NAME=lab1 PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default \
         bash "${WORK}/kit/bin/start.sh"
   ) > "${WORK}/out.txt" 2>&1
 }
@@ -85,6 +86,33 @@ cluster=${LABEL},component=worker"
     fail "${kit}: start succeeded without a cluster_name in cluster-config"
   elif [ -s "${WORK}/patches/all.json" ]; then
     fail "${kit}: patched a deployment without a cluster label"
+  fi
+done
+
+# The agent reaches each JVM from an init container into an emptyDir, never a host path, and no
+# patch declares a hostPort: the agent path in JAVA_TOOL_OPTIONS is a file an init container of the
+# same patch copies into the volume the JVM container mounts read-only.
+for kit in presto trino; do
+  tests_run=$((tests_run + 1))
+  setup "${kit}" "${LABEL}"
+  run_script
+  if grep -q -e hostPath -e /usr/local/pyroscope "${WORK}/patches/all.json"; then
+    fail "${kit}: a patch carries a host dependency: $(cat "${WORK}/patches/all.json")"
+  fi
+  got=$(jq -r --arg img "${AGENT_IMAGE}" '
+    .spec.template.spec as $s
+    | ($s.containers[0]) as $c
+    | ([$c.env[]? | select(.name == "JAVA_TOOL_OPTIONS") | .value | capture("-javaagent:(?<p>[^ ]+)").p][0] // "") as $path
+    | ([$c.volumeMounts[]? | select(.readOnly == true) | . as $m | select($path | startswith($m.mountPath + "/"))][0]) as $m
+    | ([$s.volumes[]? | select(.name == $m.name and .emptyDir != null)][0]) as $v
+    | ([$s.initContainers[]? | select(.image == $img) | . as $i | $i.volumeMounts[]?
+        | select(.name == $v.name and $i.command[-1] == .mountPath + ($path | ltrimstr($m.mountPath)))] | length) as $n
+    | if ($path | startswith("/edl/agents/")) and $n == 1 then "ok" else "bad \($c.name)" end
+  ' "${WORK}/patches/all.json" 2>&1)
+  if [ "${got}" != "ok
+ok" ]; then
+    fail "${kit}: agent not delivered by an init container into a read-only emptyDir: ${got}"
+    cat "${WORK}/patches/all.json"
   fi
 done
 

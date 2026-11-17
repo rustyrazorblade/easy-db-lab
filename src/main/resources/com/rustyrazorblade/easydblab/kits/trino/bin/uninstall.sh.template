@@ -7,5 +7,7 @@ export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 
 echo "Uninstalling Trino..."
 edl_helm_uninstall trino
+# start applies the NodePort Service with kubectl, outside the helm release.
+kubectl delete service trino-nodeport --namespace default --ignore-not-found
 
 echo "Trino uninstalled."

@@ -40,7 +40,11 @@ setup() {
   mkdir -p "${WORK}/stubs" "${WORK}/kit/bin" "${WORK}/patches"
   cp "${KITS}/$1/bin/start.sh.template" "${WORK}/kit/bin/start.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "${WORK}/kit/bin/update-catalogs.sh"
-  printf '#!/usr/bin/env bash\nexit 0\n' > "${WORK}/stubs/helm"
+  cat > "${WORK}/stubs/helm" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "${WORK}/helm.calls"
+exit 0
+EOF
   cat > "${WORK}/stubs/kubectl" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "${WORK}/kubectl.calls"
@@ -145,6 +149,12 @@ for kit in presto trino; do
   if grep -q "^delete pod" "${WORK}/kubectl.calls" 2>/dev/null; then
     fail "${kit}: update-catalogs deleted the coordinator pod: $(grep "^delete pod" "${WORK}/kubectl.calls")"
   fi
+  # The coordinator reads its catalogs only at startup, so the change must restart it, and the
+  # script must wait for the new coordinator: the shared helm helper does not wait for a rollout.
+  grep -qx "rollout restart deployment/${kit}-coordinator --namespace default" "${WORK}/kubectl.calls" 2>/dev/null \
+    || fail "${kit}: update-catalogs did not restart the coordinator: $(cat "${WORK}/kubectl.calls" 2>/dev/null)"
+  grep -q "^rollout status deployment/${kit}-coordinator --namespace default" "${WORK}/kubectl.calls" 2>/dev/null \
+    || fail "${kit}: update-catalogs did not wait for the coordinator: $(cat "${WORK}/kubectl.calls" 2>/dev/null)"
 
   tests_run=$((tests_run + 1))
   setup "${kit}" "${LABEL}"
@@ -153,6 +163,16 @@ for kit in presto trino; do
     || fail "${kit}: stop failed: $(cat "${WORK}/out.txt")"
   grep -q "^delete service ${kit}-nodeport" "${WORK}/kubectl.calls" 2>/dev/null \
     || fail "${kit}: stop did not delete the NodePort Service: $(cat "${WORK}/kubectl.calls" 2>/dev/null)"
+
+  # start applies the Service with kubectl, outside the helm release, so uninstall must delete it
+  # too (uninstall can run without a stop first), and must not fail when it is already gone.
+  tests_run=$((tests_run + 1))
+  setup "${kit}" "${LABEL}"
+  cp "${KITS}/${kit}/bin/uninstall.sh.template" "${WORK}/kit/bin/uninstall.sh"
+  (cd "${WORK}" && PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${KIT_LIB}" bash "${WORK}/kit/bin/uninstall.sh") > "${WORK}/out.txt" 2>&1 \
+    || fail "${kit}: uninstall failed: $(cat "${WORK}/out.txt")"
+  grep -qx "delete service ${kit}-nodeport --namespace default --ignore-not-found" "${WORK}/kubectl.calls" 2>/dev/null \
+    || fail "${kit}: uninstall did not delete the NodePort Service idempotently: $(cat "${WORK}/kubectl.calls" 2>/dev/null)"
 done
 
 echo "${tests_run} tests, ${tests_failed} failed"

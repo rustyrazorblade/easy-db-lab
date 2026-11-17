@@ -56,7 +56,7 @@ class ControlPlaneHealthMonitor(
             is ControlPlaneHealth.Sample.Reading ->
                 Event.Provision.ControlPlaneUnhealthy(sample.latencyMs, sample.rejections, health.latencyLimitMs, health.rejectionLimit)
             is ControlPlaneHealth.Sample.Unreachable ->
-                Event.Provision.ControlPlaneUnhealthy(null, 0, health.latencyLimitMs, health.rejectionLimit)
+                Event.Provision.ControlPlaneUnhealthy(null, 0, health.latencyLimitMs, health.rejectionLimit, sample.reason)
         }
 
     private fun timedOutReason(sample: ControlPlaneHealth.Sample): String {
@@ -67,8 +67,7 @@ class ControlPlaneHealthMonitor(
                         "${sample.rejections} rejected requests (limit ${health.rejectionLimit})"
                 is ControlPlaneHealth.Sample.Unreachable -> "the API server could not be reached (${sample.reason})"
             }
-        return "the control plane stayed unhealthy past its deadline; last sample: $last. " +
-            "Run 'sudo systemctl restart k3s' on the control node, then run 'easy-db-lab up' again"
+        return "the control plane stayed unhealthy past its deadline; last sample: $last"
     }
 
     private companion object {

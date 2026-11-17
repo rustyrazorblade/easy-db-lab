@@ -1,9 +1,7 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.events.Event
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -70,21 +68,17 @@ internal class InstanceRun(
     }
 
     /**
-     * Under Cilium, fails for good when the image lacks the node fixes: a new instance has the same
+     * Fails for good when the image lacks what the cluster needs: a new instance has the same
      * image. A check that could not run (its SSH command died) says nothing about the image, so it
      * is retried and replaced like any other step.
      */
     fun checkImage() {
-        if (run.settings.cni != CniMode.Cilium) return
-        val missing =
+        val defect =
             step(PipelineStep.IMAGE_CHECK, run.timing.imageCheckPolicy) {
-                run.ssh.withSession { run.ports.nodeSteps.missingImageFixes(host) }
-            }
-        if (missing.isNotEmpty()) {
-            run.eventBus.emit(Event.Cilium.NodeImageMissingFixes(listOf(host.alias), missing))
-            val reason = "its image lacks the Cilium node fixes (missing ${missing.joinToString(", ")}); rebuild the images"
-            stop(PipelineStep.IMAGE_CHECK, reason, false, host)
-        }
+                run.ssh.withSession { run.ports.nodeSteps.checkImage(host) }
+            } ?: return
+        run.eventBus.emit(defect.report)
+        stop(PipelineStep.IMAGE_CHECK, defect.reason, false, host)
     }
 
     /** Stops watching the instance. */

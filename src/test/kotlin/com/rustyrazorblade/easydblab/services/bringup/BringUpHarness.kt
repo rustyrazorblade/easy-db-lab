@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services.bringup
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -54,12 +53,14 @@ class BringUpHarness(
     var settings =
         BringUpSettings(
             nodeCount = dbCount + appCount,
-            cni = CniMode.Flannel,
             timing = FAST,
         )
 
     /** Aliases whose instance `up` found already running; every other node was launched in this run. */
     var foundRunning: Set<String> = emptySet()
+
+    /** Runs after the first batch of nodes is handed over and before the next, as a slow later launch call would. */
+    var afterFirstBatch: () -> Unit = {}
 
     /**
      * Records the hosts, as `up` does, then brings them up: the instances found running are
@@ -80,7 +81,10 @@ class BringUpHarness(
             sink.launched(ServerType.Control, listOf(control), LaunchSink.Origin.LAUNCHED)
             handOvers
                 .filter { (_, hosts, _) -> hosts.isNotEmpty() }
-                .forEach { (serverType, hosts, origin) -> sink.launched(serverType, hosts, origin) }
+                .forEachIndexed { batch, (serverType, hosts, origin) ->
+                    if (batch == 1) afterFirstBatch()
+                    sink.launched(serverType, hosts, origin)
+                }
         }
     }
 

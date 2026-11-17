@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -34,8 +35,12 @@ interface NodeSteps {
     /** Fetches the database versions file from [host] into the workspace; the coordinator calls it once. */
     fun downloadVersions(host: ClusterHost)
 
-    /** The files [host]'s image lacks for the network plugin; empty when it lacks none or the plugin needs none. */
-    fun missingImageFixes(host: ClusterHost): List<String>
+    /**
+     * Checks that [host]'s image carries what the cluster needs; null when it does, or when the
+     * cluster needs nothing of the image. A defect rules out a replacement: a new instance has the
+     * same image. A check that cannot run throws, and is retried and replaced like any other step.
+     */
+    fun checkImage(host: ClusterHost): ImageDefect?
 
     /** Makes [host] trust the cluster's container registry; the registry certificate exists. */
     fun configureRegistryTls(host: ClusterHost)
@@ -54,6 +59,15 @@ interface NodeSteps {
     /** The last lines of [host]'s join agent log, for the reason of a join that failed. */
     fun joinLog(host: ClusterHost): String
 }
+
+/**
+ * What a node's image lacks, as [NodeSteps.checkImage] found: the [reason] the node fails with, and the
+ * [report] event that says how to fix the image, emitted once when the node fails.
+ */
+data class ImageDefect(
+    val reason: String,
+    val report: Event,
+)
 
 /**
  * The operator's side of the control node's steps: the workspace files and the route from this
@@ -95,6 +109,9 @@ interface ControlPlaneConnection : AutoCloseable {
     val sampler: HealthSampler
     val nodes: NodeTracker
 
+    /** What the operator runs to recover a control plane that stays unhealthy, as one sentence. */
+    val recovery: String
+
     /** Removes [alias]'s cluster objects, so a replacement can register under the alias. */
     fun cleanup(alias: String)
 }
@@ -106,7 +123,7 @@ fun interface HealthSampler {
 
 /**
  * Each node's registration and readiness, as every pipeline waits on them (design D9). The
- * fabric8 one is [NodeWatcher].
+ * K3s adapter watches Nodes over fabric8.
  */
 interface NodeTracker {
     /** Watches the node named [alias] at [privateIp], replacing any earlier watch of [alias]. */

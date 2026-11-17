@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.isSshNotReady
 import com.rustyrazorblade.easydblab.services.AgentStartMode
@@ -14,6 +16,7 @@ import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.bringup.ClusterStateWriter
 import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneAccess
+import com.rustyrazorblade.easydblab.services.bringup.ImageDefect
 import com.rustyrazorblade.easydblab.services.bringup.NodeSteps
 import java.io.File
 
@@ -58,7 +61,16 @@ class K3sNodeSteps(
         if (!versions.exists()) remoteOps.download(host.toHost(), REMOTE_VERSIONS_FILE, versions.toPath())
     }
 
-    override fun missingImageFixes(host: ClusterHost): List<String> = imageCheck.nodesMissingFixes(listOf(host)).flatMap { it.missingFiles }
+    /** Under Cilium, the Cilium node fixes the image must carry; Flannel needs nothing of the image. */
+    override fun checkImage(host: ClusterHost): ImageDefect? {
+        if (state.read(::cniOf) != CniMode.Cilium) return null
+        val missing = imageCheck.nodesMissingFixes(listOf(host)).flatMap { it.missingFiles }
+        if (missing.isEmpty()) return null
+        return ImageDefect(
+            reason = "its image lacks the Cilium node fixes (missing ${missing.joinToString(", ")}); rebuild the images",
+            report = Event.Cilium.NodeImageMissingFixes(listOf(host.alias), missing),
+        )
+    }
 
     override fun configureRegistryTls(host: ClusterHost) {
         val (registryHost, bucket) =

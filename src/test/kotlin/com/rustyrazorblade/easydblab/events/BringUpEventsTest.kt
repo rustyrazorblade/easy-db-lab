@@ -89,10 +89,10 @@ class BringUpEventsTest {
                 replacements = 0,
                 failed = 0,
                 controlPlane = Event.Provision.ControlPlaneState.STARTING,
-                controlStep = "k3s-server",
+                controlStep = "control-plane",
             )
 
-        assertThat(event.toDisplayString()).startsWith("[30s] 3 nodes: control k3s-server, join-wait 3, join 0/16")
+        assertThat(event.toDisplayString()).startsWith("[30s] 3 nodes: control control-plane, join-wait 3, join 0/16")
     }
 
     @ParameterizedTest(name = "kept {3}")

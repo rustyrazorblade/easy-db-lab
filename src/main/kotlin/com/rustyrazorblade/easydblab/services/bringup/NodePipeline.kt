@@ -32,6 +32,9 @@ internal class NodePipeline(
 
     @Volatile private var current = PipelineStep.RUNNING
 
+    /** The instance the node is on now, and its replacement count, for a fault outside any step. */
+    @Volatile private var onInstance = first to 0
+
     /** Brings the node up and returns how it ended. */
     fun run(): NodeEnd =
         try {
@@ -41,13 +44,15 @@ internal class NodePipeline(
         } catch (e: RuntimeException) {
             // A fault in the coordinator itself, not a step: the node fails, the others go on.
             log.error(e) { "$alias's pipeline failed" }
-            failed(NodeEnd.Failed(first, 0, current, e.message ?: e::class.java.simpleName))
+            val (host, replacements) = onInstance
+            failed(NodeEnd.Failed(host, replacements, current, e.message ?: e::class.java.simpleName))
         }
 
     private tailrec fun bringUp(
         host: ClusterHost,
         replacements: Int,
     ): NodeEnd {
+        onInstance = host to replacements
         val stopped =
             try {
                 return once(host, replacements)

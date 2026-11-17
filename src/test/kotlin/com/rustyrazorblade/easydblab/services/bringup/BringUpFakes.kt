@@ -33,7 +33,13 @@ class FakeInstanceTracker(
             }
         }
 
-    override fun unwatch(instanceId: String) = Unit
+    /** The instance IDs a pipeline watched, and those it stopped watching. */
+    val watched: Set<String> get() = watches.keys.toSet()
+    val unwatched: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
+
+    override fun unwatch(instanceId: String) {
+        unwatched += instanceId
+    }
 
     override fun start(): AutoCloseable {
         started.set(true)
@@ -79,9 +85,13 @@ class FakeControlPlane(
 
     val maxJoining: Int get() = peakJoining.get()
 
+    /** The nodes joined and not yet registered now. */
+    val joiningNow: Int get() = joining.get()
+
     override val reader: ControlPlaneReader get() = this
     override val sampler: HealthSampler = HealthSampler { if (unhealthy.get()) SLOW else HEALTHY }
     override val nodes: NodeTracker get() = this
+    override val recovery: String = RECOVERY
 
     override fun cleanup(alias: String) {
         cleaned += alias
@@ -92,7 +102,13 @@ class FakeControlPlane(
     override fun watch(
         alias: String,
         privateIp: String,
-    ): NodeWatch = NodeWatch(alias, privateIp).also { watches[alias] = it }
+    ): NodeWatch {
+        failWatch(alias)
+        return NodeWatch(alias, privateIp).also { watches[alias] = it }
+    }
+
+    /** Runs before each watch; a test throws from it to fault the coordinator outside any step. */
+    var failWatch: (alias: String) -> Unit = {}
 
     override fun unwatch(alias: String) {
         watches.remove(alias)
@@ -123,11 +139,10 @@ class FakeControlPlane(
 
     override fun nodeRegistered(alias: String): Boolean = open.get()
 
-    override fun operatorReplicas(): ControlPlaneReader.Replicas? = if (open.get()) ControlPlaneReader.Replicas(1, 1) else null
-
-    override fun establishedCrds(names: List<String>): Set<String> = if (open.get()) names.toSet() else emptySet()
+    override fun networkConditions(): Map<String, Boolean> = mapOf("network ready" to open.get())
 
     companion object {
+        const val RECOVERY = "Restart the fake control plane"
         val HEALTHY = ControlPlaneHealth.Sample.Reading(latencyMs = 1, rejections = 0)
         val SLOW = ControlPlaneHealth.Sample.Reading(latencyMs = 60_000, rejections = 0)
     }
@@ -136,7 +151,10 @@ class FakeControlPlane(
 /**
  * Every node and control step for the bring-up tests. Each call is logged in order as
  * `<alias> <call> <instanceId>`; a script in [scripts] under `<alias> <call>` runs first and may
- * throw, block or end the instance. [missingFixes] gives an alias's missing image files.
+ * throw, block or end the instance. [imageDefects] gives what an alias's image lacks.
+ *
+ * Every call that runs over SSH in production is counted while it runs: [sshPeak] is the most
+ * at once and [sshInFlight] the count now. Each one holds its session for [sshHoldMs].
  */
 class FakeNodeSteps(
     private val controlPlane: FakeControlPlane,
@@ -144,9 +162,15 @@ class FakeNodeSteps(
     ControlNodeSteps {
     val calls: MutableList<String> = Collections.synchronizedList(mutableListOf())
     val scripts: MutableMap<String, FakeCall> = ConcurrentHashMap()
-    val missingFixes: MutableMap<String, List<String>> = ConcurrentHashMap()
+    val imageDefects: MutableMap<String, ImageDefect> = ConcurrentHashMap()
     private val attempts = ConcurrentHashMap<String, AtomicInteger>()
     val lastAccess = AtomicReference<ControlPlaneAccess>()
+    var sshHoldMs = 0L
+    private val inFlight = AtomicInteger()
+    private val peak = AtomicInteger()
+
+    val sshInFlight: Int get() = inFlight.get()
+    val sshPeak: Int get() = peak.get()
 
     private fun call(
         name: String,
@@ -157,6 +181,20 @@ class FakeNodeSteps(
         scripts["${host.alias} $name"]?.invoke(host, attempt)
     }
 
+    /** A call that holds an SSH session in production. */
+    private fun sshCall(
+        name: String,
+        host: ClusterHost,
+    ) {
+        peak.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
+        try {
+            if (sshHoldMs > 0) Thread.sleep(sshHoldMs)
+            call(name, host)
+        } finally {
+            inFlight.decrementAndGet()
+        }
+    }
+
     /** The calls named [name], as `<alias> <instanceId>`, in order. */
     fun callsOf(name: String): List<String> =
         synchronized(calls) { calls.toList() }
@@ -165,23 +203,23 @@ class FakeNodeSteps(
             .map { "${it[0]} ${it[2]}" }
 
     override fun sshAnswers(host: ClusterHost): Boolean {
-        call("ssh", host)
+        sshCall("ssh", host)
         return true
     }
 
     override fun setup(
         serverType: ServerType,
         host: ClusterHost,
-    ) = call("setup", host)
+    ) = sshCall("setup", host)
 
-    override fun downloadVersions(host: ClusterHost) = call("versions", host)
+    override fun downloadVersions(host: ClusterHost) = sshCall("versions", host)
 
-    override fun missingImageFixes(host: ClusterHost): List<String> {
-        call("image", host)
-        return missingFixes[host.alias].orEmpty()
+    override fun checkImage(host: ClusterHost): ImageDefect? {
+        sshCall("image", host)
+        return imageDefects[host.alias]
     }
 
-    override fun configureRegistryTls(host: ClusterHost) = call("registry-tls", host)
+    override fun configureRegistryTls(host: ClusterHost) = sshCall("registry-tls", host)
 
     override fun join(
         host: ClusterHost,
@@ -189,7 +227,7 @@ class FakeNodeSteps(
         access: ControlPlaneAccess,
         attempt: Int,
     ) {
-        call("join", host)
+        sshCall("join", host)
         lastAccess.set(access)
         controlPlane.joined(host.alias)
     }
@@ -198,7 +236,7 @@ class FakeNodeSteps(
     val agentLogs: MutableMap<String, String> = ConcurrentHashMap()
 
     override fun joinLog(host: ClusterHost): String {
-        call("join-log", host)
+        sshCall("join-log", host)
         return agentLogs[host.alias].orEmpty()
     }
 
@@ -213,10 +251,10 @@ class FakeNodeSteps(
         call("connect", control)
     }
 
-    override fun prepareRegistry(control: ClusterHost) = call("registry-cert", control)
+    override fun prepareRegistry(control: ClusterHost) = sshCall("registry-cert", control)
 
     override fun startControlPlane(control: ClusterHost): ControlPlaneAccess {
-        call("k3s-server", control)
+        sshCall("control-plane", control)
         return ControlPlaneAccess("https://${control.privateIp}:6443", "secret-token")
     }
 
@@ -225,5 +263,5 @@ class FakeNodeSteps(
         return controlPlane
     }
 
-    override fun configureControlPlane(control: ClusterHost) = call("cni", control)
+    override fun configureControlPlane(control: ClusterHost) = sshCall("cni", control)
 }

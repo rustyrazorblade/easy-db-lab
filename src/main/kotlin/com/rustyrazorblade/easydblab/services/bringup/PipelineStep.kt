@@ -20,7 +20,7 @@ enum class PipelineStep(
     TUNNEL("tunnel"),
     REGISTRY_CERT("registry-cert"),
     REGISTRY_TLS("registry-tls"),
-    K3S_SERVER("k3s-server"),
+    CONTROL_PLANE("control-plane"),
     CNI("cni"),
     GATE("gate"),
     JOIN_WAIT("join-wait"),

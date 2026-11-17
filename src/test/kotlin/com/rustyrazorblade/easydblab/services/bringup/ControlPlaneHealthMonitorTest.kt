@@ -91,7 +91,9 @@ class ControlPlaneHealthMonitorTest {
         tick(m, 1)
 
         assertThat(latch.healthy).isFalse()
-        assertThat(events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>().single().latencyMs).isNull()
+        val unhealthy = events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>().single()
+        assertThat(unhealthy.latencyMs).isNull()
+        assertThat(unhealthy.toDisplayString()).contains("API server unreachable (connection refused)")
     }
 
     @Test
@@ -102,7 +104,7 @@ class ControlPlaneHealthMonitorTest {
         tick(m, samples.size)
 
         assertThat(failures).hasSize(1)
-        assertThat(failures.single()).contains("${SLOW + DEADLINE_SECONDS / STEP_SECONDS}ms").contains("systemctl restart k3s")
+        assertThat(failures.single()).contains("${SLOW + DEADLINE_SECONDS / STEP_SECONDS}ms")
     }
 
     private companion object {

@@ -96,7 +96,9 @@ The gate opens once, when the following are all true, read through the K8s API c
 - **Cilium only:** the `cilium-operator` Deployment has its desired number of ready replicas.
 - **Cilium only:** every CRD in `Constants.Cilium.REQUIRED_CRDS` exists and has the `Established` condition.  This is the set the Cilium agent waits for at start, for `Constants.Cilium.VERSION`: CiliumNode, CiliumEndpoint, CiliumIdentity, CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, and the others that version registers.  The list is checked against the pinned version during implementation.  A Cilium version bump must update it, and the KDoc says so.
 
-The gate polls every `Constants.Scale.GATE_POLL_INTERVAL_SECONDS` (5) under a deadline of `GATE_TIMEOUT_SECONDS` (600).  If the deadline passes, the control node has failed (D7), and the event names each condition that was still false.  Before the gate opens, `Cilium.OperatorReady` and `K3s.ControlPlaneGateOpen` are emitted.
+The gate polls every `Constants.Scale.GATE_POLL_INTERVAL_SECONDS` (5) under a deadline of `GATE_TIMEOUT_SECONDS` (600).  If the deadline passes, the control node has failed (D7), and the event names each condition that was still false.  When the gate opens, `Provision.ControlPlaneGateOpen` is emitted, naming every condition that held.
+
+The gate itself knows no network plugin.  It reads the API server, the control node and `ControlPlaneReader.networkConditions()`, a map of named conditions the K3s adapter fills from the cluster's CNI: the Cilium operator and CRDs under Cilium, nothing under Flannel.  Likewise the image check is `NodeSteps.checkImage`, which returns an `ImageDefect` (its reason and its report event) or nothing, and the hint for an unhealthy control plane is `ControlPlaneConnection.recovery`.  So `services/bringup/` holds no K3s or Cilium names (D12).
 
 Why a CRD check as well as operator readiness: in #1134 the operator was Running and restarting while its CRD creation timed out.  The agents wait for CRDs, not for the operator.
 
@@ -170,7 +172,7 @@ While unhealthy:
 - No replacement starts.
 - A join or Ready step that times out is not counted (D5).
 
-It emits `Provision.ControlPlaneUnhealthy` once on the change to unhealthy, with the latency, the rejection growth and the limits.  It emits `ControlPlaneHealthy` once on recovery, with how long it lasted.  If it stays unhealthy for `HEALTH_UNHEALTHY_TIMEOUT_SECONDS` (900), the control node has failed (D7).  The event names the last sample, and the message suggests `systemctl restart k3s` on the control node as #1134 found.  `up` does not restart K3s itself (Non-Goals).
+It emits `Provision.ControlPlaneUnhealthy` once on the change to unhealthy, with the latency, the rejection growth and the limits.  It emits `ControlPlaneHealthy` once on recovery, with how long it lasted.  If it stays unhealthy for `HEALTH_UNHEALTHY_TIMEOUT_SECONDS` (900), the control node has failed (D7).  The event names the last sample, and the message ends with the connection's recovery hint: for K3s, `systemctl restart k3s` on the control node, as #1134 found.  `up` does not restart K3s itself (Non-Goals).
 
 A sample that cannot reach the API at all counts as unhealthy.  It does not fail `up` by itself.
 
@@ -190,7 +192,7 @@ New typed events, per events/CLAUDE.md:
 - `Provision.NodeReplacing(alias, oldInstanceId, step, reason, replacement, limit)` and `Provision.NodeReplaced(alias, oldInstanceId, newInstanceId, privateIp)`.
 - `Provision.NodeReady(alias, instanceId, elapsedSeconds, replacements)`: one console line per node.  This is about the line count today's `K3s.AgentConfiguring` already prints.
 - `Provision.NodesFailed(nodes: List<FailedNode(alias, step, reason, instanceId)>)`: an error event.
-- `K3s.ControlPlaneGateOpen(waitedSeconds)`, `Cilium.OperatorReady`, and `K3s.ControlPlaneGateTimedOut(conditions)` (error).
+- `Provision.ControlPlaneGateOpen(waitedSeconds, conditions)` and `Provision.ControlPlaneGateTimedOut(waitedSeconds, conditions)` (error).  They are `Provision` events, not `K3s` or `Cilium` ones, because the gate is provider- and plugin-neutral.
 - `Provision.ControlPlaneUnhealthy(latencyMs, rejections, latencyLimitMs, rejectionLimit)` (error) and `Provision.ControlPlaneHealthy(unhealthySeconds)`.
 - `Provision.JoinWaiting(alias, inFlight, limit)` is not added.  The progress line shows the joins in flight.
 - `Provision.BringUpProgress(elapsedSeconds, total, byStep: Map<String, Int>, joining, ready, replacements, failed, controlPlane)`.  It is emitted every `PROGRESS_INTERVAL_SECONDS` (15) while pipelines run.  Its console line looks like this: `[4m30s] 80 nodes: ssh 2, setup 11, join 16/16, ready 49, replaced 1, failed 0, control plane healthy`.  In #1134, `up` went silent for 10 minutes.  This line names the step every node is in.

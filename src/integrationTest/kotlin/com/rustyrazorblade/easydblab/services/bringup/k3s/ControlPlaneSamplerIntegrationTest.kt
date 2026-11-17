@@ -1,7 +1,8 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneHealth
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 

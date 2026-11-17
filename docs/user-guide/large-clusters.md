@@ -107,7 +107,7 @@ start. Then it runs `setup` and `image-check`, then:
 
 1. `tunnel`: this machine connects (the SOCKS tunnel, or the tailnet route).
 2. `registry-cert`: the registry certificate is made and installed on the control node.
-3. `k3s-server`: the K3s server starts and the API server answers.
+3. `control-plane`: the K3s server starts and the API server answers.
 4. `cni`: the control node is labelled and, under Cilium, Cilium is installed.
 5. `gate`: the control-plane gate opens.
 
@@ -178,7 +178,7 @@ Every 15 seconds `up` prints where every node is:
 
 The total is the db and app nodes being brought up: all of them, or the ones `--hosts` names.
 While the control node's own steps run, the line starts with its step, for example
-`control k3s-server`. The per-step counts are the nodes in that step now. `join` is the join
+`control control-plane`. The per-step counts are the nodes in that step now. `join` is the join
 slots in use against the limit. Each step's start and end is published to Redis only, not printed.
 
 ### When a node fails

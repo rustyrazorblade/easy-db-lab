@@ -50,11 +50,15 @@ internal class ControlPipeline(
         if (run.settings.noSetup) return
         instance.step(PipelineStep.REGISTRY_CERT, policy) { _ -> run.ssh.withSession { steps.prepareRegistry(instance.host) } }
         run.certificate.complete(Unit)
-        val access = instance.step(PipelineStep.K3S_SERVER, policy) { _ -> run.ssh.withSession { steps.startControlPlane(instance.host) } }
-        val connection = run.own(instance.step(PipelineStep.K3S_SERVER, policy) { _ -> steps.openControlPlane() })
+        val access =
+            instance.step(
+                PipelineStep.CONTROL_PLANE,
+                policy,
+            ) { _ -> run.ssh.withSession { steps.startControlPlane(instance.host) } }
+        val connection = run.own(instance.step(PipelineStep.CONTROL_PLANE, policy) { _ -> steps.openControlPlane() })
         run.connection.complete(connection)
         startHealthMonitor(connection)
-        instance.step(PipelineStep.CNI, policy) { _ -> steps.configureControlPlane(instance.host) }
+        instance.step(PipelineStep.CNI, policy) { _ -> run.ssh.withSession { steps.configureControlPlane(instance.host) } }
         instance.step(PipelineStep.GATE, run.timing.gatePolicy) { _ -> gate(connection, instance.host.alias).await() }
         // The health monitor reports later changes; it may already have seen the control plane unhealthy.
         if (run.health.healthy) run.progress.controlPlane(Event.Provision.ControlPlaneState.HEALTHY)
@@ -67,7 +71,6 @@ internal class ControlPipeline(
     ) = ControlPlaneGate(
         connection.reader,
         run.eventBus,
-        run.settings.cni,
         alias,
         run.timing.gateTimeout,
         run.timing.gateInterval,
@@ -83,8 +86,7 @@ internal class ControlPipeline(
                 run.progress,
                 run.eventBus,
                 run.clock,
-                onUnhealthyTimeout,
-            )
+            ) { reason -> onUnhealthyTimeout("$reason. ${connection.recovery}") }
         run.own(Ticker.every("control-plane-health", run.timing.healthInterval, delayFirst = true, monitor::tick))
     }
 }

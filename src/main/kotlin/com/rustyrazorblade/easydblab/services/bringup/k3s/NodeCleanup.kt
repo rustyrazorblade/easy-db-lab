@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.K8sClientProvider

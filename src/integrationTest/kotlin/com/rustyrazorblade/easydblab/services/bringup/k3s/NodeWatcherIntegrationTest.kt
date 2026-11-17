@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
@@ -15,7 +15,8 @@ import java.util.concurrent.TimeUnit
  * Proves [NodeWatcher] against a real K3s API server: the K3s container's own node completes
  * registered and Ready; a Node created later completes registered when it appears and Ready only
  * once its condition turns `True`; and a Node under the alias with another IP (the instance a
- * replacement took over from) completes nothing.
+ * replacement took over from) completes nothing until it is deleted and the replacement's own
+ * Node registers.
  */
 class NodeWatcherIntegrationTest {
     private val watcher = NodeWatcher.open(WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()))
@@ -89,7 +90,7 @@ class NodeWatcherIntegrationTest {
     }
 
     @Test
-    fun `the Node of the instance a replacement took over from completes nothing`() {
+    fun `the Node of the instance a replacement took over from completes nothing, and the replacement's own Node does`() {
         createNode("db901", "10.9.0.2")
         markReady("db901")
 
@@ -97,5 +98,16 @@ class NodeWatcherIntegrationTest {
 
         assertThat(runCatching { watch.registered.get(3, TimeUnit.SECONDS) }.isFailure).isTrue()
         assertThat(watch.ready).isNotDone()
+
+        // The stale Node is removed and the replacement registers under the alias at its own IP.
+        SharedK3s.client().use { client ->
+            client.nodes().withName("db901").delete()
+            client.nodes().withName("db901").waitUntilCondition({ it == null }, 30, TimeUnit.SECONDS)
+        }
+        createNode("db901", "10.9.0.99")
+        watch.registered.get(30, TimeUnit.SECONDS)
+        assertThat(watch.ready).isNotDone()
+        markReady("db901")
+        watch.ready.get(30, TimeUnit.SECONDS)
     }
 }

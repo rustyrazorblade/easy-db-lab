@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import org.assertj.core.api.SoftAssertions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -13,7 +14,9 @@ import kotlin.random.Random
  * Invariants of the coordinator (design D6, D7) over a seeded random table of per-node faults:
  * whatever fails where, and in whatever order the pipelines race, every node ends exactly once,
  * no node or cluster passes its replacement limit, each replacement is one launch, a node with no
- * fault is Ready, and the state file holds each alias once, at the instance the node ended on.
+ * fault is Ready, a node whose image lacks what the cluster needs fails with no replacement, every
+ * watched instance is unwatched, and the state file holds each alias once, at the instance the
+ * node ended on. Faults fail a step, end the instance mid-setup, or are an image defect.
  */
 class NodeBringUpPropertyTest {
     @TempDir
@@ -39,9 +42,21 @@ class NodeBringUpPropertyTest {
     ) {
         val seen = ConcurrentHashMap<String, MutableSet<String>>()
         faults.forEach { (alias, fault) ->
-            h.steps.scripts["$alias ${fault.step}"] = { host, _ ->
+            if (fault.step == IMAGE) {
+                val report = Event.Cilium.NodeImageMissingFixes(listOf(alias), listOf("fix"))
+                h.steps.imageDefects[alias] = ImageDefect("its image lacks a fix", report)
+                return@forEach
+            }
+            val step = if (fault.step == ENDED) "setup" else fault.step
+            h.steps.scripts["$alias $step"] = { host, _ ->
                 val instances = seen.computeIfAbsent(alias) { ConcurrentHashMap.newKeySet() }.apply { add(host.instanceId) }
-                check(instances.size > fault.badInstances) { "${fault.step} failed on ${host.instanceId}" }
+                if (instances.size <= fault.badInstances) {
+                    if (fault.step == ENDED) {
+                        h.tracker.end(host.instanceId)
+                        BringUpHarness.hang()
+                    }
+                    error("${fault.step} failed on ${host.instanceId}")
+                }
             }
         }
     }
@@ -74,6 +89,11 @@ class NodeBringUpPropertyTest {
             val saved = h.saved(ServerType.Cassandra).associate { it.alias to it.instanceId }
             softly.assertThat(h.saved(ServerType.Cassandra)).describedAs(context).hasSize(aliases.size)
             softly.assertThat(saved).describedAs(context).isEqualTo(result.nodes.mapValues { it.value.host.instanceId })
+            softly
+                .assertThat(faults.filterValues { it.step == IMAGE }.keys.map(result.nodes::getValue))
+                .describedAs(context)
+                .allMatch { it is NodeEnd.Failed && it.replacements == 0 }
+            softly.assertThat(h.tracker.unwatched).describedAs(context).containsAll(h.tracker.watched)
         }
         softly.assertAll()
     }
@@ -84,6 +104,10 @@ class NodeBringUpPropertyTest {
         const val MAX_NODES = 12
         const val FAULT_ODDS = 3
         const val MAX_BAD_INSTANCES = 3
-        val STEPS = listOf("setup", "registry-tls", "join")
+        const val ENDED = "ended"
+        const val IMAGE = "image"
+
+        /** The step each fault breaks; [ENDED] ends the instance mid-setup, [IMAGE] is a defect no replacement fixes. */
+        val STEPS = listOf("setup", "registry-tls", "join", ENDED, IMAGE)
     }
 }

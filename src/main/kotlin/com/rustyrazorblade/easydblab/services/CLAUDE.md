@@ -190,7 +190,8 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
   `services.aws.*` and nothing K3s- or Cilium-specific.
 - **Adapters**: the EC2 ones (`Ec2InstanceFleet`, `Ec2InstanceStateWatcher`, and `Ec2K3sBringUp`,
   which assembles the port set) are in `bringup/aws/`; the K3s and Cilium ones (`K3sNodeSteps`,
-  `K3sControlSteps`, `Fabric8ControlPlaneConnection`) are in `bringup/k3s/`. A second provider
+  `K3sControlSteps`, `Fabric8ControlPlaneConnector`, `Fabric8ControlPlaneReader`, `NodeWatcher`,
+  `NodeCleanup`, `ControlPlaneSampler`) are in `bringup/k3s/`. A second provider
   adds its own adapter package; it never changes the ports.
 - **Coordination**: one virtual thread per node. Shared limits are in `Limiters.kt` (join slots,
   SSH sessions); the gate, the registry certificate and the control-plane connection are

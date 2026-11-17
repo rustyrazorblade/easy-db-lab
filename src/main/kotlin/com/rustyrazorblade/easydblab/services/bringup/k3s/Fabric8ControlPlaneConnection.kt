@@ -1,18 +1,15 @@
 package com.rustyrazorblade.easydblab.services.bringup.k3s
 
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneConnection
 import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneReader
-import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneSampler
-import com.rustyrazorblade.easydblab.services.bringup.Fabric8ControlPlaneReader
 import com.rustyrazorblade.easydblab.services.bringup.HealthSampler
-import com.rustyrazorblade.easydblab.services.bringup.NodeCleanup
 import com.rustyrazorblade.easydblab.services.bringup.NodeTracker
-import com.rustyrazorblade.easydblab.services.bringup.NodeWatcher
 
-/** Opens the coordinator's view of the control plane, once the workspace kubeconfig exists. */
+/** Opens the coordinator's view of a [cni] control plane, once the workspace kubeconfig exists. */
 fun interface ControlPlaneConnector {
-    fun open(): ControlPlaneConnection
+    fun open(cni: CniMode): ControlPlaneConnection
 }
 
 /**
@@ -24,10 +21,10 @@ fun interface ControlPlaneConnector {
 class Fabric8ControlPlaneConnector(
     private val clientProvider: K8sClientProvider,
 ) : ControlPlaneConnector {
-    override fun open(): ControlPlaneConnection {
+    override fun open(cni: CniMode): ControlPlaneConnection {
         val opened = mutableListOf<AutoCloseable>()
         try {
-            val reader = Fabric8ControlPlaneReader.open(clientProvider).also(opened::add)
+            val reader = Fabric8ControlPlaneReader.open(clientProvider, cni).also(opened::add)
             val sampler = ControlPlaneSampler.open(clientProvider).also(opened::add)
             val nodes = NodeWatcher.open(clientProvider).also(opened::add)
             return Connection(reader, sampler, nodes, NodeCleanup(clientProvider))
@@ -46,11 +43,17 @@ class Fabric8ControlPlaneConnector(
         override val reader: ControlPlaneReader get() = fabric8Reader
         override val sampler: HealthSampler get() = fabric8Sampler
         override val nodes: NodeTracker get() = watcher
+        override val recovery: String get() = RECOVERY
 
         override fun cleanup(alias: String) = nodeCleanup.clean(alias)
 
         override fun close() {
             listOf(watcher, fabric8Sampler, fabric8Reader).forEach { runCatching { it.close() } }
         }
+    }
+
+    private companion object {
+        /** What #1134 needed to finish: a restart of the K3s server. */
+        const val RECOVERY = "Run 'sudo systemctl restart k3s' on the control node, then run 'easy-db-lab up' again"
     }
 }

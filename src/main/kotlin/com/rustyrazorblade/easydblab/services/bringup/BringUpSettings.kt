@@ -1,20 +1,18 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import java.time.Duration
 
 /**
  * What one bring-up is asked to do: how many database and application nodes it expects (the
- * cluster replacement limit and the progress total come from it), the network plugin, whether to
+ * cluster replacement limit and the progress total come from it), whether to
  * stop after SSH (`--no-setup`), which database and application nodes to run (`--hosts`; the
  * control node always runs), how many nodes may join at once, how many SSH sessions may be open,
  * and its [timing].
  */
 data class BringUpSettings(
     val nodeCount: Int,
-    val cni: CniMode,
     val noSetup: Boolean = false,
     val hostFilter: String = "",
     val joinLimit: Int = Constants.Scale.JOIN_CONCURRENCY,

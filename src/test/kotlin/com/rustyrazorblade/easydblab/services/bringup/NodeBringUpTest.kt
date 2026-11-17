@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.bringup.BringUpHarness.Companion.hang
@@ -56,6 +55,22 @@ class NodeBringUpTest {
     }
 
     /** Setup installs the workspace's environment file, which names db0: no node sets up before it is written. */
+    @Test
+    fun `the progress line shows a slow node in its step and the others Ready`() {
+        val h = harness(dbs = 3)
+        h.settings = h.settings.copy(timing = h.settings.timing.copy(progressInterval = Duration.ofMillis(5)))
+        val release = CountDownLatch(1)
+        h.steps.scripts["db1 setup"] = { _, _ -> release.await() }
+
+        val result = h.runInBackground()
+        val shown = { p: Event.Provision.BringUpProgress -> p.ready == 2 && p.byStep == mapOf("setup" to 1) }
+        h.waitFor("a progress line with db1 in setup") { h.eventsOf<Event.Provision.BringUpProgress>().any(shown) }
+        release.countDown()
+
+        assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).allMatch { it is NodeEnd.Ready }
+        assertThat(h.eventsOf<Event.Provision.BringUpProgress>().first(shown).total).isEqualTo(3)
+    }
+
     @Test
     fun `no node sets up before the workspace files are written`() {
         val h = harness(dbs = 2, apps = 1)
@@ -236,6 +251,22 @@ class NodeBringUpTest {
 
     /** The old instance is gone before the launch, so a refused launch leaves the node with none, and no second try. */
     @Test
+    fun `a fault outside any step fails the node on the instance it is on, and the others finish`() {
+        val h = harness(dbs = 2)
+        failSetupOn(h, "db1") { it == "i-db1" }
+        h.plane.failWatch = { alias -> check(alias != "db1") { "watch refused" } }
+
+        val result = h.run()
+
+        val end = result.nodes.getValue("db1")
+        assertThat(end).isInstanceOf(NodeEnd.Failed::class.java)
+        assertThat(end.host.instanceId).isEqualTo("i-db1-1")
+        assertThat(end.replacements).isEqualTo(1)
+        assertThat(result.nodes.getValue("db0")).isInstanceOf(NodeEnd.Ready::class.java)
+        assertThat(h.eventsOf<Event.Provision.NodeFailed>().single().instanceId).isEqualTo("i-db1-1")
+    }
+
+    @Test
     fun `a refused replacement launch fails the node with no instance left and no further replacement`() {
         val h = harness(dbs = 3)
         failSetupOn(h, "db1") { true }
@@ -273,18 +304,18 @@ class NodeBringUpTest {
     }
 
     @Test
-    fun `an image missing the Cilium node fixes fails the node with no replacement`() {
+    fun `an image that lacks what the cluster needs fails the node with no replacement`() {
         val h = harness(dbs = 2)
-        h.settings = h.settings.copy(cni = CniMode.Cilium)
-        h.steps.missingFixes["db1"] = listOf("/etc/sysctl.d/99-cilium.conf")
+        val report = Event.Cilium.NodeImageMissingFixes(listOf("db1"), listOf("/etc/sysctl.d/99-cilium.conf"))
+        h.steps.imageDefects["db1"] = ImageDefect("its image lacks 99-cilium.conf", report)
 
         val result = h.run()
 
         val failed = result.nodes.getValue("db1") as NodeEnd.Failed
         assertThat(failed.step).isEqualTo(PipelineStep.IMAGE_CHECK)
-        assertThat(failed.reason).contains("99-cilium.conf")
+        assertThat(failed.reason).isEqualTo("its image lacks 99-cilium.conf")
         assertThat(h.fleet.calls).isEmpty()
-        assertThat(h.eventsOf<Event.Cilium.NodeImageMissingFixes>().single().nodes).containsExactly("db1")
+        assertThat(h.eventsOf<Event.Cilium.NodeImageMissingFixes>()).containsExactly(report)
         assertThat(result.nodes.getValue("db0")).isInstanceOf(NodeEnd.Ready::class.java)
     }
 
@@ -296,7 +327,6 @@ class NodeBringUpTest {
     @Test
     fun `an image check that cannot run is retried, then the node is replaced`() {
         val h = harness(dbs = 2)
-        h.settings = h.settings.copy(cni = CniMode.Cilium)
         h.steps.scripts["db1 image"] = { host, _ -> check(host.instanceId != "i-db1") { "No exit status returned for command" } }
 
         val result = h.run()
@@ -319,7 +349,7 @@ class NodeBringUpTest {
         assertThat(h.steps.callsOf("join")).isEmpty()
         h.plane.open.set(true)
         assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).allMatch { it is NodeEnd.Ready }
-        assertThat(h.eventsOf<Event.K3s.ControlPlaneGateOpen>()).hasSize(1)
+        assertThat(h.eventsOf<Event.Provision.ControlPlaneGateOpen>()).hasSize(1)
     }
 
     @Test
@@ -341,14 +371,75 @@ class NodeBringUpTest {
     }
 
     @Test
-    fun `at most the join limit of 40 nodes are joining at once`() {
-        val h = harness(dbs = 40)
-        h.plane.registrationDelayMs = 10
+    fun `nodes that reach their join together fill the join limit and never pass it`() {
+        val h = harness(dbs = 20)
+        h.settings = h.settings.copy(joinLimit = 3)
+        // No node registers until 3 are joining, so the limit is reached however the threads are scheduled.
+        h.plane.holdRegistration.set(true)
+
+        val result = h.runInBackground()
+        h.waitFor("the join limit filled") { h.plane.joiningNow == 3 }
+        Thread.sleep(SETTLE_MS)
+        assertThat(h.plane.joiningNow).isEqualTo(3)
+        h.plane.holdRegistration.set(false)
+
+        assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).hasSize(20).allMatch { it is NodeEnd.Ready }
+        assertThat(h.plane.maxJoining).isEqualTo(3)
+    }
+
+    @Test
+    fun `no more SSH sessions than the limit are open at once across every pipeline`() {
+        val h = harness(dbs = 20, apps = 4)
+        h.settings = h.settings.copy(sshSessions = 3)
+        h.steps.sshHoldMs = 2
 
         val result = h.run()
 
-        assertThat(result.nodes.values).hasSize(40).allMatch { it is NodeEnd.Ready }
-        assertThat(h.plane.maxJoining).isLessThanOrEqualTo(h.settings.joinLimit).isGreaterThan(1)
+        assertThat(result.nodes.values).hasSize(24).allMatch { it is NodeEnd.Ready }
+        assertThat(h.steps.sshPeak).isEqualTo(3)
+    }
+
+    @Test
+    fun `a join waiting for its node to register holds no SSH session`() {
+        val h = harness(dbs = 2)
+        h.settings = h.settings.copy(sshSessions = 1)
+        h.plane.holdRegistration.set(true)
+
+        val result = h.runInBackground()
+        h.waitFor("both agents started") { h.steps.callsOf("join").size == 2 }
+
+        assertThat(h.steps.sshInFlight).isZero()
+        h.plane.holdRegistration.set(false)
+        assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).allMatch { it is NodeEnd.Ready }
+    }
+
+    @Test
+    fun `no node configures registry TLS before the registry certificate is uploaded`() {
+        val h = harness(dbs = 3)
+        val release = CountDownLatch(1)
+        h.steps.scripts["control0 registry-cert"] = { _, _ -> release.await() }
+
+        val result = h.runInBackground()
+        h.waitFor("every image checked") { h.steps.callsOf("image").count { !it.startsWith("control0") } == 3 }
+        Thread.sleep(SETTLE_MS)
+
+        assertThat(h.steps.callsOf("registry-tls")).isEmpty()
+        release.countDown()
+        assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).allMatch { it is NodeEnd.Ready }
+    }
+
+    @Test
+    fun `a node whose launch call returned starts while a later launch call is still running`() {
+        val h = harness(dbs = 2, apps = 2)
+        val laterLaunch = CountDownLatch(1)
+        h.afterFirstBatch = { laterLaunch.await() }
+
+        val result = h.runInBackground()
+        h.waitFor("the first batch past SSH") { h.steps.callsOf("ssh").count { it.startsWith("db") } == 2 }
+
+        assertThat(synchronized(h.steps.calls) { h.steps.calls.toList() }).noneMatch { it.startsWith("app") }
+        laterLaunch.countDown()
+        assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).hasSize(4).allMatch { it is NodeEnd.Ready }
     }
 
     /**
@@ -414,7 +505,7 @@ class NodeBringUpTest {
         val result = h.runInBackground()
         h.waitFor("unhealthy", unhealthy)
         h.plane.open.set(true)
-        h.waitFor("the gate open") { h.eventsOf<Event.K3s.ControlPlaneGateOpen>().isNotEmpty() }
+        h.waitFor("the gate open") { h.eventsOf<Event.Provision.ControlPlaneGateOpen>().isNotEmpty() }
         h.waitFor("db1 due for replacement") { h.eventsOf<Event.Provision.NodeReplacing>().isNotEmpty() }
         Thread.sleep(SETTLE_MS)
 
@@ -438,10 +529,18 @@ class NodeBringUpTest {
                     ),
             )
         h.plane.holdRegistration.set(true)
-        h.steps.scripts["db0 join"] = { _, attempt -> if (attempt == 1) h.plane.unhealthy.set(true) }
+        // The first attempt turns the control plane unhealthy and goes on only once that is
+        // reported, so it times out while unhealthy however slowly the health sampler runs.
+        h.steps.scripts["db0 join"] = { _, attempt ->
+            if (attempt == 1) {
+                h.plane.unhealthy.set(true)
+                h.waitFor("unhealthy") { h.eventsOf<Event.Provision.ControlPlaneUnhealthy>().isNotEmpty() }
+            }
+        }
 
         val result = h.runInBackground()
         h.waitFor("unhealthy") { h.eventsOf<Event.Provision.ControlPlaneUnhealthy>().isNotEmpty() }
+        // The attempt counts as forgiven even if it times out after recovery: it saw an unhealthy period.
         Thread.sleep(JOIN_TIMEOUT_MS * 2)
         h.plane.holdRegistration.set(false)
         h.plane.unhealthy.set(false)
@@ -466,7 +565,7 @@ class NodeBringUpTest {
         assertThatThrownBy { h.run() }
             .isInstanceOfSatisfying(ControlNodeFailedException::class.java) {
                 assertThat(it.step).isEqualTo("control-plane-health")
-                assertThat(it.reason).contains("60000ms").contains("systemctl restart k3s")
+                assertThat(it.reason).contains("60000ms").endsWith(". ${FakeControlPlane.RECOVERY}")
             }
         assertThat(h.fleet.calls).isEmpty()
     }
@@ -474,16 +573,16 @@ class NodeBringUpTest {
     @Test
     fun `a control step that fails after its retries stops every pipeline and replaces nothing`() {
         val h = harness(dbs = 3)
-        h.steps.scripts["control0 k3s-server"] = { _, _ -> error("k3s.service failed") }
+        h.steps.scripts["control0 control-plane"] = { _, _ -> error("k3s.service failed") }
         h.steps.scripts["db1 setup"] = { _, _ -> hang() }
 
         assertThatThrownBy { h.run() }
             .isInstanceOfSatisfying(ControlNodeFailedException::class.java) {
                 assertThat(it.alias).isEqualTo("control0")
-                assertThat(it.step).isEqualTo("k3s-server")
+                assertThat(it.step).isEqualTo("control-plane")
                 assertThat(it.reason).contains("k3s.service failed")
             }
-        assertThat(h.steps.callsOf("k3s-server")).hasSize(2)
+        assertThat(h.steps.callsOf("control-plane")).hasSize(2)
         assertThat(h.steps.callsOf("join")).isEmpty()
         assertThat(h.fleet.calls).isEmpty()
         assertThat(h.saved(ServerType.Cassandra)).hasSize(3)

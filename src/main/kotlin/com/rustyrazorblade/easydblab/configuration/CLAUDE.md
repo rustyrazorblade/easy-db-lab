@@ -241,7 +241,7 @@ the flag until 4.5 accepted it. The full explanation lives on the reserved-set K
 
 ### Activation Flow
 
-1. `SetupInstance` seeds `/etc/easy-db-lab/profiling.json` on each Cassandra node with
+1. `NodeSetupService` (each node's setup step in `up`, and `setup-instance`) seeds `/etc/easy-db-lab/profiling.json` on each Cassandra node with
    `enabled: true` and `["-e", "cpu"]`, plus the Pyroscope URL and cluster name — so a fresh cluster
    profiles CPU with no operator action. It no longer writes `/etc/default/cassandra`.
 2. `setup_instance.sh` creates `/mnt/db1/cassandra/profiles` and enables

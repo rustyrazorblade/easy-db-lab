@@ -47,7 +47,7 @@ class K3sControlSteps(
         return ControlPlaneAccess(server.url, server.token)
     }
 
-    override fun openControlPlane(): ControlPlaneConnection = connector.open()
+    override fun openControlPlane(): ControlPlaneConnection = connector.open(state.read(::cniOf))
 
     override fun configureControlPlane(control: ClusterHost) = network.configure(control)
 }
@@ -82,4 +82,5 @@ class ControlNodeNetwork(
     }
 }
 
-private fun cniOf(cluster: ClusterState): CniMode = cluster.initConfig?.cni ?: CniMode.Flannel
+/** The cluster's network plugin; a state that records none is read as Flannel. */
+internal fun cniOf(cluster: ClusterState): CniMode = cluster.initConfig?.cni ?: CniMode.Flannel

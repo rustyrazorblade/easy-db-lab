@@ -1,6 +1,8 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
+import com.rustyrazorblade.easydblab.services.bringup.NodeTracker
+import com.rustyrazorblade.easydblab.services.bringup.NodeWatch
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler

@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.within

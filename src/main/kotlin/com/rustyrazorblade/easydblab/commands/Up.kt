@@ -229,7 +229,6 @@ class Up(
     private fun bringUpSettings(initConfig: InitConfig) =
         BringUpSettings(
             nodeCount = initConfig.cassandraInstances + initConfig.stressInstances,
-            cni = initConfig.cni,
             noSetup = noSetup,
             hostFilter = hosts.hostList,
             timing = timing,

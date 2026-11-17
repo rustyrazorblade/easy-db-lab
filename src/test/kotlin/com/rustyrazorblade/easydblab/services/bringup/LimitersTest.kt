@@ -7,22 +7,31 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+/** The join and SSH limiters on their own, and the health latch they wait on. */
 class LimitersTest {
-    /** Runs [callers] tasks that each hold a permit briefly; returns the most ever held at once. */
+    /**
+     * Runs [callers] tasks that each hold a permit until [limit] are held at once (then they all
+     * let go), and returns the most ever held at once. Waiting for the limit, not sleeping, makes
+     * the limit reached however the threads are scheduled; a limiter that let more through shows.
+     */
     private fun maxInFlight(
         callers: Int,
+        limit: Int,
         hold: (() -> Unit) -> Unit,
     ): Int {
         val inFlight = AtomicInteger()
         val max = AtomicInteger()
         val start = CountDownLatch(1)
+        val full = CountDownLatch(1)
         Executors.newVirtualThreadPerTaskExecutor().use { executor ->
             repeat(callers) {
                 executor.submit {
                     start.await()
                     hold {
-                        max.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
-                        Thread.sleep(20)
+                        if (max.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf) >= limit) full.countDown()
+                        full.await(5, TimeUnit.SECONDS)
+                        // A short hold after the limit filled, so a limiter that let more through has time to.
+                        Thread.sleep(1)
                         inFlight.decrementAndGet()
                     }
                 }
@@ -36,7 +45,7 @@ class LimitersTest {
     fun `40 nodes joining together never have more than the join limit in flight`() {
         val limiter = JoinLimiter(HealthLatch(), limit = 16)
 
-        val max = maxInFlight(40) { work -> limiter.acquire().use { work() } }
+        val max = maxInFlight(40, limit = 16) { work -> limiter.acquire().use { work() } }
 
         assertThat(max).isEqualTo(16)
     }
@@ -45,7 +54,7 @@ class LimitersTest {
     fun `200 pipelines never open more than the SSH session limit`() {
         val limiter = SshSessionLimiter(limit = 50)
 
-        val max = maxInFlight(200) { work -> limiter.withSession(work) }
+        val max = maxInFlight(200, limit = 50) { work -> limiter.withSession(work) }
 
         assertThat(max).isEqualTo(50)
     }

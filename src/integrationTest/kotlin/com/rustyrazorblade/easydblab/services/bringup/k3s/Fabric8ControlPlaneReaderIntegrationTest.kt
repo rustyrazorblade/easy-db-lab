@@ -1,10 +1,14 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.k3s
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinition
 import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinitionBuilder
+import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
+import io.fabric8.kubernetes.client.KubernetesClient
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -13,12 +17,13 @@ import java.time.Instant
 
 /**
  * Proves [Fabric8ControlPlaneReader] against a real K3s API server: `/readyz`, a registered Node,
- * and a CRD counted only once it is `Established`. A CRD whose names collide with another's
- * exists but is never established (the API server's naming controller refuses its names), which
- * is the real "exists, not yet `Established`" state the gate must not count.
+ * the operator Deployment's ready replicas, and a CRD counted only once it is `Established`. A
+ * CRD whose names collide with another's exists but is never established (the API server's naming
+ * controller refuses its names), which is the real "exists, not yet `Established`" state the gate
+ * must not count.
  */
 class Fabric8ControlPlaneReaderIntegrationTest {
-    private val reader = Fabric8ControlPlaneReader.open(WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()))
+    private val reader = Fabric8ControlPlaneReader.open(WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()), CniMode.Cilium)
     private val group = "gate.example.com"
     private val accepted = "gatewidgets.$group"
     private val conflicting = "gatethings.$group"
@@ -27,6 +32,7 @@ class Fabric8ControlPlaneReaderIntegrationTest {
     fun cleanup() {
         reader.close()
         SharedK3s.client().use { client ->
+            operatorDeployment(client).delete()
             listOf(conflicting, accepted).forEach {
                 client
                     .apiextensions()
@@ -129,5 +135,70 @@ class Fabric8ControlPlaneReaderIntegrationTest {
             assertThat(conditions).noneMatch { it.type == "Established" && it.status == "True" }
             assertThat(reader.establishedCrds(names)).containsExactly(accepted)
         }
+    }
+
+    /**
+     * The operator condition reads a real Deployment's status: not ready while its pod starts,
+     * ready once the Deployment reports every desired replica ready. The pod runs the preloaded
+     * image and never pulls, so the wait is the Deployment's own.
+     */
+    @Test
+    fun `the operator condition follows the operator Deployment's ready replicas`() {
+        val condition = "${Constants.Cilium.OPERATOR_DEPLOYMENT} ready"
+        assertThat(reader.networkConditions()[condition]).isFalse()
+
+        SharedK3s.client().use { client ->
+            client.resource(operator()).create()
+            assertThat(reader.operatorReplicas()?.desired).isEqualTo(1)
+            val ready =
+                pollUntil(
+                    operationName = "operator-ready",
+                    maxAttempts = Int.MAX_VALUE,
+                    interval = Duration.ofMillis(500),
+                    deadline = Instant.now().plusSeconds(120),
+                    done = { it },
+                ) { reader.networkConditions().getValue(condition) }
+            assertThat(ready).isTrue()
+            assertThat(reader.operatorReplicas()).isEqualTo(Fabric8ControlPlaneReader.Replicas(1, 1))
+        }
+    }
+
+    private fun operatorDeployment(client: KubernetesClient) =
+        client
+            .apps()
+            .deployments()
+            .inNamespace(Constants.Cilium.NAMESPACE)
+            .withName(Constants.Cilium.OPERATOR_DEPLOYMENT)
+
+    private fun operator() =
+        DeploymentBuilder()
+            .withNewMetadata()
+            .withName(Constants.Cilium.OPERATOR_DEPLOYMENT)
+            .withNamespace(Constants.Cilium.NAMESPACE)
+            .endMetadata()
+            .withNewSpec()
+            .withReplicas(1)
+            .withNewSelector()
+            .addToMatchLabels(OPERATOR_LABEL, "operator")
+            .endSelector()
+            .withNewTemplate()
+            .withNewMetadata()
+            .addToLabels(OPERATOR_LABEL, "operator")
+            .endMetadata()
+            .withNewSpec()
+            .withTerminationGracePeriodSeconds(0L)
+            .addNewContainer()
+            .withName("operator")
+            .withImage(SharedK3s.BUSYBOX_IMAGE)
+            .withImagePullPolicy("Never")
+            .withCommand("sleep", "3600")
+            .endContainer()
+            .endSpec()
+            .endTemplate()
+            .endSpec()
+            .build()
+
+    private companion object {
+        const val OPERATOR_LABEL = "io.cilium/app"
     }
 }

@@ -911,28 +911,6 @@ sealed interface Event {
 
             override fun isError(): Boolean = true
         }
-
-        /** The control-plane gate opened after [waitedSeconds]: agents may now join. */
-        @Serializable
-        @SerialName("K3s.ControlPlaneGateOpen")
-        data class ControlPlaneGateOpen(
-            val waitedSeconds: Long,
-        ) : K3s {
-            override fun toDisplayString(): String = "Control plane ready after ${waitedSeconds}s; nodes may join"
-        }
-
-        /** The control-plane gate did not open in time; [conditions] names each one still false. */
-        @Serializable
-        @SerialName("K3s.ControlPlaneGateTimedOut")
-        data class ControlPlaneGateTimedOut(
-            val waitedSeconds: Long,
-            val conditions: List<String>,
-        ) : K3s {
-            override fun toDisplayString(): String =
-                "Control plane not ready after ${waitedSeconds}s; still waiting on: ${conditions.joinToString(", ")}"
-
-            override fun isError(): Boolean = true
-        }
     }
 
     // =========================================================================
@@ -964,16 +942,6 @@ sealed interface Event {
         @SerialName("Cilium.Installed")
         data object Installed : Cilium {
             override fun toDisplayString(): String = "Cilium CNI installed successfully"
-        }
-
-        /** The Cilium operator has its ready replicas and every CRD the agent needs is Established. */
-        @Serializable
-        @SerialName("Cilium.OperatorReady")
-        data class OperatorReady(
-            val readyReplicas: Int,
-            val crds: Int,
-        ) : Cilium {
-            override fun toDisplayString(): String = "Cilium operator ready ($readyReplicas replica(s)), $crds CRDs established"
         }
 
         @Serializable
@@ -4240,8 +4208,8 @@ sealed interface Event {
 
         /**
          * A health sample crossed a limit: [latencyMs] for a minimal `get nodes` (null when the API
-         * could not be reached) or [rejections] new API-server rejections since the last sample.
-         * Joins and replacements wait until it is healthy again.
+         * could not be reached, [unreachableReason] saying why) or [rejections] new API-server
+         * rejections since the last sample. Joins and replacements wait until it is healthy again.
          */
         @Serializable
         @SerialName("Provision.ControlPlaneUnhealthy")
@@ -4250,11 +4218,42 @@ sealed interface Event {
             val rejections: Long,
             val latencyLimitMs: Long,
             val rejectionLimit: Long,
+            val unreachableReason: String? = null,
+        ) : Provision {
+            override fun toDisplayString(): String {
+                val latency =
+                    latencyMs?.let { "get nodes took ${it}ms (limit ${latencyLimitMs}ms)" }
+                        ?: "API server unreachable (${unreachableReason.orEmpty()})"
+                return "Control plane unhealthy: $latency" +
+                    ", $rejections rejected requests (limit $rejectionLimit). Joins and replacements wait until it recovers."
+            }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The control-plane gate opened after [waitedSeconds]: nodes may now join. [conditions]
+         * names every condition that held, the network plugin's among them.
+         */
+        @Serializable
+        @SerialName("Provision.ControlPlaneGateOpen")
+        data class ControlPlaneGateOpen(
+            val waitedSeconds: Long,
+            val conditions: List<String>,
         ) : Provision {
             override fun toDisplayString(): String =
-                "Control plane unhealthy: " +
-                    (latencyMs?.let { "get nodes took ${it}ms (limit ${latencyLimitMs}ms)" } ?: "API server unreachable") +
-                    ", $rejections rejected requests (limit $rejectionLimit). Joins and replacements wait until it recovers."
+                "Control plane ready after ${waitedSeconds}s (${conditions.size} conditions hold); nodes may join"
+        }
+
+        /** The control-plane gate did not open in time; [conditions] names each one still false. */
+        @Serializable
+        @SerialName("Provision.ControlPlaneGateTimedOut")
+        data class ControlPlaneGateTimedOut(
+            val waitedSeconds: Long,
+            val conditions: List<String>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Control plane not ready after ${waitedSeconds}s; still waiting on: ${conditions.joinToString(", ")}"
 
             override fun isError(): Boolean = true
         }

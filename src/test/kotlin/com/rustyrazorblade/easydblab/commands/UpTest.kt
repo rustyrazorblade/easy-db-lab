@@ -552,7 +552,7 @@ class UpTest : UpTestFixture() {
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(ControlNodeFailedException::class.java)
-            .hasMessageContaining("control0 failed at k3s-server")
+            .hasMessageContaining("control0 failed at control-plane")
             .hasMessageContaining("connection refused")
 
         verify(mockK3sClusterService, times(Constants.Scale.CONTROL_STEP_ATTEMPTS)).startServer(any(), any(), anyOrNull(), any())

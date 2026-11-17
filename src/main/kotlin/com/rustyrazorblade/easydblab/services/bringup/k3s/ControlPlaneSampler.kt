@@ -1,6 +1,8 @@
-package com.rustyrazorblade.easydblab.services.bringup
+package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
+import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneHealth
+import com.rustyrazorblade.easydblab.services.bringup.HealthSampler
 import io.fabric8.kubernetes.api.model.ListOptionsBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
@@ -8,7 +10,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * Takes one [ControlPlaneHealth.Sample] of the API server (design D6): how long a `get nodes` with
+ * Takes one [ControlPlaneHealth.Sample] of the API server (design D8): how long a `get nodes` with
  * `limit=1` takes, which goes through the datastore like a full list without moving 1,000 Nodes,
  * and how much `apiserver_flowcontrol_rejected_requests_total`, summed over every priority level,
  * grew since the last sample. Both go through one client from [K8sClientProvider], on the

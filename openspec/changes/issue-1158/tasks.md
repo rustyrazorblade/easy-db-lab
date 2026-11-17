@@ -3,7 +3,7 @@
 - [x] 1.1 `Constants.Scale`: add `JOIN_CONCURRENCY` (16), `MAX_NODE_REPLACEMENTS` (2, owner decision), `MIN_CLUSTER_REPLACEMENTS` (3), `CLUSTER_REPLACEMENT_FRACTION` (0.05), `GATE_TIMEOUT_SECONDS` (600), `GATE_POLL_INTERVAL_SECONDS` (5), `NODE_SETUP_TIMEOUT_SECONDS` (900), `NODE_REGISTRATION_TIMEOUT_SECONDS` (300), `NODE_READY_TIMEOUT_SECONDS` (600), `HEALTH_SAMPLE_INTERVAL_SECONDS` (5), `HEALTH_LATENCY_LIMIT_MS` (2000), `HEALTH_REJECTION_LIMIT` (25), `HEALTH_RECOVERY_SAMPLES` (3), `HEALTH_UNHEALTHY_TIMEOUT_SECONDS` (900), `PROGRESS_INTERVAL_SECONDS` (15), each with KDoc saying why
 - [x] 1.2 `Constants.Cilium.REQUIRED_CRDS`: the CRDs the Cilium agent waits for at `Constants.Cilium.VERSION`, read from that version's source or chart; the KDoc says a version bump must update it
 - [x] 1.3 `Event`: add `fun showOnConsole(): Boolean = true`; `ConsoleEventListener` skips an event that returns false unless `isError()`; unit test both cases (event-system delta)
-- [x] 1.4 `events/Event.kt`: add `Provision.NodeStepStarted`, `NodeStepCompleted` (both `showOnConsole = false`), `NodeStepFailed` (error), `NodeReplacing`, `NodeReplaced`, `NodeReady`, `NodesFailed` (error, list of `FailedNode`), `ControlPlaneUnhealthy` (error), `ControlPlaneHealthy`, `BringUpProgress`; `K3s.ControlPlaneGateOpen`, `K3s.ControlPlaneGateTimedOut` (error); `Cilium.OperatorReady`.  Each one has structured fields and a `toDisplayString()`.  Add a unit test for the progress line's text from a sample `byStep` map
+- [x] 1.4 `events/Event.kt`: add `Provision.NodeStepStarted`, `NodeStepCompleted` (both `showOnConsole = false`), `NodeStepFailed` (error), `NodeReplacing`, `NodeReplaced`, `NodeReady`, `NodesFailed` (error, list of `FailedNode`), `ControlPlaneUnhealthy` (error), `ControlPlaneHealthy`, `BringUpProgress`; `Provision.ControlPlaneGateOpen`, `Provision.ControlPlaneGateTimedOut` (error).  Each one has structured fields and a `toDisplayString()`.  Add a unit test for the progress line's text from a sample `byStep` map
 - [x] 1.5 `events/CLAUDE.md`: list the new events and `showOnConsole`
 
 ## 2. Per-node building blocks (unit tier, test first)
@@ -23,7 +23,7 @@
 
 ## 4. Control-plane gate
 
-- [x] 4.1 `ControlPlaneGate`: polls API server readiness, control node registered, and under Cilium the operator Deployment's ready replicas and every `REQUIRED_CRDS` CRD `Established`; opens once; times out naming the false conditions; emits `Cilium.OperatorReady` and `K3s.ControlPlaneGateOpen`.  Unit tests with a fake reader: opens only when all hold, Flannel needs no Cilium conditions, timeout names the false ones
+- [x] 4.1 `ControlPlaneGate`: polls API server readiness, control node registered, and under Cilium the operator Deployment's ready replicas and every `REQUIRED_CRDS` CRD `Established`; opens once; times out naming the false conditions; emits `Provision.ControlPlaneGateOpen`.  The Cilium conditions come from the K3s reader's `networkConditions()`; the gate names no plugin.  Unit tests with a fake reader: opens only when all hold, a plugin with no conditions needs only the API server and the control node, timeout names the false ones; `CiliumGateConditionsTest` for the Cilium conditions; the reader integration test for the operator's ready replicas on K3s
 - [x] 4.2 Integration test on K3s TestContainers: a CRD that exists but is not yet `Established` does not count; once established it does
 
 ## 5. Node steps as services

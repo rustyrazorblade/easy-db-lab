@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.events.Event
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.entry
@@ -62,14 +61,14 @@ class BringUpProgressTest {
     fun `the control node's step is shown on its own, and goes once its pipeline ends`() {
         val progress = BringUpProgress(total = 2, joinLimit = 16, clock = Clock.fixed(start, ZoneOffset.UTC), startedAt = start)
 
-        progress.controlEntered(PipelineStep.K3S_SERVER)
+        progress.controlEntered(PipelineStep.CONTROL_PLANE)
         progress.enter("db0", PipelineStep.SETUP)
         val during = progress.snapshot()
         progress.controlEntered(null)
 
-        assertThat(during.controlStep).isEqualTo("k3s-server")
+        assertThat(during.controlStep).isEqualTo("control-plane")
         assertThat(during.byStep).containsExactly(entry("setup", 1))
-        assertThat(during.toDisplayString()).startsWith("[0s] 2 nodes: control k3s-server, setup 1, join 0/16")
+        assertThat(during.toDisplayString()).startsWith("[0s] 2 nodes: control control-plane, setup 1, join 0/16")
         assertThat(progress.snapshot().controlStep).isNull()
     }
 
@@ -88,6 +87,6 @@ class BringUpProgressTest {
         nodes: Int,
         expected: Int,
     ) {
-        assertThat(BringUpSettings(nodeCount = nodes, cni = CniMode.Flannel, hostFilter = hosts).runCount).isEqualTo(expected)
+        assertThat(BringUpSettings(nodeCount = nodes, hostFilter = hosts).runCount).isEqualTo(expected)
     }
 }

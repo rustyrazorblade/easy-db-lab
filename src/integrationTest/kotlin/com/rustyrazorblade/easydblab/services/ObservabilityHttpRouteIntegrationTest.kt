@@ -19,6 +19,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -105,6 +106,36 @@ class ObservabilityHttpRouteIntegrationTest : BaseKoinTest() {
         }
     }
 
+    @Test
+    fun `an interrupt ends a request whose answer never comes, at once`() {
+        // A Service that reads the whole request and never answers, so the caller is blocked
+        // reading the response when the interrupt comes: a stop signal of `metrics stream`.
+        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { silent ->
+            val requestRead = CompletableFuture<Unit>()
+            thread(isDaemon = true) {
+                runCatching {
+                    val socket = silent.accept()
+                    val reader = socket.getInputStream().bufferedReader()
+                    generateSequence { reader.readLine() }.takeWhile { it.isNotEmpty() }.count()
+                    requestRead.complete(Unit)
+                    Thread.sleep(Long.MAX_VALUE)
+                }
+            }
+            val failure = CompletableFuture<Throwable?>()
+            val caller =
+                thread {
+                    failure.complete(
+                        runCatching { routed(ObservabilityRoute.Direct).get(target(silent.localPort), "/x") }.exceptionOrNull(),
+                    )
+                }
+            requestRead.get(5, TimeUnit.SECONDS)
+
+            caller.interrupt()
+
+            assertThat(failure.get(INTERRUPT_WAIT_SECONDS, TimeUnit.SECONDS)).isInstanceOf(InterruptedIOException::class.java)
+        }
+    }
+
     /** The merged [ObservabilityHttp] over a looked-up [route], as a `metrics stream` cycle builds it. */
     private fun routed(route: ObservabilityRoute) = DefaultObservabilityHttp(RouteServiceAccess(state, route), state::tenant, factory)
 
@@ -123,5 +154,8 @@ class ObservabilityHttpRouteIntegrationTest : BaseKoinTest() {
 
     private companion object {
         const val SOCKS_VERSION = 5
+
+        /** Far below the 30 s read timeout, so only the interrupt can end the request in time. */
+        const val INTERRUPT_WAIT_SECONDS = 5L
     }
 }

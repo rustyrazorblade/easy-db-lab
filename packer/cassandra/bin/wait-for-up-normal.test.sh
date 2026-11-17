@@ -209,22 +209,33 @@ else
   fail "expected 'Waiting for JMX' and a final OK, got: ${OUTPUT}"
 fi
 
-# --- sjk-mx reads JMX over the local socket ---------------------------------------
-# Attaching to the Cassandra pid fails on JDK 8 ("Failed to access MBean server"): root cannot
-# attach to a JVM another user owns.  sjk-mx connects to the local JMX port instead, which works
-# on every JDK the release-line table selects.
+# --- sjk-mx: pid attach, then the local JMX port ---------------------------------
+# The pid attach fails on JDK 8 (root cannot attach to a JVM another user owns); the JMX port fails
+# on JDK 9+ (sjk cannot reach java.rmi internals).  sjk-mx tries the pid, then the port.  The java
+# stub fails for any mode listed in FAIL_MODES (-p, -s) and records each call's connection flag.
 SJK_DIR="${SANDBOX}/sjk"
 mkdir -p "$SJK_DIR"
 printf '#!/bin/bash\nexec "$@"\n' >"${SJK_DIR}/sudo"
-printf '#!/bin/bash\necho "$*" >"%s/java.args"\n' "$STATE" >"${SJK_DIR}/java"
+printf '#!/bin/bash\necho 1234\n' >"${SJK_DIR}/cassandra-pid"
+printf '#!/bin/bash\necho "$4 $5 $6" >>"%s/java.calls"\nfor m in $FAIL_MODES; do [[ "$4" == "$m" ]] && exit 1; done\necho "OperationMode NORMAL"\n' "$STATE" >"${SJK_DIR}/java"
 chmod +x "${SJK_DIR}"/*
-PATH="${SJK_DIR}:${PATH}" bash "${SCRIPT_DIR}/sjk-mx" -b org.apache.cassandra.db:type=StorageService -mg -f OperationMode
-SJK_ARGS="$(cat "${STATE}/java.args" 2>/dev/null)"
-if [[ "$SJK_ARGS" == *"mx -s localhost:7199 -b org.apache.cassandra.db:type=StorageService -mg -f OperationMode"* ]]; then
-  pass "sjk-mx connects to the local JMX port and passes its arguments through"
-else
-  fail "sjk-mx should connect with -s localhost:7199, ran java ${SJK_ARGS}"
-fi
+
+# FAIL_MODES | expected exit | expected calls (connection flag and target, then the first argument)
+while IFS='|' read -r fail_modes want_status want_calls; do
+  rm -f "${STATE}/java.calls"
+  FAIL_MODES="$fail_modes" PATH="${SJK_DIR}:${PATH}" bash "${SCRIPT_DIR}/sjk-mx" -b x >/dev/null
+  got_status=$?
+  got_calls="$(paste -sd ';' "${STATE}/java.calls")"
+  if [[ "$got_status" == "$want_status" && "$got_calls" == "$want_calls" ]]; then
+    pass "sjk-mx with failing modes [${fail_modes}] exits ${want_status} after: ${want_calls}"
+  else
+    fail "sjk-mx with failing modes [${fail_modes}]: want ${want_status} '${want_calls}', got ${got_status} '${got_calls}'"
+  fi
+done <<'TABLE'
+|0|-p 1234 -b
+-p|0|-p 1234 -b;-s localhost:7199 -b
+-p -s|1|-p 1234 -b;-s localhost:7199 -b
+TABLE
 
 # --- Cassandra is not running at all ---------------------------------------------
 run_script PID_GONE_AT=1

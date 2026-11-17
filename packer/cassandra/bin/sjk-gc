@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# Stream Cassandra's GC activity with sjk over the local JMX port. Attaching to the pid (-p) fails
-# on JDK 8 for a user other than the JVM's owner; the socket works on every JDK.
+# Stream Cassandra's GC activity with sjk. As in sjk-mx, the pid attach fails on JDK 8 and the local
+# JMX port fails on JDK 9 and later, so try the pid first and fall back to the port. Both run as
+# root: only the JVM's owner or root may attach to it.
 
-java -jar /usr/local/lib/sjk.jar gc -s localhost:7199 "$@"
+sudo java -jar /usr/local/lib/sjk.jar gc -p "$(cassandra-pid)" "$@" \
+  || sudo java -jar /usr/local/lib/sjk.jar gc -s localhost:7199 "$@"

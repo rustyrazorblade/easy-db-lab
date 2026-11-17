@@ -1,6 +1,12 @@
 #!/bin/bash
 #
-# Read Cassandra's MBeans with sjk over the local JMX port. Attaching to the pid (-p) fails on JDK 8,
-# where root cannot attach to a JVM the cassandra user owns; the socket works on every JDK.
+# Read Cassandra's MBeans with sjk. sjk runs on the node's selected JDK, which is the one Cassandra
+# runs on, and neither connection works on every JDK:
+#   - attaching to the pid (-p) fails on JDK 8, where root cannot attach to a JVM the cassandra
+#     user owns ("Failed to access MBean server");
+#   - the local JMX port (-s) fails on JDK 9 and later, where sjk cannot reach the java.rmi
+#     internals it patches.
+# So try the pid first and fall back to the port.
 
-sudo java -jar /usr/local/lib/sjk.jar mx -s localhost:7199 "$@" 2>/dev/null
+sudo java -jar /usr/local/lib/sjk.jar mx -p "$(cassandra-pid)" "$@" 2>/dev/null \
+  || sudo java -jar /usr/local/lib/sjk.jar mx -s localhost:7199 "$@" 2>/dev/null

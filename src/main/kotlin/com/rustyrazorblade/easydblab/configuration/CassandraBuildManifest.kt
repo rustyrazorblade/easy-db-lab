@@ -40,7 +40,12 @@ data class CassandraBuildManifest(
     val tarball: String,
     val tarballBytes: Long,
     val tarballSha256: String,
+    /** The JDKs the build runs on, from `java.supported` in its build.xml; empty in a manifest written before the field. */
+    val javaSupported: List<String> = emptyList(),
 ) {
+    /** [javaSupported], or [javaVersion] alone for a manifest written before the field. */
+    fun supportedJdks(): List<String> = javaSupported.ifEmpty { listOf(javaVersion) }
+
     fun encode(): String = JSON.encodeToString(this)
 
     companion object {

@@ -37,7 +37,7 @@ class S3BucketTest : BaseKoinTest() {
     @Test
     fun `execute outputs bucket name from cluster state`() {
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), s3Bucket = "my-test-bucket"),
+            ClusterState(name = "test-cluster", s3Bucket = "my-test-bucket"),
         )
         S3Bucket().execute()
         assertThat(stdout.toString().trim()).isEqualTo("my-test-bucket")
@@ -46,7 +46,7 @@ class S3BucketTest : BaseKoinTest() {
     @Test
     fun `execute errors when no bucket configured`() {
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), s3Bucket = null),
+            ClusterState(name = "test-cluster", s3Bucket = null),
         )
         assertThatThrownBy { S3Bucket().execute() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -56,7 +56,7 @@ class S3BucketTest : BaseKoinTest() {
     @Test
     fun `execute errors when bucket is blank`() {
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), s3Bucket = ""),
+            ClusterState(name = "test-cluster", s3Bucket = ""),
         )
         assertThatThrownBy { S3Bucket().execute() }
             .isInstanceOf(IllegalStateException::class.java)

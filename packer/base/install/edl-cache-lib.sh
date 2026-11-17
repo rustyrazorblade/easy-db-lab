@@ -55,6 +55,64 @@ cached_fetch() {
     fi
 }
 
+# cache_uri_supported <cache-uri>
+# True when the copy tool for the URI's scheme is known; else prints the scheme error and returns 2.
+# Only s3:// is known today; a gs:// case is the one line a GCP image adds.
+cache_uri_supported() {
+    case "$1" in
+        s3://*) return 0 ;;
+        *)
+            echo "ERROR: unknown cache URI scheme in '$1' (supported: s3://)" >&2
+            return 2
+            ;;
+    esac
+}
+
+# cache_get_uri <cache-uri> <dest> - copy a cache object to <dest>; non-zero on a miss.
+cache_get_uri() {
+    cache_uri_supported "$1" || return 2
+    aws s3 cp "$1" "$2" --no-progress 2>/dev/null
+}
+
+# cache_put_uri <src> <cache-uri> - write <src> to the cache object.
+cache_put_uri() {
+    cache_uri_supported "$2" || return 2
+    aws s3 cp "$1" "$2" --no-progress 2>/dev/null
+}
+
+# cached_fetch_uri <cache-uri> <dest> <url> [<fallback-url>]
+# The runtime download cache: the CLI names the cache object by its full URI (it knows the
+# account bucket of the user, which /etc/edl-cache.env does not), so this reads no config.
+# A hit copies the object to <dest>. A miss downloads <url>, then <fallback-url>, and writes the
+# tarball to <cache-uri>. The copy tool is chosen by the URI scheme; only s3:// is known today.
+# Fails, printing every URL tried, when no URL could be downloaded.
+cached_fetch_uri() {
+    local uri="$1" dest="$2" url="$3" fallback="${4:-}"
+
+    cache_uri_supported "$uri" || return 2
+
+    if cache_get_uri "$uri" "$dest"; then
+        echo "cache hit:  $uri"
+        return 0
+    fi
+
+    local tried="" candidate
+    for candidate in "$url" "$fallback"; do
+        [ -n "$candidate" ] || continue
+        tried="${tried}  ${candidate}
+"
+        echo "cache miss: downloading $candidate"
+        if curl -fsSL --retry 3 "$candidate" -o "$dest"; then
+            cache_put_uri "$dest" "$uri" || echo "WARN: failed to write the cache object $uri"
+            return 0
+        fi
+        rm -f "$dest"
+    done
+
+    printf 'ERROR: download failed from every URL tried:\n%s' "$tried" >&2
+    return 1
+}
+
 # Restore the apt archive cache from S3 into /var/cache/apt/archives so subsequent apt installs
 # reuse previously-downloaded .debs instead of hitting the mirrors.
 apt_cache_restore() {

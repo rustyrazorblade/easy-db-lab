@@ -53,7 +53,6 @@ class DefaultStressJobServiceManifestTest : BaseKoinTest() {
     ) = ClusterState(
         name = "test-cluster",
         clusterId = "golden-cluster-id",
-        versions = mutableMapOf(),
         infrastructure = if (withInfrastructure) InfrastructureState(vpcId = "vpc-test", region = "us-west-2") else null,
         initConfig = InitConfig(region = "us-west-2", telemetryRedirect = redirect, tenant = "acme"),
         hosts =

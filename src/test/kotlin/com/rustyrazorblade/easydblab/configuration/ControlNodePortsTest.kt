@@ -45,7 +45,7 @@ class ControlNodePortsTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "acct"))
+                        whenever(it.load()).thenReturn(ClusterState(name = "test", s3Bucket = "acct"))
                     }
                 }
                 single { TemplateService(get(), get()) }

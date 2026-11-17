@@ -32,7 +32,7 @@ class StressSidecarConfigTest : BaseKoinTest() {
                     mock<ClusterStateManager>().also {
                         whenever(
                             it.load(),
-                        ).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        ).thenReturn(ClusterState(name = "test"))
                     }
                 }
                 single { TemplateService(get(), get()) }

@@ -8,7 +8,7 @@ The **Build Cassandra Ref** workflow turns an arbitrary Apache Cassandra git ref
    environment variables, exposed ports (7000/7001/7199/9042/9160), and
    `/var/lib/cassandra` data volume.
 2. A **binary tarball** attached to a per-build GitHub release, consumable by the
-   lab install path (`cassandra_versions.yaml` + `install_cassandra.sh`).
+   lab install path (a profile build, or `cassandra install --url`).
 
 This is the self-service alternative to a manual local build or waiting on the
 nightly tarball matrix. It does not change cluster provisioning or the AMI/Packer
@@ -102,7 +102,8 @@ docker pull ghcr.io/<owner>/<repo>/cassandra:sha-<short>
 
 ### Tarball (lab install path)
 
-Pin the release's tarball URL in `packer/cassandra/cassandra_versions.yaml`:
+Name the release's tarball URL in a profile build, a yaml file in
+`~/.easy-db-lab/profiles/<profile>/cassandra_versions/`:
 
 ```yaml
 - version: "my-branch"
@@ -113,8 +114,8 @@ Pin the release's tarball URL in `packer/cassandra/cassandra_versions.yaml`:
 
 `install-cassandra-version` downloads the URL and expects it to unpack into a
 single top-level `*cassandra*` directory, which the `ant artifacts` tarball
-satisfies. The same script runs at AMI bake time and at runtime, so you can skip
-the rebuild entirely and install the tarball onto a running cluster:
+satisfies. `cassandra use my-branch` then installs it on every node; no AMI
+rebuild is needed. For a one-off, skip the file and pass the URL:
 
 ```bash
 easy-db-lab cassandra install my-branch \

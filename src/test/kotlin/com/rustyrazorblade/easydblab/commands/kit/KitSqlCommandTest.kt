@@ -64,7 +64,6 @@ class KitSqlCommandTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 hosts = mapOf(ServerType.Stress to listOf(appHost)),
             ),
         )

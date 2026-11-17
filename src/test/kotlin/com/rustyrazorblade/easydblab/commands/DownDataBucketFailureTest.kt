@@ -72,7 +72,7 @@ class DownDataBucketFailureTest : BaseKoinTest() {
 
     private fun saveStateWithDataBucket(bucket: String) =
         stateManager.save(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), vpcId = "vpc-123")
+            ClusterState(name = "test-cluster", vpcId = "vpc-123")
                 .apply { dataBucket = bucket },
         )
 

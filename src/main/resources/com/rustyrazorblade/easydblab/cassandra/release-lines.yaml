@@ -1,0 +1,28 @@
+# The JDKs each Cassandra release line runs on, the last layer of the JDK choice (design D2 of
+# issue 1130).  A version name maps to the longest entry that is a prefix of it at a "-" boundary
+# or the end of the name, else to the entry of its leading X.Y.
+#
+# ant_flags are passed to a git build on that JDK only.
+#
+# 5.0-rustyrazorblade is a per-ref entry: that fork branch supports JDK 21, the upstream 5.0 line
+# does not.  Remove it when the cassandra-builds manifest publishes the supported JDKs
+# (cassandra-builds#1).  ForkBuildXmlJdkIntegrationTest fails when the fork's build.xml differs.
+lines:
+  - name: "3.0"
+    java_supported: ["8"]
+  - name: "3.11"
+    java_supported: ["8"]
+  - name: "4.0"
+    java_supported: ["8", "11"]
+    ant_flags: {"11": "-Duse.jdk11=true"}
+  - name: "4.1"
+    java_supported: ["8", "11"]
+    ant_flags: {"11": "-Duse.jdk11=true"}
+  - name: "5.0"
+    java_supported: ["11", "17"]
+  - name: "5.0-rustyrazorblade"
+    java_supported: ["11", "17", "21"]
+  - name: "6.0"
+    java_supported: ["11", "17", "21"]
+  - name: "trunk"
+    java_supported: ["11", "17", "21"]

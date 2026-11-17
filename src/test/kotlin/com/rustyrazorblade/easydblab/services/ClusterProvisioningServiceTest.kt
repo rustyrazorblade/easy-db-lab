@@ -683,7 +683,6 @@ class ClusterProvisioningServiceTest {
         ClusterState(
             clusterId = "cluster-123",
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket-12345",
         )
 

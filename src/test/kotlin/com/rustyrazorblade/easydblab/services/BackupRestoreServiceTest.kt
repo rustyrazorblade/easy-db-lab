@@ -345,7 +345,6 @@ internal class BackupRestoreServiceTest {
     private fun createClusterState(s3Bucket: String? = "test-bucket"): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = s3Bucket,
             clusterId = "test-cluster-id",
             hosts =

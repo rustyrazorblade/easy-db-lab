@@ -24,7 +24,7 @@ import java.io.File
  * cluster's `ClusterId`.
  */
 class YaceManifestBuilderTest : BaseKoinTest() {
-    private val state = ClusterState(name = "lab", versions = mutableMapOf())
+    private val state = ClusterState(name = "lab")
 
     override fun additionalTestModules(): List<Module> =
         listOf(

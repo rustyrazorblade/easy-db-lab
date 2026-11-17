@@ -132,6 +132,23 @@ class CassandraBuildManifestTest {
         assertThat(decoded.name).isEqualTo("5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17")
     }
 
+    @Test
+    fun `a manifest written before javaSupported supports only the JDK it was built with`() {
+        val old = sampleManifest().encode().replace(Regex(""",\s*"javaSupported":\s*\[[^\]]*]"""), "")
+
+        val decoded = CassandraBuildManifest.parse(old)
+
+        assertThat(old).doesNotContain("javaSupported")
+        assertThat(decoded.supportedJdks()).containsExactly("17")
+    }
+
+    @Test
+    fun `a manifest with javaSupported round-trips it`() {
+        val decoded = CassandraBuildManifest.parse(sampleManifest().copy(javaSupported = listOf("11", "17", "21")).encode())
+
+        assertThat(decoded.supportedJdks()).containsExactly("11", "17", "21")
+    }
+
     private fun sampleManifest() =
         CassandraBuildManifest(
             name = "5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17",

@@ -3,10 +3,10 @@
 # Unit tests for install-cassandra-version — the one script both the AMI bake and
 # `easy-db-lab cassandra install` use to install a single Cassandra version.
 #
-# These cover the decisions the script makes before it touches the network: argument handling,
-# the already-installed early return, the guards on building from source, and JDK selection. The
-# install paths themselves (download/extract/build) are exercised against a real container, not
-# here. No network, no Docker, no root: sudo/dpkg/curl/git are stubbed on PATH and the install
+# The CLI resolves every version (design D1 of issue 1130) and passes the script explicit
+# arguments: --url always, and for an Apache release --fallback-url and --cache-uri. These cover
+# argument handling, the already-installed early return, --reinstall, the guards on building from
+# source, JDK selection, and which URLs are fetched through the download cache. No network, no Docker, no root: sudo/dpkg/curl/git are stubbed on PATH and the install
 # directory is redirected into a temp dir.
 #
 # Run directly:  ./install-cassandra-version.test.sh
@@ -116,6 +116,19 @@ assert_no_reach_out() {
 assert_fails_with "unknown flag is rejected" "unknown option --bogus" 5.0 --bogus
 assert_fails_with "a second positional argument is rejected" "unexpected argument" 5.0 6.0
 assert_fails_with "missing version is rejected" "<version> is required"
+assert_fails_with "a missing --url is rejected; the script resolves no version itself" "--url is required" 5.0
+assert_no_reach_out "a missing --url downloads nothing"
+assert_fails_with "--cache-uri with a git build is rejected" "--cache-uri applies only to a tarball" \
+  from-source --url https://github.com/apache/cassandra.git --branch trunk --java 17 --cache-uri s3://b/k
+
+# The node no longer scrapes dlcdn or reads the bake-time cache config; the CLI decides both.
+for gone in 'dlcdn.apache.org' 'edl-cache.env' 'EDL_S3_BUCKET' 'cassandra_versions.yaml'; do
+  if grep -qF "$gone" "$SCRIPT"; then
+    fail "install-cassandra-version still refers to $gone: $(grep -nF "$gone" "$SCRIPT")"
+  else
+    pass "install-cassandra-version does not refer to $gone"
+  fi
+done
 
 run_script --help
 if [[ "$STATUS" -eq 0 && "$OUTPUT" == *"Usage: install-cassandra-version"* ]]; then
@@ -126,7 +139,7 @@ fi
 
 # --- already installed is a no-op --------------------------------------------
 mkdir -p "${CASSANDRA_INSTALL_DIR}/5.0"
-run_script 5.0
+run_script 5.0 --url https://example.com/apache-cassandra-5.0.6-bin.tar.gz
 if [[ "$STATUS" -eq 0 && "$OUTPUT" == *"already installed"* ]]; then
   pass "an installed version exits 0 without reinstalling"
 else
@@ -135,7 +148,7 @@ fi
 assert_no_reach_out "an installed version downloads nothing"
 
 # --- building from source needs both a repo and a JDK ------------------------
-assert_fails_with "a branch with no url is rejected" "requires both --url and --branch" \
+assert_fails_with "a branch with no url is rejected" "--url is required" \
   from-source --branch trunk --java 17
 assert_no_reach_out "a branch with no url clones nothing"
 
@@ -182,7 +195,7 @@ fi
 # --- the config snippet is required, and checked before any download ---------
 mv "$CASSANDRA_IN_SH_SNIPPET" "${SANDBOX}/held"
 assert_fails_with "a missing cassandra.in.sh snippet is reported" \
-  "Missing ${CASSANDRA_IN_SH_SNIPPET}" 4.1
+  "Missing ${CASSANDRA_IN_SH_SNIPPET}" 4.1 --url https://example.com/apache-cassandra-4.1.7-bin.tar.gz
 assert_no_reach_out "a missing snippet fails before downloading anything"
 mv "${SANDBOX}/held" "$CASSANDRA_IN_SH_SNIPPET"
 
@@ -223,22 +236,22 @@ esac
 cp "${FIXTURE}" "\$4"
 SHIM
 
-# curl lists one release on the dlcdn index, and with -o downloads the fixture tarball.
+# curl with -o downloads the fixture tarball. CURL_FAILS=1 fails every download; CURL_FAIL_URL
+# fails only the download of that URL, as a 404 on dlcdn for an archived release would.
 cat >"${CACHE_BIN}/curl" <<SHIM
 #!/bin/bash
 echo "curl \$*" >> "${CALLS}"
 dest=""
+url=""
 while [[ \$# -gt 0 ]]; do
   case "\$1" in
     -o) dest="\$2"; shift 2 ;;
+    http*) url="\$1"; shift ;;
     *) shift ;;
   esac
 done
-if [[ -z "\$dest" ]]; then
-  echo '<a href="5.0.6/">5.0.6/</a>'
-  exit 0
-fi
 [[ "\${CURL_FAILS:-}" == 1 ]] && exit 22
+[[ -n "\${CURL_FAIL_URL:-}" && "\$url" == "\${CURL_FAIL_URL}" ]] && exit 22
 cp "${FIXTURE}" "\$dest"
 SHIM
 
@@ -255,21 +268,22 @@ RELEASE_KEY="cassandra-dist/5.0.6/apache-cassandra-5.0.6-bin.tar.gz"
 
 case_number=0
 
-# Runs the script with the real cache library, a bucket configured, the cache stubs first on PATH,
-# and a new install directory (an earlier case leaves its version installed). Extra environment for
-# the stubs comes first as NAME=value arguments.
+# Runs the script with the real cache library, the cache stubs first on PATH, and a new install
+# directory (an earlier case leaves its version installed), unless KEEP_INSTALL_DIR=1. A stale
+# EDL_S3_BUCKET is set to prove the script ignores it. Extra environment for the stubs comes first
+# as NAME=value arguments.
 run_cached() {
   local env_args=()
   while [[ "$1" == *=* ]]; do
     env_args+=("$1")
     shift
   done
-  case_number=$((case_number + 1))
+  [[ "${KEEP_INSTALL_DIR:-}" == 1 ]] || case_number=$((case_number + 1))
   : >"$CALLS"
   OUTPUT="$(env ${env_args[@]+"${env_args[@]}"} \
     PATH="${CACHE_BIN}:${PATH}" \
     EDL_CACHE_LIB="${SCRIPT_DIR}/../../base/install/edl-cache-lib.sh" \
-    EDL_S3_BUCKET=test-bucket \
+    EDL_S3_BUCKET=bake-account-bucket \
     CASSANDRA_INSTALL_DIR="${SANDBOX}/cached-install-${case_number}" \
     bash "$SCRIPT" "$@" 2>&1)"
   STATUS=$?
@@ -333,7 +347,7 @@ if [[ "$STATUS" -ne 0 ]]; then
 else
   fail "a failed url download should exit non-zero, got 0: ${OUTPUT}"
 fi
-assert_output_contains "a failed url download reports the existing error" "Failed to download version 6.0-HEAD from ${NIGHTLY_URL}"
+assert_output_contains "a failed url download names the version and the URL" "Failed to download version 6.0-HEAD from: ${NIGHTLY_URL}"
 assert_calls_contain "a failed url download was attempted from its url" "curl -fsSL --retry 3 ${NIGHTLY_URL} -o"
 assert_calls_lack "a failed url download does not fall back to the cache" "download-cache/"
 
@@ -343,18 +357,72 @@ assert_output_contains "an s3 url logs the direct download" "direct download (no
 assert_calls_lack "an s3 url does not touch the download cache" "download-cache/"
 assert_calls_lack "an s3 url is not fetched with curl" "curl"
 
-run_cached 5.0
-assert_calls_contain "a released version reads the download cache under its full release number" \
-  "aws s3 cp s3://test-bucket/download-cache/${RELEASE_KEY} "
-assert_output_contains "a released version reports a cache miss" "cache miss: cassandra-dist/5.0.6/"
-assert_calls_contain "a released version is written back to the download cache" \
-  "s3://test-bucket/download-cache/${RELEASE_KEY} --no-progress"
-assert_calls_contain "a released cache miss downloads the release from dlcdn" \
-  "curl -fsSL --retry 3 https://dlcdn.apache.org/cassandra/5.0.6/apache-cassandra-5.0.6-bin.tar.gz -o"
+# An Apache release: the CLI gives the dlcdn URL, the archive URL and the cache object.
+DLCDN_URL="https://dlcdn.example/cassandra/5.0.6/apache-cassandra-5.0.6-bin.tar.gz"
+ARCHIVE_URL="https://archive.example/dist/cassandra/5.0.6/apache-cassandra-5.0.6-bin.tar.gz"
+CACHE_URI="s3://user-account-bucket/download-cache/${RELEASE_KEY}"
+RELEASE_ARGS=(5.0 --url "$DLCDN_URL" --fallback-url "$ARCHIVE_URL" --cache-uri "$CACHE_URI")
 
-run_cached AWS_CACHE_HIT=1 5.0
-assert_output_contains "a released version reports a cache hit" "cache hit:  ${RELEASE_KEY}"
-assert_calls_lack "a released cache hit does not download the release from dlcdn" "apache-cassandra-5.0.6-bin.tar.gz -o"
+run_cached "${RELEASE_ARGS[@]}"
+assert_calls_contain "a release reads the cache object the CLI named" "aws s3 cp ${CACHE_URI} "
+assert_calls_lack "a release never uses the bake-time bucket" "bake-account-bucket"
+assert_calls_contain "a release cache miss downloads the --url" "curl -fsSL --retry 3 ${DLCDN_URL} -o"
+assert_calls_contain "a release cache miss is written back to the cache object" " ${CACHE_URI} --no-progress"
+assert_calls_lack "a release found on dlcdn does not try the archive" "$ARCHIVE_URL"
+if [[ "$STATUS" -eq 0 && -d "${SANDBOX}/cached-install-${case_number}/5.0/conf" ]]; then
+  pass "a release installs under the name the CLI gave, not the release number"
+else
+  fail "a release should install as 5.0 (status $STATUS): $OUTPUT"
+fi
+
+run_cached AWS_CACHE_HIT=1 "${RELEASE_ARGS[@]}"
+assert_output_contains "a release reports a cache hit" "cache hit:  ${CACHE_URI}"
+assert_calls_lack "a release cache hit downloads nothing" "curl"
+
+run_cached CURL_FAIL_URL="$DLCDN_URL" "${RELEASE_ARGS[@]}"
+assert_calls_contain "a release dlcdn does not hold is downloaded from the archive" "curl -fsSL --retry 3 ${ARCHIVE_URL} -o"
+if [[ "$STATUS" -eq 0 ]]; then pass "an archive fallback install succeeds"; else fail "archive fallback failed: $OUTPUT"; fi
+
+run_cached CURL_FAILS=1 "${RELEASE_ARGS[@]}"
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"5.0"* && "$OUTPUT" == *"$DLCDN_URL"* && "$OUTPUT" == *"$ARCHIVE_URL"* ]]; then
+  pass "a release that no URL serves fails, naming the version and both URLs"
+else
+  fail "expected a failure naming 5.0 and both URLs (status $STATUS): $OUTPUT"
+fi
+
+# --- --reinstall --------------------------------------------------------------------------------
+# The old install stays in place until the new one is complete, so a failed download changes nothing.
+run_cached 6.0-HEAD --url "$NIGHTLY_URL"
+REINSTALL_DIR="${SANDBOX}/cached-install-${case_number}"
+echo old > "${REINSTALL_DIR}/6.0-HEAD/marker"
+
+KEEP_INSTALL_DIR=1 run_cached 6.0-HEAD --url "$NIGHTLY_URL"
+assert_calls_lack "without --reinstall an installed version downloads nothing" "curl"
+
+KEEP_INSTALL_DIR=1 run_cached CURL_FAILS=1 6.0-HEAD --url "$NIGHTLY_URL" --reinstall
+if [[ "$STATUS" -ne 0 && -f "${REINSTALL_DIR}/6.0-HEAD/marker" ]]; then
+  pass "a failed --reinstall exits non-zero and leaves the old install in place"
+else
+  fail "a failed --reinstall must keep the old install (status $STATUS): $(ls -a "${REINSTALL_DIR}/6.0-HEAD" 2>&1)"
+fi
+if [[ -z "$(find "$REINSTALL_DIR" -mindepth 1 -maxdepth 1 -name '.*')" ]]; then
+  pass "a failed --reinstall leaves no staging directory behind"
+else
+  fail "a failed --reinstall left $(find "$REINSTALL_DIR" -mindepth 1 -maxdepth 1 -name '.*')"
+fi
+
+KEEP_INSTALL_DIR=1 run_cached 6.0-HEAD --url "$NIGHTLY_URL" --reinstall
+if [[ "$STATUS" -eq 0 && ! -f "${REINSTALL_DIR}/6.0-HEAD/marker" && -f "${REINSTALL_DIR}/6.0-HEAD/conf/cassandra.orig.yaml" ]]; then
+  pass "--reinstall replaces the install with a new, configured one"
+else
+  fail "--reinstall should replace the install (status $STATUS): $OUTPUT"
+fi
+assert_calls_contain "--reinstall downloads from the origin again" "curl -fsSL --retry 3 ${NIGHTLY_URL} -o"
+if [[ -z "$(find "$REINSTALL_DIR" -mindepth 1 -maxdepth 1 -name '.*')" ]]; then
+  pass "a successful --reinstall leaves no staging or old directory behind"
+else
+  fail "a successful --reinstall left $(find "$REINSTALL_DIR" -mindepth 1 -maxdepth 1 -name '.*')"
+fi
 
 echo
 echo "${tests_run} tests, ${tests_failed} failed"

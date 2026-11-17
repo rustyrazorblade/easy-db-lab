@@ -68,7 +68,6 @@ import io.github.resilience4j.retry.Retry
 import org.koin.core.component.inject
 import picocli.CommandLine
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
-import java.io.File
 import java.time.Duration
 import kotlin.random.Random
 
@@ -175,7 +174,6 @@ class Up(
         writeConfigurationFiles()
         runNestedCommand { WriteConfig() }
         waitForSshReady()
-        downloadCassandraVersions()
         setupInstancesIfNeeded()
     }
 
@@ -649,25 +647,6 @@ class Up(
     private fun waitForSshReady() {
         SshReadinessWait(hostOperationsService, remoteOps, eventBus, sshStartupDelay, sshRetryInterval)
             .await(workingState.hosts, databaseHostFilter = hosts.hostList)
-    }
-
-    /** Downloads Cassandra version metadata from db hosts. Meaningless for the control node. */
-    private fun downloadCassandraVersions() {
-        hostOperationsService.withHosts(
-            workingState.hosts,
-            ServerType.Cassandra,
-            hosts.hostList,
-        ) { clusterHost ->
-            val host = clusterHost.toHost()
-            val versionsFile = File(context.workingDirectory, "cassandra_versions.yaml")
-            if (!versionsFile.exists()) {
-                remoteOps.download(
-                    host,
-                    "/etc/cassandra_versions.yaml",
-                    versionsFile.toPath(),
-                )
-            }
-        }
     }
 
     /**

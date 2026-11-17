@@ -8,10 +8,13 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.SidecarService
+import com.rustyrazorblade.easydblab.services.cassandraversions.AgentOutcome
+import com.rustyrazorblade.easydblab.services.cassandraversions.AxonOpsAgents
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
@@ -34,6 +37,7 @@ class Start : PicoBaseCommand() {
     private val sidecarService: SidecarService by inject()
     private val hostOperationsService: HostOperationsService by inject()
     private val kitHookExecutor: KitHookExecutor by inject()
+    private val axonOpsAgents: AxonOpsAgents by inject()
 
     companion object {
         private const val DEFAULT_SLEEP_BETWEEN_STARTS_SECONDS = 120L
@@ -49,11 +53,19 @@ class Start : PicoBaseCommand() {
     )
     var sidecarImage: String = DEFAULT_SIDECAR_IMAGE
 
+    @Option(
+        names = ["--skip-axonops"],
+        description = ["Start Cassandra with no AxonOps agent this time, and do not start axon-agent"],
+    )
+    var skipAxonOps: Boolean = false
+
     @Mixin
     var hosts = HostsMixin()
 
     override fun execute() {
         validateVersionsAssigned()
+        val withAxonOps = userConfig.isAxonOpsEnabled() && !skipAxonOps
+        selectAxonOpsAgents(withAxonOps)
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val h = host.toHost()
@@ -73,9 +85,9 @@ class Start : PicoBaseCommand() {
         }
 
         // Start axon-agent on Cassandra nodes if configured
-        if (userConfig.isAxonOpsEnabled()) {
+        if (withAxonOps) {
             eventBus.emit(Event.Cassandra.AxonAgentStarting)
-            hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "", parallel = true) { host ->
+            hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->
                 remoteOps.executeRemotely(host.toHost(), "sudo systemctl start axon-agent")
             }
         }
@@ -91,6 +103,30 @@ class Start : PicoBaseCommand() {
     }
 
     /**
+     * Before Cassandra starts on any node, names in each node's systemd drop-in the AxonOps agent
+     * that start loads: with AxonOps on, the agent installed for the node's release and JDK, and
+     * when any node has none, nothing starts; else no agent.
+     */
+    private fun selectAxonOpsAgents(withAxonOps: Boolean) {
+        val targets = hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
+        val agents: Map<String, String?> =
+            if (withAxonOps) {
+                val outcomes = axonOpsAgents.install(targets, clusterState)
+                val unavailable = outcomes.filterIsInstance<AgentOutcome.Unavailable>()
+                if (unavailable.isNotEmpty()) {
+                    unavailable.forEach { eventBus.emit(it.error) }
+                    throw CommandFailedException(
+                        "cassandra start: no AxonOps agent on ${unavailable.joinToString(", ") { it.host.alias }}",
+                    )
+                }
+                outcomes.filterIsInstance<AgentOutcome.Installed>().associate { it.host.alias to it.agent }
+            } else {
+                emptyMap()
+            }
+        hostOperationsService.withHosts(targets, parallel = true) { host -> axonOpsAgents.select(host, agents[host.alias]) }
+    }
+
+    /**
      * Fails fast when any targeted node has no version assigned.
      *
      * A node only gets a version once `cassandra use <version>` has run against it, which both
@@ -99,12 +135,11 @@ class Start : PicoBaseCommand() {
      * far downstream, so we reject it up front with an actionable message before touching any node.
      */
     private fun validateVersionsAssigned() {
-        val versions = clusterState.versions.orEmpty()
         val missing =
             hostOperationsService
                 .filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
                 .map { it.alias }
-                .filter { versions[it].isNullOrBlank() }
+                .filter { clusterState.nodes[it]?.version.isNullOrBlank() }
 
         check(missing.isEmpty()) {
             "No version assigned for node(s): ${missing.joinToString(", ")}. " +

@@ -1,241 +1,274 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
+import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraVersionResolver
+import com.rustyrazorblade.easydblab.services.cassandraversions.FakeCassandraService
+import com.rustyrazorblade.easydblab.services.cassandraversions.FakeNodes
+import com.rustyrazorblade.easydblab.services.cassandraversions.RecordOnlySources
+import com.rustyrazorblade.easydblab.services.cassandraversions.VersionResolutionException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
+import kotlin.random.Random
 
+/**
+ * `cassandra use` over a fake fleet: the real resolver and installer run; SSH, Cassandra's state
+ * and the nested config commands are stand-ins.
+ */
 class UseCassandraTest : BaseKoinTest() {
-    private lateinit var mockClusterStateManager: ClusterStateManager
-    private lateinit var hostOperationsService: HostOperationsService
+    private lateinit var nodes: FakeNodes
+    private lateinit var stateManager: ClusterStateManager
     private lateinit var outputHandler: BufferedOutputHandler
+    private lateinit var state: ClusterState
+    private var saveCount = 0
 
-    private val testCassandraHost =
-        ClusterHost(
-            publicIp = "54.1.2.3",
-            privateIp = "10.0.1.1",
-            alias = "db0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-db0",
-        )
-
-    private val testClusterState =
-        ClusterState(
-            name = "test-cluster",
-            versions = mutableMapOf(),
-            initConfig = InitConfig(region = "us-west-2"),
-            hosts =
-                mapOf(
-                    ServerType.Cassandra to listOf(testCassandraHost),
-                ),
-        )
-
-    // No-op CommandExecutor — skips DownloadConfig and UpdateConfig sub-commands.
-    // Used to isolate version state mutation from file I/O side effects.
     private val chained = mutableListOf<PicoCommand>()
-    private val chainedExitCodes = mutableMapOf<Class<*>, Int>()
-    private val noopCommandExecutor =
-        object : CommandExecutor {
-            override fun <T : PicoCommand> execute(commandFactory: () -> T): Int {
-                val command = commandFactory()
-                chained += command
-                return chainedExitCodes[command.javaClass] ?: 0
-            }
-
-            override fun <T : PicoCommand> schedule(commandFactory: () -> T) {}
-        }
+    private val chainedExitCodes = mutableMapOf<String, Int>()
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single<ClusterStateManager> { mockClusterStateManager }
-                single { hostOperationsService }
-                single<CommandExecutor> { noopCommandExecutor }
+                single<ClusterStateManager> { stateManager }
+                single<RemoteOperationsService> { nodes }
+                single { HostOperationsService(stateManager) }
+                single<CassandraService> { FakeCassandraService() }
+                single { CassandraVersionResolver(RecordOnlySources()) }
+                single { CassandraInstaller(get(), get(), get(), get()) }
+                single<CommandExecutor> {
+                    object : CommandExecutor {
+                        override fun <T : PicoCommand> execute(commandFactory: () -> T): Int {
+                            val command = commandFactory()
+                            chained += command
+                            return chainedExitCodes[command.javaClass.simpleName] ?: 0
+                        }
+
+                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) {}
+                    }
+                }
             },
         )
 
     @BeforeEach
-    fun setupMocks() {
-        mockClusterStateManager = mock()
-        hostOperationsService = HostOperationsService(mockClusterStateManager)
+    fun setup() {
+        nodes = FakeNodes()
+        stateManager = mock()
+        withNodes(2)
+        whenever(stateManager.exists()).thenReturn(true)
+        doAnswer { saveCount++ }.whenever(stateManager).save(any())
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
+    }
 
-        whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
-        whenever(mockClusterStateManager.exists()).thenReturn(true)
+    private fun withNodes(count: Int) {
+        state =
+            ClusterState(
+                name = "test-cluster",
+                initConfig = InitConfig(region = "us-west-2"),
+                hosts = mapOf(ServerType.Cassandra to (0 until count).map { FakeNodes.host("db$it") }),
+            )
+        whenever(stateManager.load()).thenReturn(state)
+    }
 
-        // Some tests chain to UpdateConfig — create a patch file for them.
-        File(context.workingDirectory, "cassandra.patch.yaml").writeText(
-            """
-            cluster_name: test-cluster
-            num_tokens: 4
-            """.trimIndent(),
+    private fun use(
+        version: String,
+        configure: UseCassandra.() -> Unit = {},
+    ) = UseCassandra().apply {
+        this.version = version
+        configure()
+    }
+
+    private fun messages() = outputHandler.messages.joinToString("\n")
+
+    private fun errors() = outputHandler.errors.joinToString("\n") { it.first }
+
+    private fun activations(alias: String) = nodes.commandsOn(alias).filter { it.startsWith("sudo use-cassandra") }
+
+    @Test
+    fun `a version missing everywhere is installed, then activated with the chosen JDK and Python, and recorded once`() {
+        use("5.0").execute()
+
+        listOf("db0", "db1").forEach { alias ->
+            assertThat(nodes.scriptRuns(alias)).hasSize(1)
+            assertThat(activations(alias)).containsExactly("sudo use-cassandra 5.0 --java 17 --python 3.11.9")
+            val node = state.nodes.getValue(alias)
+            assertThat(node.version).isEqualTo("5.0")
+            assertThat(node.javaVersion).isEqualTo("17")
+            assertThat(node.installed.keys).containsExactly("5.0")
+        }
+        assertThat(state.default.version).isEqualTo("5.0")
+        assertThat(saveCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `a node that has the version does not download it, and the side-effect warning names the one that does`() {
+        nodes.disk("db0") += "5.0"
+
+        use("5.0").execute()
+
+        assertThat(nodes.scriptRuns("db0")).isEmpty()
+        assertThat(nodes.scriptRuns("db1")).hasSize(1)
+        val warning = outputHandler.messages.single { it.contains("re-applies") }
+        assertThat(warning).contains("db1 download 5.0 first", "JDK 17", "cassandra.patch.yaml", "db0, db1")
+    }
+
+    @Test
+    fun `a failed install on one node activates the version on no node and names the node and the URL`() {
+        nodes.installFailures["db1"] = "ERROR: Failed to download version 5.0"
+
+        assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(activations("db0") + activations("db1")).isEmpty()
+        assertThat(state.nodes["db0"]?.version.orEmpty()).isEmpty()
+        assertThat(errors()).contains("db1", "5.0", "5.0.6", "activated on no host")
+        assertThat(chained).isEmpty()
+    }
+
+    @Test
+    fun `a node that cannot be listed stops use before any node downloads`() {
+        nodes.unreachable += "db1"
+
+        assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(nodes.scriptRuns("db0")).isEmpty()
+        assertThat(errors()).contains("db1")
+    }
+
+    @Test
+    fun `a name no source has fails before any node is touched`() {
+        assertThatThrownBy { use("no-such-version").execute() }.isInstanceOf(VersionResolutionException::class.java)
+
+        assertThat(nodes.commands).isEmpty()
+    }
+
+    @Test
+    fun `--java outside the supported list fails before any node is touched`() {
+        assertThatThrownBy { use("5.0") { javaVersion = "21" }.execute() }
+            .isInstanceOf(VersionResolutionException::class.java)
+            .hasMessageContaining("11")
+            .hasMessageContaining("17")
+
+        assertThat(nodes.commands).isEmpty()
+    }
+
+    @Test
+    fun `--java is passed to the node and recorded, and a later use without it keeps that JDK`() {
+        use("5.0") { javaVersion = "11" }.execute()
+        use("5.0").execute()
+
+        assertThat(activations("db0")).containsExactly(
+            "sudo use-cassandra 5.0 --java 11 --python 3.11.9",
+            "sudo use-cassandra 5.0 --java 11 --python 3.11.9",
         )
-    }
-
-    @AfterEach
-    fun cleanup() {
-        File(context.workingDirectory, "cassandra.patch.yaml").delete()
+        assertThat(state.nodes.getValue("db0").javaVersion).isEqualTo("11")
+        assertThat(nodes.scriptRuns("db0")).hasSize(1)
     }
 
     @Test
-    fun `execute uses cassandra version and saves state`() {
-        val command = UseCassandra()
-        command.version = "4.1"
-        command.execute()
+    fun `--hosts switches only the named nodes and leaves the cluster default alone`() {
+        state.nodes["db0"] = NodeState(version = "4.1")
 
-        verify(mockClusterStateManager).save(testClusterState)
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("Using version 4.1")
-    }
+        use("5.0") { hosts.hostList = "db1" }.execute()
 
-    /** The host filter is reported as typed, not as the internal mixin object. */
-    @Test
-    fun `the version announcement reports the host filter`() {
-        val command = UseCassandra()
-        command.version = "4.1"
-        command.hosts.hostList = "db0"
-        command.execute()
-
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("Using version 4.1 on 1 hosts, filter: db0")
-        assertThat(output).doesNotContain("HostsMixin", "Host(", "i-db0")
-    }
-
-    /** It said "on 3 hosts" for `--hosts=db2`: the count was the cluster's, not the targeted hosts'. */
-    @Test
-    fun `the announcement counts the targeted hosts, not the cluster`() {
-        val second = testCassandraHost.copy(alias = "db1", privateIp = "10.0.1.2", instanceId = "i-db1")
-        whenever(mockClusterStateManager.load()).thenReturn(
-            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, second))),
-        )
-        val command = UseCassandra()
-        command.version = "4.1"
-        command.hosts.hostList = "db1"
-        command.execute()
-
-        assertThat(outputHandler.messages.joinToString("\n")).contains("Using version 4.1 on 1 hosts, filter: db1")
-    }
-
-    @Test
-    fun `without a host filter the announcement says all hosts`() {
-        val command = UseCassandra()
-        command.version = "4.1"
-        command.execute()
-
-        assertThat(outputHandler.messages.joinToString("\n")).contains("Using version 4.1 on 1 hosts, filter: all hosts")
-    }
-
-    @Test
-    fun `execute updates version in cluster state`() {
-        val command = UseCassandra()
-        command.version = "5.0"
-        command.execute()
-
-        assertThat(testClusterState.versions).containsEntry("db0", "5.0")
-    }
-
-    /** DownloadConfig used to ignore the filter and fetch the first host's version. */
-    @Test
-    fun `use hands its host filter to download-config as well as update-config`() {
-        val command = UseCassandra()
-        command.version = "4.1"
-        command.hosts.hostList = "db0"
-        command.execute()
-
-        val download = chained.filterIsInstance<DownloadConfig>().single()
-        assertThat(download.hosts.hostList).isEqualTo("db0")
-        assertThat(
-            chained
-                .filterIsInstance<UpdateConfig>()
-                .single()
-                .hosts.hostList,
-        ).isEqualTo("db0")
-    }
-
-    /** A chained command that fails used to be ignored, so `use` printed the failure and exited 0. */
-    @Test
-    fun `a failed config download fails use, skips the update and says which step failed`() {
-        chainedExitCodes[DownloadConfig::class.java] = 1
-
-        val command = UseCassandra()
-        command.version = "4.1"
-
-        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
-        assertThat(chained.filterIsInstance<UpdateConfig>()).isEmpty()
-        assertThat(outputHandler.errors.joinToString("\n") { it.first })
-            .contains("4.1", "download-config failed", "update-config --hosts db0")
-    }
-
-    @Test
-    fun `a failed config update fails use and says which step failed`() {
-        chainedExitCodes[UpdateConfig::class.java] = 1
-
-        val command = UseCassandra()
-        command.version = "4.1"
-
-        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
-        assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("update-config failed")
+        assertThat(nodes.commandsOn("db0")).isEmpty()
+        assertThat(state.nodes.getValue("db0").version).isEqualTo("4.1")
+        assertThat(state.nodes.getValue("db1").version).isEqualTo("5.0")
+        assertThat(state.default.version).isEmpty()
+        assertThat(chained.map { hostFilter(it) }).containsOnly("db1")
+        assertThat(messages()).contains("Using version 5.0 on 1 hosts, filter: db1")
     }
 
     @Test
     fun `a host filter that matches no node fails before anything is switched`() {
-        val command = UseCassandra()
-        command.version = "4.1"
-        command.hosts.hostList = "db9"
-
-        assertThatThrownBy { command.execute() }
+        assertThatThrownBy { use("5.0") { hosts.hostList = "db9" }.execute() }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("db9")
+        assertThat(nodes.commands).isEmpty()
+    }
+
+    @Test
+    fun `a failed activation on a node fails use and records only the nodes that switched`() {
+        nodes.failOn("db1", "sudo use-cassandra", "ERROR: JDK 17 is not installed")
+
+        assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(state.nodes.getValue("db0").version).isEqualTo("5.0")
+        assertThat(state.nodes.getValue("db1").version).isEmpty()
+        assertThat(
+            state.nodes
+                .getValue("db1")
+                .installed.keys,
+        ).containsExactly("5.0")
+        assertThat(errors()).contains("db1: failed to activate 5.0", "JDK 17 is not installed")
         assertThat(chained).isEmpty()
     }
 
-    /**
-     * `use` ends by re-applying cassandra.patch.yaml to every targeted host, which discards any
-     * per-host update-config done before it. The operator is told, with the hosts, before it happens.
-     */
     @Test
-    fun `use warns which hosts get cassandra patch yaml re-applied and that the JDK switches`() {
-        val command = UseCassandra()
-        command.version = "4.1"
-        command.execute()
+    fun `a failed config download fails use, skips the update and says which step failed`() {
+        chainedExitCodes["DownloadConfig"] = 1
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output)
-            .contains("cassandra.patch.yaml", "db0", "replaces per-host", "update-config", "the JDK the version declares")
+        assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(chained.filterIsInstance<UpdateConfig>()).isEmpty()
+        assertThat(errors()).contains("5.0", "download-config failed", "update-config --hosts db0,db1")
     }
 
     @Test
-    fun `the warning names only the targeted hosts and the JDK override`() {
-        val second = testCassandraHost.copy(alias = "db1", privateIp = "10.0.1.2", instanceId = "i-db1")
-        whenever(mockClusterStateManager.load()).thenReturn(
-            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, second))),
-        )
-        val command = UseCassandra()
-        command.version = "4.1"
-        command.hosts.hostList = "db1"
-        command.javaVersion = "17"
-        command.execute()
+    fun `a failed config update fails use and says which step failed`() {
+        chainedExitCodes["UpdateConfig"] = 1
 
-        val warning = outputHandler.messages.single { it.contains("re-applies") }
-        assertThat(warning).contains("db1", "JDK 17").doesNotContain("db0")
+        assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(errors()).contains("update-config failed")
     }
+
+    /** D3: the state is written once, after every node; no node's record is lost to a race. */
+    @ParameterizedTest(name = "{0} nodes")
+    @ValueSource(ints = [1, 50])
+    fun `every node is recorded at any fleet size, with some already holding the version`(count: Int) {
+        withNodes(count)
+        val random = Random(count)
+        state.hosts
+            .getValue(ServerType.Cassandra)
+            .filter { random.nextBoolean() }
+            .forEach { nodes.disk(it.alias) += "4.1" }
+
+        use("4.1").execute()
+
+        assertThat(state.nodes).hasSize(count)
+        assertThat(state.nodes.values).allSatisfy { node ->
+            assertThat(node.version).isEqualTo("4.1")
+            assertThat(node.javaVersion).isEqualTo("11")
+            assertThat(node.installed.getValue("4.1").url).contains("4.1.7")
+        }
+        assertThat(saveCount).isEqualTo(1)
+    }
+
+    private fun hostFilter(command: PicoCommand): String =
+        when (command) {
+            is UpdateConfig -> command.hosts.hostList
+            is DownloadConfig -> command.hosts.hostList
+            else -> error("unexpected nested command $command")
+        }
 }

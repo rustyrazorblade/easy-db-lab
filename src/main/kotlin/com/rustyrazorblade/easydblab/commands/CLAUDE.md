@@ -264,8 +264,9 @@ to report, not by convenience:
   all of them in one run. Use this when a partial result is not a meaningful outcome.
 - **`collectFromHosts`** — returns a `HostResult` per host (`host` + `Result`) and throws nothing.
   Use this when the command reports per-host outcomes, or when hosts can legitimately end in
-  *different* states — installed here, already present there. `CassandraInstall` is the reference
-  implementation: it emits one event per host, then throws once at the end if anything went wrong.
+  *different* states — installed here, already present there. `services/cassandraversions/CassandraInstaller`
+  is the reference implementation: it emits one event per host, and `cassandra install` / `cassandra use`
+  throw once at the end if anything went wrong.
 
 Results are keyed by position, never by alias — two hosts sharing an alias would otherwise
 misattribute each other's failure.
@@ -281,10 +282,22 @@ same pool. Per-node work that `up` runs (db setup, AxonOps, registry TLS) is par
 
 ## Invoking AMI-Baked Scripts At Runtime
 
-Some scripts under `packer/` are not bake-time-only. The AMI build installs `packer/cassandra/bin/install-cassandra-version`
-and `use-cassandra` onto the node's `PATH`. At runtime, `CassandraInstall` (`cassandra install`) runs
-`install-cassandra-version` over SSH, and `UseCassandra` (`cassandra use`) runs `use-cassandra`. This is deliberate: one install code path
-serves both the bake and a running cluster, instead of two that have to be kept in sync by hand.
+Some scripts under `packer/` are not bake-time-only. The AMI build installs everything in
+`packer/cassandra/bin/` onto the node's `PATH`, and the CLI runs three of them over SSH. The bake
+installs no Cassandra version and no per-release AxonOps agent; every one arrives at runtime.
+
+The CLI resolves everything (`services/cassandraversions/`: `CassandraVersionResolver` picks the
+source, URL, JDK and Python; the cluster state holds the record) and passes it as arguments, so no
+script reads a version file:
+
+- `install-cassandra-version <name> --url URL [--fallback-url URL] [--cache-uri URI] [--reinstall]`,
+  or `--url GIT --branch B --java N [--ant-flags F]` for a git build. Run by `CassandraInstaller` for
+  `cassandra install`, `cassandra use` and `CassandraNodeRestorer` (a replaced db node).
+- `use-cassandra <version> --java N --python X.Y.Z`. Both flags are required; the script checks every
+  argument before it changes anything.
+- `install-axonops-agent <X.Y> <java> --cache-prefix URI`, run by `cassandra start` through
+  `AxonOpsAgents` before Cassandra starts anywhere. Exit 0 prints the agent name last; exit 3 means
+  AxonOps ships no agent for the release and JDK and prints the ones it ships.
 
 Consequences when editing those scripts:
 

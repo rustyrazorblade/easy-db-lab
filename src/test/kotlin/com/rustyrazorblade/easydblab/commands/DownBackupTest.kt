@@ -75,7 +75,6 @@ class DownBackupTest : BaseKoinTest() {
     private fun upClusterState() =
         ClusterState(
             name = "perf-test",
-            versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
             vpcId = "vpc-123",
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -85,7 +84,6 @@ class DownBackupTest : BaseKoinTest() {
     private fun downClusterState() =
         ClusterState(
             name = "perf-test",
-            versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
             vpcId = "vpc-123",
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -95,7 +93,6 @@ class DownBackupTest : BaseKoinTest() {
     private fun upClusterStateNoControlHost() =
         ClusterState(
             name = "perf-test",
-            versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
             vpcId = "vpc-123",
             hosts = emptyMap(),

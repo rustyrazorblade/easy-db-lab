@@ -52,7 +52,6 @@ class ExecStopTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2"),
                 hosts = mapOf(ServerType.Cassandra to listOf(db0)),
             ),

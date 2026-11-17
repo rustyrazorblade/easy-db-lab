@@ -46,7 +46,6 @@ class DownCommandTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
@@ -110,7 +109,6 @@ class DownCommandTest : BaseKoinTest() {
             val stateNoVpc =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                 )
             whenever(mockClusterStateManager.load()).thenReturn(stateNoVpc)
 

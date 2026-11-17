@@ -34,7 +34,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val manager = ClusterStateManager(stateFile)
         val bucketName = "test-bucket-12345678"
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         state.s3Bucket = bucketName
         manager.save(state)
 
@@ -53,7 +53,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         state.s3Bucket = "original-bucket"
         manager.save(state)
 
@@ -75,7 +75,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         manager.save(state)
 
         // When
@@ -94,7 +94,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val manager = ClusterStateManager(stateFile)
         val existingBucket = "already-configured-bucket"
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         state.s3Bucket = existingBucket
         state.initConfig =
             InitConfig(
@@ -120,7 +120,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         state.initConfig =
             InitConfig(
                 name = "test",
@@ -144,7 +144,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         state.s3Bucket = ""
         state.initConfig =
             InitConfig(
@@ -170,7 +170,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val manager = ClusterStateManager(stateFile)
         val envBucket = "user-provided-s3-bucket"
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         state.initConfig =
             InitConfig(
                 name = "test",
@@ -198,7 +198,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val manager = ClusterStateManager(stateFile)
         val bucketName = "persistent-bucket"
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         state.s3Bucket = bucketName
         state.initConfig =
             InitConfig(
@@ -226,7 +226,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         manager.save(state)
 
         // When
@@ -245,7 +245,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val manager = ClusterStateManager(stateFile)
         val accountBucket = "easy-db-lab-account-uuid"
 
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         state.s3Bucket = accountBucket
         manager.save(state)
 

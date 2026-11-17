@@ -70,7 +70,7 @@ class DownDryRunTest : BaseKoinTest() {
         whenever(teardownService.teardownPackerInfrastructure(any())).thenReturn(TeardownResult.success(resources))
 
         stateManager.save(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), vpcId = "vpc-123").apply {
+            ClusterState(name = "test-cluster", vpcId = "vpc-123").apply {
                 markInfrastructureUp()
                 tailscaleDeviceId = "nControl0CNTRL"
             },
@@ -133,7 +133,7 @@ class DownDryRunTest : BaseKoinTest() {
     @Test
     fun `a dry run whose VPC is gone but whose tailnet device is recorded only previews the device removal`() {
         stateManager.save(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), vpcId = null).apply {
+            ClusterState(name = "test-cluster", vpcId = null).apply {
                 markInfrastructureUp()
                 tailscaleDeviceId = "nControl0CNTRL"
             },
@@ -161,7 +161,7 @@ class DownDryRunTest : BaseKoinTest() {
     @Test
     fun `a dry run with no VPC and no tailnet device fails without stopping the tunnel`() {
         stateManager.save(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), vpcId = null).apply { markInfrastructureUp() },
+            ClusterState(name = "test-cluster", vpcId = null).apply { markInfrastructureUp() },
         )
 
         val exitCode = Down().apply { dryRun = true }.call()

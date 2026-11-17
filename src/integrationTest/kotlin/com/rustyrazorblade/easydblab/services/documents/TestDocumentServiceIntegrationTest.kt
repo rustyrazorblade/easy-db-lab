@@ -45,7 +45,6 @@ class TestDocumentServiceIntegrationTest {
     private fun cluster(): ClusterState =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             clusterId = UUID.randomUUID().toString(),
             s3Bucket = BUCKET,
             initConfig = InitConfig(tenant = "acme"),

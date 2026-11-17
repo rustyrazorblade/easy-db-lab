@@ -300,7 +300,7 @@ To see what versions are supported, you can do the following:
 easy-db-lab list
 ````
 
-You'll see 3.0, 3.11, 4.0, 4.1, and others.
+You'll see the ASF release lines (3.0 through 5.0), the nightly builds (`5.0-HEAD`, `trunk`, ...) and any builds of your own.  None is preinstalled: `use` installs the version on demand.
 
 Choose your cassandra version.
 
@@ -322,7 +322,7 @@ You can override the java version by passing the `-j` flag:
 easy-db-lab use 5.0 -j 17
 ```
 
-Doing this will update each nodes local copy of `/etc/cassandra_versions.yaml`.
+The JDK you pick is recorded in the cluster state and kept for later `use` and `start` runs.
 
 You can switch just one host:
 

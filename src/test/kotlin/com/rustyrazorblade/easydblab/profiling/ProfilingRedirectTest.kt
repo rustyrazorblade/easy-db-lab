@@ -59,7 +59,6 @@ class ProfilingRedirectTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = mutableMapOf(ServerType.Control to listOf(controlHost)),
             ),
         )

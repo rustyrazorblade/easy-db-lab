@@ -66,7 +66,6 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = mutableMapOf(),
                 s3Bucket = "acct-bucket",
                 dataBucket = "easy-db-lab-data-abc",

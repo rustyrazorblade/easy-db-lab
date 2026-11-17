@@ -95,7 +95,6 @@ class KitInfoTest : BaseKoinTest() {
         ClusterStateManager(stateFile).save(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2"),
                 hosts = dbHosts,
             ),

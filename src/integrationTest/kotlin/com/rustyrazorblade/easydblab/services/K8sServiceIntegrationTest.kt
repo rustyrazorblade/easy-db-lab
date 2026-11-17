@@ -105,7 +105,7 @@ class K8sServiceIntegrationTest {
 
         val mockClusterStateManager = mock<ClusterStateManager>()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf()),
+            ClusterState(name = "test"),
         )
         val testUser =
             User(

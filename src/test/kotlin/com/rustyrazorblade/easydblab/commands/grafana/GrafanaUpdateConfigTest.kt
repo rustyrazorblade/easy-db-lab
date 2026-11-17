@@ -177,7 +177,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val emptyState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = mutableMapOf(),
             )
 
@@ -195,7 +194,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
@@ -230,7 +228,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
@@ -264,7 +261,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
@@ -288,7 +284,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
@@ -315,7 +310,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val redirectState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(

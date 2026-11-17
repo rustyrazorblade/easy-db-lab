@@ -5,18 +5,26 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.SidecarService
+import com.rustyrazorblade.easydblab.services.cassandraversions.AxonOpsAgents
+import com.rustyrazorblade.easydblab.services.cassandraversions.FakeNodes
+import com.rustyrazorblade.easydblab.services.cassandraversions.RecordOnlySources
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -47,7 +55,7 @@ class StartTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf("db0" to "5.0"),
+            nodes = mutableMapOf("db0" to NodeState("5.0")),
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(
@@ -73,8 +81,30 @@ class StartTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { hostOperationsService }
                 single<KitHookExecutor> { mockKitHookExecutor }
+                single<RemoteOperationsService> { nodes }
+                single { AxonOpsAgents(get(), get(), RecordOnlySources()) }
             },
         )
+
+    /** The db nodes; `install-axonops-agent` answers as each test sets. */
+    private val nodes = FakeNodes()
+
+    private fun enableAxonOps() {
+        getKoin().declare(
+            User(
+                email = "test@example.com",
+                region = "us-west-2",
+                keyName = "test-key",
+                awsProfile = "",
+                awsAccessKey = "test-access-key",
+                awsSecret = "test-secret",
+                axonOpsOrg = "my-org",
+                axonOpsKey = "my-key",
+            ),
+        )
+    }
+
+    private fun dropIns(alias: String) = nodes.commandsOn(alias).filter { it.contains(AxonOpsAgents.DROP_IN) }
 
     @BeforeEach
     fun setupMocks() {
@@ -108,38 +138,49 @@ class StartTest : BaseKoinTest() {
         assertThat(output).contains("Starting")
     }
 
-    @Test
-    fun `execute does not start axon-agent when not configured`() {
-        // User in core test modules has blank axonOpsOrg and axonOpsKey
-        val command = Start()
-        command.execute()
+    /** With AxonOps off, or skipped, the start loads no agent and runs no axon-agent. */
+    @ParameterizedTest(name = "axonops on={0}, --skip-axonops={1}")
+    @CsvSource("false, false", "true, true")
+    fun `a start without AxonOps names no agent in the drop-in and installs none`(
+        axonOpsOn: Boolean,
+        skip: Boolean,
+    ) {
+        if (axonOpsOn) enableAxonOps()
 
-        // No axon-agent message should appear
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).doesNotContain("axon-agent")
+        Start().apply { skipAxonOps = skip }.execute()
+
+        assertThat(dropIns("db0").single()).contains(" Environment=EDL_AXONOPS_AGENT= ")
+        assertThat(nodes.commandsOn("db0")).noneMatch { it.startsWith("install-axonops-agent") || it.contains("start axon-agent") }
+        verify(mockCassandraService).start(any(), eq(true))
     }
 
     @Test
-    fun `execute starts axon-agent when configured`() {
-        // Override user config with axon ops settings
-        val userWithAxon =
-            User(
-                email = "test@example.com",
-                region = "us-west-2",
-                keyName = "test-key",
-                awsProfile = "",
-                awsAccessKey = "test-access-key",
-                awsSecret = "test-secret",
-                axonOpsOrg = "my-org",
-                axonOpsKey = "my-key",
-            )
-        getKoin().declare(userWithAxon)
+    fun `with AxonOps on, the agent of the node's release and JDK is installed and named before Cassandra starts`() {
+        enableAxonOps()
+        testClusterState.nodes["db0"] = NodeState("5.0", "17")
+        nodes.respond("db0", "install-axonops-agent", "5.0-agent-jdk17\nedl-exit:0")
 
-        val command = Start()
-        command.execute()
+        Start().execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("axon-agent")
+        val commands = nodes.commandsOn("db0")
+        assertThat(commands.first()).startsWith("install-axonops-agent 5.0 17 ")
+        assertThat(dropIns("db0").single()).contains(" Environment=EDL_AXONOPS_AGENT=5.0-agent-jdk17 ")
+        assertThat(commands.last()).isEqualTo("sudo systemctl start axon-agent")
+        verify(mockCassandraService).start(any(), eq(true))
+    }
+
+    @Test
+    fun `when AxonOps ships no agent for a node, Cassandra starts on no node and the error names --skip-axonops`() {
+        enableAxonOps()
+        testClusterState.nodes["db0"] = NodeState("5.0-rustyrazorblade-HEAD", "21")
+        nodes.respond("db0", "install-axonops-agent", "4.1-agent\n5.0-agent-jdk17\nedl-exit:3")
+
+        assertThatThrownBy { Start().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        verify(mockCassandraService, never()).start(any(), any())
+        assertThat(dropIns("db0")).isEmpty()
+        assertThat(outputHandler.errors.joinToString("\n") { it.first })
+            .contains("Cassandra 5.0 on JDK 21", "4.1-agent, 5.0-agent-jdk17", "--skip-axonops")
     }
 
     @Test
@@ -155,7 +196,7 @@ class StartTest : BaseKoinTest() {
             )
         val stateMissingVersion =
             testClusterState.copy(
-                versions = mutableMapOf("db0" to "5.0"),
+                nodes = mutableMapOf("db0" to NodeState("5.0")),
                 hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
             )
         whenever(mockClusterStateManager.load()).thenReturn(stateMissingVersion)
@@ -183,7 +224,7 @@ class StartTest : BaseKoinTest() {
             )
         val stateAllVersions =
             testClusterState.copy(
-                versions = mutableMapOf("db0" to "5.0", "db1" to "5.0"),
+                nodes = mutableMapOf("db0" to NodeState("5.0"), "db1" to NodeState("5.0")),
                 hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
             )
         whenever(mockClusterStateManager.load()).thenReturn(stateAllVersions)
@@ -208,7 +249,7 @@ class StartTest : BaseKoinTest() {
             )
         val state =
             testClusterState.copy(
-                versions = mutableMapOf("db0" to "5.0"),
+                nodes = mutableMapOf("db0" to NodeState("5.0")),
                 hosts = testClusterState.hosts + (ServerType.Cassandra to listOf(testCassandraHost, db1)),
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)

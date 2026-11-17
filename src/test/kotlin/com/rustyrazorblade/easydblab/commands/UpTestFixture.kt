@@ -440,7 +440,6 @@ abstract class UpTestFixture : BaseKoinTest() {
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             tailscaleActive = true,
             initConfig =
                 InitConfig(

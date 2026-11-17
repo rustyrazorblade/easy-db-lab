@@ -122,7 +122,7 @@ val testControlHost = ClusterHost(
     alias = "control0", availabilityZone = "us-west-2a", instanceId = "i-test123",
 )
 val testState = ClusterState(
-    name = "test-cluster", versions = mutableMapOf(),
+    name = "test-cluster",
     hosts = mapOf(ServerType.Control to listOf(testControlHost)),
 )
 whenever(mockClusterStateManager.load()).thenReturn(testState)

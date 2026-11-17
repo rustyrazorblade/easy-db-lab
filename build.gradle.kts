@@ -755,11 +755,11 @@ tasks.register<Exec>("testCassandraInstallScript") {
     commandLine = listOf("bash", "packer/cassandra/bin/install-cassandra-version.test.sh")
 }
 
-// Unit-test the bake-time loop's version resolution (yq-driven flags, lazy skip). Sources
-// install_cassandra.sh without INSTALL_CASSANDRA, so none of its effects run.
+// Unit-test the bake-time db-node setup in install_cassandra.sh, with sudo and the tools stubbed:
+// it runs the one-time setup and installs no Cassandra version.
 tasks.register<Exec>("testCassandraInstallLoop") {
     group = "Verification"
-    description = "Unit-test the bake-time Cassandra version install loop"
+    description = "Unit-test the bake-time db-node setup (no version is installed)"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/cassandra/install/install_cassandra.test.sh")
 }
@@ -781,10 +781,20 @@ tasks.register<Exec>("testCassandraWaitScript") {
     commandLine = listOf("bash", "packer/cassandra/bin/wait-for-up-normal.test.sh")
 }
 
-// Unit-test the agent selection cassandra.in.sh runs on every Cassandra start: deriving X.Y from
-// the release jar name (every shape, including the unparseable one) and mapping it to the AxonOps
-// agent. Also parses cassandra.in.sh under dash, which is the shell Cassandra actually sources it
-// with. Pure functions; no Docker, no network, no node.
+// Unit-test install-axonops-agent, which `cassandra start` runs on each node to install the AxonOps
+// agent for its release and JDK: the exit-3 refusal with the shipped list, the no-op when
+// installed, and the download cache keyed by the package version. apt, aws and dpkg-deb are stubbed.
+tasks.register<Exec>("testCassandraAxonOpsAgentScript") {
+    group = "Verification"
+    description = "Unit-test the install-axonops-agent script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/install-axonops-agent.test.sh")
+}
+
+// Unit-test the agent library cassandra.in.sh sources on every Cassandra start: deriving X.Y from
+// the release jar name, mapping a release and JDK to the AxonOps agent, the shipped agent list,
+// and the -javaagent option for the agent the CLI chose. Also parses cassandra.in.sh under dash,
+// which is the shell Cassandra actually sources it with. Pure functions; no Docker, no network.
 tasks.register<Exec>("testCassandraAgentSelection") {
     group = "Verification"
     description = "Unit-test Cassandra version derivation and agent selection"
@@ -812,6 +822,7 @@ tasks.register("testCassandraScripts") {
         "testCassandraUseScript",
         "testCassandraWaitScript",
         "testCassandraAgentSelection",
+        "testCassandraAxonOpsAgentScript",
         "testCacheLib",
     )
 }

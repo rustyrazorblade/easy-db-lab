@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
 import java.time.Clock
@@ -133,9 +134,11 @@ class NodeBringUp(
                 }
         }
 
-        /** The control node failed: record why first, so every waiter sees it, then stop every node. */
+        /** The control node failed: record why first, so every waiter sees it, report it once, then stop every node. */
         private fun controlFailed(failure: ControlNodeFailedException) {
-            if (controlFailure.complete(failure)) nodes.values.forEach { it.cancel(true) }
+            if (!controlFailure.complete(failure)) return
+            run.eventBus.emit(Event.Provision.ControlNodeFailed(failure.alias, failure.step, failure.reason))
+            nodes.values.forEach { it.cancel(true) }
         }
 
         /** A node's end; when the control node failed and stopped it, that failure instead. */

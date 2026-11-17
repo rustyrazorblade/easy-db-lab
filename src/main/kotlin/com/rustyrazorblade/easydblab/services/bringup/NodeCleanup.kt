@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import java.util.concurrent.TimeUnit
 
@@ -30,12 +31,12 @@ class NodeCleanup(
             client
                 .nodes()
                 .withName(alias)
-                .waitUntilCondition({ it == null }, DELETE_WAIT_SECONDS, TimeUnit.SECONDS)
+                .waitUntilCondition({ it == null }, Constants.Scale.NODE_CLEANUP_DELETE_WAIT_SECONDS, TimeUnit.SECONDS)
             client
                 .secrets()
                 .inNamespace(NAMESPACE)
                 .withName(passwordSecret(alias))
-                .waitUntilCondition({ it == null }, DELETE_WAIT_SECONDS, TimeUnit.SECONDS)
+                .waitUntilCondition({ it == null }, Constants.Scale.NODE_CLEANUP_DELETE_WAIT_SECONDS, TimeUnit.SECONDS)
         }
     }
 
@@ -43,7 +44,6 @@ class NodeCleanup(
     companion object {
         /** Where K3s keeps each node's password secret. */
         const val NAMESPACE = "kube-system"
-        private const val DELETE_WAIT_SECONDS = 60L
 
         /** The secret K3s stores [alias]'s node password in. */
         fun passwordSecret(alias: String): String = "$alias.node-password.k3s"

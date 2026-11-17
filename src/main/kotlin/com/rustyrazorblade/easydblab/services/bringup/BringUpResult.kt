@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 
 /**
  * Every port the bring-up coordinator works through (design D12), grouped so `NodeBringUp` takes
@@ -69,9 +70,11 @@ data class BringUpResult(
 /**
  * The control node failed (design D7): [step] did not succeed after its retries, or the control
  * plane stayed unhealthy past its deadline. Every pipeline is stopped and `up` fails at once.
+ * [Event.Provision.ControlNodeFailed] has already reported it, so it is a [CommandFailedException]
+ * and the command executor does not print it again.
  */
 class ControlNodeFailedException(
     val alias: String,
     val step: String,
     val reason: String,
-) : IllegalStateException("$alias failed at $step: $reason")
+) : CommandFailedException("$alias failed at $step: $reason")

@@ -1,8 +1,12 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
+import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.events.Event
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -52,5 +56,38 @@ class BringUpProgressTest {
         progress.enter("db2", PipelineStep.REGISTRY_TLS)
 
         assertThat(progress.snapshot().byStep.keys).containsExactly("ssh", "registry-tls", "readiness")
+    }
+
+    @Test
+    fun `the control node's step is shown on its own, and goes once its pipeline ends`() {
+        val progress = BringUpProgress(total = 2, joinLimit = 16, clock = Clock.fixed(start, ZoneOffset.UTC), startedAt = start)
+
+        progress.controlEntered(PipelineStep.K3S_SERVER)
+        progress.enter("db0", PipelineStep.SETUP)
+        val during = progress.snapshot()
+        progress.controlEntered(null)
+
+        assertThat(during.controlStep).isEqualTo("k3s-server")
+        assertThat(during.byStep).containsExactly(entry("setup", 1))
+        assertThat(during.toDisplayString()).startsWith("[0s] 2 nodes: control k3s-server, setup 1, join 0/16")
+        assertThat(progress.snapshot().controlStep).isNull()
+    }
+
+    /** The progress total is the nodes `up` runs pipelines for: the ones `--hosts` names, never the control node. */
+    @ParameterizedTest(name = "--hosts \"{0}\" of {1} nodes runs {2}")
+    @CsvSource(
+        "'', 10, 10",
+        "'db1', 10, 1",
+        "'db1,db2, app0', 10, 3",
+        "'db1,db1', 10, 1",
+        "'control0,db1', 10, 1",
+        "'db1,db2,db3', 2, 2",
+    )
+    fun `the run count is the db and app nodes --hosts names, or all of them`(
+        hosts: String,
+        nodes: Int,
+        expected: Int,
+    ) {
+        assertThat(BringUpSettings(nodeCount = nodes, cni = CniMode.Flannel, hostFilter = hosts).runCount).isEqualTo(expected)
     }
 }

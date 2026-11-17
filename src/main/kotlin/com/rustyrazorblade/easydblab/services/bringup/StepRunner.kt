@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
@@ -22,12 +23,18 @@ import java.util.concurrent.atomic.AtomicInteger
  * An interrupt of the caller (the control node failed, or `up` is stopping) is never retried: it
  * interrupts the attempt and is rethrown.
  *
+ * A timed-out attempt is interrupted, then waited for up to [abandonGrace], so the next attempt
+ * never runs beside it on the same instance. One that does not stop in time fails the step with
+ * no retry: the instance is busy with work nothing is waiting for, so only a new one can help.
+ *
  * @param retryInterval the pause between attempts; tests pass zero
+ * @param abandonGrace how long a timed-out attempt has to stop after its interrupt
  */
 class StepRunner(
     private val eventBus: EventBus,
     private val health: HealthLatch,
-    private val retryInterval: Duration = Duration.ofSeconds(DEFAULT_RETRY_INTERVAL_SECONDS),
+    private val retryInterval: Duration = Duration.ofSeconds(Constants.Scale.STEP_RETRY_INTERVAL_SECONDS),
+    private val abandonGrace: Duration = Duration.ofSeconds(Constants.Scale.ATTEMPT_STOP_GRACE_SECONDS),
 ) {
     /**
      * Runs [action] for [alias]'s [step] until it succeeds, its attempts run out, or [instanceEnded]
@@ -52,6 +59,8 @@ class StepRunner(
             StepOutcome.Failed(e.reason, policy.replaceable)
         } catch (e: InstanceEnded) {
             StepOutcome.InstanceEnded(e.state)
+        } catch (e: AttemptStuck) {
+            StepOutcome.Failed(e.reason, policy.replaceable)
         }
     }
 
@@ -82,6 +91,7 @@ class StepRunner(
                 is AttemptResult.Done -> result.value
                 is AttemptResult.Ended -> throw InstanceEnded(result.state)
                 is AttemptResult.Error -> throw AttemptFailed(result.reason)
+                is AttemptResult.Stuck -> throw AttemptStuck(result.reason)
             }
 
         /** Runs attempt [number]; a failure while the control plane was unhealthy is forgiven and run again. */
@@ -114,6 +124,10 @@ class StepRunner(
                     val durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - began)
                     eventBus.emit(Event.Provision.NodeStepCompleted(alias, step.wireName, number, durationMs))
                 }
+                is AttemptResult.Stuck ->
+                    eventBus.emit(
+                        Event.Provision.NodeStepFailed(alias, step.wireName, number, policy.attempts, result.reason, willRetry = false),
+                    )
                 is AttemptResult.Error -> {
                     val willRetry = number < policy.attempts
                     eventBus.emit(
@@ -136,13 +150,23 @@ class StepRunner(
                 CompletableFuture.anyOf(outcome, instanceEnded).get(policy.timeout.toMillis(), TimeUnit.MILLISECONDS)
                 finished(outcome, worker)
             } catch (_: TimeoutException) {
-                worker.interrupt()
-                AttemptResult.Error("timed out after ${describe(policy.timeout)}")
+                abandon(worker)
             } catch (_: ExecutionException) {
                 finished(outcome, worker)
             } catch (e: InterruptedException) {
                 worker.interrupt()
                 throw e
+            }
+        }
+
+        /** Interrupts a timed-out [worker] and waits up to the grace for it to stop. */
+        private fun abandon(worker: Thread): AttemptResult<T> {
+            worker.interrupt()
+            val timedOut = "timed out after ${describe(policy.timeout)}"
+            return if (worker.join(abandonGrace)) {
+                AttemptResult.Error(timedOut)
+            } else {
+                AttemptResult.Stuck("$timedOut, and the attempt did not stop within ${describe(abandonGrace)}")
             }
         }
 
@@ -177,10 +201,20 @@ class StepRunner(
         data class Ended(
             val state: String,
         ) : AttemptResult<Nothing>
+
+        /** The attempt timed out and did not stop after its interrupt. */
+        data class Stuck(
+            val reason: String,
+        ) : AttemptResult<Nothing>
     }
 
     /** An attempt failed; resilience4j retries it while attempts remain. */
     private class AttemptFailed(
+        val reason: String,
+    ) : RuntimeException(reason)
+
+    /** A timed-out attempt is still running; never retried, since the next would run beside it. */
+    private class AttemptStuck(
         val reason: String,
     ) : RuntimeException(reason)
 
@@ -190,7 +224,6 @@ class StepRunner(
     ) : RuntimeException(state)
 
     private companion object {
-        const val DEFAULT_RETRY_INTERVAL_SECONDS = 10L
         const val MILLIS_PER_SECOND = 1000L
 
         fun describe(timeout: Duration): String =

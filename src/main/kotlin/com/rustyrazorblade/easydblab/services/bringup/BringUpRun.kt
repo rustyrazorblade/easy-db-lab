@@ -29,10 +29,10 @@ internal class BringUpRun(
 ) : AutoCloseable {
     val timing: BringUpTiming get() = settings.timing
     val health = HealthLatch()
-    val runner = StepRunner(eventBus, health, timing.retryInterval)
+    val runner = StepRunner(eventBus, health, timing.retryInterval, timing.attemptStopGrace)
     val joins = JoinLimiter(health, settings.joinLimit)
     val ssh = SshSessionLimiter(settings.sshSessions)
-    val progress = BringUpProgress(settings.nodeCount, settings.joinLimit, clock)
+    val progress = BringUpProgress(settings.runCount, settings.joinLimit, clock)
     val workspace = CompletableFuture<Unit>()
     val certificate = CompletableFuture<Unit>()
     val connection = CompletableFuture<ControlPlaneConnection>()

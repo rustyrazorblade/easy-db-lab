@@ -230,6 +230,8 @@ class NodeBringUpTest {
         assertThat(result.nodes.filterKeys { it != "db0" }.values).allMatch { it is NodeEnd.Ready }
         val event = result.failureEvent()
         assertThat(event?.nodes).containsExactly(Event.Provision.FailedNode("db0", "setup", failed.reason, "i-db0-2", instanceKept = true))
+        // Reported the moment it failed, not only in the summary once the others finish.
+        assertThat(h.eventsOf<Event.Provision.NodeFailed>().map { it.alias to it.instanceId }).containsExactly("db0" to "i-db0-2")
     }
 
     /** The old instance is gone before the launch, so a refused launch leaves the node with none, and no second try. */
@@ -246,6 +248,8 @@ class NodeBringUpTest {
         assertThat(failed.reason).contains("setup failed").contains("failed at launch")
         assertThat(h.fleet.calls).containsExactly("terminate i-db1", "verify db1", "launch db1")
         assertThat(h.eventsOf<Event.Provision.NodeReplaceFailed>().single().oldInstanceKept).isFalse()
+        assertThat(h.eventsOf<Event.Provision.NodeFailed>().single())
+            .isEqualTo(Event.Provision.NodeFailed("db1", "setup", failed.reason, "i-db1", instanceKept = false))
         assertThat(
             result
                 .failureEvent()
@@ -330,6 +334,10 @@ class NodeBringUpTest {
             }
         assertThat(h.steps.callsOf("join")).isEmpty()
         assertThat(h.fleet.calls).isEmpty()
+        val reported = h.eventsOf<Event.Provision.ControlNodeFailed>().single()
+        assertThat(reported.step).isEqualTo("gate")
+        assertThat(reported.reason).contains("API server ready")
+        assertThat(reported.isError()).isTrue()
     }
 
     @Test
@@ -341,6 +349,38 @@ class NodeBringUpTest {
 
         assertThat(result.nodes.values).hasSize(40).allMatch { it is NodeEnd.Ready }
         assertThat(h.plane.maxJoining).isLessThanOrEqualTo(h.settings.joinLimit).isGreaterThan(1)
+    }
+
+    /**
+     * A failed join's reason says what it waited for and carries the agent's log, for every
+     * combination of whether the agent started and whether its log could be read.
+     */
+    @ParameterizedTest(name = "agent started {0}, log {1}")
+    @CsvSource(
+        "true, text, 'level=error msg=\"token rejected\"'",
+        "true, empty, (empty)",
+        "true, unreadable, '(unreadable: ssh closed)'",
+        "false, text, 'level=error msg=\"token rejected\"'",
+    )
+    fun `a failed join names what it waited for and ends with the agent's log`(
+        started: Boolean,
+        log: String,
+        tail: String,
+    ) {
+        val h = harness(dbs = 1)
+        h.settings = h.settings.copy(timing = h.settings.timing.copy(join = StepPolicy(1, Duration.ofMillis(100), true)))
+        if (started) h.plane.neverRegister += "db0" else h.steps.scripts["db0 join"] = { _, _ -> error(JOIN_SCRIPT_FAILED) }
+        when (log) {
+            "text" -> h.steps.agentLogs["db0"] = "level=error msg=\"token rejected\"\n"
+            "unreadable" -> h.steps.scripts["db0 join-log"] = { _, _ -> error("ssh closed") }
+        }
+
+        h.run()
+
+        val waited =
+            if (started) "its agent started, but no node db0 at 10.0.0.0 registered: timed out after 100ms" else JOIN_SCRIPT_FAILED
+        assertThat(h.eventsOf<Event.Provision.NodeReplacing>().first().reason)
+            .isEqualTo("$waited\nlast lines of the agent log:\n$tail")
     }
 
     @Test
@@ -491,5 +531,6 @@ class NodeBringUpTest {
     private companion object {
         const val SETTLE_MS = 100L
         const val JOIN_TIMEOUT_MS = 150L
+        const val JOIN_SCRIPT_FAILED = "start-k3s-agent.sh exited 1"
     }
 }

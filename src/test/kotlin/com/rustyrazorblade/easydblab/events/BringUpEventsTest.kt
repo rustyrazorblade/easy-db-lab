@@ -75,4 +75,52 @@ class BringUpEventsTest {
             """.trimIndent(),
         )
     }
+
+    @Test
+    fun `the progress line names the control node's step first while its pipeline runs`() {
+        val event =
+            Event.Provision.BringUpProgress(
+                elapsedSeconds = 30,
+                total = 3,
+                byStep = linkedMapOf("join-wait" to 3),
+                joining = 0,
+                joinLimit = 16,
+                ready = 0,
+                replacements = 0,
+                failed = 0,
+                controlPlane = Event.Provision.ControlPlaneState.STARTING,
+                controlStep = "k3s-server",
+            )
+
+        assertThat(event.toDisplayString()).startsWith("[30s] 3 nodes: control k3s-server, join-wait 3, join 0/16")
+    }
+
+    @ParameterizedTest(name = "kept {3}")
+    @CsvSource(
+        "db1, setup, exit 1, true, 'db1 failed at setup: exit 1'",
+        "db1, setup, exit 1, false, 'db1 failed at setup: exit 1 (i-0abc terminated)'",
+    )
+    fun `a failed node is reported when it fails, with its instance named only when it is gone`(
+        alias: String,
+        step: String,
+        reason: String,
+        kept: Boolean,
+        expected: String,
+    ) {
+        val event = Event.Provision.NodeFailed(alias, step, reason, "i-0abc", kept)
+
+        assertThat(event.isError()).isTrue()
+        assertThat(event.toDisplayString()).isEqualTo(expected)
+    }
+
+    @Test
+    fun `a failed control node says every instance is kept`() {
+        val event = Event.Provision.ControlNodeFailed("control0", "gate", "the API server was not ready after 600s")
+
+        assertThat(event.isError()).isTrue()
+        assertThat(event.toDisplayString()).isEqualTo(
+            "Control node control0 failed at gate: the API server was not ready after 600s. " +
+                "Every instance is kept; run up again after fixing the cause.",
+        )
+    }
 }

@@ -431,6 +431,8 @@ class UpTest : UpTestFixture() {
             .isInstanceOf(ControlNodeFailedException::class.java)
             .hasMessageContaining("control0 failed at workspace")
             .hasMessageContaining("write-config exited with code 1")
+            // The control node's own event reported it; the executor must not print it again.
+            .isInstanceOf(CommandFailedException::class.java)
 
         verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
         assertThat(fleet.calls).isEmpty()
@@ -698,7 +700,7 @@ class UpTest : UpTestFixture() {
         nestedCommandExitCodes["TailscaleStart"] = 1
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
+            .isInstanceOf(CommandFailedException::class.java)
             .hasMessageContaining("easy-db-lab tailscale start")
 
         verify(mockK3sClusterService, never()).startServer(any(), any(), anyOrNull(), any())
@@ -1114,7 +1116,7 @@ class UpTest : UpTestFixture() {
         tailnetReachable = false
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(IllegalStateException::class.java)
+            .isInstanceOf(CommandFailedException::class.java)
             .hasMessageContaining("cannot reach it at 10.0.0.1:22 over the tailnet")
             .hasMessageContaining("after ${Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS} attempts")
             .hasMessageContaining("approve the subnet route 10.0.0.0/16")

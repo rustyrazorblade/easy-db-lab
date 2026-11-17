@@ -185,6 +185,19 @@ object Constants {
          */
         const val CLUSTER_REPLACEMENT_FRACTION = 0.05
 
+        /** The pause between two attempts of one bring-up step. */
+        const val STEP_RETRY_INTERVAL_SECONDS = 10L
+
+        /**
+         * How long a timed-out step attempt has to stop after its interrupt. The next attempt
+         * starts only once it has, so two attempts never run together on one instance; one that
+         * does not stop fails the step, and the node is replaced.
+         */
+        const val ATTEMPT_STOP_GRACE_SECONDS = 30L
+
+        /** How long removing a stale Node and its node password waits for each to be gone. */
+        const val NODE_CLEANUP_DELETE_WAIT_SECONDS = 60L
+
         /** How long the control-plane gate waits for the API server, the control node and Cilium. */
         const val GATE_TIMEOUT_SECONDS = 600L
 
@@ -205,6 +218,9 @@ object Constants {
 
         /** How often a node's SSH readiness is probed while it boots. */
         const val SSH_PROBE_INTERVAL_SECONDS = 5L
+
+        /** Lines of the K3s agent log a failed join's reason carries. */
+        const val JOIN_LOG_LINES = 20
 
         /** One attempt of a node's image check. */
         const val IMAGE_CHECK_TIMEOUT_SECONDS = 120L

@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services.bringup
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -92,14 +94,19 @@ internal class NodePipeline(
             val plane = it.await(PipelineStep.JOIN_WAIT, run.controlPlane)
             val nodes = plane.connection.nodes
             val watch = nodes.watch(alias, it.host.privateIp)
+            // Whether the last attempt's agent started, so a failed join says what it was waiting for.
+            val started = AtomicBoolean(false)
+            val explain = { reason: String -> joinFailure(it.host, started.get(), reason) }
             try {
                 run.joins.acquire().use { _ ->
-                    it.step(PipelineStep.JOIN, run.timing.join) { attempt ->
+                    it.step(PipelineStep.JOIN, run.timing.join, explain) { attempt ->
+                        started.set(false)
                         if (!cleaned.get()) {
                             plane.connection.cleanup(alias)
                             cleaned.set(true)
                         }
                         run.ssh.withSession { run.ports.nodeSteps.join(it.host, serverType, plane.access, attempt) }
+                        started.set(true)
                         watch.registered.get()
                     }
                 }
@@ -138,7 +145,24 @@ internal class NodePipeline(
 
     private fun failed(end: NodeEnd.Failed): NodeEnd {
         run.progress.failed(alias)
+        run.eventBus.emit(Event.Provision.NodeFailed(alias, end.step.wireName, end.reason, end.host.instanceId, end.instanceKept))
         return end
+    }
+
+    /**
+     * The reason a join of [host] failed: what it waited for, when its agent had [started], and the
+     * tail of the agent's log. A log that cannot be read is named, not fatal: the join failed anyway.
+     */
+    private fun joinFailure(
+        host: ClusterHost,
+        started: Boolean,
+        reason: String,
+    ): String {
+        val waited = if (started) "its agent started, but no node $alias at ${host.privateIp} registered: $reason" else reason
+        val log =
+            runCatchingException { run.ssh.withSession { run.ports.nodeSteps.joinLog(host) } }
+                .fold({ it.trimEnd().ifBlank { "(empty)" } }, { "(unreadable: ${it.messageOrString()})" })
+        return "$waited\nlast lines of the agent log:\n$log"
     }
 
     /** A step of [host] did not succeed. */

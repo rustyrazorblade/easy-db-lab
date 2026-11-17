@@ -11,6 +11,7 @@ import kotlin.concurrent.withLock
  * Where every node is, for the progress line `up` prints every `PROGRESS_INTERVAL_SECONDS`. Each
  * pipeline reports the step it enters, and its end as Ready or failed; [snapshot] counts them.
  * A node in [PipelineStep.JOIN] is counted as joining, against the join limit, not in `byStep`.
+ * The control node is not one of the [total]; its current step is shown on its own.
  *
  * Thread-safe: every pipeline reports from its own thread.
  */
@@ -24,6 +25,7 @@ class BringUpProgress(
     private val current = mutableMapOf<String, State>()
     private var replacements = 0
     private var controlPlane = Event.Provision.ControlPlaneState.STARTING
+    private var controlStep: PipelineStep? = null
 
     /** A node's place: in a step, or at its end. */
     private sealed interface State {
@@ -51,6 +53,9 @@ class BringUpProgress(
     /** A node was replaced. */
     fun replaced() = lock.withLock { replacements++ }
 
+    /** The control node entered [step], or finished its pipeline when [step] is null. */
+    fun controlEntered(step: PipelineStep?) = lock.withLock { controlStep = step }
+
     /** The control plane's state changed to [state]. */
     fun controlPlane(state: Event.Provision.ControlPlaneState) = lock.withLock { controlPlane = state }
 
@@ -73,6 +78,7 @@ class BringUpProgress(
                 replacements = replacements,
                 failed = states.count { it == State.Failed },
                 controlPlane = controlPlane,
+                controlStep = controlStep?.wireName,
             )
         }
 }

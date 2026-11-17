@@ -19,7 +19,7 @@ import java.io.File
 
 /**
  * [NodeSteps] for a K3s cluster reached over SSH: the SSH probe, the node's setup, the database
- * versions file, the Cilium image check, registry TLS and the K3s agent join.
+ * versions file, the Cilium image check, registry TLS, the K3s agent join and its journal.
  *
  * Every cluster fact a step needs (db0 and the control node's private IPs, the bucket the
  * registry certificate is in) is read from [state] when the step runs, so a step on a
@@ -81,8 +81,11 @@ class K3sNodeSteps(
         if (attempt == 1) AgentStartMode.START else AgentStartMode.RESTART,
     )
 
+    override fun joinLog(host: ClusterHost): String = remoteOps.executeRemotely(host.toHost(), JOIN_LOG, output = false).text
+
     private companion object {
         const val SSH_PROBE = "echo 1"
+        const val JOIN_LOG = "sudo journalctl --unit=k3s-agent --no-pager --output=cat --lines=${Constants.Scale.JOIN_LOG_LINES}"
         const val REMOTE_VERSIONS_FILE = "/etc/cassandra_versions.yaml"
     }
 }

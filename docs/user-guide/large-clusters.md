@@ -151,7 +151,8 @@ make at most `max(3, ceil(5% of the nodes))` replacements: 3 up to 60 nodes, 50 
 cluster limit stops a fault every node has, such as a broken AMI, from replacing every node.
 
 The control node is never replaced. Each of its steps is tried twice; if one still fails, `up`
-fails at once, stops every node pipeline and keeps every instance.
+fails at once, stops every node pipeline and keeps every instance. It prints the control node, its
+step and the reason once.
 
 ### Control-plane health
 
@@ -175,13 +176,16 @@ Every 15 seconds `up` prints where every node is:
 [4m30s] 1000 nodes: setup 120, join-wait 300, readiness 40, join 16/16, ready 520, replaced 2, failed 0, control plane healthy
 ```
 
-The per-step counts are the nodes in that step now. `join` is the join slots in use against the
-limit. Each step's start and end is published to Redis only, not printed.
+The total is the db and app nodes being brought up: all of them, or the ones `--hosts` names.
+While the control node's own steps run, the line starts with its step, for example
+`control k3s-server`. The per-step counts are the nodes in that step now. `join` is the join
+slots in use against the limit. Each step's start and end is published to Redis only, not printed.
 
 ### When a node fails
 
 When a node has used its replacements, or the cluster has used its limit, the node fails and
-keeps its last instance for debugging. The other nodes and the cluster-wide steps still finish.
+keeps its last instance for debugging. `up` prints the failure as it happens
+(`db7 failed at setup: ...`). The other nodes and the cluster-wide steps still finish.
 Then `up` names each failed node, its instance, its step and the reason, and exits non-zero:
 
 ```
@@ -189,6 +193,9 @@ Then `up` names each failed node, its instance, its step and the reason, and exi
   db7 (i-0abc..., kept for debugging): setup: setup failed (ERROR: no data disk); the node had its 2 replacements
   db9 (i-0def..., terminated, no instance left): join: join failed (...); the replacement failed at launch: ...
 ```
+
+A failed join's reason says what it was waiting for (for example, that the agent started but no
+node registered) and ends with the last lines of the node's K3s agent log.
 
 A replacement terminates the old instance before it checks capacity and launches the new one.
 When that check or launch is refused (for example, no capacity in the zone), the node fails with

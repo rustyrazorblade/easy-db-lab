@@ -28,16 +28,20 @@ internal class InstanceRun(
     var host: ClusterHost = launched
         private set
 
-    /** Runs [action] as [step] under [policy], and returns its value. */
+    /**
+     * Runs [action] as [step] under [policy], and returns its value. A step that fails after its
+     * attempts stops with the reason [explain] makes of the last attempt's.
+     */
     fun <T> step(
         step: PipelineStep,
         policy: StepPolicy,
+        explain: (reason: String) -> String = { it },
         action: (attempt: Int) -> T,
     ): T {
         onEnter(step)
         return when (val outcome = run.runner.run(host.alias, step, policy, watch.ended, action)) {
             is StepOutcome.Succeeded -> outcome.value
-            is StepOutcome.Failed -> stop(step, outcome.reason, outcome.replaceable, host)
+            is StepOutcome.Failed -> stop(step, explain(outcome.reason), outcome.replaceable, host)
             is StepOutcome.InstanceEnded -> stop(step, ended(outcome.state), true, host)
         }
     }

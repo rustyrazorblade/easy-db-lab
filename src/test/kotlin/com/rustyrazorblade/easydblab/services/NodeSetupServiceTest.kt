@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
@@ -22,7 +21,7 @@ import java.nio.file.Path
  */
 class NodeSetupServiceTest {
     private val remoteOps: RemoteOperationsService = mock()
-    private val service = NodeSetupService(remoteOps, mock(), EventBus())
+    private val service = NodeSetupService(remoteOps, mock())
     private val context = NodeSetupContext("10.0.1.100", "10.0.1.5", "test-abc", "default")
     private val uploads = mutableMapOf<String, MutableList<String>>()
 

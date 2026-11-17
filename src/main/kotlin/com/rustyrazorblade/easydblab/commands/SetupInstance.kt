@@ -3,7 +3,10 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.InstanceSetupFailedException
 import com.rustyrazorblade.easydblab.services.NodeSetupContext
 import com.rustyrazorblade.easydblab.services.NodeSetupService
 import org.koin.core.component.inject
@@ -31,13 +34,23 @@ class SetupInstance : PicoBaseCommand() {
     override fun execute() {
         val context = NodeSetupContext.from(clusterState)
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, hosts.hostList, parallel = true) {
-            nodeSetupService.setupApp(it.toHost(), context)
+            reported { nodeSetupService.setupApp(it.toHost(), context) }
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "", parallel = true) {
-            nodeSetupService.setupDatabase(it.toHost(), context)
+            reported { nodeSetupService.setupDatabase(it.toHost(), context) }
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") {
-            nodeSetupService.setupControl(it.toHost())
+            reported { nodeSetupService.setupControl(it.toHost()) }
+        }
+    }
+
+    /** Runs one host's [setup]; a failed setup script is reported as its own event, then fails the command. */
+    private fun reported(setup: () -> Unit) {
+        try {
+            setup()
+        } catch (e: InstanceSetupFailedException) {
+            eventBus.emit(Event.Provision.InstanceSetupFailed(host = e.alias, reason = e.reason))
+            throw CommandFailedException(e.message ?: "Instance setup failed on ${e.alias}")
         }
     }
 }

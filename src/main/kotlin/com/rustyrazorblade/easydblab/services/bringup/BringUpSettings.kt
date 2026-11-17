@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import java.time.Duration
 
 /**
@@ -20,11 +21,19 @@ data class BringUpSettings(
     val sshSessions: Int = Constants.Scale.HOST_CONCURRENCY,
     val timing: BringUpTiming = BringUpTiming(),
 ) {
+    private val named: Set<String> =
+        hostFilter
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+
     /** Whether [alias] is one of the nodes `--hosts` names, or `--hosts` names none. */
-    fun includes(alias: String): Boolean {
-        val named = hostFilter.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        return named.isEmpty() || alias in named
-    }
+    fun includes(alias: String): Boolean = named.isEmpty() || alias in named
+
+    /** The nodes this bring-up runs pipelines for, the progress line's total: the ones `--hosts` names, or all. */
+    val runCount: Int
+        get() = if (named.isEmpty()) nodeCount else minOf(named.count { ServerType.Control.ordinalOf(it) == null }, nodeCount)
 }
 
 /**
@@ -36,7 +45,8 @@ data class BringUpTiming(
     val statusChecks: Duration = Duration.ofSeconds(Constants.Scale.INSTANCE_STATUS_TIMEOUT_SECONDS),
     val sshTimeout: Duration = Duration.ofSeconds(Constants.Scale.SSH_READY_TIMEOUT_SECONDS),
     val sshInterval: Duration = Duration.ofSeconds(Constants.Scale.SSH_PROBE_INTERVAL_SECONDS),
-    val retryInterval: Duration = Duration.ofSeconds(DEFAULT_RETRY_INTERVAL_SECONDS),
+    val retryInterval: Duration = Duration.ofSeconds(Constants.Scale.STEP_RETRY_INTERVAL_SECONDS),
+    val attemptStopGrace: Duration = Duration.ofSeconds(Constants.Scale.ATTEMPT_STOP_GRACE_SECONDS),
     val imageCheck: Duration = Duration.ofSeconds(Constants.Scale.IMAGE_CHECK_TIMEOUT_SECONDS),
     val setup: StepPolicy = StepPolicy.SETUP,
     val registryTls: StepPolicy = StepPolicy.REGISTRY_TLS,
@@ -69,8 +79,4 @@ data class BringUpTiming(
 
     /** The gate's own deadline decides; the step's bound only backs it up. */
     val gatePolicy: StepPolicy get() = StepPolicy(1, gateTimeout.plus(gateInterval).plus(controlStep), replaceable = false)
-
-    private companion object {
-        const val DEFAULT_RETRY_INTERVAL_SECONDS = 10L
-    }
 }

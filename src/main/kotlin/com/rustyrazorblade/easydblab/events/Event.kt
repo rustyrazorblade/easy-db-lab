@@ -4171,6 +4171,44 @@ sealed interface Event {
         }
 
         /**
+         * [alias] could not be brought up: [step] failed for [reason], on [instanceId] (kept for
+         * debugging unless [instanceKept] is false). Emitted the moment the node fails; the other
+         * nodes go on, and [NodesFailed] lists every failed node once they finish.
+         */
+        @Serializable
+        @SerialName("Provision.NodeFailed")
+        data class NodeFailed(
+            val alias: String,
+            val step: String,
+            val reason: String,
+            val instanceId: String,
+            val instanceKept: Boolean,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias failed at $step: $reason" + if (instanceKept) "" else " ($instanceId terminated)"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The control node [alias] failed at [step] for [reason], after its retries, or its control
+         * plane stayed unhealthy past the deadline. The control node is never replaced: every
+         * pipeline is stopped, every instance is kept, and `up` exits non-zero.
+         */
+        @Serializable
+        @SerialName("Provision.ControlNodeFailed")
+        data class ControlNodeFailed(
+            val alias: String,
+            val step: String,
+            val reason: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Control node $alias failed at $step: $reason. Every instance is kept; run up again after fixing the cause."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * One node `up` could not bring up: the step it last failed, why, and its last instance.
          * [instanceKept] is false when that instance was terminated for a replacement that then
          * could not launch.
@@ -4248,7 +4286,8 @@ sealed interface Event {
         /**
          * Where every node is, every `Constants.Scale.PROGRESS_INTERVAL_SECONDS` while pipelines run:
          * [byStep] counts the nodes in each step before join, in pipeline order; [joining] holds a
-         * join permit of [joinLimit].
+         * join permit of [joinLimit]. [controlStep] is the step the control node is in, or null
+         * once its pipeline is done.
          */
         @Serializable
         @SerialName("Provision.BringUpProgress")
@@ -4262,9 +4301,11 @@ sealed interface Event {
             val replacements: Int,
             val failed: Int,
             val controlPlane: ControlPlaneState,
+            val controlStep: String? = null,
         ) : Provision {
             override fun toDisplayString(): String {
-                val steps = byStep.filterValues { it > 0 }.map { (step, count) -> "$step $count" }
+                val control = listOfNotNull(controlStep?.let { "control $it" })
+                val steps = control + byStep.filterValues { it > 0 }.map { (step, count) -> "$step $count" }
                 val totals =
                     listOf(
                         "join $joining/$joinLimit",

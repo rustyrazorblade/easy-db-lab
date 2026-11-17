@@ -50,6 +50,9 @@ interface NodeSteps {
         access: ControlPlaneAccess,
         attempt: Int,
     )
+
+    /** The last lines of [host]'s join agent log, for the reason of a join that failed. */
+    fun joinLog(host: ClusterHost): String
 }
 
 /**

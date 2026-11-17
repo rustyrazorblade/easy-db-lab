@@ -65,6 +65,9 @@ class FakeControlPlane(
     /** While set, every sample is past the latency limit. */
     val unhealthy = AtomicBoolean(false)
 
+    /** The started agents of these aliases never register. */
+    val neverRegister: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
+
     /** While set, no started agent registers. */
     val holdRegistration = AtomicBoolean(false)
     val cleaned: MutableList<String> = Collections.synchronizedList(mutableListOf())
@@ -97,6 +100,7 @@ class FakeControlPlane(
 
     /** A node's agent was started: it registers after the delay, from its own thread, as a real one does. */
     fun joined(alias: String) {
+        if (alias in neverRegister) return
         peakJoining.accumulateAndGet(joining.incrementAndGet(), ::maxOf)
         Thread.ofVirtual().start {
             Thread.sleep(registrationDelayMs)
@@ -188,6 +192,14 @@ class FakeNodeSteps(
         call("join", host)
         lastAccess.set(access)
         controlPlane.joined(host.alias)
+    }
+
+    /** What [joinLog] returns for an alias; a missing alias reads as an empty log. */
+    val agentLogs: MutableMap<String, String> = ConcurrentHashMap()
+
+    override fun joinLog(host: ClusterHost): String {
+        call("join-log", host)
+        return agentLogs[host.alias].orEmpty()
     }
 
     private lateinit var control: ClusterHost

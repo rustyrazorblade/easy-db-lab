@@ -257,7 +257,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             single<K8sStorageOperations> { get<K8sService>() }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
-            single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), get()) }
+            single { NodeSetupService(get(), DefaultCassandraProfilingService(get())) }
             single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { plane })) }
             single<Ec2BringUpPorts> {
                 val steps = get<K3sBringUpSteps>()

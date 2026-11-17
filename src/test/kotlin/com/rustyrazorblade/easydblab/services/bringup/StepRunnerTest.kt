@@ -86,6 +86,68 @@ class StepRunnerTest {
         assertThat(outcome).isEqualTo(StepOutcome.Failed("timed out after 50ms", replaceable = true))
     }
 
+    /**
+     * A timed-out attempt is interrupted and waited for before the next one starts, so two
+     * attempts of one step never run together on one instance.
+     */
+    @Test
+    fun `a timed-out attempt has stopped before the retry starts`() {
+        val running = AtomicInteger()
+        val overlapped = AtomicInteger()
+
+        val outcome =
+            runner.run("db1", PipelineStep.SETUP, policy(2, timeout = Duration.ofMillis(50)), neverEnds) { attempt ->
+                if (running.incrementAndGet() > 1) overlapped.incrementAndGet()
+                try {
+                    if (attempt == 1) sleepThenCleanUp()
+                    "ok"
+                } finally {
+                    running.decrementAndGet()
+                }
+            }
+
+        assertThat(outcome).isEqualTo(StepOutcome.Succeeded("ok"))
+        assertThat(overlapped.get()).isZero()
+    }
+
+    @Test
+    fun `an attempt that ignores its interrupt past the grace fails the step at once, with no retry`() {
+        val stuckRunner = StepRunner(eventBus, health, retryInterval = Duration.ZERO, abandonGrace = Duration.ofMillis(50))
+        val calls = AtomicInteger()
+        val release = CountDownLatch(1)
+
+        val outcome =
+            stuckRunner.run("db1", PipelineStep.SETUP, policy(3, timeout = Duration.ofMillis(50)), neverEnds) {
+                calls.incrementAndGet()
+                // Swallows every interrupt, as a blocking call that ignores them would.
+                while (!awaitIgnoringInterrupt(release)) continue
+            }
+        release.countDown()
+
+        assertThat(outcome).isEqualTo(
+            StepOutcome.Failed("timed out after 50ms, and the attempt did not stop within 50ms", replaceable = true),
+        )
+        assertThat(calls.get()).isEqualTo(1)
+    }
+
+    /** Sleeps until interrupted, then spends [CLEANUP_MS] cleaning up, as an attempt that stops slowly would. */
+    private fun sleepThenCleanUp() {
+        try {
+            Thread.sleep(10_000)
+        } catch (_: InterruptedException) {
+            Thread.sleep(CLEANUP_MS)
+        }
+    }
+
+    /** Whether [latch] opened; false when the wait was interrupted, which is swallowed. */
+    private fun awaitIgnoringInterrupt(latch: CountDownLatch): Boolean =
+        try {
+            latch.await()
+            true
+        } catch (_: InterruptedException) {
+            false
+        }
+
     @Test
     fun `an instance that ends mid-step stops the step at once, with no retry`() {
         val ended = CompletableFuture<String>()
@@ -220,5 +282,8 @@ class StepRunnerTest {
     private companion object {
         /** Long enough for the failed attempt to reach the pause; an interrupt before it is caught the same way. */
         const val PAUSE_SETTLE_MS = 50L
+
+        /** How long the timed-out attempt keeps working after its interrupt; well past its 50 ms timeout. */
+        const val CLEANUP_MS = 200L
     }
 }

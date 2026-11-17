@@ -23,34 +23,42 @@ internal class ControlPipeline(
     /** Brings the control node up; throws [ControlNodeFailedException] when it cannot. */
     fun run() {
         val instance =
-            InstanceRun(run, ServerType.Control, launched, onEnter = {}) { step, reason, _, host ->
+            InstanceRun(run, ServerType.Control, launched, onEnter = run.progress::controlEntered) { step, reason, _, host ->
                 throw ControlNodeFailedException(host.alias, step.wireName, reason)
             }
-        instance.use {
-            it.reachable()
-            val steps = run.ports.controlSteps
-            val policy = run.timing.controlPolicy
-            // Every setup, this one too, installs the environment file, which names db0.
-            it.step(PipelineStep.WORKSPACE, policy) { _ -> steps.writeWorkspace() }
-            run.workspace.complete(Unit)
-            if (!run.settings.noSetup) {
-                it.step(PipelineStep.SETUP, policy) { _ -> run.ssh.withSession { run.ports.nodeSteps.setup(ServerType.Control, it.host) } }
-                it.checkImage()
-            }
-            it.step(PipelineStep.TUNNEL, policy) { _ -> steps.connect(it.host) }
-            if (run.settings.noSetup) return
-            it.step(PipelineStep.REGISTRY_CERT, policy) { _ -> run.ssh.withSession { steps.prepareRegistry(it.host) } }
-            run.certificate.complete(Unit)
-            val access = it.step(PipelineStep.K3S_SERVER, policy) { _ -> run.ssh.withSession { steps.startControlPlane(it.host) } }
-            val connection = run.own(it.step(PipelineStep.K3S_SERVER, policy) { _ -> steps.openControlPlane() })
-            run.connection.complete(connection)
-            startHealthMonitor(connection)
-            it.step(PipelineStep.CNI, policy) { _ -> steps.configureControlPlane(it.host) }
-            it.step(PipelineStep.GATE, run.timing.gatePolicy) { _ -> gate(connection, it.host.alias).await() }
-            // The health monitor reports later changes; it may already have seen the control plane unhealthy.
-            if (run.health.healthy) run.progress.controlPlane(Event.Provision.ControlPlaneState.HEALTHY)
-            run.controlPlane.complete(OpenControlPlane(access, connection))
+        try {
+            instance.use { runSteps(it) }
+        } finally {
+            run.progress.controlEntered(null)
         }
+    }
+
+    private fun runSteps(instance: InstanceRun) {
+        instance.reachable()
+        val steps = run.ports.controlSteps
+        val policy = run.timing.controlPolicy
+        // Every setup, this one too, installs the environment file, which names db0.
+        instance.step(PipelineStep.WORKSPACE, policy) { _ -> steps.writeWorkspace() }
+        run.workspace.complete(Unit)
+        if (!run.settings.noSetup) {
+            instance.step(PipelineStep.SETUP, policy) { _ ->
+                run.ssh.withSession { run.ports.nodeSteps.setup(ServerType.Control, instance.host) }
+            }
+            instance.checkImage()
+        }
+        instance.step(PipelineStep.TUNNEL, policy) { _ -> steps.connect(instance.host) }
+        if (run.settings.noSetup) return
+        instance.step(PipelineStep.REGISTRY_CERT, policy) { _ -> run.ssh.withSession { steps.prepareRegistry(instance.host) } }
+        run.certificate.complete(Unit)
+        val access = instance.step(PipelineStep.K3S_SERVER, policy) { _ -> run.ssh.withSession { steps.startControlPlane(instance.host) } }
+        val connection = run.own(instance.step(PipelineStep.K3S_SERVER, policy) { _ -> steps.openControlPlane() })
+        run.connection.complete(connection)
+        startHealthMonitor(connection)
+        instance.step(PipelineStep.CNI, policy) { _ -> steps.configureControlPlane(instance.host) }
+        instance.step(PipelineStep.GATE, run.timing.gatePolicy) { _ -> gate(connection, instance.host.alias).await() }
+        // The health monitor reports later changes; it may already have seen the control plane unhealthy.
+        if (run.health.healthy) run.progress.controlPlane(Event.Provision.ControlPlaneState.HEALTHY)
+        run.controlPlane.complete(OpenControlPlane(access, connection))
     }
 
     private fun gate(

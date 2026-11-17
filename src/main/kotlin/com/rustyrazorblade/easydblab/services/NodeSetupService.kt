@@ -6,9 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
-import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -17,6 +15,16 @@ import com.rustyrazorblade.easydblab.shellQuote
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
+
+/**
+ * `setup_instance.sh` exited non-zero on [alias], for [reason] (the script's own `ERROR:` lines).
+ * The caller reports it: `setup-instances` as [Event.Provision.InstanceSetupFailed], and `up`
+ * as the node's failed setup step, so it is printed once either way.
+ */
+class InstanceSetupFailedException(
+    val alias: String,
+    val reason: String,
+) : RuntimeException("Instance setup failed on $alias: $reason")
 
 /**
  * The cluster facts a node's setup needs: the database host app nodes point stress at, the
@@ -64,7 +72,6 @@ data class NodeSetupContext(
 class NodeSetupService(
     private val remoteOps: RemoteOperationsService,
     private val profilingService: CassandraProfilingService,
-    private val eventBus: EventBus,
 ) {
     /** Sets up [host] as a node of [serverType]. */
     fun setup(
@@ -185,9 +192,7 @@ class NodeSetupService(
         try {
             remoteOps.executeRemotely(host, "sudo bash $SETUP_SCRIPT").text
         } catch (e: RemoteCommandFailedException) {
-            val reason = setupFailureReason(e)
-            eventBus.emit(Event.Provision.InstanceSetupFailed(host = host.alias, reason = reason))
-            throw CommandFailedException("Instance setup failed on ${host.alias}: $reason")
+            throw InstanceSetupFailedException(host.alias, setupFailureReason(e))
         }
     }
 

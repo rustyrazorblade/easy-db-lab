@@ -17,14 +17,17 @@ import java.io.File
  *
  * `KIT_STORAGE_CLASS` and `KIT_STORAGE_SIZE` come from the environment's [KitStorage]: a kit's claims
  * name the class, and a kit's size arg defaults to `${KIT_STORAGE_SIZE}`.
+ *
+ * The role variables (`DB_NODE_SELECTOR`, `APP_NODE_SELECTOR`, `*_NODE_LABELS`, `DB_NODE_COUNT`,
+ * `APP_NODE_COUNT`) come from [placement]. Kit installs and kit processes pass one built by
+ * [RoleNodes] from the Kubernetes API; the default counts the hosts `state.json` records.
  */
 data class TemplateVariables(
     val clusterName: String,
     val bucketName: String,
     val accountBucket: String,
     val region: String,
-    val dbNodeCount: Int,
-    val appNodeCount: Int,
+    val placement: KitPlacementVariables,
     val controlHostPublic: String,
     val controlHostPrivate: String,
     val kitStorageClass: String,
@@ -46,8 +49,6 @@ data class TemplateVariables(
             "BUCKET_NAME" to bucketName,
             "ACCOUNT_BUCKET" to accountBucket,
             "REGION" to region,
-            "DB_NODE_COUNT" to dbNodeCount.toString(),
-            "APP_NODE_COUNT" to appNodeCount.toString(),
             "CONTROL_HOST" to controlHostPublic,
             "CONTROL_HOST_PUBLIC" to controlHostPublic,
             "CONTROL_HOST_PRIVATE" to controlHostPrivate,
@@ -73,7 +74,9 @@ data class TemplateVariables(
             // and Kotlin (JavaAgent), pinned to the versions the AMI ships.
             "OTEL_AGENT_IMAGE" to JavaAgent.OTEL.image,
             "PYROSCOPE_AGENT_IMAGE" to JavaAgent.PYROSCOPE.image,
-        )
+        ) +
+            // Role selectors and pools: where each role's pods go and how many nodes it has.
+            placement.toMap()
 
     companion object {
         /**
@@ -108,6 +111,13 @@ data class TemplateVariables(
                 "OTEL_COLLECTOR_HOST",
                 "OTEL_OTLP_HTTP_ENDPOINT",
                 "OTEL_OTLP_GRPC_ENDPOINT",
+                "OTEL_AGENT_IMAGE",
+                "PYROSCOPE_AGENT_IMAGE",
+                "DB_NODE_SELECTOR",
+                "APP_NODE_SELECTOR",
+                "DB_NODE_LABELS",
+                "APP_NODE_LABELS",
+                "CONTROL_NODE_LABELS",
                 "BACKUP_NAME",
             )
 
@@ -123,6 +133,7 @@ data class TemplateVariables(
             state: ClusterState,
             kitName: String,
             storageSize: String,
+            placement: KitPlacementVariables = KitPlacementVariables.fromRecordedHosts(state),
         ): TemplateVariables {
             val controlHost = state.getControlHost()
             val dbNodes = state.hosts[ServerType.Cassandra] ?: emptyList()
@@ -134,8 +145,7 @@ data class TemplateVariables(
                 bucketName = state.dataBucket.ifBlank { state.s3Bucket.orEmpty() },
                 accountBucket = state.s3Bucket.orEmpty(),
                 region = region,
-                dbNodeCount = dbNodes.size,
-                appNodeCount = appNodes.size,
+                placement = placement,
                 controlHostPublic = controlHost?.publicIp.orEmpty(),
                 controlHostPrivate = controlHost?.privateIp.orEmpty(),
                 // No kit name, no kit: a blank class rather than the class of a kit named "".

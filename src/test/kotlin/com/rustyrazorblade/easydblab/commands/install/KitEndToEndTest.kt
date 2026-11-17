@@ -18,12 +18,14 @@ import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
+import com.rustyrazorblade.easydblab.services.RoleNodes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -55,6 +57,7 @@ class KitEndToEndTest : BaseKoinTest() {
     private val mockWorkloadStepExecutor: WorkloadStepExecutor = mock()
     private val mockMetricsRegistryService: MetricsRegistryService = mock()
     private val mockKitHookExecutor: KitHookExecutor = mock()
+    private val mockK8sService: K8sService = mock()
 
     private lateinit var workingDir: File
 
@@ -79,6 +82,7 @@ class KitEndToEndTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single { RoleNodes(mockK8sService) }
                 single<GrafanaClient> { mockGrafanaClient }
                 single { DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore())) }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
@@ -93,6 +97,8 @@ class KitEndToEndTest : BaseKoinTest() {
 
     @BeforeEach
     fun setup() {
+        // One node matches every role selector, as on an AWS cluster with one node per role.
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("node0")))
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockGrafanaClient.installDashboard(any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory
@@ -152,19 +158,21 @@ class KitEndToEndTest : BaseKoinTest() {
     }
 
     @Test
-    fun `resolved defaults are applied when argValues not explicitly set`() {
+    fun `a cluster-variable default is resolved against the live role pool, not the value at startup`() {
         val resolver = get<InstallTemplateResolver>()
         val source = resolver.resolve("testdb")
         val config = requireNotNull(resolver.loadInstallConfig(source))
 
         val installCmd = KitInstallCommand(config, source)
         installCmd.argValues["STORAGE_SIZE"] = "50Gi"
+        // What the factory resolved from state.json when the CLI started.
         installCmd.resolvedDefaults["REPLICAS"] = "5"
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("a", "b", "c")))
 
         installCmd.call()
 
         val script = File(workingDir, "testdb/bin/start.sh").readText()
-        assertThat(script).contains("REPLICAS=5")
+        assertThat(script).contains("REPLICAS=3")
     }
 
     private fun collisionCheckedTestdb(): Pair<KitConfig, InstallTemplateResolver.TemplateSource> {
@@ -222,6 +230,7 @@ class KitEndToEndTest : BaseKoinTest() {
         val resolver = get<InstallTemplateResolver>()
         val source = resolver.resolve("testdb")
         val config = requireNotNull(resolver.loadInstallConfig(source)).copy(type = KitType.DB)
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(emptyList()))
         val events = captureEvents()
 
         val exitCode = install(config, source)

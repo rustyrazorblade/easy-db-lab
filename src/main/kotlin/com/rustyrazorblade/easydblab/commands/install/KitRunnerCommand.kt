@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
@@ -18,6 +19,7 @@ import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
+import com.rustyrazorblade.easydblab.services.RoleNodes
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadPresence
@@ -62,6 +64,7 @@ class KitRunnerCommand(
     private val metricsRegistryService: MetricsRegistryService by inject()
     private val kitHookExecutor: KitHookExecutor by inject()
     private val kitEndpointResolver: KitEndpointResolver by inject()
+    private val roleNodes: RoleNodes by inject()
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
     private val workspace: File by lazy { context.workingDirectory.absoluteFile }
     private val workspaceKubeconfig: File by lazy { WorkspaceKubeconfig.file(workspace) }
@@ -151,8 +154,12 @@ class KitRunnerCommand(
         val storageSize = resolvedArgs["STORAGE_SIZE"] ?: argDefaults["STORAGE_SIZE"] ?: ""
         val base =
             TemplateVariables
-                .from(state = clusterState, kitName = kitName, storageSize = storageSize)
-                .toMap()
+                .from(
+                    state = clusterState,
+                    kitName = kitName,
+                    storageSize = storageSize,
+                    placement = roleNodes.placement(RoleSelectors.from(clusterState)),
+                ).toMap()
         // Shell steps run from kitDir (e.g. clickhouse/), so a relative KUBECONFIG would resolve
         // to clickhouse/kubeconfig which doesn't exist. Typed steps interpolate ${KUBECONFIG} from
         // these variables too, so they carry the absolute workspace kubeconfig; KitProcessEnvironment

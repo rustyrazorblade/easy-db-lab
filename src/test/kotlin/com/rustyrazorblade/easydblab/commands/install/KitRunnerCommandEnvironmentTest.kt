@@ -7,7 +7,9 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.io.File
 
 /**
@@ -16,6 +18,23 @@ import java.io.File
  * phase scripts and typed steps get from KitProcessEnvironment.
  */
 class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
+    @Test
+    fun `kit processes get each role's pool from the Kubernetes API and its selector as labels`() {
+        whenever(mockK8sService.nodesMatching(eq(mapOf("type" to "db")))).thenReturn(Result.success(listOf("a", "b", "c")))
+        whenever(mockK8sService.nodesMatching(eq(mapOf("type" to "app")))).thenReturn(Result.success(listOf("d", "e")))
+        writeKitYaml("placed", "name: placed")
+        val outputFile = File(workingDir, "placement.txt")
+        writeScript(
+            "placed",
+            "start",
+            """echo "${'$'}DB_NODE_COUNT ${'$'}APP_NODE_COUNT ${'$'}DB_NODE_LABELS ${'$'}APP_NODE_LABELS ${'$'}CONTROL_NODE_LABELS" > "${outputFile.absolutePath}"""",
+        )
+
+        command("placed", "start").call()
+
+        assertThat(outputFile.readText().trim()).isEqualTo("3 2 type=db type=app type=control")
+    }
+
     @Test
     fun `kit with kit-ref arg and valid target injects TARGET_JDBC_URL into script env`() {
         // Write target kit.yaml with JDBC endpoint

@@ -163,6 +163,7 @@ val servicesModule =
                 K8sReadOperations::class,
             ),
         )
+        factoryOf(::RoleNodes)
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
         // One classpath scan per process: the set of dashboard files cannot change at runtime.

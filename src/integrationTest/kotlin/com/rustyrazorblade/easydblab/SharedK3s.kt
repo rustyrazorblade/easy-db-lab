@@ -84,7 +84,16 @@ object SharedK3s {
                 // A K3s that is up but whose controllers are starved says so in its own log; keep it.
                 throw AssertionError(
                     "no default ServiceAccount in $name after ${NAMESPACE_READY_TIMEOUT_SECONDS}s\n" +
-                        "${K3sDiagnostics.clusterDiagnostics(client, name)}\nK3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}",
+                        "${runCatching {
+                            K3sDiagnostics.clusterDiagnostics(
+                                client,
+                                name,
+                            )
+                        }.getOrElse {
+                            "cluster diagnostics unavailable: ${it.messageOrString()}"
+                        }}\nK3s log tail:\n${container.logs.takeLast(
+                            LOG_TAIL_CHARS,
+                        )}",
                     e,
                 )
             }

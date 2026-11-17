@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.SSHClient
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -109,19 +110,14 @@ class DefaultSSHConnectionProvider(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     override fun stop() {
         log.info { "Stopping SSH client and closing ${connections.size()} connections" }
 
         connections.closeAll()
 
-        try {
-            sshClient.stop()
-        } catch (e: IOException) {
-            log.error(e) { "IO error while stopping SSH client" }
-        } catch (e: RuntimeException) {
-            log.error(e) { "Runtime error while stopping SSH client" }
-        }
+        // Logged, not thrown: the route below must still close.
+        runCatchingException { sshClient.stop() }
+            .onFailure { e -> log.error(e) { "Error while stopping SSH client" } }
 
         // Closed after the sessions above, since a session may be riding a tunnel the route started.
         route.close()

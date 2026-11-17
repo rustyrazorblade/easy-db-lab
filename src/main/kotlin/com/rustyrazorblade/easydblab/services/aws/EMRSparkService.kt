@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.services.SparkJobRequest
 import com.rustyrazorblade.easydblab.services.SparkService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.emr.model.ActionOnFailure
 import software.amazon.awssdk.services.emr.model.AddJobFlowStepsRequest
@@ -614,12 +615,21 @@ class EMRSparkService(
                 Files.deleteIfExists(localGzFile)
                 eventBus.emit(Event.Emr.SparkLogDownloadComplete(logType.name.lowercase()))
                 count++
-            } catch (e: Exception) {
-                log.warn { "Could not download ${logType.filename}: ${e.message}" }
-                eventBus.emit(Event.Emr.SparkLogDownloadUnavailable(logType.name.lowercase()))
+            } catch (e: SdkException) {
+                reportLogUnavailable(logType, e)
+            } catch (e: IOException) {
+                reportLogUnavailable(logType, e)
             }
         }
         return count
+    }
+
+    private fun reportLogUnavailable(
+        logType: SparkService.LogType,
+        e: Exception,
+    ) {
+        log.warn { "Could not download ${logType.filename}: ${e.message}" }
+        eventBus.emit(Event.Emr.SparkLogDownloadUnavailable(logType.name.lowercase()))
     }
 
     private fun emitNoLogsAvailableInstructions(

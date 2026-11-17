@@ -80,7 +80,6 @@ class TailscaleStop : PicoBaseCommand() {
      * A failed delete still clears the recorded key ID, so a later `stop` does not retry it; missing
      * credentials return before that, so the ID stays recorded.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteTailscaleAuthKey() {
         val keyId = clusterState.tailscaleAuthKeyId ?: return
 
@@ -94,7 +93,7 @@ class TailscaleStop : PicoBaseCommand() {
         try {
             tailscaleService.deleteAuthKey(clientId, clientSecret, keyId)
             eventBus.emit(Event.Tailscale.AuthKeyDeleted(keyId))
-        } catch (e: Exception) {
+        } catch (e: TailscaleApiException) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
             eventBus.emit(Event.Tailscale.AuthKeyNotDeleted(keyId, e.messageOrString()))
         }

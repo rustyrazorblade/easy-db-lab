@@ -14,7 +14,9 @@ import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.core.exception.SdkException
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStreamReader
 import java.util.zip.GZIPInputStream
 import kotlin.io.path.createTempFile
@@ -123,7 +125,6 @@ class DefaultEMRProvisioningService(
      * Fetches and emits bootstrap action stderr logs when an EMR cluster fails to start.
      * Falls back to emitting manual debug instructions if logs cannot be retrieved.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun emitBootstrapFailureDiagnostics(
         clusterId: String,
         s3Path: ClusterS3Path,
@@ -154,15 +155,21 @@ class DefaultEMRProvisioningService(
                 }
 
             eventBus.emit(Event.Emr.BootstrapFailureLog(content))
-        } catch (e: Exception) {
-            log.debug(e) { "Failed to retrieve bootstrap logs for cluster $clusterId" }
-            eventBus.emit(
-                Event.Emr.BootstrapFailureLogUnavailable(
-                    e.message ?: "Unknown error",
-                ),
-            )
-            emitDebugInstructions(clusterId, s3Path)
+        } catch (e: SdkException) {
+            emitBootstrapLogUnavailable(clusterId, s3Path, e)
+        } catch (e: IOException) {
+            emitBootstrapLogUnavailable(clusterId, s3Path, e)
         }
+    }
+
+    private fun emitBootstrapLogUnavailable(
+        clusterId: String,
+        s3Path: ClusterS3Path,
+        cause: Exception,
+    ) {
+        log.debug(cause) { "Failed to retrieve bootstrap logs for cluster $clusterId" }
+        eventBus.emit(Event.Emr.BootstrapFailureLogUnavailable(cause.message ?: "Unknown error"))
+        emitDebugInstructions(clusterId, s3Path)
     }
 
     private fun emitDebugInstructions(

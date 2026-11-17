@@ -9,7 +9,9 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
 import org.koin.core.component.inject
@@ -17,6 +19,7 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
+import java.io.IOException
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
@@ -93,8 +96,13 @@ class ExecRun : PicoBaseCommand() {
         }
     }
 
-    /** Runs [commandString] on [host] and returns whether it succeeded; a failure is reported as an event. */
-    @Suppress("TooGenericExceptionCaught")
+    /**
+     * Runs [commandString] on [host] and returns whether it succeeded; a failure is reported as an event.
+     *
+     * The failures that reach here are the ones the SSH layer reports: a transport [IOException], a
+     * [RemoteCommandFailedException] or other [EasyDBLabException], and an [SsmForwardNotReadyException]
+     * from the `ssm` transport, and an [IllegalArgumentException] from routing a host. Anything else is a bug and propagates.
+     */
     private fun executeOnHost(
         host: Host,
         commandString: String,
@@ -103,18 +111,27 @@ class ExecRun : PicoBaseCommand() {
 
         val systemdRunCmd = buildSystemdRunCommand(systemdUnit, commandString)
 
-        try {
-            if (background) {
-                remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
-                eventBus.emit(Event.Command.ToolStarted(host.alias, systemdUnit, commandString))
-            } else {
-                runInForeground(host, systemdUnit, systemdRunCmd)
+        val failure =
+            try {
+                if (background) {
+                    remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
+                    eventBus.emit(Event.Command.ToolStarted(host.alias, systemdUnit, commandString))
+                } else {
+                    runInForeground(host, systemdUnit, systemdRunCmd)
+                }
+                return true
+            } catch (e: IOException) {
+                e
+            } catch (e: EasyDBLabException) {
+                e
+            } catch (e: SsmForwardNotReadyException) {
+                e
+            } catch (e: IllegalArgumentException) {
+                // The ssm route refuses a host that has no instance ID.
+                e
             }
-            return true
-        } catch (e: Exception) {
-            eventBus.emit(Event.Command.HostExecError(host.alias, e.message ?: e::class.simpleName ?: "Unknown error"))
-            return false
-        }
+        eventBus.emit(Event.Command.HostExecError(host.alias, failure.message ?: failure::class.simpleName ?: "Unknown error"))
+        return false
     }
 
     /**

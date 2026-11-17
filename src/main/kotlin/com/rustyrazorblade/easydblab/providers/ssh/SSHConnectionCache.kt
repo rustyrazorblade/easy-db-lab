@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -61,17 +61,15 @@ class SSHConnectionCache(
     /** How many connections are open. */
     fun size(): Int = connections.size
 
-    @Suppress("TooGenericExceptionCaught")
+    /**
+     * Closes [connection] and logs, instead of throwing, whatever stops it from closing, so one
+     * connection that will not close never keeps the others open. An [Error] is not swallowed.
+     */
     private fun closeQuietly(
         connection: ISSHClient,
         host: Host,
     ) {
-        try {
-            connection.close()
-        } catch (e: IOException) {
-            log.debug(e) { "IO error closing the session to ${host.alias}" }
-        } catch (e: RuntimeException) {
-            log.debug(e) { "Runtime error closing the session to ${host.alias}" }
-        }
+        runCatchingException { connection.close() }
+            .onFailure { e -> log.debug(e) { "Error closing the session to ${host.alias}" } }
     }
 }

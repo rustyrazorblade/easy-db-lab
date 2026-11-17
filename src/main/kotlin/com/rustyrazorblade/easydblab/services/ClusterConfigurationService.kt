@@ -192,7 +192,6 @@ class DefaultClusterConfigurationService(
             }
         }
 
-    @Suppress("TooGenericExceptionCaught")
     override fun writeAxonOpsWorkbenchConfig(
         workingDirectory: Path,
         clusterState: ClusterState,

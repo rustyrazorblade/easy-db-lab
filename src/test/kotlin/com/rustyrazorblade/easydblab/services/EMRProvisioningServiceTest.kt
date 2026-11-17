@@ -23,11 +23,14 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.KArgumentCaptor
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.emr.model.InstanceGroupType
+import java.io.IOException
 
 /**
  * Tests for EMRProvisioningService verifying correct EMR cluster creation.
@@ -424,7 +427,7 @@ internal class EMRProvisioningServiceTest {
             .thenThrow(IllegalStateException("Cluster failed: TERMINATED_WITH_ERRORS"))
         // listInstances throws to trigger the fallback path
         whenever(mockEmrService.listInstances(eq("j-FAIL"), any()))
-            .thenThrow(RuntimeException("Cluster already terminated"))
+            .thenThrow(SdkClientException.create("Cluster already terminated"))
 
         assertThatThrownBy {
             service.provisionEmrCluster(
@@ -445,6 +448,104 @@ internal class EMRProvisioningServiceTest {
 
         // Verify diagnostics were attempted
         verify(mockEmrService).listInstances(eq("j-FAIL"), eq(InstanceGroupType.MASTER))
+
+        // Verify diagnostic events were emitted
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureDiagnosing }
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureLogUnavailable }
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureDebugInstructions }
+    }
+
+    @Test
+    fun `provisionEmrCluster lets a diagnostics failure that is not an AWS or I-O failure propagate`() {
+        val clusterState =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test-bucket",
+                clusterId = "test-id",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+            )
+
+        val createResult =
+            EMRClusterResult(
+                clusterId = "j-FAIL",
+                clusterName = "test-spark",
+                masterPublicDns = null,
+                state = "STARTING",
+            )
+
+        whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
+        whenever(mockEmrService.waitForClusterReady("j-FAIL"))
+            .thenThrow(IllegalStateException("Cluster failed: TERMINATED_WITH_ERRORS"))
+        // listInstances throws to trigger the fallback path
+        whenever(mockEmrService.listInstances(eq("j-FAIL"), any()))
+            .thenThrow(IllegalArgumentException("bug in diagnostics"))
+
+        assertThatThrownBy {
+            service.provisionEmrCluster(
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.xlarge",
+                    workerInstanceType = "m5.xlarge",
+                    workerCount = 3,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = emptyMap(),
+                ),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("bug in diagnostics")
+
+        assertThat(capturedEvents).noneMatch { it is Event.Emr.BootstrapFailureLogUnavailable }
+    }
+
+    @Test
+    fun `provisionEmrCluster reports an unreadable bootstrap log as unavailable when the log download fails with an I-O error`() {
+        val clusterState =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                s3Bucket = "easy-db-lab-test-bucket",
+                clusterId = "test-id",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+            )
+
+        val createResult =
+            EMRClusterResult(
+                clusterId = "j-FAIL",
+                clusterName = "test-spark",
+                masterPublicDns = null,
+                state = "STARTING",
+            )
+
+        whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
+        whenever(mockEmrService.waitForClusterReady("j-FAIL"))
+            .thenThrow(IllegalStateException("Cluster failed: TERMINATED_WITH_ERRORS"))
+        // the stderr download fails with an I-O error, which triggers the fallback path
+        whenever(mockEmrService.listInstances(eq("j-FAIL"), any())).thenReturn(listOf("i-master"))
+        doAnswer { throw IOException("Connection reset") }.whenever(mockObjectStore).downloadFile(any(), any(), any())
+
+        assertThatThrownBy {
+            service.provisionEmrCluster(
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.xlarge",
+                    workerInstanceType = "m5.xlarge",
+                    workerCount = 3,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = emptyMap(),
+                ),
+            )
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("TERMINATED_WITH_ERRORS")
+
+        // Verify diagnostics were attempted
+        verify(mockObjectStore).downloadFile(any(), any(), any())
 
         // Verify diagnostic events were emitted
         assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureDiagnosing }

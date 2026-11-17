@@ -5,7 +5,7 @@ TBD - created by archiving change issue-937. Update Purpose after archive.
 ## Requirements
 ### Requirement: Redirect mode is selected at bring-up with a single base host
 
-The operator SHALL be able to select redirect mode at `init` by supplying one external base host (`--redirect-telemetry <host>`), from which the four signal endpoints are derived from the receiving easy-db-lab stack's published NodePorts (Mimir, Loki, Tempo OTLP gRPC and Pyroscope).  The operator MAY override any individual signal endpoint for a non-easy-db-lab target.  Redirect mode SHALL be a life-of-cluster property, persisted with the cluster state, and MUST NOT be a per-signal choice: all four signals move together.
+The operator SHALL be able to select redirect mode at `init` by supplying one external base host (`--redirect-telemetry <host>`), from which the four signal endpoints are derived from the receiving easy-db-lab stack's published NodePorts (Mimir, Loki, Tempo OTLP gRPC and Pyroscope). The base host SHALL be a bare hostname or IPv4 address, with no scheme, port or path; an IPv6 literal is not accepted as a base host. A value that does not meet this SHALL be accepted only when all four per-signal endpoints are overridden, since then nothing is derived from it.  The operator MAY override any individual signal endpoint for a non-easy-db-lab target.  Redirect mode SHALL be a life-of-cluster property, persisted with the cluster state, and MUST NOT be a per-signal choice: all four signals move together.
 
 #### Scenario: Base host derives all four endpoints
 
@@ -19,7 +19,7 @@ The operator SHALL be able to select redirect mode at `init` by supplying one ex
 
 #### Scenario: A base host that cannot carry the derived endpoints is refused
 
-- **WHEN** a cluster is initialized with `--redirect-telemetry` set to a value carrying a scheme or a port, and at least one signal is not overridden
+- **WHEN** a cluster is initialized with `--redirect-telemetry` set to a value that is blank or contains `:` or `/` (a scheme, a port, a trailing path, or an IPv6 literal), and at least one signal is not overridden
 - **THEN** `init` fails before writing any state, saying the host must be a node of an easy-db-lab cluster and naming the four `--redirect-*-endpoint` overrides for any other stack
 
 #### Scenario: A redirected cluster lands all four signals on another easy-db-lab cluster

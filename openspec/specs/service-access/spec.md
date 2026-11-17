@@ -39,7 +39,7 @@ When `exposure` is Socks, the seam SHALL dial the cluster node's private IP at t
 
 ### Requirement: Direct service access uses no proxy
 
-When `exposure` is Direct, the seam SHALL dial the node address at the Service's published NodePort, or the Service address, with no proxy.
+When `exposure` is Direct, the seam SHALL dial, with no proxy, the private address of the first node of the target's role at the target's node port. For the observability Services (Grafana, Mimir, Loki, Tempo, Pyroscope) that is the control node at the Service's published NodePort; for a kit's SQL endpoint it is a node of the endpoint's node type at the endpoint's port. The Direct seam SHALL NOT dial a Service's cluster address, which only a port-forward reaches.
 
 #### Scenario: Direct environment bypasses SOCKS
 - **GIVEN** a cluster with `exposure` Direct

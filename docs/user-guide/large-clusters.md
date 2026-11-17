@@ -79,9 +79,10 @@ after an upgrade so your user has it.
 - The pod readiness wait fails as soon as a pod's container is in `CrashLoopBackOff`,
   `ImagePullBackOff`, `ErrImagePull` or `Error`, naming the pod and the reason, instead of
   waiting out the deadline.
-- The observability rollout wait, which runs before it, fails the same way: when a pod of a
+- The observability rollout wait, which runs before it, fails the same way when a pod of a
   workload still rolling out (for example the collector or Fluent Bit on one node) is in one of
-  those states, it stops at once. When a DaemonSet's pod that is not ready is on a node that is
+  those states. An image pull failure or `Error` stops it at once. A crash loop stops it after 3
+  restarts, since a pod may crash once or twice while a backend it needs comes up. When a DaemonSet's pod that is not ready is on a node that is
   not `Ready`, it fails after the node has been NotReady for 60 s, so a node that is still joining
   or misses a heartbeat does not fail it. Either error names the workload, the pod, the node and
   the reason. A rollout that is only slow still waits.

@@ -37,6 +37,7 @@ class RolloutBlockerTest {
         waitingReason: String? = null,
         terminating: Boolean = false,
         ready: Boolean = false,
+        restarts: Int = 0,
     ): Pod =
         PodBuilder()
             .withNewMetadata()
@@ -51,6 +52,7 @@ class RolloutBlockerTest {
             .apply { if (ready) addNewCondition().withType("Ready").withStatus("True").endCondition() }
             .addNewContainerStatus()
             .withName("main")
+            .withRestartCount(restarts)
             .withNewState()
             .apply { if (waitingReason != null) withNewWaiting().withReason(waitingReason).endWaiting() }
             .endState()
@@ -101,7 +103,8 @@ class RolloutBlockerTest {
     ) {
         val workload = WorkloadRef(kind, "agent")
 
-        val blocker = RolloutBlocker.find(now, workload, listOf(pod(waitingReason = reason)), reader(readyNodes))
+        val pods = listOf(pod(waitingReason = reason, restarts = Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS))
+        val blocker = RolloutBlocker.find(now, workload, pods, reader(readyNodes))
 
         assertThat(blocker)
             .contains("$kind/agent")
@@ -137,10 +140,56 @@ class RolloutBlockerTest {
         assertThat(RolloutBlocker.find(now, daemonSet, listOf(pod(node = "db7")), reader(nodes))).describedAs(case).isNull()
     }
 
+    @ParameterizedTest(name = "{0} after {1} restarts blocks: {2}")
+    @MethodSource("restartThreshold")
+    fun `a crash loop blocks only after the restart threshold, any other terminal reason at once`(
+        reason: String,
+        restarts: Int,
+        blocks: Boolean,
+    ) {
+        for (workload in listOf(daemonSet, deployment)) {
+            val blocker = RolloutBlocker.find(now, workload, listOf(pod(waitingReason = reason, restarts = restarts)), reader(readyNodes))
+
+            when {
+                blocks -> assertThat(blocker).describedAs("$workload").contains(reason)
+                else -> assertThat(blocker).describedAs("$workload").isNull()
+            }
+        }
+    }
+
     @Test
-    fun `a crash loop blocks at once, even on a node that just went NotReady`() {
+    fun `a crash loop at the threshold names its restart count`() {
+        val pods = listOf(pod(waitingReason = "CrashLoopBackOff", restarts = 3))
+
+        assertThat(RolloutBlocker.find(now, daemonSet, pods, reader(readyNodes))).contains("after 3 restarts")
+    }
+
+    @Test
+    fun `an early crash loop in one container does not hide an image pull failure in another`() {
+        val pod =
+            PodBuilder(pod(waitingReason = "CrashLoopBackOff", restarts = 1))
+                .editStatus()
+                .addNewContainerStatus()
+                .withName("sidecar")
+                .withRestartCount(0)
+                .withNewState()
+                .withNewWaiting()
+                .withReason("ImagePullBackOff")
+                .endWaiting()
+                .endState()
+                .endContainerStatus()
+                .endStatus()
+                .build()
+
+        assertThat(RolloutBlocker.find(now, daemonSet, listOf(pod), reader(readyNodes)))
+            .contains("sidecar")
+            .contains("ImagePullBackOff")
+    }
+
+    @Test
+    fun `a crash loop past the threshold blocks at once, even on a node that just went NotReady`() {
         val nodes = listOf(node("db7", "False", transitioned = ago(1)))
-        val pods = listOf(pod(node = "db7", waitingReason = "CrashLoopBackOff"))
+        val pods = listOf(pod(node = "db7", waitingReason = "CrashLoopBackOff", restarts = 3))
 
         assertThat(RolloutBlocker.find(now, daemonSet, pods, reader(nodes))).contains("CrashLoopBackOff")
     }
@@ -207,6 +256,18 @@ class RolloutBlockerTest {
             K8sPodUtils.TERMINAL_FAILURE_REASONS
                 .flatMap { reason -> WorkloadKind.entries.map { kind -> Arguments.of(reason, kind) } }
                 .stream()
+
+        @JvmStatic
+        fun restartThreshold(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of("CrashLoopBackOff", 1, false),
+                Arguments.of("CrashLoopBackOff", 2, false),
+                Arguments.of("CrashLoopBackOff", 3, true),
+                Arguments.of("CrashLoopBackOff", 10, true),
+                Arguments.of("ImagePullBackOff", 0, true),
+                Arguments.of("ErrImagePull", 0, true),
+                Arguments.of("Error", 0, true),
+            )
 
         @JvmStatic
         fun notReadyConditions(): Stream<Arguments> = Stream.of(Arguments.of("False"), Arguments.of("Unknown"))

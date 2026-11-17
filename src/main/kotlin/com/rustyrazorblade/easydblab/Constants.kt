@@ -698,6 +698,14 @@ object Constants {
          */
         const val ROLLOUT_NODE_NOT_READY_GRACE_SECONDS = 60L
 
+        /**
+         * How many restarts a container in CrashLoopBackOff must have before it blocks a rollout. The
+         * kubelet reports CrashLoopBackOff after the first crash, and a pod may crash once or twice while
+         * a dependency (a backend Service, a lease) comes up; three crashes is a loop. Every other
+         * terminal reason, such as an image pull failure, blocks at once.
+         */
+        const val ROLLOUT_CRASH_LOOP_MIN_RESTARTS = 3
+
         /** The annotation the Deployment controller keeps on a Deployment and its ReplicaSets: the revision. */
         const val DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
     }

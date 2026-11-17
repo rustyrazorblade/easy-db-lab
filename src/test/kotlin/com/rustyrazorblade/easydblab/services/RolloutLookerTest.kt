@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.NodeBuilder
 import io.fabric8.kubernetes.api.model.Pod
@@ -140,6 +141,7 @@ class RolloutLookerTest {
             .withNewStatus()
             .addNewContainerStatus()
             .withName("main")
+            .withRestartCount(if (crashing) Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS else 0)
             .withNewState()
             .apply { if (crashing) withNewWaiting().withReason("CrashLoopBackOff").endWaiting() }
             .endState()

@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import io.fabric8.kubernetes.api.model.ContainerStatus
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.client.readiness.Readiness
 import java.time.Duration
 import java.time.Instant
@@ -16,7 +18,11 @@ import java.time.format.DateTimeParseException
  * pull its image, or a DaemonSet pod pinned to a node that went NotReady, holds the count below
  * desired until the deadline, and the timeout then names no pod, node or reason. A container in a
  * terminal state is classified by [K8sPodUtils.failureOf], the same rule the namespace readiness wait
- * uses, and blocks at once. Only a DaemonSet pod that is not Ready can be blocked by its node: a Ready
+ * uses, and blocks at once, with one exception: the kubelet reports `CrashLoopBackOff` after the first
+ * crash, and a pod may crash once or twice while a dependency comes up, so a container in
+ * `CrashLoopBackOff` blocks only once its `restartCount` reaches
+ * [Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS]. An image pull failure, or any other terminal
+ * reason, still blocks at once. Only a DaemonSet pod that is not Ready can be blocked by its node: a Ready
  * pod already counts toward the rollout, and a Deployment pod can be replaced on another node. Its node
  * blocks only once its Ready condition has been False or Unknown for longer than
  * [Constants.K8s.ROLLOUT_NODE_NOT_READY_GRACE_SECONDS], measured from the condition's
@@ -46,12 +52,43 @@ object RolloutBlocker {
     ): String? {
         val live = pods.filter { it.metadata?.deletionTimestamp == null }
         return live.firstNotNullOfOrNull { pod ->
-            K8sPodUtils.failureOf(pod)?.let { "$workload: $it (node ${pod.spec?.nodeName ?: "unscheduled"})" }
+            containerFailure(pod)?.let { "$workload: $it (node ${pod.spec?.nodeName ?: "unscheduled"})" }
         } ?: when (workload.kind) {
             WorkloadKind.DaemonSet -> onNotReadyNode(now, workload, live, node)
             WorkloadKind.Deployment -> null
         }
     }
+
+    /**
+     * [K8sPodUtils.failureOf] of [pod], judged without its containers in an early crash loop, so one
+     * that has not crashed often enough neither blocks nor hides another container's failure. A crash
+     * loop's reason carries its restart count.
+     */
+    private fun containerFailure(pod: Pod): String? {
+        val status = pod.status ?: return null
+        val containers = status.containerStatuses.orEmpty().filterNot(::isEarlyCrashLoop)
+        val initContainers = status.initContainerStatuses.orEmpty().filterNot(::isEarlyCrashLoop)
+        val judged =
+            PodBuilder(pod)
+                .editStatus()
+                .withContainerStatuses(containers)
+                .withInitContainerStatuses(initContainers)
+                .endStatus()
+                .build()
+        val failure = K8sPodUtils.failureOf(judged) ?: return null
+        // failureOf names the first failing container, containers before init containers.
+        val failed = (containers + initContainers).firstOrNull { it.state?.waiting?.reason in K8sPodUtils.TERMINAL_FAILURE_REASONS }
+        return when (failed?.state?.waiting?.reason) {
+            CRASH_LOOP_REASON -> "$failure, after ${failed.restartCount ?: 0} restarts"
+            else -> failure
+        }
+    }
+
+    private fun isEarlyCrashLoop(status: ContainerStatus): Boolean =
+        status.state?.waiting?.reason == CRASH_LOOP_REASON &&
+            (status.restartCount ?: 0) < Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS
+
+    private const val CRASH_LOOP_REASON = "CrashLoopBackOff"
 
     private fun onNotReadyNode(
         now: Instant,

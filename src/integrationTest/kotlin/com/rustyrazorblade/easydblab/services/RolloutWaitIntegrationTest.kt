@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
@@ -36,11 +37,15 @@ class RolloutWaitIntegrationTest {
         private const val NAMESPACE = "rollout-wait"
         private const val IMAGE = SharedK3s.BUSYBOX_IMAGE
         private const val READY_DELAY_SECONDS = 5
-        private const val TIMEOUT_SECONDS = 180
+        private const val TIMEOUT_SECONDS = 300
         private const val SHORT_TIMEOUT_SECONDS = 8
 
-        /** A broken pod must end the wait this long before [TIMEOUT_SECONDS], or it waited it out. */
-        private const val FAIL_FAST_LIMIT_SECONDS = 90L
+        /**
+         * A broken pod must end the wait this long before [TIMEOUT_SECONDS], or it waited it out. A crash
+         * loop blocks only at its third restart, which the kubelet's 10 s, 20 s, 40 s back-off reaches
+         * about 70 s after the pod starts.
+         */
+        private const val FAIL_FAST_LIMIT_SECONDS = 150L
 
         /** An image on a reserved TLD (RFC 2606) that no registry can serve. */
         private const val UNPULLABLE_IMAGE = "registry.invalid/easy-db-lab/no-such-image:1"
@@ -239,6 +244,17 @@ class RolloutWaitIntegrationTest {
             .get(FAIL_FAST_LIMIT_SECONDS, TimeUnit.SECONDS)
     }
 
+    /** The highest container restart count among the pods of [app]. */
+    private fun restartsOf(app: String): Int =
+        client
+            .pods()
+            .inNamespace(NAMESPACE)
+            .withLabel("app", app)
+            .list()
+            .items
+            .flatMap { it.status?.containerStatuses.orEmpty() }
+            .maxOf { it.restartCount ?: 0 }
+
     /**
      * Waits on [workloads] with the long [TIMEOUT_SECONDS] budget and asserts it failed well before
      * it, with a message naming [ref], a pod of it, the node and [reason].
@@ -285,19 +301,21 @@ class RolloutWaitIntegrationTest {
     }
 
     @Test
-    fun `fails at once naming the pod when a DaemonSet's container exits at once`() {
+    fun `fails after the crash loop threshold naming the pod when a DaemonSet's container exits at once`() {
         val name = "rollout-crash"
         createDaemonSet(name, crashingSpec())
 
         assertFailsFast(WorkloadRef(WorkloadKind.DaemonSet, name), "CrashLoopBackOff")
+        assertThat(restartsOf(name)).isGreaterThanOrEqualTo(Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS)
     }
 
     @Test
-    fun `fails at once naming the pod when a Deployment's container exits at once`() {
+    fun `fails after the crash loop threshold naming the pod when a Deployment's container exits at once`() {
         val name = "rollout-deploy-crash"
         createDeployment(name, spec = crashingSpec())
 
         assertFailsFast(WorkloadRef(WorkloadKind.Deployment, name), "CrashLoopBackOff")
+        assertThat(restartsOf(name)).isGreaterThanOrEqualTo(Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -21,6 +22,9 @@ import java.io.File
  * The role variables (`DB_NODE_SELECTOR`, `APP_NODE_SELECTOR`, `*_NODE_LABELS`, `DB_NODE_COUNT`,
  * `APP_NODE_COUNT`) come from [placement]. Kit installs and kit processes pass one built by
  * [RoleNodes] from the Kubernetes API; the default counts the hosts `state.json` records.
+ *
+ * `CLIENT_NETWORKS_JSON` (a JSON list of CIDRs) and `CLIENT_NETWORKS_HBA_JSON` (one `pg_hba` trust
+ * line per CIDR) come from [clientNetworks].
  */
 data class TemplateVariables(
     val clusterName: String,
@@ -28,6 +32,7 @@ data class TemplateVariables(
     val accountBucket: String,
     val region: String,
     val placement: KitPlacementVariables,
+    val clientNetworks: ClientNetworks,
     val controlHostPublic: String,
     val controlHostPrivate: String,
     val kitStorageClass: String,
@@ -76,7 +81,12 @@ data class TemplateVariables(
             "PYROSCOPE_AGENT_IMAGE" to JavaAgent.PYROSCOPE.image,
         ) +
             // Role selectors and pools: where each role's pods go and how many nodes it has.
-            placement.toMap()
+            placement.toMap() +
+            // The networks a passwordless database kit accepts clients from.
+            mapOf(
+                "CLIENT_NETWORKS_JSON" to clientNetworks.toJson(),
+                "CLIENT_NETWORKS_HBA_JSON" to clientNetworks.toHbaJson(),
+            )
 
     companion object {
         /**
@@ -146,6 +156,7 @@ data class TemplateVariables(
                 accountBucket = state.s3Bucket.orEmpty(),
                 region = region,
                 placement = placement,
+                clientNetworks = ClientNetworks.from(state),
                 controlHostPublic = controlHost?.publicIp.orEmpty(),
                 controlHostPrivate = controlHost?.privateIp.orEmpty(),
                 // No kit name, no kit: a blank class rather than the class of a kit named "".

@@ -6,11 +6,10 @@ metadata:
 spec:
   configuration:
     users:
-      # Allow connections from the VPC CIDR and the K3s pod CIDR (10.224.0.0/12).
-      # Uses 10.0.0.0/8 to cover both: the VPC CIDR (10.x.0.0/16, set via --cidr) and the
-      # K3s pod CIDR (10.224.0.0/12). NodePort traffic can arrive SNATed to a pod-range
-      # gateway IP, not the node VPC IP, so the VPC CIDR alone is insufficient.
-      default/networks/ip: "10.0.0.0/8"
+      # The passwordless default user accepts the environment's client networks: on the nodes
+      # easy-db-lab builds, the VPC CIDR and the K3s cluster CIDR (Cilium SNATs NodePort traffic to
+      # the pod gateway, so the VPC alone is not enough); elsewhere what `init` recorded.
+      default/networks/ip: __CLIENT_NETWORKS_JSON__
     zookeeper:
       # Reference the ClickHouseKeeperInstallation (CHK) by name. The operator discovers
       # all keeper replica endpoints automatically and configures ClickHouse with them,

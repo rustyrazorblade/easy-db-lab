@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.CapabilityOverrides
+import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
@@ -30,6 +31,7 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.network.Ipv4Cidr
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -303,6 +305,15 @@ class Init :
     var roleNodes: List<String> = mutableListOf()
 
     @Option(
+        names = [ClientNetworks.OPTION],
+        description = [
+            "A network the database kits accept passwordless clients from, as an IPv4 CIDR or address " +
+                "(can be repeated). Added to the VPC CIDR and the K3s cluster CIDR.",
+        ],
+    )
+    var clientNetworks: List<String> = mutableListOf()
+
+    @Option(
         names = ["--kit-storage-class"],
         description = [
             "StorageClass every kit claim names. Omit on an AWS cluster to keep kits on per-kit local " +
@@ -542,11 +553,12 @@ class Init :
         // Parsed before anything is cleaned or written, so a bad override or mapping leaves the directory as it was.
         val capabilities = effectiveCapabilities()
         val roleSelectors = RoleSelectors.base(nodeOrigin).withMappings(RoleSelectors.parse(roleNodes))
+        val extraClientNetworks = clientNetworks.map { Ipv4Cidr.parse(it).getOrThrow().value }
 
         if (!clean) checkExistingFiles()
         // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker
         // architecture) leaves the directory as it was.
-        val clusterState = buildClusterState(capabilities).copy(roleSelectors = roleSelectors)
+        val clusterState = buildClusterState(capabilities).copy(roleSelectors = roleSelectors, extraClientNetworks = extraClientNetworks)
         if (clean) {
             refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)

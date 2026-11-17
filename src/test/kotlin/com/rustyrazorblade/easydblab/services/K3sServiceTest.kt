@@ -13,6 +13,8 @@ import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doNothing
 import org.mockito.kotlin.eq
@@ -75,6 +77,26 @@ class K3sServiceTest : BaseKoinTest() {
         // Then
         assertThat(result.isSuccess).isTrue()
         verify(mockRemoteOps).executeRemotely(eq(testHost), eq(scriptCommand), any(), any())
+    }
+
+    @Test
+    fun `the server starts on the explicit cluster CIDR, with Flannel or a custom CNI`() {
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
+            .thenReturn(Response(text = "", stderr = ""))
+
+        k3sService.startServer(testHost, useCustomCni = false)
+        k3sService.startServer(testHost, useCustomCni = true)
+
+        val commands = argumentCaptor<String>()
+        verify(mockRemoteOps, atLeast(2)).executeRemotely(eq(testHost), commands.capture(), any(), any())
+        val cidrArgs =
+            "--cluster-cidr=${Constants.K3s.CLUSTER_CIDR} --service-cidr=${Constants.K3s.SERVICE_CIDR} " +
+                "--kube-controller-manager-arg=node-cidr-mask-size=${Constants.K3s.NODE_CIDR_MASK_SIZE}"
+        assertThat(commands.allValues.filter { it.startsWith("sudo /usr/local/bin/start-k3s-server.sh") }).containsExactly(
+            "sudo /usr/local/bin/start-k3s-server.sh $cidrArgs",
+            "sudo /usr/local/bin/start-k3s-server.sh --flannel-backend=none $cidrArgs",
+        )
     }
 
     @Test

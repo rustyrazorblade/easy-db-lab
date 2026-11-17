@@ -34,8 +34,8 @@
 
 ## 6. Client networks
 
-- [ ] 6.1 Test first: `ClientNetworks` from AWS state (VPC + cluster CIDR) and from probed node data plus overrides; JSON / pg_hba rendering.
-- [ ] 6.2 `ClientNetworks`, `ClientNetworkProbe`, `Init --client-network`, `Constants.K3s.CLUSTER_CIDR` passed as `--cluster-cidr`; ClickHouse `__CLIENT_NETWORKS_JSON__`; Postgres one trust line per CIDR.
+- [x] 6.1 Test first: `ClientNetworks` from AWS state (VPC + cluster CIDR) and from probed node data plus overrides; JSON / pg_hba rendering.
+- [x] 6.2 `ClientNetworks`, `ClientNetworkProbe`, `Init --client-network`, `Constants.K3s.CLUSTER_CIDR` passed as `--cluster-cidr`; ClickHouse `__CLIENT_NETWORKS_JSON__`; Postgres one trust line per CIDR.
 
 ## 7. Guard and integration tests
 

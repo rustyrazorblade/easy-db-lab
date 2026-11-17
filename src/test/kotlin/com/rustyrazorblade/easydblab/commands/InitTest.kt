@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
@@ -840,6 +841,43 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("db=bad")
                 .hasMessageContaining("<role>=<key=value>")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+    }
+
+    @Nested
+    inner class ClientNetworkOptions {
+        @Test
+        fun `--client-network adds networks the database kits accept clients from`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--cidr",
+                "172.16.0.0/16",
+                "--client-network",
+                "192.168.0.0/16",
+                "--client-network",
+                "203.0.113.7",
+            )
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    ClientNetworks.from(this).cidrs.map { it.value } ==
+                        listOf("172.16.0.0/16", Constants.K3s.CLUSTER_CIDR, "192.168.0.0/16", "203.0.113.7/32")
+                },
+            )
+        }
+
+        @Test
+        fun `a malformed --client-network fails before anything is saved, naming the value`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "10.0.0.1/8")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("10.0.0.1/8")
             verify(mockClusterStateManager, never()).save(any())
         }
     }

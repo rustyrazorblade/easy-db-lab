@@ -877,6 +877,7 @@ object Constants {
          * the node IPAM controller reports `CIDRNotAvailable` for every node past it. A /12 holds
          * 4,096 /24s. It and [SERVICE_CIDR] are kept out of every VPC block `up` picks or
          * `init --cidr` accepts, so they never overlap a cluster's 10.X.0.0/16 VPC.
+         * The database kits allow it as a client network (`ClientNetworks`).
          */
         const val CLUSTER_CIDR = "10.224.0.0/12"
 

@@ -54,8 +54,8 @@ spec:
     size: __STORAGE_SIZE__
   postgresql:
     shared_preload_libraries: __SHARED_PRELOAD_LIBRARIES__
-    pg_hba:
-      - host all all 10.0.0.0/8 trust
+    # One trust line per client network of the environment (ClientNetworks).
+    pg_hba: __CLIENT_NETWORKS_HBA_JSON__
   bootstrap:
     initdb:
       database: postgres

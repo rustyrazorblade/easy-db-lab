@@ -26,16 +26,19 @@ class BuiltinKitFixture(
     private val templateService: TemplateService,
     kitStorageClass: String? = null,
     roleSelectors: RoleSelectors? = null,
+    clientNetworks: List<String>? = null,
 ) {
     /**
      * A cluster with one control node, two db nodes and one app node, enough to resolve every
-     * template variable. Its kit storage is local volumes, or the provisioned [kitStorageClass]; its
-     * role selectors are [roleSelectors], or the owned nodes' when null.
+     * template variable, in the VPC `172.16.0.0/16`. Its kit storage is local volumes, or the provisioned [kitStorageClass]; its
+     * role selectors are [roleSelectors], or the owned nodes' when null, and its client networks are
+     * [clientNetworks], or the VPC and cluster CIDR when null.
      */
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            initConfig = InitConfig(region = "us-west-2", name = "test-cluster", kitStorageClass = kitStorageClass),
+            initConfig =
+                InitConfig(region = "us-west-2", name = "test-cluster", kitStorageClass = kitStorageClass, cidr = "172.16.0.0/16"),
             hosts =
                 mapOf(
                     ServerType.Control to listOf(host("control0", "10.0.0.5")),
@@ -43,6 +46,7 @@ class BuiltinKitFixture(
                     ServerType.Stress to listOf(host("app0", "10.0.3.10")),
                 ),
             roleSelectors = roleSelectors,
+            clientNetworks = clientNetworks,
         )
 
     /** The kit's parsed `kit.yaml`. */

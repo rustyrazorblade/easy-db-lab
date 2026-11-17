@@ -54,15 +54,24 @@ class NodeWatcherIntegrationTest {
         created += name
     }
 
+    /**
+     * Sets the Node's Ready condition with a JSON merge patch that carries no resourceVersion. The
+     * K3s node controller updates a new Node's status too, so an edit locked to the version just
+     * read can lose with a 409.
+     */
     private fun markReady(name: String) {
         SharedK3s.client().use { client ->
-            client.nodes().withName(name).editStatus { node ->
+            val node = client.nodes().withName(name).get()
+            val ready =
                 NodeBuilder(node)
+                    .editMetadata()
+                    .withResourceVersion(null)
+                    .endMetadata()
                     .editStatus()
                     .withConditions(NodeConditionBuilder().withType("Ready").withStatus("True").build())
                     .endStatus()
                     .build()
-            }
+            client.nodes().resource(ready).patchStatus()
         }
     }
 

@@ -169,31 +169,31 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
 
         service =
-            DefaultObservabilityStackService(
-                mockK8sService,
-                mockK8sClientProvider,
-                mockRemoteOps,
-                mockClusterStateManager,
-                getKoin().get(),
-                getKoin().get(),
-                mockDashboardService,
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                getKoin().get(),
-                ConfigChangeReport(mockK8sService, getKoin().get()),
-                DashboardInstallContextFactory(sharedStoreTenants()),
-                environmentOf = { state -> StackEnvironment(capabilities, hosting(state)) },
-            )
+            DefaultObservabilityStackService.build {
+                k8sService = mockK8sService
+                k8sClientProvider = mockK8sClientProvider
+                remoteOps = mockRemoteOps
+                clusterStateManager = mockClusterStateManager
+                user = getKoin().get()
+                eventBus = getKoin().get()
+                grafanaDeployService = mockDashboardService
+                otelManifestBuilder = getKoin().get()
+                otelHostCollectorManifestBuilder = getKoin().get()
+                journaldOtelManifestBuilder = getKoin().get()
+                ebpfExporterManifestBuilder = getKoin().get()
+                mimirManifestBuilder = getKoin().get()
+                lokiManifestBuilder = getKoin().get()
+                tempoManifestBuilder = getKoin().get()
+                registryManifestBuilder = getKoin().get()
+                s3ManagerManifestBuilder = getKoin().get()
+                beylaManifestBuilder = getKoin().get()
+                pyroscopeManifestBuilder = getKoin().get()
+                yaceManifestBuilder = getKoin().get()
+                kubeStateMetricsManifestBuilder = getKoin().get()
+                configChangeReport = ConfigChangeReport(mockK8sService, getKoin().get())
+                installContextFactory = DashboardInstallContextFactory(sharedStoreTenants())
+                environmentOf = { state -> StackEnvironment(capabilities, hosting(state)) }
+            }
     }
 
     /** The capabilities the service under test sees; AWS unless a test declares otherwise. */

@@ -106,6 +106,11 @@ class ServicesModuleTest {
      * Nothing is excluded. Besides the two overrides above, the Redis publisher is a mock with a real
      * endpoint (built for real it pings Redis), so the three Redis definitions resolve too; [Docker]
      * and [PackerImage] get the parameters their callers hand in.
+     *
+     * The definitions are listed through `instanceRegistry`, a [KoinInternalApi]. If this test stops
+     * compiling there, or fails before it resolves anything (`definitions` empty), Koin changed that
+     * API after an upgrade: that is not a wiring bug, so find the new way to list the definitions.
+     * A wiring bug shows up only as an entry in `failures`.
      */
     @OptIn(KoinInternalApi::class)
     @Test

@@ -103,30 +103,30 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 // Real service under test — the command is a thin wrapper over it. RemoteOperationsService,
                 // User, and EventBus come from BaseKoinTest's core mocks via get().
                 single<ObservabilityStackService> {
-                    DefaultObservabilityStackService(
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore())),
-                    )
+                    DefaultObservabilityStackService.build {
+                        k8sService = get()
+                        k8sClientProvider = get()
+                        remoteOps = get()
+                        clusterStateManager = get()
+                        user = get()
+                        eventBus = get()
+                        grafanaDeployService = get()
+                        otelManifestBuilder = get()
+                        otelHostCollectorManifestBuilder = get()
+                        journaldOtelManifestBuilder = get()
+                        ebpfExporterManifestBuilder = get()
+                        mimirManifestBuilder = get()
+                        lokiManifestBuilder = get()
+                        tempoManifestBuilder = get()
+                        registryManifestBuilder = get()
+                        s3ManagerManifestBuilder = get()
+                        beylaManifestBuilder = get()
+                        pyroscopeManifestBuilder = get()
+                        yaceManifestBuilder = get()
+                        kubeStateMetricsManifestBuilder = get()
+                        configChangeReport = get()
+                        installContextFactory = DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore()))
+                    }
                 }
             },
         )

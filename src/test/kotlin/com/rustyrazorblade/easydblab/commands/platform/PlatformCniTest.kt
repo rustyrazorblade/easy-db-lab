@@ -75,7 +75,6 @@ class PlatformCniTest : BaseKoinTest() {
         hosts: Map<ServerType, List<ClusterHost>> = mapOf(ServerType.Control to listOf(controlHost)),
     ) = ClusterState(
         name = "test",
-        versions = mutableMapOf(),
         hosts = hosts,
         initConfig = InitConfig(region = "us-west-2", cni = cni),
     )

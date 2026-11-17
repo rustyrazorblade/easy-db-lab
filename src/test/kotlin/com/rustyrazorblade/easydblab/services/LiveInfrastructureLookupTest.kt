@@ -36,7 +36,7 @@ class LiveInfrastructureLookupTest {
     }
 
     private fun saveState(configure: ClusterState.() -> Unit = {}) {
-        stateManager.save(ClusterState(name = "lab", versions = mutableMapOf()).apply(configure))
+        stateManager.save(ClusterState(name = "lab").apply(configure))
     }
 
     @Test

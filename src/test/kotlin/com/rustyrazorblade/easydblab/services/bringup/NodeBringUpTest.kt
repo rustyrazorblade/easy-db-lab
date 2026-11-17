@@ -618,15 +618,6 @@ class NodeBringUpTest {
         ).containsExactlyInAnyOrder("control0", "control", "db1")
     }
 
-    @Test
-    fun `the database versions file is fetched once, by a database node`() {
-        val h = harness(dbs = 5, apps = 2)
-
-        h.run()
-
-        assertThat(h.steps.callsOf("versions")).hasSize(1).allMatch { it.startsWith("db") }
-    }
-
     private companion object {
         const val SETTLE_MS = 100L
         const val JOIN_TIMEOUT_MS = 150L

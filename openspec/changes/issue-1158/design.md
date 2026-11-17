@@ -79,7 +79,7 @@ The order inside `up`:
 Cross-node inputs, and how each is met:
 
 - `environment.sh` and the app nodes' `stress.env` name db0's private IP, and `cassandra.patch.yaml` seeds name it too.  Private IPs are known when `RunInstances` returns.  So the workspace files are written right after the first launch, before any setup step runs.  If db0 is later replaced, the shared post-step rewrites the files and pushes the two environment files to every node again.  This is the only case where a node's setup output depends on another node.
-- `cassandra_versions.yaml` is downloaded once, by the first db pipeline to pass SSH.  The download sits behind a once-latch.  It is skipped when the file exists, as today.
+- No versions file is downloaded: issue 1130 removed `cassandra_versions.yaml`, and each node's versions are in `state.json`.
 - Registry TLS on a node needs the certificate in S3, so it waits on the certificate latch.
 - `SetupInstance` today reads the region over IMDS from the first app node, to set the app nodes' `CASSANDRA_EASY_STRESS_DEFAULT_DC`.  Each app pipeline reads its own node's region instead.  Every node is in the same region, so the value is the same.  This removes a dependency on another node.
 

@@ -74,7 +74,6 @@ class TemplateVariablesTest : BaseKoinTest() {
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = bucketName,
             initConfig = InitConfig(region = region, name = "test-cluster", cidr = cidr),
             hosts =

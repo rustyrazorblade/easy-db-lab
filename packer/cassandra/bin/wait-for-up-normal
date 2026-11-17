@@ -56,7 +56,9 @@ done
 while true; do
   fail_if_shut_down
 
-  sjk-mx -b org.apache.cassandra.db:type=StorageService -mg -f OperationMode | grep NORMAL
+  # Only the exit status is read; until StorageService is up each poll fails, and its sjk error is
+  # not shown, or every start would print one a second.
+  sjk-mx -b org.apache.cassandra.db:type=StorageService -mg -f OperationMode 2>/dev/null | grep NORMAL
   status=$?
 
   if [[ $status -eq 0 ]]; then

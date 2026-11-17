@@ -25,7 +25,6 @@ class ConfigureAxonOpsTest : BaseKoinTest() {
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(

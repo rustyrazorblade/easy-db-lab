@@ -12,9 +12,12 @@ Lifecycle:
 3. `easy-db-lab cassandra restart` — restart with `UN` wait. Use after config changes.
 
 Version management:
-- `easy-db-lab cassandra list` — available versions (pre-baked in AMI + installable on demand).
-- `easy-db-lab cassandra install <version>` — downloads tarball, installs on all db nodes. Examples: `5.0.2`, `5.0-beta1`, `trunk`.
-- `easy-db-lab cassandra use <version>` — switches active version. Must already be installed.
+- The AMI has no Cassandra version installed; versions install on demand.
+- `easy-db-lab cassandra list` — versions you can install (profile builds, ASF, cassandra-builds nightlies, `cassandra build` builds) and, in a workspace, the ones on each node. `--refresh` refetches the ASF and cassandra-builds lists. Works with no cluster.
+- `easy-db-lab cassandra use <version>` — installs the version where it is missing, then switches to it. Examples: `5.0` (latest 5.0 release, JDK 17), `4.1.7`, `5.0-HEAD`, `trunk`. `--java N` picks another supported JDK.
+- `easy-db-lab cassandra install <version>` — installs without switching. `--reinstall` (Cassandra stopped) downloads a nightly again.
+- Named builds: yaml files in `<profile>/cassandra_versions/` with `version` and `url` (and optional `branch`, `java_supported`, `java`, `python`, `ant_flags`).
+- `easy-db-lab cassandra start --skip-axonops` — start without the AxonOps agent when AxonOps ships none for the release and JDK.
 - To build a local source tree and run it on a cluster, see the `cassandra-builds` topic.
 
 Config (patch-file workflow on a running cluster):

@@ -123,12 +123,11 @@ internal class NodePipeline(
         }
     }
 
-    /** Setup, and the database versions file once for the whole bring-up, from the first database node. */
+    /** The node's setup, inside an SSH session slot. */
     private fun setUp(instance: InstanceRun) {
         instance.step(PipelineStep.SETUP, run.timing.setup) { _ ->
             run.ssh.withSession {
                 run.ports.nodeSteps.setup(serverType, instance.host)
-                if (serverType == ServerType.Cassandra) run.versions.run { run.ports.nodeSteps.downloadVersions(instance.host) }
             }
         }
     }

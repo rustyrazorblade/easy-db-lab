@@ -99,7 +99,6 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
     ) = ClusterState(
         name = "lab",
         clusterId = "abc123",
-        versions = null,
         default = NodeState(version = "5.0.2"),
         s3Bucket = "account-bucket",
         dataBucket = dataBucket,
@@ -205,6 +204,18 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
 
         assertThat(whenStopped).isEqualTo(CassandraVersionInfo("5.0.2", "cached"))
         assertThat(whenRunning).isEqualTo(CassandraVersionInfo("5.0.9", "live", hosts = listOf(HostVersion("db0", "5.0.9"))))
+    }
+
+    /** `cassandra use` records the active version per node; the cached report reads that record. */
+    @Test
+    fun `with no live answer the version is the one recorded for the first db node`() {
+        val hosts = mapOf(ServerType.Cassandra to listOf(db(), db("db1", "i-db1")))
+        whenever(ec2.describeInstances(any())).thenReturn(listOf(runningNode().copy(state = "stopped")))
+        val recorded = state(hosts = hosts).apply { nodes = mutableMapOf("db1" to NodeState("4.1.7"), "db0" to NodeState("5.0.6")) }
+
+        val version = collector().collect(recorded).response.cassandraVersion
+
+        assertThat(version).isEqualTo(CassandraVersionInfo("5.0.6", "cached"))
     }
 
     @Test

@@ -58,7 +58,6 @@ class MetricsStreamSignalIntegrationTest {
         ClusterStateManager(File(workspace, "state.json")).save(
             ClusterState(
                 name = "lab",
-                versions = mutableMapOf(),
                 hosts = mapOf(ServerType.Control to listOf(ClusterHost("127.0.0.1", "127.0.0.1", "control0", "us-west-2a", "i-1"))),
                 tailscaleActive = true,
             ).apply { markInfrastructureUp() },

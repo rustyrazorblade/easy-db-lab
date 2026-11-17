@@ -161,12 +161,14 @@ easy-db-lab cassandra use 5.0
 
 This command:
 
-- Sets the active Cassandra version on all nodes
+- Installs the latest 5.0 release on every node (the AMI has no Cassandra version installed)
+- Sets the active Cassandra version on all nodes, on JDK 17
 - Downloads configuration files to your local directory
 - Applies any existing patch configuration
 
-`cassandra use` accepts any installed version. Run `easy-db-lab cassandra list` to see them.
-This includes a build published by `cassandra build`. See [Custom Builds](installing-cassandra.md#custom-builds),
+`cassandra use` accepts any ASF release (`4.1.7`), release line (`5.0`), nightly build
+(`5.0-HEAD`, `trunk`), named build in your profile, or build published by `cassandra build`. Run
+`easy-db-lab cassandra list` to see them. See [Custom Builds](installing-cassandra.md#custom-builds),
 or run `easy-db-lab help cassandra-builds`.
 
 ### Step 2: Customize Configuration (Optional)

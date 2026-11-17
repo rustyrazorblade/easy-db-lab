@@ -144,7 +144,6 @@ class DefaultBackupRestoreService(
                     vpcId = vpcId,
                     s3Bucket = s3Bucket,
                     infrastructureStatus = InfrastructureStatus.UP,
-                    versions = null,
                 )
 
             // Step 3: Download all files from S3 (including state.json)

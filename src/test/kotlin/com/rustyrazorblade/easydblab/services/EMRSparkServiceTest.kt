@@ -121,7 +121,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
     private val defaultClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             hosts =
                 mutableMapOf(
@@ -148,7 +147,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 emrCluster = validEmrClusterState,
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -168,7 +166,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 emrCluster = runningEmrClusterState,
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -188,7 +185,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 emrCluster = null,
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -210,7 +206,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 emrCluster = terminatingEmrClusterState,
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -533,7 +528,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "test-bucket",
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)

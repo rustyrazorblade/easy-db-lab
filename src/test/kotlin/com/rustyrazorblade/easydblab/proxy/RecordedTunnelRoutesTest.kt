@@ -12,7 +12,7 @@ class RecordedTunnelRoutesTest : BaseKoinTest() {
     private val workspace: File get() = tempDir
     private val sshConfig: String get() = File(workspace, "sshConfig").absolutePath
     private val envFile: ProxyEnvFile get() = ProxyEnvFile(workspace)
-    private val state = ClusterState(name = "lab", versions = mutableMapOf())
+    private val state = ClusterState(name = "lab")
 
     private fun routes(vararg processes: FakeTunnelProcess): RecordedTunnelRoutes =
         RecordedTunnelRoutes(

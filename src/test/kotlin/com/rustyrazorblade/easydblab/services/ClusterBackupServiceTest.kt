@@ -109,7 +109,6 @@ internal class ClusterBackupServiceTest {
             val clusterState =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                     s3Bucket = null,
                 )
 
@@ -445,7 +444,6 @@ internal class ClusterBackupServiceTest {
             val clusterState =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                     s3Bucket = null,
                 )
 
@@ -519,14 +517,12 @@ internal class ClusterBackupServiceTest {
     private fun noBucketClusterState(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = null,
         )
 
     private fun createClusterState(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test-abc12345",
         )
 }

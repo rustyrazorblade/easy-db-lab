@@ -73,7 +73,6 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithoutOpenSearch =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                     hosts =
                         mutableMapOf(
                             ServerType.Control to listOf(testControlHost),
@@ -94,7 +93,6 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithoutOpenSearch =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                     hosts =
                         mutableMapOf(
                             ServerType.Control to listOf(testControlHost),
@@ -375,7 +373,6 @@ class OpenSearchStatusTest : BaseKoinTest() {
     private fun createStateWithOpenSearch(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts =
                 mutableMapOf(
                     ServerType.Control to listOf(testControlHost),

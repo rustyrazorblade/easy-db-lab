@@ -212,8 +212,6 @@ class FakeNodeSteps(
         host: ClusterHost,
     ) = sshCall("setup", host)
 
-    override fun downloadVersions(host: ClusterHost) = sshCall("versions", host)
-
     override fun checkImage(host: ClusterHost): ImageDefect? {
         sshCall("image", host)
         return imageDefects[host.alias]

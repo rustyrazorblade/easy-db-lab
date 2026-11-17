@@ -85,7 +85,6 @@ class SetupInstanceTest : BaseKoinTest() {
                             ClusterState(
                                 name = "test-cluster",
                                 clusterId = "abc123",
-                                versions = mutableMapOf(),
                                 hosts = hosts,
                                 // Not the default tenant, which is also ProfilingConfig's
                                 // fallback: only a non-default tenant shows it was written.

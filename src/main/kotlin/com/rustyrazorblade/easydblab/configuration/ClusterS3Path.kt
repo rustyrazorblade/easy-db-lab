@@ -48,12 +48,12 @@ data class ClusterS3Path(
         internal const val K8S_DIR = "k8s"
         internal const val CONFIG_DIR = "config"
         internal const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
-        internal const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
         internal const val ENV_SCRIPT_FILE = "env.sh"
         internal const val ENVIRONMENT_FILE = "environment.sh"
         internal const val SETUP_INSTANCE_FILE = "setup_instance.sh"
         internal const val CLICKHOUSE_BACKUPS_DIR = "clickhouse-backups"
         internal const val CASSANDRA_BUILDS_DIR = "cassandra-builds"
+        internal const val DOWNLOAD_CACHE_DIR = "download-cache"
 
         /**
          * Create a ClusterS3Path from ClusterState.
@@ -121,6 +121,12 @@ data class ClusterS3Path(
          * installed onto whichever clusters the profile later brings up.
          */
         fun cassandraBuildsRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(CASSANDRA_BUILDS_DIR)
+
+        /**
+         * Root of the account's download cache: immutable downloads (Apache releases, AxonOps
+         * packages) that every node of every cluster of the profile reads before the origin.
+         */
+        fun downloadCacheRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(DOWNLOAD_CACHE_DIR)
     }
 
     // Core Path-like methods
@@ -254,9 +260,6 @@ data class ClusterS3Path(
 
     /** Path for Cassandra patch configuration file. */
     fun cassandraPatch(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_PATCH_FILE)
-
-    /** Path for cassandra_versions.yaml file. */
-    fun cassandraVersions(): ClusterS3Path = resolve(CONFIG_DIR).resolve(CASSANDRA_VERSIONS_FILE)
 
     /** Path for env.sh (main environment script with SSH aliases, kubectl, etc.). */
     fun envScript(): ClusterS3Path = resolve(CONFIG_DIR).resolve(ENV_SCRIPT_FILE)

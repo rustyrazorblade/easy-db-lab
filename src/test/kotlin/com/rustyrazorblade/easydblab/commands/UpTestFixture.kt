@@ -70,7 +70,7 @@ import com.rustyrazorblade.easydblab.services.bringup.InstanceAddresses
 import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
 import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
 import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
@@ -122,7 +122,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected lateinit var mockK8sService: K8sService
     protected lateinit var mockCommandExecutor: CommandExecutor
     protected lateinit var mockObservabilityStackService: ObservabilityStackService
-    protected lateinit var mockDocumentService: TestDocumentService
+    protected lateinit var mockDocumentService: DocumentService
     protected lateinit var mockRegistryService: RegistryService
 
     /**
@@ -253,7 +253,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     /** The cluster side of `up`: K8s, the nested commands, the stack, Tailscale and SSH. */
     private fun clusterModule(): Module =
         module {
-            single<TestDocumentService> { mock<TestDocumentService>().also { mockDocumentService = it } }
+            single<DocumentService> { mock<DocumentService>().also { mockDocumentService = it } }
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             single<K8sStorageOperations> { get<K8sService>() }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
@@ -265,7 +265,7 @@ abstract class UpTestFixture : BaseKoinTest() {
                     BringUpPortSet(
                         tracker = tracker,
                         fleet = fleet,
-                        nodeSteps = steps.nodeSteps(request.state, request.workspace),
+                        nodeSteps = steps.nodeSteps(request.state),
                         controlSteps = steps.controlSteps(request.route, request.state, request.workspace),
                         state = request.state,
                     )
@@ -534,7 +534,6 @@ abstract class UpTestFixture : BaseKoinTest() {
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             tailscaleActive = true,
             initConfig =
                 InitConfig(

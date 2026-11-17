@@ -30,7 +30,6 @@ class KitEndpointResolverTest {
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts = mutableMapOf(ServerType.Cassandra to listOf(dbHost)),
         )
 
@@ -213,7 +212,6 @@ class KitEndpointResolverTest {
         val stateWithApp =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = mutableMapOf(ServerType.Stress to listOf(appHost)),
             )
         val kitDir =

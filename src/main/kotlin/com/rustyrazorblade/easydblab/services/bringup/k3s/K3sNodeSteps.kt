@@ -18,17 +18,14 @@ import com.rustyrazorblade.easydblab.services.bringup.ClusterStateWriter
 import com.rustyrazorblade.easydblab.services.bringup.ControlPlaneAccess
 import com.rustyrazorblade.easydblab.services.bringup.ImageDefect
 import com.rustyrazorblade.easydblab.services.bringup.NodeSteps
-import java.io.File
 
 /**
- * [NodeSteps] for a K3s cluster reached over SSH: the SSH probe, the node's setup, the database
- * versions file, the Cilium image check, registry TLS, the K3s agent join and its journal.
+ * [NodeSteps] for a K3s cluster reached over SSH: the SSH probe, the node's setup, the Cilium image
+ * check, registry TLS, the K3s agent join and its journal.
  *
  * Every cluster fact a step needs (db0 and the control node's private IPs, the bucket the
  * registry certificate is in) is read from [state] when the step runs, so a step on a
  * replacement sees the cluster as it is then.
- *
- * @param workspace the cluster workspace, where the versions file is written
  */
 class K3sNodeSteps(
     private val remoteOps: RemoteOperationsService,
@@ -37,7 +34,6 @@ class K3sNodeSteps(
     private val registry: RegistryService,
     private val k3s: K3sClusterService,
     private val state: ClusterStateWriter,
-    private val workspace: File,
 ) : NodeSteps {
     override fun sshAnswers(host: ClusterHost): Boolean =
         try {
@@ -55,11 +51,6 @@ class K3sNodeSteps(
         serverType: ServerType,
         host: ClusterHost,
     ) = nodeSetup.setup(serverType, host.toHost(), state.read(NodeSetupContext::from))
-
-    override fun downloadVersions(host: ClusterHost) {
-        val versions = File(workspace, Constants.Packer.CASSANDRA_VERSIONS_FILE)
-        if (!versions.exists()) remoteOps.download(host.toHost(), REMOTE_VERSIONS_FILE, versions.toPath())
-    }
 
     /** Under Cilium, the Cilium node fixes the image must carry; Flannel needs nothing of the image. */
     override fun checkImage(host: ClusterHost): ImageDefect? {
@@ -98,6 +89,5 @@ class K3sNodeSteps(
     private companion object {
         const val SSH_PROBE = "echo 1"
         const val JOIN_LOG = "sudo journalctl --unit=k3s-agent --no-pager --output=cat --lines=${Constants.Scale.JOIN_LOG_LINES}"
-        const val REMOTE_VERSIONS_FILE = "/etc/cassandra_versions.yaml"
     }
 }

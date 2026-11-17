@@ -59,7 +59,6 @@ class StatusCacheTest : BaseKoinTest() {
             createdAt = Instant.parse("2025-01-15T10:30:00Z"),
             infrastructureStatus = InfrastructureStatus.UP,
             default = NodeState(version = "5.0"),
-            versions = null,
             hosts =
                 mapOf(
                     ServerType.Cassandra to

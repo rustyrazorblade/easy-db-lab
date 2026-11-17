@@ -41,7 +41,6 @@ class SidecarServiceTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = null,
             clusterId = "test-cluster-id",
         )
 

@@ -15,13 +15,13 @@ import org.mockito.kotlin.whenever
 import java.io.File
 
 /**
- * Tests for [DefaultTestDocumentService] when an upload fails part-way: the error names the file that
+ * Tests for [DefaultDocumentService] when an upload fails part-way: the error names the file that
  * failed and every document already stored, since those are in S3 but not yet in the index.
  *
  * S3 is faked at the [ObjectStore] boundary; the happy path runs against LocalStack in
- * `TestDocumentServiceIntegrationTest`.
+ * `DocumentServiceIntegrationTest`.
  */
-class TestDocumentServiceTest {
+class DocumentServiceTest {
     @TempDir
     lateinit var dir: File
 
@@ -30,7 +30,6 @@ class TestDocumentServiceTest {
     private val state =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             clusterId = "abc",
             s3Bucket = "acct",
             initConfig = InitConfig(tenant = "acme"),
@@ -42,7 +41,7 @@ class TestDocumentServiceTest {
             .thenThrow(IllegalStateException("S3 refused the write"))
         val files = listOf("a.md", "b.md", "c.md").map { name -> File(dir, name).also { it.writeText(name) } }
 
-        assertThatThrownBy { DefaultTestDocumentService(objectStore).upload(state, files) }
+        assertThatThrownBy { DefaultDocumentService(objectStore).upload(state, files) }
             .isInstanceOf(DocumentUploadFailedException::class.java)
             .hasMessageContaining("b.md")
             .hasMessageContaining("S3 refused the write")

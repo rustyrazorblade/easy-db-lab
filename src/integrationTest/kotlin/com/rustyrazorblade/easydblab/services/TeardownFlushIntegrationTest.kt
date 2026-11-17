@@ -84,7 +84,6 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         ClusterState(
             name = "lab",
             clusterId = "f1",
-            versions = mutableMapOf(),
             s3Bucket = bucket,
             initConfig = InitConfig(tenant = TENANT, region = SharedLocalStack.region()),
         )

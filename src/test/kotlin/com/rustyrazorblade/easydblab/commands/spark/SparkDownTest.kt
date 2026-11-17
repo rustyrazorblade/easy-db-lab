@@ -44,7 +44,6 @@ class SparkDownTest : BaseKoinTest() {
         saveState(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
             ),
         )
 
@@ -62,7 +61,6 @@ class SparkDownTest : BaseKoinTest() {
         saveState(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 emrCluster =
                     EMRClusterState(
                         clusterId = "j-ABC123",

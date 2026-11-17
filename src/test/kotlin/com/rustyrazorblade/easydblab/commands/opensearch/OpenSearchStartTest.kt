@@ -69,7 +69,6 @@ class OpenSearchStartTest : BaseKoinTest() {
         val stateWithoutInfrastructure =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = mutableMapOf(),
                 infrastructure = null,
             )
@@ -88,7 +87,6 @@ class OpenSearchStartTest : BaseKoinTest() {
         val stateWithEmptySubnets =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -189,7 +187,6 @@ class OpenSearchStartTest : BaseKoinTest() {
     private fun createValidClusterState(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts =
                 mutableMapOf(
                     ServerType.Control to listOf(testControlHost),

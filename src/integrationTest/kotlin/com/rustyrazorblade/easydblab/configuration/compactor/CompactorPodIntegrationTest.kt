@@ -131,7 +131,7 @@ class CompactorPodIntegrationTest {
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         val clusterStateManager =
             mock<ClusterStateManager>().also {
-                whenever(it.load()).thenReturn(ClusterState(name = "compactor-it", versions = mutableMapOf()))
+                whenever(it.load()).thenReturn(ClusterState(name = "compactor-it"))
             }
         val user =
             User(

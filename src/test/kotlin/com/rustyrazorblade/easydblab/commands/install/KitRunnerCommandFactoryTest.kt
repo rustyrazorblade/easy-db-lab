@@ -68,7 +68,6 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "test-bucket",
                 initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
                 hosts =

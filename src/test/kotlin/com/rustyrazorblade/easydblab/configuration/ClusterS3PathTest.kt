@@ -10,7 +10,6 @@ class ClusterS3PathTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-account-bucket",
                 clusterId = "abc12345-6789-0000-0000-000000000000",
             )
@@ -27,7 +26,6 @@ class ClusterS3PathTest {
         val state =
             ClusterState(
                 name = "myproject",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-account-bucket",
                 clusterId = "def456",
             )
@@ -47,7 +45,6 @@ class ClusterS3PathTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = null,
             )
 
@@ -277,15 +274,6 @@ class ClusterS3PathTest {
 
         assertThat(cassandraPatchPath.toString())
             .isEqualTo("s3://my-bucket/config/cassandra.patch.yaml")
-    }
-
-    @Test
-    fun `cassandraVersions returns correct path`() {
-        val path = ClusterS3Path.root("my-bucket")
-        val cassandraVersionsPath = path.cassandraVersions()
-
-        assertThat(cassandraVersionsPath.toString())
-            .isEqualTo("s3://my-bucket/config/cassandra_versions.yaml")
     }
 
     @Test

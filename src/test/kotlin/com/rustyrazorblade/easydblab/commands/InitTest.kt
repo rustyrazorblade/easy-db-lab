@@ -97,7 +97,7 @@ class InitTest : BaseKoinTest() {
         private fun clusterWithVpc() {
             whenever(mockClusterStateManager.exists()).thenReturn(true)
             whenever(mockClusterStateManager.load())
-                .thenReturn(ClusterState(name = "lab", versions = mutableMapOf()).apply { vpcId = "vpc-live" })
+                .thenReturn(ClusterState(name = "lab").apply { vpcId = "vpc-live" })
         }
 
         @Test

@@ -144,7 +144,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 // A data bucket distinct from the account bucket, so a mix-up between the two shows.
                 dataBucket = "easy-db-lab-data-test",
@@ -212,7 +211,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     private fun stateWithCni(cni: CniMode) =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(region = "us-west-2", cni = cni),
         )
@@ -221,7 +219,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     private fun redirectState() =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(region = "us-west-2", telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
         )
@@ -445,7 +442,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts = mapOf(ServerType.Control to listOf(controlNode), ServerType.Cassandra to nodes),
             ),
@@ -681,7 +677,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", cni = cni, telemetryRedirect = redirect),
             )

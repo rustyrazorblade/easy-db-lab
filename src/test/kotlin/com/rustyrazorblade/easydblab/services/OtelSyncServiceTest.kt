@@ -55,7 +55,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 single { mock<K8sService>().also { mockK8sService = it } }
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "test"))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -245,7 +245,6 @@ class OtelSyncServiceTest : BaseKoinTest() {
         val ciliumState =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2", cni = CniMode.Cilium),
             )
         whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(ciliumState)

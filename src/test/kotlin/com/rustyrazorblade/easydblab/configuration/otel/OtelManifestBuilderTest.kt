@@ -63,7 +63,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun setup() {
         mockClusterStateManager = getKoin().get()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf()),
+            ClusterState(name = "test"),
         )
         val templateService = getKoin().get<TemplateService>()
         builder = OtelManifestBuilder(templateService)

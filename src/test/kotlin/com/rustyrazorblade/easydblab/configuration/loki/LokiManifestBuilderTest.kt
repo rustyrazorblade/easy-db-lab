@@ -33,7 +33,7 @@ class LokiManifestBuilderTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "test"))
                     }
                 }
                 single { TemplateService(get(), get()) }

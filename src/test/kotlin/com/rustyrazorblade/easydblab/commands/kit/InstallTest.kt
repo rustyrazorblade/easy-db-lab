@@ -30,7 +30,7 @@ class InstallTest : BaseKoinTest() {
                 single { TemplateService(get(), get()) }
                 single<ClusterStateManager> {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "test-cluster"))
                     }
                 }
             },

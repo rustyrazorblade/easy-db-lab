@@ -406,7 +406,6 @@ class ClusterConfigurationServiceTest {
             name = "test-cluster",
             hosts = hosts,
             initConfig = initConfig,
-            versions = mutableMapOf(),
         )
     }
 

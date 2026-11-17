@@ -25,7 +25,6 @@ class StressClusterTest {
     ) = ClusterState(
         name = "lab",
         clusterId = "abc",
-        versions = mutableMapOf(),
         infrastructure = infrastructure,
         hosts = hosts,
         initConfig = initConfig,

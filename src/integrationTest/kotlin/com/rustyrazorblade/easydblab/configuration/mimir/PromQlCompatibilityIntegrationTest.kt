@@ -43,7 +43,7 @@ class PromQlCompatibilityIntegrationTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "promql", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "promql"))
                     }
                 }
                 single { TemplateService(get(), get()) }

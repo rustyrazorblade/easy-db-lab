@@ -4,6 +4,10 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.TestContextFactory
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.di.KoinModules
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
@@ -84,4 +88,41 @@ class ServicesModuleTest {
             app.close()
         }
     }
+
+    /**
+     * The observability stack `up` deploys, from the production module list. The backend builders
+     * take a defaulted `StoreBlockRenderer`, and the stack and OTel sync services a defaulted
+     * function, that Koin cannot provide, so a `factoryOf` registration for any of them fails here
+     * rather than on a user's first `up`.
+     */
+    @Test
+    fun `the production modules resolve the observability stack and its backend builders`(
+        @TempDir tempDir: File,
+    ) {
+        val app = productionApp(tempDir)
+        try {
+            val koin = app.koin
+            assertThat(koin.get<MimirManifestBuilder>()).isNotNull
+            assertThat(koin.get<LokiManifestBuilder>()).isNotNull
+            assertThat(koin.get<TempoManifestBuilder>()).isNotNull
+            assertThat(koin.get<PyroscopeManifestBuilder>()).isNotNull
+            assertThat(koin.get<ObservabilityStackService>()).isNotNull
+            assertThat(koin.get<OtelSyncService>()).isNotNull
+        } finally {
+            app.close()
+        }
+    }
+
+    private fun productionApp(tempDir: File) =
+        koinApplication {
+            val context = TestContextFactory.createTestContext(tempDir, workingDirectory = tempDir)
+            allowOverride(true)
+            modules(
+                KoinModules.getAllModules() +
+                    module {
+                        single<Context> { context }
+                        single<SSHConnectionProvider> { mock() }
+                    },
+            )
+        }
 }

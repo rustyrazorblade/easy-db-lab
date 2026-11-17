@@ -128,12 +128,14 @@ val servicesModule =
         factoryOf(::JournaldOtelManifestBuilder)
         factoryOf(::OtelManifestBuilder)
         factoryOf(::OtelHostCollectorManifestBuilder)
-        factoryOf(::PyroscopeManifestBuilder)
         factoryOf(::RegistryManifestBuilder)
         factoryOf(::S3ManagerManifestBuilder)
-        factoryOf(::TempoManifestBuilder)
-        factoryOf(::MimirManifestBuilder)
-        factoryOf(::LokiManifestBuilder)
+        // Explicit factories, not factoryOf: factoryOf resolves every constructor parameter from
+        // Koin and ignores Kotlin defaults, so it would look up the defaulted StoreBlockRenderer.
+        factory { PyroscopeManifestBuilder(get()) }
+        factory { TempoManifestBuilder(get()) }
+        factory { MimirManifestBuilder(get()) }
+        factory { LokiManifestBuilder(get()) }
         factoryOf(::YaceManifestBuilder)
         factoryOf(::KubeStateMetricsManifestBuilder)
         factoryOf(::DefaultGrafanaDeployService) bind GrafanaDeployService::class
@@ -148,11 +150,38 @@ val servicesModule =
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
-        factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
+        // Explicit factory: factoryOf would look up the defaulted capabilitiesOf function.
+        factory<OtelSyncService> { DefaultOtelSyncService(get(), get(), get(), get(), get(), get()) }
         factory { ConfigChangeReport(get<K8sService>(), get()) }
         factory { TenantDirectory(get()) }
         factory<TestDocumentService> { DefaultTestDocumentService(get()) }
-        factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
+        // Explicit factory: factoryOf would look up the defaulted environmentOf function.
+        factory<ObservabilityStackService> {
+            DefaultObservabilityStackService(
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+            )
+        }
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<GrafanaAnnotationBackupService> {
             DefaultGrafanaAnnotationBackupService(get(), get(), get())

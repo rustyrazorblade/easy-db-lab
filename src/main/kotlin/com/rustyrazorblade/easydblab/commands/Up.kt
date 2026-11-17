@@ -20,6 +20,7 @@ import com.rustyrazorblade.easydblab.configuration.nodeGroups
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
@@ -898,7 +899,7 @@ class Up(
                     )
                 }
             }.onFailure { exception ->
-                eventBus.emit(Event.Grafana.AnnotationFailed(exception.message ?: exception.toString()))
+                eventBus.emit(Event.Grafana.AnnotationFailed(exception.messageOrString()))
             }
     }
 

@@ -2,12 +2,15 @@ package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.ResourceLock
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
 
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
 class ProxiedKubernetesClientFactoryTest {
@@ -58,6 +61,27 @@ class ProxiedKubernetesClientFactoryTest {
         factory.createClient(writeKubeconfig()).use { client ->
             assertThat(client.configuration.httpsProxy).isNull()
         }
+    }
+
+    @Test
+    fun `a missing kubeconfig fails naming its path, with the cause kept`() {
+        val missing = File(tempDir, "no-such-dir/kubeconfig").toPath()
+
+        assertThatThrownBy { ProxiedKubernetesClientFactory().createClient(missing) }
+            .isInstanceOf(IOException::class.java)
+            .hasMessageContaining(missing.toString())
+            .hasCauseInstanceOf(FileNotFoundException::class.java)
+    }
+
+    @Test
+    fun `a kubeconfig that cannot be parsed fails naming its path, and never quotes its text`() {
+        val garbage = File(tempDir, "kubeconfig").apply { writeText("token: SECRET-TOKEN-123\nclusters: [unclosed") }.toPath()
+
+        assertThatThrownBy { ProxiedKubernetesClientFactory().createClient(garbage) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(garbage.toString())
+            .hasMessageNotContaining("SECRET-TOKEN-123")
+            .hasNoCause()
     }
 
     @Test

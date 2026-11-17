@@ -49,6 +49,8 @@ config.connectionTimeout = 30000  // Increased for SOCKS proxy
 config.requestTimeout = 60000
 ```
 
+`createClient` names the kubeconfig path in every failure. An unreadable file throws an `IOException` with the cause kept (a missing file is still a cluster never reached, see `ClusterReach`). A file that does not parse throws an `IllegalStateException` with the path and the parser's exception class only: the parser's message quotes the start of the file, which holds client keys and tokens, so neither it nor the cause is kept. Print a failure with `Throwable.reason()`, which shows the cause behind the client's generic "An error has occurred." wrapper.
+
 ## ManifestApplier
 
 Applies K8s manifests using Fabric8's typed server-side apply (not generic resources).

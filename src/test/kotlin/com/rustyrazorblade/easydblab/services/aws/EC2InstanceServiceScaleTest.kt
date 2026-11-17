@@ -639,6 +639,22 @@ class EC2InstanceServiceScaleTest {
         verify(ec2, times(1)).describeInstances(any<DescribeInstancesRequest>())
     }
 
+    /** A permanent failure (access denied) is not retried: the wait fails on the first look, not at its deadline. */
+    @Test
+    fun `the running wait fails at once on a permanent failure and does not retry it`() {
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenThrow(
+            Ec2Exception
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("UnauthorizedOperation").build())
+                .build() as Ec2Exception,
+        )
+
+        assertThatThrownBy { service.waitForInstancesRunning(listOf("i-1"), timeoutMs = 2_000) }
+            .isInstanceOf(Ec2Exception::class.java)
+        verify(ec2, times(1)).describeInstances(any<DescribeInstancesRequest>())
+    }
+
     private fun endedInstance(
         id: String,
         vararg tags: Pair<String, String>,

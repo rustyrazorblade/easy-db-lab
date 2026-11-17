@@ -29,9 +29,36 @@ class ClusterReachTest {
                 Arguments.of("refused connection", ConnectException("Connection refused"), true),
                 Arguments.of("unknown host", UnknownHostException("10.0.1.5"), true),
                 Arguments.of("no route", NoRouteToHostException("No route to host"), true),
-                Arguments.of("SOCKS tunnel down", SocketException("Malformed reply from SOCKS server"), true),
+                Arguments.of(
+                    "SOCKS tunnel down",
+                    socksFailure("Can't connect to SOCKS proxy"),
+                    true,
+                ),
+                Arguments.of(
+                    "SOCKS reply failure",
+                    socksFailure("SOCKS: Host unreachable"),
+                    true,
+                ),
+                Arguments.of(
+                    "reset whose message says SOCKS",
+                    socketFailureThrownBy("sun.nio.ch.NioSocketImpl", "SOCKS connection reset"),
+                    false,
+                ),
                 Arguments.of("missing kubeconfig", FileNotFoundException("kubeconfig (No such file or directory)"), true),
                 Arguments.of("missing file", NoSuchFileException("/ws/kubeconfig"), true),
+                Arguments.of(
+                    "unreadable kubeconfig wrapped by the client factory",
+                    IOException(
+                        "Cannot read the kubeconfig at /ws/kubeconfig",
+                        FileNotFoundException("/ws/kubeconfig (No such file or directory)"),
+                    ),
+                    true,
+                ),
+                Arguments.of(
+                    "SocketException with no stack trace",
+                    SocketException("Connection reset").also { it.stackTrace = emptyArray() },
+                    false,
+                ),
                 Arguments.of(
                     "wrapped by the Kubernetes client",
                     KubernetesClientException("An error has occurred.", ConnectException("Connection refused")),

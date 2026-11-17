@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
@@ -110,7 +111,7 @@ class TailnetCleanup(
             AuthKeyRemoval.Removed(keyId)
         } catch (e: TailscaleApiException) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
-            AuthKeyRemoval.Failed(keyId, e.message ?: e.toString())
+            AuthKeyRemoval.Failed(keyId, e.messageOrString())
         }
     }
 }

@@ -23,6 +23,7 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -178,7 +179,7 @@ class DefaultObservabilityStackService(
             k8sService
                 .waitForRollouts(workloads, DEFAULT_NAMESPACE, readyTimeoutSeconds(clusterState))
                 .getOrElse { exception ->
-                    error("Observability stack did not finish rolling out: ${exception.message}")
+                    error("Observability stack did not finish rolling out: ${exception.messageOrString()}")
                 }
 
             // Gate success on the whole stack reaching Ready. waitForPodsReady is namespace-wide and
@@ -188,7 +189,7 @@ class DefaultObservabilityStackService(
             k8sService
                 .waitForPodsReady(readyTimeoutSeconds(clusterState))
                 .getOrElse { exception ->
-                    error("Observability stack did not become ready: ${exception.message}")
+                    error("Observability stack did not become ready: ${exception.messageOrString()}")
                 }
         }
 
@@ -237,7 +238,7 @@ class DefaultObservabilityStackService(
         grafanaDeployService
             .deploy(controlNode, installContextFactory.forCluster(clusterState, controlNode), ObservabilityStore.from(clusterState).bucket)
             .getOrElse { exception ->
-                error("Failed to upload dashboards: ${exception.message}")
+                error("Failed to upload dashboards: ${exception.messageOrString()}")
             }
     }
 
@@ -248,7 +249,7 @@ class DefaultObservabilityStackService(
         eventBus.emit(Event.Grafana.LabelResourcesApplying(stage.label))
         for (resource in stage.resources) {
             k8sService.applyResource(resource).getOrElse { exception ->
-                error("Failed to apply ${stage.label} ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
+                error("Failed to apply ${stage.label} ${resource.kind}/${resource.metadata?.name}: ${exception.messageOrString()}")
             }
         }
         eventBus.emit(Event.Grafana.LabelResourcesApplied(stage.label))
@@ -341,8 +342,8 @@ class DefaultObservabilityStackService(
                 // ships with (origin identity). If it is missing, metrics/logs/traces/profiles
                 // ship unlabeled and two DCs become indistinguishable on one Grafana — so fail
                 // fast rather than report a successful `up` over a broken identity mechanism.
-                eventBus.emit(Event.Provision.ClusterConfigMapFailed(exception.message ?: exception.toString()))
-                error("Failed to create cluster-config ConfigMap: ${exception.message}")
+                eventBus.emit(Event.Provision.ClusterConfigMapFailed(exception.messageOrString()))
+                error("Failed to create cluster-config ConfigMap: ${exception.messageOrString()}")
             }
         return configData
     }

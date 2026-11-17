@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
+import com.rustyrazorblade.easydblab.providers.aws.isTransientAwsFailure
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import com.rustyrazorblade.easydblab.providers.aws.withEc2InstanceRetry
@@ -241,13 +242,14 @@ class EC2InstanceService(
         val ready = mutableMapOf<InstanceId, InstanceDetails>()
         // Keyed by ID: a look retried after an exception sees the same ended instance again.
         val ended = mutableMapOf<InstanceId, InstanceDetails>()
-        // An ended instance stops the poll through `done`, not by throwing: the poll retries any exception.
+        // An ended instance stops the poll through `done`, not by throwing: the poll retries a transient exception.
         val pending =
             pollUntil(
                 operationName = "instances-running",
                 maxAttempts = Int.MAX_VALUE,
                 interval = pollInterval,
                 deadline = Instant.now().plusMillis(timeoutMs),
+                isTransient = ::isTransientAwsFailure,
                 done = { it.isEmpty() || ended.isNotEmpty() },
             ) {
                 val waiting = instanceIds.filterNot { it in ready }

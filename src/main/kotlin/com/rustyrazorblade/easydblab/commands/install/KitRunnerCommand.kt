@@ -64,8 +64,8 @@ class KitRunnerCommand(
     private val kitHookExecutor: KitHookExecutor by inject()
     private val kitEndpointResolver: KitEndpointResolver by inject()
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
-    private val workspace = kitDir.absoluteFile.parentFile
-    private val workspaceKubeconfig = WorkspaceKubeconfig.file(workspace)
+    private val workspace: File by lazy { context.workingDirectory.absoluteFile }
+    private val workspaceKubeconfig: File by lazy { WorkspaceKubeconfig.file(workspace) }
     private val workloadProbe: KitWorkloadProbe by inject()
 
     private var processExitCode: Int = 0
@@ -169,7 +169,7 @@ class KitRunnerCommand(
             config
                 ?.kitRefArg
                 ?.let { resolvedArgs[it.variable]?.takeIf { v -> v.isNotBlank() } }
-                ?.let { kitEndpointResolver.resolveTargetVars(File(kitDir.parentFile, it), clusterState) }
+                ?.let { kitEndpointResolver.resolveTargetVars(File(workspace, it), clusterState) }
                 .orEmpty()
         return env + ("BACKUP_NAME" to name) + targetVars
     }

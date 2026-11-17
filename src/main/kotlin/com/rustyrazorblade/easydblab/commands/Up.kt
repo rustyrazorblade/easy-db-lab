@@ -214,7 +214,7 @@ class Up(
             )
         val result =
             NodeBringUp(ec2BringUpPorts.ports(request), bringUpSettings(initConfig), eventBus).run { sink ->
-                existingHosts.forEach { (serverType, hosts) -> sink.launched(serverType, hosts) }
+                existingHosts.forEach { (serverType, hosts) -> sink.launched(serverType, hosts, LaunchSink.Origin.FOUND_RUNNING) }
                 try {
                     reportProvisioningFailures(executeProvisioning(instanceConfig, servicesConfig, existingHosts, sink, launched))
                 } finally {
@@ -574,7 +574,7 @@ class Up(
                 // holds every launched instance whatever happens next, then each starts its pipeline.
                 onHostsCreated = { serverType, hosts ->
                     writer.mergeHosts(serverType, hosts)
-                    sink.launched(serverType, hosts)
+                    sink.launched(serverType, hosts, LaunchSink.Origin.LAUNCHED)
                 },
                 onEmrCreated = { emrState ->
                     writer.update { it.updateEmrCluster(emrState) }

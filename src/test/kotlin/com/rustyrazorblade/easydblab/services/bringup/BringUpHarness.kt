@@ -58,18 +58,34 @@ class BringUpHarness(
             timing = FAST,
         )
 
-    /** Records the launched hosts, as `up`'s launch does, then brings them up. */
+    /** Aliases whose instance `up` found already running; every other node was launched in this run. */
+    var foundRunning: Set<String> = emptySet()
+
+    /**
+     * Records the hosts, as `up` does, then brings them up: the instances found running are
+     * handed over first, then the ones launched.
+     */
     fun run(): BringUpResult {
         writer.mergeHosts(ServerType.Control, listOf(control))
         writer.mergeHosts(ServerType.Cassandra, dbs)
         if (apps.isNotEmpty()) writer.mergeHosts(ServerType.Stress, apps)
         val ports = BringUpPortSet(tracker, fleet, steps, steps, writer)
+        val handOvers =
+            LaunchSink.Origin.entries.flatMap { origin ->
+                listOf(ServerType.Cassandra to dbs, ServerType.Stress to apps).map { (serverType, hosts) ->
+                    Triple(serverType, hosts.filter { originOf(it) == origin }, origin)
+                }
+            }
         return NodeBringUp(ports, settings, eventBus).run { sink ->
-            sink.launched(ServerType.Control, listOf(control))
-            sink.launched(ServerType.Cassandra, dbs)
-            if (apps.isNotEmpty()) sink.launched(ServerType.Stress, apps)
+            sink.launched(ServerType.Control, listOf(control), LaunchSink.Origin.LAUNCHED)
+            handOvers
+                .filter { (_, hosts, _) -> hosts.isNotEmpty() }
+                .forEach { (serverType, hosts, origin) -> sink.launched(serverType, hosts, origin) }
         }
     }
+
+    private fun originOf(host: ClusterHost): LaunchSink.Origin =
+        if (host.alias in foundRunning) LaunchSink.Origin.FOUND_RUNNING else LaunchSink.Origin.LAUNCHED
 
     /** [run] on a thread of its own, for a test that acts while the bring-up runs. */
     fun runInBackground(): CompletableFuture<BringUpResult> {

@@ -10,6 +10,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
 import java.time.Duration
@@ -89,12 +90,14 @@ class NodeBringUpTest {
     /**
      * Whatever step the first instance stopped at, the alias may hold a Node and a node password,
      * left by this run or by an earlier `up` (which would make K3s refuse the replacement), so the
-     * replacement removes them once, before its first join. A first instance removes nothing.
+     * replacement removes them once, before its first join. The first instances here were found
+     * running, so they may own those objects and remove nothing.
      */
     @ParameterizedTest
     @ValueSource(strings = ["setup", "registry-tls", "join", "readiness", "ended"])
     fun `a replacement removes its alias's old cluster objects once, before its first join`(stoppedAt: String) {
         val h = harness(dbs = 2)
+        h.foundRunning = setOf("db0", "db1")
         val first = { host: ClusterHost -> host.instanceId == "i-db1" }
         when (stoppedAt) {
             "readiness" -> h.plane.neverReady += h.dbs[1].privateIp
@@ -125,6 +128,40 @@ class NodeBringUpTest {
         assertThat(h.plane.cleaned).containsExactly("db1")
         assertThat(cleanedAtJoin.filter { it.startsWith("i-db1 ") }).allMatch { it == "i-db1 []" }
         assertThat(cleanedAtJoin.filter { it.startsWith("i-db1-1 ") }).containsExactly("i-db1-1 [db1]")
+    }
+
+    /**
+     * An instance launched in this `up` takes its alias from one an earlier `up` started, which may
+     * have registered and gone (terminated outside `up`), so it removes the alias's objects once,
+     * before its first join, or K3s refuses it ("Node password rejected"). An instance found
+     * running may be the one that owns them, so it removes nothing. Each row mixes the two.
+     */
+    @ParameterizedTest
+    @CsvSource(
+        "'', 'db0,db1,app0'",
+        "'db0,db1,app0', ''",
+        "'db1', 'db0,app0'",
+        "'db0,app0', 'db1'",
+    )
+    fun `a first instance launched in this up removes its alias's old cluster objects once, before its first join`(
+        foundRunning: String,
+        launched: String,
+    ) {
+        val h = harness(dbs = 2, apps = 1)
+        h.foundRunning = foundRunning.split(",").filter { it.isNotEmpty() }.toSet()
+        val cleanedAtJoin = Collections.synchronizedList(mutableListOf<String>())
+        (h.dbs + h.apps).forEach { node ->
+            h.steps.scripts["${node.alias} join"] = { host, _ -> cleanedAtJoin += "${host.alias} ${host.alias in h.plane.cleaned}" }
+        }
+
+        val result = h.run()
+
+        assertThat(result.nodes.values).allMatch { it is NodeEnd.Ready }
+        val expected = launched.split(",").filter { it.isNotEmpty() }
+        assertThat(h.plane.cleaned).containsExactlyInAnyOrderElementsOf(expected)
+        assertThat(cleanedAtJoin).containsExactlyInAnyOrderElementsOf(
+            (h.dbs + h.apps).map { "${it.alias} ${it.alias in expected}" },
+        )
     }
 
     @Test

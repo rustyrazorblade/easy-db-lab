@@ -15,11 +15,22 @@ import java.util.concurrent.Future
 
 /** Where `up`'s launch hands each instance as soon as its batch returns, or as discovery finds it. */
 fun interface LaunchSink {
-    /** [hosts] of [serverType] exist; a host already handed over is ignored. */
+    /** [hosts] of [serverType] exist, and came from [origin]; a host already handed over is ignored. */
     fun launched(
         serverType: ServerType,
         hosts: List<ClusterHost>,
+        origin: Origin,
     )
+
+    /**
+     * Where an instance came from. Its alias may still name a Node and a node password left by an
+     * instance an earlier `up` started, which has since gone: a [LAUNCHED] instance removes them
+     * before its first join, or K3s refuses it. A [FOUND_RUNNING] one may itself own them.
+     */
+    enum class Origin {
+        FOUND_RUNNING,
+        LAUNCHED,
+    }
 }
 
 /**
@@ -92,12 +103,13 @@ class NodeBringUp(
         override fun launched(
             serverType: ServerType,
             hosts: List<ClusterHost>,
+            origin: LaunchSink.Origin,
         ) {
             when (serverType) {
                 ServerType.Control -> hosts.firstOrNull()?.let(::startControl)
                 ServerType.Cassandra, ServerType.Stress ->
                     hosts.filter { run.settings.includes(it.alias) }.forEach { host ->
-                        nodes.computeIfAbsent(host.alias) { submit { NodePipeline(run, serverType, host).run() } }
+                        nodes.computeIfAbsent(host.alias) { submit { NodePipeline(run, serverType, host, origin).run() } }
                     }
             }
             // A node handed over after the control node failed has nothing to join: stop it too.

@@ -134,6 +134,10 @@ it `shutting-down`, `terminated`, `stopping` or `stopped`), is replaced:
    happens whatever step the old instance stopped at, because that instance, or one from an
    earlier `up`, may have registered.
 
+A node whose instance was terminated outside `up` after it joined, and that a later `up`
+launches again, gets the same cleanup before its first join, so it joins under its name
+without using a replacement. A node `up` finds still running keeps its Node and password.
+
 An instance that ended is replaced at once, with no retry. A missing Cilium node fix is not
 replaced, because a new instance from the same AMI would lack the same files. An image check
 that could not run at all, for example because its SSH command died, is retried and replaced

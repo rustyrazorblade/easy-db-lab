@@ -87,8 +87,8 @@ class UpTest : UpTestFixture() {
         verify(mockK8sService).labelNode(eq("control0"), any())
         verify(mockK8sService).ensureLocalStorageClass()
         verify(mockK8sService).ensureLocalStorageWfcClass()
-        // No node was replaced, so no node's cluster objects are removed.
-        assertThat(plane.cleaned).isEmpty()
+        // Every node was launched in this `up`, so each removes what an earlier instance under its alias left, once.
+        assertThat(plane.cleaned).containsExactlyInAnyOrder("db0", "app0")
     }
 
     /**
@@ -239,6 +239,8 @@ class UpTest : UpTestFixture() {
                 .neededCount,
         ).isEqualTo(2)
         assertThat(existing.firstValue[ServerType.Cassandra]?.map { it.alias }).containsExactly("db0")
+        // db0 was found running and may own its Node and node password; the launched nodes remove an old one's.
+        assertThat(plane.cleaned).doesNotContain("db0").contains("app0")
     }
 
     /**
@@ -454,8 +456,9 @@ class UpTest : UpTestFixture() {
         assertThat(replacing.alias).isEqualTo("db0")
         assertThat(replacing.step).isEqualTo("setup")
         assertThat(replacing.reason).contains("no data disk")
-        // An earlier `up` may have left db0's Node and node password, so the replacement removes them.
-        assertThat(plane.cleaned).containsExactly("db0")
+        // An earlier `up` may have left db0's Node and node password, so the replacement removes them;
+        // the first instance never reached its join, so it removed nothing.
+        assertThat(plane.cleaned.filter { it == "db0" }).hasSize(1)
         assertThat(events.filterIsInstance<Event.Provision.NodesFailed>()).isEmpty()
     }
 
@@ -512,7 +515,8 @@ class UpTest : UpTestFixture() {
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
-        assertThat(plane.cleaned).containsExactly("db0")
+        // The first instance cleaned before its join, and the replacement again before its own.
+        assertThat(plane.cleaned.filter { it == "db0" }).hasSize(2)
         assertThat(plane.registered.filter { it == "db0" }).hasSize(2)
         assertThat(fleet.calls).containsSubsequence("terminate i-db0", "launch db0")
     }

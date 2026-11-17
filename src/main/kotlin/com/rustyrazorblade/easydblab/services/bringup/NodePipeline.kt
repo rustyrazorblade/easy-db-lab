@@ -22,6 +22,7 @@ internal class NodePipeline(
     private val run: BringUpRun,
     private val serverType: ServerType,
     private val first: ClusterHost,
+    private val origin: LaunchSink.Origin,
 ) {
     private val alias = first.alias
     private val startedAt: Instant = run.clock.instant()
@@ -67,10 +68,11 @@ internal class NodePipeline(
         launched: ClusterHost,
         replacements: Int,
     ): NodeEnd {
-        // A replacement removes the alias's old Node and node password before its agent starts:
-        // the old instance may have registered in this run or in an earlier `up`.
+        // An instance launched in this `up`, first or replacement, removes the alias's old Node and
+        // node password before its agent starts: an instance that had the alias before it may have
+        // registered, in this run or an earlier `up`. One found running may own them, so it keeps them.
         // Each join attempt runs on its own thread, so the flag is shared safely across them.
-        val cleaned = AtomicBoolean(replacements == 0)
+        val cleaned = AtomicBoolean(replacements == 0 && origin == LaunchSink.Origin.FOUND_RUNNING)
         val instance =
             InstanceRun(run, serverType, launched, ::enter) { step, reason, replaceable, host ->
                 throw Stopped(step, reason, replaceable, host)

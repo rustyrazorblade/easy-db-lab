@@ -205,7 +205,7 @@ A node step that fails MUST be retried under that step's policy.  When its attem
 4. launch one instance with the same alias, in the subnet for that alias's ordinal, with the same instance type, AMI, tags and volumes;
 5. replace that alias's host in the cluster state with the new instance ID and addresses, in one atomic write, keeping one host per alias;
 6. start the node's pipeline again;
-7. before the replacement's first join attempt, delete the alias's Node object and its K3s node password, whatever step the old instance stopped at.  The old instance may have registered in this `up` or in an earlier one, so `up` MUST NOT skip this because the old instance did not reach its join step.  A first instance MUST NOT delete them.
+7. before the replacement's first join attempt, delete the alias's Node object and its K3s node password, whatever step the old instance stopped at.  The old instance may have registered in this `up` or in an earlier one, so `up` MUST NOT skip this because the old instance did not reach its join step.  An instance launched in this `up` for an alias with no running instance MUST delete them the same way, before its first join attempt: an instance an earlier `up` started under that alias may have registered and since ended outside `up`.  An instance `up` found running MUST NOT delete them, because they may be its own.
 
 A replaced instance MUST always be terminated before its replacement is launched.  An instance that EC2 ends on its own (shutting-down, terminated, stopping or stopped) during any step MUST be replaced at once, with no retry.  A Cilium node image check that finds the node fixes missing MUST NOT be replaced: it MUST fail `up`, as before.  An image check that could not run (its remote command failed) says nothing about the image, so it MUST be retried and replaced like any other node step.  A replacement launch that fails for capacity, or whose dry run is refused, MUST fail the node and start no further replacement for it.  The control node MUST NOT be replaced: a control node step that fails after its retries MUST fail `up` at once.  Every instance launched so far MUST stay running and recorded.
 
@@ -227,6 +227,13 @@ A replaced instance MUST always be terminated before its replacement is launched
 - **WHEN** it is replaced
 - **THEN** the Node object db7 and its K3s node password are deleted before the new db7 joins
 - **AND** the new db7 registers under the same name
+
+#### Scenario: A node whose instance ended between two runs of up joins under its name
+- **GIVEN** db2 registered in an earlier `up`, and its instance was then terminated outside `up`
+- **WHEN** `up` runs again and launches a new db2
+- **THEN** the Node object db2 and its K3s node password are deleted before the new db2 first joins
+- **AND** the new db2 registers under the same name with no replacement
+- **AND** no node `up` found running has its Node object or node password deleted
 
 #### Scenario: An instance killed mid-setup is replaced
 - **GIVEN** db2's instance is terminated outside `up` while its setup runs

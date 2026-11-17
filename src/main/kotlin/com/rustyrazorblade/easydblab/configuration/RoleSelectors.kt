@@ -23,6 +23,9 @@ data class NodeSelector(
     /** The selector as `key=value[,key=value]`, empty when unconstrained. */
     fun toLabelSelector(): String = labels.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" }
 
+    /** The selector as people read it: [toLabelSelector], or `<any node>` when unconstrained. */
+    fun describe(): String = toLabelSelector().ifEmpty { ANY_NODE }
+
     companion object {
         /** No constraint. */
         val NONE = NodeSelector()
@@ -31,6 +34,7 @@ data class NodeSelector(
         fun ownedNode(role: ServerType): NodeSelector = NodeSelector(mapOf(TYPE_LABEL to role.serverType))
 
         private const val TYPE_LABEL = "type"
+        private const val ANY_NODE = "<any node>"
     }
 }
 

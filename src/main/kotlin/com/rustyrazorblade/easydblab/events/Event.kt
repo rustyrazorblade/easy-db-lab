@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.kernel.ProviderResponse
 import kotlinx.serialization.SerialName
@@ -6638,10 +6639,13 @@ sealed interface Event {
         data class RequirementNotMet(
             val kit: String,
             val nodeType: String,
+            /** The role's label selector that matched no node, `<any node>` when unconstrained. */
+            val selector: String,
         ) : Kit {
             override fun toDisplayString(): String =
-                "Error: cannot install '$kit': requires at least one $nodeType node, but none exist in this cluster. " +
-                    "Re-provision with --$nodeType-instances > 0."
+                "Error: cannot install '$kit': requires at least one $nodeType node, but no node matches " +
+                    "'$selector'. Check the node labels or the '$nodeType' mapping given to " +
+                    "init ${RoleSelectors.OPTION}, or re-provision with --$nodeType-instances > 0."
 
             override fun isError(): Boolean = true
         }

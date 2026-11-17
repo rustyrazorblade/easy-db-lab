@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -122,6 +123,17 @@ class KitRequirementTest : BaseKoinTest() {
         assertThat(failures).hasSize(1)
         assertThat(failures[0].kit).isEqualTo("mykit")
         assertThat(failures[0].nodeType).isEqualTo("db")
+    }
+
+    @Test
+    fun `RequirementNotMet names the selector that matched no node, so a mistyped mapping shows`() {
+        val mapped = RoleSelectors.OWNED_NODES.copy(db = NodeSelector(mapOf("pool" to "databsaes")))
+
+        runInstall(KitType.DB, state(mapped))
+
+        val failure = capturedEvents.filterIsInstance<Event.Kit.RequirementNotMet>().single()
+        assertThat(failure.selector).isEqualTo("pool=databsaes")
+        assertThat(failure.toDisplayString()).contains("pool=databsaes", RoleSelectors.OPTION)
     }
 
     @Test

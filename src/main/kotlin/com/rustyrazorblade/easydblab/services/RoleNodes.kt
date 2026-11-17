@@ -20,12 +20,9 @@ class RoleNodes(
         k8sService
             .nodesMatching(selector.labels)
             .getOrElse { e ->
-                throw IllegalStateException("Could not list the nodes matching '${describe(selector)}': ${e.message}", e)
+                throw IllegalStateException("Could not list the nodes matching '${selector.describe()}': ${e.message}", e)
             }.size
 
     /** The placement variables for [selectors], with each role's pool counted from the cluster. */
     fun placement(selectors: RoleSelectors): KitPlacementVariables =
-        KitPlacementVariables(selectors, count(selectors.db), count(selectors.app))
-
-    private fun describe(selector: NodeSelector): String = selector.toLabelSelector().ifEmpty { "<any node>" }
-}
+        KitPlacementVariables(selectors, count(selectors.db), count(selectors.app))}

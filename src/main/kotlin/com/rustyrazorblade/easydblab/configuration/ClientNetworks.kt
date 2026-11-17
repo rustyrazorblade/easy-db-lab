@@ -38,8 +38,18 @@ data class ClientNetworks(
                         listOf(state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR, Constants.K3s.CLUSTER_CIDR) +
                             state.extraClientNetworks
                     )
-            return ClientNetworks(values.map { Ipv4Cidr.parse(it).getOrThrow() }.distinct())
+            return ClientNetworks(values.map(::recorded).distinct())
         }
+
+        /** A network `state.json` records; a value that does not parse was edited by hand or a bad [OPTION]. */
+        private fun recorded(value: String): Ipv4Cidr =
+            Ipv4Cidr.parse(value).getOrElse { cause ->
+                throw IllegalStateException(
+                    "state.json records client network '$value', which is not an IPv4 network (${cause.message}). " +
+                        "Fix it in state.json, or run init again with a valid $OPTION <cidr>.",
+                    cause,
+                )
+            }
 
         /**
          * The networks of a cluster easy-db-lab did not build: each node's pod CIDRs and its

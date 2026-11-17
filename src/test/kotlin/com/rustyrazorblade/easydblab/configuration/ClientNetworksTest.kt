@@ -45,6 +45,18 @@ class ClientNetworksTest {
     }
 
     @Test
+    fun `a recorded network that is not an IPv4 network names the value, state json and the option`() {
+        assertThatThrownBy { ClientNetworks.from(state(clientNetworks = listOf("10.0.0.0/33"))) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("10.0.0.0/33")
+            .hasMessageContaining("state.json")
+            .hasMessageContaining(ClientNetworks.OPTION)
+        assertThatThrownBy {
+            ClientNetworks.from(state().apply { extraClientNetworks = listOf("not-a-cidr") })
+        }.hasMessageContaining("not-a-cidr").hasMessageContaining(ClientNetworks.OPTION)
+    }
+
+    @Test
     fun `recorded networks win over the VPC`() {
         val networks = ClientNetworks.from(state(cidr = "172.16.0.0/16", clientNetworks = listOf("192.168.0.0/16")))
 

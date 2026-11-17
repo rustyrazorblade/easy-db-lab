@@ -74,39 +74,77 @@ interface ObservabilityStackService {
  * Default implementation that applies the stack over the K8s API and configures on-node
  * directories over SSH.
  *
- * @property environmentOf derives what the environment provides and how the stack is hosted on it
- *   from cluster state. It is a test seam so a unit test can run a non-AWS environment; production
- *   takes the default. The four capability seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
- *   [com.rustyrazorblade.easydblab.server.StatusCache]) are consolidated by #1040 into one provider.
+ * Built with [build], which sets each collaborator by name: the stack takes more than twenty, and
+ * several share a role, so a positional constructor could swap two without a compile error.
+ *
+ * [Builder.environmentOf] derives what the environment provides and how the stack is hosted on it
+ * from cluster state. It is a test seam so a unit test can run a non-AWS environment; production
+ * takes the default. The four capability seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
+ * [com.rustyrazorblade.easydblab.server.StatusCache]) are consolidated by #1040 into one provider.
  */
-@Suppress("LongParameterList")
-class DefaultObservabilityStackService(
-    private val k8sService: K8sService,
-    private val k8sClientProvider: K8sClientProvider,
-    remoteOps: RemoteOperationsService,
-    private val clusterStateManager: ClusterStateManager,
-    private val user: User,
-    private val eventBus: EventBus,
-    private val grafanaDeployService: GrafanaDeployService,
-    private val otelManifestBuilder: OtelManifestBuilder,
-    private val otelHostCollectorManifestBuilder: OtelHostCollectorManifestBuilder,
-    private val journaldOtelManifestBuilder: JournaldOtelManifestBuilder,
-    private val ebpfExporterManifestBuilder: EbpfExporterManifestBuilder,
-    private val mimirManifestBuilder: MimirManifestBuilder,
-    private val lokiManifestBuilder: LokiManifestBuilder,
-    private val tempoManifestBuilder: TempoManifestBuilder,
-    private val registryManifestBuilder: RegistryManifestBuilder,
-    private val s3ManagerManifestBuilder: S3ManagerManifestBuilder,
-    private val beylaManifestBuilder: BeylaManifestBuilder,
-    private val pyroscopeManifestBuilder: PyroscopeManifestBuilder,
-    private val yaceManifestBuilder: YaceManifestBuilder,
-    private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
-    private val configChangeReport: ConfigChangeReport,
-    private val installContextFactory: DashboardInstallContextFactory,
-    private val environmentOf: (ClusterState) -> StackEnvironment = StackEnvironment::from,
+class DefaultObservabilityStackService private constructor(
+    builder: Builder,
 ) : ObservabilityStackService {
+    private val k8sService = builder.k8sService
+    private val k8sClientProvider = builder.k8sClientProvider
+    private val clusterStateManager = builder.clusterStateManager
+    private val user = builder.user
+    private val eventBus = builder.eventBus
+    private val grafanaDeployService = builder.grafanaDeployService
+    private val otelManifestBuilder = builder.otelManifestBuilder
+    private val otelHostCollectorManifestBuilder = builder.otelHostCollectorManifestBuilder
+    private val journaldOtelManifestBuilder = builder.journaldOtelManifestBuilder
+    private val ebpfExporterManifestBuilder = builder.ebpfExporterManifestBuilder
+    private val mimirManifestBuilder = builder.mimirManifestBuilder
+    private val lokiManifestBuilder = builder.lokiManifestBuilder
+    private val tempoManifestBuilder = builder.tempoManifestBuilder
+    private val registryManifestBuilder = builder.registryManifestBuilder
+    private val s3ManagerManifestBuilder = builder.s3ManagerManifestBuilder
+    private val beylaManifestBuilder = builder.beylaManifestBuilder
+    private val pyroscopeManifestBuilder = builder.pyroscopeManifestBuilder
+    private val yaceManifestBuilder = builder.yaceManifestBuilder
+    private val kubeStateMetricsManifestBuilder = builder.kubeStateMetricsManifestBuilder
+    private val configChangeReport = builder.configChangeReport
+    private val installContextFactory = builder.installContextFactory
+    private val environmentOf = builder.environmentOf
+
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
+
+        /**
+         * Builds the service from the collaborators [configure] sets.
+         *
+         * @throws UninitializedPropertyAccessException when a required collaborator was not set.
+         */
+        fun build(configure: Builder.() -> Unit): DefaultObservabilityStackService =
+            DefaultObservabilityStackService(Builder().apply(configure))
+    }
+
+    /** Collects the collaborators of a [DefaultObservabilityStackService], each set by name. */
+    class Builder internal constructor() {
+        lateinit var k8sService: K8sService
+        lateinit var k8sClientProvider: K8sClientProvider
+        lateinit var remoteOps: RemoteOperationsService
+        lateinit var clusterStateManager: ClusterStateManager
+        lateinit var user: User
+        lateinit var eventBus: EventBus
+        lateinit var grafanaDeployService: GrafanaDeployService
+        lateinit var otelManifestBuilder: OtelManifestBuilder
+        lateinit var otelHostCollectorManifestBuilder: OtelHostCollectorManifestBuilder
+        lateinit var journaldOtelManifestBuilder: JournaldOtelManifestBuilder
+        lateinit var ebpfExporterManifestBuilder: EbpfExporterManifestBuilder
+        lateinit var mimirManifestBuilder: MimirManifestBuilder
+        lateinit var lokiManifestBuilder: LokiManifestBuilder
+        lateinit var tempoManifestBuilder: TempoManifestBuilder
+        lateinit var registryManifestBuilder: RegistryManifestBuilder
+        lateinit var s3ManagerManifestBuilder: S3ManagerManifestBuilder
+        lateinit var beylaManifestBuilder: BeylaManifestBuilder
+        lateinit var pyroscopeManifestBuilder: PyroscopeManifestBuilder
+        lateinit var yaceManifestBuilder: YaceManifestBuilder
+        lateinit var kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder
+        lateinit var configChangeReport: ConfigChangeReport
+        lateinit var installContextFactory: DashboardInstallContextFactory
+        var environmentOf: (ClusterState) -> StackEnvironment = StackEnvironment::from
     }
 
     /**
@@ -137,7 +175,7 @@ class DefaultObservabilityStackService(
             missing.isEmpty()
         }
 
-    private val stateDirectories = OnNodeStateDirectories(remoteOps, eventBus)
+    private val stateDirectories = OnNodeStateDirectories(builder.remoteOps, eventBus)
     private val retainedClaimCheck = RetainedClaimCheck(k8sService)
     private val placementCheck = PlacementCheck(k8sService)
 

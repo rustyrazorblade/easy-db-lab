@@ -151,36 +151,45 @@ val servicesModule =
         factory { KitWorkloadProbe(get(), get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
         // Explicit factory: factoryOf would look up the defaulted capabilitiesOf function.
-        factory<OtelSyncService> { DefaultOtelSyncService(get(), get(), get(), get(), get(), get()) }
+        factory<OtelSyncService> {
+            DefaultOtelSyncService(
+                k8sClientProvider = get(),
+                k8sService = get(),
+                otelManifestBuilder = get(),
+                clusterStateManager = get(),
+                user = get(),
+                configChangeReport = get(),
+            )
+        }
         factory { ConfigChangeReport(get<K8sService>(), get()) }
         factory { TenantDirectory(get()) }
         factory<TestDocumentService> { DefaultTestDocumentService(get()) }
-        // Explicit factory: factoryOf would look up the defaulted environmentOf function.
+        // Built by name, so no two collaborators can be swapped; environmentOf keeps its default.
         factory<ObservabilityStackService> {
-            DefaultObservabilityStackService(
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-            )
+            DefaultObservabilityStackService.build {
+                k8sService = get()
+                k8sClientProvider = get()
+                remoteOps = get()
+                clusterStateManager = get()
+                user = get()
+                eventBus = get()
+                grafanaDeployService = get()
+                otelManifestBuilder = get()
+                otelHostCollectorManifestBuilder = get()
+                journaldOtelManifestBuilder = get()
+                ebpfExporterManifestBuilder = get()
+                mimirManifestBuilder = get()
+                lokiManifestBuilder = get()
+                tempoManifestBuilder = get()
+                registryManifestBuilder = get()
+                s3ManagerManifestBuilder = get()
+                beylaManifestBuilder = get()
+                pyroscopeManifestBuilder = get()
+                yaceManifestBuilder = get()
+                kubeStateMetricsManifestBuilder = get()
+                configChangeReport = get()
+                installContextFactory = get()
+            }
         }
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<GrafanaAnnotationBackupService> {

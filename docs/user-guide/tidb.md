@@ -29,6 +29,12 @@ minutes on first start while images pull.
 |---|---|---|
 | `--version` | `v8.5.2` | TiDB version to deploy |
 | `--replicas` | db node count | Number of TiKV and TiFlash replicas (one per db node) |
+| `--storage-size` | `10Ti` on local volumes, `100Gi` on a kit StorageClass ([Kit Storage](platform-substrate.md#kit-storage)) | Volume size of each PD, TiKV and TiFlash node |
+
+PD, TiKV and TiFlash keep their data on the kit storage class. On AWS that is local PVs on each
+node's `/mnt/db1` NVMe (PD on an app node), class `edl-local-tidb`; earlier releases put it on
+the root EBS volume through `local-path`. The volumes reclaim with `Retain`, so deleting a claim
+never deletes its data.
 
 ## Cluster Layout
 
@@ -74,7 +80,7 @@ SELECT /*+ read_from_storage(tiflash[my_table]) */ count(*) FROM my_table;
 easy-db-lab tidb start       # deploy the TiDB cluster
 easy-db-lab tidb status      # show running state and endpoints
 easy-db-lab tidb stop        # tear down the TiDB cluster
-easy-db-lab tidb uninstall   # stop the cluster if running, delete its PVCs, remove the TiDB Operator
+easy-db-lab tidb uninstall   # stop the cluster if running, delete its PVCs and its local volumes, remove the TiDB Operator
 ```
 
 `uninstall` of a running TiDB kit runs `tidb stop` first. It still refuses to run when a

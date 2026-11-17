@@ -1,13 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.platform
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.services.K8sService
-import com.rustyrazorblade.easydblab.services.PersistentVolumeConfig
+import com.rustyrazorblade.easydblab.services.KitStorageProvisioner
+import com.rustyrazorblade.easydblab.services.KitVolumes
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -16,10 +16,10 @@ import picocli.CommandLine.Option
 @RequiresProxy
 @Command(
     name = "create-pvs",
-    description = ["Create per-kit local PersistentVolumes on cluster nodes"],
+    description = ["Create a kit's local StorageClass and PersistentVolumes on cluster nodes"],
 )
 class PlatformCreatePvs : PicoBaseCommand() {
-    private val k8sService: K8sService by inject()
+    private val kitStorageProvisioner: KitStorageProvisioner by inject()
 
     @Option(
         names = ["--kit"],
@@ -52,26 +52,24 @@ class PlatformCreatePvs : PicoBaseCommand() {
         checkNotNull(clusterState.getControlHost()) { "No control node found. Is the cluster running?" }
         val targetHosts = clusterState.hosts[serverType].orEmpty()
         check(targetHosts.isNotEmpty()) { "No $nodeType nodes found in cluster state." }
+        val storage = KitStorage.from(clusterState)
+        val volumes = KitVolumes(kit = kit, nodeType = nodeType, volumeClaimTemplateName = pvcTemplateName, size = size)
 
-        eventBus.emit(Event.Platform.CreatingPvs(kit = kit, nodeType = nodeType, count = targetHosts.size, size = size))
-
-        k8sService
-            .createLocalPersistentVolumes(
-                config =
-                    PersistentVolumeConfig(
-                        dbName = kit,
-                        localPath = "${Constants.K8s.DB_MOUNT_PATH}/$kit",
-                        count = targetHosts.size,
-                        storageSize = size,
-                        storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
-                        namespace = Constants.K8s.NAMESPACE,
-                        volumeClaimTemplateName = pvcTemplateName,
-                        nodeType = nodeType,
-                    ),
-            ).getOrElse { exception ->
-                error("Failed to create PVs for $kit: ${exception.message}")
+        when (storage) {
+            is KitStorage.LocalVolumes -> {
+                eventBus.emit(
+                    Event.Platform.CreatingPvs(kit = kit, nodeType = nodeType, count = targetHosts.size, size = size),
+                )
+                runCatching { kitStorageProvisioner.provision(volumes, storage, clusterState) }
+                    .getOrElse { exception -> error("Failed to create PVs for $kit: ${exception.message}") }
+                eventBus.emit(Event.Platform.PvsCreated(kit = kit, count = targetHosts.size))
             }
-
-        eventBus.emit(Event.Platform.PvsCreated(kit = kit, count = targetHosts.size))
+            // The cluster provisions the volumes; the provisioner only refuses a class that would
+            // delete them, and its refusal already names the class and the fix.
+            is KitStorage.Provisioned -> {
+                kitStorageProvisioner.provision(volumes, storage, clusterState)
+                eventBus.emit(Event.Platform.KitStorageClassChecked(kit = kit, storageClass = storage.storageClass))
+            }
+        }
     }
 }

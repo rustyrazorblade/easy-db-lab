@@ -180,11 +180,36 @@ class TemplateVariablesTest : BaseKoinTest() {
     }
 
     @Test
-    fun `from sets storageClassWfc to the WFC constant`() {
-        val state = stateWith()
-        val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")
+    fun `on local volumes a kit's class is its own and the size is 10Ti`() {
+        val map = TemplateVariables.from(state = stateWith(), kitName = "clickhouse", storageSize = "").toMap()
 
-        assertThat(vars.storageClassWfc).isEqualTo(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+        assertThat(map["KIT_STORAGE_CLASS"]).isEqualTo("edl-local-clickhouse")
+        assertThat(map["KIT_STORAGE_SIZE"]).isEqualTo("10Ti")
+    }
+
+    @Test
+    fun `on a recorded kit class every kit names it at the provisioned default size`() {
+        val state = stateWith().copy(initConfig = InitConfig(kitStorageClass = "retain-x"))
+        val map = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "").toMap()
+
+        assertThat(map["KIT_STORAGE_CLASS"]).isEqualTo("retain-x")
+        assertThat(map["KIT_STORAGE_SIZE"]).isEqualTo(Constants.K8s.DEFAULT_PROVISIONED_KIT_STORAGE_SIZE)
+    }
+
+    @Test
+    fun `the init kit storage size is the published default`() {
+        val state = stateWith().copy(initConfig = InitConfig(kitStorageClass = "retain-x", kitStorageSize = "200Gi"))
+        val map = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "").toMap()
+
+        assertThat(map["KIT_STORAGE_SIZE"]).isEqualTo("200Gi")
+    }
+
+    @Test
+    fun `with no kit name there is no local kit class to name`() {
+        val map = TemplateVariables.from(state = stateWith(), kitName = "", storageSize = "").toMap()
+
+        assertThat(map["KIT_STORAGE_CLASS"]).isEmpty()
+        assertThat(map).doesNotContainKey("STORAGE_CLASS_WFC")
     }
 
     @Test
@@ -207,7 +232,7 @@ class TemplateVariablesTest : BaseKoinTest() {
             appNodes: __APP_NODE_COUNT__
             bucket: __BUCKET_NAME__
             region: __REGION__
-            storageClass: __STORAGE_CLASS_WFC__
+            storageClass: __KIT_STORAGE_CLASS__
             controlHost: __CONTROL_HOST__
             controlHostPublic: __CONTROL_HOST_PUBLIC__
             controlHostPrivate: __CONTROL_HOST_PRIVATE__
@@ -223,7 +248,7 @@ class TemplateVariablesTest : BaseKoinTest() {
         assertThat(rendered).contains("appNodes: 2")
         assertThat(rendered).contains("bucket: test-bucket")
         assertThat(rendered).contains("region: us-east-1")
-        assertThat(rendered).contains("storageClass: ${Constants.K8s.LOCAL_STORAGE_WFC_CLASS}")
+        assertThat(rendered).contains("storageClass: edl-local-mydb")
         assertThat(rendered).contains("controlHost: 54.1.2.3")
         assertThat(rendered).contains("controlHostPublic: 54.1.2.3")
         assertThat(rendered).contains("controlHostPrivate: 10.0.1.1")

@@ -54,11 +54,11 @@ args:
     description: "Number of PostgreSQL instances (1 = single node, >1 enables replication)"
     type: int
     default: "1"
-  - flag: --size
+  - flag: --storage-size
     variable: STORAGE_SIZE
     description: Storage size per node (e.g. 100Gi)
     type: string
-    default: "10Ti"
+    default: "${KIT_STORAGE_SIZE}"
   - flag: --extension
     variable: EXTENSION
     description: "Extension alias to activate (e.g. duckdb, postgis, timescaledb). Run 'postgres extensions' to list available aliases."
@@ -75,8 +75,11 @@ install:
     namespace: cnpg-system
 
 start:
-  - type: platform-pvs
+  - type: kit-storage
     node-type: db
+    # stop deletes the operator resource and the operator its claims; on a provisioned class
+    # the claims of the next start rebind the Released volumes that kept the data.
+    rebind-released: true
   - type: manifest
     template: postgres-cluster.yaml
   - type: shell
@@ -111,7 +114,7 @@ stop:
     namespace: default
 
 uninstall:
-  - type: platform-pvs-delete
+  - type: kit-storage-delete
   # postgres and every postgres-<extension> instance run on this one operator; it is removed only
   # once no CNPG Cluster is left.
   - type: helm-uninstall

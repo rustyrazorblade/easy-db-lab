@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.PersistentVolume
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import java.nio.file.Path
 
@@ -27,7 +28,7 @@ data class PersistentVolumeConfig(
     val localPath: String,
     val count: Int,
     val storageSize: String,
-    val storageClass: String = Constants.K8s.LOCAL_STORAGE_CLASS,
+    val storageClass: String,
     val namespace: String = "default",
     val volumeClaimTemplateName: String = "data",
     val nodeType: String = ServerType.Cassandra.serverType,
@@ -182,15 +183,43 @@ interface K8sStorageOperations {
 
     fun deleteLocalPersistentVolumes(dbName: String): Result<Unit>
 
-    fun ensureLocalStorageClass(): Result<Unit>
+    /** Every kit local PV: the PVs labelled with [com.rustyrazorblade.easydblab.Constants.PV_KIT_LABEL]. */
+    fun listKitLocalPersistentVolumes(): Result<List<PersistentVolume>>
 
-    fun ensureLocalStorageWfcClass(): Result<Unit>
+    /**
+     * Creates the kit-local StorageClass [name] when it is missing: no provisioner,
+     * `WaitForFirstConsumer`, `Retain`, labelled as easy-db-lab's and cluster [clusterId]'s.
+     */
+    fun ensureKitLocalStorageClass(
+        name: String,
+        clusterId: String,
+    ): Result<Unit>
+
+    /**
+     * Makes every Released PV of [storageClass] whose last claim was in [namespace] rebindable by
+     * a new claim of that same name: clears the deleted claim's UID from the PV's claimRef and
+     * keeps its name, so the PV is pre-bound and no claim of another name can take it. Returns
+     * the PVs it reopened.
+     */
+    fun reopenReleasedVolumes(
+        storageClass: String,
+        namespace: String,
+    ): Result<List<String>>
+
+    /** Deletes the kit-local StorageClass [name]; a class already gone is not an error. */
+    fun deleteKitLocalStorageClass(name: String): Result<Unit>
 
     /**
      * The `reclaimPolicy` of the StorageClass named [name], or null when no such class exists. A
      * class that sets none reclaims with Kubernetes' default, `Delete`.
      */
     fun storageClassReclaimPolicy(name: String): Result<String?>
+
+    /**
+     * The name of the cluster's default StorageClass (annotation
+     * `storageclass.kubernetes.io/is-default-class: "true"`), or null when it has none.
+     */
+    fun defaultStorageClass(): Result<String?>
 }
 
 /**

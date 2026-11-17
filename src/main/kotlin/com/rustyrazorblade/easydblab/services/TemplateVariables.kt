@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
@@ -12,6 +13,9 @@ import java.io.File
  *
  * All variables map to `__VARIABLE_NAME__` placeholders in template files.
  * The variable set is public and stable — kit templates depend on it.
+ *
+ * `KIT_STORAGE_CLASS` and `KIT_STORAGE_SIZE` come from the environment's [KitStorage]: a kit's claims
+ * name the class, and a kit's size arg defaults to `${KIT_STORAGE_SIZE}`.
  */
 data class TemplateVariables(
     val clusterName: String,
@@ -22,7 +26,8 @@ data class TemplateVariables(
     val appNodeCount: Int,
     val controlHostPublic: String,
     val controlHostPrivate: String,
-    val storageClassWfc: String,
+    val kitStorageClass: String,
+    val kitStorageSize: String,
     val kitName: String,
     val storageSize: String,
     val kubeconfig: String,
@@ -45,7 +50,8 @@ data class TemplateVariables(
             "CONTROL_HOST" to controlHostPublic,
             "CONTROL_HOST_PUBLIC" to controlHostPublic,
             "CONTROL_HOST_PRIVATE" to controlHostPrivate,
-            "STORAGE_CLASS_WFC" to storageClassWfc,
+            "KIT_STORAGE_CLASS" to kitStorageClass,
+            "KIT_STORAGE_SIZE" to kitStorageSize,
             "KIT_NAME" to kitName,
             "STORAGE_SIZE" to storageSize,
             "KUBECONFIG" to kubeconfig,
@@ -82,6 +88,7 @@ data class TemplateVariables(
             val dbNodes = state.hosts[ServerType.Cassandra] ?: emptyList()
             val appNodes = state.hosts[ServerType.Stress] ?: emptyList()
             val region = state.initConfig?.region.orEmpty()
+            val kitStorage = KitStorage.from(state)
             return TemplateVariables(
                 clusterName = state.name,
                 bucketName = state.dataBucket.ifBlank { state.s3Bucket.orEmpty() },
@@ -91,7 +98,9 @@ data class TemplateVariables(
                 appNodeCount = appNodes.size,
                 controlHostPublic = controlHost?.publicIp.orEmpty(),
                 controlHostPrivate = controlHost?.privateIp.orEmpty(),
-                storageClassWfc = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
+                // No kit name, no kit: a blank class rather than the class of a kit named "".
+                kitStorageClass = if (kitName.isBlank()) "" else kitStorage.storageClassFor(kitName),
+                kitStorageSize = kitStorage.defaultSize.toString(),
                 kitName = kitName,
                 storageSize = storageSize,
                 kubeconfig = Constants.K3s.LOCAL_KUBECONFIG,

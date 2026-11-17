@@ -25,7 +25,8 @@ Use WebSearch and/or context7 to look up:
 - The primary Kubernetes resource kind created by the chart (e.g. `StatefulSet`, `Deployment`, a custom CR)
 - The recommended readiness condition to wait on (pod labels, conditions)
 - Common configuration values (replicas, storage size, node affinity)
-- Whether the workload is stateful (needs `platform-pvs`) or stateless
+- Whether the workload is stateful (needs a `kit-storage` step and claims on `__KIT_STORAGE_CLASS__`) or stateless
+- Whether its image runs as a non-root user that does not chown its data directory (it then needs `fsGroup`)
 
 Also research:
 - **Metrics endpoint**: Does the workload expose a Prometheus metrics endpoint? If yes, what port and path (e.g. port 9363, path `/metrics`)?
@@ -63,11 +64,11 @@ endpoints:
     port: 30xxx                # a NodePort in 30000-32767
     type: native               # http | https | jdbc | native | cql | postgresql | mysql | kafka
 args:
-  - flag: --size
+  - flag: --storage-size
     variable: STORAGE_SIZE
     description: Storage size per node (e.g. 100Gi)
-    required: true
     type: string
+    default: "${KIT_STORAGE_SIZE}"   # 10Ti on local volumes, the provisioned default otherwise
   - flag: --replicas
     variable: REPLICAS
     description: Number of replicas
@@ -85,8 +86,11 @@ install:
     version: "<chart-version>"
     values:
       key: value
-  - type: platform-pvs      # include only if stateful (needs local storage)
+  # include only if stateful. Every claim names __KIT_STORAGE_CLASS__ and requests
+  # __STORAGE_SIZE__, with no selector and no volumeName; pair with kit-storage-delete in uninstall.
+  - type: kit-storage
     node-type: db
+    volume-claim-template-name: data
 
 start:
   - type: namespace
@@ -152,8 +156,8 @@ works through a NodePort or a `hostPort`. Prefer `pod-selector` (see `kits/memca
 | `kustomize` | Apply a kustomize overlay (`url`) |
 | `wait` | Wait for a K8s resource condition (`kind`, `name`, `namespace?`, `condition`, `timeout`) |
 | `delete` | Delete a K8s resource (`kind`, `name`, `namespace?`, `ignore-not-found?`) |
-| `platform-pvs` | Create local PVs via platform service (`node-type`, `count?`, `volume-claim-template-name?`, `storage-class?`) |
-| `platform-pvs-delete` | Delete the kit's local PVs and data directories (`node-type`) |
+| `kit-storage` | Ready the kit's storage: on local volumes its `edl-local-<kit>` class and PVs, on a provisioned class a Retain check (`node-type`, `count?`, `volume-claim-template-name?`, `storage-size?`, `if-set?`) |
+| `kit-storage-delete` | Delete the kit's local PVs, class and data directories; nothing on a provisioned class (`node-type`) |
 | `configmap` | Create or update a ConfigMap (`name`, `namespace`, `data`) |
 | `label` | Add labels to cluster nodes (`node-type`, `labels`) |
 | `exec` | Run a command inside a running pod (`pod`, `namespace`, `command`) |

@@ -226,23 +226,37 @@ matches, the step succeeds and prints nothing. A failed cluster query fails the 
 `kinds` and `namespace` accept `${VAR}` interpolation. Use this form in `stop` and `uninstall` for
 kits that label every object they create, instead of a `shell` step.
 
-### `platform-pvs`
-Creates persistent volumes on cluster nodes using the platform substrate.
+### `kit-storage`
+Readies the kit's storage for its claims, as the environment says (see
+[Kit Storage](../user-guide/platform-substrate.md#kit-storage)).
 ```yaml
-- type: platform-pvs
-  node-type: db          # default: db
-  count: 3               # optional: defaults to node count
-  storage-size: 10Ti     # optional: PV capacity; defaults to the STORAGE_SIZE variable
-  if-set: EXTSTORE_SIZE  # optional: skip the step unless this kit variable is non-empty
+- type: kit-storage
+  node-type: db                       # default: db
+  count: 1                            # optional: defaults to node count
+  volume-claim-template-name: data    # default: data; names the PVs and their directory
+  storage-size: 10Ti                  # optional: PV capacity; defaults to the STORAGE_SIZE variable
+  if-set: EXTSTORE_SIZE               # optional: skip the step unless this kit variable is non-empty
 ```
-`if-set` makes the volume optional: the memcached kit creates its extstore PV only when
-`--extstore-size` is set. Pair it with `platform-pvs-delete` in `uninstall`, which is a no-op when
-no PV was created.
+On local volumes (owned nodes) it creates the kit's class `edl-local-<kit>`, the directory
+`/mnt/db1/<kit>/<claim template>` on each node, and one PV of that class per node, named
+`<claim template>-<kit>-<ordinal>`. A kit with two claim templates on one pool (TiDB's TiKV and
+TiFlash) declares one step per template. On a provisioned class it creates nothing and only checks
+that the class still reclaims with `Retain`, failing before any claim exists if it does not.
 
-Every kit's PVs share one storage class, and each PV is labelled `app.kubernetes.io/name=<kit>`.
-Every claim the kit creates — its own, a StatefulSet's, or one an operator generates — must select
-that label (`selector.matchLabels`, or Strimzi's `selector`) or name the PV in `volumeName`.
-Otherwise it can bind another kit's free PV.
+`if-set` makes the volume optional: the memcached kit creates its extstore PV only when
+`--extstore-size` is set. Pair the step with `kit-storage-delete` (`node-type`) in `uninstall`,
+which removes the kit's PVs, its class and `/mnt/db1/<kit>` on that pool, is a no-op when no PV
+was created, and does nothing on a provisioned class.
+
+Every claim the kit creates — its own, a StatefulSet's, or one an operator generates — names
+`__KIT_STORAGE_CLASS__` and requests `__STORAGE_SIZE__`, with no `selector` and no `volumeName`; a
+selector or a PV name can never bind on a provisioned class, and a claim with no class lands on
+the cluster's default class, which may delete. Declare the size arg as
+`--storage-size` / `STORAGE_SIZE` with `default: "${KIT_STORAGE_SIZE}"`. An operator that can
+delete claims on its own (Strimzi's `deleteClaim`, TiDB's `pvReclaimPolicy`) must keep them:
+`deleteClaim: false`, `pvReclaimPolicy: Retain`. A non-root image whose entrypoint does not
+chown its data directory needs `fsGroup` set to its uid, because a provisioned volume's root is
+root-owned. `KitClaimStorageTest` checks every built-in kit for all of this.
 
 ### `configmap`
 Creates or updates a K8s ConfigMap.
@@ -337,8 +351,9 @@ All scripts and shell steps receive the following environment variables:
 | `ACCOUNT_BUCKET` | S3 account-level bucket name |
 | `REGION` | AWS region |
 | `KIT_NAME` | Name of this kit |
-| `STORAGE_SIZE` | Storage size (from `--size` arg, if used) |
-| `STORAGE_CLASS_WFC` | K8s storage class name with WaitForFirstConsumer binding |
+| `STORAGE_SIZE` | Claim size (from the `--storage-size` arg, if used) |
+| `KIT_STORAGE_CLASS` | The StorageClass every kit claim names: `edl-local-<kit>` on local volumes, else the `init --kit-storage-class` class |
+| `KIT_STORAGE_SIZE` | The environment's default claim size: `init --kit-storage-size`, else `10Ti` on local volumes or `100Gi` |
 | `RUNNING_KITS` | Comma-separated names of currently running kits |
 | `EASY_DB_LAB_EXEC` | Path to the `easy-db-lab` binary |
 | `BACKUP_NAME` | First positional argument (backup and restore phases only) |

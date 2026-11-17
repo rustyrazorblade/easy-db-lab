@@ -73,6 +73,27 @@ class PostgresKitTest : BaseKoinTest() {
     }
 
     /**
+     * `stop` deletes the CNPG Cluster and CNPG deletes its claims with it. On a provisioned class
+     * their Retain volumes go Released, so `start` must reopen them for the same-named claims, or
+     * the instance comes back on empty volumes.
+     */
+    @Test
+    fun `start reopens the Released volumes CNPG left at stop, before applying the Cluster`() {
+        val start = kit.config.start
+        val storage = start.filterIsInstance<InstallStep.KitStorage>().single()
+        val applied = start.indexOfFirst { it is InstallStep.Manifest && it.template == "postgres-cluster.yaml" }
+
+        assertThat(storage.rebindReleased).isTrue()
+        assertThat(start.indexOf(storage)).isLessThan(applied)
+    }
+
+    /** Uninstall removes the instance's local PVs, its `edl-local-<instance>` class and directories. */
+    @Test
+    fun `uninstall releases the instance's db storage`() {
+        assertThat(kit.config.uninstall).contains(InstallStep.KitStorageDelete(nodeType = "db"))
+    }
+
+    /**
      * Each postgres instance installs the overview plus its own extension's dashboard. A declared
      * `dashboards` list replaces the scan of `dashboards/`, so a dashboard file left undeclared
      * would never be installed.

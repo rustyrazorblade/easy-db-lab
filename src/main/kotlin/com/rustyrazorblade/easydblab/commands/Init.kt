@@ -25,6 +25,7 @@ import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ObservabilityStage
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import io.fabric8.kubernetes.api.model.Quantity
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -235,6 +236,26 @@ class Init : PicoBaseCommand() {
     var nodeLabels: Map<String, String> = mutableMapOf()
 
     @Option(
+        names = ["--kit-storage-class"],
+        description = [
+            "StorageClass every kit claim names. Omit on an AWS cluster to keep kits on per-kit local " +
+                "volumes on the nodes' NVMe. The class must reclaim with Retain.",
+        ],
+    )
+    var kitStorageClass: String? = null
+
+    @Option(
+        names = ["--kit-storage-size"],
+        description = [
+            "Default size of a kit claim, as a Kubernetes quantity (e.g. 200Gi). Default: " +
+                "${Constants.K8s.LOCAL_KIT_STORAGE_SIZE} on local volumes, " +
+                "${Constants.K8s.DEFAULT_PROVISIONED_KIT_STORAGE_SIZE} on a --kit-storage-class. " +
+                "A kit's own --storage-size wins.",
+        ],
+    )
+    var kitStorageSize: String? = null
+
+    @Option(
         names = ["--clean"],
         description = ["Clean existing configuration before initializing"],
     )
@@ -433,6 +454,13 @@ class Init : PicoBaseCommand() {
         }
     }
 
+    private fun requireKitStorageSize(value: String) {
+        val bytes = runCatching { Quantity.getAmountInBytes(Quantity.parse(value)) }.getOrNull()
+        require(bytes != null && bytes.signum() > 0) {
+            "Invalid --kit-storage-size '$value': give a positive Kubernetes quantity such as 200Gi or 1Ti."
+        }
+    }
+
     private fun validateParameters() {
         require(resolvedDbCount > 0) { "Number of database instances must be positive" }
         require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
@@ -440,6 +468,7 @@ class Init : PicoBaseCommand() {
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
         cidr?.let { CidrBlock(it) }
+        kitStorageSize?.let { requireKitStorageSize(it) }
         require(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(name)) {
             "Invalid cluster name '$name': a cluster name must match ${Constants.Observability.CLUSTER_NAME_PATTERN} " +
                 "(start with a lowercase letter; then lowercase letters, digits or '-'; at most 40 characters)."

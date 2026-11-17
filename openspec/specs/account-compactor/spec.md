@@ -18,6 +18,7 @@ The system SHALL run at most one compactor service per AWS account: the ECS Farg
 #### Scenario: The task runs every compactor
 - **WHEN** the compactor task definition is built
 - **THEN** it holds a Mimir container with `-target=compactor` and `-compactor.cleanup-interval=1m`, a Loki container with `-target=compactor`, and a Tempo backend-scheduler and a Tempo backend-worker container
+- **AND** its `config` container writes `tempo-backend.yaml`, with the account store's block, to `/config` beside the Mimir and Loki configuration, and both Tempo containers run with `-config.file=/config/tempo-backend.yaml`
 - **AND** no container runs Pyroscope
 
 ### Requirement: The compactor compacts and never deletes data by retention
@@ -90,4 +91,3 @@ The account VPC `easy-db-lab-compactor` SHALL carry the `easy_cass_lab=1` tag an
 #### Scenario: The compactor VPC is not counted as a cluster
 - **WHEN** `down` counts the clusters that name the account bucket
 - **THEN** the `easy-db-lab-compactor` VPC is not counted
-

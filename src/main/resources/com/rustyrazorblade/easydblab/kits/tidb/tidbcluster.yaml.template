@@ -6,8 +6,9 @@ metadata:
 spec:
   version: "__TIDB_VERSION__"
   timezone: UTC
-  # Delete PVs when the TidbCluster is removed so clusters stay ephemeral.
-  pvReclaimPolicy: Delete
+  # Keep the volumes when a claim goes away: they hold the owner's data. On local volumes,
+  # uninstall's kit-storage-delete removes the PVs and their directories.
+  pvReclaimPolicy: Retain
   enableDynamicConfiguration: true
   # Roll pods when spec.<component>.config changes; the default InPlace only updates
   # the ConfigMap and never restarts TiKV, so config changes would silently not apply.
@@ -17,8 +18,8 @@ spec:
     baseImage: pingcap/pd
     replicas: 1
     requests:
-      storage: 10Ti
-    storageClassName: local-path
+      storage: __STORAGE_SIZE__
+    storageClassName: __KIT_STORAGE_CLASS__
     config: {}
     nodeSelector:
       type: app
@@ -55,8 +56,8 @@ spec:
     baseImage: pingcap/tikv
     replicas: __REPLICAS__
     requests:
-      storage: 10Ti
-    storageClassName: local-path
+      storage: __STORAGE_SIZE__
+    storageClassName: __KIT_STORAGE_CLASS__
     config: {}
     nodeSelector:
       type: db
@@ -67,7 +68,7 @@ spec:
     storageClaims:
       - resources:
           requests:
-            storage: 10Ti
-        storageClassName: local-path
+            storage: __STORAGE_SIZE__
+        storageClassName: __KIT_STORAGE_CLASS__
     nodeSelector:
       type: db

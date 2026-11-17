@@ -71,6 +71,7 @@ val servicesModule =
         factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
+        factory { KitStorageResolver(get(), get()) }
         // helm and kubectl run on the control node over SSH. A local cluster has no SSH host, so a
         // harness rebinds this to LocalClusterTooling until #1040 selects the form per environment.
         // The directory holds the SSH form's local staging copy of stdin; it is injected because the
@@ -142,6 +143,7 @@ val servicesModule =
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
+        factoryOf(::KitStorageProvisioner)
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }

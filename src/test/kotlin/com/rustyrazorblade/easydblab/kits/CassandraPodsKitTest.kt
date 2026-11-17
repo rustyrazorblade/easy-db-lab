@@ -50,7 +50,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(args.getValue("--nodes").default).isEqualTo("\${DB_NODE_COUNT}")
         assertThat(args.getValue("--memory").default).isEqualTo("4Gi")
         assertThat(args.getValue("--dc").default).isEqualTo("dc1")
-        assertThat(args.getValue("--storage-size").default).isEqualTo("10Ti")
+        assertThat(args.getValue("--storage-size").default).isEqualTo("\${KIT_STORAGE_SIZE}")
         val cql = kit.config.endpoints.single { it.name == "CQL" }
         assertThat(cql.type).isEqualTo(KitEndpoint.EndpointType.NATIVE)
         assertThat(cql.nodeType).isEqualTo("db")
@@ -203,18 +203,18 @@ class CassandraPodsKitTest : BaseKoinTest() {
     }
 
     @Test
-    fun `claims come from the kit's platform volumes`() {
+    fun `claims name the kit's own class and no selector`() {
         val sts = statefulSet()
         val pvs =
             kit.config.install
-                .filterIsInstance<InstallStep.PlatformPvs>()
+                .filterIsInstance<InstallStep.KitStorage>()
                 .single()
         val claim = sts.spec.volumeClaimTemplates.single()
 
         assertThat(sts.metadata.name).isEqualTo("cassandra-pods")
         assertThat(claim.metadata.name).isEqualTo(pvs.volumeClaimTemplateName)
-        assertThat(claim.spec.storageClassName).isEqualTo(pvs.storageClass)
-        assertThat(claim.spec.selector.matchLabels).containsEntry("app.kubernetes.io/name", "cassandra-pods")
+        assertThat(claim.spec.storageClassName).isEqualTo("edl-local-cassandra-pods")
+        assertThat(claim.spec.selector).isNull()
     }
 
     @Test
@@ -226,7 +226,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
 
         assertThat(stop.selector).isEqualTo("easydblab/kit=cassandra-pods")
         assertThat(stop.kinds).contains("statefulset", "service", "configmap").doesNotContain("pvc", "persistentvolumeclaim")
-        assertThat(kit.config.uninstall.filterIsInstance<InstallStep.PlatformPvsDelete>()).hasSize(1)
+        assertThat(kit.config.uninstall.filterIsInstance<InstallStep.KitStorageDelete>()).hasSize(1)
         assertThat(kit.config.runtime?.selector).isEqualTo("easydblab/kit=cassandra-pods")
     }
 

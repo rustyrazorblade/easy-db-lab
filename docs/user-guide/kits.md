@@ -38,7 +38,7 @@ the cluster has hosts of that node type, it lists the bare NodePort (`:30123`).
 ## Installing a kit
 
 ```bash
-easy-db-lab kit install clickhouse --clickhouse-version 25.4 --size 100Gi
+easy-db-lab kit install clickhouse --clickhouse-version 25.4 --storage-size 100Gi
 ```
 
 Args vary by kit. Run `kit info <name>` to see what a kit accepts, or pass `--help`:
@@ -166,7 +166,8 @@ suffix):
 easy-db-lab kit install memcached --memory 4096 --extstore-size 100G
 ```
 
-With extstore on, `kit install` creates a local PersistentVolume on the db node's NVMe, and the
+With extstore on, `kit install` creates a local PersistentVolume on the db node's NVMe (on a kit
+StorageClass, the cluster provisions the claim, sized by `--storage-size`), and the
 memcached container mounts it at `/data` and runs with `-o ext_path=/data/extstore:<size>`.
 
 These install options tune extstore. Each one is passed to memcached only when you set it, so

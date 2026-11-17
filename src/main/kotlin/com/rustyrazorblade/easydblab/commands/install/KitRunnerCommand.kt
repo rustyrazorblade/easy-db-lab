@@ -143,7 +143,7 @@ class KitRunnerCommand(
     private fun buildAugmentedEnv(config: KitConfig?): Map<String, String> {
         val argDefaults = config?.args?.associate { it.variable to it.default }.orEmpty()
         // Read installed arg values written by kit install, overriding the kit defaults.
-        // This ensures phases like platform-pvs use the actual installed STORAGE_SIZE
+        // This ensures phases like kit-storage use the actual installed STORAGE_SIZE
         // (e.g. 100Gi) rather than the kit default (e.g. 10Ti), keeping PV capacity
         // consistent with the PVC request in the rendered manifest.
         val resolvedArgs = readResolvedArgs()

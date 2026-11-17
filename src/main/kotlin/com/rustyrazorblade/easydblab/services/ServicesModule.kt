@@ -50,8 +50,8 @@ import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneConnector
 import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
 import com.rustyrazorblade.easydblab.services.bringup.k3s.Fabric8ControlPlaneConnector
 import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
-import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DefaultDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -159,7 +159,7 @@ val servicesModule =
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factory { ConfigChangeReport(get<K8sNamespaceOperations>(), get()) }
         factory { TenantDirectory(get()) }
-        factory<TestDocumentService> { DefaultTestDocumentService(get()) }
+        factory<DocumentService> { DefaultDocumentService(get()) }
         factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<GrafanaAnnotationBackupService> {

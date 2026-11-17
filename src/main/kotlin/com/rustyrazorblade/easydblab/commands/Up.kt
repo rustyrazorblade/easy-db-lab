@@ -62,7 +62,7 @@ import com.rustyrazorblade.easydblab.services.bringup.NodeBringUp
 import com.rustyrazorblade.easydblab.services.bringup.NodeEnd
 import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
 import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpRequest
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import com.rustyrazorblade.easydblab.services.launches
 import com.rustyrazorblade.easydblab.services.replacementLaunches
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -125,7 +125,7 @@ class Up(
     private val externalIpService: ExternalIpService by inject()
     private val provisioningPreflight: ProvisioningPreflight by inject()
     private val launchCapacityPreflight: LaunchCapacityPreflight by inject()
-    private val testDocumentService: TestDocumentService by inject()
+    private val documentService: DocumentService by inject()
     private val tcpReachabilityProbe: TcpReachabilityProbe by inject()
     private val ec2BringUpPorts: Ec2BringUpPorts by inject()
 
@@ -163,7 +163,7 @@ class Up(
         provisioningPreflight.verify(workingState, initConfig)
 
         accountBucketSetup.prepare(workingState)
-        testDocumentService.rebuildIndex(workingState)
+        documentService.rebuildIndex(workingState)
         finish(bringUp(initConfig))
     }
 

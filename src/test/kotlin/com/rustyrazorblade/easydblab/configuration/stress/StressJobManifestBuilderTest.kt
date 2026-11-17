@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.stress
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.StressJobConfig
+import com.rustyrazorblade.easydblab.services.stress.StressTarget
 import io.fabric8.kubernetes.client.utils.Serialization
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -20,14 +21,13 @@ class StressJobManifestBuilderTest {
             jobName = "stress-golden",
             image = "ghcr.io/apache/cassandra-easy-stress:latest",
             args = listOf("run", "KeyValue", "-d", "1h"),
-            contactPoints = "10.0.1.6,10.0.1.7",
+            target = StressTarget("10.0.1.6,10.0.1.7", 9042, "us-west-2"),
             tags = mapOf("team" to "perf", "run" to "42"),
             promPort = 9500,
         )
 
     private val cluster =
         StressCluster(
-            region = "us-west-2",
             clusterName = "test-cluster-golden-cluster-id",
             tenant = "acme",
             telemetryRedirect = null,

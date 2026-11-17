@@ -7,12 +7,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler

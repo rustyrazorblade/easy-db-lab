@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kubernetes.ImagePullFailure
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.services.stress.StressTarget
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -31,6 +32,8 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.time.Duration
+
+private val VM_TARGET = StressTarget("10.0.1.6", Constants.Stress.DEFAULT_CASSANDRA_PORT, "us-west-2")
 
 /**
  * Tests for DefaultStressJobService Job building.
@@ -104,7 +107,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-ecr",
                     image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/stress:dev",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -125,7 +128,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -148,7 +151,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6,10.0.1.7",
+                    target = StressTarget("cassandra.lab.svc", 31942, "east"),
                     args = listOf("run", "KeyValue", "-d", "1h"),
                 ),
             )
@@ -160,8 +163,9 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(stress.args).containsExactly("run", "KeyValue", "-d", "1h")
 
         val envMap = stress.env.associate { it.name to it.value }
-        assertThat(envMap["CASSANDRA_CONTACT_POINTS"]).isEqualTo("10.0.1.6,10.0.1.7")
-        assertThat(envMap["CASSANDRA_PORT"]).isEqualTo(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
+        assertThat(envMap["CASSANDRA_CONTACT_POINTS"]).isEqualTo("cassandra.lab.svc")
+        assertThat(envMap["CASSANDRA_PORT"]).isEqualTo("31942")
+        assertThat(envMap["CASSANDRA_EASY_STRESS_DEFAULT_DC"]).isEqualTo("east")
     }
 
     @Test
@@ -171,7 +175,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -215,7 +219,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -241,7 +245,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-ecr",
                     image = ecrImage,
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -344,7 +348,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -380,7 +384,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `a stress run and a command job carry different role labels on the job and its pods`() {
         val run =
             service.buildJob(
-                StressJobConfig(jobName = "stress-1", image = "img", contactPoints = "10.0.1.6", args = listOf("run", "KeyValue")),
+                StressJobConfig(jobName = "stress-1", image = "img", target = VM_TARGET, args = listOf("run", "KeyValue")),
             )
         val command = service.buildCommandJob(jobName = "cmd-1", image = "img", args = listOf("list"))
 
@@ -399,7 +403,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                     tags = mapOf("env" to "production", "team" to "platform"),
                 ),
@@ -435,7 +439,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "keyvalue-1",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                     promPort = 9501,
                 ),
@@ -455,7 +459,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "keyvalue-1",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                     promPort = 9502,
                 ),
@@ -490,7 +494,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -646,7 +650,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         StressJobConfig(
             jobName = "stress-test-123",
             image = "ghcr.io/apache/cassandra-easy-stress:latest",
-            contactPoints = "10.0.1.6",
+            target = VM_TARGET,
             args = listOf("run", "KeyValue"),
             tags = tags,
         )
@@ -678,7 +682,7 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
         StressJobConfig(
             jobName = "stress-wait",
             image = "ghcr.io/apache/cassandra-easy-stress:latest",
-            contactPoints = "10.0.1.6",
+            target = VM_TARGET,
             args = listOf("run", "KeyValue"),
         )
 

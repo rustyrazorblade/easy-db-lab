@@ -10,8 +10,8 @@
 
 - [x] 2.1 Test first (`DefaultStressJobServiceTest`, replacing `:445,473` asserts): no hostNetwork, no hostPath; agent paths cross-checked against init-container copy targets; selector from `RoleSelectors`.
 - [x] 2.2 `StressJobService.assembleJob` / `buildCommandJob`: drop `hostNetwork` / `ClusterFirstWithHostNet` / hostPath; use `JavaAgentDelivery` and the app selector. Leave the Pyroscope address and control-node lookup to #1135.
-- [ ] 2.3 Test first: `StressTargetResolver` picks the running kit, else VM hosts, else fails naming both; DC from kit `--dc` or region.
-- [ ] 2.4 `StressTarget` + resolver; `StressStart` drops its control-host requirement.
+- [x] 2.3 Test first: `StressTargetResolver` picks the running kit, else VM hosts, else fails naming both; DC from kit `--dc` or region.
+- [x] 2.4 `StressTarget` + resolver; `StressStart` drops its control-host requirement.
 
 ## 3. Role selectors
 

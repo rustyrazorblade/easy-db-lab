@@ -21,25 +21,21 @@ import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 
 /**
- * The cluster facts a stress Job's environment and agents are built from: which region and tenant
- * the cluster is, and where profiles go. The agents reach the collector and Pyroscope by their
- * Services, never by a node address. Read once from the cluster
- * state by [from], so [StressJobManifestBuilder] never touches the state itself.
+ * The cluster facts a stress Job's environment and agents are built from: which cluster and tenant
+ * it is, where profiles go, and which nodes the app role runs on. The agents reach the collector
+ * and Pyroscope by their Services, never by a node address. Read once from the cluster state by
+ * [from], so [StressJobManifestBuilder] never touches the state itself.
  */
 data class StressCluster(
-    val region: String,
     val clusterName: String,
     val tenant: String,
     val telemetryRedirect: TelemetryRedirect?,
     val appSelector: NodeSelector,
 ) {
     companion object {
-        /** Reads the facts from [state]; fails when it holds no region. */
+        /** Reads the facts from [state]. */
         fun from(state: ClusterState): StressCluster =
             StressCluster(
-                region =
-                    state.infrastructure?.region
-                        ?: error("Infrastructure state missing region. Re-provision the cluster to fix this."),
                 clusterName = state.clusterLabelName(),
                 tenant = state.tenant(),
                 telemetryRedirect = state.initConfig?.telemetryRedirect,
@@ -169,15 +165,15 @@ object StressJobManifestBuilder {
             .withEnv(
                 EnvVarBuilder()
                     .withName("CASSANDRA_CONTACT_POINTS")
-                    .withValue(config.contactPoints)
+                    .withValue(config.target.contactPoint)
                     .build(),
                 EnvVarBuilder()
                     .withName("CASSANDRA_PORT")
-                    .withValue(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
+                    .withValue(config.target.port.toString())
                     .build(),
                 EnvVarBuilder()
                     .withName("CASSANDRA_EASY_STRESS_DEFAULT_DC")
-                    .withValue(cluster.region)
+                    .withValue(config.target.datacenter)
                     .build(),
                 EnvVarBuilder()
                     .withName("CASSANDRA_EASY_STRESS_PROM_PORT")

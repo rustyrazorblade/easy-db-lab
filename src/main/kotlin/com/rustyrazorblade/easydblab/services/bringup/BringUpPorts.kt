@@ -32,9 +32,6 @@ interface NodeSteps {
         host: ClusterHost,
     )
 
-    /** Fetches the database versions file from [host] into the workspace; the coordinator calls it once. */
-    fun downloadVersions(host: ClusterHost)
-
     /**
      * Checks that [host]'s image carries what the cluster needs; null when it does, or when the
      * cluster needs nothing of the image. A defect rules out a replacement: a new instance has the

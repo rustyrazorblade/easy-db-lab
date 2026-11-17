@@ -32,7 +32,7 @@ network:
 
 # Or individually
 ./gradlew testCassandraInstallScript   # bin/install-cassandra-version
-./gradlew testCassandraInstallLoop     # the bake-time version loop in install_cassandra.sh
+./gradlew testCassandraInstallLoop     # install_cassandra.sh: the bake-time setup installs no version
 ./gradlew testCassandraUseScript       # bin/use-cassandra
 
 # The base AMI JDK install (base/install/install_jdks.sh); not part of testCassandraScripts

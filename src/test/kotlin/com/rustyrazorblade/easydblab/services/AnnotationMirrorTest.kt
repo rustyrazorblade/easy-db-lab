@@ -27,7 +27,7 @@ class AnnotationMirrorTest {
     private val control = ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a")
     private val stateManager =
         mock<ClusterStateManager>().also {
-            whenever(it.load()).thenReturn(ClusterState(name = "lab", clusterId = "c1", versions = mutableMapOf()))
+            whenever(it.load()).thenReturn(ClusterState(name = "lab", clusterId = "c1"))
         }
     private val now = Instant.parse("2026-09-26T12:00:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)

@@ -1,9 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.github.dockerjava.api.model.Network.Ipam
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.SharedK3s
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.testcontainers.containers.Network
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
@@ -25,7 +27,22 @@ class K3sEmbeddedEtcdIntegrationTest {
         const val READY_TIMEOUT_SECONDS = 180L
         const val POLL_MILLIS = 2_000L
         const val LOG_TAIL_CHARS = 4_000
+
+        // A user-defined network with a fixed address: on the default bridge a restarted container
+        // can come back with another IP, and etcd then refuses the peer URL it stored, which an EC2
+        // node (it keeps its private IP across a reboot) never does.
+        const val SUBNET = "172.31.250.0/28"
+        const val GATEWAY = "172.31.250.1"
+        const val CONTAINER_IP = "172.31.250.10"
     }
+
+    /** A network whose subnet is fixed, so [CONTAINER_IP] can be assigned statically. */
+    private fun fixedSubnetNetwork(): Network =
+        Network
+            .builder()
+            .createNetworkCmdModifier { cmd ->
+                cmd.withIpam(Ipam().withConfig(Ipam.Config().withSubnet(SUBNET).withGateway(GATEWAY)))
+            }.build()
 
     /** The heredoc body the server script writes to the datastore drop-in. */
     private fun datastoreDropIn(): String {
@@ -74,29 +91,46 @@ class K3sEmbeddedEtcdIntegrationTest {
 
     @Test
     fun `K3s with the datastore drop-in runs on etcd and keeps its objects across a restart`() {
+        val network = fixedSubnetNetwork()
         val container =
             K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
                 .withPrivilegedMode(true)
+                .withNetwork(network)
                 .withCreateContainerCmdModifier { cmd ->
-                    cmd.hostConfig!!
+                    checkNotNull(cmd.hostConfig) { "the create command has no host config" }
                         .withCgroupnsMode("host")
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
+                    cmd.withIpv4Address(CONTAINER_IP)
                 }.withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
         container.withCopyToContainer(Transferable.of(datastoreDropIn()), DROP_IN_PATH)
 
-        container.use {
-            it.start()
+        network.use { _ ->
+            container.use {
+                it.start()
 
-            assertThat(it.kubectl("get", "--raw", "/readyz?verbose")).contains("[+]etcd ok")
-            assertThat(it.kubectl("get", "nodes", "-l", "node-role.kubernetes.io/etcd=true", "-o", "name")).startsWith("node/")
-            assertThat(it.sh("test -d $DATA_DIR/server/db/etcd/member && echo member")).isEqualTo("member")
-            assertThat(it.sh("test -e $DATA_DIR/server/db/state.db && echo sqlite || echo none")).isEqualTo("none")
+                assertThat(it.kubectl("get", "--raw", "/readyz?verbose")).contains("[+]etcd ok")
+                assertThat(it.kubectl("get", "nodes", "-l", "node-role.kubernetes.io/etcd=true", "-o", "name")).startsWith("node/")
+                assertThat(it.sh("test -d $DATA_DIR/server/db/etcd/member && echo member")).isEqualTo("member")
+                assertThat(it.sh("test -e $DATA_DIR/server/db/state.db && echo sqlite || echo none")).isEqualTo("none")
 
-            it.kubectl("create", "configmap", "survives-restart", "--from-literal=k=v")
-            it.dockerClient.restartContainerCmd(it.containerId).exec()
-            it.awaitRestarted()
+                it.kubectl("create", "configmap", "survives-restart", "--from-literal=k=v")
+                it.dockerClient.restartContainerCmd(it.containerId).exec()
+                assertThat(it.addressOn(network)).isEqualTo(CONTAINER_IP)
+                it.awaitRestarted()
 
-            assertThat(it.kubectl("get", "configmap", "survives-restart", "-o", "jsonpath={.data.k}")).isEqualTo("v")
+                assertThat(it.kubectl("get", "configmap", "survives-restart", "-o", "jsonpath={.data.k}")).isEqualTo("v")
+            }
         }
     }
+
+    /** The container's IPv4 address on [network], as Docker reports it now. */
+    private fun K3sContainer.addressOn(network: Network): String? =
+        dockerClient
+            .inspectContainerCmd(containerId)
+            .exec()
+            .networkSettings
+            ?.networks
+            ?.values
+            ?.firstOrNull { it.networkID == network.id }
+            ?.ipAddress
 }

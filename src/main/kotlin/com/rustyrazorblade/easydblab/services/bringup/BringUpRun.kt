@@ -6,8 +6,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Clock
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentLinkedDeque
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 /** The control plane once its gate is open: what nodes join with, and the clients to watch them through. */
 internal data class OpenControlPlane(
@@ -37,7 +35,6 @@ internal class BringUpRun(
     val workspace = CompletableFuture<Unit>()
     val certificate = CompletableFuture<Unit>()
     val controlPlane = CompletableFuture<OpenControlPlane>()
-    val versions = Once()
     val replacer =
         NodeReplacer(
             ports.fleet,
@@ -61,19 +58,4 @@ internal class BringUpRun(
     private companion object {
         val log = KotlinLogging.logger {}
     }
-}
-
-/** Runs an action once: the first caller to succeed does it, and every later call returns at once. */
-internal class Once {
-    private val lock = ReentrantLock()
-    private var done = false
-
-    /** Runs [action] unless it already succeeded; a failure leaves it for the next caller. */
-    fun run(action: () -> Unit) =
-        lock.withLock {
-            if (!done) {
-                action()
-                done = true
-            }
-        }
 }

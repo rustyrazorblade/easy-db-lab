@@ -39,7 +39,7 @@ class ClusterStateWriterTest {
             val random = Random(seed)
             val file = File(dir, "state-$seed.json")
             val manager = ClusterStateManager(file)
-            val writer = ClusterStateWriter(ClusterState(name = "lab", versions = mutableMapOf()), manager)
+            val writer = ClusterStateWriter(ClusterState(name = "lab"), manager)
             val dbCount = random.nextInt(1, MAX_NODES)
             val appCount = random.nextInt(1, MAX_NODES / 4)
             // Each node is written once at launch and once again (its final IPs or a replacement).

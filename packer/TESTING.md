@@ -60,7 +60,7 @@ The packer directory is mounted at `/packer` (read-only).
 ./test-script.sh base/install/install_python.sh
 
 # Test with forced image rebuild
-./test-script.sh cassandra/install/install_cassandra.sh --rebuild
+./test-script.sh cassandra/install/install_cassandra_easy_stress.sh --rebuild
 ```
 
 ### Interactive Debugging

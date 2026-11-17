@@ -345,6 +345,7 @@ object Constants {
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
+        const val TOO_MANY_REQUESTS = 429
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599
         const val CLIENT_ERROR_THRESHOLD = 500 // Errors >= 500 are server errors
@@ -357,8 +358,6 @@ object Constants {
 
     // Packer configuration
     object Packer {
-        const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
-
         // Packer's communicator interface for reaching the builder over SSM Session Manager
         const val SESSION_MANAGER_INTERFACE = "session_manager"
 
@@ -999,11 +998,33 @@ object Constants {
         /** UID of the cassandra OS user — must match the cassandra-sidecar container image */
         const val USER_ID = 999L
 
-        /** Python version cqlsh runs under when a version declares none — matches every shipped entry */
+        /** Python version cqlsh runs under when a version declares none */
         const val DEFAULT_PYTHON_VERSION = "3.11.9"
+
+        /** Where Apache releases are downloaded first: the CDN, which carries only current releases. */
+        const val ASF_DLCDN_BASE = "https://dlcdn.apache.org/cassandra"
+
+        /** Every Apache release ever made; its index page is the release list, and the fallback download. */
+        const val ASF_ARCHIVE_BASE = "https://archive.apache.org/dist/cassandra"
+
+        /** The GitHub release of cassandra-builds that holds the nightly branch builds. */
+        const val CASSANDRA_BUILDS_RELEASE_API =
+            "https://api.github.com/repos/rustyrazorblade/cassandra-builds/releases/tags/nightly"
+
+        /** Connect timeout for the public version sources (ASF, GitHub). */
+        const val SOURCE_CONNECT_TIMEOUT_SECONDS = 10L
+
+        /** Read timeout for the public version sources; the ASF index page is about 30 KB. */
+        const val SOURCE_READ_TIMEOUT_SECONDS = 30L
+
+        /** Profile subdirectory that caches the ASF and cassandra-builds lists. */
+        const val SOURCE_CACHE_DIR = "cassandra-sources"
 
         /** Node-side directory easy-db-lab writes its own configuration into. */
         const val NODE_CONFIG_DIR = "/etc/easy-db-lab"
+
+        /** Where a db node holds its installed versions, one directory each, plus the `current` link. */
+        const val INSTALL_DIR = "/usr/local/cassandra"
 
         /**
          * JMX Metric Insight rules the OTel Java agent reads on each Cassandra node.

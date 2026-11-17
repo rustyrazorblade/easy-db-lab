@@ -46,7 +46,7 @@ class Ec2K3sBringUp(
         BringUpPortSet(
             tracker = tracker(),
             fleet = Ec2InstanceFleet(ec2, preflight, request.launches, request.plan),
-            nodeSteps = steps.nodeSteps(request.state, request.workspace),
+            nodeSteps = steps.nodeSteps(request.state),
             controlSteps = steps.controlSteps(request.route, request.state, request.workspace),
             state = request.state,
         )

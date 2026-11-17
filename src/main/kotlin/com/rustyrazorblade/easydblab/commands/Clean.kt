@@ -37,7 +37,6 @@ class Clean :
                 "environment.sh",
                 "setup_instance.sh",
                 "state.json",
-                "cassandra_versions.yaml",
                 "axonops-workbench.json",
                 ".socks5-proxy-state",
                 Constants.Proxy.ENV_FILE,

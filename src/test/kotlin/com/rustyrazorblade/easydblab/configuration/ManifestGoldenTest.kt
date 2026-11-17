@@ -52,7 +52,7 @@ class ManifestGoldenTest : BaseKoinTest() {
                         whenever(
                             it.load(),
                         ).thenReturn(
-                            ClusterState(name = "test", clusterId = "golden-cluster", versions = mutableMapOf(), s3Bucket = "acct"),
+                            ClusterState(name = "test", clusterId = "golden-cluster", s3Bucket = "acct"),
                         )
                     }
                 }

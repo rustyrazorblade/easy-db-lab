@@ -22,7 +22,6 @@ class ClusterStateManagerTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
         manager.save(state)
 
@@ -46,7 +45,7 @@ class ClusterStateManagerTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+        manager.save(ClusterState(name = "test-cluster"))
 
         manager.addRunningWorkload("clickhouse")
         manager.addRunningWorkload("presto")
@@ -61,7 +60,7 @@ class ClusterStateManagerTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf(), runningKits = mutableSetOf("clickhouse", "presto"))
+        val state = ClusterState(name = "test-cluster", runningKits = mutableSetOf("clickhouse", "presto"))
         manager.save(state)
 
         manager.removeRunningWorkload("clickhouse")
@@ -76,7 +75,7 @@ class ClusterStateManagerTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+        manager.save(ClusterState(name = "test-cluster"))
 
         val reloaded = ClusterStateManager(stateFile).load()
         assertThat(reloaded.runningKits).isEmpty()
@@ -92,7 +91,6 @@ class ClusterStateManagerTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
         manager.save(state)
 
@@ -111,7 +109,7 @@ class ClusterStateManagerTest {
         @TempDir tempDir: File,
     ) {
         val stateFile = File(tempDir, "state.json")
-        ClusterStateManager(stateFile).save(ClusterState(name = "My/Cluster", versions = mutableMapOf()))
+        ClusterStateManager(stateFile).save(ClusterState(name = "My/Cluster"))
 
         assertThatThrownBy { ClusterStateManager(stateFile).load() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -129,7 +127,7 @@ class ClusterStateManagerTest {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
         // A large state makes a non-atomic write take long enough for a reader to catch it midway.
-        val big = ClusterState(name = "test-cluster", versions = (1..2000).associate { "k$it" to "v".repeat(40) }.toMutableMap())
+        val big = ClusterState(name = "test-cluster", nodes = (1..2000).associate { "k$it" to NodeState("v".repeat(40)) }.toMutableMap())
         manager.save(big)
 
         val saving = AtomicBoolean(true)
@@ -156,11 +154,11 @@ class ClusterStateManagerTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+        manager.save(ClusterState(name = "test-cluster"))
         val chosen = PosixFilePermissions.fromString("rw-r-----")
         Files.setPosixFilePermissions(stateFile.toPath(), chosen)
 
-        manager.save(ClusterState(name = "test-cluster", versions = mutableMapOf(), stressJobCounter = 1))
+        manager.save(ClusterState(name = "test-cluster", stressJobCounter = 1))
 
         assertThat(Files.getPosixFilePermissions(stateFile.toPath())).isEqualTo(chosen)
     }
@@ -172,7 +170,7 @@ class ClusterStateManagerTest {
         val stateFile = File(tempDir, "state.json")
         val plain = Files.createFile(File(tempDir, "plain").toPath())
 
-        ClusterStateManager(stateFile).save(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+        ClusterStateManager(stateFile).save(ClusterState(name = "test-cluster"))
 
         assertThat(Files.getPosixFilePermissions(stateFile.toPath())).isEqualTo(Files.getPosixFilePermissions(plain))
     }

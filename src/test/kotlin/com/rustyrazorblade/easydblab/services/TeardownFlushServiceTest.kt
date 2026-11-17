@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
  */
 class TeardownFlushServiceTest {
     private val control = ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a")
-    private val state = ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "acct")
+    private val state = ClusterState(name = "lab", s3Bucket = "acct")
     private val all = TailSignal.entries.toSet()
 
     /** Every step that ran, in the order it started or finished. */

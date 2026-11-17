@@ -59,7 +59,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
                     mock<ClusterStateManager>().also {
                         whenever(
                             it.load(),
-                        ).thenReturn(ClusterState(name = "senders-it", versions = mutableMapOf()))
+                        ).thenReturn(ClusterState(name = "senders-it"))
                     }
                 }
                 single { TemplateService(get(), get()) }

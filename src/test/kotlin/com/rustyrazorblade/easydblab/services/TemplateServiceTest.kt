@@ -68,7 +68,6 @@ class TemplateServiceTest : BaseKoinTest() {
             ClusterState(
                 name = clusterName,
                 clusterId = "test-id",
-                versions = mutableMapOf(),
                 hosts =
                     if (controlHost != null) {
                         mutableMapOf(ServerType.Control to listOf(controlHost))

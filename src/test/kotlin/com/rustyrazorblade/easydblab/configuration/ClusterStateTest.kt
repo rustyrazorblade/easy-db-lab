@@ -5,10 +5,70 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import java.io.File
 import java.time.Instant
 
 class ClusterStateTest {
+    /** Every source a record can carry survives a save and load, with the node's active version. */
+    @ParameterizedTest
+    @EnumSource(CassandraSource::class)
+    fun `a node's installed records and active version round-trip`(
+        source: CassandraSource,
+        @TempDir tempDir: File,
+    ) {
+        val manager = ClusterStateManager(File(tempDir, "state.json"))
+        val record =
+            InstalledVersion(
+                version = "5.0-HEAD",
+                java = "17",
+                javaSupported = listOf("11", "17"),
+                python = "3.11.9",
+                source = source,
+                url = "https://example.com/apache-cassandra-5.0-HEAD-bin.tar.gz",
+                branch = "cassandra-5.0".takeIf { source == CassandraSource.GIT },
+                antFlags = "-Duse.jdk11=true".takeIf { source == CassandraSource.GIT },
+            )
+        val other = record.copy(version = "4.1.7", java = "11", javaSupported = listOf("8", "11"))
+        val state =
+            ClusterState(
+                name = "c",
+                nodes =
+                    mutableMapOf(
+                        "db0" to NodeState("5.0-HEAD", "17", mutableMapOf("5.0-HEAD" to record, "4.1.7" to other)),
+                    ),
+            )
+
+        manager.save(state)
+        val loaded = manager.load()
+
+        assertThat(loaded.nodes["db0"]).isEqualTo(state.nodes["db0"])
+    }
+
+    /** A state.json written before the record existed still carries a top-level `versions` map. */
+    @Test
+    fun `a state with the old versions key loads, keeping the node versions`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText(
+            """
+            {
+              "name": "old",
+              "default": {"version": "5.0", "javaVersion": "17"},
+              "nodes": {"db0": {"version": "4.1", "javaVersion": "11"}},
+              "versions": {"db0": "4.1"}
+            }
+            """.trimIndent(),
+        )
+
+        val loaded = ClusterStateManager(stateFile).load()
+
+        assertThat(loaded.nodes["db0"]).isEqualTo(NodeState("4.1", "11"))
+        assertThat(loaded.default.version).isEqualTo("5.0")
+    }
+
     @Test
     fun `ClusterState should save and load InitConfig correctly`(
         @TempDir tempDir: File,
@@ -43,7 +103,6 @@ class ClusterStateTest {
         val originalState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf("cassandra" to "4.1.3"),
                 initConfig = initConfig,
             )
         manager.save(originalState)
@@ -56,7 +115,6 @@ class ClusterStateTest {
 
         // Verify all fields match
         assertThat(loadedState.name).isEqualTo("test-cluster")
-        assertThat(loadedState.versions).containsEntry("cassandra", "4.1.3")
 
         // Verify InitConfig was preserved
         assertThat(loadedState.initConfig).isNotNull
@@ -94,7 +152,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "legacy-cluster",
-                versions = mutableMapOf(),
                 initConfig = null,
             )
         manager.save(state)
@@ -274,7 +331,7 @@ class ClusterStateTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "c", versions = mutableMapOf(), initConfig = InitConfig(tenant = "acme")))
+        manager.save(ClusterState(name = "c", initConfig = InitConfig(tenant = "acme")))
 
         assertThat(manager.load().tenant()).isEqualTo("acme")
     }
@@ -300,7 +357,7 @@ class ClusterStateTest {
     @Test
     fun `a tenant of the longest allowed length is read back`() {
         val longest = "a" + "b".repeat(62)
-        val state = ClusterState(name = "c", versions = mutableMapOf(), initConfig = InitConfig(tenant = longest))
+        val state = ClusterState(name = "c", initConfig = InitConfig(tenant = longest))
 
         assertThat(state.tenant()).isEqualTo(longest)
     }
@@ -311,7 +368,7 @@ class ClusterStateTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "c", versions = mutableMapOf(), initConfig = InitConfig(cni = CniMode.Cilium)))
+        manager.save(ClusterState(name = "c", initConfig = InitConfig(cni = CniMode.Cilium)))
 
         assertThat(manager.load().initConfig?.cni).isEqualTo(CniMode.Cilium)
     }
@@ -397,7 +454,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = hosts,
             )
         manager.save(state)
@@ -431,7 +487,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
 
         // Initially UNKNOWN
@@ -466,7 +521,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 tailFlush =
                     TailFlushRecord(
                         mapOf(
@@ -492,7 +546,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
         manager.save(state)
 
@@ -532,7 +585,6 @@ class ClusterStateTest {
         val stateNoControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
         assertThat(stateNoControl.getControlHost()).isNull()
 
@@ -548,7 +600,6 @@ class ClusterStateTest {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mapOf(
                         ServerType.Control to listOf(controlHost),
@@ -579,7 +630,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = hosts1,
             )
 
@@ -615,7 +665,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = hosts1,
             )
 
@@ -666,13 +715,11 @@ class ClusterStateTest {
         val state1 =
             ClusterState(
                 name = "cluster1",
-                versions = mutableMapOf(),
             )
 
         val state2 =
             ClusterState(
                 name = "cluster2",
-                versions = mutableMapOf(),
             )
 
         // Each cluster should have a unique ID
@@ -689,7 +736,6 @@ class ClusterStateTest {
         val originalState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
         val originalId = originalState.clusterId
         manager.save(originalState)
@@ -711,7 +757,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
 
         Thread.sleep(10)
@@ -768,7 +813,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
         state.updateTailscaleAuthKeyId("tskey-auth-abc123")
         manager.save(state)
@@ -789,7 +833,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-abc12345",
                 clusterId = "test-id",
             )
@@ -805,7 +848,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 clusterId = "abc-123-def",
             )
 
@@ -817,7 +859,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
 
         assertThat(state.dataBucket).isEmpty()
@@ -833,7 +874,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 dataBucket = "easy-db-lab-data-test-id",
             )
         manager.save(state)
@@ -847,7 +887,6 @@ class ClusterStateTest {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = null,
             )
 

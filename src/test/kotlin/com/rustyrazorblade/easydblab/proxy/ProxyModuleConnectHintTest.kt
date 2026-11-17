@@ -103,7 +103,7 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
         getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
         val service = getKoin().get<SocksProxyService>() as ProcessSocksProxyService
         getKoin().get<ClusterStateManager>().save(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), initConfig = InitConfig(open = open)),
+            ClusterState(name = "test-cluster", initConfig = InitConfig(open = open)),
         )
         afterSave()
         val log = File(tempDir, "socks5-proxy.log").apply { writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n") }

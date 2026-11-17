@@ -48,7 +48,7 @@ class GrafanaBackupTest : BaseKoinTest() {
                 single {
                     mock<ClusterStateManager>().also {
                         whenever(it.load()).thenReturn(
-                            ClusterState(name = "lab", versions = mutableMapOf(), hosts = mapOf(ServerType.Control to listOf(control))),
+                            ClusterState(name = "lab", hosts = mapOf(ServerType.Control to listOf(control))),
                         )
                     }
                 }

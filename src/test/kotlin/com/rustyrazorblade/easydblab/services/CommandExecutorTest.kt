@@ -282,7 +282,7 @@ class CommandExecutorTest : BaseKoinTest() {
     @Test
     fun `execute should trigger backup for command with TriggerBackup annotation`() {
         // Given
-        val state = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket")
+        val state = ClusterState(name = "test", s3Bucket = "test-bucket")
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
         whenever(mockBackupRestoreService.backupChanged(any(), any()))
@@ -337,7 +337,7 @@ class CommandExecutorTest : BaseKoinTest() {
     @Test
     fun `scheduled commands with TriggerBackup should trigger backup after execution`() {
         // Given
-        val state = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket")
+        val state = ClusterState(name = "test", s3Bucket = "test-bucket")
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
         whenever(mockBackupRestoreService.backupChanged(any(), any()))
@@ -384,7 +384,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -412,7 +411,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -433,7 +431,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = true,
             )
@@ -474,7 +471,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -511,7 +507,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -545,7 +540,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -580,7 +574,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),

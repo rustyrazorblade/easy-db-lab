@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.ssh
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 
 /**
  * A git URL is a normal way to reach a private fork, and it can carry credentials in its userinfo.
@@ -62,5 +64,29 @@ class RedactionTest {
     @Test
     fun `leaves text with no url alone`() {
         assertThat(redactUrlCredentials("sudo use-cassandra 5.0")).isEqualTo("sudo use-cassandra 5.0")
+    }
+
+    /** Only the userinfo that [redactUrlCredentials] writes counts; a live credential or a stray `***@` does not. */
+    @ParameterizedTest(name = "{0} -> {1}")
+    @CsvSource(
+        "https://***@github.com/acme/cassandra.git, true",
+        "https://tok3n@github.com/acme/cassandra.git, false",
+        "https://github.com/acme/cassandra.git, false",
+        "https://github.com/acme/***@cassandra.git, false",
+        "git@github.com:acme/cassandra.git, false",
+    )
+    fun `a url has redacted credentials only when its userinfo is the redaction marker`(
+        url: String,
+        expected: Boolean,
+    ) {
+        assertThat(hasRedactedCredentials(url)).isEqualTo(expected)
+    }
+
+    @Test
+    fun `every url redaction changes is then recognized as redacted`() {
+        val withCredentials =
+            listOf("https://a:b@h/x", "https://tok@h/x", "s3://key:secret@bucket/x", "http://x-access-token:t@h:8080/r.git")
+
+        withCredentials.forEach { assertThat(hasRedactedCredentials(redactUrlCredentials(it))).describedAs(it).isTrue() }
     }
 }

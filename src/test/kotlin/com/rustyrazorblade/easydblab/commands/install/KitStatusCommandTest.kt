@@ -60,7 +60,6 @@ class KitStatusCommandTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
                 hosts =
                     mapOf(

@@ -44,7 +44,6 @@ class TailscaleStartTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2", cidr = "10.0.0.0/16"),
             hosts =
                 mapOf(
@@ -91,7 +90,6 @@ class TailscaleStartTest : BaseKoinTest() {
             val stateNoControl =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                     initConfig = InitConfig(region = "us-west-2"),
                     hosts = emptyMap(),
                 )

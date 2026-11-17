@@ -53,8 +53,7 @@ class DataBucketTeardownTest {
     @BeforeEach
     fun clearEvents() = emitted.clear()
 
-    private fun cluster(dataBucket: String) =
-        ClusterState(name = "lab", versions = mutableMapOf(), clusterId = "abc", dataBucket = dataBucket)
+    private fun cluster(dataBucket: String) = ClusterState(name = "lab", clusterId = "abc", dataBucket = dataBucket)
 
     private fun listBuckets(vararg names: String) {
         whenever(

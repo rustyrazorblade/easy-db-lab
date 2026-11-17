@@ -65,7 +65,6 @@ class StressStatusTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -108,7 +107,6 @@ class StressStatusTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -133,7 +131,6 @@ class StressStatusTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),

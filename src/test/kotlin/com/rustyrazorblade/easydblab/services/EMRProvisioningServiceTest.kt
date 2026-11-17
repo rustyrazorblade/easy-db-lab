@@ -72,7 +72,6 @@ internal class EMRProvisioningServiceTest {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             ),
         )
@@ -100,7 +99,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
@@ -331,7 +329,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
@@ -377,7 +374,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
@@ -408,7 +404,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -460,7 +455,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -506,7 +500,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -558,7 +551,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -607,7 +599,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -655,7 +646,6 @@ internal class EMRProvisioningServiceTest {
         clusterId: String = "",
     ) = ClusterState(
         name = name,
-        versions = mutableMapOf(),
         s3Bucket = "easy-db-lab-test-bucket",
         clusterId = clusterId,
         hosts = mapOf(ServerType.Control to listOf(testControlHost)),

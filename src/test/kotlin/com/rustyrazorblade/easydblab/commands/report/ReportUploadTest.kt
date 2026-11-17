@@ -43,7 +43,6 @@ class ReportUploadTest : BaseKoinTest() {
     private val downCluster =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             clusterId = "abc",
             s3Bucket = "acct",
             initConfig = InitConfig(tenant = "acme"),

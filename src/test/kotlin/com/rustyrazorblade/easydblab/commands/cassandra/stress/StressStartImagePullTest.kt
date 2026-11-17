@@ -58,7 +58,6 @@ class StressStartImagePullTest : BaseKoinTest() {
         whenever(clusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 infrastructure = InfrastructureState(vpcId = "vpc-test", region = "us-west-2"),
                 hosts = mapOf(ServerType.Control to listOf(control), ServerType.Cassandra to listOf(db0)),
             ),

@@ -50,7 +50,6 @@ class SparkInitTest : BaseKoinTest() {
         saveState(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(name = "test"),
                 infrastructure = null,
             ),
@@ -71,7 +70,6 @@ class SparkInitTest : BaseKoinTest() {
         saveState(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 initConfig = null,
                 infrastructure =
                     InfrastructureState(
@@ -97,7 +95,6 @@ class SparkInitTest : BaseKoinTest() {
         saveState(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(name = "test"),
                 infrastructure =
                     InfrastructureState(
@@ -130,7 +127,6 @@ class SparkInitTest : BaseKoinTest() {
         saveState(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(name = "test"),
                 infrastructure =
                     InfrastructureState(
@@ -181,7 +177,6 @@ class SparkInitTest : BaseKoinTest() {
         saveState(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(name = "myenv"),
                 infrastructure =
                     InfrastructureState(

@@ -37,6 +37,7 @@ Central state data class persisted as `state.json`. Key fields:
 - `name: String` — cluster name
 - `clusterId: String` — unique UUID for EC2 tag-based discovery
 - `hosts: Map<ServerType, List<ClusterHost>>` — all cluster hosts
+- `nodes: MutableMap<Alias, NodeState>` and `default: NodeState` — the Cassandra version record. Each `NodeState` holds the active `version` and its `javaVersion`, and `installed`: one `InstalledVersion` per version on that node (JDK, supported JDKs, Python, `CassandraSource`, the URL with credentials redacted, and for a git build the branch and ant flags). No version file lives on a node; this is the only record. `CassandraNodeRestorer` reinstalls a replaced node's active version from it
 - `infrastructure: InfrastructureState?` — VPC, subnet, security group IDs
 - `initConfig: InitConfig?` — configuration from the `Init` command
 - `emrCluster: EMRClusterState?` — optional EMR/Spark state
@@ -104,7 +105,6 @@ val controlHost = clusterState.getControlHost()
 ```kotlin
 val testState = ClusterState(
     name = "test-cluster",
-    versions = mutableMapOf(),
     s3Bucket = "easy-db-lab-test-bucket",
     clusterId = "test-id",
     initConfig = InitConfig(region = "us-west-2"),
@@ -158,7 +158,7 @@ val result = template.substitute(mapOf("EXTRA" to "value"))  // extra vars overr
 
 ## Other Configuration Classes
 
-- **`CassandraVersion`** — version definition (Cassandra, Java, Python versions). `lazy: true` declares a version without baking it: the entry still ships in every node's `/etc/cassandra_versions.yaml`, so it is discoverable and installable at runtime via `cassandra install`, but the AMI bake skips it. Loaded from `packer/cassandra/cassandra_versions.yaml` merged with the profile's `cassandra_versions/` extras.
+- Cassandra versions are not configuration: `services/cassandraversions/` resolves a name from its sources (profile builds, ASF, cassandra-builds, the build catalog) at runtime, and the record lives in `ClusterState.nodes`.
 - **`CassandraYaml`** — cassandra.yaml manipulation (Jackson-based)
 - **`Seeds`** — seed list management
 - **`Host`** — legacy host data class (use `ClusterHost` for new code)

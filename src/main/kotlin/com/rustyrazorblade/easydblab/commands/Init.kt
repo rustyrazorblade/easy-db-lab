@@ -489,7 +489,6 @@ class Init : PicoBaseCommand() {
         val state =
             ClusterState(
                 name = name,
-                versions = mutableMapOf(),
                 initConfig =
                     InitConfig.fromInit(
                         init = this,

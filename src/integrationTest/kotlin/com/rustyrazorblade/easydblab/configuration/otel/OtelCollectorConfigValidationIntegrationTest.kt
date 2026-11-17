@@ -33,7 +33,7 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
                 single {
                     mock<ClusterStateManager>().also {
                         whenever(it.load()).thenReturn(
-                            ClusterState(name = "test", versions = mutableMapOf(), initConfig = InitConfig(tenant = "acme")),
+                            ClusterState(name = "test", initConfig = InitConfig(tenant = "acme")),
                         )
                     }
                 }

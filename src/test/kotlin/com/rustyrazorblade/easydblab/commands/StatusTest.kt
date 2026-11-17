@@ -211,7 +211,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = null,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -230,7 +229,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = emptyMap(),
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -248,7 +246,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -559,7 +556,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 default = NodeState(version = "5.0"),
@@ -589,7 +585,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -612,7 +607,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -628,7 +622,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,

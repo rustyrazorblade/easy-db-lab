@@ -42,7 +42,6 @@ class TailscaleStopTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(
@@ -72,7 +71,6 @@ class TailscaleStopTest : BaseKoinTest() {
         val stateNoControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = emptyMap(),
             )
         whenever(mockClusterStateManager.load()).thenReturn(stateNoControl)
@@ -113,7 +111,6 @@ class TailscaleStopTest : BaseKoinTest() {
         val stateWithKey =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2"),
                 hosts =
                     mapOf(
@@ -152,7 +149,6 @@ class TailscaleStopTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2"),
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
                 tailscaleAuthKeyId = "key-to-delete",
@@ -175,7 +171,6 @@ class TailscaleStopTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2"),
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
                 tailscaleAuthKeyId = "key-to-delete",
@@ -231,7 +226,6 @@ class TailscaleStopTest : BaseKoinTest() {
     private fun stateWithDevice(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             tailscaleDeviceId = "node-abc123",

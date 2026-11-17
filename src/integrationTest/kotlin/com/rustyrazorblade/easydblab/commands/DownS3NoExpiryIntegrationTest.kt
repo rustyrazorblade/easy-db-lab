@@ -57,7 +57,6 @@ class DownS3NoExpiryIntegrationTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "noexpiry",
-            versions = mutableMapOf(),
             clusterId = clusterId,
             s3Bucket = accountBucket,
             dataBucket = dataBucket,

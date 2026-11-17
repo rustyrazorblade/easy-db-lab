@@ -183,6 +183,73 @@ sealed interface Event {
             override fun toDisplayString(): String = "Starting axon-agent on Cassandra nodes..."
         }
 
+        /**
+         * AxonOps ships no agent for [release] on [java], so `cassandra start` starts nothing;
+         * [shipped] lists the agents it ships.
+         */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsAgentNotShipped")
+        data class AxonOpsAgentNotShipped(
+            val host: String,
+            val release: String,
+            val java: String,
+            val shipped: List<String>,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: AxonOps ships no agent for Cassandra $release on JDK $java. " +
+                    "The agents it ships: ${shipped.joinToString(", ")}. " +
+                    "Cassandra was started on no node. To start without AxonOps: easy-db-lab cassandra start --skip-axonops"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The AxonOps agent could not be installed on [host], so `cassandra start` starts nothing. */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsAgentInstallFailed")
+        data class AxonOpsAgentInstallFailed(
+            val host: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: failed to install the AxonOps agent: $reason. Cassandra was started on no node. " +
+                    "To start without AxonOps: easy-db-lab cassandra start --skip-axonops"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `cassandra use` could not read the AxonOps drop-in of [host], so it cannot tell whether the
+         * node's next restart would load the agent of the version it ran before.
+         */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsDropInUnreadable")
+        data class AxonOpsDropInUnreadable(
+            val host: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: could not read the AxonOps drop-in: $reason. The node runs the new version, but its " +
+                    "next restart may load the old version's agent; start it with: easy-db-lab cassandra start --hosts $host"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `cassandra use` could not write a switched node's AxonOps drop-in, so its next restart may load the old agent. */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsDropInNotWritten")
+        data class AxonOpsDropInNotWritten(
+            val host: String,
+            val agent: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: could not write the AxonOps drop-in for agent $agent: $reason. The node runs the new " +
+                    "version, but its next restart may load the old version's agent; start it with: " +
+                    "easy-db-lab cassandra start --hosts $host"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Cassandra.AxonOpsWorkbenchInfo")
         data class AxonOpsWorkbenchInfo(
@@ -232,29 +299,61 @@ sealed interface Event {
             val version: String,
             val hostCount: Int,
             val hostsFilter: String,
+            val source: String,
+            val url: String,
+            val java: String,
         ) : Cassandra {
             override fun toDisplayString(): String =
-                "Using version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}"
+                "Using version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}\n" +
+                    resolvedFrom(source, url, java)
         }
 
         /**
-         * `cassandra use` ends by re-applying [patchFile] to [hosts], which replaces any per-host
-         * settings applied with `update-config` since the last `use`, and it switches the JDK:
-         * to [javaVersion] when `--java` was given, else to the one the version declares.
+         * Before `cassandra use` changes any node: [downloadHosts] download [version] first, and
+         * the version runs on [javaVersions] (one JDK unless nodes record different ones;
+         * [javaOverride] when `--java` chose it). As its last step, `use` re-applies [patchFile] to
+         * [hosts], which replaces any per-host settings applied with `update-config` since.
          */
         @Serializable
         @SerialName("Cassandra.UseSideEffects")
         data class UseSideEffects(
+            val version: String,
             val patchFile: String,
             val hosts: List<String>,
-            val javaVersion: String? = null,
+            val downloadHosts: List<String>,
+            val javaVersions: List<String>,
+            val javaOverride: Boolean,
+        ) : Cassandra {
+            override fun toDisplayString(): String {
+                val download =
+                    if (downloadHosts.isEmpty()) {
+                        "Every targeted host has $version; nothing is downloaded."
+                    } else {
+                        "${downloadHosts.joinToString(", ")} download $version first."
+                    }
+                val jdk = "JDK " + javaVersions.joinToString(", ") + if (javaOverride) " (--java)" else ""
+                return "$download $version runs on $jdk. " +
+                    "Warning: as its last step, use re-applies $patchFile to ${hosts.joinToString(", ")}. " +
+                    "That replaces per-host cassandra.yaml settings applied with update-config earlier; " +
+                    "run update-config --hosts after use, not before."
+            }
+        }
+
+        /**
+         * `cassandra use` changed no node because the install of [version] failed or was refused
+         * on [failedHosts]; the reason of each was reported before.
+         */
+        @Serializable
+        @SerialName("Cassandra.UseNotActivated")
+        data class UseNotActivated(
+            val version: String,
+            val failedHosts: List<String>,
         ) : Cassandra {
             override fun toDisplayString(): String =
-                "Warning: as its last step, use re-applies $patchFile to ${hosts.joinToString(", ")}. " +
-                    "That replaces per-host cassandra.yaml settings applied with update-config earlier; " +
-                    "run update-config --hosts after use, not before. " +
-                    "use also switches the JDK: " +
-                    (javaVersion?.let { "JDK $it (--java)" } ?: "the JDK the version declares") + "."
+                "Error: $version was activated on no host, because it could not be installed on " +
+                    "${failedHosts.joinToString(", ")}. Hosts that installed it keep it, unused."
+
+            override fun isError(): Boolean = true
         }
 
         /**
@@ -407,34 +506,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Cassandra.VersionList")
-        data class VersionList(
-            val versions: List<String>,
-            val declaredNotInstalled: List<String> = emptyList(),
-            val builds: List<String> = emptyList(),
-            /** Versions installed on only some nodes: version to the aliases that have it. */
-            val partial: Map<String, List<String>> = emptyMap(),
-            /** Aliases of the nodes that could not be listed, with the error. */
-            val unreachable: Map<String, String> = emptyMap(),
-            /** Every node that was asked, in cluster order; names the nodes a partial version is missing from. */
-            val nodes: List<String> = emptyList(),
-        ) : Cassandra {
-            override fun toDisplayString(): String =
-                (
-                    versions +
-                        partial.map { (version, have) ->
-                            val missing = (nodes - unreachable.keys - have.toSet()).joinToString(", ")
-                            "$version (installed on ${have.joinToString(", ")} only, not on $missing)"
-                        } +
-                        declaredNotInstalled.map { "$it (declared, not installed - run: cassandra install $it)" } +
-                        builds.map { "$it (build, not installed - run: cassandra install $it)" } +
-                        unreachable.map { (alias, error) -> "$alias: could not list versions: $error" }
-                ).joinToString("\n")
-
-            override fun isError(): Boolean = unreachable.isNotEmpty()
-        }
-
-        @Serializable
         @SerialName("Cassandra.BuildStarting")
         data class BuildStarting(
             val name: String,
@@ -492,8 +563,26 @@ sealed interface Event {
             val version: String,
             val hostCount: Int,
             val hostsFilter: String,
+            val source: String,
+            val url: String,
+            val java: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "Installing version $version on $hostCount hosts, filter: $hostsFilter"
+            override fun toDisplayString(): String =
+                "Installing version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}\n" +
+                    resolvedFrom(source, url, java)
+        }
+
+        /** `use-cassandra` failed on [host], so [host] does not run [version]; [reason] is why. */
+        @Serializable
+        @SerialName("Cassandra.VersionActivationFailed")
+        data class VersionActivationFailed(
+            val host: String,
+            val version: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "$host: failed to activate $version: $reason"
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -514,29 +603,76 @@ sealed interface Event {
             override fun toDisplayString(): String = "$host: $version is already installed, nothing to do"
         }
 
+        /**
+         * [version] is a git build on [host], built with the parameters the cluster state records,
+         * and the install asked for others. Nothing on the node changed.
+         *
+         * @property differences one per field, e.g. `java: recorded 11, requested 17`
+         */
         @Serializable
-        @SerialName("Cassandra.VersionDeclarationMismatch")
-        data class VersionDeclarationMismatch(
+        @SerialName("Cassandra.VersionRecordMismatch")
+        data class VersionRecordMismatch(
             val host: String,
             val version: String,
             val differences: List<String>,
         ) : Cassandra {
             override fun toDisplayString(): String =
-                "$host: $version is already installed, built with the parameters this node declares — " +
+                "$host: $version is already installed, built with the parameters the cluster state records: " +
                     "${differences.joinToString("; ")}. Nothing was changed. " +
-                    "To change the java version in use, run: cassandra use $version --java <version>"
+                    "To run it on another JDK: cassandra use $version --java <N>. To build it again: add --reinstall."
 
             override fun isError(): Boolean = true
         }
 
+        /** `cassandra install --reinstall` refused [host]: Cassandra runs [version] there. Nothing changed. */
+        @Serializable
+        @SerialName("Cassandra.ReinstallRefusedRunning")
+        data class ReinstallRefusedRunning(
+            val host: String,
+            val version: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "$host: Cassandra runs $version, so it was not reinstalled. Run 'easy-db-lab cassandra stop --hosts $host' first."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * [host] did not install [version]. [urls] are the URLs the node may have tried, with
+         * credentials redacted; empty when the node failed before any download.
+         */
         @Serializable
         @SerialName("Cassandra.VersionInstallFailed")
         data class VersionInstallFailed(
             val host: String,
             val version: String,
+            val urls: List<String>,
             val reason: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "$host: failed to install $version: $reason"
+            override fun toDisplayString(): String =
+                "$host: failed to install $version" +
+                    (if (urls.isEmpty()) "" else " (tried ${urls.joinToString(", ")})") +
+                    ": $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A replaced [host] could not get [version] back: its record holds the URL with the
+         * credential redacted, so the build must be installed again with the full URL.
+         */
+        @Serializable
+        @SerialName("Cassandra.RestoreNeedsCredential")
+        data class RestoreNeedsCredential(
+            val host: String,
+            val version: String,
+            val url: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "$host: $version was not installed on the new instance: the cluster state records its URL " +
+                    "without the credential ($url). Install it again with: " +
+                    "easy-db-lab cassandra install $version --reinstall --url <url with credential> --hosts $host, " +
+                    "then easy-db-lab cassandra use $version --hosts $host"
 
             override fun isError(): Boolean = true
         }
@@ -6884,6 +7020,16 @@ sealed interface Event {
         }
     }
 }
+
+/**
+ * Where a resolved Cassandra version comes from, as `install` and `use` show it before any node
+ * changes. [url] is already redacted; [source] is the `CassandraSource` name.
+ */
+private fun resolvedFrom(
+    source: String,
+    url: String,
+    java: String,
+): String = "  source: $source, url: $url, JDK $java"
 
 /** A CIDR as the ingress events show it, naming it as this machine's public IP when it was detected. */
 private fun cidrLabel(

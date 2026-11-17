@@ -248,10 +248,10 @@ class DefaultRemoteOperationsServiceTest :
         var attempts = 0
         doAnswer {
             attempts++
-            throw IOException("No such file: /etc/cassandra_versions.yaml")
+            throw IOException("No such file: /etc/missing-file.yaml")
         }.whenever(mockSSHClient).downloadFile(any(), any())
 
-        assertThatThrownBy { fastRetryService().download(host, "/etc/cassandra_versions.yaml", local) }
+        assertThatThrownBy { fastRetryService().download(host, "/etc/missing-file.yaml", local) }
             .isInstanceOf(IOException::class.java)
             .hasMessageContaining("No such file")
         assertThat(attempts).isEqualTo(1)

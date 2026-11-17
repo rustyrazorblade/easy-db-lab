@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.CassandraBuildManifest
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.cassandraversions.BuildXml
+import com.rustyrazorblade.easydblab.services.cassandraversions.ReleaseLines
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.security.MessageDigest
@@ -63,7 +65,8 @@ class CassandraBuildService(
         val sourceDir = request.sourceDir.absoluteFile
         val buildXml = validateCheckout(sourceDir)
 
-        val baseVersion = readBaseVersion(buildXml.readText(), buildXml.path)
+        val buildXmlText = buildXml.readText()
+        val baseVersion = readBaseVersion(buildXmlText, buildXml.path)
         val git = gitState(sourceDir)
         val jira = request.jira?.uppercase()?.ifBlank { null }
         val label = request.label?.let { CassandraBuildManifest.validateLabel(it) }
@@ -114,6 +117,7 @@ class CassandraBuildService(
                 tarball = CassandraBuildManifest.tarballName(name),
                 tarballBytes = tarball.length(),
                 tarballSha256 = sha256(tarball),
+                javaSupported = supportedJdks(buildXmlText, baseVersion, request.javaVersion, ReleaseLines.load()),
             )
 
         eventBus.emit(Event.Cassandra.BuildArtifactReady(name, tarball.length()))
@@ -357,6 +361,21 @@ class CassandraBuildService(
                 ?.trim()
                 ?.ifBlank { null }
                 ?: error("Could not read the base.version property from $path")
+
+        /**
+         * The JDKs the build runs on (design D8): `java.supported` in [buildXml], else the
+         * release-line table for [baseVersion] (4.x trees do not declare it), else [java] alone.
+         */
+        internal fun supportedJdks(
+            buildXml: String,
+            baseVersion: String,
+            java: String,
+            releaseLines: ReleaseLines,
+        ): List<String> =
+            BuildXml
+                .javaSupported(buildXml)
+                .ifEmpty { releaseLines.entryFor(CassandraBuildManifest.stripSnapshot(baseVersion))?.javaSupported.orEmpty() }
+                .ifEmpty { listOf(java) }
 
         internal fun antFlagList(antFlags: String?): List<String> =
             antFlags?.trim()?.takeIf { it.isNotEmpty() }?.split(Regex("\\s+")) ?: emptyList()

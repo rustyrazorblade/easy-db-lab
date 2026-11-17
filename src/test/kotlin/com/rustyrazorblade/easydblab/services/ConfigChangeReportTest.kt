@@ -43,7 +43,7 @@ class ConfigChangeReportTest : BaseKoinTest() {
                 single { mock<K8sService>().also { k8sService = it } }
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "test"))
                     }
                 }
                 single { TemplateService(get(), get()) }

@@ -106,7 +106,7 @@ class K3sClusterServiceTest {
             val clusterState =
                 when (state) {
                     "bucket" -> createClusterState()
-                    "none" -> ClusterState(name = "test-cluster", versions = mutableMapOf(), s3Bucket = null)
+                    "none" -> ClusterState(name = "test-cluster", s3Bucket = null)
                     else -> null
                 }
             val target = if (withService) serviceWithBackup else service
@@ -261,7 +261,6 @@ class K3sClusterServiceTest {
     private fun createClusterState(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test-abc12345",
         )
 }

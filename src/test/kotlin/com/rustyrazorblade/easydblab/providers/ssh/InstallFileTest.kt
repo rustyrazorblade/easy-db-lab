@@ -99,7 +99,7 @@ class InstallFileTest {
         "/usr/local/bin/setup.sh, 0755",
         "/etc/profile.d/stress.sh, 0644",
         "/etc/rancher/k3s/config.yaml, 0600",
-        "/etc/cassandra_versions.yaml, 644",
+        "/etc/systemd/system/cassandra.service.d/axonops.conf, 644",
     )
     fun `moves the staged file to the path with sudo and sets the mode in the same command`(
         remotePath: String,

@@ -2,47 +2,72 @@
 #
 # Installs a single Cassandra version into /usr/local/cassandra/<version>.
 #
-# Used identically at AMI bake time (install_cassandra.sh's version loop) and at runtime
-# (`easy-db-lab cassandra install <version>`), so there is one install code path rather than two
-# kept in sync by hand.
+# Run by the CLI over SSH (`cassandra install`, `cassandra use`, node replacement). The CLI
+# resolves the version (its source, URLs and cache object) and passes everything as arguments, so
+# this script looks nothing up.
 #
 # Usage:
-#   install-cassandra-version <version> [--url URL] [--branch BRANCH] [--java N] [--ant-flags FLAGS]
+#   install-cassandra-version <name> --url URL [--fallback-url URL] [--cache-uri URI] [--verify-checksum] [--reinstall]
+#   install-cassandra-version <name> --url GIT_URL --branch B --java N [--ant-flags F] [--reinstall]
 #
-# Install mode is chosen from the flags, matching a cassandra_versions.yaml entry:
-#   no --url, no --branch  -> download the latest official patch release for <version>
-#   --url ending in .tar.gz -> download and unpack that tarball
-#   --url + --branch        -> git clone the branch and build it with ant (--java selects the JDK)
+#   --url tarball (https:// or s3://) -> download and unpack it; with --cache-uri, through the
+#                                       download cache (an Apache release), else from its origin
+#   --url + --branch                  -> git clone the branch and build it with ant on JDK --java
+#   --verify-checksum                 -> an Apache release: check the tarball against the strongest
+#                                       checksum published beside it before extracting it
 #
-# Re-running for an already-installed version is a no-op.
+# Re-running for an already-installed version is a no-op, unless --reinstall: then the new install
+# is built beside the old one and replaces it only when it is complete.
 
 set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Usage: install-cassandra-version <version> [options]
+Usage: install-cassandra-version <name> --url URL [options]
 
 Options:
-  --url URL           Tarball URL (.tar.gz) or git repository URL (with --branch)
-  --branch BRANCH     Git branch to clone and build (requires --url)
+  --url URL           Tarball URL (https:// or s3://) or git repository URL (with --branch); required
+  --fallback-url URL  Second tarball URL, tried when --url fails (with --cache-uri)
+  --cache-uri URI     Download-cache object for the tarball (an Apache release only)
+  --verify-checksum   Check the tarball against <url>.sha512, .sha256 or .sha1 (an Apache release only)
+  --branch BRANCH     Git branch to clone and build
   --java VERSION      JDK major version used for the ant build (e.g. 8, 11, 17, 21, 25)
   --ant-flags FLAGS   Extra flags passed to ant (e.g. "-Duse.jdk11=true")
+  --reinstall         Install again over an existing install, replacing it only on success
 USAGE
 }
 
 VERSION=""
 URL=""
+FALLBACK_URL=""
+CACHE_URI=""
+REINSTALL=""
+VERIFY_CHECKSUM=""
 BRANCH=""
 JAVA_VERSION=""
 ANT_FLAGS=""
 
+# need_value OPTION ARGC - refuses OPTION when it is the last argument, so set -u never stops the
+# script with an unbound-variable error that names no option.
+need_value() {
+    if [[ "$2" -lt 2 ]]; then
+        echo "ERROR: $1 needs a value" >&2
+        usage >&2
+        exit 1
+    fi
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --url) URL="$2"; shift 2 ;;
-            --branch) BRANCH="$2"; shift 2 ;;
-            --java) JAVA_VERSION="$2"; shift 2 ;;
-            --ant-flags) ANT_FLAGS="$2"; shift 2 ;;
+            --url) need_value "$1" $#; URL="$2"; shift 2 ;;
+            --fallback-url) need_value "$1" $#; FALLBACK_URL="$2"; shift 2 ;;
+            --cache-uri) need_value "$1" $#; CACHE_URI="$2"; shift 2 ;;
+            --reinstall) REINSTALL=1; shift ;;
+            --verify-checksum) VERIFY_CHECKSUM=1; shift ;;
+            --branch) need_value "$1" $#; BRANCH="$2"; shift 2 ;;
+            --java) need_value "$1" $#; JAVA_VERSION="$2"; shift 2 ;;
+            --ant-flags) need_value "$1" $#; ANT_FLAGS="$2"; shift 2 ;;
             -h|--help) usage; exit 0 ;;
             --*) echo "ERROR: unknown option $1" >&2; usage >&2; exit 1 ;;
             *)
@@ -61,10 +86,38 @@ parse_args() {
         exit 1
     fi
 
+    # The version names a directory this script moves and deletes as root: one safe path segment.
+    # The CLI checks the same pattern (VersionName) before it calls the node.
+    if [[ ! "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+        echo "ERROR: invalid version name [$VERSION]: use letters, digits, ., _, + and -, starting with a letter or a digit" >&2
+        exit 1
+    fi
+
+    if [ -z "$URL" ]; then
+        echo "ERROR: --url is required for $VERSION; the CLI resolves the version and passes its URL" >&2
+        exit 1
+    fi
+
+    if [[ -n "$BRANCH" && ( -n "$CACHE_URI" || -n "$FALLBACK_URL" ) ]]; then
+        echo "ERROR: --cache-uri applies only to a tarball, not to a git build of $VERSION" >&2
+        exit 1
+    fi
+
+    if [[ -n "$BRANCH" && -n "$VERIFY_CHECKSUM" ]]; then
+        echo "ERROR: --verify-checksum applies only to a tarball, not to a git build of $VERSION" >&2
+        exit 1
+    fi
+
     # A tarball is unpacked as-is; there is nothing to check a branch out of. Silently ignoring
     # --branch here would install something other than what was asked for.
     if [[ -n "$BRANCH" && "$URL" == *.tar.gz ]]; then
         echo "ERROR: --branch $BRANCH cannot be used with a tarball --url ($URL); pass a git repository URL" >&2
+        exit 1
+    fi
+
+    # A git repository is not a tarball: downloading it would fail later with an unclear extract error.
+    if [[ -z "$BRANCH" && "$URL" == *.git ]]; then
+        echo "ERROR: $URL is a git repository; pass --branch to build $VERSION from it" >&2
         exit 1
     fi
 }
@@ -80,11 +133,14 @@ CASSANDRA_INSTALL_DIR=${CASSANDRA_INSTALL_DIR:-/usr/local/cassandra}
 # Private working directory for this run, removed on every exit path — not just the successful
 # one. A failed git clone leaves the credentialed remote behind in <workdir>/<version>/.git/config,
 # and a failed build is the common case when testing an unmerged branch.
+# A failed --reinstall also removes its staging directory, so the old install is all that remains.
 WORKDIR=""
-trap 'cd /; [ -n "$WORKDIR" ] && rm -rf "$WORKDIR"' EXIT
+STAGING=""
+trap 'cd /; [ -n "$WORKDIR" ] && rm -rf "$WORKDIR"; [ -n "$STAGING" ] && sudo rm -rf "$STAGING"' EXIT
 
-# Shared S3 download cache (provides cached_fetch, which downloads directly when no bucket is
-# configured). Overridable so the tests can load the repo copy of the lib.
+# The download cache helpers (cached_fetch_uri). Only the URI the CLI passes names the cache; the
+# bake-time config the library also reads is never used here. Overridable so the tests can load the
+# repo copy of the lib.
 EDL_CACHE_LIB=${EDL_CACHE_LIB:-/usr/local/lib/edl-cache.sh}
 # shellcheck disable=SC1090
 source "$EDL_CACHE_LIB"
@@ -99,71 +155,6 @@ direct_fetch() {
         s3://*) aws s3 cp "$url" "$dest" --no-progress ;;
         *) curl -fsSL --retry 3 "$url" -o "$dest" ;;
     esac
-}
-
-## Downloads the latest patch release of a cassandra version
-## This saves us from having to update cassandra_versions.yaml
-## every time a new patch release is made
-download_cassandra_version() {
-    # Check if version prefix is provided
-    if [ -z "$1" ]; then
-        echo "Usage: download_cassandra_version <version-prefix>"
-        return 1
-    fi
-
-    # Assign the version prefix from the first argument
-    version_prefix="$1"
-
-    # Get the list of versions from the Cassandra download page
-    versions=$(curl -s https://dlcdn.apache.org/cassandra/ | grep -o 'href="[0-9]\+\.[0-9]\+\.[0-9]\+/\"' | sed 's/href="//' | sed 's/\/"//')
-
-    # Find the latest version that matches the given prefix
-    full_version=$(echo "$versions" | grep "^$version_prefix" | sort -V | tail -n 1)
-
-    # Check if a version was found
-    if [ -z "$full_version" ]; then
-        echo "ERROR: No matching version found for prefix $version_prefix" >&2
-        return 1
-    fi
-
-    # Construct the download URL
-    archive="apache-cassandra-$full_version-bin.tar.gz"
-    download_url="https://dlcdn.apache.org/cassandra/$full_version/$archive"
-
-    # Download the file (via S3 cache, keyed by the resolved patch version)
-    echo "Downloading Cassandra version $full_version from $download_url..."
-    cached_fetch "$download_url" "cassandra-dist/$full_version/$archive" "$archive" || {
-        echo "ERROR: Failed to download Cassandra version $full_version from $download_url" >&2
-        return 1
-    }
-
-    # Verify download was successful and file is not empty
-    if [[ ! -f "$archive" || ! -s "$archive" ]]; then
-        echo "ERROR: Downloaded file $archive is missing or empty for version $full_version" >&2
-        return 1
-    fi
-
-    echo "Download completed successfully."
-
-    # Extract the archive (quiet: verbose file listing floods packer's SSH stream and drops it)
-    tar zxf "$archive" || {
-        echo "ERROR: Failed to extract $archive for version $full_version" >&2
-        return 1
-    }
-
-    # Move and verify
-    mv "apache-cassandra-$full_version" "$version_prefix" || {
-        echo "ERROR: Failed to rename apache-cassandra-$full_version to $version_prefix" >&2
-        return 1
-    }
-
-    # Verify the directory exists
-    if [[ ! -d "$version_prefix" ]]; then
-        echo "ERROR: Directory $version_prefix does not exist after extraction and rename" >&2
-        return 1
-    fi
-
-    return 0
 }
 
 ## Resolves JAVA_HOME for a JDK major version. The build must use the JDK the version declares,
@@ -188,8 +179,63 @@ resolve_java_home() {
     return 1
 }
 
+## Fetches the tarball into the current directory as <archive>: through the download cache when
+## the CLI gave a cache object, else from its origin.
+fetch_tarball() {
+    local archive="$1"
+    if [ -n "$CACHE_URI" ]; then
+        cached_fetch_uri "$CACHE_URI" "$archive" "$URL" "$FALLBACK_URL"
+    else
+        direct_fetch "$URL" "$archive"
+    fi
+}
+
+## The checksums ASF publishes beside a release tarball, strongest first. Releases from 2.1.21,
+## 2.2.14, 3.0.18 and 3.11.4 on publish .sha512; older ones .sha1 (some also .md5, never used).
+CHECKSUM_ALGORITHMS=(sha512 sha256 sha1)
+
+## verify_checksum <archive> - checks <archive> against the strongest checksum file published
+## beside --url or --fallback-url (redirects followed), and prints the algorithm and file used.
+## Fails on a mismatch, naming the URL and both hashes, and when no checksum file can be read.
+## A tarball that fails is removed from the download cache, so the next install downloads again.
+verify_checksum() {
+    local archive="$1" alg base sum_url sum_file expected actual tried=""
+    sum_file="$archive.checksum"
+    for alg in "${CHECKSUM_ALGORITHMS[@]}"; do
+        for base in "$URL" "$FALLBACK_URL"; do
+            [ -n "$base" ] || continue
+            sum_url="$base.$alg"
+            tried="${tried}  ${sum_url}
+"
+            curl -fsSL --retry 3 "$sum_url" -o "$sum_file" 2>/dev/null || continue
+            # The file holds the hash alone or "hash  filename"; the first word is the hash.
+            expected=$(awk 'NR == 1 { print tolower($1) }' "$sum_file")
+            actual=$("${alg}sum" "$archive" | awk '{ print $1 }')
+            rm -f "$sum_file"
+            if [[ "$expected" == "$actual" ]]; then
+                echo "checksum $alg OK: $sum_url"
+                return 0
+            fi
+            echo "ERROR: checksum mismatch for $base: expected $alg $expected (from $sum_url), got $actual" >&2
+            discard_cached_tarball
+            return 1
+        done
+    done
+    printf 'ERROR: no checksum could be read for %s; tried:\n%s' "$URL" "$tried" >&2
+    discard_cached_tarball
+    return 1
+}
+
+## Removes the cache object of a tarball that failed its check, so it is never installed later.
+discard_cached_tarball() {
+    if [ -n "$CACHE_URI" ]; then
+        cache_rm_uri "$CACHE_URI" || echo "WARN: failed to remove the cache object $CACHE_URI" >&2
+    fi
+}
+
 ## Installs a single Cassandra version end-to-end: download (or git build), place under
-## /usr/local/cassandra/$version, and apply the per-version configuration.
+## /usr/local/cassandra/$version, and apply the per-version configuration. With --reinstall the
+## version is staged in /usr/local/cassandra/.<version>.new and swapped in only when complete.
 ##
 ## Safe to run as a background job: it operates in its own private temp working directory
 ## (so concurrent versions never share extraction state, e.g. the `find . -name '*cassandra*'`
@@ -198,10 +244,17 @@ resolve_java_home() {
 ## caller's responsibility.
 install_cassandra_version() {
   local version="$1"
+  # Where this run builds the install: the final directory, or a staging one for --reinstall.
+  local target="$CASSANDRA_INSTALL_DIR/$version"
 
-  if [[ -d "$CASSANDRA_INSTALL_DIR/$version" ]]; then
-    echo "Version $version is already installed at $CASSANDRA_INSTALL_DIR/$version, nothing to do"
+  if [[ -d "$target" && -z "$REINSTALL" ]]; then
+    echo "Version $version is already installed at $target, nothing to do"
     return 0
+  fi
+  if [[ -n "$REINSTALL" ]]; then
+    target="$CASSANDRA_INSTALL_DIR/.$version.new"
+    STAGING="$target"
+    sudo rm -rf "$target"
   fi
 
   if [[ ! -f "$CASSANDRA_IN_SH_SNIPPET" ]]; then
@@ -224,36 +277,17 @@ install_cassandra_version() {
 
   sudo mkdir -p "$CASSANDRA_INSTALL_DIR"
 
-  # if $version is set, $URL is blank, and $BRANCH is blank
-  if [[ $version != "" && $URL == "" && $BRANCH == "" ]]; then
-    download_cassandra_version "$version" || {
-        echo "ERROR: download_cassandra_version failed for version $version" >&2
-        return 1
-    }
-
-    # check if $version exists in the current directory
-    if [[ ! -d $version ]]; then
-      echo "ERROR: Failed to download Cassandra version $version - directory not found" >&2
-      return 1
-    fi
-
-    sudo mv "$version" "$CASSANDRA_INSTALL_DIR/$version" || {
-        echo "ERROR: Failed to move $version to $CASSANDRA_INSTALL_DIR/" >&2
-        return 1
-    }
-
-  # if a URL is set and ends in .tar.gz, download it from its origin (never via the S3 cache)
-  elif [[ $URL == *.tar.gz ]]; then
+  # A tarball. A nightly url (5.0-HEAD, 6.0-HEAD, trunk) serves a new build under the same name,
+  # so the CLI gives no --cache-uri for it and it is fetched from its origin on every install;
+  # only an Apache release, which never changes, comes with a cache object.
+  if [[ -z "$BRANCH" ]]; then
     echo "Downloading $URL for version $version"
 
     local archive_file
     archive_file=$(basename "$URL")
 
-    # Fetch the tarball from its origin on every install. A nightly url (5.0-HEAD, 6.0-HEAD,
-    # trunk) serves a new build under the same name, so a cached copy would go stale and install
-    # the old build forever. Only immutable releases (the path above) are cached.
-    direct_fetch "$URL" "$archive_file" || {
-        echo "ERROR: Failed to download version $version from $URL" >&2
+    fetch_tarball "$archive_file" || {
+        echo "ERROR: Failed to download version $version from: $URL${FALLBACK_URL:+ $FALLBACK_URL}" >&2
         return 1
     }
 
@@ -261,6 +295,19 @@ install_cassandra_version() {
     if [[ ! -f "$archive_file" || ! -s "$archive_file" ]]; then
         echo "ERROR: Downloaded file $archive_file is missing or empty for version $version" >&2
         return 1
+    fi
+
+    # gzip begins with the bytes 1f 8b; a URL that gives anything else (a repository page) is no tarball.
+    if [[ "$(head -c 2 "$archive_file" | od -An -tx1 | tr -d ' \n')" != "1f8b" ]]; then
+        echo "ERROR: $URL is not a gzip tarball; for a git repository pass --branch to build $version from it" >&2
+        return 1
+    fi
+
+    if [[ -n "$VERIFY_CHECKSUM" ]]; then
+        verify_checksum "$archive_file" || {
+            echo "ERROR: $version was not installed: its tarball failed the checksum check" >&2
+            return 1
+        }
     fi
 
     echo "Extracting $archive_file"
@@ -274,7 +321,8 @@ install_cassandra_version() {
     # Find the extracted directory (should be the only directory created)
     # Look for directories starting with 'apache-cassandra' or 'cassandra'
     local f
-    f=$(find . -maxdepth 1 -type d -name '*cassandra*' ! -name '.' -printf '%f\n' | head -n 1)
+    f=$(find . -mindepth 1 -maxdepth 1 -type d -name '*cassandra*' | head -n 1)
+    f="${f#./}"
 
     # Verify extracted directory exists
     if [[ -z "$f" || ! -d "$f" ]]; then
@@ -286,17 +334,13 @@ install_cassandra_version() {
 
     echo "Found extracted directory: $f"
 
-    sudo mv "$f" "$CASSANDRA_INSTALL_DIR/$version" || {
-        echo "ERROR: Failed to move $f to $CASSANDRA_INSTALL_DIR/$version" >&2
+    sudo mv "$f" "$target" || {
+        echo "ERROR: Failed to move $f to $target" >&2
         return 1
     }
 
   else
     # Clone the git repo specified by --url, check out --branch, and build it with ant.
-    if [[ -z "$URL" || -z "$BRANCH" ]]; then
-        echo "ERROR: Building version $version from source requires both --url and --branch" >&2
-        return 1
-    fi
     if [[ -z "$JAVA_VERSION" ]]; then
         echo "ERROR: Building version $version from source requires --java" >&2
         return 1
@@ -335,14 +379,14 @@ install_cassandra_version() {
         return 1
     }
 
-    sudo mv "$version" "$CASSANDRA_INSTALL_DIR/$version" || {
-        echo "ERROR: Failed to move built version $version to $CASSANDRA_INSTALL_DIR/" >&2
+    sudo mv "$version" "$target" || {
+        echo "ERROR: Failed to move built version $version to $target" >&2
         return 1
     }
   fi
 
   # Verify the version was successfully moved into place
-  if [[ ! -d "$CASSANDRA_INSTALL_DIR/$version" ]]; then
+  if [[ ! -d "$target" ]]; then
       echo "ERROR: Version $version not found in $CASSANDRA_INSTALL_DIR/ after installation" >&2
       return 1
   fi
@@ -351,7 +395,7 @@ install_cassandra_version() {
   # do any general customizations in the below subshell
   echo "Configuring version $version"
   (
-      cd "$CASSANDRA_INSTALL_DIR/$version" || exit 1
+      cd "$target" || exit 1
       rm -rf data
       cp -R conf conf.orig
       # create a pristine backup of the original conf
@@ -360,7 +404,7 @@ install_cassandra_version() {
   ) || {
       # Leave nothing behind: the directory's existence is what marks a version installed, so a
       # half-configured one would make every retry a no-op.
-      sudo rm -rf "$CASSANDRA_INSTALL_DIR/$version"
+      sudo rm -rf "$target"
       echo "ERROR: Configuration failed for version $version" >&2
       return 1
   }
@@ -368,11 +412,27 @@ install_cassandra_version() {
   # Remove bundled cqlsh from Cassandra 2.x and 3.x to use uv-installed version
   if [[ "$version" == 2.* || "$version" == 3.* ]]; then
     echo "Removing bundled cqlsh from Cassandra $version (using uv-installed version instead)"
-    rm -f "$CASSANDRA_INSTALL_DIR/$version/bin/cqlsh"
-    rm -f "$CASSANDRA_INSTALL_DIR/$version/bin/cqlsh.py"
+    rm -f "$target/bin/cqlsh"
+    rm -f "$target/bin/cqlsh.py"
   fi
 
-  sudo chown -R cassandra:cassandra "$CASSANDRA_INSTALL_DIR/$version"
+  sudo chown -R cassandra:cassandra "$target"
+
+  if [[ -n "$REINSTALL" ]]; then
+    # Swap: the old install moves aside, the new one takes its name, then the old one goes.
+    local old="$CASSANDRA_INSTALL_DIR/.$version.old"
+    sudo rm -rf "$old"
+    if [[ -d "$CASSANDRA_INSTALL_DIR/$version" ]]; then
+      sudo mv "$CASSANDRA_INSTALL_DIR/$version" "$old"
+    fi
+    sudo mv "$target" "$CASSANDRA_INSTALL_DIR/$version" || {
+        [[ -d "$old" ]] && sudo mv "$old" "$CASSANDRA_INSTALL_DIR/$version"
+        echo "ERROR: Failed to put the reinstalled $version in place; the old install is kept" >&2
+        return 1
+    }
+    STAGING=""
+    sudo rm -rf "$old"
+  fi
 
   echo "✓ Successfully installed and configured version $version"
 }

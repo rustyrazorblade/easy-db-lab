@@ -53,7 +53,7 @@ class DocumentsWebServerIntegrationTest {
         whenever(
             stateManager.load(),
         ).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = BUCKET, initConfig = InitConfig(region = "eu-west-1")),
+            ClusterState(name = "test", s3Bucket = BUCKET, initConfig = InitConfig(region = "eu-west-1")),
         )
         val sidecars = GrafanaDocumentsSidecars(TemplateService(stateManager, mock<User>()))
         val documents = DocumentsBucket(BUCKET, "eu-west-1")

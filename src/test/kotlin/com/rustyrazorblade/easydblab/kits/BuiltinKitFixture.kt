@@ -27,7 +27,6 @@ class BuiltinKitFixture(
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
             hosts =
                 mapOf(

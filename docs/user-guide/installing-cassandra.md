@@ -2,27 +2,80 @@
 
 This page covers Cassandra version management and configuration. For a step-by-step walkthrough, see the [Tutorial](tutorial.md#part-3-configure-cassandra-50).
 
-## Supported Versions
+## Versions
 
-easy-db-lab supports the following Cassandra versions:
+The AMI has no Cassandra version installed. `cassandra use <version>` installs the version on
+every node that does not have it yet, then switches to it. You can name any version that one of
+these sources has. The CLI checks them in this order:
 
-| Version | Java | Notes |
-|---------|------|-------|
-| 3.0 | 8 | Legacy support |
-| 3.11 | 8 | Stable release |
-| 4.0 | 11 | First 4.x release |
-| 4.1 | 11 | Current LTS |
-| 5.0 | 11 | **Latest stable (recommended)** |
-| 5.0-HEAD | 17 | Nightly build from 5.0 branch |
-| 6.0-HEAD | 21 | Nightly build from 6.0 branch |
-| trunk | 21 | Development branch |
+| Source | Names | Example |
+|--------|-------|---------|
+| The cluster state | A version a node of this cluster already installed keeps its recorded URL and build | `5.0` stays at the release it first resolved to |
+| [Named builds in your profile](#named-builds-in-your-profile) | Any `version` in `<profile>/cassandra_versions/*.yaml` | `my-build` |
+| `--url` | A tarball URL, an `s3://` URI, or a git URL with `--branch` | see [Custom Builds](#custom-builds) |
+| ASF | Any release on the Apache dist archive, or a release line | `4.1.7`, `5.0` (the latest 5.0 release) |
+| cassandra-builds | The nightly builds of `rustyrazorblade/cassandra-builds` | `5.0-HEAD`, `6.0-HEAD`, `trunk`, `5.0-rustyrazorblade-HEAD` |
+| The build catalog | The builds you published with [`cassandra build`](#build-your-working-branch-and-install-it-by-name) | `5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17` |
 
-A released version downloads once and is then served from your account's S3 download cache.  A nightly (`5.0-HEAD`, `6.0-HEAD`, `trunk`) and any `cassandra install --url` tarball always download from their origin, so each bake or install gets the current build.
+A name no source has fails before any node changes, and the message names the sources it checked.
+A version name is one path segment: letters, digits, `.`, `_`, `+` and `-`, starting with a letter
+or a digit. `install` and `use` print the source, URL and JDK the name resolved to before any node
+changes.
+
+A release line such as `5.0` resolves to its latest ASF release the first time this cluster
+installs it. Later installs on this cluster, including a replaced node, get that same release.
+
+An ASF release downloads from `dlcdn.apache.org`, and from `archive.apache.org` when dlcdn no
+longer has it. It goes through your account's S3 download cache, so after the first download a
+node reads it from S3. A cassandra-builds nightly, a `--url` tarball and a profile build always
+download from their origin.
+
+Before a node unpacks an ASF release, it checks the tarball against the strongest checksum that
+ASF publishes for it: `.sha512`, else `.sha256`, else `.sha1`. The install output names the one it
+used, for example `checksum sha512 OK`. ASF publishes `.sha512` for 2.1.21 and later 2.1, 2.2.14 and
+later 2.2, 3.0.18 and later 3.0, 3.11.4 and later 3.11, and every 4.x and 5.x release. Older
+releases back to 0.7.5 have only `.sha1`, and 0.3.0 to 0.7.4 have no checksum. When the hash does not
+match, or no checksum can be read, the install fails and the tarball is removed from the download
+cache. A nightly, a catalog build, a profile build and a `--url` tarball have no published checksum
+and are not checked.
+
+### JDK choice
+
+The CLI picks the JDK a version runs on. It takes the list of supported JDKs from the first of:
+
+1. `--java N`.
+2. The entry of a profile build: its `java_supported`, else its `java`.
+3. The manifest of a cassandra-builds build or a build catalog build.
+4. The release-line table:
+
+| Release line | Supported JDKs |
+|--------------|----------------|
+| 3.0, 3.11 | 8 |
+| 4.0, 4.1 | 8, 11 |
+| 5.0 | 11, 17 |
+| 5.0-rustyrazorblade | 11, 17, 21 |
+| 6.0, trunk | 11, 17, 21 |
+
+A name uses the longest entry that is a prefix of it at a `-`, else the entry of its leading
+`X.Y`. So `5.0-rustyrazorblade-HEAD` runs on JDK 21 and `5.0-HEAD` runs on JDK 17.
+
+A cassandra-builds nightly is compiled on JDK 17 (5.0 lines) or JDK 21 (6.0 and trunk), and
+cannot run on a lower JDK, so its list starts there: `5.0-HEAD` supports only 17, and
+`cassandra use 5.0-HEAD --java 11` fails before any node changes.
+
+With no `--java`, the CLI uses the JDK the cluster state records for the version on that node,
+else the profile build's `java`, else the JDK a build catalog build was built with, else the
+highest supported JDK. `--java N` outside the supported
+list fails before any node changes and lists the supported JDKs. A version with no list at all
+needs `--java`. Python is `--python`, else the profile build's `python`, else 3.11.9. cqlsh on the
+node runs under that Python: the node environment sets `CQLSH_PYTHON=/usr/bin/python`, the
+alternative `use` switches. Without it, cqlsh picks the distro `python3`, where the `six` that a 4.x
+release bundles does not import.
 
 ## Quick Start
 
 ```bash
-# Select Cassandra 5.0
+# Install and select Cassandra 5.0
 easy-db-lab cassandra use 5.0
 
 # Generate configuration patch
@@ -46,25 +99,28 @@ easy-db-lab cassandra use <version>
 
 Examples:
 ```bash
-easy-db-lab cassandra use 5.0       # Latest stable
-easy-db-lab cassandra use 4.1       # LTS version
-easy-db-lab cassandra use trunk     # Development branch
+easy-db-lab cassandra use 5.0                       # Latest 5.0 release, JDK 17
+easy-db-lab cassandra use 4.1.7                     # A specific release, JDK 11
+easy-db-lab cassandra use 5.0-HEAD                  # Nightly build of the 5.0 branch
+easy-db-lab cassandra use 5.0-rustyrazorblade-HEAD  # Nightly build of the fork, JDK 21
 ```
 
 This command:
 
-1. Sets the active Cassandra version on all nodes
-2. Downloads current configuration files locally
-3. Applies any existing `cassandra.patch.yaml`, to every targeted host, as its last step
-4. Switches the JDK to the one the version declares (or the one you pass with `--java`)
+1. Installs the version on every targeted node that does not have it. It prints the hosts that
+   download.
+2. Sets the active Cassandra version on all nodes
+3. Downloads current configuration files locally
+4. Applies any existing `cassandra.patch.yaml`, to every targeted host, as its last step
+5. Switches the JDK to the one the CLI picked (or the one you pass with `--java`)
 
-Step 3 overwrites per-host settings you applied earlier with `update-config --hosts`. Run
+Step 4 overwrites per-host settings you applied earlier with `update-config --hosts`. Run
 `cassandra use` first, then tune individual nodes with `update-config`. `use` prints the hosts it
 re-applies the file to before it starts.
 
-It fails if the version is not installed on a targeted node rather than leaving
-the node pointed at something that isn't there. Install it first — see
-[Custom Builds](#custom-builds).
+The cluster state (`state.json`) records, for each db node, the active version, its JDK, and
+every version installed there with its source, URL, JDK and Python. A node that replaces a db
+node installs that node's active version from the recorded URL, and nothing else.
 
 ### Specify Java Version
 
@@ -72,20 +128,46 @@ the node pointed at something that isn't there. Install it first — see
 easy-db-lab cassandra use 5.0 --java 11
 ```
 
-This selects the JDK the already-installed build runs under. It does not
-reinstall or rebuild anything. The AMI has JDK 8, 11, 17, 21 and 25 installed.
-If the JDK switch fails on a node, the command fails.
+This selects the JDK the version runs under. It does not reinstall or rebuild anything. The AMI
+has JDK 8, 11, 17, 21 and 25 installed. The JDK you pick is kept: the next `cassandra use 5.0`
+with no `--java`, and the next start, use JDK 11 again. If the JDK switch fails on a node, the
+command fails.
 
 ### List Available Versions
 
 ```bash
-easy-db-lab ls
+easy-db-lab cassandra list
+easy-db-lab cassandra list --refresh
 ```
 
-Every node is asked. Versions installed on all nodes are listed first; a version
-only some nodes have is listed with the nodes that have it. A version declared
-with `lazy: true` that has not been installed is listed too, marked
-`(declared, not installed)`.
+`cassandra list` works with no cluster. It shows one table of the profile builds, the ASF release
+lines (with the latest release and the patch releases of each), the cassandra-builds builds and
+the build catalog, with the source of each.
+
+When it runs in a cluster workspace, an `INSTALLED` column shows the nodes that have each version
+(`all` when every db node has it). A version installed on a node that no source lists is shown
+too. A node that cannot be listed is named with its error, and the command exits non-zero.
+
+The ASF and cassandra-builds lists are fetched once and cached in the profile directory
+(`cassandra-sources/`). A later run reads the cache. `--refresh` fetches both lists again. If a
+fetch fails and a cache exists, the cached list is shown and marked stale; with no cache, the
+command fails and names the URL it fetched.
+
+### AxonOps agents
+
+With AxonOps on, `cassandra start` installs on each node the AxonOps agent for that node's
+release and JDK, before it starts Cassandra anywhere. For a build whose name has no `X.Y` release
+(say `cep-45`), the release is the one its `apache-cassandra` jar names. If AxonOps ships no agent for that release
+and JDK (for example 5.0 on JDK 21), the start fails before Cassandra starts and lists the agents
+AxonOps ships. The JDK is never changed to fit AxonOps. To start without the agent this time:
+
+```bash
+easy-db-lab cassandra start --skip-axonops
+```
+
+`cassandra use` keeps the agent in step: on a node that was started with an agent, it selects the
+agent for the new release and JDK, so `cassandra restart` loads the right one. A node started with
+`--skip-axonops` stays without an agent.
 
 ## Configuration
 
@@ -210,8 +292,8 @@ The configuration is in the `cassandra-sidecar-config` ConfigMap.  When a pod st
 
 To run a custom Cassandra build (your own fork, a feature branch, or a prebuilt
 tarball), you can build it on your own machine and publish it, install it onto a
-cluster that is already running, or bake it into the AMI so every future cluster
-has it.
+cluster that is already running, or name it in your profile so every cluster can
+install it.
 
 ### Build your working branch and install it by name
 
@@ -231,28 +313,29 @@ easy-db-lab cassandra use 5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17
 The build is published to your profile's S3 bucket, so it outlives the cluster
 and installs onto whatever you bring up next. Uncommitted changes are fine — the
 manifest records the tree as dirty so you can tell later. `cassandra list` shows
-everything you have published that is not yet on the node.
+everything you have published, with the source `build`.
 
 See [`cassandra build`](../reference/commands.md#cassandra-build) for the naming
 scheme and what the manifest records.
 
 ### Install onto a running cluster
 
+`cassandra use` installs a missing version for you. `cassandra install` installs a version
+without switching to it:
+
 ```bash
 easy-db-lab cassandra install <version>
 easy-db-lab cassandra use <version>
 ```
 
-This downloads (or clones and builds) the version on every Cassandra node and
-records it in each node's version list, so `cassandra use` works afterward. It
-never rebuilds the AMI, so nothing is preserved across a `down`/`up` cycle —
-install it again on the new cluster.
+This downloads (or clones and builds) the version on every Cassandra node and records it in the
+cluster state. It never rebuilds the AMI.
 
 Where the install parameters come from:
 
-- **A declared entry** (the default): whatever you declared in your profile's
-  extras directory, described below. Nothing else to pass.
-- **CLI options**, for a genuinely one-off test with no file to edit:
+- **A version name** (the default): any version one of the [sources](#versions) has. Nothing
+  else to pass.
+- **CLI options**, for a one-off test with no file to edit:
 
   ```bash
   easy-db-lab cassandra install my-build \
@@ -270,9 +353,7 @@ Where the install parameters come from:
     --ant-flags "-Duse.jdk11=true"
   ```
 
-  An option you pass overrides the declared entry's value for that field;
-  anything you leave out falls back to the declared entry. `--python` defaults
-  to `3.11.9`.
+  `--python` defaults to `3.11.9`.
 
 Useful details:
 
@@ -287,22 +368,42 @@ Useful details:
   the install only writes to `/usr/local/cassandra/<version>` — but it is not
   free. Tarball installs are much cheaper.
 
+#### Getting a new nightly build
+
+A nightly such as `5.0-HEAD` is installed once and then kept. To get the current build, stop
+Cassandra and install it again:
+
+```bash
+easy-db-lab cassandra stop
+easy-db-lab cassandra install 5.0-HEAD --reinstall
+easy-db-lab cassandra start
+```
+
+`--reinstall` downloads or builds the version again and replaces the install. It also re-applies
+`cassandra.patch.yaml` to the new install. On a node where the version is the active one, it
+activates the version again on the JDK of the reinstall (with `--java`, that JDK), so the next
+`cassandra start` runs the new install on it. A node where Cassandra runs the version is refused and
+left alone. If the download or build fails on a node, that node keeps its old install. For a git
+build, `--reinstall` takes a new `--url`, `--branch` or `--ant-flags`; without one it builds the
+recorded one again. `--reinstall --url <git-url> --branch <b>` turns a tarball version into a git
+build. Without `--reinstall`, a `--url` other than the one a tarball version was installed from
+fails before any node changes, and names the recorded URL. `--branch` without `--url` works only
+where a git repository is already known: a profile entry with a git URL, or `--reinstall` of a git
+build. For any other version it fails and says to pass `--url`. A git build rebuilt on another JDK
+(a replaced node, or `--java`) uses the ant flags for that JDK, not the recorded ones.
+
 #### Re-installing with different options
 
-A version that is already on a node is never rebuilt. If you re-run `install`
-for it with options that contradict what the node recorded when it was built —
-a different `--java`, `--python`, or `--ant-flags` — the command changes nothing,
-names the node and the fields that disagree, and exits non-zero:
+A version that is already on a node is never rebuilt by a plain `install`. If you re-run
+`install` for it with options that contradict what the cluster state records for it — a
+different `--java`, `--python`, or `--ant-flags` — the command changes nothing, names the node
+and the fields that disagree, and exits non-zero:
 
 ```
-db0: my-build is already installed, built with the parameters this node declares —
-java: declared 11, requested 17. Nothing was changed. To change the java version
-in use, run: cassandra use my-build --java <version>
+db0: my-build is already installed, built with the parameters the cluster state records:
+java: recorded 11, requested 17. Nothing was changed. To run it on another JDK:
+cassandra use my-build --java <N>. To build it again: add --reinstall.
 ```
-
-This is deliberate: the bits on disk were compiled against Java 11, so silently
-recording them as a Java 17 build would leave every later `cassandra use`
-picking the wrong JDK.
 
 What to do instead depends on what you actually want:
 
@@ -312,87 +413,65 @@ What to do instead depends on what you actually want:
   easy-db-lab cassandra use my-build --java 17
   ```
 
-- **Genuinely rebuild with the new options** — install it under a different
-  version name (`my-build-jdk17`), or remove `/usr/local/cassandra/<version>` on
-  the affected nodes and install again.
+- **Rebuild with the new options** — stop Cassandra and add `--reinstall`, or install it under a
+  different version name (`my-build-jdk17`).
 
 ```admonish tip title="Credentials in --url"
 A `--url` pointing at a private fork may carry a token
-(`https://<token>@github.com/...`). The token is used for the clone and is never
-written to the node's version list, never stored in the cluster workspace, and is
-stripped from log lines, error messages, and emitted events. It does still live
-in your shell history like any other command argument.
+(`https://<token>@github.com/...`). The token is used for the download or clone and is
+never written to the cluster state, and is stripped from log lines, error messages, and
+emitted events. It does still live in your shell history like any other command argument.
+Because the state holds the URL without the token, a node that replaces a db node cannot
+install that version by itself; the CLI says so and prints the `cassandra install --reinstall
+--url` command to run.
 ```
 
-### Bake into the AMI
+### Named builds in your profile
 
-You don't edit the repository's `cassandra_versions.yaml`. Instead, drop one or
-more YAML files into your profile's extras directory:
+To give a build a name every cluster of your profile can use, drop one or more YAML files into
+your profile's `cassandra_versions/` directory:
 
 ```
 ~/.easy-db-lab/profiles/<profile>/cassandra_versions/
 ```
 
-(The default profile is `default`.) At build time these are merged with the
-built-in versions. Each `version` must be unique across the built-in list and
-your extras, or the build fails.
+(The default profile is `default`.) No AMI rebuild is needed: the CLI reads these files when you
+run `cassandra use`, `cassandra install` or `cassandra list`, and `cassandra list` shows each
+entry with the source `profile`. A profile build is checked before every other source except the
+cluster state, so an entry named `5.0-HEAD` replaces the nightly for your profile.
 
-### 1. Add a version entry
-
-Create e.g. `~/.easy-db-lab/profiles/default/cassandra_versions/my-build.yaml`.
-
-Build from a git branch (cloned and compiled with ant during the AMI build):
+Create e.g. `~/.easy-db-lab/profiles/default/cassandra_versions/my-build.yaml` with a prebuilt
+tarball (an `https://` URL or an `s3://` URI):
 
 ```yaml
 - version: "my-build"
-  java: "11"
-  python: "3.10.6"
+  url: "https://example.com/apache-cassandra-my-build-bin.tar.gz"
+  java_supported: ["11", "17"]   # optional
+  java: "17"                     # optional, the default JDK
+  python: "3.11.9"               # optional
+```
+
+Or a git branch, cloned and built with ant on each node:
+
+```yaml
+- version: "my-build"
   url: "https://github.com/myuser/cassandra.git"
   branch: "my-feature-branch"
+  java: "11"
   ant_flags: "-Duse.jdk11=true"   # optional, passed to ant
 ```
 
-Or install a prebuilt tarball:
-
-```yaml
-- version: "my-build"
-  java: "11"
-  python: "3.10.6"
-  url: "https://example.com/apache-cassandra-my-build-bin.tar.gz"
-```
-
-An entry with no `url`/`branch` downloads the matching official Apache release.
-
-### 2. Rebuild the Cassandra AMI
-
-```bash
-easy-db-lab build-cassandra
-```
-
-### 3. Select the custom build
+Then:
 
 ```bash
 easy-db-lab cassandra use my-build
 ```
 
-### Declaring a version without baking it
-
-Add `lazy: true` to an entry to declare a version without spending AMI build
-time on it:
-
-```yaml
-- version: "my-build"
-  java: "11"
-  python: "3.11.9"
-  url: "https://github.com/myuser/cassandra.git"
-  branch: "my-feature-branch"
-  lazy: true
-```
-
-The AMI build skips the download/clone/build for that entry, but the entry
-still ships in the image. `easy-db-lab cassandra list` shows it as
-`(declared, not installed)`, and `easy-db-lab cassandra install my-build`
-installs it on a running cluster without you re-specifying any of its fields.
+Every entry needs a `version` and a `url`. The entry's `java_supported` and `java` take the place
+of the manifest and the release-line table; `--java` and `--python` override them. An entry with
+no `url`, a file that cannot be parsed, and a name in two entries each fail the command, and the
+message names the file. A profile build always downloads from its URL; it does not use the S3
+download cache.
 
 ## Next Steps
 

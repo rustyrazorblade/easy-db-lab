@@ -60,7 +60,7 @@ class NodeReplacerTest {
         nodes: Int = 3,
         budget: ReplacementBudget = ReplacementBudget(nodes),
     ): NodeReplacer {
-        val state = ClusterState(name = "lab", versions = mutableMapOf())
+        val state = ClusterState(name = "lab")
         state.updateHosts(mapOf(ServerType.Cassandra to (0 until nodes).map(::host)))
         val writer = ClusterStateWriter(state, manager)
         return NodeReplacer(fleet, writer, budget, health, eventBus)
@@ -116,7 +116,7 @@ class NodeReplacerTest {
 
     @Test
     fun `a state write that fails after the launch names the launched instance`() {
-        val state = ClusterState(name = "lab", versions = mutableMapOf())
+        val state = ClusterState(name = "lab")
         state.updateHosts(mapOf(ServerType.Cassandra to (0 until 3).map(::host)))
         // The state file's directory does not exist, so every save fails.
         val unwritable = ClusterStateWriter(state, ClusterStateManager(File(dir, "missing/state.json")))

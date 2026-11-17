@@ -50,6 +50,12 @@ import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneConnector
 import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
 import com.rustyrazorblade.easydblab.services.bringup.k3s.Fabric8ControlPlaneConnector
 import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
+import com.rustyrazorblade.easydblab.services.cassandraversions.AxonOpsAgents
+import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
+import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraNodeRestorer
+import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraVersionResolver
+import com.rustyrazorblade.easydblab.services.cassandraversions.DefaultVersionSources
+import com.rustyrazorblade.easydblab.services.cassandraversions.VersionSources
 import com.rustyrazorblade.easydblab.services.documents.DefaultDocumentService
 import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import okhttp3.OkHttpClient
@@ -212,6 +218,23 @@ val servicesModule =
                 get<User>(),
             )
         }
+
+        // The Cassandra version sources and the resolver that turns a name into one install
+        single<VersionSources> {
+            val context = get<Context>()
+            DefaultVersionSources(
+                profileDir = context.profileDir,
+                profileBuildDir = context.cassandraVersionsExtra,
+                catalog = get(),
+                bucketService = get(),
+                user = get(),
+            )
+        }
+        single { CassandraVersionResolver(get()) }
+        // The one install path of cassandra install, cassandra use and the node restorer
+        single { CassandraInstaller(get(), get(), get(), get()) }
+        single { CassandraNodeRestorer(get(), get(), get()) }
+        single { AxonOpsAgents(get(), get(), get()) }
 
         // Kit command scanner — discovers @KitCommand-annotated classes across all JARs
         singleOf(::DefaultKitCommandScanner) bind KitCommandScanner::class

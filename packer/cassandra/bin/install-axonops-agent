@@ -1,0 +1,183 @@
+#!/bin/bash
+#
+# Installs the AxonOps agent for one Cassandra release and JDK on this node (design D6 of issue
+# 1130). `cassandra start` runs it on every targeted node before it starts Cassandra on any, with
+# the release line and JDK the cluster state records, and the account download-cache prefix. The
+# bake installs no per-release agent, so this is where each agent arrives.
+#
+# Usage: install-axonops-agent <X.Y> <java> --cache-prefix URI
+#
+# The first argument may also be an installed version name with no X.Y (a build named cep-45); the
+# release is then read from the apache-cassandra jar under $CASSANDRA_INSTALL_DIR/<name>/lib.
+#
+# Exit status, a contract with the CLI:
+#   0  the agent is installed; the last line of stdout is its name (e.g. 5.0-agent-jdk17)
+#   3  AxonOps ships no agent for that release and JDK; stdout lists the agents it ships, one a line
+#   1  anything else: bad arguments, no package version from apt, a failed download or unpack
+#
+# An agent already installed on the node is kept as is: the script makes no apt lookup for it, so
+# a start does not wait on an apt update. A node without one gets the version apt offers now, and
+# that version is part of the cache key, so a new agent release is a cache miss rather than a
+# stale hit for the nodes that install it.
+
+set -uo pipefail
+
+EDL_AXONOPS_BASE="${EDL_AXONOPS_BASE:-/usr/share/axonops}"
+# Overridable so the tests can load the repo copies.
+EDL_AGENTS_LIB="${EDL_AGENTS_LIB:-/usr/local/lib/edl-cassandra-agents.sh}"
+EDL_CACHE_LIB="${EDL_CACHE_LIB:-/usr/local/lib/edl-cache.sh}"
+# The apt source the bake adds for AxonOps; an update reads only this list.
+AXONOPS_APT_LIST="sources.list.d/axonops-apt.list"
+
+usage() {
+  echo "Usage: install-axonops-agent <X.Y> <java> --cache-prefix URI" >&2
+}
+
+RELEASE=""
+JAVA=""
+CACHE_PREFIX=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --cache-prefix)
+      if [[ $# -lt 2 ]]; then echo "ERROR: --cache-prefix needs a value" >&2; usage; exit 1; fi
+      CACHE_PREFIX="$2"; shift 2
+      ;;
+    -h|--help) usage; exit 0 ;;
+    --*) echo "ERROR: unknown option $1" >&2; usage; exit 1 ;;
+    *)
+      if [[ -z "$RELEASE" ]]; then RELEASE="$1"
+      elif [[ -z "$JAVA" ]]; then JAVA="$1"
+      else echo "ERROR: unexpected argument $1" >&2; usage; exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$RELEASE" || -z "$JAVA" ]]; then
+  usage
+  exit 1
+fi
+if [[ -z "$CACHE_PREFIX" ]]; then
+  echo "ERROR: --cache-prefix is required" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+source "$EDL_AGENTS_LIB"
+# shellcheck disable=SC1090
+source "$EDL_CACHE_LIB"
+
+# A release argument that is not X.Y is an installed version name (a build named cep-45): its
+# release is read from the apache-cassandra jar of that install.
+CASSANDRA_INSTALL_DIR="${CASSANDRA_INSTALL_DIR:-/usr/local/cassandra}"
+if [[ ! "$RELEASE" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  if [[ ! "$RELEASE" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+    echo "ERROR: invalid version name [$RELEASE]: use letters, digits, ., _, + and -, starting with a letter or a digit" >&2
+    exit 1
+  fi
+  NAME="$RELEASE"
+  RELEASE=""
+  # Only the server jar is named for its release (apache-cassandra-5.0.4.jar); the library rejects
+  # the clientutil and thrift jars beside it.
+  for jar in "$CASSANDRA_INSTALL_DIR/$NAME"/lib/apache-cassandra-[0-9]*.jar; do
+    if line="$(edl_cassandra_version_from_jar "$jar")"; then
+      RELEASE="$line"
+      break
+    fi
+  done
+  if [[ -z "$RELEASE" ]]; then
+    echo "ERROR: cannot tell the Cassandra release of $NAME: no apache-cassandra jar in $CASSANDRA_INSTALL_DIR/$NAME/lib" >&2
+    exit 1
+  fi
+fi
+
+# The library reads JDK 8 as 1, the way `java -version` prints it; the CLI passes 8.
+lib_java="$JAVA"
+[[ "$JAVA" == "8" ]] && lib_java=1
+
+if ! AGENT="$(edl_axonops_agent_for "$RELEASE" "$lib_java")"; then
+  echo "ERROR: AxonOps ships no agent for Cassandra $RELEASE on JDK $JAVA. The agents it ships:" >&2
+  edl_axonops_agents
+  exit 3
+fi
+
+TARGET="$EDL_AXONOPS_BASE/$AGENT/lib"
+if [[ -n "$(edl_axonops_javaagent "$AGENT" "$EDL_AXONOPS_BASE")" ]]; then
+  echo "$AGENT"
+  exit 0
+fi
+
+PACKAGE="axon-cassandra${AGENT}"
+
+# candidate_version - the version apt would install, or nothing.
+candidate_version() {
+  apt-cache policy "$PACKAGE" 2>/dev/null | sed -n 's/^ *Candidate: *//p' | grep -v '^(none)$' | head -n 1
+}
+
+VERSION="$(candidate_version)"
+if [[ -z "$VERSION" ]]; then
+  # The image is baked with its apt lists removed; read the AxonOps list alone, then ask again.
+  sudo apt-get update -o Dir::Etc::sourcelist="$AXONOPS_APT_LIST" -o Dir::Etc::sourceparts=- \
+    -o APT::Get::List-Cleanup=0 >&2 || true
+  VERSION="$(candidate_version)"
+fi
+if [[ -z "$VERSION" ]]; then
+  echo "ERROR: apt has no version of $PACKAGE; is the AxonOps apt source configured?" >&2
+  exit 1
+fi
+
+WORKDIR="$(mktemp -d)"
+STAGED=""
+trap 'cd /; rm -rf "$WORKDIR"; [[ -n "$STAGED" ]] && sudo rm -rf "$STAGED"' EXIT
+cd "$WORKDIR" || exit 1
+
+ARCH="$(dpkg --print-architecture)"
+DEB="${PACKAGE}_${VERSION}_${ARCH}.deb"
+CACHE_URI="${CACHE_PREFIX%/}/${PACKAGE}/${VERSION}/${DEB}"
+
+if cache_get_uri "$CACHE_URI" "$DEB"; then
+  echo "cache hit:  $CACHE_URI" >&2
+else
+  echo "cache miss: downloading $PACKAGE=$VERSION with apt" >&2
+  if ! apt-get download "${PACKAGE}=${VERSION}" >&2; then
+    echo "ERROR: failed to download $PACKAGE=$VERSION" >&2
+    exit 1
+  fi
+  # apt names the file for the package's own architecture (amd64, arm64 or all).
+  downloaded="$(find . -maxdepth 1 -name "${PACKAGE}_*.deb" | head -n 1)"
+  if [[ -z "$downloaded" ]]; then
+    echo "ERROR: apt-get download of $PACKAGE=$VERSION wrote no .deb" >&2
+    exit 1
+  fi
+  [[ "$downloaded" == "./$DEB" ]] || mv "$downloaded" "$DEB"
+  cache_put_uri "$DEB" "$CACHE_URI" || echo "WARN: failed to write the cache object $CACHE_URI" >&2
+fi
+
+if ! dpkg-deb -x "$DEB" unpacked; then
+  echo "ERROR: failed to unpack $DEB" >&2
+  exit 1
+fi
+
+# Staged beside the target and moved in whole, so a failure leaves no half-installed agent.
+STAGED="$EDL_AXONOPS_BASE/.$AGENT.new"
+sudo rm -rf "$STAGED"
+sudo mkdir -p "$STAGED/lib"
+if ! sudo cp unpacked/usr/share/axonops/*.jar "$STAGED/lib/"; then
+  echo "ERROR: $DEB holds no agent jar under usr/share/axonops" >&2
+  exit 1
+fi
+# Each step is checked: a zero exit with the agent name would make the CLI name an agent whose jar
+# is not there. STAGED stays set on a failure, so the trap removes the staging directory.
+if ! sudo chown -R cassandra:cassandra "$STAGED"; then
+  echo "ERROR: failed to give the cassandra user the staged agent $AGENT" >&2
+  exit 1
+fi
+if ! sudo rm -rf "$EDL_AXONOPS_BASE/$AGENT" || ! sudo mv "$STAGED" "$EDL_AXONOPS_BASE/$AGENT"; then
+  echo "ERROR: failed to move the agent $AGENT into $EDL_AXONOPS_BASE/$AGENT" >&2
+  exit 1
+fi
+STAGED=""
+
+echo "installed AxonOps agent $AGENT ($PACKAGE $VERSION) in $TARGET" >&2
+echo "$AGENT"

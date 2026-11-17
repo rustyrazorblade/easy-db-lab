@@ -30,7 +30,7 @@ class GrafanaDocumentsSidecarsTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "acct-bucket"))
+                        whenever(it.load()).thenReturn(ClusterState(name = "test", s3Bucket = "acct-bucket"))
                     }
                 }
                 single { TemplateService(get(), get()) }

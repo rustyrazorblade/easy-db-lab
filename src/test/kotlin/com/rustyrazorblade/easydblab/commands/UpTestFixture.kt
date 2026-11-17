@@ -265,7 +265,7 @@ abstract class UpTestFixture : BaseKoinTest() {
                     BringUpPortSet(
                         tracker = tracker,
                         fleet = fleet,
-                        nodeSteps = steps.nodeSteps(request.state, request.workspace),
+                        nodeSteps = steps.nodeSteps(request.state),
                         controlSteps = steps.controlSteps(request.route, request.state, request.workspace),
                         state = request.state,
                     )
@@ -534,7 +534,6 @@ abstract class UpTestFixture : BaseKoinTest() {
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             tailscaleActive = true,
             initConfig =
                 InitConfig(

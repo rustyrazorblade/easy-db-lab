@@ -30,7 +30,7 @@ class BringUpHarness(
     val fleet = FakeInstanceFleet()
     val events: MutableList<Event> = Collections.synchronizedList(mutableListOf())
     val stateFile = File(dir, "state.json")
-    private val state = ClusterState(name = "lab", versions = mutableMapOf())
+    private val state = ClusterState(name = "lab")
     val writer = ClusterStateWriter(state, ClusterStateManager(stateFile))
 
     private val eventBus =

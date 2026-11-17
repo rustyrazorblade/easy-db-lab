@@ -38,10 +38,7 @@ class K3sBringUpSteps(
     private val controlPlane: ControlPlaneTools,
 ) {
     /** The steps every database, application and control node runs. */
-    fun nodeSteps(
-        state: ClusterStateWriter,
-        workspace: File,
-    ): NodeSteps = K3sNodeSteps(remoteOps, nodeSetup, imageCheck, registry, k3s, state, workspace)
+    fun nodeSteps(state: ClusterStateWriter): NodeSteps = K3sNodeSteps(remoteOps, nodeSetup, imageCheck, registry, k3s, state)
 
     /** The control node's own steps, with the operator's side from [route]. */
     fun controlSteps(

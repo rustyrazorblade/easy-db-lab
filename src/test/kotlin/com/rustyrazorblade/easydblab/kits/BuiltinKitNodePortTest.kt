@@ -36,6 +36,12 @@ class BuiltinKitNodePortTest {
         assertThat(claims.filter { it.first.startsWith("cassandra-pods:") }.map { it.second })
             .contains(Constants.Kit.CassandraPods.CQL_NODE_PORT)
         assertThat(Constants.Kit.CassandraPods.CQL_NODE_PORT).isEqualTo(30942)
+        // The coordinators' Services are applied by start.sh, not through Kotlin, so the template
+        // and the constant the docs and callers read must name the same port.
+        assertThat(claims).contains(
+            "presto:nodeport-service.yaml.template" to Constants.Kit.Presto.NODE_PORT,
+            "trino:nodeport-service.yaml.template" to Constants.Kit.Trino.NODE_PORT,
+        )
         assertThat(duplicates).isEmpty()
     }
 

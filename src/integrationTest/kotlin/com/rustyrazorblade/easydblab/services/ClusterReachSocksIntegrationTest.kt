@@ -16,7 +16,7 @@ import java.net.SocketException
  */
 class ClusterReachSocksIntegrationTest {
     @Test
-    fun `a SOCKS server that answers nonsense is a request that never reached the cluster`() {
+    fun `a SOCKS server that refuses every authentication method is a request that never reached the cluster`() {
         ServerSocket(0).use { fakeProxy ->
             val answerer =
                 Thread {
@@ -24,7 +24,7 @@ class ClusterReachSocksIntegrationTest {
                         // The reply ends in a FIN, and what the client sends after it is drained: a close
                         // with unread bytes sends a reset, and the client would see that, not the reply.
                         client.getInputStream().readNBytes(GREETING_BYTES)
-                        client.getOutputStream().write(byteArrayOf(0x7f, 0x7f))
+                        client.getOutputStream().write(NO_ACCEPTABLE_METHOD)
                         client.shutdownOutput()
                         client.getInputStream().readAllBytes()
                     }
@@ -36,7 +36,7 @@ class ClusterReachSocksIntegrationTest {
                         it.connect(InetSocketAddress("10.0.1.5", 6443), CONNECT_TIMEOUT_MS)
                     }
                 }.exceptionOrNull()
-            answerer.join()
+            answerer.join(JOIN_TIMEOUT_MS)
 
             assertThat(failure).isInstanceOf(SocketException::class.java)
             assertThat(ClusterReach.neverReached(requireNotNull(failure))).isTrue()
@@ -60,15 +60,20 @@ class ClusterReachSocksIntegrationTest {
                     it.getInputStream().read()
                     it.getInputStream().read()
                 }
-            }.satisfies({ failure -> assertThat(ClusterReach.neverReached(failure)).isFalse() })
-            resetter.join()
+            }.isInstanceOf(SocketException::class.java)
+                .satisfies({ failure -> assertThat(ClusterReach.neverReached(failure)).isFalse() })
+            resetter.join(JOIN_TIMEOUT_MS)
         }
     }
 
     private companion object {
         const val CONNECT_TIMEOUT_MS = 5_000
+        const val JOIN_TIMEOUT_MS = 10_000L
 
-        /** The SOCKS5 greeting the JDK sends: version, one method, "no authentication". */
-        const val GREETING_BYTES = 3
+        /** The SOCKS5 greeting the JDK sends: version 5, two methods, "no authentication" and "username/password". */
+        const val GREETING_BYTES = 4
+
+        /** The SOCKS5 server reply "no acceptable authentication method", which the JDK client reports as a SocketException. */
+        val NO_ACCEPTABLE_METHOD = byteArrayOf(0x05, 0xFF.toByte())
     }
 }

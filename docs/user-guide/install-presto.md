@@ -99,7 +99,7 @@ The coordinator and workers run on the app role's nodes: `type=app` on the nodes
 
 ## Connecting
 
-After `easy-db-lab presto start` completes, the Presto coordinator is published on the NodePort Service `presto-nodeport`, port 30882 on any node's private IP. Reach it through the SOCKS5 proxy at `<node-ip>:30882`, or port-forward the Service:
+After `easy-db-lab presto start` completes, the Presto coordinator is published on the NodePort Service `presto-nodeport`, port 30882 on any node's private IP. Reach it at `jdbc:presto://<node-ip>:30882` through the workspace SOCKS5 tunnel: the tunnel listens on `127.0.0.1` at the `EDL_SOCKS_PORT` recorded in the workspace's `.socks5-proxy.env`, and the client carries it in its own proxy setting, the JDBC connection property `socksProxy=127.0.0.1:<port>` or the Presto CLI's `--socks-proxy 127.0.0.1:<port>`. Or port-forward the Service:
 
 ```bash
 kubectl port-forward svc/presto-nodeport 8080:8080

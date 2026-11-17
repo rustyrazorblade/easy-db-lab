@@ -196,7 +196,7 @@ Place templates in `~/.easy-db-lab/profiles/<profile>/kits/<name>/` to make them
 
 Kits use **standard pod networking** (not `hostNetwork`). Client and metrics ports are surfaced on every node through a NodePort Service:
 
-- **NodePort services** — every kit (ClickHouse, TiDB, Presto, Trino and the rest) exposes their ports through a NodePort service, remapping native ports into the NodePort range (30000–32767). Example: ClickHouse HTTP `8123 → 30123`.
+- **NodePort services** — every kit (ClickHouse, TiDB, Presto, Trino and the rest) exposes its ports through a NodePort service, remapping native ports into the NodePort range (30000–32767). Example: ClickHouse HTTP `8123 → 30123`.
 
 ### Why ports must reach the host
 

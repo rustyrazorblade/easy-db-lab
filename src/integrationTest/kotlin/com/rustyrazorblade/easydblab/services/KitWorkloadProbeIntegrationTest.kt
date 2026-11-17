@@ -91,14 +91,7 @@ class KitWorkloadProbeIntegrationTest {
                     .endMetadata()
                     .build(),
             ).create()
-        for (namespace in listOf("default", OTHER_NAMESPACE)) {
-            // Pod admission needs the namespace's default ServiceAccount, which K3s creates asynchronously.
-            client
-                .serviceAccounts()
-                .inNamespace(namespace)
-                .withName("default")
-                .waitUntilCondition({ it != null }, WAIT_SECONDS, TimeUnit.SECONDS)
-        }
+        listOf("default", OTHER_NAMESPACE).forEach { SharedK3s.ensurePodAdmission(client, it) }
     }
 
     private fun podsRuntime(kitName: String) =

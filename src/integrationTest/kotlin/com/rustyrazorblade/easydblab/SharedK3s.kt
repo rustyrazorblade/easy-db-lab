@@ -2,13 +2,16 @@ package com.rustyrazorblade.easydblab
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
+import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
+import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
-import java.util.concurrent.TimeUnit
+import java.util.Base64
 
 /**
  * Single, JVM-wide K3s cluster shared by the Kubernetes integration tests that can live in a
@@ -38,8 +41,6 @@ object SharedK3s {
     /** The documents web server image, preloaded for the web server test. */
     const val WEB_SERVER_IMAGE = Constants.Grafana.Documents.WEB_SERVER_IMAGE
 
-    private const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
-
     private val container: K3sContainer by lazy {
         K3sContainer(DockerImageName.parse(K3S_IMAGE))
             .withPrivilegedMode(true)
@@ -59,8 +60,7 @@ object SharedK3s {
     fun client(): KubernetesClient = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(kubeConfigYaml())).build()
 
     /**
-     * Creates [name] and waits for its `default` ServiceAccount, which the API server requires
-     * before it admits a pod into the namespace.
+     * Creates [name] and makes it ready to admit pods, through [ensurePodAdmission].
      */
     fun createNamespace(name: String) {
         client().use { client ->
@@ -72,11 +72,66 @@ object SharedK3s {
                         .endMetadata()
                         .build(),
                 ).create()
+            ensurePodAdmission(client, name)
+        }
+    }
+
+    /** The ConfigMap a pod's projected ServiceAccount token volume reads the cluster CA from. */
+    const val ROOT_CA_CONFIG_MAP = "kube-root-ca.crt"
+
+    /** The key of the cluster CA in [ROOT_CA_CONFIG_MAP]. */
+    const val ROOT_CA_KEY = "ca.crt"
+
+    private const val DEFAULT_SERVICE_ACCOUNT = "default"
+
+    /**
+     * Creates the two objects a pod in [namespace] needs that the kube-controller-manager would
+     * otherwise create asynchronously: the `default` ServiceAccount, without which the API server
+     * refuses the pod, and the [ROOT_CA_CONFIG_MAP] ConfigMap (the server CA from the client's
+     * kubeconfig), without which the kubelet cannot mount the pod's projected token volume. On a
+     * shared cluster under a full integration run the controller's queues lag by over a minute, so
+     * waiting for it made test setup time out. Either object may already exist when the controller
+     * won the race; that is success. The token itself is projected by the kubelet, so no token
+     * Secret is needed.
+     */
+    fun ensurePodAdmission(
+        client: KubernetesClient,
+        namespace: String,
+    ) {
+        createIfMissing {
             client
                 .serviceAccounts()
-                .inNamespace(name)
-                .withName("default")
-                .waitUntilCondition({ it != null }, NAMESPACE_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .inNamespace(namespace)
+                .resource(
+                    ServiceAccountBuilder()
+                        .withNewMetadata()
+                        .withName(DEFAULT_SERVICE_ACCOUNT)
+                        .endMetadata()
+                        .build(),
+                ).create()
+        }
+        // K3s's root CA publisher copies the server CA, which is also the kubeconfig's CA.
+        val serverCa = String(Base64.getDecoder().decode(requireNotNull(client.configuration.caCertData)))
+        createIfMissing {
+            client
+                .configMaps()
+                .inNamespace(namespace)
+                .resource(
+                    ConfigMapBuilder()
+                        .withNewMetadata()
+                        .withName(ROOT_CA_CONFIG_MAP)
+                        .endMetadata()
+                        .addToData(ROOT_CA_KEY, serverCa)
+                        .build(),
+                ).create()
+        }
+    }
+
+    private fun createIfMissing(create: () -> Unit) {
+        try {
+            create()
+        } catch (e: KubernetesClientException) {
+            if (e.code != Constants.HttpStatus.CONFLICT) throw e
         }
     }
 }

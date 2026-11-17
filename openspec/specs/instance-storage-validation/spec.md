@@ -10,7 +10,7 @@ The system SHALL validate that the database instance type has adequate storage b
 
 This validation applies only to database (db) nodes. Stress and control nodes do not require data disks.
 
-**Note on workload-scoped PVs**: The instance storage validation ensures a raw data disk is present at `up` time. Per-workload Kubernetes PersistentVolumes at `/mnt/db1/<workload>` are created lazily at install time (via `platform create-pvs`), not at cluster-up time. Both mechanisms use the same underlying disk.
+**Note on workload-scoped PVs**: The instance storage validation ensures a raw data disk is present at `up` time. Per-kit Kubernetes PersistentVolumes at `/mnt/db1/<kit>/<claim template>` are created lazily by each kit's `kit-storage` step (or by hand with `platform create-pvs`), not at cluster-up time. Both mechanisms use the same underlying disk.
 
 #### Scenario: Instance type with instance store and no EBS
 

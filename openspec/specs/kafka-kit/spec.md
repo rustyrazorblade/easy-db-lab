@@ -39,11 +39,13 @@ The kafka kit SHALL accept the following install-time arguments:
 
 - `--version` (string, default: `latest`) — Kafka image version
 - `--brokers` (int, default: `1`) — number of broker/controller nodes
-- `--storage-size` (string, default: `10Ti`) — persistent volume size per broker
+- `--storage-size` (string, default: `${KIT_STORAGE_SIZE}`) — persistent volume size per broker: `10Ti` on local volumes, the provisioned-class default otherwise, or `init --kit-storage-size`
+
+The node pool's storage SHALL name the class `__KIT_STORAGE_CLASS__` with no selector.
 
 #### Scenario: Default single broker
-- **WHEN** the user runs `easy-db-lab kafka start` with no flags
-- **THEN** one Kafka broker is started with 10Ti persistent storage
+- **WHEN** the user runs `easy-db-lab kafka start` with no flags on a cluster with no recorded kit StorageClass
+- **THEN** one Kafka broker is started with 10Ti persistent storage on the class `edl-local-kafka`
 
 #### Scenario: Custom broker count
 - **WHEN** the user runs `easy-db-lab kafka start --brokers 3`
@@ -63,19 +65,26 @@ The kafka kit SHALL expose Prometheus metrics from the JMX exporter on the broke
 ### Requirement: Kafka kit supports start, stop, and uninstall phases
 The kafka kit SHALL implement `start`, `stop`, and `uninstall` lifecycle phases.
 
-- `start`: deploys the Bitnami chart with rendered values; waits for broker pods to be Ready
-- `stop`: uninstalls the Helm release, preserving the PVs
-- `uninstall`: uninstalls the Helm release and removes PVs
+- `start`: applies the Kafka and KafkaNodePool resources; waits for broker pods to be Ready. When a `stop` saved a KRaft cluster ID, it applies them with `strimzi.io/pause-reconciliation`, patches the saved ID into the `Kafka` status, and then removes the pause
+- `stop`: saves the `Kafka` resource's `.status.clusterId` to `kafka-cluster-id` in the kit directory, then deletes the Kafka and KafkaNodePool resources, keeping the claims and the PVs (`deleteClaim: false`)
+- `uninstall`: deletes the claims explicitly, then the kit's storage (`kit-storage-delete`)
 
 #### Scenario: Start waits for broker readiness
 - **WHEN** `easy-db-lab kafka start` is run
 - **THEN** the command does not return until all broker pods report Ready
 
-#### Scenario: Stop removes broker pods
+#### Scenario: Stop keeps the claims
 - **WHEN** `easy-db-lab kafka stop` is run
-- **THEN** the Kafka Helm release is uninstalled and no broker pods remain running
+- **THEN** no broker pods remain running
+- **AND** the brokers' PersistentVolumeClaims still exist
 
-#### Scenario: Uninstall removes release and PVs
+#### Scenario: Start after stop rebinds the same volumes
+- **WHEN** `easy-db-lab kafka stop` and then `easy-db-lab kafka start` are run
+- **THEN** each broker mounts the claim, and so the volume, it had before the stop
+- **AND** the new `Kafka` resource carries the KRaft cluster ID of the stopped one, so the brokers start on their kept volumes and a message produced before the stop is read back after the start
+
+#### Scenario: Uninstall removes claims and PVs
 - **WHEN** `easy-db-lab kafka uninstall` is run
-- **THEN** the Helm release is deleted and associated PersistentVolumeClaims are removed
+- **THEN** the brokers' PersistentVolumeClaims are removed
+- **AND** on local volumes the kit's PVs, its class and its node directories are removed
 

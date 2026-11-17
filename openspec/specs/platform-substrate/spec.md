@@ -3,24 +3,21 @@
 ## Purpose
 
 The platform substrate is the set of K8s primitives that easy-db-lab provisions on every cluster, allowing any kit to be deployed without a bespoke Kotlin manifest builder.
-
 ## Requirements
-
 ### Requirement: StorageClasses
 
-The system SHALL provision two StorageClasses at `up` time:
+The system SHALL NOT provision a shared kit StorageClass at `up` time. On owned nodes each kit's `kit-storage` step SHALL create that kit's class `edl-local-<kit>`:
 
-| Name | Binding Mode | Reclaim Policy | Use |
-|---|---|---|---|
-| `local-storage` | `Immediate` | `Retain` | Legacy / direct-bound PVs |
-| `local-storage-wfc` | `WaitForFirstConsumer` | `Delete` | Per-kit PVs via `install` / `platform create-pvs` |
+| Name | Provisioner | Binding Mode | Reclaim Policy | Use |
+|---|---|---|---|---|
+| `edl-local-<kit>` | `kubernetes.io/no-provisioner` | `WaitForFirstConsumer` | `Retain` | that kit's local PVs only |
 
-`local-storage-wfc` is required for StatefulSet kits because Kubernetes must know which node the pod schedules on before binding the PV.
+Elsewhere kit claims use the recorded kit StorageClass (see `kit-storage`), which easy-db-lab never creates or deletes.
 
-#### Scenario: StorageClasses provisioned at up time
-- **WHEN** a cluster is brought up
-- **THEN** the `local-storage` and `local-storage-wfc` StorageClasses are provisioned
-- **AND** `local-storage-wfc` uses `WaitForFirstConsumer` binding so StatefulSet kits bind PVs only after the pod's node is known
+#### Scenario: Per-kit class created at kit install on owned nodes
+- **WHEN** a stateful kit is installed on an owned-node cluster
+- **THEN** the StorageClass `edl-local-<kit>` exists with `WaitForFirstConsumer` binding and `Retain` reclaim
+- **AND** `up` creates no StorageClass for kits
 
 ### Requirement: Node Labels
 
@@ -31,7 +28,7 @@ The system SHALL label all cluster nodes at `up` time:
 | `type` | `db`, `app`, `control` | All nodes |
 | `easydblab.com/node-ordinal` | `0`, `1`, `2`, … | `db` and `app` nodes |
 
-Kits use `nodeSelector: type: db` (or `app`) to constrain placement, and PVs use `easydblab.com/node-ordinal` for pre-binding.
+Kits use `nodeSelector: type: db` (or `app`) to constrain placement, and local PVs match `type` and `easydblab.com/node-ordinal` in their node affinity.
 
 #### Scenario: Nodes labeled at up time
 - **WHEN** a cluster is brought up
@@ -40,17 +37,19 @@ Kits use `nodeSelector: type: db` (or `app`) to constrain placement, and PVs use
 
 ### Requirement: Persistent Volumes
 
-Per-kit PVs SHALL be created lazily at install time, not at cluster-up time. One PV per db node is created by `platform create-pvs`:
+Per-kit PVs SHALL be created lazily by the `kit-storage` step at install time, and only under `LocalVolumes`. One PV per node of the step's node type (or `count` PVs) is created:
 
-- **Path**: `/mnt/db1/<kit>` on each host
-- **StorageClass**: `local-storage-wfc`
-- **Affinity**: `easydblab.com/node-ordinal=N` matches ordinal N
-- **ClaimRef**: pre-bound to `<volumeClaimTemplateName>-<kit>-N` so StatefulSets bind deterministically
+- **Path**: `/mnt/db1/<kit>/<claim template>` on each host
+- **StorageClass**: `edl-local-<kit>`
+- **Reclaim policy**: `Retain`
+- **Affinity**: `type=<node type>` and `easydblab.com/node-ordinal=N`, so PV N binds only on node N of its pool
+
+PVs SHALL NOT be pre-bound by `claimRef`; reservation comes from the per-kit class.
 
 #### Scenario: PVs created lazily at install time
-- **WHEN** `platform create-pvs` runs for a kit
-- **THEN** one PV per db node is created at `/mnt/db1/<kit>` with StorageClass `local-storage-wfc`
-- **AND** each PV has affinity `easydblab.com/node-ordinal=N` and a claimRef pre-bound to `<volumeClaimTemplateName>-<kit>-N`
+- **WHEN** the `kit-storage` step runs for a kit on owned nodes
+- **THEN** one PV per node is created at `/mnt/db1/<kit>/<claim template>` with StorageClass `edl-local-<kit>` and `Retain` reclaim
+- **AND** each PV has affinity `type=<node type>` and `easydblab.com/node-ordinal=N`
 
 ### Requirement: `platform` Commands
 
@@ -59,22 +58,23 @@ The `platform` command group SHALL provide `create-pvs` and `info` subcommands.
 #### `platform create-pvs`
 
 ```
-platform create-pvs --kit <name> --size <Gi> [--node-type db|app]
+platform create-pvs --kit <name> --size <quantity> [--node-type db|app] [--pvc-name <name>]
 ```
 
-Creates one PV per node of the specified type. Safe to re-run: if the PV exists with a stale claimRef UID (the PVC was deleted), the UID is cleared and the PV is returned to `Available`.
+Runs the same provisioning as the `kit-storage` step. Under `LocalVolumes` it creates the kit's class and one PV per node of the specified type (default `db`) for the claim template `--pvc-name` (default `data`), at `/mnt/db1/<kit>/<pvc-name>`, and is safe to re-run: a PV with a stale claimRef UID has the UID cleared and returns to `Available`. Under `Provisioned` it checks the class and creates nothing.
 
 #### `platform info`
 
-Displays StorageClasses, available PV counts per node pool, node selector labels, and ordinal key. Used to verify substrate readiness before deploying a kit.
+Displays the resolved kit storage (mode, class, default size), available PV counts per node pool under `LocalVolumes`, node selector labels, and the ordinal key.
 
 #### Scenario: create-pvs is safe to re-run
 - **WHEN** `platform create-pvs` runs against a PV that exists with a stale claimRef UID because the PVC was deleted
 - **THEN** the UID is cleared and the PV is returned to `Available`
 
-#### Scenario: platform info reports substrate readiness
+#### Scenario: platform info reports kit storage
 - **WHEN** the user runs `platform info`
-- **THEN** the output displays StorageClasses, available PV counts per node pool, node selector labels, and the ordinal key
+- **THEN** the output shows the kit storage mode, its class and default size
+- **AND** under `LocalVolumes`, available PV counts per node pool, node selector labels and the ordinal key
 
 ### Requirement: Template Variable Contract
 
@@ -90,14 +90,22 @@ All install templates SHALL receive these standard variables from cluster state:
 | `__APP_NODE_COUNT__` | Count of `ServerType.Stress` hosts |
 | `__BUCKET_NAME__` | `ClusterState.dataBucket` (falls back to `s3Bucket`) |
 | `__REGION__` | `InitConfig.region` |
-| `__STORAGE_CLASS_WFC__` | `Constants.K8s.LOCAL_STORAGE_WFC_CLASS` |
+| `__KIT_STORAGE_CLASS__` | `KitStorage.storageClassFor(kit)`: `edl-local-<kit>` or the recorded kit StorageClass; blank when no kit is named |
+| `__KIT_STORAGE_SIZE__` | `KitStorage.defaultSize`: `init --kit-storage-size`, else `10Ti` (local) or the provisioned default |
 | `__KIT_NAME__` | Kit name (e.g. `clickhouse`) |
-| `__STORAGE_SIZE__` | `--size` flag value (e.g. `100Gi`) |
+| `__STORAGE_SIZE__` | The kit's `--storage-size` value, defaulting to `${KIT_STORAGE_SIZE}` |
 | `__KUBECONFIG__` | Path to local kubeconfig |
 
-Kit-specific subcommands add extra variables (e.g. `__REPLICAS__`, `__WORKERS__`). Unresolved `__VAR__` placeholders emit a warning but do not fail the render.
+`__STORAGE_CLASS_WFC__` SHALL NOT exist. Kit-specific subcommands add extra variables (e.g. `__REPLICAS__`, `__WORKERS__`). Unresolved `__VAR__` placeholders emit a warning but do not fail the render.
 
 #### Scenario: Standard variables substituted into templates
 - **WHEN** an install template is rendered
 - **THEN** the standard variables are substituted from cluster state
 - **AND** an unresolved `__VAR__` placeholder emits a warning but does not fail the render
+
+#### Scenario: Kit storage variables follow the environment
+- **WHEN** a kit template is rendered with no recorded kit StorageClass
+- **THEN** `__KIT_STORAGE_CLASS__` is `edl-local-<kit>` and `__KIT_STORAGE_SIZE__` is `10Ti`
+- **WHEN** it is rendered with a recorded kit StorageClass `retain-x`
+- **THEN** `__KIT_STORAGE_CLASS__` is `retain-x` and `__KIT_STORAGE_SIZE__` is the provisioned default
+

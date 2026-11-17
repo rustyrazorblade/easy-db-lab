@@ -24,8 +24,8 @@ The CLI SHALL expose `kit install` as a subcommand group. Each discoverable kit 
 registered as a subcommand under `kit install` (e.g. `kit install clickhouse`, `kit install presto`).
 
 #### Scenario: `kit install <kit>` scaffolds kit files
-- **WHEN** the user runs `easy-db-lab kit install clickhouse --size 100Gi`
-- **THEN** the kit template is rendered and written to disk exactly as before
+- **WHEN** the user runs `easy-db-lab kit install clickhouse --storage-size 100Gi`
+- **THEN** the kit template is rendered with `__STORAGE_SIZE__` set to `100Gi` and written to the kit directory
 
 #### Scenario: `kit install` with no subcommand prints help
 - **WHEN** the user runs `easy-db-lab kit install`

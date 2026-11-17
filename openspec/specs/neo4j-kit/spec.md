@@ -4,7 +4,7 @@
 TBD - created by archiving change issue-819. Update Purpose after archive.
 ## Requirements
 ### Requirement: Neo4j kit runs Neo4j Community on a db node
-The system SHALL provide a `neo4j` kit that deploys Neo4j Community Edition as a StatefulSet with one replica, scheduled onto a db node, with its data on a volume provisioned by `platform-pvs`. `kit.yaml` SHALL declare `type: db`.
+The system SHALL provide a `neo4j` kit that deploys Neo4j Community Edition as a StatefulSet with one replica, scheduled onto a db node, with its data on a claim of `__KIT_STORAGE_CLASS__` that its `kit-storage` step readies. `kit.yaml` SHALL declare `type: db`.
 
 #### Scenario: Install succeeds
 - **WHEN** the user runs `easy-db-lab kit install neo4j`
@@ -12,7 +12,7 @@ The system SHALL provide a `neo4j` kit that deploys Neo4j Community Edition as a
 
 #### Scenario: Start yields a Ready pod on a db node
 - **WHEN** the user runs `easy-db-lab neo4j start`
-- **THEN** one Neo4j pod labelled `easydblab/kit=neo4j` is Ready on a db node AND its data directory is on a platform PV
+- **THEN** one Neo4j pod labelled `easydblab/kit=neo4j` is Ready on a db node AND its data directory is on a claim of the kit storage class
 
 ### Requirement: Neo4j version is selectable within 5.x and the calendar-versioned releases
 The kit SHALL accept a `--version` argument. Supported versions SHALL be 5.x and the calendar-versioned releases (2025.x, 2026.x, and later years), which share the `server.*` configuration keys. 4.x and earlier SHALL be rejected. Early 5.x releases whose image entrypoint replaces the stock `server.jvm.additional` lines instead of appending to them SHALL also be rejected, with an error that names the first supported 5.x release, because the agent flag would silently drop the stock JVM flags on them. The container image SHALL be `neo4j:<version>-community`, and the default SHALL be pinned to the current Community release.
@@ -81,7 +81,7 @@ The kit SHALL ship at least one dashboard installed into a `Neo4j` Grafana folde
 - **THEN** the install fails with a `CollisionDetected` error naming the kit AND the running Neo4j objects are unchanged
 
 ### Requirement: Neo4j stop and uninstall clean up by label
-`stop` SHALL delete the StatefulSet, Services, and pods labelled `easydblab/kit=neo4j`. `uninstall` SHALL additionally delete the kit's PVCs (the StatefulSet's `volumeClaimTemplates` metadata carries the kit label) and run `platform-pvs-delete`.
+`stop` SHALL delete the StatefulSet, Services, and pods labelled `easydblab/kit=neo4j`. `uninstall` SHALL additionally delete the kit's PVCs (the StatefulSet's `volumeClaimTemplates` metadata carries the kit label) and run `kit-storage-delete`.
 
 #### Scenario: Stop removes pod and NodePort services
 - **WHEN** the user runs `easy-db-lab neo4j stop`
@@ -89,7 +89,7 @@ The kit SHALL ship at least one dashboard installed into a `Neo4j` Grafana folde
 
 #### Scenario: Uninstall removes PVCs and PVs
 - **WHEN** the user runs `easy-db-lab neo4j uninstall`
-- **THEN** no PVC labelled `easydblab/kit=neo4j` remains AND the kit's platform PVs are deleted
+- **THEN** no PVC labelled `easydblab/kit=neo4j` remains AND on local volumes the kit's PVs and its class are deleted
 
 ### Requirement: Neo4j kit is listed and documented
 `kit list` SHALL show `neo4j`. `docs/user-guide/neo4j.md`, linked from `docs/SUMMARY.md`, SHALL cover install, start, connecting over Bolt and HTTP, and stop.

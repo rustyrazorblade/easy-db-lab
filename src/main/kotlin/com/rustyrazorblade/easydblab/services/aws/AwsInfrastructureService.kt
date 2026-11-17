@@ -229,7 +229,7 @@ class AwsInfrastructureService(
         log.info { "Setting up VPC networking for cluster: ${config.clusterName}" }
         eventBus.emit(Event.Infra.VpcNetworkingSetup(config.clusterName))
 
-        val baseTags = config.tags + mapOf("easy_cass_lab" to "1", "ClusterId" to config.clusterId)
+        val baseTags = config.tags + mapOf("easy_cass_lab" to "1", Constants.Vpc.CLUSTER_ID_TAG_KEY to config.clusterId)
         val cidrBlock = CidrBlock(config.vpcCidr)
 
         // Construct full availability zone names

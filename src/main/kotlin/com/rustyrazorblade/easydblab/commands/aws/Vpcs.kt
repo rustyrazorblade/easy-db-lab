@@ -31,7 +31,7 @@ class Vpcs : PicoBaseCommand() {
         for (vpcId in vpcIds) {
             val tags = vpcService.getVpcTags(vpcId)
             val name = tags["Name"] ?: "(unnamed)"
-            val clusterId = tags["ClusterId"] ?: "(no cluster id)"
+            val clusterId = tags[Constants.Vpc.CLUSTER_ID_TAG_KEY] ?: "(no cluster id)"
             println("$name $vpcId $clusterId")
         }
     }

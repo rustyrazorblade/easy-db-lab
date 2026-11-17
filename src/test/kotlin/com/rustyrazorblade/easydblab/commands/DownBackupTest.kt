@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.services.TailSignal
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -41,6 +42,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoMoreInteractions
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayInputStream
+import java.net.ConnectException
 import java.nio.file.AccessDeniedException
 import java.time.Instant
 
@@ -180,6 +182,21 @@ class DownBackupTest : BaseKoinTest() {
         // The teardown must never be attempted: no infrastructure was removed.
         verify(teardownService, never()).teardownVpc(any(), eq(false))
         assertThat(errorOutput()).contains("no infrastructure was removed")
+    }
+
+    @Test
+    fun `a failed signal behind the Kubernetes client's generic wrapper is reported with the real cause`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        previewFindsResources()
+        val wrapper = KubernetesClientException("An error has occurred.", ConnectException("Connection refused"))
+        val failures = mapOf(TailSignal.TRACES to FlushStepFailed(FlushStep.TEMPO_BLOCKS_FLUSHED, emptyMap(), wrapper))
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any()))
+            .thenReturn(Result.failure(TailFlushFailed(failures, emptyMap())))
+
+        Down().apply { autoApprove = true }.call()
+
+        assertThat(errorOutput()).contains("Connection refused").doesNotContain("An error has occurred.")
     }
 
     @Test

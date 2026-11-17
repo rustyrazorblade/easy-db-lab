@@ -24,9 +24,22 @@ class ThrowablesTest {
                     "Connection refused",
                 ),
                 Arguments.of(
-                    "client wrapper nested twice",
-                    KubernetesClientException("outer", KubernetesClientException("inner", ConnectException("No route"))),
+                    "generic wrappers nested twice",
+                    KubernetesClientException(
+                        "An error has occurred.",
+                        KubernetesClientException("", ConnectException("No route")),
+                    ),
                     "No route",
+                ),
+                Arguments.of(
+                    "wrapper that names the operation keeps it before the cause",
+                    KubernetesClientException("Operation: [delete] for kind: [Deployment] failed.", ConnectException("Connection refused")),
+                    "Operation: [delete] for kind: [Deployment] failed.: Connection refused",
+                ),
+                Arguments.of(
+                    "generic wrapper over a cause with no message",
+                    KubernetesClientException("An error has occurred.", java.net.SocketTimeoutException()),
+                    "java.net.SocketTimeoutException",
                 ),
                 Arguments.of("client exception with no cause", KubernetesClientException("forbidden"), "forbidden"),
                 Arguments.of(

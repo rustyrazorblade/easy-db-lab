@@ -140,12 +140,13 @@ val servicesModule =
         factoryOf(::JournaldOtelManifestBuilder)
         factoryOf(::OtelManifestBuilder)
         factoryOf(::OtelHostCollectorManifestBuilder)
-        factoryOf(::PyroscopeManifestBuilder)
+        // Explicit lambdas: factoryOf would resolve the defaulted StoreBlockRenderer through Koin, which binds none.
+        factory { PyroscopeManifestBuilder(get()) }
         factoryOf(::RegistryManifestBuilder)
         factoryOf(::S3ManagerManifestBuilder)
-        factoryOf(::TempoManifestBuilder)
-        factoryOf(::MimirManifestBuilder)
-        factoryOf(::LokiManifestBuilder)
+        factory { TempoManifestBuilder(get()) }
+        factory { MimirManifestBuilder(get()) }
+        factory { LokiManifestBuilder(get()) }
         factoryOf(::YaceManifestBuilder)
         factoryOf(::KubeStateMetricsManifestBuilder)
         factoryOf(::DefaultGrafanaDeployService) bind GrafanaDeployService::class
@@ -163,34 +164,13 @@ val servicesModule =
         factory { ConfigChangeReport(get<K8sService>(), get()) }
         factory { TenantDirectory(get()) }
         factory<TestDocumentService> { DefaultTestDocumentService(get()) }
-        // Explicit factory: the constructor has more parameters than factoryOf supports (22).
-        factory<ObservabilityStackService> {
-            DefaultObservabilityStackService(
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-                get(),
-            )
-        }
+        factoryOf(::ObservabilityDeployInputs)
+        factoryOf(::CoreCollectorManifests)
+        factoryOf(::CollectorAgentManifests)
+        factoryOf(::BackendManifests)
+        factoryOf(::ObservabilityStageManifests)
+        factoryOf(::GrafanaStage)
+        factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<GrafanaAnnotationBackupService> {
             DefaultGrafanaAnnotationBackupService(get(), get(), get())

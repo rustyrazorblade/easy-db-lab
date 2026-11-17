@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
-import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -25,12 +24,15 @@ import com.rustyrazorblade.easydblab.services.ConfigChangeReport
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
 import com.rustyrazorblade.easydblab.services.GrafanaDeployService
+import com.rustyrazorblade.easydblab.services.GrafanaStage
 import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.ObservabilityDeployInputs
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TenantDirectory
+import com.rustyrazorblade.easydblab.services.realStageManifests
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -108,26 +110,10 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                         get(),
                         get(),
                         get(),
+                        ObservabilityDeployInputs(get(), get(), get()),
+                        realStageManifests(getKoin(), get()),
+                        GrafanaStage(get(), DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore()))),
                         get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        get(),
-                        DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore())),
-                        get(),
-                        getKoin().get<ProfileRegion>(),
                     )
                 }
             },

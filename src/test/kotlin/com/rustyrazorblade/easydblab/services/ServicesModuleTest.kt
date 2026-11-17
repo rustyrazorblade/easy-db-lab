@@ -86,4 +86,31 @@ class ServicesModuleTest {
             app.close()
         }
     }
+
+    /**
+     * The stack service is assembled by a builder, so a collaborator the module forgets to set fails
+     * only when the service is built: this resolves it from the production modules.
+     */
+    @Test
+    fun `the production modules build ObservabilityStackService with every collaborator set`(
+        @TempDir tempDir: File,
+    ) {
+        val context = TestContextFactory.createTestContext(tempDir, workingDirectory = tempDir)
+        val app =
+            koinApplication {
+                allowOverride(true)
+                modules(
+                    KoinModules.getAllModules() +
+                        module {
+                            single<Context> { context }
+                            single<SSHConnectionProvider> { mock() }
+                        },
+                )
+            }
+        try {
+            assertThat(app.koin.get<ObservabilityStackService>()).isInstanceOf(DefaultObservabilityStackService::class.java)
+        } finally {
+            app.close()
+        }
+    }
 }

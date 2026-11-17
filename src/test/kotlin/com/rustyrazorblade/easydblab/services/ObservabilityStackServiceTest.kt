@@ -180,28 +180,12 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     private fun serviceWith(contractSource: ClusterContractSource): DefaultObservabilityStackService =
         DefaultObservabilityStackService(
             mockK8sService,
-            mockK8sClientProvider,
             mockRemoteOps,
-            mockClusterStateManager,
             getKoin().get(),
-            mockDashboardService,
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
-            getKoin().get(),
+            ObservabilityDeployInputs(mockClusterStateManager, contractSource, getKoin().get<ProfileRegion>()),
+            realStageManifests(getKoin(), mockK8sClientProvider),
+            GrafanaStage(mockDashboardService, DashboardInstallContextFactory(sharedStoreTenants())),
             ConfigChangeReport(mockK8sService, getKoin().get()),
-            DashboardInstallContextFactory(sharedStoreTenants()),
-            contractSource,
-            getKoin().get<ProfileRegion>(),
         )
 
     /** The capabilities the service under test sees; AWS unless a test declares otherwise. */

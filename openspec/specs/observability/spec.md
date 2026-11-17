@@ -296,7 +296,7 @@ The system SHALL run the OTel collector as two DaemonSets. The **core** collecto
 
 - **GIVEN** an environment that has `PRIVILEGED`
 - **WHEN** the host add-on, on the host network, scrapes Beyla, ebpf_exporter or the Cilium agent and Hubble
-- **THEN** it scrapes them at `localhost:<port>` on its own node, as before the `otel-collector` Service existed
+- **THEN** it scrapes them at `localhost:<port>` on its own node
 - **AND** the `instance` label is `<node>:<port>`
 
 #### Scenario: Node identity comes from the node name

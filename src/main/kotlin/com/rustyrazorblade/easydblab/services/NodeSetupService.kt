@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.installFile
+import com.rustyrazorblade.easydblab.shellQuote
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -142,7 +143,7 @@ class NodeSetupService(
     fun readRegion(host: Host): String = ImdsRegion.parse(remoteOps.executeRemotely(host, ImdsRegion.COMMAND).text)
 
     private fun common(host: Host) {
-        remoteOps.executeRemotely(host, "sudo hostnamectl set-hostname ${host.alias}").text
+        remoteOps.executeRemotely(host, "sudo hostnamectl set-hostname ${host.alias.shellQuote()}").text
         runSetupScript(host)
     }
 

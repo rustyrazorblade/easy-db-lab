@@ -19,7 +19,7 @@ import java.io.File
  * `KIT_STORAGE_CLASS` and `KIT_STORAGE_SIZE` come from the environment's [KitStorage]: a kit's claims
  * name the class, and a kit's size arg defaults to `${KIT_STORAGE_SIZE}`.
  *
- * The role variables (`DB_NODE_SELECTOR`, `APP_NODE_SELECTOR`, `*_NODE_LABELS`, `DB_NODE_COUNT`,
+ * The role variables (`DB_NODE_SELECTOR`, `APP_NODE_SELECTOR`, `DB_AFFINITY`, `*_NODE_LABELS`, `DB_NODE_COUNT`,
  * `APP_NODE_COUNT`) come from [placement]. Kit installs and kit processes pass one built by
  * [RoleNodes] from the Kubernetes API; the default counts the hosts `state.json` records.
  *

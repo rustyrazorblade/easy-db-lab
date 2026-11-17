@@ -38,6 +38,15 @@ class KitPlacementVariablesTest {
     }
 
     @Test
+    fun `the db affinity names the selector only when the role is constrained`() {
+        val anywhere = KitPlacementVariables(RoleSelectors.ANYWHERE, dbNodeCount = 1, appNodeCount = 1).toMap()
+        val owned = KitPlacementVariables(RoleSelectors.OWNED_NODES, dbNodeCount = 1, appNodeCount = 1).toMap()
+
+        assertThat(anywhere["DB_AFFINITY"]).isEqualTo("{}")
+        assertThat(owned["DB_AFFINITY"]).isEqualTo("""{"nodeSelector":{"type":"db"}}""")
+    }
+
+    @Test
     fun `a mapped role publishes its own labels`() {
         val selectors = RoleSelectors.ANYWHERE.copy(db = NodeSelector(mapOf("pool" to "databases", "zone" to "a")))
 

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 
@@ -24,6 +25,7 @@ data class KitPlacementVariables(
     fun toMap(): Map<String, String> =
         mapOf(
             "DB_NODE_SELECTOR" to selectors.db.toJson(),
+            "DB_AFFINITY" to cnpgAffinity(selectors.db),
             "APP_NODE_SELECTOR" to selectors.app.toJson(),
             "DB_NODE_LABELS" to selectors.db.toLabelSelector(),
             "APP_NODE_LABELS" to selectors.app.toLabelSelector(),
@@ -33,6 +35,15 @@ data class KitPlacementVariables(
         )
 
     companion object {
+        /**
+         * A CNPG `Cluster` `affinity` for [selector]: `{"nodeSelector":{...}}`, or `{}` when it
+         * constrains nothing. CNPG restarts an instance whose pod's nodeSelector differs from the
+         * Cluster's, and the API server stores an empty map on a pod as no map, so a Cluster that
+         * names an empty `nodeSelector` restarts its instance on every reconcile.
+         */
+        private fun cnpgAffinity(selector: NodeSelector): String =
+            if (selector.labels.isEmpty()) "{}" else """{"nodeSelector":${selector.toJson()}}"""
+
         /**
          * The placement with counts taken from the hosts `state.json` records. Only for callers
          * that cannot reach the Kubernetes API (help text at startup); every kit install and kit

@@ -354,6 +354,7 @@ All scripts and shell steps receive the following environment variables:
 | `APP_NODE_IPS` | Comma-separated private IPs of app nodes |
 | `DB_NODE_LABELS`, `APP_NODE_LABELS`, `CONTROL_NODE_LABELS` | The role's node label selector (`type=db` on the nodes easy-db-lab builds, the `init --role-nodes` mapping, or empty when the role runs on any node). Pass it to `kubectl get nodes -l` only when it is not empty |
 | `DB_NODE_SELECTOR`, `APP_NODE_SELECTOR` | The same selector as a JSON map for a pod's `nodeSelector` (`{"type":"db"}`, or `{}` when unconstrained). Templates take `__DB_NODE_SELECTOR__` / `__APP_NODE_SELECTOR__` |
+| `DB_AFFINITY` | A CNPG `Cluster` `affinity` for the db role: `{"nodeSelector":{...}}`, or `{}` when unconstrained. CNPG restarts an instance on every reconcile when the Cluster names an empty `nodeSelector`, so the postgres kit uses `affinity: __DB_AFFINITY__` instead of `__DB_NODE_SELECTOR__` |
 | `BUCKET_NAME` | S3 data bucket name |
 | `ACCOUNT_BUCKET` | S3 account-level bucket name |
 | `REGION` | AWS region |

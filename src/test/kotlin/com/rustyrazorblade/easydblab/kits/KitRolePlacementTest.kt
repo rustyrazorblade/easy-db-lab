@@ -66,8 +66,14 @@ class KitRolePlacementTest : BaseKoinTest() {
         template: String,
         roles: List<ServerType>,
     ) {
-        assertThat(placements(kit, template, RoleSelectors.ANYWHERE).selectors)
-            .isEqualTo(roles.map { emptyMap<String, String>() })
+        val selectors = placements(kit, template, RoleSelectors.ANYWHERE).selectors
+        when (kit) {
+            // CNPG compares the Cluster's nodeSelector with its pod's, and the API server drops an
+            // empty map from the pod: an empty selector there differs forever and restarts the
+            // instance on every reconcile. An unconstrained Cluster names no nodeSelector at all.
+            "postgres" -> assertThat(selectors).isEmpty()
+            else -> assertThat(selectors).isEqualTo(roles.map { emptyMap<String, String>() })
+        }
     }
 
     /** The `nodeSelector` maps of a rendered document, in document order, and its node affinities. */

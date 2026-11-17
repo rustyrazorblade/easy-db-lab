@@ -48,18 +48,27 @@ edl_resource_name() {
   printf '%s-%s-%s\n' "${KIT_NAME}" "$1" "$(date +%s)"
 }
 
-# Fails, naming kit $1, when the cluster has no node labelled type=app.
+# Fails, naming kit $1, when no node matches the app role: APP_NODE_LABELS, a label selector, or any
+# schedulable node when it is empty (an unconstrained app role).
 edl_require_app_node() {
-  local nodes
-  nodes="$(kubectl get nodes -l type=app -o name)" || edl_fail "Could not list the cluster's app nodes"
-  [ -n "${nodes}" ] || edl_fail "$1 needs an app node (type=app); this cluster has none"
+  local nodes labels="${APP_NODE_LABELS:-}"
+  if [ -n "${labels}" ]; then
+    nodes="$(kubectl get nodes -l "${labels}" -o name)" || edl_fail "Could not list the cluster's app nodes"
+  else
+    nodes="$(kubectl get nodes -o name)" || edl_fail "Could not list the cluster's nodes"
+    labels="any node"
+  fi
+  [ -n "${nodes}" ] || edl_fail "$1 needs an app node (${labels}); this cluster has none"
 }
 
-# Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: the pod runs on an
-# app node and, when the three arguments are given, mounts ConfigMap $1 at path $2 in container $3.
-# kubectl run names the container after the pod, so $3 is the pod name.
+# Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: the pod runs on a
+# node of the app role (APP_NODE_SELECTOR, a JSON map; {} when unconstrained) and, when the three
+# arguments are given, mounts ConfigMap $1 at path $2 in container $3. kubectl run names the
+# container after the pod, so $3 is the pod name.
 edl_pod_overrides() {
-  local placement='"nodeSelector":{"type":"app"}'
+  local selector="${APP_NODE_SELECTOR:-}"
+  [ -n "${selector}" ] || selector='{}'
+  local placement="\"nodeSelector\":${selector}"
   case "$#" in
     0)
       printf '{"spec":{%s}}\n' "${placement}"
@@ -274,28 +283,42 @@ edl_push_gauges() {
     sep=","
     if [ "$#" -ge 2 ]; then shift 2; else shift; fi
   done
-  if ! control="$(kubectl get nodes "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -l node-role.kubernetes.io/control-plane -o 'jsonpath={.items[0].metadata.name}' 2> /dev/null)"; then
+  # The control role's node, by CONTROL_NODE_LABELS. With no control selector, or no node matching
+  # it, there is no control node to pin to: the push takes the first Running core pod by name,
+  # which stays the same between pushes, so one gauge stays one series.
+  control=""
+  if [ -n "${CONTROL_NODE_LABELS:-}" ] &&
+    ! control="$(kubectl get nodes "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -l "${CONTROL_NODE_LABELS}" -o 'jsonpath={.items[0].metadata.name}' 2> /dev/null)"; then
     failure=": could not find the control node"
-  elif [ -z "${control}" ]; then
-    failure=": the cluster has no control node (node-role.kubernetes.io/control-plane)"
-  elif ! pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
-    "--field-selector=status.phase=Running,spec.nodeName=${control}" \
-    -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)"; then
-    failure=": could not list the otel-collector pods on control node ${control}"
+  elif [ -n "${control}" ]; then
+    pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
+      "--field-selector=status.phase=Running,spec.nodeName=${control}" \
+      -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)" ||
+      failure=": could not list the otel-collector pods on control node ${control}"
+  else
+    pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
+      "--field-selector=status.phase=Running" \
+      -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)" ||
+      failure=": could not list the otel-collector pods"
+    pods="$(printf '%s\n' "${pods}" | sort)"
   fi
   # The core collector tolerates every taint, so the control node always runs a core pod, and that
   # pod stamps host.name=control0. While it is Pending (a rollout, a slow image pull) the pod list
   # above has nothing Running there: the push warns and skips, and the kit runs on.
   if [ -z "${failure}" ]; then
-    # During a rolling update the control node can run two core pods; both stamp control0. A pod
-    # being deleted is still Running until it stops, so the first one with no deletionTimestamp.
+    # During a rolling update a node can run two core pods; both stamp the same node. A pod being
+    # deleted is still Running until it stops, so the first one with no deletionTimestamp.
     while read -r name deleting; do
       if [ -n "${name}" ] && [ -z "${deleting}" ]; then
         pod="${name}"
         break
       fi
     done <<< "${pods}"
-    [ -n "${pod}" ] || failure=": no running otel-collector pod on control node ${control}"
+    if [ -z "${pod}" ] && [ -n "${control}" ]; then
+      failure=": no running otel-collector pod on control node ${control}"
+    elif [ -z "${pod}" ]; then
+      failure=": no running otel-collector pod"
+    fi
   fi
   if [ -z "${failure}" ]; then
     EDL_PUSH_SAVED_TRAPS="$(trap -p INT TERM)"

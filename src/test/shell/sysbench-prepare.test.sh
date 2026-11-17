@@ -45,7 +45,7 @@ start_test() {
 run_script() {
   (
     cd "${WORK}" &&
-      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 KIT_NAME=sysbench-tidb KUBECONFIG="${WORK}/kubeconfig" \
+      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" APP_NODE_LABELS=type=app APP_NODE_SELECTOR='{"type":"app"}' CONTROL_NODE_LABELS=type=control EDL_POLL_SECONDS=0 KIT_NAME=sysbench-tidb KUBECONFIG="${WORK}/kubeconfig" \
         TARGET_MYSQL_HOST=10.0.0.9 TARGET_MYSQL_PORT=4000 TARGET_MYSQL_USER=root TARGET_MYSQL_DATABASE=sbtest \
         WORKLOAD=oltp_read_write SCALE=10 TABLES=10 \
         "${BASH}" "${WORK}/kit/bin/prepare.sh"

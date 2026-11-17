@@ -6,7 +6,8 @@
 # write_kit_stubs <stub-dir> writes the stubs once. They read and record everything under
 # ${STUB_STATE}, which reset_kit_stub_state empties for each test:
 #
-#   app-nodes         what `kubectl get nodes -l type=app -o name` prints (absent: no app node)
+#   app-nodes         what `kubectl get nodes -l <APP_NODE_LABELS> -o name` prints (absent: no app node)
+#   all-nodes         what `kubectl get nodes -o name`, with no selector, prints (absent: no node)
 #   pods              "<name> <phase>" lines that `kubectl get pods -l ... --field-selector` filters
 #   state.<key>       the states `kubectl get pod <name>` reports, one line per call, the last one
 #                     repeating, for the first pod whose name holds <key> (state.default otherwise):
@@ -17,8 +18,8 @@
 #   proxy-fail        present: `kubectl proxy` prints an error to stderr and exits 1 without serving
 #   proxy-hold        present: `kubectl proxy` keeps running after its banner, as the real one
 #                     does, and writes its PID to proxy.pid
-#   control-nodes     what `kubectl get nodes -l node-role.kubernetes.io/control-plane` prints
-#                     (absent: control0)
+#   control-nodes     what the gauge push's `kubectl get nodes -l <CONTROL_NODE_LABELS> -o jsonpath=...`
+#                     prints (absent: control0)
 #   core-pods         "<pod> <node> [<deletionTimestamp>]" lines, the Running core collector pods
 #                     `kubectl get pods -l app.kubernetes.io/name=otel-collector` filters by
 #                     spec.nodeName and prints as "<name> <deletionTimestamp>" lines (absent: one
@@ -78,12 +79,13 @@ case "$1" in
     case "$2" in
       nodes)
         case " $* " in
-          *" node-role.kubernetes.io/control-plane "*)
+          *" jsonpath="*)
             if [ -f "${S}/control-nodes" ]; then cat "${S}/control-nodes"; else printf 'control0'; fi
             exit 0
             ;;
+          *" -l "*) cat "${S}/app-nodes" 2>/dev/null; exit 0 ;;
+          *) cat "${S}/all-nodes" 2>/dev/null; exit 0 ;;
         esac
-        cat "${S}/app-nodes" 2>/dev/null; exit 0
         ;;
       pods)
         case " $* " in

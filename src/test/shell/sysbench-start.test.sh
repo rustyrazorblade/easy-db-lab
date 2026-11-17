@@ -41,6 +41,7 @@ start_test() {
   current_test="$1"
   tests_run=$((tests_run + 1))
   reset_kit_stub_state
+  APP_LABELS=type=app APP_SELECTOR='{"type":"app"}' CONTROL_LABELS=type=control
   echo "node/app0" > "${STUB_STATE}/app-nodes"
   printf '%s\n' "Running|||" "Succeeded|||0" > "${STUB_STATE}/state.default"
   cat > "${WORK}/sysbench.log" <<'EOF'
@@ -62,7 +63,7 @@ EOF
 run_script() {
   (
     cd "${WORK}" &&
-      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 KIT_NAME=sb1 KUBECONFIG="${WORK}/kubeconfig" \
+      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 KIT_NAME=sb1 APP_NODE_LABELS="${APP_LABELS}" APP_NODE_SELECTOR="${APP_SELECTOR}" CONTROL_NODE_LABELS="${CONTROL_LABELS}" KUBECONFIG="${WORK}/kubeconfig" \
         CONTROL_HOST_PRIVATE=10.0.0.5 \
         TARGET_PG_HOST=10.0.0.9 TARGET_PG_PORT=5432 TARGET_PG_USER=u TARGET_PG_DATABASE=d \
         WORKLOAD=oltp_read_write THREADS=4 DURATION=20 RATE=0 SKIP_TRX=off RAND_TYPE=special \
@@ -112,6 +113,14 @@ test_the_run_pod_is_pinned_to_an_app_node() {
   run_call | grep -Fq -- "--labels=easydblab/kit=sb1,easydblab/role=sysbench-run" || fail "labels: $(run_call)"
   run_call | grep -Fq -- "--override-type=strategic" || fail "no strategic merge: $(run_call)"
   [ "$(jq -r '.spec.nodeSelector.type' "${STUB_STATE}/overrides.1")" = app ] || fail "overrides: $(cat "${STUB_STATE}/overrides.1" 2>/dev/null)"
+}
+
+test_an_unconstrained_app_role_runs_the_pod_on_any_node() {
+  start_test "unconstrained app role"
+  APP_LABELS="" APP_SELECTOR="{}" CONTROL_LABELS=""
+  echo "node/worker0" > "${STUB_STATE}/all-nodes"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  [ "$(jq -c '.spec.nodeSelector' "${STUB_STATE}/overrides.1")" = "{}" ] || fail "nodeSelector not empty: $(cat "${STUB_STATE}/overrides.1" 2>/dev/null)"
 }
 
 test_no_app_node_runs_no_pod() {
@@ -195,6 +204,7 @@ test_pushes_otlp_json_to_the_collector
 test_pushes_interval_and_run_figures_labelled_with_the_kit
 test_a_repeated_stream_does_not_repeat_the_summary_or_the_histogram
 test_the_run_pod_is_pinned_to_an_app_node
+test_an_unconstrained_app_role_runs_the_pod_on_any_node
 test_no_app_node_runs_no_pod
 test_a_pod_failed_on_the_first_poll_reports_the_exit_code
 test_a_pull_error_fails_fast

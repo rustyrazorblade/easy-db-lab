@@ -51,7 +51,7 @@ run_prepare() {
   (
     cd "${WORK}" &&
       env PATH="${WORK}/stubs:${PATH}" KIT_NAME="${INSTANCE}" KUBECONFIG="${WORK}/kubeconfig" CONTROL_HOST_PRIVATE=10.0.0.5 \
-        EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 TARGET=clickhouse VERSION=25.4 \
+        EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 TARGET=clickhouse APP_NODE_LABELS=type=app APP_NODE_SELECTOR='{"type":"app"}' CONTROL_NODE_LABELS=type=control VERSION=25.4 \
         TARGET_NATIVE_HOST=10.0.1.5 TARGET_NATIVE_PORT=30900 TARGET_NATIVE_USER=default TARGET_NATIVE_DATABASE=default \
         TARGET_HTTP_URL=http://10.0.1.5:30123 \
         WORKLOAD=clickbench SOURCE= STORAGE_POLICY=default RECREATE=false \

@@ -78,10 +78,20 @@ class ClientNetworksTest {
     }
 
     @Test
-    fun `a probed value that is not an IPv4 network is skipped`() {
+    fun `a probed IPv6 network of a dual-stack node is skipped`() {
         val nodes = listOf(ProbedNode(podCidrs = listOf("fd00::/64", "10.244.1.0/24"), internalIps = listOf("fd00::5")))
 
         assertThat(ClientNetworks.probed(nodes, emptyList()).cidrs.map { it.value }).containsExactly("10.244.1.0/24")
+    }
+
+    @Test
+    fun `a probed value that is neither IPv4 nor IPv6 is refused, naming it and the option`() {
+        val nodes = listOf(ProbedNode(podCidrs = listOf("10.244.1.0/24"), internalIps = listOf("10.0.0.300")))
+
+        assertThatThrownBy { ClientNetworks.probed(nodes, emptyList()) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("10.0.0.300")
+            .hasMessageContaining(ClientNetworks.OPTION)
     }
 
     @Test

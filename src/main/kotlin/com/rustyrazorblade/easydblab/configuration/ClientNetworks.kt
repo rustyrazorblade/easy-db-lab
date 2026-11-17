@@ -38,11 +38,11 @@ data class ClientNetworks(
                         listOf(state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR, Constants.K3s.CLUSTER_CIDR) +
                             state.extraClientNetworks
                     )
-            return ClientNetworks(values.map(::recorded).distinct())
+            return ClientNetworks(values.map(::parseRecorded).distinct())
         }
 
         /** A network `state.json` records; a value that does not parse was edited by hand or a bad [OPTION]. */
-        private fun recorded(value: String): Ipv4Cidr =
+        private fun parseRecorded(value: String): Ipv4Cidr =
             Ipv4Cidr.parse(value).getOrElse { cause ->
                 throw IllegalStateException(
                     "state.json records client network '$value', which is not an IPv4 network (${cause.message}). " +
@@ -54,22 +54,37 @@ data class ClientNetworks(
         /**
          * The networks of a cluster easy-db-lab did not build: each node's pod CIDRs and its
          * InternalIP as a /32, then [overrides] (for a CNI that gives pods node-network addresses),
-         * each once. A value that is not an IPv4 network is skipped.
+         * each once. An IPv6 value (a dual-stack node reports both families) is skipped; any other
+         * value that is not an IPv4 network means the probe read something wrong, and fails.
          *
-         * @throws IllegalArgumentException when no network is found, naming [OPTION].
+         * @throws IllegalArgumentException when a value is neither IPv4 nor IPv6, or no network is
+         * found, naming [OPTION].
          */
         fun probed(
             nodes: List<ProbedNode>,
             overrides: List<Ipv4Cidr>,
         ): ClientNetworks {
             val found =
-                nodes.flatMap { node -> node.podCidrs + node.internalIps }.mapNotNull { Ipv4Cidr.parse(it).getOrNull() }
+                nodes
+                    .flatMap { node -> node.podCidrs + node.internalIps }
+                    .filterNot { it.contains(':') }
+                    .map(::parseProbed)
             val cidrs = (found + overrides).distinct()
             require(cidrs.isNotEmpty()) {
                 "No client network found: the nodes report no IPv4 pod CIDR or InternalIP. Give one with $OPTION <cidr>."
             }
             return ClientNetworks(cidrs)
         }
+
+        /** A pod CIDR or InternalIP a node reports; one that is not IPv4 or IPv6 was misread. */
+        private fun parseProbed(value: String): Ipv4Cidr =
+            Ipv4Cidr.parse(value).getOrElse { cause ->
+                throw IllegalArgumentException(
+                    "A node reports client network '$value', which is not an IPv4 network (${cause.message}). " +
+                        "Give the networks with $OPTION <cidr>.",
+                    cause,
+                )
+            }
     }
 }
 

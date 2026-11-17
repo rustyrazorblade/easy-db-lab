@@ -199,7 +199,11 @@ class CiliumServiceTest : BaseKoinTest() {
      */
     @Test
     fun `start-k3s scripts link the K3s-bundled portmap plugin into the default CNI bin dir`() {
-        listOf("start-k3s-server.sh", "start-k3s-agent.sh").forEach { name ->
+        // Each script's line that starts its K3s service; the agent starts, or on a retry restarts, without blocking.
+        mapOf(
+            "start-k3s-server.sh" to "systemctl start k3s",
+            "start-k3s-agent.sh" to "systemctl \"\$MODE\" --no-block k3s-agent",
+        ).forEach { (name, start) ->
             val scriptPath = "/com/rustyrazorblade/easydblab/services/$name"
             val script =
                 javaClass.getResourceAsStream(scriptPath)?.bufferedReader()?.readText()
@@ -209,9 +213,11 @@ class CiliumServiceTest : BaseKoinTest() {
             assertThat(link)
                 .describedAs(name)
                 .isEqualTo("ln -sfn /var/lib/rancher/k3s/data/cni/portmap /opt/cni/bin/portmap")
-            assertThat(script.indexOf(link))
+            val startsAt = script.lines().indexOfFirst { it.trim() == start }
+            assertThat(startsAt).describedAs("$name starts K3s with: $start").isNotNegative()
+            assertThat(script.lines().indexOfFirst { it.trim() == link })
                 .describedAs("$name links portmap before starting K3s")
-                .isLessThan(script.indexOf("systemctl start"))
+                .isLessThan(startsAt)
         }
     }
 

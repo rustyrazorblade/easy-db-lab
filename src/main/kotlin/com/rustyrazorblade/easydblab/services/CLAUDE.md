@@ -187,4 +187,30 @@ The on-demand Cassandra install (#1130). The CLI resolves everything; the node s
 - `ReleaseLines` is the release-line JDK table (`cassandra/release-lines.yaml`), the last layer of the JDK choice.  Its `build_java` is the JDK a cassandra-builds nightly of the line is compiled on; a nightly with no manifest runs only on that JDK and newer, and `ReleaseLinesBuildPlanTest` checks it against `.github/cassandra-image/resolve-build-plan.sh`.
 - `CassandraInstaller` plans each node's action (download, present, refused) with no change, runs `install-cassandra-version` in parallel, records each node's outcome and runs `use-cassandra`. A node that would download a URL whose credential the record redacted is refused with the `--reinstall --url` to run.
 - `AxonOpsAgents` installs the agent for each node's release and JDK and writes the systemd drop-in: at `cassandra start`, and after `cassandra use` on a node whose last start loaded an agent.
-- `CassandraNodeRestorer` puts a replaced node back on its active version (design D7); its caller applies the config. Nothing calls it yet: issue 1158 wires it into `up`.
+- `CassandraNodeRestorer` puts a replaced node back on its active version (design D7); its caller applies the config. Nothing calls it yet: a follow-up wires it into the `up` replacement path.
+
+## Per-Node Bring-Up (`bringup/`)
+
+`up` brings every node up through its own pipeline (`NodeBringUp`), not one phase at a time across
+the cluster. The user-facing behaviour is in `docs/user-guide/large-clusters.md`; the decisions are
+in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
+
+- **Ports**: `NodeSteps`, `ControlNodeSteps`, `ControlPlaneConnection`, `NodeTracker` and
+  `HealthSampler` (`BringUpPorts.kt`), `InstanceTracker` and `InstanceFleet`. `NodeBringUp`, `NodePipeline`, `ControlPipeline` and
+  `NodeReplacer` see only these. Files directly in `bringup/` import no `providers.aws.*` or
+  `services.aws.*` and nothing K3s- or Cilium-specific.
+- **Adapters**: the EC2 ones (`Ec2InstanceFleet`, `Ec2InstanceStateWatcher`, and `Ec2K3sBringUp`,
+  which assembles the port set) are in `bringup/aws/`; the K3s and Cilium ones (`K3sNodeSteps`,
+  `K3sControlSteps`, `Fabric8ControlPlaneConnector`, `Fabric8ControlPlaneReader`, `NodeWatcher`,
+  `NodeCleanup`, `ControlPlaneSampler`) are in `bringup/k3s/`. A second provider
+  adds its own adapter package; it never changes the ports.
+- **Coordination**: one virtual thread per node. Shared limits are in `Limiters.kt` (join slots,
+  SSH sessions); the workspace files, the registry certificate and the open control plane
+  (released by the gate) are latches in `BringUpRun`. Use `ReentrantLock`, not `synchronized`, so a virtual thread never pins.
+- **Failure**: `StepRunner` retries only an `AttemptFailed`; a node step that still fails goes to
+  `NodeReplacer` (budget in `ReplacementBudget`). Control steps are retried and never replaced:
+  `ControlNodeFailedException`. `ClusterStateWriter` is the only writer of hosts to `state.json`
+  during bring-up.
+- **Tests**: `src/test/.../services/bringup/BringUpFakes.kt` and `FakeInstanceFleet` drive every
+  pipeline without SSH or AWS; `UpTestFixture` wires the real `K3sBringUpSteps` over a fake
+  `RemoteOperationsService` with fake tracker, fleet and control plane.

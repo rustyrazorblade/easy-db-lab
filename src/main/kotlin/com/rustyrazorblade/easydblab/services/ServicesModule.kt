@@ -32,6 +32,7 @@ import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
@@ -40,15 +41,23 @@ import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
+import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2InstanceStateWatcher
+import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2K3sBringUp
+import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneConnector
+import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
+import com.rustyrazorblade.easydblab.services.bringup.k3s.Fabric8ControlPlaneConnector
+import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
 import com.rustyrazorblade.easydblab.services.cassandraversions.AxonOpsAgents
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraNodeRestorer
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraVersionResolver
 import com.rustyrazorblade.easydblab.services.cassandraversions.DefaultVersionSources
 import com.rustyrazorblade.easydblab.services.cassandraversions.VersionSources
-import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DefaultDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -70,6 +79,7 @@ val servicesModule =
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
         factoryOf(::DefaultCassandraProfilingService) bind CassandraProfilingService::class
+        factoryOf(::NodeSetupService)
         // Singleton: CiliumService records the install window on it during K3s bring-up and `up`
         // posts the annotations later, after Grafana is deployed, so the state must be shared.
         single { CiliumInstallAnnotator(get(), get()) }
@@ -155,7 +165,7 @@ val servicesModule =
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factory { ConfigChangeReport(get<K8sNamespaceOperations>(), get()) }
         factory { TenantDirectory(get()) }
-        factory<TestDocumentService> { DefaultTestDocumentService(get()) }
+        factory<DocumentService> { DefaultDocumentService(get()) }
         factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<GrafanaAnnotationBackupService> {
@@ -274,6 +284,24 @@ val servicesModule =
                 get<EventBus>(),
                 get<ClusterBackupService>(),
             )
+        }
+
+        // `up`'s per-node bring-up (design D12): the K3s steps over SSH and fabric8, and the EC2
+        // instance tracker and fleet. Each `up` gets a new tracker from the factory lambda.
+        single<ControlPlaneConnector> { Fabric8ControlPlaneConnector(get()) }
+        factory {
+            K3sBringUpSteps(
+                get<RemoteOperationsService>(),
+                get<NodeSetupService>(),
+                get<CiliumNodeImageCheck>(),
+                get<RegistryService>(),
+                get<K3sClusterService>(),
+                ControlPlaneTools(get<K8sManifestOperations>(), get<CiliumService>(), get<ControlPlaneConnector>()),
+            )
+        }
+        factory<Ec2BringUpPorts> {
+            val ec2 = get<EC2InstanceService>()
+            Ec2K3sBringUp(ec2, get<LaunchCapacityPreflight>(), { Ec2InstanceStateWatcher(ec2) }, get<K3sBringUpSteps>())
         }
 
         // Cluster backup service for S3 backup/restore of cluster configuration files

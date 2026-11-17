@@ -4,15 +4,35 @@ set -euo pipefail
 
 echo "=== Starting K3s Agent ==="
 
-# Check arguments
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <server_url> <node_token>"
-    echo "Example: $0 https://10.0.1.5:6443 K10abc..."
+# "start" on the first join attempt; "restart" when up retries a join that did not register.
+MODE="${1:-start}"
+case "$MODE" in
+    start|restart) ;;
+    *)
+        echo "ERROR: unknown mode '$MODE', expected start or restart"
+        echo "Usage: $0 [start|restart]"
+        exit 1
+        ;;
+esac
+
+# The server URL and the node token come from the agent config that up writes first (mode 0600).
+# They are never passed on the command line: a remote command line reaches failure messages and
+# events, and the token must not. The token is never printed.
+AGENT_CONFIG=/etc/rancher/k3s/config.yaml
+
+# Prints the value of a top-level "key: value" line, without the quotes the YAML writer adds.
+# Prints nothing when the file or the key is missing.
+config_value() {
+    [ -r "$AGENT_CONFIG" ] || return 0
+    sed -n "s/^$1:[[:space:]]*//p" "$AGENT_CONFIG" | head -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+
+SERVER_URL="$(config_value server)"
+NODE_TOKEN="$(config_value token)"
+if [ -z "$SERVER_URL" ] || [ -z "$NODE_TOKEN" ]; then
+    echo "ERROR: $AGENT_CONFIG has no server or no token; the agent must be configured before it starts"
     exit 1
 fi
-
-SERVER_URL="$1"
-NODE_TOKEN="$2"
 
 echo "Server URL: $SERVER_URL"
 
@@ -107,8 +127,10 @@ EOF
     systemctl daemon-reload
 fi
 
-# Start the k3s-agent service
-echo "Starting k3s-agent.service..."
-systemctl start k3s-agent
+# Start (or, on a retry, restart) the k3s-agent service without waiting for it. The agent can sit
+# for minutes waiting on a busy server, and a blocking start held this SSH session for all of it
+# (#1134). `up` reads the node's registration from the K8s API instead.
+echo "Running systemctl $MODE --no-block k3s-agent..."
+systemctl "$MODE" --no-block k3s-agent
 
-echo "✓ K3s agent started successfully"
+echo "✓ K3s agent $MODE queued"

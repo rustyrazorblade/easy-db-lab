@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import java.nio.file.Path
-import java.time.Duration
 
 /**
  * Configuration for creating local persistent volumes.
@@ -102,17 +101,6 @@ interface K8sNamespaceOperations {
     fun waitForPodsReady(
         timeoutSeconds: Int,
         namespace: String,
-    ): Result<Unit>
-
-    /**
-     * Waits until every node named in [nodeNames] is registered with the cluster, listing the
-     * nodes once per poll, and fails naming the ones still missing when [timeout] passes. K3s
-     * agents label their own node when they register, so once this returns every node carries its
-     * `type` and ordinal labels.
-     */
-    fun waitForNodesRegistered(
-        nodeNames: List<String>,
-        timeout: Duration,
     ): Result<Unit>
 
     fun getNamespaceStatus(namespace: String): Result<String>

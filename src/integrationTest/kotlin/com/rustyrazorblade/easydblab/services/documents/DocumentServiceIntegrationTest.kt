@@ -18,28 +18,28 @@ import java.io.File
 import java.util.UUID
 
 /**
- * [DefaultTestDocumentService] against S3 in LocalStack: where documents land, that a document of
+ * [DefaultDocumentService] against S3 in LocalStack: where documents land, that a document of
  * the same name replaces the old one, and that the index holds every document of the test.
  *
  * Each test uses its own cluster id, so the tests share the bucket without seeing each other's
  * documents.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class TestDocumentServiceIntegrationTest {
+class DocumentServiceIntegrationTest {
     private companion object {
         private const val BUCKET = "test-documents-bucket"
     }
 
     private lateinit var s3Client: S3Client
     private lateinit var objectStore: S3ObjectStore
-    private lateinit var service: DefaultTestDocumentService
+    private lateinit var service: DefaultDocumentService
 
     @BeforeAll
     fun setup() {
         s3Client = SharedLocalStack.s3Client()
         SharedLocalStack.createBucketIfMissing(s3Client, BUCKET)
         objectStore = S3ObjectStore(s3Client, EventBus())
-        service = DefaultTestDocumentService(objectStore)
+        service = DefaultDocumentService(objectStore)
     }
 
     private fun cluster(): ClusterState =

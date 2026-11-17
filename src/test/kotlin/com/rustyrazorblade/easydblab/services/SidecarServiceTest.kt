@@ -57,7 +57,7 @@ class SidecarServiceTest : BaseKoinTest() {
                 single { mockK8sService }
                 single { mockClusterStateManager }
                 single { mockEcrClient }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
                 factoryOf(::SidecarManifestBuilder)
                 factoryOf(::DefaultSidecarService) bind SidecarService::class
             },

@@ -34,7 +34,7 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
                 single<InstallTemplateResolver> { mockResolver }
             },
         )

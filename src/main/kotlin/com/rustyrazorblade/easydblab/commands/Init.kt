@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
@@ -24,6 +25,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
 import com.rustyrazorblade.easydblab.network.CidrBlock
+import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -45,13 +47,21 @@ import kotlin.system.exitProcess
  * Initialize this directory for easy-db-lab.
  *
  * IMPORTANT: This command only sets up local configuration files and state.
- * It does NOT provision any AWS infrastructure (VPC, EC2 instances, etc.).
+ * It does NOT provision any infrastructure (VPC, EC2 instances, containers, etc.).
  *
  * Responsibilities of init:
- * - Create and configure state.json with cluster configuration
+ * - Record the execution environment in state.json, with the cluster configuration: EC2 plus K3s
+ *   by default, K3s in Docker on this machine with `--local` (and `--data-dir`)
  * - Extract resource files (manifests, scripts, etc.)
- * - Validate AWS credentials and configuration
+ * - Record the network mode in the workspace env file (direct for `--local`)
  * - Store user-provided tags for later use during provisioning
+ *
+ * It declares the environment it records ([DeclaresEnvironment]), so the executor asks for an AWS
+ * profile only for an environment that has an AWS account: `init --local` never loads the profile
+ * or builds an AWS client. `--local` refuses every AWS-only option given on the command line, and
+ * `--up`, since only EC2 plus K3s has a provisioner. Everything that can fail (option checks,
+ * capability overrides, the cluster state, including the Docker daemon's architecture) is resolved before
+ * `--clean` removes anything.
  *
  * What init does NOT do:
  * - Create VPCs (done by 'up')
@@ -78,6 +88,9 @@ class Init :
     private val commandExecutor: CommandExecutor by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
 
+    // Only init --local resolves it: the nodes are containers, so they run the Docker daemon's architecture.
+    private val dockerClientProvider: DockerClientProvider by inject()
+
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
         private const val DEFAULT_EBS_SIZE_GB = 256
@@ -90,6 +103,9 @@ class Init :
 
         /** Creates a K3s in Docker workspace on this machine. */
         const val LOCAL_OPTION = "--local"
+
+        /** Runs `up` after `init`; refused with [LOCAL_OPTION], which has no provisioner yet. */
+        const val UP_OPTION = "--up"
 
         /** Where a `--local` workspace keeps its observability data. */
         const val DATA_DIR_OPTION = "--data-dir"
@@ -122,7 +138,7 @@ class Init :
     var appCount: Int? = null
 
     @Option(
-        names = ["--up"],
+        names = [UP_OPTION],
         description = ["Start instances automatically"],
     )
     var start = false
@@ -409,7 +425,7 @@ class Init :
     override fun declaredEnvironment(): Environment =
         when (local) {
             true -> Environment.K3sDocker(resolvedDataDir())
-            false -> Environment.Ec2K3s
+            false -> Environment.DEFAULT
         }
 
     /**
@@ -431,19 +447,23 @@ class Init :
         // Parsed before anything is cleaned or written, so a bad override leaves the directory as it was.
         val capabilities = effectiveCapabilities()
 
+        if (!clean) checkExistingFiles()
+        // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker
+        // architecture) leaves the directory as it was.
+        val clusterState = buildClusterState(capabilities)
         if (clean) {
             eventBus.emit(Event.Setup.CleaningExistingConfig)
             // Execute Clean immediately with full lifecycle
             commandExecutor.execute { Clean() }
-        } else {
-            checkExistingFiles()
         }
         // After the cleanup, which removes a bin/ that holds only easy-db-lab's wrappers.
         refuseExistingBin()
 
-        val clusterState = createClusterState(capabilities)
-        // The shell-side tools learn the network mode from the env file; the recorded environment decides it.
-        ProxyEnvFile(context.workingDirectory).recordDirect(ClusterContract.of(clusterState).networkMode == NetworkMode.Direct)
+        val contract = ClusterContract.of(clusterState)
+        // The shell-side tools learn the network mode from the env file. It is written before state.json, so
+        // a failure between the two never leaves a recorded environment whose env file says otherwise.
+        ProxyEnvFile(context.workingDirectory).recordDirect(contract.networkMode == NetworkMode.Direct)
+        clusterStateManager.save(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
 
@@ -458,7 +478,7 @@ class Init :
 
         extractResourceFiles()
 
-        displayCompletionMessage(clusterState)
+        displayCompletionMessage(clusterState, contract)
         reportAbsentCapabilities(capabilities, clusterState)
 
         if (start) {
@@ -472,24 +492,38 @@ class Init :
 
     /**
      * Fails before anything is cleaned or written when an option is given without the one it needs:
-     * `--data-dir` is a usage error without `--local`, and `--local` refuses every AWS-only option
-     * given explicitly, naming each ([Event.Setup.LocalOptionsRefused]).
+     * `--data-dir` without `--local` and `--local --up` ([Event.Setup.InitOptionConflict]), and every
+     * AWS-only option given explicitly with `--local`, naming each ([Event.Setup.LocalOptionsRefused]).
      */
     private fun refuseOptionsThatNeedOtherOptions() {
         if (!local) {
-            if (dataDir != null) {
-                throw CommandLine.ParameterException(commandLine(), "$DATA_DIR_OPTION requires $LOCAL_OPTION")
-            }
+            if (dataDir != null) refuseConflict(DATA_DIR_OPTION, "requires $LOCAL_OPTION")
             return
         }
-        val refused = AwsOnlyOptions.givenIn(commandLine().parseResult)
+        // No local provisioner exists yet (#1041): `up` would refuse the workspace this just wrote.
+        if (start) refuseConflict(UP_OPTION, "cannot be used with $LOCAL_OPTION: easy-db-lab cannot provision K3s in Docker yet")
+        val refused = AwsOnlyOptions.givenIn(parseResult())
         if (refused.isEmpty()) return
         eventBus.emit(Event.Setup.LocalOptionsRefused(refused))
         throw CommandFailedException("${refused.joinToString(", ")} cannot be used with $LOCAL_OPTION")
     }
 
-    /** The command line this command was parsed by, or a new one for a command built in code. */
-    private fun commandLine(): CommandLine = spec?.commandLine() ?: CommandLine(this)
+    private fun refuseConflict(
+        option: String,
+        problem: String,
+    ): Nothing {
+        eventBus.emit(Event.Setup.InitOptionConflict(option, problem))
+        throw CommandFailedException("$option $problem")
+    }
+
+    /**
+     * What was typed, which the AWS-only refusal reads. A command built in code has none, and a new
+     * command line would report nothing given, so the refusal would pass every option: that fails here.
+     */
+    private fun parseResult(): CommandLine.ParseResult =
+        checkNotNull(spec?.commandLine()?.parseResult) {
+            "init $LOCAL_OPTION must be parsed by picocli, which records the options given; this one was built in code"
+        }
 
     private fun validateParameters() {
         require(resolvedDbCount > 0) { "Number of database instances must be positive" }
@@ -571,14 +605,16 @@ class Init :
         throw CommandFailedException("${context.workingDirectory.absolutePath} already has a bin/")
     }
 
-    private fun createClusterState(capabilities: NodeCapabilities): ClusterState {
-        val state =
-            when (val environment = declaredEnvironment()) {
-                Environment.Ec2K3s -> awsClusterState(capabilities)
-                else -> localClusterState(environment, capabilities)
-            }
-        clusterStateManager.save(state)
-        return state
+    /**
+     * The state this `init` records, not yet saved. An environment with an AWS account takes its
+     * region, Tailscale and architectures from the profile and EC2; any other reads neither.
+     */
+    private fun buildClusterState(capabilities: NodeCapabilities): ClusterState {
+        val environment = declaredEnvironment()
+        return when (NodeCapability.AWS_ACCOUNT in environment.declaredCapabilities) {
+            true -> awsClusterState(capabilities)
+            false -> localClusterState(environment, capabilities)
+        }
     }
 
     /** The state of an EC2 + K3s cluster: region and Tailscale from the profile, architectures from EC2. */
@@ -601,9 +637,12 @@ class Init :
         )
     }
 
+    private fun dockerArchitecture(): Arch = Arch.fromOsArch(dockerClientProvider.getDockerClient().serverArchitecture())
+
     /**
      * The state of a K3s in Docker workspace. It reads neither the AWS profile nor EC2: the Services
-     * are reached by a port-forward on loopback, and the nodes run this machine's architecture.
+     * are reached by a port-forward on loopback, and the nodes run the Docker daemon's
+     * architecture, which is not always this JVM's (an x86_64 JVM under Rosetta talks to an arm64 daemon).
      */
     private fun localClusterState(
         environment: Environment,
@@ -612,7 +651,7 @@ class Init :
         ClusterState(
             name = name,
             versions = mutableMapOf(),
-            initConfig = InitConfig.forLocal(init = this, hostArch = Arch.ofHost()),
+            initConfig = InitConfig.forLocal(init = this, hostArch = dockerArchitecture()),
             tailscaleActive = false,
             capabilities = capabilities.present().toSet(),
             exposure = Exposure.PortForward,
@@ -650,13 +689,15 @@ class Init :
         }
     }
 
-    private fun displayCompletionMessage(clusterState: ClusterState) {
+    private fun displayCompletionMessage(
+        clusterState: ClusterState,
+        contract: ClusterContract,
+    ) {
         val initConfig = clusterState.initConfig ?: return
-        val environment = clusterState.environment
-        if (environment is Environment.K3sDocker) {
+        contract.localDataDirectory?.let { dataDir ->
             eventBus.emit(
                 Event.Setup.LocalWorkspaceInitialized(
-                    dataDir = environment.dataDir,
+                    dataDir = dataDir,
                     dbCount = initConfig.cassandraInstances,
                     appCount = initConfig.stressInstances,
                 ),

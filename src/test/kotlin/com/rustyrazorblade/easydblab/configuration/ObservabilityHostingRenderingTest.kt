@@ -45,7 +45,7 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
                         whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "acct"))
                     }
                 }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
             },
         )
 

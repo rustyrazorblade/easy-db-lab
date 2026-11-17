@@ -3,12 +3,14 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.DockerClientInterface
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
@@ -18,6 +20,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.EnvironmentRequirements
@@ -31,6 +34,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import picocli.CommandLine
 import java.io.File
@@ -46,6 +50,9 @@ class InitLocalTest : BaseKoinTest() {
 
     private val events = mutableListOf<Event>()
 
+    /** What the Docker daemon reports as its architecture (`docker info`'s `Architecture`). */
+    private var dockerArchitecture = "x86_64"
+
     private val workspace: File get() = context.workingDirectory
     private val stateFile: File get() = File(workspace, "state.json")
 
@@ -53,10 +60,17 @@ class InitLocalTest : BaseKoinTest() {
         listOf(
             module {
                 single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
                 single { UserConfigProvider(emptyProfile) }
                 single<User> { error("init --local must not load the AWS profile") }
-                single<EC2InstanceService> { mock(defaultAnswer = { error("init --local must make no AWS call") }) }
+                // Init resolves both lazily (class-level `by inject()`); resolving either fails the test.
+                single<EC2InstanceService> { error("init --local must not build an EC2 client, which loads the profile for its region") }
+                single<DockerClientProvider> {
+                    val client = mock<DockerClientInterface> { on { serverArchitecture() } doAnswer { dockerArchitecture } }
+                    object : DockerClientProvider {
+                        override fun getDockerClient(): DockerClientInterface = client
+                    }
+                }
             },
         )
 
@@ -112,18 +126,109 @@ class InitLocalTest : BaseKoinTest() {
     }
 
     @Test
-    fun `it records port-forward exposure, no Tailscale, Flannel, no region, the host's architecture and the local set`() {
+    fun `it records port-forward exposure, no Tailscale, Flannel, no region, the Docker daemon's architecture and the local set`() {
         parsed("--local", "--capability", "host-path=false").execute()
 
         val state = state()
-        val host = Arch.ofHost().name
         assertThat(state.exposure).isEqualTo(Exposure.PortForward)
         assertThat(state.tailscaleActive).isFalse()
         assertThat(state.capabilities).containsExactlyInAnyOrder(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK)
         val initConfig = requireNotNull(state.initConfig)
         assertThat(initConfig.cni).isEqualTo(CniMode.Flannel)
         assertThat(initConfig.region).isEmpty()
-        assertThat(listOf(initConfig.dbArch, initConfig.appArch, initConfig.controlArch)).containsOnly(host)
+        // The harness's Docker daemon reports x86_64.
+        assertThat(listOf(initConfig.dbArch, initConfig.appArch, initConfig.controlArch)).containsOnly(Arch.AMD64.name)
+    }
+
+    /** These travel further than state.json: the tenant into X-Scope-OrgID, the labels into placement. */
+    @Test
+    fun `it records the node counts, tenant, node labels and telemetry redirect it was given`() {
+        parsed(
+            "--local",
+            "--db.count=4",
+            "--app.count=2",
+            "--tenant=team_a",
+            "--node-label=pool=obs",
+            "--redirect-telemetry=collector.example.com",
+        ).execute()
+
+        val initConfig = requireNotNull(state().initConfig)
+        assertThat(initConfig.cassandraInstances).isEqualTo(4)
+        assertThat(initConfig.stressInstances).isEqualTo(2)
+        assertThat(initConfig.tenant).isEqualTo("team_a")
+        assertThat(initConfig.nodeLabels).isEqualTo(mapOf("pool" to "obs"))
+        assertThat(initConfig.telemetryRedirect).isEqualTo(TelemetryRedirect.fromBaseHost("collector.example.com"))
+        val initialized = events.filterIsInstance<Event.Setup.LocalWorkspaceInitialized>().single()
+        val dataDir = File(workspace, Constants.Local.DEFAULT_DATA_DIRECTORY).absoluteFile.normalize().path
+        assertThat(initialized).isEqualTo(Event.Setup.LocalWorkspaceInitialized(dataDir = dataDir, dbCount = 4, appCount = 2))
+    }
+
+    /** No local provisioner exists yet, so `--up` would write a workspace and then fail in `up`. */
+    @Test
+    fun `--local --up is refused before anything is written`() {
+        val command = parsed("--local", "--up")
+        val before = workspace.list().orEmpty().toSortedSet()
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        val conflict = events.filterIsInstance<Event.Setup.InitOptionConflict>().single()
+        assertThat(conflict.option).isEqualTo("--up")
+        assertThat(conflict.toDisplayString())
+            .startsWith("Error: --up cannot be used with --local")
+            .endsWith("Nothing was written.")
+        assertThat(workspace.list().orEmpty().toSortedSet()).isEqualTo(before)
+    }
+
+    /** Refusal is by what was typed (picocli's parse result), never by comparing a value with its default. */
+    @Test
+    fun `an exported AMI or instance type default does not refuse --local`() {
+        val command = Init()
+        CommandLine(command).parseArgs("--local")
+        // As if EASY_DB_LAB_AMI and EASY_DB_LAB_INSTANCE_TYPE were exported: the field defaults read them.
+        command.ami = "ami-from-env"
+        command.instanceType = "r5.from-env"
+
+        command.execute()
+
+        assertThat(events.filterIsInstance<Event.Setup.LocalOptionsRefused>()).isEmpty()
+        assertThat(state().environment).isInstanceOf(Environment.K3sDocker::class.java)
+    }
+
+    @Test
+    fun `an explicit AMI equal to its default is still refused`() {
+        val command = parsed("--local", "--ami=")
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(events.filterIsInstance<Event.Setup.LocalOptionsRefused>().single().options).containsExactly("--ami")
+    }
+
+    /**
+     * The nodes are containers, so their architecture is the Docker daemon's, not this JVM's: an x86_64
+     * JVM under Rosetta on Apple Silicon reports x86_64 while Docker Desktop's VM runs arm64.
+     */
+    @Test
+    fun `the recorded architecture is the Docker daemon's, not the JVM's`() {
+        dockerArchitecture = "aarch64"
+
+        parsed("--local").execute()
+
+        val initConfig = requireNotNull(state().initConfig)
+        assertThat(listOf(initConfig.dbArch, initConfig.appArch, initConfig.controlArch)).containsOnly(Arch.ARM64.name)
+    }
+
+    @Test
+    fun `an unsupported Docker architecture fails before --clean removes anything`() {
+        parsed("--local").execute()
+        val before = workspace.list().orEmpty().toSortedSet()
+        dockerArchitecture = "sparc"
+
+        assertThatThrownBy { parsed("--local", "--clean").execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("sparc")
+
+        assertThat(workspace.list().orEmpty().toSortedSet()).isEqualTo(before)
+        assertThat(state().environment).isInstanceOf(Environment.K3sDocker::class.java)
     }
 
     @Test
@@ -213,13 +318,28 @@ class InitLocalTest : BaseKoinTest() {
         assertThat(stateFile).doesNotExist()
     }
 
+    /** Reported like the AWS-only refusal: a typed event the user reads, then a failure the executor does not print again. */
     @Test
-    fun `--data-dir without --local is a usage error`() {
+    fun `--data-dir without --local names both options and writes nothing`() {
         val command = parsed("--data-dir", "/tmp/x")
 
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        val conflict = events.filterIsInstance<Event.Setup.InitOptionConflict>().single()
+        assertThat(conflict).isEqualTo(Event.Setup.InitOptionConflict("--data-dir", "requires --local"))
+        assertThat(conflict.toDisplayString()).isEqualTo("Error: --data-dir requires --local. Nothing was written.")
+        assertThat(conflict.isError()).isTrue()
+        assertThat(stateFile).doesNotExist()
+    }
+
+    /** A command built in code has no parse result, so the AWS-only refusal could not see what was typed: it fails instead. */
+    @Test
+    fun `a --local init that was never parsed fails rather than skip the AWS-only refusal`() {
+        val command = Init().apply { local = true }
+
         assertThatThrownBy { command.execute() }
-            .isInstanceOf(CommandLine.ParameterException::class.java)
-            .hasMessageContaining("--data-dir requires --local")
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("parsed")
         assertThat(stateFile).doesNotExist()
     }
 
@@ -232,5 +352,21 @@ class InitLocalTest : BaseKoinTest() {
         parsed("--local", "--clean").execute()
 
         assertThat(File(data, "chunk")).hasContent("owner's data")
+    }
+
+    /** The owner's data: neither `clean` nor `init --clean` may remove a populated `--data-dir`, inside the workspace or not. */
+    @Test
+    fun `clean and init --clean leave a populated --data-dir untouched`() {
+        val inside = File(workspace, "obs").apply { mkdirs() }
+        File(inside, "blocks/01").apply { parentFile.mkdirs() }.writeText("metrics")
+        parsed("--local", "--data-dir", "obs").execute()
+
+        Clean().execute()
+        assertThat(File(inside, "blocks/01")).hasContent("metrics")
+        parsed("--local", "--data-dir", "obs").execute()
+        parsed("--local", "--data-dir", "obs", "--clean").execute()
+
+        assertThat(File(inside, "blocks/01")).hasContent("metrics")
+        assertThat(state().environment).isEqualTo(Environment.K3sDocker(inside.absoluteFile.normalize().path))
     }
 }

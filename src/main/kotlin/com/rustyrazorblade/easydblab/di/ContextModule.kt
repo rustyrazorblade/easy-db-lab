@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.di
 
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.ContextFactory
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
@@ -31,6 +33,9 @@ val contextModule =
 
         // Provide User configuration via UserConfigProvider
         single { get<UserConfigProvider>().getUserConfig() }
+
+        // The profile's region, loaded only when a state records no region (never in a local workspace).
+        factory<ProfileRegion> { ProfileRegion { get<User>().region } }
 
         // Provide SSH configuration from the user config provider
         single<SSHConfiguration> {

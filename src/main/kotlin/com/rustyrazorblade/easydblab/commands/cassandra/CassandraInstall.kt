@@ -37,7 +37,7 @@ import java.io.File
 @RequiresCapability(
     NodeCapability.NODE_SSH,
     NodeCapability.AWS_ACCOUNT,
-    alternative = Constants.ClusterContract.CASSANDRA_KIT_ALTERNATIVE,
+    alternative = Constants.Cassandra.KIT_ALTERNATIVE,
 )
 @Command(
     name = "install",

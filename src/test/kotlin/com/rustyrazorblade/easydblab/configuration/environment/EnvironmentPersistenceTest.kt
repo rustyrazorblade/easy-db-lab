@@ -67,6 +67,17 @@ class EnvironmentPersistenceTest {
             .hasMessageContaining("ec2-k3s, k3s-docker, kubeconfig")
     }
 
+    /** The check calls an explicit null "no environment recorded", so binding must read it the same way. */
+    @Test
+    fun `an explicit null environment reads as EC2 plus K3s, like a missing one`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{"name": "test", "versions": {}, "environment": null}""")
+
+        assertThat(ClusterStateManager(stateFile).load().environment).isEqualTo(Environment.Ec2K3s)
+    }
+
     @Test
     fun `an environment with no type is reported as missing its type, never as the value null`(
         @TempDir tempDir: File,

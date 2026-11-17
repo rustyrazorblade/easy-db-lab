@@ -61,6 +61,9 @@ class ClusterStateManager(
                 EnvironmentRecord.problem(tree.get(ENVIRONMENT_FIELD), stateFile.absolutePath)?.let { problem ->
                     throw IllegalStateException(problem)
                 }
+                // An explicit null is what `problem` accepts as "none recorded": read it as a missing
+                // field (EC2 plus K3s), which Jackson would otherwise refuse for a non-null property.
+                if (tree is ObjectNode && tree.get(ENVIRONMENT_FIELD)?.isNull == true) tree.remove(ENVIRONMENT_FIELD)
                 val initConfig = tree.get("initConfig")
                 if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
                     initConfig.put(CNI_FIELD, CniMode.Flannel.name)

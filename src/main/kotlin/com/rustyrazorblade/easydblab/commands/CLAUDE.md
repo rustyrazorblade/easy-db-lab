@@ -179,7 +179,7 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
   (the command path, the environment's display name, the missing capabilities, the `alternative`
   when not blank) and fails with `CommandFailedException`. Every AWS-only command carries
   `AWS_ACCOUNT` (`cassandra use` and `cassandra install` also `NODE_SSH`, with
-  `Constants.ClusterContract.CASSANDRA_KIT_ALTERNATIVE`). The help-only parent groups (`spark`,
+  `Constants.Cassandra.KIT_ALTERNATIVE`). The help-only parent groups (`spark`,
   `aws`, ...) are not commands the executor runs, so they carry nothing.
 - `@RequireProfileSetup` — require AWS profile configuration before execution, but only when the
   target environment has `AWS_ACCOUNT` (`services/EnvironmentRequirements`). The target is the
@@ -190,7 +190,7 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
 - **`up` and `down` provision only `Ec2K3s`.** Both call `ProvisionerGuard.require` first: in any
   other recorded environment it emits `Event.Environment.ProvisionerUnavailable` and throws
   `CommandFailedException` before the profile, the state or AWS is touched
-  (`UpTest`, `DownLocalWorkspaceTest`). A new provisioner widens `ProvisionerGuard.hasProvisioner`.
+  (`UpTest`, `DownLocalWorkspaceTest`). A new provisioner widens `ClusterContract.hasProvisioner`.
 - `@RequireSSHKey` — require SSH key to be available
 - `@RequireDocker` — require a Docker daemon to be reachable before execution
 - `@RequiresProxy` — command's execution path reaches the private K8s API (Fabric8, via

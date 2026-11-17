@@ -75,7 +75,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<ClusterStateManager>().also { whenever(it.load()).thenReturn(state) } }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
             },
         )
 

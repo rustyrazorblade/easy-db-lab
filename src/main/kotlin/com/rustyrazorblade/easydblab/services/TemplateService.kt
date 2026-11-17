@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
+import com.rustyrazorblade.easydblab.configuration.region
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
@@ -18,13 +20,16 @@ private val UNRESOLVED_VAR_PATTERN = Regex("""__([A-Z][A-Z0-9_]*)__""")
  * that perform the actual substitution. Uses Apache Commons StringSubstitutor
  * with `__` prefix/suffix to avoid conflicts with Grafana's `${var}` syntax.
  *
- * The region comes from the cluster state alone, never from the AWS profile, so rendering a
- * template never needs a profile (a local workspace has none).
+ * The region is the one the cluster state records. Only an EC2 state with no init configuration
+ * falls back to the AWS profile's ([profileRegion]); a local workspace records one, so rendering a
+ * template there never loads a profile.
  *
  * @property clusterStateManager Provides access to current cluster state
+ * @property profileRegion the region of a state that records none; loads the profile when asked
  */
 class TemplateService(
     private val clusterStateManager: ClusterStateManager,
+    private val profileRegion: ProfileRegion = ProfileRegion.NONE,
 ) {
     /**
      * Builds the variable map from current cluster state.
@@ -33,7 +38,7 @@ class TemplateService(
      */
     fun buildContextVariables(): Map<String, String> {
         val state = clusterStateManager.load()
-        val region = state.region()
+        val region = state.region(profileRegion)
         val controlHost = state.getControlHost()
         val backend = StoreBackend.from(state, region)
         val store = ObservabilityStore(backend.bucket, state.tenant(), backend.prefix)
@@ -57,7 +62,7 @@ class TemplateService(
      */
     fun storeBackend(): StoreBackend {
         val state = clusterStateManager.load()
-        return StoreBackend.from(state, state.region())
+        return StoreBackend.from(state, state.region(profileRegion))
     }
 
     /** Where the store is reached, for the build-time store fragments (Pyroscope's): only its S3 fragment reads these. */

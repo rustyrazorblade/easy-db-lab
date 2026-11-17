@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
@@ -160,6 +161,8 @@ object TestModules {
                     axonOpsKey = "",
                 )
             }
+            // As in production (contextModule): the profile's region, read from the test User when asked.
+            factory<ProfileRegion> { ProfileRegion { get<User>().region } }
 
             // Mock individual AWS SDK clients
             single { mock<IamClient>() }

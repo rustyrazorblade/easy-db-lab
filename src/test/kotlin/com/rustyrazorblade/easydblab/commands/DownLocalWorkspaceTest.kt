@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
@@ -27,7 +28,7 @@ import java.io.File
 /**
  * `down` in a K3s in Docker workspace, for which easy-db-lab has no provisioner yet: it names the
  * environment and fails before it loads the profile, saves anything or calls AWS. Every AWS-facing
- * collaborator fails the test if it is touched.
+ * collaborator, and the SOCKS tunnel service, fails the test if it is touched.
  */
 class DownLocalWorkspaceTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
@@ -39,6 +40,8 @@ class DownLocalWorkspaceTest : BaseKoinTest() {
                 single<AwsS3BucketService> { mock(defaultAnswer = { error("down must not call S3") }) }
                 single<TeardownBackupService> { mock(defaultAnswer = { error("down must not save the tail") }) }
                 single<CompactorService> { mock(defaultAnswer = { error("down must not stop the compactor") }) }
+                // As in up, the guard comes before any tunnel: down neither starts nor stops one here.
+                single<SocksProxyService> { mock(defaultAnswer = { error("down must not touch the SOCKS tunnel") }) }
             },
         )
 

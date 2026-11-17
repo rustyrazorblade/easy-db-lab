@@ -10,22 +10,32 @@ import com.rustyrazorblade.easydblab.configuration.Placement
  * Everything a consumer needs to know about the environment a cluster runs in, as capability data
  * and never as a name. [of] is the only place in main code that branches on the [Environment]
  * variant; every consumer reads a field of this instead, so a new environment adds one branch here.
+ * `EnvironmentBranchingTest` fails if any other main class tests the variant.
  *
  * It is resolved from the current state on each use (through [ClusterContractSource]), so an `init`
  * inside the REPL or the server takes effect on the next command.
  *
+ * [nodeAccessForm], [storeKind] and [namespace] are the slots #1039, #1035 and #1094 plug into; they
+ * are fixed per environment now (design D1), so those changes touch no consumer.
+ *
  * @property environment the recorded environment, for messages only.
+ * @property hasProvisioner whether `up` and `down` can provision and tear it down (#1041 adds K3s in Docker).
+ * @property localDataDirectory the directory on this machine the observability data is kept in, or
+ *   null where it is kept in the cluster's object store.
  * @property toolingForm how `helm`, `kubectl` and `cilium` run.
- * @property nodeAccessForm how commands reach a node.
- * @property storeKind where the observability backends keep their data.
+ * @property nodeAccessForm how commands reach a node (#1039).
+ * @property storeKind where the observability backends keep their data (#1035).
  * @property networkMode how this machine reaches the cluster.
  * @property nodeCapabilities the recorded capability set, or the environment's declared one.
  * @property hosting where the observability backends and Grafana run, with the `init` node labels.
- * @property namespace the namespace easy-db-lab's workloads run in.
- * @property datacenter the datacenter name the database nodes are given.
+ * @property namespace the namespace easy-db-lab's workloads run in (#1094 adds the flag).
+ * @property datacenter the datacenter name the database nodes are given; blank for an EC2 state
+ *   that records no region.
  */
 data class ClusterContract(
     val environment: Environment,
+    val hasProvisioner: Boolean,
+    val localDataDirectory: String?,
     val toolingForm: ToolingForm,
     val nodeAccessForm: NodeAccessForm,
     val storeKind: StoreKind,
@@ -45,18 +55,22 @@ data class ClusterContract(
                 Environment.Ec2K3s ->
                     ClusterContract(
                         environment = environment,
+                        hasProvisioner = true,
+                        localDataDirectory = null,
                         toolingForm = ToolingForm.Ssh,
                         nodeAccessForm = NodeAccessForm.Ssh,
                         storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Tunnel,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels),
-                        namespace = Constants.ClusterContract.OWNED_NAMESPACE,
-                        datacenter = state.region(),
+                        namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
+                        datacenter = state.initConfig?.region.orEmpty(),
                     )
                 is Environment.K3sDocker ->
                     ClusterContract(
                         environment = environment,
+                        hasProvisioner = false,
+                        localDataDirectory = environment.dataDir,
                         toolingForm = ToolingForm.Local,
                         nodeAccessForm = NodeAccessForm.ContainerExec,
                         storeKind = StoreKind.Volume,
@@ -64,20 +78,22 @@ data class ClusterContract(
                         nodeCapabilities = capabilities,
                         // The node is a container: nothing outside the pod network dials its address.
                         hosting = hosted(Placement.CONTROL_NODE.copy(publishOnNode = false), nodeLabels),
-                        namespace = Constants.ClusterContract.OWNED_NAMESPACE,
-                        datacenter = Constants.ClusterContract.LOCAL_DATACENTER,
+                        namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
+                        datacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                     )
                 is Environment.Kubeconfig ->
                     ClusterContract(
                         environment = environment,
+                        hasProvisioner = false,
+                        localDataDirectory = null,
                         toolingForm = ToolingForm.Local,
                         nodeAccessForm = NodeAccessForm.None,
                         storeKind = StoreKind.Volume,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.ANY_NODE, nodeLabels),
-                        namespace = Constants.ClusterContract.BROUGHT_NAMESPACE,
-                        datacenter = Constants.ClusterContract.LOCAL_DATACENTER,
+                        namespace = Constants.ContractDefaults.BROUGHT_NAMESPACE,
+                        datacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                     )
             }
         }

@@ -38,7 +38,7 @@
 ## 5. init --local
 
 - [x] 5.1 Add `--local` and `--data-dir` (default `Constants.Local.DEFAULT_DATA_DIRECTORY`, resolved against the current directory, recorded absolute). `--data-dir` without `--local` is a usage error.
-- [x] 5.2 Add the local branch of `createClusterState`. It records `K3sDocker`, `PortForward` exposure (D3), no Tailscale, the `LOCAL_DOCKER` capabilities with overrides, Flannel, region `""` (D5) and `Arch.ofHost()`. It touches no `User` and no EC2 service.
+- [x] 5.2 Add the local branch of `createClusterState`. It records `K3sDocker`, `PortForward` exposure (D3), no Tailscale, the `LOCAL_DOCKER` capabilities with overrides, Flannel, region `""` (D5) and the Docker daemon's architecture (`DockerClientInterface.serverArchitecture`). It touches no `User` and no EC2 service.
 - [x] 5.3 Refuse explicitly given AWS-only options by name (`ParseResult.hasMatchedOption`).
 - [x] 5.4 Write `ProxyEnvFile.recordDirect(true)` and emit `Event.Setup.LocalWorkspaceInitialized`. Stop reading the env file key at `Init.kt:510`.
 - [x] 5.5 `clean` never lists the data directory, and `checkExistingFiles` does not refuse it.

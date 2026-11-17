@@ -160,14 +160,15 @@ determined fails at `init`, before any instance is created.
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
 | `--local` | Create a K3s in Docker workspace on this machine instead of an AWS cluster. Needs no AWS profile. See [Local workspaces](#local-workspaces) | false |
-| `--data-dir` | With `--local`: the directory the observability data is kept in, resolved against the current directory and recorded as an absolute path. A usage error without `--local` | `observability-data` |
+| `--data-dir` | With `--local`: the directory the observability data is kept in, resolved against the current directory and recorded as an absolute path. Without `--local`, `init` fails and writes nothing | `observability-data` |
 
 #### Local workspaces
 
 `init --local` records a K3s in Docker workspace and makes no AWS call: no profile is loaded, and
 none needs to exist. It records the counts and observability options you give (`--db.count`,
-`--app.count`, `--tenant`, `--tag`, `--node-label`, `--capability`), Flannel, this machine's CPU
-architecture for every node group, and no region. The cluster's API and Services are reached from
+`--app.count`, `--tenant`, `--tag`, `--node-label`, `--capability`), Flannel, the Docker daemon's CPU
+architecture for every node group (from `docker info`, not the JVM's, which differs under
+Rosetta, so `init --local` needs Docker running), and no region. The cluster's API and Services are reached from
 this machine with no SOCKS tunnel: `init` writes `EDL_NETWORK_MODE=direct` to the workspace's
 `.socks5-proxy.env`, every command writes it again before it runs, and `socks start` reports that
 no tunnel is needed.
@@ -179,7 +180,9 @@ easy-db-lab init local --local --db.count 3
 
 The options that describe AWS instances, networking or services are refused by name before
 anything is written: `--db.instance-type` (`--instance`), `--azs`, `--vpc`, `--cidr`, `--cni`,
-`--ami`, `--open`, and every `--ebs.*`, `--spark.*` and `--opensearch.*` option.
+`--ami`, `--open`, and every `--ebs.*`, `--spark.*` and `--opensearch.*` option. `--up` is
+refused too, since a local workspace cannot be provisioned yet, and so is `--data-dir` without
+`--local`.
 
 The data directory (`--data-dir`, by default `observability-data` in the workspace) holds the
 owner's observability data. `clean` and `init --clean` never list or remove it, and an existing one

@@ -6,9 +6,26 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
+import com.rustyrazorblade.easydblab.commands.BuildBaseImage
+import com.rustyrazorblade.easydblab.commands.BuildCassandraImage
+import com.rustyrazorblade.easydblab.commands.BuildImage
 import com.rustyrazorblade.easydblab.commands.Down
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.commands.PruneAMIs
+import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
+import com.rustyrazorblade.easydblab.commands.aws.Region
+import com.rustyrazorblade.easydblab.commands.aws.S3Bucket
+import com.rustyrazorblade.easydblab.commands.aws.Vpcs
+import com.rustyrazorblade.easydblab.commands.cassandra.CassandraInstall
 import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
+import com.rustyrazorblade.easydblab.commands.ingress.IngressAllow
+import com.rustyrazorblade.easydblab.commands.ingress.IngressRevoke
+import com.rustyrazorblade.easydblab.commands.observability.CompactorStart
+import com.rustyrazorblade.easydblab.commands.observability.CompactorStatus
+import com.rustyrazorblade.easydblab.commands.observability.CompactorStop
+import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
+import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
+import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStop
 import com.rustyrazorblade.easydblab.commands.spark.SparkDown
 import com.rustyrazorblade.easydblab.commands.spark.SparkInit
 import com.rustyrazorblade.easydblab.commands.spark.SparkJobs
@@ -16,6 +33,9 @@ import com.rustyrazorblade.easydblab.commands.spark.SparkLogs
 import com.rustyrazorblade.easydblab.commands.spark.SparkStatus
 import com.rustyrazorblade.easydblab.commands.spark.SparkStop
 import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStatus
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStop
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -32,6 +52,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
@@ -40,6 +61,8 @@ import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.tngtech.archunit.core.importer.ClassFileImporter
+import com.tngtech.archunit.core.importer.ImportOption
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -200,6 +223,76 @@ class CommandExecutorTest : BaseKoinTest() {
             .hasSize(commands.size)
             .containsOnly("K3s in Docker")
     }
+
+    /**
+     * The spec's list of AWS-only commands, run through the executor in a K3s in Docker workspace with
+     * no profile. Dropping `@RequiresCapability` from any one of them makes it run (or ask for a
+     * profile) instead of failing fast, and this fails naming it.
+     */
+    @Test
+    fun `every AWS-only command in a K3s in Docker workspace fails fast before the profile check`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        whenever(mockUserConfigProvider.isSetup()).thenReturn(false)
+
+        val refusedBeforeRunning =
+            awsOnlyCommands().associate { factory ->
+                val command = factory()
+                emitted.clear()
+                val exitCode = commandExecutor.executeTopLevel(command)
+                val unavailable = emitted.filterIsInstance<Event.Environment.CommandUnavailable>().singleOrNull()
+                command::class.simpleName to
+                    (exitCode == Constants.ExitCodes.ERROR && unavailable?.environment == "K3s in Docker")
+            }
+
+        assertThat(refusedBeforeRunning.filterValues { !it }.keys).describedAs("AWS-only commands that ran").isEmpty()
+        verify(mockUserConfigProvider, never()).isSetup()
+    }
+
+    /** The table above covers every command main code declares AWS-only, so a new one cannot be left out. */
+    @Test
+    fun `the AWS-only table names every command that requires aws-account`() {
+        val declared =
+            ClassFileImporter()
+                .withImportOption(ImportOption.DoNotIncludeTests())
+                .importPackages("com.rustyrazorblade.easydblab.commands")
+                .filter { it.isAnnotatedWith(RequiresCapability::class.java) }
+                .filter { NodeCapability.AWS_ACCOUNT in it.reflect().getAnnotation(RequiresCapability::class.java).capabilities }
+                .map { it.name }
+
+        assertThat(awsOnlyCommands().map { it()::class.java.name }).containsExactlyInAnyOrderElementsOf(declared)
+    }
+
+    private fun awsOnlyCommands(): List<() -> PicoCommand> =
+        listOf(
+            { UseCassandra().apply { version = "5.0" } },
+            ::CassandraInstall,
+            ::BuildImage,
+            ::BuildBaseImage,
+            ::BuildCassandraImage,
+            ::PruneAMIs,
+            ::ShowIamPolicies,
+            ::SparkInit,
+            ::SparkSubmit,
+            ::SparkStatus,
+            ::SparkJobs,
+            ::SparkLogs,
+            ::SparkStop,
+            ::SparkDown,
+            ::OpenSearchStart,
+            ::OpenSearchStatus,
+            ::OpenSearchStop,
+            ::TailscaleStart,
+            ::TailscaleStatus,
+            ::TailscaleStop,
+            ::IngressAllow,
+            ::IngressRevoke,
+            ::Region,
+            ::S3Bucket,
+            ::Vpcs,
+            ::CompactorStart,
+            ::CompactorStop,
+            ::CompactorStatus,
+        )
 
     @Test
     fun `an AWS-only command outside a workspace passes the capability check`() {

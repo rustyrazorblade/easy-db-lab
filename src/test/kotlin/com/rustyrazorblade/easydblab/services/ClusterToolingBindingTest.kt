@@ -74,5 +74,22 @@ class ClusterToolingBindingTest {
         }
     }
 
+    /** The other way round: an `init --local` and then an AWS `init` in one REPL; no local form is left. */
+    @Test
+    fun `an init back to EC2 after a local one switches to the SSH form in the same graph`() {
+        val app = koinApplication { modules(servicesModule, configurationModule, leafDependencies) }
+        try {
+            val states = app.koin.get<ClusterStateManager>()
+            states.save(stateIn(Environment.K3sDocker("/data")))
+            assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(LocalClusterTooling::class.java)
+
+            states.save(stateIn(Environment.DEFAULT))
+
+            assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(SshClusterTooling::class.java)
+        } finally {
+            app.close()
+        }
+    }
+
     private fun stateIn(environment: Environment) = ClusterState(name = "test", versions = mutableMapOf(), environment = environment)
 }

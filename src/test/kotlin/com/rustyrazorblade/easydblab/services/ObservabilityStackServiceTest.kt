@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -113,7 +114,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
 
                 // Real TemplateService and manifest builders — never mock configuration classes.
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
                 single { BeylaManifestBuilder(get()) }
                 single { EbpfExporterManifestBuilder() }
                 single { JournaldOtelManifestBuilder(get()) }
@@ -200,6 +201,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             ConfigChangeReport(mockK8sService, getKoin().get()),
             DashboardInstallContextFactory(sharedStoreTenants()),
             contractSource,
+            getKoin().get<ProfileRegion>(),
         )
 
     /** The capabilities the service under test sees; AWS unless a test declares otherwise. */
@@ -1074,6 +1076,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             mockClusterStateManager,
             ConfigChangeReport(mockK8sService, getKoin().get()),
             fixedContract({ sharedCapabilities }, { ObservabilityHosting.from(state) }),
+            getKoin().get<ProfileRegion>(),
         ).syncConfigMap().getOrThrow()
 
         assertThat(appliedCollectorHash()).isEqualTo(deployHash)

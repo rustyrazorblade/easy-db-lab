@@ -45,11 +45,14 @@ import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import java.nio.file.Path
+
+private val servicesModuleLog = KotlinLogging.logger {}
 
 /**
  * Koin module for registering business services.
@@ -79,7 +82,9 @@ val servicesModule =
         // directory holds its local staging copy of stdin; it is injected because the JVM caches
         // java.io.tmpdir at startup.
         factory<ClusterTooling> {
-            when (get<ClusterContractSource>().current().toolingForm) {
+            val form = get<ClusterContractSource>().current().toolingForm
+            servicesModuleLog.debug { "Cluster tooling form: $form" }
+            when (form) {
                 ToolingForm.Ssh -> SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir")))
                 ToolingForm.Local -> LocalClusterTooling(get<Context>().workingDirectory, get())
             }
@@ -147,7 +152,7 @@ val servicesModule =
         // GrafanaClient reaches Grafana through the service-access seam, with the route on its own client.
         factoryOf(::DefaultGrafanaClient) bind GrafanaClient::class
         factory { DashboardInstallContextFactory(get()) }
-        factory { TemplateService(get()) }
+        factory { TemplateService(get(), get()) }
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
         factoryOf(::WorkloadStepExecutor)
@@ -158,7 +163,34 @@ val servicesModule =
         factory { ConfigChangeReport(get<K8sService>(), get()) }
         factory { TenantDirectory(get()) }
         factory<TestDocumentService> { DefaultTestDocumentService(get()) }
-        factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
+        // Explicit factory: the constructor has more parameters than factoryOf supports (22).
+        factory<ObservabilityStackService> {
+            DefaultObservabilityStackService(
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+            )
+        }
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<GrafanaAnnotationBackupService> {
             DefaultGrafanaAnnotationBackupService(get(), get(), get())

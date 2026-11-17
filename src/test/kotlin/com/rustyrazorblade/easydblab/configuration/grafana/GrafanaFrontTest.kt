@@ -36,7 +36,7 @@ class GrafanaFrontTest : BaseKoinTest() {
                         whenever(it.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "acct-bucket"))
                     }
                 }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
             },
         )
 

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -137,8 +138,9 @@ class Status :
         displayKitsSection()
         renderProxyDependentSection("Stress jobs") { displayStressJobsSection() }
         displayObservabilitySection()
-        if (NodeCapability.S3 in contractSource.current().nodeCapabilities) displayS3ManagerSection()
-        displayCapabilitiesSection()
+        val capabilities = contractSource.current().nodeCapabilities
+        if (NodeCapability.S3 in capabilities) displayS3ManagerSection()
+        displayCapabilitiesSection(capabilities)
         displayCassandraVersionSection()
 
         // A degraded report is still an unsuccessful command: fail after rendering so a script
@@ -560,8 +562,7 @@ S3 Manager:
      * Every capability in enum order: present, or absent with the reason the workloads needing it
      * are skipped. Read from the recorded set, so it shows what `up` will gate on.
      */
-    private fun displayCapabilitiesSection() {
-        val capabilities = contractSource.current().nodeCapabilities
+    private fun displayCapabilitiesSection(capabilities: NodeCapabilities) {
         val lines =
             NodeCapability.entries.joinToString("\n") { capability ->
                 when (capability) {

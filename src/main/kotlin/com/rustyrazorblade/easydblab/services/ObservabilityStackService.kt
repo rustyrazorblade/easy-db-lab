@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -24,6 +25,7 @@ import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuil
 import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.region
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
@@ -105,6 +107,7 @@ class DefaultObservabilityStackService(
     private val configChangeReport: ConfigChangeReport,
     private val installContextFactory: DashboardInstallContextFactory,
     private val contractSource: ClusterContractSource,
+    private val profileRegion: ProfileRegion,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
@@ -219,7 +222,7 @@ class DefaultObservabilityStackService(
                 otelManifestBuilder,
                 contract.hosting,
                 clusterState,
-                clusterState.region(),
+                clusterState.region(profileRegion),
                 scrapeConfigs,
                 contract.nodeCapabilities,
             ),
@@ -402,7 +405,7 @@ class DefaultObservabilityStackService(
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
     ): Map<String, String> {
-        val configData = ClusterConfigData.of(clusterState, hosting, clusterState.region())
+        val configData = ClusterConfigData.of(clusterState, hosting, clusterState.region(profileRegion))
 
         k8sService
             .createConfigMap(

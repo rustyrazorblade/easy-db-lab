@@ -9,14 +9,14 @@
 - It defaults to `observability-data` under the workspace.
 - A given relative path MUST be resolved against the current directory.
 - `state.json` MUST record the absolute path.
-- `--data-dir` without `--local` MUST be a usage error.
+- `--data-dir` without `--local` MUST make `init` fail, naming both options and writing nothing, reported the same way as a refused AWS-only option.
 
 `init --local` MUST record:
 
 - `tailscaleActive: false`;
 - the local Docker capability set, with any capability overrides applied;
 - Flannel as the CNI;
-- the host's architecture for every role;
+- the Docker daemon's architecture for every role, not the JVM's (they differ under Rosetta), so `init --local` needs a running Docker daemon;
 - `exposure: PortForward`, so the CLI reaches cluster Services by a port-forward on loopback, on a free port chosen on each use. CQL is a single-endpoint session.
 
 It MUST write `EDL_NETWORK_MODE=direct` to the proxy env file.
@@ -56,7 +56,7 @@ AWS-only `init` options given explicitly with `--local` MUST make `init` fail an
 #### Scenario: --data-dir without --local
 
 - **WHEN** the user runs `init --data-dir /tmp/x`
-- **THEN** `init` fails with a usage error that says `--data-dir` requires `--local`
+- **THEN** `init` fails with an error that says `--data-dir` requires `--local`
 
 #### Scenario: AWS init is unchanged
 

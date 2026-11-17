@@ -71,7 +71,7 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
                         ).thenReturn(ClusterState(name = "lab", clusterId = "x1", versions = mutableMapOf(), s3Bucket = bucket))
                     }
                 }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
             },
         )
 

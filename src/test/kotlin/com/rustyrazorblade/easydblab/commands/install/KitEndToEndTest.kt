@@ -85,7 +85,7 @@ class KitEndToEndTest : BaseKoinTest() {
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
                 single { KitProcessEnvironment(ToolWrapperInstaller(), get()) }

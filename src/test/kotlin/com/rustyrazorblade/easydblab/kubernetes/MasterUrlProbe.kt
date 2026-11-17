@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import java.nio.file.Path
 
 /**
@@ -12,6 +13,8 @@ import java.nio.file.Path
 object MasterUrlProbe {
     @JvmStatic
     fun main(args: Array<String>) {
+        // As Main does: the factory logs, and the banner would precede the URL on stdout.
+        KotlinLoggingConfiguration.logStartupMessage = false
         val (kubeconfig, context) = args
         ProxiedKubernetesClientFactory().createClient(KubeApi(Path.of(kubeconfig), context)).use { client ->
             print(client.configuration.masterUrl)

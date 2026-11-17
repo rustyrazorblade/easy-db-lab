@@ -73,7 +73,7 @@ internal class EMRProvisioningServiceTest {
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             ),
         )
-        val templateService = TemplateService(mockClusterStateManager)
+        val templateService = TemplateService(mockClusterStateManager) { "us-west-2" }
         service =
             DefaultEMRProvisioningService(
                 mockEmrService,

@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.environment.fixedContract
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
@@ -82,7 +83,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                         whenever(it.load()).thenReturn(withControlHost)
                     }
                 }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
             },
         )
 
@@ -117,6 +118,7 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
                 fixedContract({ capabilities }, { hosting }),
+                getKoin().get<ProfileRegion>(),
             )
     }
 

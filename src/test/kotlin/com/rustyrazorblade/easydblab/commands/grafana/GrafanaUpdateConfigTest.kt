@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -82,7 +83,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { mock<K8sClientProvider>().also { mockK8sClientProvider = it } }
 
                 // Real TemplateService — never mock configuration classes
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
 
                 // Real manifest builders
                 single { BeylaManifestBuilder(get()) }
@@ -126,6 +127,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                         get(),
                         DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore())),
                         get(),
+                        getKoin().get<ProfileRegion>(),
                     )
                 }
             },

@@ -41,7 +41,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
                         mockClusterStateManager = it
                     }
                 }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
             },
         )
 

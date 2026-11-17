@@ -84,5 +84,12 @@ sealed interface Environment {
 
         /** Every type id this easy-db-lab reads, in declaration order. */
         val TYPE_IDS: List<String> = listOf(EC2_K3S, K3S_DOCKER, KUBECONFIG)
+
+        /**
+         * The environment a plain `init` records, and the one a state that records none reads as. Code
+         * outside this package names it as this, never as [Ec2K3s], so reading the EC2 object always
+         * means a branch on the variant, which only [ClusterContract.of] takes.
+         */
+        val DEFAULT: Environment = Ec2K3s
     }
 }

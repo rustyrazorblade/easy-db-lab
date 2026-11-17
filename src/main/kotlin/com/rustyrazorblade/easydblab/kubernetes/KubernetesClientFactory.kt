@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
  * Factory interface for creating Kubernetes clients.
@@ -49,11 +50,13 @@ class ProxiedKubernetesClientFactory(
     override fun createClient(api: KubeApi): KubernetesClient {
         val config = api.loadConfig()
 
-        if (networkMode() == NetworkMode.Tunnel) {
+        val mode = networkMode()
+        if (mode == NetworkMode.Tunnel) {
             System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
                 config.httpsProxy = socksProxyUrl(port)
             }
         }
+        log.debug { "Kubernetes client in network mode $mode, proxy ${config.httpsProxy ?: "none"}" }
         config.applyClusterClientTimeouts()
 
         return KubernetesClientBuilder()
@@ -61,6 +64,8 @@ class ProxiedKubernetesClientFactory(
             .build()
     }
 }
+
+private val log = KotlinLogging.logger {}
 
 private const val CONNECTION_TIMEOUT_MS = 30000
 private const val REQUEST_TIMEOUT_MS = 60000

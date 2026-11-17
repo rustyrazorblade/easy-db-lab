@@ -13,12 +13,9 @@ enum class Arch(
     ;
 
     companion object {
-        /** The architecture of this machine, which a cluster in Docker on it runs. */
-        fun ofHost(): Arch = fromOsArch(System.getProperty("os.arch"))
-
         /**
-         * Maps a JVM `os.arch` value onto an [Arch]: `amd64`/`x86_64` is [AMD64], `aarch64`/`arm64`
-         * is [ARM64].
+         * Maps a platform architecture name onto an [Arch]: `amd64`/`x86_64` is [AMD64], `aarch64`/`arm64`
+         * is [ARM64]. It reads both a JVM `os.arch` and the Docker daemon's `Architecture`.
          *
          * @throws IllegalArgumentException for any other value, naming it
          */
@@ -27,7 +24,7 @@ enum class Arch(
                 "amd64", "x86_64" -> AMD64
                 "aarch64", "arm64" -> ARM64
                 else -> throw IllegalArgumentException(
-                    "Unsupported CPU architecture '$osArch' on this machine; only x86_64 and arm64 are supported",
+                    "Unsupported CPU architecture '$osArch'; only x86_64 and arm64 are supported",
                 )
             }
 

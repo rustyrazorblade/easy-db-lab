@@ -52,7 +52,7 @@ class StreamMetricValuesIntegrationTest : BaseKoinTest() {
                         whenever(it.load()).thenReturn(ClusterState(name = "stream-it", versions = mutableMapOf(), s3Bucket = bucket))
                     }
                 }
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
             },
         )
 

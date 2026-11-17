@@ -25,7 +25,7 @@ class BuiltinKitCollisionCheckTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { TemplateService(get()) }
+                single { TemplateService(get(), get()) }
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
             },

@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
@@ -385,6 +386,7 @@ class PortableObservabilityPlacementIntegrationTest {
             ClusterContractSource {
                 ClusterContract.of(state).copy(nodeCapabilities = NodeCapabilities.LOCAL_DOCKER, hosting = hosting)
             },
+            ProfileRegion.NONE,
         ).syncConfigMap().getOrThrow()
 
         val config =

@@ -2,8 +2,10 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.region
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
@@ -41,6 +43,7 @@ class DefaultOtelSyncService(
     private val clusterStateManager: ClusterStateManager,
     private val configChangeReport: ConfigChangeReport,
     private val contractSource: ClusterContractSource,
+    private val profileRegion: ProfileRegion,
 ) : OtelSyncService {
     private val log = KotlinLogging.logger {}
 
@@ -61,7 +64,7 @@ class DefaultOtelSyncService(
                     otelManifestBuilder,
                     contract.hosting,
                     clusterState,
-                    clusterState.region(),
+                    clusterState.region(profileRegion),
                     scrapeConfigs,
                     contract.nodeCapabilities,
                 )

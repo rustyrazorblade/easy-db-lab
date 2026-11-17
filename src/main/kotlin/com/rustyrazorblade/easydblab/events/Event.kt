@@ -5369,6 +5369,21 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `init` was given [option] in a combination it cannot run ([problem], e.g. "requires --local"),
+         * so it wrote nothing. Reported the same way as [LocalOptionsRefused].
+         */
+        @Serializable
+        @SerialName("Setup.InitOptionConflict")
+        data class InitOptionConflict(
+            val option: String,
+            val problem: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Error: $option $problem. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {

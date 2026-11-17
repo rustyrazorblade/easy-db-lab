@@ -38,6 +38,17 @@ class ClusterContractTest {
         assertThat(ClusterContract.of(stateFor(environment))).isEqualTo(expected)
     }
 
+    /** `up` and `down` read this instead of testing the variant; #1041 flips it for K3s in Docker. */
+    @Test
+    fun `only EC2 plus K3s has a provisioner`() {
+        assertThat(
+            listOf(Environment.Ec2K3s, Environment.K3sDocker("/d"), Environment.Kubeconfig("/k"))
+                .associateWith { ClusterContract.of(stateFor(it)).hasProvisioner },
+        ).containsExactlyEntriesOf(
+            mapOf(Environment.Ec2K3s to true, Environment.K3sDocker("/d") to false, Environment.Kubeconfig("/k") to false),
+        )
+    }
+
     @Test
     fun `an AWS state with no recorded capabilities still yields the AWS set`() {
         val state = ClusterState(name = "test", versions = mutableMapOf())
@@ -118,6 +129,8 @@ class ClusterContractTest {
                     Environment.Ec2K3s,
                     ClusterContract(
                         environment = Environment.Ec2K3s,
+                        hasProvisioner = true,
+                        localDataDirectory = null,
                         toolingForm = ToolingForm.Ssh,
                         nodeAccessForm = NodeAccessForm.Ssh,
                         storeKind = StoreKind.ObjectStore,
@@ -132,6 +145,8 @@ class ClusterContractTest {
                     Environment.K3sDocker("/d"),
                     ClusterContract(
                         environment = Environment.K3sDocker("/d"),
+                        hasProvisioner = false,
+                        localDataDirectory = "/d",
                         toolingForm = ToolingForm.Local,
                         nodeAccessForm = NodeAccessForm.ContainerExec,
                         storeKind = StoreKind.Volume,
@@ -146,6 +161,8 @@ class ClusterContractTest {
                     Environment.Kubeconfig("/k"),
                     ClusterContract(
                         environment = Environment.Kubeconfig("/k"),
+                        hasProvisioner = false,
+                        localDataDirectory = null,
                         toolingForm = ToolingForm.Local,
                         nodeAccessForm = NodeAccessForm.None,
                         storeKind = StoreKind.Volume,

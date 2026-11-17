@@ -143,7 +143,7 @@ The local branch of `Init.createClusterState` calls no `User`, no `EC2InstanceSe
   - the db and app counts, `tenant`, `telemetryRedirect` and `nodeLabels`
   - `cni = Flannel`, because Cilium ENI is EC2-only
   - `region = ""` (D5)
-  - architectures from the host's `os.arch` (`Arch.ofHost()`)
+  - architectures from the Docker daemon's `Architecture` (`docker info`), not the JVM's `os.arch`: an x86_64 JVM under Rosetta on Apple Silicon reports x86_64 while Docker Desktop runs arm64
 
 Then it writes `ProxyEnvFile(workspace).recordDirect(true)` and emits `Event.Setup.LocalWorkspaceInitialized(dataDir, dbCount, appCount)`.
 
@@ -154,7 +154,7 @@ Explicitly given AWS-only flags are refused by name, using Picocli's `ParseResul
 - `--spark.*`, `--opensearch.*`
 - `--ami`, `--open`
 
-`--data-dir` without `--local` is a usage error.
+`--data-dir` without `--local`, and `--local --up`, fail like a refused AWS-only option: a typed event (`Setup.InitOptionConflict`) the user reads, then a `CommandFailedException`, so every refusal of `init` reads the same.
 
 ### 13. Direct mode from end to end
 

@@ -8,10 +8,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.region
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -100,6 +102,7 @@ class ConfigHashRolloutIntegrationTest {
                 stateManager,
                 ConfigChangeReport(k8sService, EventBus()),
                 StateClusterContractSource(stateManager),
+                ProfileRegion.NONE,
             )
     }
 
@@ -316,7 +319,7 @@ class ConfigHashRolloutIntegrationTest {
                 otel,
                 ObservabilityHosting.AWS,
                 state,
-                state.region(),
+                state.region(ProfileRegion.NONE),
                 scrapeConfigs,
                 NodeCapabilities.AWS,
             )

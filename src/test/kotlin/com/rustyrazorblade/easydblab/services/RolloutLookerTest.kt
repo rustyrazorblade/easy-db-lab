@@ -328,6 +328,52 @@ class RolloutLookerTest {
     }
 
     @Test
+    fun `a dead node past the per-look bound is read within ceil(candidates over bound) looks`() {
+        // A new DaemonSet's 25 pods share one creation second; db23 is dead.
+        val names = (0 until 25).map { "db%02d".format(it) }
+        val nodes = names.associateWith { if (it == "db23") node(it, "False", NOW.minusSeconds(61)) else readyNode(it) }
+        val reader =
+            FakeReader(
+                daemonSets = mapOf("a" to daemonSet("a", desired = 25, available = 0)),
+                pods = names.map { pod("a", it) },
+                nodes = nodes,
+            )
+        val looker = RolloutLooker(reader, Clock.fixed(NOW, ZoneOffset.UTC))
+        val bound = Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK
+        val looksNeeded = (names.size + bound - 1) / bound
+
+        val looks = (1..looksNeeded).map { looker.look(listOf(a)) }
+
+        assertThat(looks.first()).isInstanceOf(RolloutsLook.Pending::class.java)
+        assertThat(looks.last()).isInstanceOf(RolloutsLook.Blocked::class.java)
+        assertThat((looks.last() as RolloutsLook.Blocked).reason).contains("node db23")
+        assertThat(reader.nodeReads.toSet()).containsAll(names.filter { it <= "db23" })
+    }
+
+    @Test
+    fun `each look reads at most the bound of nodes, and every node across enough looks`() {
+        val names = (0 until 45).map { "db%02d".format(it) }
+        val reader =
+            FakeReader(
+                daemonSets = mapOf("a" to daemonSet("a", desired = 45, available = 0)),
+                pods = names.map { pod("a", it) },
+                nodes = names.associateWith(::readyNode),
+            )
+        val looker = RolloutLooker(reader, Clock.fixed(NOW, ZoneOffset.UTC))
+        val bound = Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK
+
+        val perLook =
+            (1..3).map {
+                val before = reader.nodeReads.size
+                looker.look(listOf(a))
+                reader.nodeReads.size - before
+            }
+
+        assertThat(perLook).containsOnly(bound)
+        assertThat(reader.nodeReads.toSet()).containsExactlyInAnyOrderElementsOf(names)
+    }
+
+    @Test
     fun `a node with a current pod beside a terminating old one is judged by the current pod alone`() {
         val reader =
             FakeReader(

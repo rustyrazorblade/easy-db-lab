@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
+import java.io.IOException
 
 /**
  * The three states the active profile's `settings.yaml` can be in.
@@ -51,7 +52,6 @@ sealed interface ProfileSettings {
 class ProfileShow : PicoBaseCommand() {
     private val userConfigProvider: UserConfigProvider by inject()
 
-    @Suppress("TooGenericExceptionCaught")
     override fun execute() {
         val settings =
             if (!userConfigProvider.isSetup()) {
@@ -59,13 +59,19 @@ class ProfileShow : PicoBaseCommand() {
             } else {
                 try {
                     ProfileSettings.Loaded(userConfigProvider.getUserConfig())
-                } catch (e: Exception) {
-                    log.warn { "Could not deserialize settings for profile ${context.profile}: ${e::class.simpleName}" }
-                    ProfileSettings.Unreadable
+                } catch (e: IllegalStateException) {
+                    unreadable(e)
+                } catch (e: IOException) {
+                    unreadable(e)
                 }
             }
 
         println(buildReport(context.profile, context.profileDir.absolutePath, settings))
+    }
+
+    private fun unreadable(e: Exception): ProfileSettings {
+        log.warn { "Could not deserialize settings for profile ${context.profile}: ${e::class.simpleName}" }
+        return ProfileSettings.Unreadable
     }
 
     companion object {

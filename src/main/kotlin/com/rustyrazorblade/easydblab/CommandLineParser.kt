@@ -47,6 +47,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
@@ -65,6 +66,7 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
 import java.io.File
+import java.io.IOException
 import kotlin.system.exitProcess
 
 /**
@@ -279,15 +281,17 @@ class CommandLineParser : KoinComponent {
      * Cluster state is loaded to resolve `${VAR}` defaults; if state is unavailable the
      * raw `${VAR}` forms are kept as default text.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun registerDynamicInstallSubcommands() {
         val resolver = get<InstallTemplateResolver>()
         val templateVars =
             try {
                 val state = get<ClusterStateManager>().load()
                 TemplateVariables.from(state = state, kitName = "", storageSize = "").toMap()
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 log.debug(e) { "Cluster state unavailable during install subcommand registration; using raw defaults" }
+                emptyMap()
+            } catch (e: IllegalStateException) {
+                log.debug(e) { "Cluster state invalid during install subcommand registration; using raw defaults" }
                 emptyMap()
             }
 
@@ -300,18 +304,49 @@ class CommandLineParser : KoinComponent {
             val source =
                 try {
                     resolver.resolve(name)
-                } catch (e: Exception) {
+                } catch (e: IllegalArgumentException) {
+                    log.debug(e) { "Kit template $name vanished before it could be resolved" }
                     continue
                 }
             // One bad kit.yaml must not stop the CLI: every command, `kit source remove` included,
             // builds this tree. Skip the kit and say which file failed.
-            try {
-                val config = resolver.loadInstallConfig(source) ?: continue
-                installCL.addSubcommand(name, factory.build(config, source))
-            } catch (e: Exception) {
-                eventBus.emit(Event.Kit.LoadFailed(name, kitFileOf(source), e.message ?: e.javaClass.simpleName))
-            }
+            val subcommand =
+                reportingKitLoadFailure(name, kitFileOf(source)) {
+                    resolver.loadInstallConfig(source)?.let { factory.build(it, source) }
+                } ?: continue
+            installCL.addSubcommand(name, subcommand)
         }
+    }
+
+    /**
+     * Runs [load] for the kit [kitName] and returns its result, or null after emitting
+     * [Event.Kit.LoadFailed] naming [kitFile] when the kit cannot be loaded.
+     *
+     * Only the failures a broken kit produces are handled: an invalid `kit.yaml`, a picocli spec
+     * that cannot be built from it, a bad value inside it, and an unreadable file. Any other
+     * exception is a bug in the tool and propagates.
+     */
+    private fun <T : Any> reportingKitLoadFailure(
+        kitName: String,
+        kitFile: String,
+        load: () -> T?,
+    ): T? {
+        val failure =
+            try {
+                return load()
+            } catch (e: ConfigurationException) {
+                e
+            } catch (e: CommandLine.InitializationException) {
+                e
+            } catch (e: IllegalArgumentException) {
+                e
+            } catch (e: IllegalStateException) {
+                e
+            } catch (e: IOException) {
+                e
+            }
+        eventBus.emit(Event.Kit.LoadFailed(kitName, kitFile, failure.message ?: failure.javaClass.simpleName))
+        return null
     }
 
     private fun kitFileOf(source: InstallTemplateResolver.TemplateSource): String =
@@ -328,7 +363,6 @@ class CommandLineParser : KoinComponent {
      * For example, `<cwd>/clickhouse/kit.yaml` alongside `<cwd>/clickhouse/bin/start.sh` →
      * `easy-db-lab clickhouse start`.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun registerDynamicKitSubcommands() {
         val factory = KitRunnerCommandFactory()
 
@@ -338,17 +372,15 @@ class CommandLineParser : KoinComponent {
                 val kitName = kitDir.name
                 if (kitName in commandLine.subcommands.keys) return@forEach
 
-                try {
-                    val kitGroup = factory.buildKitGroup(kitName, kitDir)
-                    kitCommandsByKit[kitName]?.forEach { scanned ->
-                        kitGroup.addSubcommand(scanned.name, CommandLine(scanned.cls, KoinCommandFactory()))
-                    }
-                    commandLine.addSubcommand(kitName, kitGroup)
-                } catch (e: Exception) {
-                    eventBus.emit(
-                        Event.Kit.LoadFailed(kitName, File(kitDir, Constants.Kit.CONFIG_FILE).path, e.message ?: e.javaClass.simpleName),
-                    )
-                }
+                val kitGroup =
+                    reportingKitLoadFailure(kitName, File(kitDir, Constants.Kit.CONFIG_FILE).path) {
+                        factory.buildKitGroup(kitName, kitDir).also { group ->
+                            kitCommandsByKit[kitName]?.forEach { scanned ->
+                                group.addSubcommand(scanned.name, CommandLine(scanned.cls, KoinCommandFactory()))
+                            }
+                        }
+                    } ?: return@forEach
+                commandLine.addSubcommand(kitName, kitGroup)
             }
     }
 
@@ -367,30 +399,15 @@ internal class UninstalledKitHintHandler(
     private val resolver: InstallTemplateResolver,
     private val delegate: CommandLine.IParameterExceptionHandler,
 ) : CommandLine.IParameterExceptionHandler {
-    @Suppress("TooGenericExceptionCaught")
     override fun handleParseException(
         ex: CommandLine.ParameterException,
         args: Array<String>,
     ): Int {
-        if (ex is CommandLine.UnmatchedArgumentException) {
-            val firstToken = ex.unmatched.firstOrNull()
-            if (firstToken != null) {
-                try {
-                    if (firstToken in resolver.listAvailableTemplates()) {
-                        ex.commandLine.err.println(
-                            "$firstToken is not installed. Run: easy-db-lab kit install $firstToken",
-                        )
-                        return 2
-                    }
-                } catch (e: Exception) {
-                    log.debug(e) { "Could not check available templates for unmatched argument hint" }
-                }
-            }
+        val firstToken = (ex as? CommandLine.UnmatchedArgumentException)?.unmatched?.firstOrNull()
+        if (firstToken != null && firstToken in resolver.listAvailableTemplates()) {
+            ex.commandLine.err.println("$firstToken is not installed. Run: easy-db-lab kit install $firstToken")
+            return 2
         }
         return delegate.handleParseException(ex, args)
-    }
-
-    companion object {
-        private val log = KotlinLogging.logger {}
     }
 }

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.docker
 
 import com.github.dockerjava.api.async.ResultCallback
 import com.github.dockerjava.api.command.InspectContainerResponse
+import com.github.dockerjava.api.exception.DockerClientException
 import com.github.dockerjava.api.exception.NotFoundException
 import com.github.dockerjava.api.model.Frame
 import com.rustyrazorblade.easydblab.DockerClientInterface
@@ -126,7 +127,6 @@ class ContainerExecutor(
      *
      * @param containerId The ID of the container to remove
      */
-    @Suppress("TooGenericExceptionCaught")
     fun removeContainer(containerId: String) {
         val retry = Retry.of("docker-remove-$containerId", retryConfig)
 
@@ -139,15 +139,21 @@ class ContainerExecutor(
             // Already gone: the removal has nothing left to do.
             log.debug(e) { "Container $containerId was already removed" }
         } catch (e: IOException) {
-            log.error(e) { "IO error while removing container $containerId" }
-            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
-        } catch (e: DockerException) {
-            log.error(e) { "Docker error while removing container $containerId" }
-            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
-        } catch (e: RuntimeException) {
-            log.error(e) { "Runtime error while removing container $containerId" }
-            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
+            reportRemoveFailure(containerId, "IO error", e)
+        } catch (e: com.github.dockerjava.api.exception.DockerException) {
+            reportRemoveFailure(containerId, "Docker error", e)
+        } catch (e: DockerClientException) {
+            reportRemoveFailure(containerId, "Docker client error", e)
         }
+    }
+
+    private fun reportRemoveFailure(
+        containerId: String,
+        kind: String,
+        e: Exception,
+    ) {
+        log.error(e) { "$kind while removing container $containerId" }
+        eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
     }
 }
 

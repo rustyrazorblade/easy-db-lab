@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab
 
 import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -15,6 +16,13 @@ import java.util.stream.Stream
  */
 class ThrowablesTest {
     companion object {
+        @JvmStatic
+        fun exceptions(): Stream<Exception> =
+            Stream.of(IllegalStateException("state"), java.io.IOException("io"), RuntimeException("runtime"), Exception("checked"))
+
+        @JvmStatic
+        fun errors(): Stream<Error> = Stream.of(OutOfMemoryError("heap"), StackOverflowError(), AssertionError("assert"))
+
         @JvmStatic
         fun failures(): Stream<Arguments> =
             Stream.of(
@@ -65,5 +73,24 @@ class ThrowablesTest {
         expected: String,
     ) {
         assertThat(failure.reason()).describedAs(label).isEqualTo(expected)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("exceptions")
+    fun `an exception becomes a failed result`(exception: Exception) {
+        val result = runCatchingException { throw exception }
+
+        assertThat(result.exceptionOrNull()).isSameAs(exception)
+    }
+
+    @Test
+    fun `a value becomes a successful result`() {
+        assertThat(runCatchingException { 42 }.getOrNull()).isEqualTo(42)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("errors")
+    fun `an error in the JVM is rethrown, not captured`(error: Error) {
+        assertThatThrownBy { runCatchingException { throw error } }.isSameAs(error)
     }
 }

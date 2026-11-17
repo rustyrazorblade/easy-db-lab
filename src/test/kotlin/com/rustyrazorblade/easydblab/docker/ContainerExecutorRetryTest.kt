@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.docker
 
 import com.github.dockerjava.api.command.InspectContainerResponse
+import com.github.dockerjava.api.exception.ConflictException
+import com.github.dockerjava.api.exception.DockerClientException
+import com.github.dockerjava.api.exception.InternalServerErrorException
 import com.github.dockerjava.api.exception.NotFoundException
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.DockerClientInterface
@@ -15,12 +18,15 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.IOException
 import java.time.Duration
+import java.util.stream.Stream
 
 /**
  * Which Docker API failures [ContainerExecutor] retries. The Docker daemon is an external system,
@@ -136,5 +142,46 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
         executor().removeContainer("c1")
 
         assertThat(removes).isEqualTo(2)
+    }
+
+    @Test
+    fun `a remove of a container that is already gone reports nothing`() {
+        doAnswer { throw NotFoundException("No such container: c1") }.whenever(client).removeContainer("c1", true)
+
+        executor().removeContainer("c1")
+
+        assertThat(events.filterIsInstance<Event.Docker.ContainerRemoveError>()).isEmpty()
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("removeFailures")
+    fun `a remove that fails in a way Docker reports is reported as an event and does not throw`(failure: Exception) {
+        doAnswer { throw failure }.whenever(client).removeContainer("c1", true)
+
+        executor().removeContainer("c1")
+
+        assertThat(events.filterIsInstance<Event.Docker.ContainerRemoveError>().map { it.error })
+            .singleElement()
+            .asString()
+            .contains(failure.message.orEmpty())
+    }
+
+    @Test
+    fun `a remove that fails for a reason Docker does not report propagates`() {
+        doAnswer { throw IllegalArgumentException("invalid container id") }.whenever(client).removeContainer("c1", true)
+
+        assertThatThrownBy { executor().removeContainer("c1") }.isInstanceOf(IllegalArgumentException::class.java)
+        assertThat(events.filterIsInstance<Event.Docker.ContainerRemoveError>()).isEmpty()
+    }
+
+    companion object {
+        @JvmStatic
+        fun removeFailures(): Stream<Exception> =
+            Stream.of(
+                ConflictException("removal of container c1 is already in progress"),
+                InternalServerErrorException("daemon error"),
+                DockerClientException("client failure"),
+                IOException("Broken pipe"),
+            )
     }
 }

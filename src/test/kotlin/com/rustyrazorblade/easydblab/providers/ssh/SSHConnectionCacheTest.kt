@@ -4,14 +4,20 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.stream.Stream
 
 class SSHConnectionCacheTest {
     private val host = Host(public = "54.0.0.1", private = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a")
@@ -92,5 +98,38 @@ class SSHConnectionCacheTest {
         assertThat(cache.get(host)).isSameAs(fresh)
         verify(stale).close()
         assertThat(cache.get(host)).isSameAs(fresh)
+    }
+
+    /** One connection that will not close must not keep the others open. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("closeFailures")
+    fun `closing every connection closes the rest when one fails to close`(failure: Exception) {
+        val hosts = listOf(host, host.copy(alias = "db0", private = "10.0.0.2"), host.copy(alias = "db1", private = "10.0.0.3"))
+        val clients = hosts.map { mock<ISSHClient>().also { client -> whenever(client.isSessionOpen()).thenReturn(true) } }
+        doAnswer { throw failure }.whenever(clients[0]).close()
+        val byHost = hosts.zip(clients).toMap()
+        val cache = SSHConnectionCache { byHost.getValue(it) }
+        hosts.forEach { cache.get(it) }
+
+        cache.closeAll()
+
+        clients.forEach { verify(it).close() }
+        assertThat(cache.size()).isZero()
+    }
+
+    @Test
+    fun `an error in the JVM while closing a connection is not swallowed`() {
+        val client = mock<ISSHClient>().also { whenever(it.isSessionOpen()).thenReturn(true) }
+        whenever(client.close()).thenThrow(OutOfMemoryError("heap"))
+        val cache = SSHConnectionCache { client }
+        cache.get(host)
+
+        assertThatThrownBy { cache.closeAll() }.isInstanceOf(OutOfMemoryError::class.java)
+    }
+
+    companion object {
+        @JvmStatic
+        fun closeFailures(): Stream<Exception> =
+            Stream.of(IOException("Connection reset"), IllegalStateException("session already closed"), RuntimeException("boom"))
     }
 }

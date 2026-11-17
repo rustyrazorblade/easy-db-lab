@@ -23,11 +23,13 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.PrintStream
 import java.rmi.ServerException
 
@@ -139,8 +141,9 @@ class ExecRunTest : BaseKoinTest() {
 
     @Test
     fun `a run that fails on one host still runs on the others, reports the failure, and fails the command`() {
-        whenever(mockRemoteOps.executeRemotely(eq(dbHosts[0].toHost()), any(), any(), any()))
-            .thenThrow(RuntimeException("Remote command failed (1)", ServerException("1")))
+        doAnswer { throw IOException("Remote command failed (1)", ServerException("1")) }
+            .whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), any(), any(), any())
 
         assertThatThrownBy { ExecRun().apply { command = listOf("false") }.execute() }
             .isInstanceOf(CommandFailedException::class.java)
@@ -151,14 +154,24 @@ class ExecRunTest : BaseKoinTest() {
         assertThat(output).contains("=== db0 ===\nError executing command: Remote command failed (1)")
     }
 
+    @Test
+    fun `a failure that the SSH layer does not report propagates instead of being reported as a host failure`() {
+        whenever(mockRemoteOps.executeRemotely(eq(dbHosts[0].toHost()), any(), any(), any()))
+            .thenThrow(IllegalStateException("bug in the caller"))
+
+        assertThatThrownBy { ExecRun().apply { command = listOf("false") }.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+    }
+
     /**
      * `systemd-run --wait` exits non-zero when the unit fails, and the unit's own output is only in
      * the journal, so a failed run still prints it: that output is the reason the run failed.
      */
     @Test
     fun `a failed foreground run prints the unit's journal before reporting the failure`() {
-        whenever(mockRemoteOps.executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemd-run") }, any(), any()))
-            .thenThrow(RuntimeException("Remote command failed (3)"))
+        doAnswer { throw IOException("Remote command failed (3)") }
+            .whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemd-run") }, any(), any())
         whenever(mockRemoteOps.executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("journalctl") }, any(), any()))
             .thenReturn(Response("cat: /missing: No such file or directory"))
 

@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -167,6 +168,25 @@ class TailscaleStopTest : BaseKoinTest() {
         assertThat(state.tailscaleAuthKeyId).isNull()
         val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
         assertThat(errorOutput).contains("key-to-delete").contains("auth key not found")
+    }
+
+    @Test
+    fun `an auth key delete that fails for a reason other than the Tailscale API propagates`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                initConfig = InitConfig(region = "us-west-2"),
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+                tailscaleAuthKeyId = "key-to-delete",
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        declareTailscaleUser()
+        stubRunningAndStops()
+        whenever(mockTailscaleService.deleteAuthKey(any(), any(), any())).thenThrow(IllegalStateException("bug"))
+
+        assertThatThrownBy { TailscaleStop().call() }.isInstanceOf(IllegalStateException::class.java)
+        assertThat(state.tailscaleAuthKeyId).isEqualTo("key-to-delete")
     }
 
     @Test

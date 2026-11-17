@@ -15,7 +15,6 @@ import kotlin.system.exitProcess
 
 private val log: KLogger by lazy { KotlinLogging.logger {} }
 
-@Suppress("TooGenericExceptionCaught")
 fun main(arguments: Array<String>) {
     // Suppress kotlin-logging initialization message to prevent pollution of machine-readable output
     KotlinLoggingConfiguration.logStartupMessage = false
@@ -37,26 +36,27 @@ fun main(arguments: Array<String>) {
     }
 
     val parser = CommandLineParser()
-    try {
-        parser.eval(arguments)
-    } catch (e: DockerException) {
-        handleDockerError(e)
-    } catch (e: java.rmi.RemoteException) {
-        handleRemoteError(e)
-    } catch (e: IllegalArgumentException) {
-        handleIllegalArgumentError(e)
-    } catch (e: IllegalStateException) {
-        handleIllegalStateError(e)
-    } catch (e: StsException) {
-        handleStsError(e)
-    } catch (e: S3Exception) {
-        handleS3Error(e)
-    } catch (e: Ec2Exception) {
-        handleEc2Error(e)
-    } catch (e: SdkServiceException) {
-        handleSdkServiceError(e)
-    } catch (e: RuntimeException) {
-        handleRuntimeError(e)
+    runCatching { parser.eval(arguments) }.onFailure(::reportFailureAndExit)
+}
+
+/**
+ * Reports a failure that escaped the command line and exits with an error code, or rethrows it.
+ *
+ * Runtime failures are reported by kind. An [Error], a checked exception, and an AWS service error
+ * that is not a permission failure are not reported here and propagate unchanged.
+ */
+private fun reportFailureAndExit(failure: Throwable) {
+    when (failure) {
+        is DockerException -> handleDockerError(failure)
+        is java.rmi.RemoteException -> handleRemoteError(failure)
+        is IllegalArgumentException -> handleIllegalArgumentError(failure)
+        is IllegalStateException -> handleIllegalStateError(failure)
+        is StsException -> handleStsError(failure)
+        is S3Exception -> handleS3Error(failure)
+        is Ec2Exception -> handleEc2Error(failure)
+        is SdkServiceException -> handleSdkServiceError(failure)
+        is RuntimeException -> handleRuntimeError(failure)
+        else -> throw failure
     }
 }
 

@@ -39,7 +39,8 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
     /**
      * @throws IOException naming [kubeconfigPath] when the file cannot be read; the cause is kept, so a
      *   missing file is still recognised as a cluster that was never reached ([ClusterReach])
-     * @throws IllegalStateException naming [kubeconfigPath] when its content is not a usable kubeconfig
+     * @throws IllegalStateException naming [kubeconfigPath] when its content cannot be parsed (the parser's message
+     *   and cause are dropped, because they quote the file's text) or a client cannot be built from it
      */
     override fun createClient(kubeconfigPath: Path): KubernetesClient {
         val kubeconfigContent =
@@ -48,19 +49,26 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
             } catch (e: IOException) {
                 throw IOException("Cannot read the kubeconfig at $kubeconfigPath: ${e.reason()}", e)
             }
-        return try {
-            val config = Config.fromKubeconfig(kubeconfigContent)
-
-            System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
-                config.httpsProxy = socksProxyUrl(port)
+        val config =
+            try {
+                Config.fromKubeconfig(kubeconfigContent)
+            } catch (e: RuntimeException) {
+                // The parser's message quotes the start of the text it could not read, and a kubeconfig holds
+                // client keys and tokens: name the path and the kind of failure, never the message or the cause.
+                error("The kubeconfig at $kubeconfigPath could not be parsed (${e.javaClass.simpleName})")
             }
-            config.applyClusterClientTimeouts()
 
+        System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
+            config.httpsProxy = socksProxyUrl(port)
+        }
+        config.applyClusterClientTimeouts()
+
+        return try {
             KubernetesClientBuilder()
                 .withConfig(config)
                 .build()
         } catch (e: RuntimeException) {
-            throw IllegalStateException("The kubeconfig at $kubeconfigPath is not usable: ${e.reason()}", e)
+            throw IllegalStateException("A Kubernetes client could not be built from the kubeconfig at $kubeconfigPath: ${e.reason()}", e)
         }
     }
 }

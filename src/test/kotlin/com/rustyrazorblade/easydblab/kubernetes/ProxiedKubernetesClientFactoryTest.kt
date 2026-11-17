@@ -74,13 +74,14 @@ class ProxiedKubernetesClientFactoryTest {
     }
 
     @Test
-    fun `a kubeconfig that is not a kubeconfig fails naming its path, with the cause kept`() {
-        val garbage = File(tempDir, "kubeconfig").apply { writeText("clusters: [unclosed") }.toPath()
+    fun `a kubeconfig that cannot be parsed fails naming its path, and never quotes its text`() {
+        val garbage = File(tempDir, "kubeconfig").apply { writeText("token: SECRET-TOKEN-123\nclusters: [unclosed") }.toPath()
 
         assertThatThrownBy { ProxiedKubernetesClientFactory().createClient(garbage) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining(garbage.toString())
-            .hasCauseInstanceOf(RuntimeException::class.java)
+            .hasMessageNotContaining("SECRET-TOKEN-123")
+            .hasNoCause()
     }
 
     @Test

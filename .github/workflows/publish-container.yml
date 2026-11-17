@@ -103,6 +103,13 @@ jobs:
         github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.head_repository.full_name == github.repository)
+    # One publish at a time, whatever triggered it: the tag is read from the Dockerfile after
+    # checkout, so the group cannot be keyed by it. A run that waits here then finds the tag a
+    # finished run published and skips it, instead of racing it between the inspect and the push.
+    # Never cancelled, so a run in the middle of a push always completes.
+    concurrency:
+      group: publish-pyroscope-agent
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write

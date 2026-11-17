@@ -324,7 +324,7 @@ Adds extra template variables:
 |---|---|---|
 | `__WORKERS__` | `--workers` | Worker count (defaults to app node count) |
 
-Presto is stateless — no `platform create-pvs` in `start.sh`. The Presto Helm chart targets `type=app` nodes.
+Presto is stateless — no `platform create-pvs` in `start.sh`. The Presto Helm chart targets the app role's nodes (`__APP_NODE_SELECTOR__`).
 
 Presto owns its catalog configuration. Built-in kit connectors are declared as templates under
 `presto/catalogs/<kit>.properties` (substituted at install time). At runtime,

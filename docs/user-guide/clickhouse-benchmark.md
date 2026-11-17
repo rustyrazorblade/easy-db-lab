@@ -14,7 +14,7 @@ latency live in Grafana.
 ## Prerequisites
 
 - The cluster is up (`easy-db-lab up`) and has an app node (`init --app.count 1` or more). Every pod of
-  this kit runs on an app node (`type=app`). With no app node, `prepare` and `start` fail before
+  this kit runs on an app node (`type=app`, or the nodes `init --role-nodes app=...` maps). With no app node, `prepare` and `start` fail before
   they create a pod, with `clickhouse-benchmark needs an app node (type=app); this cluster has none`.
 - The `clickhouse` kit is installed and started.
 

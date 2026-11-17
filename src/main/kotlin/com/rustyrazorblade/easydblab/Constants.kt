@@ -1382,10 +1382,10 @@ object Constants {
     // Pyroscope Java Agent configuration (for EMR Spark JVMs)
     //
     // Cassandra nodes no longer use this agent — they profile at runtime with async-profiler, see
-    // Constants.Profiling. The remaining JVM workloads (EMR/Spark, Trino, the sidecar, stress) still
-    // do, and they install the jar at two different paths: EMR bootstraps it to /opt/pyroscope,
-    // while the node AMI installs it to /usr/local/pyroscope (hostPath-mounted into stress pods by
-    // StressJobService). The name says EMR so one constant cannot be mistaken for both.
+    // Constants.Profiling. The remaining JVM workloads (EMR/Spark, Trino, Presto, the sidecar, stress)
+    // still do. Kit and stress pods copy it from the agent image (Kit.Agents.PYROSCOPE_IMAGE); EMR
+    // bootstraps it to /opt/pyroscope, and the node AMI installs it to /usr/local/pyroscope for the
+    // sidecar. The name says EMR so one constant cannot be mistaken for the AMI path.
     object PyroscopeJavaAgent {
         const val VERSION = "2.3.0"
         const val DOWNLOAD_URL =

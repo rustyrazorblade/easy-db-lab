@@ -2,7 +2,7 @@
 
 The `install presto` command scaffolds a Presto deployment using the Presto Helm chart. It generates scripts and a `values.yaml` in a local `presto/` directory. Once installed, use `easy-db-lab presto start` and `easy-db-lab presto stop` to manage it.
 
-Presto is stateless — it does not use persistent volumes. Queries run in-memory on app (`type=app`) nodes.
+Presto is stateless — it does not use persistent volumes. Queries run in-memory on the app role's nodes.
 
 ## Prerequisites
 
@@ -95,7 +95,7 @@ You do not need to restart Presto or manually update any config when adding or r
 
 ## Node Placement
 
-Presto workers are scheduled on `type=app` nodes using `nodeSelector: type: app`. The coordinator runs on the control plane or app nodes depending on cluster size.
+The coordinator and workers run on the app role's nodes: `type=app` on the nodes easy-db-lab builds, or the nodes `init --role-nodes app=...` maps (any node with `app=`). See [Role node selectors](../reference/commands.md#role-node-selectors).
 
 ## Connecting
 

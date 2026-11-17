@@ -2,7 +2,7 @@
 
 The `install trino` command scaffolds a Trino deployment using the Trino Helm chart. It generates scripts and a `values.yaml` in a local `trino/` directory. Once installed, use `easy-db-lab trino start` and `easy-db-lab trino stop` to manage it.
 
-Trino is stateless — it does not use persistent volumes. Queries run in-memory on app (`type=app`) nodes.
+Trino is stateless — it does not use persistent volumes. Queries run in-memory on the app role's nodes.
 
 ## Prerequisites
 
@@ -75,7 +75,7 @@ easy-db-lab clickhouse start
 
 ## Node Placement
 
-Trino workers are scheduled on `type=app` nodes using `nodeSelector: type: app`.
+The coordinator and workers run on the app role's nodes: `type=app` on the nodes easy-db-lab builds, or the nodes `init --role-nodes app=...` maps (any node with `app=`). See [Role node selectors](../reference/commands.md#role-node-selectors).
 
 ## Connecting
 

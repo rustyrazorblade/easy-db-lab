@@ -47,9 +47,9 @@
 
 ## 8. Docs and specs
 
-- [ ] 8.1 `docs/development/kits.md` (agents, role variables, shell library), `docs/reference/ports.md` (30882, 30881), `docs/reference/commands.md` (`init --role-nodes`, `--client-network`), kit user guides, `neo4j/METRICS.md`, `configuration/CLAUDE.md`, `Constants.kt:752-761` KDoc.
-- [ ] 8.2 Specs: `clickhouse-benchmark-kit`, `tidb`, `kit-install-command`, `networking`.
-- [ ] 8.3 Root CLAUDE.md kit section: role variables replace `type=app`.
+- [x] 8.1 `docs/development/kits.md` (agents, role variables, shell library), `docs/reference/ports.md` (30882, 30881), `docs/reference/commands.md` (`init --role-nodes`, `--client-network`), kit user guides, `neo4j/METRICS.md`, `configuration/CLAUDE.md`, `Constants.kt:752-761` KDoc.
+- [x] 8.2 Specs: `clickhouse-benchmark-kit`, `tidb`, `kit-install-command`, `networking`.
+- [x] 8.3 Root CLAUDE.md kit section: role variables replace `type=app`.
 
 ## 9. Verification
 

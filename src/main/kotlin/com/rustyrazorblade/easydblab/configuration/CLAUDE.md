@@ -215,6 +215,11 @@ All Grafana K8s resources are built programmatically using Fabric8:
 - Gated workloads (`services/ObservabilityStage`): Fluent Bit journald needs `SYSTEMD_JOURNAL` and `PRIVILEGED`; the host add-on collector, Beyla, ebpf_exporter and the Pyroscope eBPF agent need `PRIVILEGED`; the core collector's pod logs need `HOST_PATH` (the pseudo-stage "Pod logs", which applies nothing); YACE needs `CLOUDWATCH` (and so does the core collector's `yace` scrape job, rendered by `OtelManifestBuilder.buildInfraScrapeJobs`); s3manager needs `S3` (also its section in `status` and `StatusCache`'s `accessInfo`).
 - `ObservabilityStage` entries and `StageRequirement` carry `requires: Set<NodeCapability>`; a stage is applied only when every capability is present. A stage missing any is not applied, not awaited, and emits one `Event.Grafana.StageSkipped` per missing capability, and `init`'s report lists it under each one. A stage may name workloads in `rolledOutFirst`: the stack waits for their rollout before it applies the stage, so the host add-on never races old core pods for hostPorts 4317 and 4318. The account compactor needs `S3`, `HOST_PATH` (its scratch directories) and `NODE_SSH` (its preparation uploads the lease agent jar to the control node), so a local or brought cluster skips it. Builders stay unaware of capabilities. `CollectorResources.build` takes the capabilities as a required argument, and the deploy and the kit sync (`DefaultOtelSyncService`) each read them from the cluster contract (`ClusterContractSource`), so both render the same collector config. Where `HOST_PATH` exists, pod logs reach Loki without a journal through `file_log/containers` (`PodLogsWithoutJournalIntegrationTest`).
 
+## Role Selectors and Client Networks (`RoleSelectors.kt`, `ClientNetworks.kt`)
+
+- **`RoleSelectors`** holds one `NodeSelector` (a label map; empty means any node) per role, `db`, `app` and `control`. `OWNED_NODES` is `type=<role>` (the nodes easy-db-lab builds and labels), `ANYWHERE` constrains nothing; `base(NodeOrigin)` picks one (`OWNED` or `BROUGHT`, the latter set by #1082). `init --role-nodes <role>=<k=v>[,...]` (`parse`, before anything is cleaned or written) replaces one role's selector, and `<role>=` unconstrains it. `init` records the result in `ClusterState.roleSelectors`; `from(state)` reads it, or `OWNED_NODES` for a state with none. `services/KitPlacementVariables` publishes them to kits as `DB_NODE_SELECTOR`/`APP_NODE_SELECTOR` (JSON maps, for `nodeSelector`) and `*_NODE_LABELS` (label selectors, for `kubectl -l`); stress Jobs take `app`. No kit template or script names a `type` label (`BuiltinKitHostDependencyTest`, `KitRolePlacementTest`).
+- **`ClientNetworks`** is the IPv4 CIDR list a passwordless database kit accepts clients from (ClickHouse `networks/ip`, Postgres `pg_hba`), rendered as `CLIENT_NETWORKS_JSON` and `CLIENT_NETWORKS_HBA_JSON`. `from(state)` returns `ClusterState.clientNetworks` when recorded (a cluster easy-db-lab did not build, probed at `init` by `services/ClientNetworkProbe`: each node's pod CIDRs and InternalIP/32, then the `--client-network` values), else the VPC CIDR (`initConfig.cidr`, default `Constants.Vpc.DEFAULT_CIDR`), `Constants.K3s.CLUSTER_CIDR` (passed to K3s as `--cluster-cidr`) and `ClusterState.extraClientNetworks` (the `init --client-network` values), each once. Never `10.0.0.0/8`.
+
 ## Pyroscope Subpackage (`pyroscope/`)
 
 All Pyroscope K8s resources are built programmatically using Fabric8:
@@ -253,16 +258,16 @@ async-profiler to the running JVM at runtime. Everything else still uses the age
    `discovery.process` (see `config.alloy`); host processes with no pod are still profiled, just
    without pod labels. Also profiles ClickHouse and TiDB/TiKV/PD (CPU only, since they're C++/Go).
 3. **Pyroscope Java Agent (Stress Jobs)** — copied into the stress pod by a `pyroscope-agent` init
-   container (`JavaAgentDelivery`, image `Constants.Agents.PYROSCOPE_IMAGE`) into the `java-agents`
+   container (`JavaAgentDelivery`, image `Constants.Kit.Agents.PYROSCOPE_IMAGE`) into the `java-agents`
    emptyDir and loaded from `/edl/agents/pyroscope.jar`; no hostPath, so a stress pod runs on any node.
    Configured via `JDK_JAVA_OPTIONS` in `StressJobManifestBuilder`. Not `JAVA_TOOL_OPTIONS`: the stress image selects ZGC there, and a pod value would replace it. Collects `cpu`, `alloc`, `lock`. The node jar from
    `install_pyroscope_agent.sh` stays for the Cassandra sidecar, which still mounts it from the host.
 4. **Pyroscope Java Agent (Spark/EMR)** — `/opt/pyroscope/pyroscope.jar`, i.e.
    `Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH` (installed by EMR bootstrap action). Added to
    Spark driver and executor via `extraJavaOptions`. Service name: `spark-<job-name>`. Note the two
-   install paths differ — EMR uses `/opt/pyroscope`, nodes use `/usr/local/pyroscope` — which is why
+   install paths differ — EMR uses `/opt/pyroscope`, the AMI (for the sidecar) `/usr/local/pyroscope` — which is why
    the constant is named for EMR.
-5. **Pyroscope Java Agent (Trino/Presto, Cassandra Sidecar)** — injected via `JAVA_TOOL_OPTIONS`,
+5. **Pyroscope Java Agent (Trino/Presto, Cassandra Sidecar)** — injected via `JAVA_TOOL_OPTIONS`; Trino and Presto copy the jar from the agent image in an init container,
    governed by the `trino` and `sidecar-otel` specs. Out of scope of the Cassandra change.
 
 **Never add a combined cpu+wall mode.** `jfr-parser` v0.18.0 `pprof/parser.go:56` reuses one sample

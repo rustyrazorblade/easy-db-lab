@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.BuildBaseImage
 import com.rustyrazorblade.easydblab.commands.BuildCassandraImage
 import com.rustyrazorblade.easydblab.commands.BuildImage
+import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.Down
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.PruneAMIs
@@ -16,6 +17,7 @@ import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
 import com.rustyrazorblade.easydblab.commands.aws.Region
 import com.rustyrazorblade.easydblab.commands.aws.S3Bucket
 import com.rustyrazorblade.easydblab.commands.aws.Vpcs
+import com.rustyrazorblade.easydblab.commands.cassandra.CassandraBuild
 import com.rustyrazorblade.easydblab.commands.cassandra.CassandraInstall
 import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
 import com.rustyrazorblade.easydblab.commands.ingress.IngressAllow
@@ -292,6 +294,8 @@ class CommandExecutorTest : BaseKoinTest() {
             ::CompactorStart,
             ::CompactorStop,
             ::CompactorStatus,
+            ::ConfigureAWS,
+            { CassandraBuild().apply { javaVersion = "21" } },
         )
 
     @Test

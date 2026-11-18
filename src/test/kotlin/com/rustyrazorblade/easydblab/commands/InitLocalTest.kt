@@ -38,6 +38,8 @@ import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import picocli.CommandLine
 import java.io.File
+import java.net.ConnectException
+import java.net.SocketException
 
 /**
  * `init --local` on a machine with no AWS configuration: the profile directory is empty, loading the
@@ -53,6 +55,9 @@ class InitLocalTest : BaseKoinTest() {
     /** What the Docker daemon reports as its architecture (`docker info`'s `Architecture`). */
     private var dockerArchitecture = "x86_64"
 
+    /** When set, the Docker daemon cannot be reached and asking for its architecture throws this. */
+    private var dockerUnavailable: RuntimeException? = null
+
     private val workspace: File get() = context.workingDirectory
     private val stateFile: File get() = File(workspace, "state.json")
 
@@ -66,7 +71,11 @@ class InitLocalTest : BaseKoinTest() {
                 // Init resolves both lazily (class-level `by inject()`); resolving either fails the test.
                 single<EC2InstanceService> { error("init --local must not build an EC2 client, which loads the profile for its region") }
                 single<DockerClientProvider> {
-                    val client = mock<DockerClientInterface> { on { serverArchitecture() } doAnswer { dockerArchitecture } }
+                    val client =
+                        mock<DockerClientInterface> {
+                            on { serverArchitecture() } doAnswer
+                                { dockerUnavailable?.let { throw it } ?: dockerArchitecture }
+                        }
                     object : DockerClientProvider {
                         override fun getDockerClient(): DockerClientInterface = client
                     }
@@ -117,12 +126,33 @@ class InitLocalTest : BaseKoinTest() {
         assertThat(File(expected).isAbsolute).isTrue()
     }
 
+    /**
+     * Like every other path the user types (`cql --file`, `grafana install`, `kit source add`), a relative
+     * `--data-dir` names a directory relative to the process's current directory, not to the workspace the
+     * context names. The test's workspace is a temporary directory, so the two differ here.
+     */
     @Test
-    fun `a relative data directory is resolved against the current directory and recorded absolute`() {
+    fun `a relative data directory is resolved against the process current directory and recorded absolute`() {
         parsed("--local", "--data-dir", "../shared-data").execute()
 
-        val expected = File(workspace.absoluteFile.parentFile, "shared-data").path
+        val expected =
+            File(System.getProperty("user.dir"))
+                .toPath()
+                .resolve("../shared-data")
+                .toAbsolutePath()
+                .normalize()
+                .toString()
+        assertThat(workspace.absoluteFile).isNotEqualTo(File(System.getProperty("user.dir")).absoluteFile)
         assertThat(state().environment).isEqualTo(Environment.K3sDocker(expected))
+    }
+
+    @Test
+    fun `an absolute data directory is recorded as given, normalized`() {
+        val absolute = File(workspace, "elsewhere/../obs").absolutePath
+
+        parsed("--local", "--data-dir", absolute).execute()
+
+        assertThat(state().environment).isEqualTo(Environment.K3sDocker(File(workspace, "obs").absolutePath))
     }
 
     @Test
@@ -354,17 +384,49 @@ class InitLocalTest : BaseKoinTest() {
         assertThat(File(data, "chunk")).hasContent("owner's data")
     }
 
+    /**
+     * The architecture comes from `docker info`, so with no daemon `init --local` cannot build its state.
+     * It reports that as its own event and fails before `--clean` runs or anything is written.
+     */
+    @Test
+    fun `with Docker not running it reports a typed event, fails and writes nothing`() {
+        parsed("--local").execute()
+        val before = workspace.walkTopDown().associate { it.path to (if (it.isFile) it.readText() else "") }
+        dockerUnavailable = RuntimeException("java.net.SocketException: No such file or directory", SocketException("docker.sock"))
+
+        assertThatThrownBy { parsed("--local", "--clean").execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+
+        val event = events.filterIsInstance<Event.Setup.LocalDockerUnavailable>().single()
+        assertThat(event.isError()).isTrue()
+        assertThat(event.toDisplayString()).contains("Docker").contains("docker.sock").contains("Nothing was written")
+        assertThat(workspace.walkTopDown().associate { it.path to (if (it.isFile) it.readText() else "") }).isEqualTo(before)
+    }
+
+    @Test
+    fun `with Docker not running in a new directory no workspace file is created`() {
+        val before = workspace.walkTopDown().map { it.path }.toSet()
+        dockerUnavailable = RuntimeException("Connection refused", ConnectException("Connection refused"))
+
+        assertThatThrownBy { parsed("--local").execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(workspace.walkTopDown().map { it.path }.toSet()).isEqualTo(before)
+        assertThat(stateFile).doesNotExist()
+        assertThat(events.filterIsInstance<Event.Setup.LocalDockerUnavailable>()).hasSize(1)
+    }
+
     /** The owner's data: neither `clean` nor `init --clean` may remove a populated `--data-dir`, inside the workspace or not. */
     @Test
     fun `clean and init --clean leave a populated --data-dir untouched`() {
         val inside = File(workspace, "obs").apply { mkdirs() }
         File(inside, "blocks/01").apply { parentFile.mkdirs() }.writeText("metrics")
-        parsed("--local", "--data-dir", "obs").execute()
+        val dataDir = inside.absolutePath
+        parsed("--local", "--data-dir", dataDir).execute()
 
         Clean().execute()
         assertThat(File(inside, "blocks/01")).hasContent("metrics")
-        parsed("--local", "--data-dir", "obs").execute()
-        parsed("--local", "--data-dir", "obs", "--clean").execute()
+        parsed("--local", "--data-dir", dataDir).execute()
+        parsed("--local", "--data-dir", dataDir, "--clean").execute()
 
         assertThat(File(inside, "blocks/01")).hasContent("metrics")
         assertThat(state().environment).isEqualTo(Environment.K3sDocker(inside.absoluteFile.normalize().path))

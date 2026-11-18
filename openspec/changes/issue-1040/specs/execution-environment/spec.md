@@ -93,6 +93,11 @@ These commands require `aws-account`:
 - `cassandra use`, `cassandra install`, `build-image`, `build-base`, `build-cassandra`
 - every `spark`, `opensearch`, `tailscale`, `ingress`, `aws` and `observability compactor` subcommand
 - `prune-amis`, `show-iam-policies`
+- `configure-aws`, `cassandra build`
+
+These commands require `node-ssh`, because they run on the database nodes over SSH and read the AxonOps settings from the AWS profile:
+
+- `cassandra start` (the alternative is the Cassandra kit), `configure-axonops`
 
 Outside a workspace, the target environment is `ec2-k3s`.
 

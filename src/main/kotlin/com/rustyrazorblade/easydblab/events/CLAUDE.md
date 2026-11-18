@@ -59,7 +59,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Docker.*` — Container lifecycle operations
 - `Event.Logs.*` — Log queries (`logs query`)
 - `Event.Metrics.*` — `metrics stream`: `Sample` (name, entity, value; published straight to Redis by `RedisSamplePublisher`, never through the bus or to the console), `MetricFailing` (an error: a metric started failing, once per run of failures), `MetricRecovered`, `RedisReconnected` (Redis failed and came back; the URL, the reason and the samples the cycle dropped), and the errors that stop the command: `InvalidNames`, `RedisNotConfigured`, `RedisLost`, `NoRunningCluster`
-- `Event.Setup.*` — Profile setup and initialization
+- `Event.Setup.*` — Profile setup and initialization. `Setup.LocalDockerUnavailable` (an error: `init --local` could not read the Docker daemon's architecture; the root cause, emitted before anything is written)
 - `Event.Ssh.*` — SSH remote command execution
 - `Event.Platform.*` — Platform substrate operations (StorageClass, PVs, info)
 - `Event.Install.*` — Kit scaffold generation

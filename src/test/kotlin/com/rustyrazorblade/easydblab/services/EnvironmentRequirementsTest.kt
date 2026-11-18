@@ -1,8 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
+import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
@@ -39,8 +42,15 @@ class EnvironmentRequirementsTest {
         override fun execute() = Unit
     }
 
-    private fun record(environment: Environment) =
-        states.save(ClusterState(name = "t", versions = mutableMapOf(), environment = environment))
+    @RequiresCapability(NodeCapability.NODE_SSH, NodeCapability.AWS_ACCOUNT, alternative = "the kit")
+    private class SshAndAwsCommand : PicoCommand {
+        override fun execute() = Unit
+    }
+
+    private fun record(
+        environment: Environment,
+        capabilities: Set<NodeCapability>? = null,
+    ) = states.save(ClusterState(name = "t", versions = mutableMapOf(), environment = environment, capabilities = capabilities))
 
     @Test
     fun `an EC2 workspace still requires the profile`() {
@@ -67,5 +77,41 @@ class EnvironmentRequirementsTest {
         record(Environment.Ec2K3s)
 
         assertThat(requirements.needsProfile(PlainCommand())).isFalse()
+    }
+
+    /** The capabilities are ANDed: the command runs only where every one is present. */
+    @Test
+    fun `a command needing several capabilities runs where all are present`() {
+        record(Environment.Ec2K3s)
+
+        assertThat(requirements.unavailable(SshAndAwsCommand())).isNull()
+    }
+
+    @Test
+    fun `a command needing several capabilities is unavailable when only one is missing, naming that one`() {
+        // An EC2 account with no SSH to its nodes: AWS_ACCOUNT is present, NODE_SSH is not.
+        record(Environment.Ec2K3s, capabilities = setOf(NodeCapability.S3))
+
+        val event = requirements.unavailable(SshAndAwsCommand(), "ssh-and-aws")
+
+        assertThat(event).isNotNull()
+        assertThat(event?.missing).containsExactly(NodeCapability.NODE_SSH)
+        assertThat(event?.alternative).isEqualTo("the kit")
+    }
+
+    @Test
+    fun `a command needing several capabilities lists every missing one, in enum order`() {
+        record(Environment.K3sDocker("/data"))
+
+        assertThat(requirements.unavailable(SshAndAwsCommand())?.missing)
+            .containsExactly(NodeCapability.NODE_SSH, NodeCapability.AWS_ACCOUNT)
+    }
+
+    /** `cassandra use` also requires NODE_SSH (design): an EC2 workspace recorded without it cannot run it. */
+    @Test
+    fun `cassandra use needs node SSH as well as the AWS account`() {
+        record(Environment.Ec2K3s, capabilities = setOf(NodeCapability.S3))
+
+        assertThat(requirements.unavailable(UseCassandra())?.missing).containsExactly(NodeCapability.NODE_SSH)
     }
 }

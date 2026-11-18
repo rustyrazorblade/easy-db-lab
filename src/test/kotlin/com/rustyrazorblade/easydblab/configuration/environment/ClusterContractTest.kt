@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
+import com.rustyrazorblade.easydblab.configuration.region
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -74,6 +75,27 @@ class ClusterContractTest {
         assertThat(contract.storeKind).isEqualTo(StoreKind.ObjectStore)
         assertThat(contract.hosting.storage).isEqualTo(BackendStorage.HostPath)
         assertThat(contract.hosting.credentials).isEqualTo(StoreCredentials.InstanceRole)
+    }
+
+    /**
+     * Only an EC2 cluster has an AWS profile to fall back on. A local or brought cluster with no
+     * recorded region (no init configuration at all) has no region, and asking it never loads the profile.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("environmentsWithoutAws")
+    fun `a cluster with no AWS account never asks the profile for its region or datacenter`(environment: Environment) {
+        val state = ClusterState(name = "test", versions = mutableMapOf(), environment = environment)
+        val noProfile = ProfileRegion { error("a ${environment.displayName} workspace must not load the AWS profile") }
+
+        assertThat(state.region(noProfile)).isEmpty()
+        assertThat(ClusterContract.of(state).datacenter(noProfile)).isEqualTo("dc1")
+    }
+
+    @Test
+    fun `an EC2 state with no initConfig takes its region from the profile`() {
+        val state = ClusterState(name = "test", versions = mutableMapOf())
+
+        assertThat(state.region { "eu-west-1" }).isEqualTo("eu-west-1")
     }
 
     @Test
@@ -179,6 +201,9 @@ class ClusterContractTest {
     companion object {
         @JvmStatic
         fun environments(): List<Environment> = listOf(Environment.Ec2K3s, Environment.K3sDocker("/d"), Environment.Kubeconfig("/k"))
+
+        @JvmStatic
+        fun environmentsWithoutAws(): List<Environment> = listOf(Environment.K3sDocker("/d"), Environment.Kubeconfig("/k"))
 
         @JvmStatic
         fun table(): List<Arguments> =

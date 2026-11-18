@@ -5,8 +5,9 @@ package com.rustyrazorblade.easydblab.configuration
  * state records no init configuration (an old state, or the bootstrap state a restore builds before
  * `state.json` is back), which is where that cluster's bucket and nodes are.
  *
- * Asking is what loads the profile, so a caller holds this instead of a [User]: a local workspace
- * records a region (`""`) and never asks.
+ * Asking is what loads the profile, so a caller holds this instead of a [User]. Only a cluster with an AWS
+ * account ([NodeCapability.AWS_ACCOUNT]) ever asks: a local or brought workspace has no profile, so its
+ * region is the one it recorded (`""`), or `""` when it records none.
  */
 fun interface ProfileRegion {
     /** The profile's region; loads the profile. */
@@ -21,5 +22,13 @@ fun interface ProfileRegion {
     }
 }
 
-/** The region `init` recorded, or the profile's for a state that records none. */
-fun ClusterState.region(profileRegion: ProfileRegion): String = initConfig?.region ?: profileRegion.region()
+/**
+ * The region `init` recorded. A state that records none takes the profile's region only when its
+ * environment has an AWS account; any other has no region (`""`) and never loads the profile.
+ */
+fun ClusterState.region(profileRegion: ProfileRegion): String =
+    initConfig?.region
+        ?: when (NodeCapability.AWS_ACCOUNT in NodeCapabilities.from(this)) {
+            true -> profileRegion.region()
+            false -> ""
+        }

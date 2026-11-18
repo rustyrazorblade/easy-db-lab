@@ -179,7 +179,10 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
   (the command path, the environment's display name, the missing capabilities, the `alternative`
   when not blank) and fails with `CommandFailedException`. Every AWS-only command carries
   `AWS_ACCOUNT` (`cassandra use` and `cassandra install` also `NODE_SSH`, with
-  `Constants.Cassandra.KIT_ALTERNATIVE`). The help-only parent groups (`spark`,
+  `Constants.Cassandra.KIT_ALTERNATIVE`), `configure-aws` and `cassandra build` included. `cassandra start`
+  and `configure-axonops` carry `NODE_SSH` alone: they SSH to the nodes and read the profile's AxonOps
+  settings. `LocalWorkspaceNeedsNoProfileTest` walks the whole command tree (a workspace kit's commands
+  included) in a K3s in Docker and a kubeconfig workspace and fails on any command there that loads `User`. The help-only parent groups (`spark`,
   `aws`, ...) are not commands the executor runs, so they carry nothing.
 - `@RequireProfileSetup` — require AWS profile configuration before execution, but only when the
   target environment has `AWS_ACCOUNT` (`services/EnvironmentRequirements`). The target is the

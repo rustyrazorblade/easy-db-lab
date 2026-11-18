@@ -5387,6 +5387,22 @@ sealed interface Event {
                 """.trimMargin()
         }
 
+        /**
+         * `init --local` could not ask the Docker daemon for its architecture, which every node of a
+         * K3s in Docker workspace runs, so it wrote nothing. [detail] is the client's own failure.
+         */
+        @Serializable
+        @SerialName("Setup.LocalDockerUnavailable")
+        data class LocalDockerUnavailable(
+            val detail: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Error: init --local needs a running Docker daemon to read its architecture, and Docker did not answer " +
+                    "($detail). Start Docker and run init again. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
         /** `init --local` was given [options] that only an AWS cluster uses, so it wrote nothing. */
         @Serializable
         @SerialName("Setup.LocalOptionsRefused")

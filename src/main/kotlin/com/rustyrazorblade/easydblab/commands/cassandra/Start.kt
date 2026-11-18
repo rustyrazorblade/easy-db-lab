@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
@@ -21,6 +24,7 @@ import picocli.CommandLine.Option
 /**
  * Start cassandra on all nodes via service command.
  */
+@RequiresCapability(NodeCapability.NODE_SSH, alternative = Constants.Cassandra.KIT_ALTERNATIVE)
 @RequireProfileSetup
 @RequireSSHKey
 @RequiresProxy

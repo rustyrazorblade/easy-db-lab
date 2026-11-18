@@ -41,6 +41,7 @@ import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
 import picocli.CommandLine.Spec
+import java.nio.file.Path
 import java.time.LocalDate
 import kotlin.system.exitProcess
 
@@ -386,8 +387,9 @@ class Init :
     @Option(
         names = [DATA_DIR_OPTION],
         description = [
-            "With --local: the directory the observability data is kept in, resolved against the " +
-                "current directory (default: ${Constants.Local.DEFAULT_DATA_DIRECTORY} in the workspace). " +
+            "With --local: the directory the observability data is kept in. A relative path is resolved " +
+                "against the current directory of the easy-db-lab process, like every other path option, " +
+                "and recorded absolute (default: ${Constants.Local.DEFAULT_DATA_DIRECTORY} in the workspace). " +
                 "'clean' never removes it.",
         ],
     )
@@ -474,15 +476,16 @@ class Init :
         }
 
     /**
-     * The data directory as `state.json` records it: absolute and normalized. A given [dataDir] is
-     * resolved against the current directory (the workspace: every command runs from there); with
-     * none, it is [Constants.Local.DEFAULT_DATA_DIRECTORY] in the workspace.
+     * The data directory as `state.json` records it: absolute and normalized. A given [dataDir] is a
+     * path the user typed, so like every other path option (`cql --file`, `grafana install`) a relative
+     * one is resolved against the process's current directory, which in the REPL or the server need
+     * not be the workspace. With none, it is [Constants.Local.DEFAULT_DATA_DIRECTORY] in the workspace.
      */
     private fun resolvedDataDir(): String =
-        context.workingDirectory
-            .toPath()
-            .resolve(dataDir ?: Constants.Local.DEFAULT_DATA_DIRECTORY)
-            .toAbsolutePath()
+        when (val given = dataDir) {
+            null -> context.workingDirectory.toPath().resolve(Constants.Local.DEFAULT_DATA_DIRECTORY)
+            else -> Path.of(given)
+        }.toAbsolutePath()
             .normalize()
             .toString()
 
@@ -691,7 +694,21 @@ class Init :
         )
     }
 
-    private fun dockerArchitecture(): Arch = Arch.fromOsArch(dockerClientProvider.getDockerClient().serverArchitecture())
+    /**
+     * The Docker daemon's architecture. A daemon that does not answer is reported as
+     * [Event.Setup.LocalDockerUnavailable] and fails `init`; this runs before anything is cleaned or written.
+     * An architecture the daemon reports but easy-db-lab does not support fails through [Arch.fromOsArch].
+     */
+    private fun dockerArchitecture(): Arch {
+        val reported =
+            runCatching { dockerClientProvider.getDockerClient().serverArchitecture() }.getOrElse { e ->
+                if (e is InterruptedException) throw e
+                val detail = generateSequence(e) { it.cause }.last().let { "${it::class.simpleName}: ${it.message}" }
+                eventBus.emit(Event.Setup.LocalDockerUnavailable(detail))
+                throw CommandFailedException("init --local cannot reach the Docker daemon", e)
+            }
+        return Arch.fromOsArch(reported)
+    }
 
     /**
      * The state of a K3s in Docker workspace. It reads neither the AWS profile nor EC2: the Services

@@ -114,7 +114,7 @@ The network mode is `Direct` either way. This decision is how the CLI reaches cl
 - (b) Rejected: A separate `EnvironmentFeature` enum. Two vocabularies.
 - (c) Rejected: An `@AwsOnly` annotation. This is branching on a name.
 
-The gated set is `cassandra use`, `cassandra install`, `build-image`, `build-base`, `build-cassandra`, `spark *`, `opensearch *`, `tailscale *`, `ingress *`, `aws *`, `prune-amis`, `show-iam-policies` and `observability compactor *`. `cassandra use` also requires `NODE_SSH`. Outside a workspace the target is `Ec2K3s`, so `build-image` with no workspace still runs.
+The gated set is `cassandra use`, `cassandra install`, `build-image`, `build-base`, `build-cassandra`, `spark *`, `opensearch *`, `tailscale *`, `ingress *`, `aws *`, `prune-amis`, `show-iam-policies`, `configure-aws`, `cassandra build` and `observability compactor *`. `cassandra use` also requires `NODE_SSH`; `cassandra start` and `configure-axonops` require `NODE_SSH` alone (they read the profile's AxonOps settings on the nodes). `LocalWorkspaceNeedsNoProfileTest` walks every command in the tree to keep this set complete. Outside a workspace the target is `Ec2K3s`, so `build-image` with no workspace still runs.
 
 ### 9. Profile requirement: decided (D7, owner, 2026-11-16): option (a)
 

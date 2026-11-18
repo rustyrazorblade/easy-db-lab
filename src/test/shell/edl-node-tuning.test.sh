@@ -20,6 +20,10 @@ SCRIPT="${RESOURCES}/edl-node-tuning"
 # Nodes run the script under dash (Ubuntu's /bin/sh); use it when it is installed so a bashism fails here.
 TEST_SH="$(command -v dash || echo sh)"
 
+# The script serializes packet steering with flock (util-linux, on every node). macOS does not
+# ship it: brew install util-linux.
+command -v flock > /dev/null || { echo "FAIL - flock is not installed: install util-linux (brew install util-linux)"; exit 1; }
+
 tests_run=0
 tests_failed=0
 WORK=""
@@ -257,6 +261,28 @@ if [[ "$(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")" == 8192 ]]; then
   pass "steering waits for the interface lock and uses the queue count it sees inside it"
 else
   fail "after 8 -> 4 queues under the lock expected rx-0 flows 8192, got $(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")"
+fi
+
+# A queue event for a new interface can start steering under its first name, and udev renames the
+# interface while it writes: a queue directory gone by the time it is written is skipped quietly,
+# since the interface's own add event steers it under the new name.
+# steer lists the queues twice (for the flow share, then to write them); this ls removes rx-1 just
+# after the second listing has named it, as a rename between the listing and the write does.
+setup 4 2
+cat > "${WORK}/bin/ls" <<EOF
+#!/bin/bash
+/bin/ls "\$@"
+calls=\$((\$(cat "${WORK}/ls.calls" 2> /dev/null || echo 0) + 1))
+echo "\$calls" > "${WORK}/ls.calls"
+[ "\$calls" -ge 2 ] && rm -rf "${SYS}/class/net/ens5/queues/rx-1"
+exit 0
+EOF
+chmod +x "${WORK}/bin/ls"
+OUTPUT="$(run rps-queue /devices/pci0000:00/0000:00:05.0/net/ens5/queues/rx-0)"
+if [[ "$OUTPUT" != *"could not write"* && "$(cat "${SYS}/class/net/ens5/queues/rx-0/rps_cpus")" == f ]]; then
+  pass "a queue that disappears while steering is skipped without a failure line"
+else
+  fail "a vanished queue should be skipped quietly, got: ${OUTPUT}"
 fi
 
 # --- apply steers physical links only ---

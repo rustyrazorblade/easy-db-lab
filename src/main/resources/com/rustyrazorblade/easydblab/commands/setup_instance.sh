@@ -176,7 +176,8 @@ tune_node() {
   # Keep swap off after a reboot too.
   local fstab
   fstab=$(comment_swap_lines < "$FSTAB") || fail "could not read $FSTAB to turn swap off"
-  [[ "$fstab" == "$(cat "$FSTAB")" ]] || printf '%s\n' "$fstab" | sudo tee "$FSTAB" > /dev/null
+  [[ "$fstab" == "$(cat "$FSTAB")" ]] || printf '%s\n' "$fstab" | sudo tee "$FSTAB" > /dev/null ||
+    fail "could not comment out the swap lines in $FSTAB"
 
   sudo udevadm control --reload || fail "udev could not reload its rules"
   sudo udevadm trigger --subsystem-match=block --action=change

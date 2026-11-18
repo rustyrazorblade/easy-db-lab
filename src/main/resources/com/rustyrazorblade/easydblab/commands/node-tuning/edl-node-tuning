@@ -150,6 +150,9 @@ steer() {
     mask=$(rps_mask)
     flows=$(flow_count "$1")
     for q in $(rx_queues "$1"); do
+      # A queue gone since the listing (the interface was renamed, or ethtool -L removed it) is
+      # not a failed write: the event for its new name or new count steers it.
+      [ -d "$q" ] || continue
       put "$q/rps_cpus" "$mask"
       put "$q/rps_flow_cnt" "$flows"
     done

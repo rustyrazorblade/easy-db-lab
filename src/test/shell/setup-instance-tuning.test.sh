@@ -98,6 +98,7 @@ EOF
 #!/bin/bash
 input=\$(cat)
 echo "tee \$* <- \$input" >> "${WORK}/calls.log"
+[ "\$1" = "${WORK}/fstab" ] && [ "\${FSTAB_WRITE_FAILS:-0}" = 1 ] && exit 1
 [ "\$1" = "${WORK}/fstab" ] && printf '%s\n' "\$input" > "\$1"
 exit 0
 EOF
@@ -231,6 +232,15 @@ else
 fi
 
 # --- the boot unit fails to start ---
+setup
+OUTPUT="$(FSTAB_WRITE_FAILS=1 run_tune)"
+STATUS=$?
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"ERROR: could not comment out the swap lines in ${WORK}/fstab"* ]]; then
+  pass "a failed fstab rewrite fails setup, since swap would come back after a reboot"
+else
+  fail "a failed fstab rewrite should fail setup, got ${STATUS}: ${OUTPUT}"
+fi
+
 setup
 OUTPUT="$(ENABLE_FAILS=1 run_tune)"
 STATUS=$?

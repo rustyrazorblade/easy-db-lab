@@ -86,6 +86,7 @@ The wide ephemeral range also covers the Kubernetes NodePort range and the ports
 - The NodePort range 30000-32767.
 - Every fixed port below that which a host listener uses: K3s, etcd, containerd, the kubelet, kube-proxy, Cilium and Hubble, the observability stack on the control node, and Cassandra and its sidecar on db nodes.
 - The stress metrics ports 9500-9599 on app nodes. Each `cassandra stress start` takes the next port in that window, and wraps after 100 runs. A run cannot bind its metrics port while the run 100 before it is still running on the same node.
+- flannel's VXLAN UDP port 8472, used when the CNI is flannel.
 - Tailscale's UDP port 41641.
 
 A reserved port can still be bound explicitly. Only the kernel's automatic source-port choice skips it.

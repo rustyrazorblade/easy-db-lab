@@ -59,6 +59,12 @@ be added to the reserved list. See [Node OS Tuning](../user-guide/node-tuning.md
 |------|---------|
 | 9500-9599 | Stress metrics (Prometheus). Each `cassandra stress start` takes the next port, wrapping after 100 runs, so a run cannot bind its port while the run 100 before it is still running on that node. Reserved by node tuning. |
 
+## Flannel
+
+| Port | Service |
+|------|---------|
+| 8472/udp | flannel VXLAN, on every node when the CNI is flannel (`init --cni=flannel`). Reserved by node tuning. |
+
 ## Tailscale
 
 | Port | Service |

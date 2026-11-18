@@ -98,6 +98,8 @@ EOF
 #!/bin/bash
 echo "tee \$*" >> "${WORK}/calls.log"
 echo "stdin: \$(cat)" >> "${WORK}/calls.log"
+[ "\${FSTAB_APPEND_FAILS:-0}" = 1 ] && exit 1
+exit 0
 EOF
   for tool in mkfs.xfs mkdir sed systemctl; do
     cat > "${WORK}/bin/${tool}" <<EOF
@@ -251,6 +253,18 @@ if grep -q '^mount -o remount,noatime /mnt/db1$' "${WORK}/calls.log" &&
   pass "a re-run remounts the data disk noatime and rewrites its one fstab entry"
 else
   fail "a re-run should remount noatime and rewrite fstab once, got: $(cat "${WORK}/calls.log")"
+fi
+
+# --- a re-run whose fstab rewrite fails stops setup, since the mount would be gone after a reboot ---
+setup "$(lsblk_json ',
+  {"name": "nvme1n1", "type": "disk", "mountpoints": ["/mnt/db1"]}')"
+echo /dev/nvme1n1 > "${WORK}/mounted"
+OUTPUT="$(FS_TYPE=xfs FSTAB_APPEND_FAILS=1 run_mount)"
+STATUS=$?
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"could not add the /mnt/db1 entry to /etc/fstab"* ]]; then
+  pass "a failed fstab append stops setup, naming it"
+else
+  fail "a failed fstab append should stop setup, got ${STATUS}: ${OUTPUT}"
 fi
 
 # --- a re-run whose noatime remount fails stops setup, naming it ---

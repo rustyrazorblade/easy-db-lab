@@ -127,8 +127,10 @@ mount_data_disk() {
 # read, 'nofail' keeps the node bootable if a stop/terminate wiped the instance store, and
 # 'x-systemd.device-timeout' avoids a long boot hang in that case.
 persist_mount() {
-  sudo sed -i "\#[[:space:]]${DATA_MOUNT}[[:space:]]#d" "$FSTAB"
-  echo "UUID=$1 $DATA_MOUNT $2 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2" | sudo tee -a "$FSTAB"
+  sudo sed -i "\#[[:space:]]${DATA_MOUNT}[[:space:]]#d" "$FSTAB" ||
+    fail "could not remove the old $DATA_MOUNT entry from $FSTAB"
+  echo "UUID=$1 $DATA_MOUNT $2 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2" | sudo tee -a "$FSTAB" ||
+    fail "could not add the $DATA_MOUNT entry to $FSTAB"
   # Pick up the fstab-generated mnt-db1.mount unit so services can order against it.
   sudo systemctl daemon-reload
 }

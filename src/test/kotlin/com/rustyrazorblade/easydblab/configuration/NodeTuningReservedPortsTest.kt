@@ -54,6 +54,9 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
         /** The lowest port the tuned ephemeral range hands out. */
         const val EPHEMERAL_MIN = 1024
 
+        /** The UDP port flannel's VXLAN backend binds, the K3s default when the CNI is flannel. */
+        const val FLANNEL_VXLAN_PORT = 8472
+
         /** The highest TCP or UDP port, the top of the tuned ephemeral range. */
         const val MAX_PORT = 65535
 
@@ -260,6 +263,14 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
     @Test
     fun `every host service port is reserved`() {
         assertThat(reservedPorts()).containsAll(Constants.NodeTuning.HOST_SERVICE_PORTS)
+    }
+
+    // The flannel CNI's kernel VXLAN socket binds its UDP port when flannel.1 comes up. No manifest
+    // builder names it, so the host service list must, or an outbound socket can take it first.
+    @Test
+    fun `the flannel VXLAN port is a reserved host service port`() {
+        assertThat(Constants.NodeTuning.HOST_SERVICE_PORTS).contains(FLANNEL_VXLAN_PORT)
+        assertThat(Constants.NodeTuning.FLANNEL_VXLAN_PORT).isEqualTo(FLANNEL_VXLAN_PORT)
     }
 
     // verify compares the kernel's read-back string with the packaged one exactly, so the packaged

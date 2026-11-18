@@ -667,13 +667,20 @@ object Constants {
         /** Cassandra's TLS native protocol port. */
         const val CASSANDRA_TLS_NATIVE_PORT = 9142
 
+        /**
+         * The UDP port flannel's VXLAN backend binds when it creates flannel.1, on every node of a
+         * cluster whose CNI is flannel (`init --cni=flannel`).
+         */
+        const val FLANNEL_VXLAN_PORT = 8472
+
         /** tailscaled's WireGuard UDP port, on every node that joins the tailnet. */
         const val TAILSCALE_WIREGUARD_PORT = 41641
 
         /**
          * Every host listener no manifest builder names: K3s, its embedded etcd and containerd, the
          * kubelet and kube-proxy, the Cilium agent and Hubble, Pyroscope's built-in Raft default,
-         * the database on db nodes, the stress metrics endpoint, and Tailscale. Each is reserved in
+         * the database on db nodes, the stress metrics endpoint, flannel's VXLAN socket, and
+         * Tailscale. Each is reserved in
          * [SYSCTL_FILE]; NodeTuningReservedPortsTest checks it.
          */
         val HOST_SERVICE_PORTS =
@@ -712,6 +719,7 @@ object Constants {
                 CASSANDRA_NATIVE_PORT,
                 CASSANDRA_TLS_NATIVE_PORT,
                 Stress.PROMETHEUS_PORT,
+                FLANNEL_VXLAN_PORT,
                 TAILSCALE_WIREGUARD_PORT,
             )
     }

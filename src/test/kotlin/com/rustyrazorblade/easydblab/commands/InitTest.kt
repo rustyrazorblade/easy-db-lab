@@ -981,6 +981,20 @@ class InitTest : BaseKoinTest() {
                 .hasMessageContaining("10.0.0.1/8")
             verify(mockClusterStateManager, never()).save(any())
         }
+
+        /** Every client network gets passwordless trust, so `/0` would open the kits to every address. */
+        @Test
+        fun `a --client-network of slash 0 fails before anything is saved, naming the value`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "192.168.0.0/16", "--client-network", "0.0.0.0/0")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("0.0.0.0/0")
+                .hasMessageContaining("--client-network")
+            verify(mockClusterStateManager, never()).save(any())
+        }
     }
 
     @Nested

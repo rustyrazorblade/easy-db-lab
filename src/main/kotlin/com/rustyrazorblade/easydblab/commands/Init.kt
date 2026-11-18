@@ -562,7 +562,7 @@ class Init :
         // Parsed before anything is cleaned or written, so a bad override or mapping leaves the directory as it was.
         val capabilities = effectiveCapabilities()
         val roleSelectors = RoleSelectors.base(nodeOrigin).withMappings(RoleSelectors.parse(roleNodes))
-        val extraClients = clientNetworks.map { Ipv4Cidr.parse(it).getOrThrow() }
+        val extraClients = clientNetworks.map(ClientNetworks::parseOption)
         val extraClientNetworks = extraClients.map { it.value }
         // Probed before anything is cleaned or written too: a cluster that reports no network leaves the directory as it was.
         val probedClientNetworks = broughtCluster?.let { api -> clientNetworkProbe.probe(api, extraClients).cidrs.map { it.value } }

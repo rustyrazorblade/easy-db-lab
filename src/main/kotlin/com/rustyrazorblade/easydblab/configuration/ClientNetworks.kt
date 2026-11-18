@@ -26,6 +26,21 @@ data class ClientNetworks(
         const val OPTION = "--client-network"
 
         /**
+         * Parses an [OPTION] value. Every client network gets passwordless trust, so `/0` (every
+         * address, more likely a typo than intent) is refused; any narrower prefix is accepted.
+         *
+         * @throws IllegalArgumentException naming the value when it is not an IPv4 network or is `/0`
+         */
+        fun parseOption(value: String): Ipv4Cidr {
+            val cidr = Ipv4Cidr.parse(value).getOrThrow()
+            require(cidr.prefixLength > 0) {
+                "Invalid $OPTION '$value': a /0 network would give every address passwordless access to the " +
+                    "database kits. Give the network the clients are in."
+            }
+            return cidr
+        }
+
+        /**
          * The networks [state] records, or, for a state that records none (the nodes easy-db-lab
          * builds), the VPC CIDR and the K3s cluster CIDR easy-db-lab passes to K3s, followed by
          * the networks added with [OPTION], each once.

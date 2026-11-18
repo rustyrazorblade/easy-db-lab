@@ -63,6 +63,17 @@ class RoleSelectorsTest {
             .hasMessageContaining("<role>=<key=value>")
     }
 
+    @Test
+    fun `a malformed label pair is refused, naming the pair`() {
+        val cases = mapOf("db=a=b=c" to "a=b=c", "db=k=v,bad" to "bad", "app=k=v,=v" to "=v", "db=k=,x=y" to "k=")
+
+        cases.forEach { (value, pair) ->
+            assertThatThrownBy { RoleSelectors.parse(listOf(value)) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("label '$pair'")
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(
         strings = [

@@ -122,9 +122,12 @@ data class RoleSelectors(
             val role = ServerType.entries.firstOrNull { it.serverType == roleName }
             val selector = value.substringAfter("=", "")
             // `<role>=` with nothing after it unmaps the role: its pods run on any node.
-            val labels = if (selector.isEmpty()) emptyList() else selector.split(",").map(::parseLabel)
-            require(role != null && "=" in value && labels.all { it != null }) {
-                "Invalid $OPTION '$value': expected $EXPECTED_FORM, with <role> one of " +
+            val pairs = if (selector.isEmpty()) emptyList() else selector.split(",")
+            val labels = pairs.map(::parseLabel)
+            val badPair = pairs.zip(labels).firstOrNull { (_, label) -> label == null }?.first
+            require(role != null && "=" in value && badPair == null) {
+                val pairNote = badPair?.let { " (label '$it' is not one key=value)" }.orEmpty()
+                "Invalid $OPTION '$value'$pairNote: expected $EXPECTED_FORM, with <role> one of " +
                     "${ServerType.entries.joinToString(", ") { it.serverType }}."
             }
             val parsed = labels.filterNotNull()

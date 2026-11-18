@@ -10,4 +10,6 @@ class BranchesOnEnvironment {
     fun isLocal(environment: Environment): Boolean = environment is Environment.K3sDocker
 
     fun isAws(environment: Environment): Boolean = environment == Environment.Ec2K3s
+
+    fun isBrought(environment: Environment): Boolean = environment::class == Environment.Kubeconfig::class
 }

@@ -45,6 +45,13 @@ sealed interface StoreCredentials {
     data object InstanceRole : StoreCredentials
 
     /**
+     * Nothing provides store credentials: an environment with no instance role (K3s in Docker, a
+     * brought cluster) until #1061 provisions a Secret for it. Nothing is mounted, as for [InstanceRole],
+     * but no reader can mistake it for a role the node has.
+     */
+    data object NotProvided : StoreCredentials
+
+    /**
      * Credentials from a Secret, mounted into the backend container's environment with `envFrom`.
      * #1061 populates it.
      *
@@ -190,7 +197,7 @@ data class ObservabilityHosting(
         val pod = deployment.spec.template.spec
         val containers =
             when (credentials) {
-                StoreCredentials.InstanceRole -> pod.containers
+                StoreCredentials.InstanceRole, StoreCredentials.NotProvided -> pod.containers
                 is StoreCredentials.FromSecret -> {
                     require(pod.containers.any { it.name == workload }) {
                         "$workload has no container named $workload to give the store credentials to."
@@ -240,9 +247,9 @@ data class ObservabilityHosting(
 
         /**
          * The hosting the cluster contract resolves for [state]'s recorded environment. The placement
-         * follows the environment; storage and credentials stay [AWS]'s until the off-AWS store and its
-         * StorageClass exist (#1035, #1061), so the retained-claim and Secret branches are rendered
-         * only by tests.
+         * follows the environment; storage stays [AWS]'s until the off-AWS store and its StorageClass
+         * exist (#1035), and off EC2 the credentials are [StoreCredentials.NotProvided] until #1061, so the
+         * retained-claim and Secret branches are rendered only by tests.
          */
         fun from(state: ClusterState): ObservabilityHosting = ClusterContract.of(state).hosting
     }

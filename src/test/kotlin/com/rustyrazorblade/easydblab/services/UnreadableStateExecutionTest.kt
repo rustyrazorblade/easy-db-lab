@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -17,6 +19,7 @@ import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
@@ -115,6 +118,35 @@ class UnreadableStateExecutionTest : BaseKoinTest() {
         assertThat(ran).isFalse()
         val error = emitted.filterIsInstance<Event.Command.ExecutionError>().single().error
         assertThat(error).contains(stateFile.absolutePath).contains(expected).doesNotContain("caused by")
+    }
+
+    /** A command whose body asks the datacenter of the state it loaded, with no profile region to fall back on. */
+    @Command(name = "reads-datacenter")
+    inner class ReadsDatacenter : PicoBaseCommand() {
+        override fun execute() {
+            ClusterContract.of(clusterState).datacenter(ProfileRegion.NONE)
+            ran = true
+        }
+    }
+
+    /**
+     * An EC2 state that records no region, with no profile region to fall back on, reaches the user as one
+     * error that says what is missing and how to fix it, never as a blank datacenter or a stack trace.
+     */
+    @Test
+    fun `an EC2 state with no region and no profile region fails the command with one clear error`() {
+        stateFile.writeText("""{"name": "test", "versions": {}}""")
+
+        val exitCode = executor().executeTopLevel(ReadsDatacenter())
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(ran).isFalse()
+        val error = emitted.filterIsInstance<Event.Command.ExecutionError>().single().error
+        assertThat(error)
+            .contains("records no region")
+            .contains("profile setup")
+            .doesNotContain("caused by")
+            .doesNotContain("\tat ")
     }
 
     companion object {

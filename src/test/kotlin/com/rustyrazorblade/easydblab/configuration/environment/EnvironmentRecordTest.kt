@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.environment
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -19,6 +20,18 @@ class EnvironmentRecordTest {
     fun `every type id declares its required fields, an empty list when it needs none`() {
         assertThat(EnvironmentRecord.requiredFields.keys).containsExactlyInAnyOrderElementsOf(Environment.TYPE_IDS)
         assertThat(EnvironmentRecord.requiredFields.filterValues { it.isEmpty() }.keys).containsExactly(Environment.EC2_K3S)
+    }
+
+    /** The record check guards `state.json`; the constructors guard every other way a variant is built. */
+    @Test
+    fun `a variant cannot be built with a relative path`() {
+        assertThatThrownBy { Environment.K3sDocker("obs") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("absolute")
+        assertThatThrownBy { Environment.Kubeconfig("kube/config") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("absolute")
+        assertThat(Environment.Kubeconfig("/home/me/.kube/config").source).isEqualTo("/home/me/.kube/config")
     }
 
     @Test
@@ -66,6 +79,11 @@ class EnvironmentRecordTest {
                 Arguments.of("""{"type": "kubeconfig"}""", listOf("'kubeconfig'", "'source'")),
                 Arguments.of("""{"type": "kubeconfig", "source": ""}""", listOf("'kubeconfig'", "'source'")),
                 Arguments.of("""{"type": "kubeconfig", "source": 3}""", listOf("'kubeconfig'", "'source'")),
+                Arguments.of("""{"type": "k3s-docker", "dataDir": "obs"}""", listOf("'k3s-docker'", "'dataDir'", "absolute", "obs")),
+                Arguments.of(
+                    """{"type": "kubeconfig", "source": "kube/config"}""",
+                    listOf("'kubeconfig'", "'source'", "absolute", "kube/config"),
+                ),
             )
         }
     }

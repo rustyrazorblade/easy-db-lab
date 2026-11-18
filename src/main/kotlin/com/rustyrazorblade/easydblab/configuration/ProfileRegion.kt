@@ -17,7 +17,10 @@ fun interface ProfileRegion {
         /** For a caller with no profile to fall back on: a state with no region is then an error. */
         val NONE =
             ProfileRegion {
-                error("The cluster state records no region and no AWS profile region is available to fall back on")
+                error(
+                    "The cluster state records no region and no AWS profile region is available to fall back on. " +
+                        "Run 'easy-db-lab profile setup', or 'easy-db-lab init' again to record one.",
+                )
             }
     }
 }

@@ -64,17 +64,32 @@ class ClusterContractTest {
     }
 
     /**
-     * Every backend still writes to the account bucket from the node's host directories, whatever the
-     * environment; #1035 changes the store kind and the storage together when it renders a volume.
+     * Every backend still keeps its state in the node's host directories and names the object store,
+     * whatever the environment; #1035 changes the store kind and the storage together when it renders a volume.
      */
     @ParameterizedTest(name = "{0}")
     @MethodSource("environments")
-    fun `the store kind agrees with the storage and credentials the backends are rendered with`(environment: Environment) {
+    fun `the store kind agrees with the storage the backends are rendered with`(environment: Environment) {
         val contract = ClusterContract.of(stateFor(environment))
 
         assertThat(contract.storeKind).isEqualTo(StoreKind.ObjectStore)
         assertThat(contract.hosting.storage).isEqualTo(BackendStorage.HostPath)
-        assertThat(contract.hosting.credentials).isEqualTo(StoreCredentials.InstanceRole)
+    }
+
+    /**
+     * Only an EC2 node has an instance role. Elsewhere the contract says no store credentials are
+     * provided (#1061 provisions them), rather than naming a role that does not exist.
+     */
+    @Test
+    fun `only an EC2 cluster names the instance role as its store credentials`() {
+        assertThat(environments().associateWith { ClusterContract.of(stateFor(it)).hosting.credentials })
+            .containsExactlyEntriesOf(
+                mapOf(
+                    Environment.Ec2K3s to StoreCredentials.InstanceRole,
+                    Environment.K3sDocker("/d") to StoreCredentials.NotProvided,
+                    Environment.Kubeconfig("/k") to StoreCredentials.NotProvided,
+                ),
+            )
     }
 
     /**
@@ -239,7 +254,7 @@ class ClusterContractTest {
                             ObservabilityHosting(
                                 Placement.CONTROL_NODE,
                                 BackendStorage.HostPath,
-                                StoreCredentials.InstanceRole,
+                                StoreCredentials.NotProvided,
                                 ServicePublishing.ClusterIp,
                             ),
                         namespace = "default",
@@ -261,7 +276,7 @@ class ClusterContractTest {
                             ObservabilityHosting(
                                 Placement.ANY_NODE,
                                 BackendStorage.HostPath,
-                                StoreCredentials.InstanceRole,
+                                StoreCredentials.NotProvided,
                                 ServicePublishing.ClusterIp,
                             ),
                         namespace = "easy-db-lab",

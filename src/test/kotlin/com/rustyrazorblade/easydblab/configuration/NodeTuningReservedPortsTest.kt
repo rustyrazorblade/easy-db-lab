@@ -54,6 +54,9 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
         /** The lowest port the tuned ephemeral range hands out. */
         const val EPHEMERAL_MIN = 1024
 
+        /** The highest TCP or UDP port, the top of the tuned ephemeral range. */
+        const val MAX_PORT = 65535
+
         /**
          * A port a config binds: `*_port: N`, `port: N` or a camelCase `httpPort: N`, a listen
          * address `host:N`, or a bare `:N` listen address after `=` or a quote (`-listen=:9400`,
@@ -220,7 +223,11 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
                     .map { match -> portIn(match) }
                     .forEach { ports.putIfAbsent(it, name) }
             }
-        return ports.filterKeys { it in EPHEMERAL_MIN until Constants.NodeTuning.NODE_PORT_MIN }
+        // The ephemeral range runs from 1024 to the top of the port space; the NodePort range inside
+        // it is reserved whole, and checked by its own test.
+        return ports.filterKeys {
+            it in EPHEMERAL_MIN..MAX_PORT && it !in Constants.NodeTuning.NODE_PORT_MIN..Constants.NodeTuning.NODE_PORT_MAX
+        }
     }
 
     @Test

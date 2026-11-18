@@ -20,7 +20,7 @@
 - [x] 3.1 `NodeSetupService`: copy `node-tuning/` from the classpath to a temp dir and upload it beside `setup_instance.sh` in one `uploadDirectory`; unit test that a missing resource fails setup naming it.
 - [x] 3.2 `setup_instance.sh`: install the files, remove the old `60-cassandra.conf` and `limits.d/cassandra.conf`, `sysctl -p` on the packaged file, udev reload and trigger, `daemon-reexec`, `daemon-reload`, enable `edl-node-tuning.service` and `irqbalance`, comment out fstab swap, run `verify`; drop the heredocs, the echo, `READAHEAD` and `blockdev --setra`.
 - [x] 3.3 `mount_data_disk`: `noatime` on mount and in fstab; remount on a re-run.  Extend `setup-instance-data-disk.test.sh` for both paths.
-- [x] 3.4 Unit test (`NodeTuningReservedPortsTest`): every fixed listener port below 32768 that `Constants` or a host-network manifest builder names is in the packaged `ip_local_reserved_ports`, and 30000-32767 is reserved.
+- [x] 3.4 Unit test (`NodeTuningReservedPortsTest`): every fixed listener port of 1024 or above outside the NodePort range that `Constants` or a host-network manifest builder names is in the packaged `ip_local_reserved_ports`, and 30000-32767 is reserved.
 
 ## 4. Docs
 

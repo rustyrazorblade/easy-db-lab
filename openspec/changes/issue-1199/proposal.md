@@ -29,6 +29,6 @@ None.  The data-disk mount requirement (pending in `openspec/changes/issue-969`)
 - `src/main/resources/com/rustyrazorblade/easydblab/commands/setup_instance.sh`: installs and applies the tuning files; the mount gets `noatime`; the old heredocs, the unsudoed echo and `blockdev --setra` go.
 - New classpath resources under `src/main/resources/com/rustyrazorblade/easydblab/commands/node-tuning/`.
 - `services/NodeSetupService.kt`: stages the tuning resources on the node before the setup script runs.
-- New shell unit tests and their Gradle tasks in the `testScripts` aggregate; a Kotlin test that every fixed listener port below 32768 is reserved.
+- New shell unit tests and their Gradle tasks in the `testScripts` aggregate; a Kotlin test that every fixed listener port of 1024 or above is reserved.
 - Docs: `docs/user-guide/node-tuning.md`, `docs/SUMMARY.md`; package `CLAUDE.md` notes.
 - Real AWS test (`requires-aws`).  No `packer/` change, no AMI bake.

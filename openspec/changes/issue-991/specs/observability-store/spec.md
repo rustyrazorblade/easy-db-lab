@@ -7,9 +7,11 @@ A telemetry sender SHALL hold what it cannot deliver while a backend is down or 
 - **Metrics.**  The OTel collector's `prometheus_remote_write` exporter (collector contrib 0.161.0) SHALL keep the HTTP settings (`endpoint`, `tls`, `headers`) under `http:`, with a 30-second per-request `http.timeout`.  It SHALL set the exporterhelper `timeout` to 0, because in 0.161.0 that timeout is a deadline around the whole push, retries included.  It SHALL retry with `retry_on_failure.max_elapsed_time: 0`.  Its in-memory queue is `remote_write_queue`; this exporter has no `sending_queue`.  `remote_write_queue` SHALL be enabled and sized to hold 1 hour of one collector's batches.
 - **Out-of-order window.**  Mimir's `limits.out_of_order_time_window` SHALL be 1 hour, so that samples replayed after an outage of up to 1 hour are accepted.  It matches the outage the queues hold.
 - **Logs and traces.**  The collector's `otlp_http/logs` and `otlp_grpc/tempo` exporters SHALL retry with `retry_on_failure.max_elapsed_time: 0`, and their in-memory `sending_queue` SHALL be sized to hold 1 hour of one collector's requests.
+- **Loki at start.**  A log line the collector sends while Loki is starting SHALL NOT be lost: either the collector cannot reach Loki until it is ready, or the collector retries Loki's answer.
+- **Retry interval.**  The metrics exporter SHALL retry at a fixed 5-second interval (`initial_interval: 5s`).  `max_interval` has no effect in `prometheus_remote_write` 0.161.0 and SHALL NOT be relied on.
 - **Java-agent profiles.**  Every Pyroscope Java agent the tool starts SHALL retry an upload without limit (`pyroscope.ingest.max.tries=-1`) and SHALL queue 1 hour of snapshots in memory (`pyroscope.push.queue.capacity`).
 
-What a sender holds in memory is lost if the sender itself restarts.  Two signals have shorter limits, set by the backend or the sender, not by these settings: Loki accepts a log line up to 30 minutes out of order per stream, and the Alloy eBPF profiler (v1.20.0) has no queue and drops what it cannot send within its 15-second collect interval.
+What a sender holds in memory is lost if the sender itself restarts.  Two signals have shorter limits, set by the backend or the sender, not by these settings: Loki keeps `max_chunk_age: 1h`, so it accepts a log line up to 30 minutes out of order per stream, and logs are covered for an outage of up to 30 minutes.  The Alloy eBPF profiler (v1.20.0) has no queue and drops what it cannot send within its 15-second collect interval, so a Pyroscope outage longer than about 15 seconds loses eBPF profiles; the follow-up is #1206.  The user docs SHALL state both limits.
 
 #### Scenario: A Mimir restart loses no sample
 - **WHEN** Mimir is down for longer than 5 seconds while a collector keeps receiving metrics
@@ -24,6 +26,11 @@ What a sender holds in memory is lost if the sender itself restarts.  Two signal
 #### Scenario: A rejected batch is not retried forever
 - **WHEN** Mimir answers a remote write with a 4xx status other than 429
 - **THEN** the collector drops that batch and sends the next one
+
+#### Scenario: A Loki restart loses no log line
+- **WHEN** Loki is down for longer than 5 seconds, and less than 30 minutes, while a collector keeps receiving log lines
+- **AND** Loki starts again
+- **THEN** every log line the collector received during the outage and while Loki started is in Loki
 
 #### Scenario: A Tempo restart loses no span
 - **WHEN** Tempo is down for longer than 5 minutes while a collector keeps receiving spans

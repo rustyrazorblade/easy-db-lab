@@ -35,9 +35,9 @@ Mimir's head accepts an in-order sample only if it is no older than half a block
 **Goals:**
 
 - A Mimir outage or restart of up to 1 hour loses no metric sample, while the collectors keep running.
-- The same for traces and profiles from the Java agent; logs up to Loki's window (see Decision 5).
-- The integration test proves it for metrics, and fails before the fix.
-
+- The same for traces and profiles from the Java agent; logs for 30 minutes, Loki's window (see Decision 5).
+- A Loki restart loses no log line, including what the collector sends while Loki starts (Decision 5a).
+- The integration tests prove it for metrics and logs, and each fails before its fix.
 **Non-Goals:**
 
 - Surviving a collector restart during an outage.  The queues are in memory (owner decision): what a collector holds when it restarts is lost.
@@ -71,7 +71,7 @@ prometheus_remote_write:
 - `timeout: 0` removes the deadline around the retries.  `http.timeout: 30s` bounds one request, so a Mimir that accepts a connection and hangs fails that attempt, and the next attempt runs.
 - `max_elapsed_time: 0` retries a batch until Mimir answers.
 - `initial_interval: 5s`: since the backoff never grows, this is the retry cadence.  At the 50ms default a down Mimir is hit 20 times a second by every collector.
-- `max_interval` is **not** set.  The owner asked for `max_interval: 30s`, but 0.161.0 does not pass it to the backoff, so it would do nothing.  This is an open point for the owner.
+- `max_interval` is **not** set: it has no effect in PRW 0.161.0, which does not pass it to the backoff.  The retry interval is fixed at about 5s (owner decision, 2026-11-17).
 - `queue_size: 20000`: the batch processor flushes at 1024 points or 10s.  qa971f sent about 4,700 samples/s in all.  If one collector sent all of it, that is about 4.6 batches a second, about 16,500 an hour; 20000 holds that.  A collector on a db node sends far less.
 - `num_consumers` stays at the default.  Without the alpha gate the queue has one consumer, which keeps a collector's batches in order (so its own series replay in order) and each push still sends 5 requests in parallel.
 
@@ -92,8 +92,17 @@ Add `-Dpyroscope.ingest.max.tries=-1` and `-Dpyroscope.push.queue.capacity=360` 
 ### 5. Coverage differs per signal
 
 - Metrics, traces, Java-agent profiles: 1 hour.
-- Logs: 30 minutes.  Loki's `max_chunk_age: 1h` makes its per-stream out-of-order window 30 minutes; a line older than that is rejected with 400, which `otlp_http` drops.  Raising the window means raising `max_chunk_age`, which delays when logs reach S3 (the observability-store spec says within about 1 hour).  This change leaves Loki's window as it is and records the limit.
-- eBPF profiles: about 15 seconds; Alloy cannot queue (see Context).
+- Logs: 30 minutes.  Loki's `max_chunk_age: 1h` makes its per-stream out-of-order window 30 minutes; a line older than that is rejected with 400, which `otlp_http` drops.  Raising the window means raising `max_chunk_age`, which delays when logs reach S3 (the observability-store spec says within about 1 hour).  Loki keeps `max_chunk_age: 1h` (owner decision, 2026-11-17), so logs are covered for 30 minutes; the docs state the limit.
+- eBPF profiles: about 15 seconds; Alloy cannot queue (see Context).  The owner accepts this loss; the follow-up is #1206 (keep eBPF profiles through a Pyroscope outage).  The docs reference it.
+
+### 5a. Loki at start
+
+`otlp_http` treats every status other than 429, 502, 503 and 504 as permanent, 500 included.  If Loki answers 500 while it starts (before its ingester is ready), the collector drops those log batches.  The integration test restarts Loki and decides whether this happens.  If it does, the fix is in this change, and the test chooses between:
+
+- a readiness gate: the collector reaches Loki through its Service, so a Loki pod that is not Ready has no endpoint, and the collector sees a connection error, which it retries; or
+- an exporter setting that makes `otlp_http/logs` retry a 500, if 0.161.0 has one.
+
+The test proves the chosen fix: it fails without it and passes with it.
 
 ### 6. Integration test
 
@@ -103,7 +112,9 @@ Add `-Dpyroscope.ingest.max.tries=-1` and `-Dpyroscope.push.queue.capacity=360` 
 2. After about 30s, stop the Mimir container (its data volume stays), keep pushing for 60s (well past the old 5s deadline), start Mimir again, keep pushing for 30s.
 3. Assert that every pushed timestamp is in Mimir: a `query_range` at a 1s step over the whole run returns every sequence number, none missing.  Wait up to 2 minutes for the queue to drain.
 
-Before the fix, the batches sent while Mimir was down are dropped after 5s and the gap's sequence numbers are missing, so the test fails.  A unit test asserts the rendered exporter settings (`OtelManifestBuilderTest`), and `OtelCollectorConfigValidationIntegrationTest` validates the new keys against the pinned collector.
+Before the fix, the batches sent while Mimir was down are dropped after 5s and the gap's sequence numbers are missing, so the test fails.
+
+A second test does the same for logs: the rendered collector in front of the pinned Loki with its rendered configuration (Loki aliased `loki.default.svc.cluster.local`).  It sends one numbered log line a second, stops Loki for 60s, starts it again, and asserts that every line is in Loki.  It covers both the outage and Loki's start (Decision 5a).  If Loki's readiness is the fix, the test reaches Loki the way a cluster does: it does not send until Loki answers `/ready`, as the Service would.  A unit test asserts the rendered exporter settings (`OtelManifestBuilderTest`), and `OtelCollectorConfigValidationIntegrationTest` validates the new keys against the pinned collector.
 
 ### 7. Real-cluster check
 
@@ -115,16 +126,20 @@ Before the fix, the batches sent while Mimir was down are dropped after 5s and t
 - [Memory: a full queue holds an hour of batches in the collector's memory, up to a few GB on a busy node] → The nodes have the memory, and there is no limiter by rule.  The queue only grows while a backend is down.
 - [Drain time: one consumer drains a backlog more slowly than many] → At tens of pushes a second, an hour's backlog drains in minutes.  The real-cluster check measures it.
 - [Replay pressure on Mimir: 429 is permanent in PRW] → Mimir's ingestion limits are far above a test cluster's rate (`ingestion_rate: 10000000`).
-- [Loki answers 500 while it starts, which `otlp_http` treats as permanent] → Not fixed by this change; see Open Questions.
+- [Loki answers 500 while it starts, which `otlp_http` treats as permanent] → The Loki restart test decides, and this change fixes it (Decision 5a).
 - [Java agent heap: 360 snapshots in a small JVM] → JFR snapshots are compressed, and the queue fills only during a Pyroscope outage.
 
 ## Migration Plan
 
 None.  The collector and Mimir roll through `ConfigHashAnnotator` on the next `up` or `grafana update-config`.  Clusters are ephemeral.
 
+## Owner decisions (2026-11-17)
+
+- PRW retries at a fixed `initial_interval: 5s`; `max_interval` has no effect in PRW 0.161.0 and is not set.
+- Loki keeps `max_chunk_age: 1h`; logs are covered for 30 minutes, and the docs state it.
+- Alloy eBPF profiles are lost during a Pyroscope outage longer than about 15s; accepted.  Follow-up: #1206.
+- The integration test also restarts Loki and asserts every log line arrives.  If Loki's 500 at start loses lines, this change fixes it (Decision 5a).
+
 ## Open Questions
 
-- `max_interval: 30s` does nothing in PRW 0.161.0 (not copied into the backoff).  This design sets `initial_interval: 5s` instead and leaves `max_interval` unset.  Is that acceptable?
-- Logs coverage is 30 minutes because of Loki's out-of-order window, not 1 hour.  Keep it, or raise `max_chunk_age` (and so the 1-hour S3 latency in the spec)?
-- eBPF profiles cannot be queued by configuration in Alloy v1.20.0.  Accept the gap, or open a follow-up?
-- `otlp_http` treats a 500 from Loki as permanent.  If Loki answers 500 while it starts, those log batches are dropped.  Extend the integration test to restart Loki, and fix it in this change if it fails?
+None.

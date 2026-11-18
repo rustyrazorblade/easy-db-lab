@@ -3,9 +3,11 @@ package com.rustyrazorblade.easydblab.providers.ssh
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
+import com.rustyrazorblade.easydblab.ssh.RemoteOutputSink
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.resilience4j.retry.RetryConfig
 import org.apache.sshd.common.SshException
@@ -313,6 +315,25 @@ class DefaultRemoteOperationsServiceTest :
         assertThat(nodeOutput.stdout).containsExactly(
             "[$TEST_HOST_NAME] uploading ${File(localDir, "a")} to /tmp/a",
             "[$TEST_HOST_NAME] uploading $localDir to /tmp/dir",
+        )
+    }
+
+    @Test
+    fun `a command run again after a dropped connection marks where the second run's lines start`() {
+        var attempts = 0
+        doAnswer { invocation ->
+            attempts++
+            val sink = invocation.getArgument<RemoteOutputSink>(1)
+            sink.line(NodeStream.Stdout, "run $attempts")
+            if (attempts == 1) throw SshException("Connection reset") else Response("")
+        }.whenever(mockSSHClient).executeRemoteCommand(any(), anyOrNull(), any())
+
+        fastRetryService().executeRemotely(namedHost, "sudo bash setup_instance.sh")
+
+        assertThat(nodeOutput.stdout).containsExactly(
+            "[$TEST_HOST_NAME] run 1",
+            "[$TEST_HOST_NAME] connection lost; running the command again (attempt 2)",
+            "[$TEST_HOST_NAME] run 2",
         )
     }
 

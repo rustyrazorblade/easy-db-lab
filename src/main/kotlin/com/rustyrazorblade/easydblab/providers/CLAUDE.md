@@ -267,11 +267,16 @@ Rules that follow from this:
 receives what the command prints, one whole line at a time, while it runs. `SSHClient` tees each
 MINA stream into its capture buffer (for the `Response` and the failure) and a
 `output/LineSplittingOutputStream` (UTF-8 safe across reads, `\r\n` and `\r`, lines capped at
-`Constants.NodeOutput.MAX_LINE_BYTES`) that redacts each line and hands it to the sink with its
-`NodeStream` (`Stdout` or `Stderr`). Both splitters are closed in `finally`, so a failed command
-still delivers its partial last line. `DefaultRemoteOperationsService` builds the sink from
+`Constants.NodeOutput.MAX_LINE_BYTES`, a long line cut after its last space or tab so a word or
+URL stays whole for redaction) that redacts each line and hands it to the sink with its
+`NodeStream` (`Stdout` or `Stderr`). The sink is wrapped in `ssh/OffThreadOutputSink`: MINA writes
+on its shared NIO threads, so the lines are queued and printed by one virtual thread per command,
+and a slow console never stalls other sessions. Both splitters, then the off-thread sink, are
+closed in `finally`, so a failed command still delivers its partial last line and all of its output
+prints before the call returns. `DefaultRemoteOperationsService` builds the sink from
 `host.alias` when `output = true`, writing to `output/NodeOutput`, and prints one `notice` per
-`upload` or `uploadDirectory` call. Nothing in this layer emits an event: raw output is not a
+`upload` or `uploadDirectory` call. When a dropped connection makes it run a command again, it
+prints a `notice` first, so the second run's lines are marked. Nothing in this layer emits an event: raw output is not a
 domain fact (see `events/CLAUDE.md`). A test double of `ISSHClient` feeds its configured output
 into the sink it is given (`MockSSHClient`).
 

@@ -92,8 +92,9 @@ class SSHClient(
             // and the command's own error message is the only thing that explains the failure.
             val stdoutStream = ByteArrayOutputStream()
             val stderrStream = ByteArrayOutputStream()
-            // A secret command echoes its own argument, so nothing of it is ever streamed.
-            val lineSink = sink.takeUnless { secret }
+            // A secret command echoes its own argument, so nothing of it is ever streamed. MINA writes
+            // into these streams on its shared I/O threads, so the sink is called off them.
+            val lineSink = sink.takeUnless { secret }?.let(::OffThreadOutputSink)
             val stdoutLines = lineSink?.let { lines(it, NodeStream.Stdout) }
             val stderrLines = lineSink?.let { lines(it, NodeStream.Stderr) }
             try {
@@ -108,6 +109,8 @@ class SSHClient(
             } finally {
                 stdoutLines?.close()
                 stderrLines?.close()
+                // Every line is printed before the command returns.
+                lineSink?.close()
             }
 
             val result = redactUrlCredentials(stdoutStream.toString(Charset.defaultCharset()))

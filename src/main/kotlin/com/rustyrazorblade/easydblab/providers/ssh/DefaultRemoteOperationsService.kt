@@ -91,7 +91,13 @@ class DefaultRemoteOperationsService(
             "Executing command on ${host.alias}: ${if (secret) "[REDACTED]" else redactUrlCredentials(command)}"
         }
         val sink = if (output) RemoteOutputSink { stream, line -> nodeOutput.line(host.alias, stream, line) } else null
-        return withRetry(host) { connectionProvider.getConnection(host).executeRemoteCommand(command, sink, secret) }
+        var attempt = 0
+        return withRetry(host) {
+            attempt++
+            // A dropped connection runs the command again: mark where the second run's lines start.
+            if (sink != null && attempt > 1) nodeOutput.notice(host.alias, "connection lost; running the command again (attempt $attempt)")
+            connectionProvider.getConnection(host).executeRemoteCommand(command, sink, secret)
+        }
     }
 
     override fun upload(

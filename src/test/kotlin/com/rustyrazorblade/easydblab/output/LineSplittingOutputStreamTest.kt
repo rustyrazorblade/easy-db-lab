@@ -58,6 +58,14 @@ class LineSplittingOutputStreamTest {
     }
 
     @Test
+    fun `a line longer than the cap is cut after its last space, so no word is split`() {
+        // The URL (29 bytes) is shorter than the cap, so it stays whole and can be redacted.
+        val out = stream(maxLineBytes = 32)
+        out.write("cloning https://user:token@host/r.git now\n")
+        assertThat(lines).containsExactly("cloning ", "https://user:token@host/r.git ", "now")
+    }
+
+    @Test
     fun `the cap never cuts inside a multi-byte character`() {
         val out = stream(maxLineBytes = 4)
         // "abc" + "é" (2 bytes) reaches 5 bytes; the cut waits for the character to finish.

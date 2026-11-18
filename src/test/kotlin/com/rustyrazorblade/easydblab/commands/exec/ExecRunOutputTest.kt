@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultRemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -16,6 +18,7 @@ import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -103,5 +106,27 @@ class ExecRunOutputTest : BaseKoinTest() {
                 .containsExactlyElementsOf((1..50).map { "[${host.alias}] ${host.alias} line $it" })
         }
         assertThat(printed).noneMatch { it.startsWith("===") }
+    }
+
+    /** The unit's journal is the only place its output is, and it is why the run failed. */
+    @Test
+    fun `a failed unit still prints its journal, tagged with the host, and the command fails`() {
+        clients.getValue("db0").onCommand = { command ->
+            when {
+                command.contains("journalctl") -> Response("cat: /missing: No such file or directory")
+                else -> throw RemoteCommandFailedException(command, "", "", "db0: exit status 3")
+            }
+        }
+
+        assertThatThrownBy {
+            ExecRun()
+                .apply {
+                    command = listOf("cat /missing")
+                    hosts.hostList = "db0"
+                }.execute()
+        }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(getKoin().get<RecordingNodeOutput>().stdout)
+            .containsExactly("[db0] cat: /missing: No such file or directory")
     }
 }

@@ -13,7 +13,9 @@ import kotlin.concurrent.withLock
  * update: a line is one write, and no other node's line can land inside it.  The lock is a
  * [ReentrantLock], not `synchronized`, because bring-up runs on virtual threads and a virtual
  * thread blocked in a `synchronized` block pins its carrier.  The lock only ever covers the write
- * of a line that is already complete, never a remote read, so a slow node never blocks another.
+ * of a line that is already complete.  Remote output reaches it from a per-command thread
+ * (`ssh/OffThreadOutputSink`), never from an SSH I/O thread, so a slow console or a held lock
+ * delays printing but never a remote read.
  *
  * @param stdout prints a stdout or notice line; `println` by default
  * @param stderr prints a stderr line; standard error by default, as for error events

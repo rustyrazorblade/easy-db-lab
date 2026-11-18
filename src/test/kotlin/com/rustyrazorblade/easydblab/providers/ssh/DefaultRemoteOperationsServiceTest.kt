@@ -332,9 +332,23 @@ class DefaultRemoteOperationsServiceTest :
 
         assertThat(nodeOutput.stdout).containsExactly(
             "[$TEST_HOST_NAME] run 1",
-            "[$TEST_HOST_NAME] connection lost; running the command again (attempt 2)",
+            "[$TEST_HOST_NAME] retrying the command (attempt 2)",
             "[$TEST_HOST_NAME] run 2",
         )
+    }
+
+    @Test
+    fun `a secret command that is retried prints no notice, because it streams no lines to mark`() {
+        var attempts = 0
+        doAnswer {
+            attempts++
+            if (attempts == 1) throw SshException("Connection reset") else Response("")
+        }.whenever(mockSSHClient).executeRemoteCommand(any(), anyOrNull(), any())
+
+        fastRetryService().executeRemotely(namedHost, "tailscale up --authkey=k", secret = true)
+
+        assertThat(attempts).isEqualTo(2)
+        assertThat(nodeOutput.printed).isEmpty()
     }
 
     /** The production retry policy with a 1ms wait, so retries run without the 2s production pause. */

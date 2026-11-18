@@ -94,8 +94,9 @@ class DefaultRemoteOperationsService(
         var attempt = 0
         return withRetry(host) {
             attempt++
-            // A dropped connection runs the command again: mark where the second run's lines start.
-            if (sink != null && attempt > 1) nodeOutput.notice(host.alias, "connection lost; running the command again (attempt $attempt)")
+            // A retry can run the command again: mark where the next run's lines start. A secret
+            // command streams no lines, so there is nothing to mark.
+            if (sink != null && !secret && attempt > 1) nodeOutput.notice(host.alias, "retrying the command (attempt $attempt)")
             connectionProvider.getConnection(host).executeRemoteCommand(command, sink, secret)
         }
     }

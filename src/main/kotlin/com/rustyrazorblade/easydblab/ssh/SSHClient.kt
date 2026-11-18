@@ -50,6 +50,9 @@ class SSHClient(
 
         /** Stands in for anything belonging to a command marked secret. */
         private const val HIDDEN = "[hidden]"
+
+        /** Where [RemoteException]'s message starts repeating its cause. */
+        private const val NESTED_EXCEPTION = "; nested exception is:"
     }
 
     // Synchronization lock to ensure thread-safe access to the session
@@ -107,10 +110,8 @@ class SSHClient(
             } catch (e: RemoteException) {
                 throw remoteCommandFailure(command, secret, stdoutStream, stderrStream, e)
             } finally {
-                stdoutLines?.close()
-                stderrLines?.close()
-                // Every line is printed before the command returns.
-                lineSink?.close()
+                // The sink is closed last, so every line is printed before the command returns.
+                closeAll(stdoutLines, stderrLines, lineSink)
             }
 
             val result = redactUrlCredentials(stdoutStream.toString(Charset.defaultCharset()))
@@ -139,8 +140,32 @@ class SSHClient(
             command = redactUrlCredentials(command),
             stdout = tail(stdoutStream.toString(Charset.defaultCharset())),
             stderr = tail(stderrStream.toString(Charset.defaultCharset())),
-            summary = "$remoteAddress: ${redactUrlCredentials(failure.message ?: "Remote command failed: $command")}",
+            summary = "$remoteAddress: ${redactUrlCredentials(exitSummary(failure) ?: "Remote command failed: $command")}",
         )
+    }
+
+    /**
+     * The "Remote command failed (N): <command>" part of [failure]. Its message also appends the
+     * nested ServerException MINA puts the exit status in ("; nested exception is: ..."), which
+     * tells a reader nothing the first part has not.
+     */
+    private fun exitSummary(failure: RemoteException): String? = failure.message?.substringBefore(NESTED_EXCEPTION)
+
+    /**
+     * Closes each of [closeables] in order, even when one before it throws, so the output sink is
+     * always closed and its drain thread always ends. The first failure is rethrown, with any later
+     * one suppressed on it.
+     */
+    private fun closeAll(vararg closeables: AutoCloseable?) {
+        var failure: Exception? = null
+        closeables.filterNotNull().forEach { closeable ->
+            try {
+                closeable.close()
+            } catch (e: Exception) {
+                failure?.addSuppressed(e) ?: run { failure = e }
+            }
+        }
+        failure?.let { throw it }
     }
 
     /** Splits one remote stream into whole lines and hands each, redacted, to [sink]. */

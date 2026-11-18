@@ -9,6 +9,8 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultRemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -114,7 +116,7 @@ class ExecRunOutputTest : BaseKoinTest() {
         clients.getValue("db0").onCommand = { command ->
             when {
                 command.contains("journalctl") -> Response("cat: /missing: No such file or directory")
-                else -> throw RemoteCommandFailedException(command, "", "", "db0: exit status 3")
+                else -> throw RemoteCommandFailedException(command, "", "Finished with result: exit-code", "db0: exit status 3")
             }
         }
 
@@ -128,5 +130,9 @@ class ExecRunOutputTest : BaseKoinTest() {
 
         assertThat(getKoin().get<RecordingNodeOutput>().stdout)
             .containsExactly("[db0] cat: /missing: No such file or directory")
+        // The failure names the host and why; the stderr it printed while running is not repeated.
+        val reported = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
+        assertThat(reported).contains("db0: command failed: db0: exit status 3")
+        assertThat(reported).doesNotContain("Finished with result")
     }
 }

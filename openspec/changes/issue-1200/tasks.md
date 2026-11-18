@@ -61,4 +61,4 @@
 ## 8. Verify
 
 - [x] 8.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (build-engineer, Sonnet)
-- [ ] 8.2 Real cluster: `init --up` of 6 nodes; every node script line is tagged; Redis (a local `redis` subscriber) shows `NodeReady` and no output; `up --quiet` on the same cluster prints the Ready and progress lines only; `exec run --parallel` output is tagged and whole.  Tear down
+- [x] 8.2 Real cluster: `init --up` of 6 nodes; every node script line is tagged; Redis (a local `redis` subscriber) shows `NodeReady` and no output; `up --quiet` on the same cluster prints the Ready and progress lines only; `exec run --parallel` output is tagged and whole.  Tear down

@@ -4544,7 +4544,7 @@ sealed interface Event {
             val host: String,
             val error: String,
         ) : Command {
-            override fun toDisplayString(): String = "=== $host ===\nError executing command: $error"
+            override fun toDisplayString(): String = "$host: command failed: $error"
         }
 
         @Serializable

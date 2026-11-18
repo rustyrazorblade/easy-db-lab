@@ -52,7 +52,29 @@ class OffThreadOutputSinkTest {
         assertThat(delivered.map { it.second }).containsExactly("good")
     }
 
+    /** An abandoned worker is interrupted while its command runs; its output must still all print. */
+    @Test
+    fun `an interrupted writer still queues every line, close waits for all of them, and the interrupt is kept`() {
+        val release = CountDownLatch(1)
+        val sink = OffThreadOutputSink { _, text -> release.await(WAIT_SECONDS, TimeUnit.SECONDS).also { delivered += "" to text } }
+        var stillInterrupted = false
+
+        val writer =
+            Thread.ofVirtual().start {
+                Thread.currentThread().interrupt()
+                (1..20).forEach { sink.line(NodeStream.Stdout, "line $it") }
+                Thread.ofVirtual().start { Thread.sleep(SETTLE_MILLIS).also { release.countDown() } }
+                sink.close()
+                stillInterrupted = Thread.currentThread().isInterrupted
+            }
+
+        assertThat(writer.join(java.time.Duration.ofSeconds(WAIT_SECONDS))).isTrue()
+        assertThat(delivered.map { it.second }).containsExactlyElementsOf((1..20).map { "line $it" })
+        assertThat(stillInterrupted).isTrue()
+    }
+
     private companion object {
+        const val SETTLE_MILLIS = 100L
         const val WAIT_SECONDS = 5L
     }
 }

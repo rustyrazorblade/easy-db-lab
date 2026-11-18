@@ -101,6 +101,22 @@ class SSHClientTest :
             .hasMessageContaining("cassandra install 5.1")
     }
 
+    /** MINA wraps the exit status in a nested ServerException, whose text says nothing a reader needs. */
+    @Test
+    fun `the failure summary names the exit status and command, without the nested exception`() {
+        val command = "cat /missing"
+        stubRemoteCommand(
+            stderr = "cat: /missing: No such file or directory",
+            failWith = RemoteException("Remote command failed (1): $command", java.rmi.ServerException("1")),
+        )
+
+        assertThatThrownBy { sshClient.executeRemoteCommand(command, sink = null, secret = false) }
+            .isInstanceOfSatisfying(RemoteCommandFailedException::class.java) {
+                assertThat(it.summary).endsWith("Remote command failed (1): cat /missing")
+                assertThat(it.message).doesNotContain("nested exception", "ServerException")
+            }
+    }
+
     @Test
     fun `a non-zero exit surfaces stderr as well as stdout`() {
         stubRemoteCommand(

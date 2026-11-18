@@ -66,6 +66,28 @@ class LineSplittingOutputStreamTest {
     }
 
     @Test
+    fun `a tab is a cut point too`() {
+        val out = stream(maxLineBytes = 8)
+        out.write("key\tvalue123\n")
+        assertThat(lines).containsExactly("key\t", "value123")
+    }
+
+    @Test
+    fun `a full line that ends in whitespace is emitted whole`() {
+        val out = stream(maxLineBytes = 4)
+        out.write("abc def\n")
+        assertThat(lines).containsExactly("abc ", "def")
+    }
+
+    /** The token after the space is longer than the cap, so it is cut at the cap after the space. */
+    @Test
+    fun `whitespace only at the start leaves a short piece, then the long token is cut at the cap`() {
+        val out = stream(maxLineBytes = 4)
+        out.write(" abcdefg\n")
+        assertThat(lines).containsExactly(" ", "abcd", "efg")
+    }
+
+    @Test
     fun `the cap never cuts inside a multi-byte character`() {
         val out = stream(maxLineBytes = 4)
         // "abc" + "é" (2 bytes) reaches 5 bytes; the cut waits for the character to finish.

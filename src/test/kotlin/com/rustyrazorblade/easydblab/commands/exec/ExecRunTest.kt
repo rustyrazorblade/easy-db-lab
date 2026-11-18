@@ -140,7 +140,7 @@ class ExecRunTest : BaseKoinTest() {
 
         verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[1].toHost()), any(), any(), any())
         val output = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
-        assertThat(output).contains("=== db0 ===\nError executing command: Remote command failed (1)")
+        assertThat(output).contains("db0: command failed: Remote command failed (1)")
     }
 
     @Test
@@ -199,6 +199,6 @@ class ExecRunTest : BaseKoinTest() {
         verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[0].toHost()), sent.capture(), any(), any())
         assertThat(sent.allValues).contains("sudo journalctl --unit=edl-exec-qa-cat --no-pager --output=cat")
         val events = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
-        assertThat(events).contains("Error executing command: Remote command failed (3)")
+        assertThat(events).contains("db0: command failed: Remote command failed (3)")
     }
 }

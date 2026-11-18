@@ -275,8 +275,11 @@ and a slow console never stalls other sessions. Both splitters, then the off-thr
 closed in `finally`, so a failed command still delivers its partial last line and all of its output
 prints before the call returns. `DefaultRemoteOperationsService` builds the sink from
 `host.alias` when `output = true`, writing to `output/NodeOutput`, and prints one `notice` per
-`upload` or `uploadDirectory` call. When a dropped connection makes it run a command again, it
-prints a `notice` first, so the second run's lines are marked. Nothing in this layer emits an event: raw output is not a
+`upload` or `uploadDirectory` call. When the retry policy runs a command again, it prints a
+`notice` first ("retrying the command (attempt N)"), so the next run's lines are marked; a secret
+command streams nothing, so it gets no notice. `SSHClient` closes the splitters and the off-thread
+sink each in turn even if one throws, and the sink ignores an interrupt (it restores the flag), so
+an abandoned worker neither leaks the drain thread nor loses its own failure. Nothing in this layer emits an event: raw output is not a
 domain fact (see `events/CLAUDE.md`). A test double of `ISSHClient` feeds its configured output
 into the sink it is given (`MockSSHClient`).
 

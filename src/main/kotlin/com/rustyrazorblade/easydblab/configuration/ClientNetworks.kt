@@ -41,13 +41,15 @@ data class ClientNetworks(
             return ClientNetworks(values.map(::parseRecorded).distinct())
         }
 
-        /** A network `state.json` records; a value that does not parse was edited by hand or a bad [OPTION]. */
+        /**
+         * A network `state.json` records; a value that does not parse was edited by hand or a bad [OPTION].
+         * The parse reason is in the message, so the cause is not chained: the user sees one line.
+         */
         private fun parseRecorded(value: String): Ipv4Cidr =
             Ipv4Cidr.parse(value).getOrElse { cause ->
                 throw IllegalStateException(
                     "state.json records client network '$value', which is not an IPv4 network (${cause.message}). " +
                         "Fix it in state.json, or run init again with a valid $OPTION <cidr>.",
-                    cause,
                 )
             }
 
@@ -77,13 +79,15 @@ data class ClientNetworks(
             return ClientNetworks(cidrs)
         }
 
-        /** A pod CIDR or InternalIP a node reports; one that is not IPv4 or IPv6 was misread. */
+        /**
+         * A pod CIDR or InternalIP a node reports; one that is not IPv4 or IPv6 was misread. The parse
+         * reason is in the message, so the cause is not chained: the user sees one line.
+         */
         private fun parseProbed(value: String): Ipv4Cidr =
             Ipv4Cidr.parse(value).getOrElse { cause ->
                 throw IllegalArgumentException(
                     "A node reports client network '$value', which is not an IPv4 network (${cause.message}). " +
                         "Give the networks with $OPTION <cidr>.",
-                    cause,
                 )
             }
     }

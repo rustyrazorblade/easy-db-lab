@@ -304,6 +304,16 @@ else
   fail "expected irqbalance failure, got ${STATUS}: ${OUTPUT}"
 fi
 
+# irqbalance's unit has ConditionCPUs=>1, so on one CPU it is inactive by design.
+setup 1 1
+tuned_sysctls
+run apply > /dev/null
+if OUTPUT=$(IRQBALANCE=inactive run verify) && grep -q "skipped irqbalance on db0" "${WORK}/logger.log"; then
+  pass "verify skips irqbalance on a single-CPU node"
+else
+  fail "expected verify to pass and log the irqbalance skip on one CPU, got: ${OUTPUT} / $(cat "${WORK}/logger.log")"
+fi
+
 tuned_node
 OUTPUT=$(CASSANDRA_MEMLOCK=8388608 run verify)
 STATUS=$?

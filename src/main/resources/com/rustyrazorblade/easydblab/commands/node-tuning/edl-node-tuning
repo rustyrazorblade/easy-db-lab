@@ -277,7 +277,13 @@ verify() {
   swaps=$(($(wc -l < "$PROC/swaps") - 1))
   check "swap devices" 0 "$swaps"
 
-  check "irqbalance" active "$(systemctl is-active irqbalance 2> /dev/null)"
+  # irqbalance's unit has ConditionCPUs=>1: on one CPU there is nothing to balance and it stays
+  # inactive by design.
+  if [ "$(cpu_numbers "$(cat "$SYS/devices/system/cpu/online")" | wc -l)" -gt 1 ]; then
+    check "irqbalance" active "$(systemctl is-active irqbalance 2> /dev/null)"
+  else
+    skip "irqbalance" "has one CPU"
+  fi
 
   check "systemd DefaultLimitNOFILE" "$SERVICE_NOFILE" "$(systemctl show -p DefaultLimitNOFILE --value)"
   check "systemd DefaultLimitMEMLOCK" infinity "$(systemctl show -p DefaultLimitMEMLOCK --value)"

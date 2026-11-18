@@ -87,6 +87,8 @@ source port, and the listener would then fail to bind it when it restarts. So
 - Every fixed port below that which a host listener uses: K3s, etcd, containerd, the kubelet,
   kube-proxy, Cilium and Hubble, the observability stack on the control node, and Cassandra and its
   sidecar on db nodes.
+- The stress metrics ports 9500-9599 on app nodes. Each `cassandra stress start` takes the next
+  port in that window, and wraps after 100 runs.
 
 A reserved port can still be bound explicitly. Only the kernel's automatic source-port choice
 skips it.
@@ -106,7 +108,7 @@ below do reach pods, because pod traffic arrives on the node's ENA interfaces.
 
 ## Packet steering and interrupts
 
-- `irqbalance` runs on every node. There is no manual IRQ pinning.
+- `irqbalance` runs on every node with more than one CPU. There is no manual IRQ pinning.
 - Every ENA interface has receive packet steering (RPS) and receive flow steering (RFS) on:
   - every receive queue steers to every CPU;
   - `net.core.rps_sock_flow_entries` is 32768;

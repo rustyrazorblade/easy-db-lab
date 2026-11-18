@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStart
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJar
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
@@ -234,6 +235,12 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
 
         val missing = ports.filterKeys { it !in reservedPorts() }
         assertThat(missing).describedAs("host-network ports missing from ip_local_reserved_ports, with the workload").isEmpty()
+    }
+
+    @Test
+    fun `every metrics port a stress run can take is reserved`() {
+        val window = (1..Constants.Stress.PROMETHEUS_PORT_COUNT).map { StressStart.promPortFor(it) }
+        assertThat(reservedPorts()).containsAll(window)
     }
 
     @Test

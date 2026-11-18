@@ -191,7 +191,7 @@ class NodeSetupService(
     // packaged OS tuning files go beside the script, which installs them.
     private fun runSetupScript(host: Host) {
         tuningFiles.stage { dir ->
-            remoteOps.executeRemotely(host, "rm -rf ${Constants.NodeTuning.REMOTE_DIR}", output = false).text
+            remoteOps.executeRemotely(host, "rm -rf ${Constants.NodeTuning.REMOTE_DIR}", output = false)
             remoteOps.uploadDirectory(host, dir, Constants.NodeTuning.REMOTE_DIR)
         }
         remoteOps.upload(host, Path.of(SETUP_SCRIPT), SETUP_SCRIPT)

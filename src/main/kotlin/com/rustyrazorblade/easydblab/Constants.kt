@@ -568,7 +568,7 @@ object Constants {
                 "system.conf",
             )
 
-        /** The first port of the Kubernetes NodePort range and the Linux default ephemeral range. */
+        /** The first port of the Kubernetes NodePort range. */
         const val NODE_PORT_MIN = 30000
 
         /** The last port of the Kubernetes NodePort range. */
@@ -1099,6 +1099,12 @@ object Constants {
         const val ROLE_COMMAND = "stress-command"
         const val DEFAULT_CASSANDRA_PORT = 9042
         const val PROMETHEUS_PORT = 9500
+
+        /**
+         * The width of the stress metrics port window, starting at [PROMETHEUS_PORT]. Each run takes
+         * the next port in it, wrapping, so every run binds a port node tuning reserves.
+         */
+        const val PROMETHEUS_PORT_COUNT = 100
 
         /**
          * The share of stress requests the OpenTelemetry agent traces. At 100% a stress job sent

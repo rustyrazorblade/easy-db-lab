@@ -140,7 +140,7 @@ On a node whose instance exposes CPU frequency scaling, every CPU SHALL use the 
 
 ### Requirement: Network interrupt and packet steering
 
-`irqbalance` SHALL run on every node.  Every ENA network interface SHALL have receive packet steering and receive flow steering enabled: each receive queue steers to every CPU of the node, `net.core.rps_sock_flow_entries` is 32768, and each queue's flow count is 32768 divided by the number of receive queues, rounded up to a power of two (the kernel stores and reports it rounded).  This SHALL also hold for an ENA interface that appears after setup, such as a secondary ENI the CNI attaches for pod IPs.  There SHALL be no manual IRQ affinity pinning.
+`irqbalance` SHALL run on every node with more than one CPU (its unit does not start on one CPU, where there is nothing to balance, and `verify` logs a skip line instead).  Every ENA network interface SHALL have receive packet steering and receive flow steering enabled: each receive queue steers to every CPU of the node, `net.core.rps_sock_flow_entries` is 32768, and each queue's flow count is 32768 divided by the number of receive queues, rounded up to a power of two (the kernel stores and reports it rounded).  This SHALL also hold for an ENA interface that appears after setup, such as a secondary ENI the CNI attaches for pod IPs.  There SHALL be no manual IRQ affinity pinning.
 
 #### Scenario: Primary interface steering
 - **WHEN** the operator reads the RPS mask of each receive queue of the primary ENA interface

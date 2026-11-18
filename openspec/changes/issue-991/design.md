@@ -109,12 +109,12 @@ The test proves the chosen fix: it fails without it and passes with it.
 `CollectorReplayIntegrationTest` in `src/integrationTest`: the pinned collector with its rendered configuration, unedited, in front of the pinned Mimir with its rendered configuration (`ObservabilityBackends.startMimir`, LocalStack S3).  The containers share a user-defined Docker network, and Mimir carries the network alias `mimir.default.svc.cluster.local`, so the collector finds it again after a restart.
 
 1. Push one gauge sample a second over OTLP to the collector, each with its own timestamp and a value equal to its sequence number.
-2. After about 30s, stop the Mimir container (its data volume stays), keep pushing for 60s (well past the old 5s deadline), start Mimir again, keep pushing for 30s.
-3. Assert that every pushed timestamp is in Mimir: a `query_range` at a 1s step over the whole run returns every sequence number, none missing.  Wait up to 2 minutes for the queue to drain.
+2. After 15s, stop the Mimir container (its data volume stays), keep pushing for 60s (well past the old 5s deadline), start Mimir again, keep pushing for 15s.
+3. Assert that every pushed timestamp is in Mimir: a query over the whole run returns every sequence number, none missing.  Wait up to 4 minutes for the queue to drain.
 
 Before the fix, the batches sent while Mimir was down are dropped after 5s and the gap's sequence numbers are missing, so the test fails.
 
-A second test does the same for logs: the rendered collector in front of the pinned Loki with its rendered configuration (Loki aliased `loki.default.svc.cluster.local`).  It sends one numbered log line a second, stops Loki for 60s, starts it again, and asserts that every line is in Loki.  It covers both the outage and Loki's start (Decision 5a).  If Loki's readiness is the fix, the test reaches Loki the way a cluster does: it does not send until Loki answers `/ready`, as the Service would.  A unit test asserts the rendered exporter settings (`OtelManifestBuilderTest`), and `OtelCollectorConfigValidationIntegrationTest` validates the new keys against the pinned collector.
+A second test does the same for logs: the rendered collector in front of the pinned Loki with its rendered configuration (Loki aliased `loki.default.svc.cluster.local`).  It sends one numbered log line a second, stops Loki for 6 minutes (past the old 300s retry limit, so it fails before the fix), starts it again, and asserts that every line is in Loki.  It covers both the outage and Loki's start (Decision 5a).  A third test does the same for traces against the pinned Tempo (aliased `tempo.default.svc.cluster.local`), also down for 6 minutes; it counts a trace only when Tempo's response carries its span, because Tempo answers 200 with an empty trace for an id it does not have.  If Loki's readiness is the fix, the test reaches Loki the way a cluster does: it does not send until Loki answers `/ready`, as the Service would.  A unit test asserts the rendered exporter settings (`OtelManifestBuilderTest`), and `OtelCollectorConfigValidationIntegrationTest` validates the new keys against the pinned collector.
 
 ### 7. Real-cluster check
 

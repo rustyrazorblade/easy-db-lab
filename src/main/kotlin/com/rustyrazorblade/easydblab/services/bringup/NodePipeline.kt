@@ -112,7 +112,7 @@ internal class NodePipeline(
                         // find the same objects and waste a replacement slot.
                         it.step(
                             PipelineStep.NODE_CLEANUP,
-                            run.timing.join.copy(replaceable = false),
+                            run.timing.join.copy(attempts = 1, replaceable = false),
                             { reason -> "removing the old node $alias from the control plane failed: $reason" },
                         ) { _ -> plane.connection.cleanup(alias) }
                         cleaned.set(true)

@@ -232,6 +232,7 @@ class NodeCleanupIntegrationTest {
      * so a finalizer K3s removed or added meanwhile is not lost; a failed test reads the list again.
      */
     private fun <T : HasMetadata> release(resource: Resource<T>) {
+        var last: KubernetesClientException? = null
         repeat(RELEASE_ATTEMPTS) {
             val index = finalizersOf(resource).indexOf(HOLD_FINALIZER)
             if (index < 0) return
@@ -242,11 +243,15 @@ class NodeCleanupIntegrationTest {
                 resource.patch(PatchContext.of(PatchType.JSON), ops)
                 return
             } catch (e: KubernetesClientException) {
-                // 404: the object finished deleting. Any other failure is a lost race on the list.
-                if (e.code == Constants.HttpStatus.NOT_FOUND) return
+                // 404: the object finished deleting. 409 or 422: the list changed under the test op.
+                when (e.code) {
+                    Constants.HttpStatus.NOT_FOUND -> return
+                    Constants.HttpStatus.CONFLICT, Constants.HttpStatus.UNPROCESSABLE_ENTITY -> last = e
+                    else -> throw e
+                }
             }
         }
-        error("could not remove $HOLD_FINALIZER from ${resource.get()?.metadata?.name}")
+        throw IllegalStateException("could not remove $HOLD_FINALIZER", last)
     }
 
     private companion object {

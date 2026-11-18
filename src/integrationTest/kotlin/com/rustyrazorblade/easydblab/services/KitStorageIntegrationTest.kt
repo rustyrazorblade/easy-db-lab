@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
@@ -22,6 +23,7 @@ import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
@@ -294,12 +296,43 @@ class KitStorageIntegrationTest {
     ) {
         client.persistentVolumeClaims().resource(claim).create()
         startConsumer(pod, claim.metadata.name)
-        client
-            .persistentVolumeClaims()
-            .inNamespace(NAMESPACE)
-            .withName(claim.metadata.name)
-            .waitUntilCondition({ it?.status?.phase == "Bound" }, TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        try {
+            client
+                .persistentVolumeClaims()
+                .inNamespace(NAMESPACE)
+                .withName(claim.metadata.name)
+                .waitUntilCondition({ it?.status?.phase == "Bound" }, TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } catch (e: KubernetesClientTimeoutException) {
+            throw AssertionError(
+                listOf(
+                    e.message,
+                    storageState(),
+                    clusterDiagnostics(client, NAMESPACE),
+                    clusterDiagnostics(client, "kube-system"),
+                ).joinToString("\n"),
+                e,
+            )
+        }
         waitForPodRunning(pod)
+    }
+
+    /**
+     * Every PV and claim with its phase and claim reference, for a bind that timed out: whether the
+     * reopened volume was still Released, pre-bound with no UID, or passed over for a new volume.
+     */
+    private fun storageState(): String {
+        val volumes =
+            client.persistentVolumes().list().items.map { pv ->
+                val ref = pv.spec.claimRef
+                "pv ${pv.metadata.name} class=${pv.spec.storageClassName} phase=${pv.status?.phase} " +
+                    "claimRef=${ref?.namespace}/${ref?.name} uid=${ref?.uid}"
+            }
+        val claims =
+            client.persistentVolumeClaims().inNamespace(NAMESPACE).list().items.map { pvc ->
+                "pvc ${pvc.metadata.name} uid=${pvc.metadata.uid} phase=${pvc.status?.phase} " +
+                    "volume=${pvc.spec.volumeName} annotations=${pvc.metadata.annotations}"
+            }
+        return (volumes + claims).joinToString("\n")
     }
 
     private fun startConsumer(

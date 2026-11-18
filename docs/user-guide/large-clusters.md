@@ -87,7 +87,10 @@ A slow node never holds another back. A database or app node runs these steps, i
 7. `registry-tls`: the node trusts the cluster registry's certificate, once the control node has
    made it.
 8. `join-wait`, then `join`: it waits for the control-plane gate and a join slot, starts its K3s
-   agent, and holds the slot until its Node registers.
+   agent, and holds the slot until its Node registers. A node that takes over an alias first runs
+   `node-cleanup`, which removes the old Node and its node password from the control plane. If the
+   old Node will not go (a finalizer holds it), the node fails at `node-cleanup` with the Node's
+   state, and no instance is replaced: a new one would meet the same Node.
 9. `readiness`: its Node is Ready.
 
 The control node runs `running`, `status-checks` and `ssh`, then `workspace`: once every launch

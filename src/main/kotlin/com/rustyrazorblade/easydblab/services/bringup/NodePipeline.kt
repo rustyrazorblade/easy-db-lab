@@ -111,7 +111,7 @@ internal class NodePipeline(
                         // that fails (a Node stuck in deletion) fails the node: a replacement would
                         // find the same objects and waste a replacement slot.
                         it.step(
-                            PipelineStep.JOIN,
+                            PipelineStep.NODE_CLEANUP,
                             run.timing.join.copy(replaceable = false),
                             { reason -> "removing the old node $alias from the control plane failed: $reason" },
                         ) { _ -> plane.connection.cleanup(alias) }

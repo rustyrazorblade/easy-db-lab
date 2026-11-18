@@ -21,7 +21,8 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.measureTime
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * Proves [NodeCleanup] against a real K3s API server: whichever of a replaced node's Node object
@@ -146,6 +147,7 @@ class NodeCleanupIntegrationTest {
         create(alias, node = true, secret = false)
         SharedK3s.client().use { hold(it.nodes().withName(alias)) }
         var replacementUid: String? = null
+        var waitBegan: TimeMark? = null
         val replaced =
             NodeCleanup(
                 WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()),
@@ -163,13 +165,15 @@ class NodeCleanupIntegrationTest {
                                 .resource(node(alias))
                                 .create()
                                 .metadata.uid
+                        waitBegan = TimeSource.Monotonic.markNow()
                     }
                 },
             )
 
-        val took = measureTime { replaced.clean(alias) }
+        replaced.clean(alias)
 
-        assertThat(took).isLessThan(REPLACE_WAIT_SECONDS.seconds)
+        // Only the wait counts: afterDelete's own calls are not what the test times.
+        assertThat(waitBegan!!.elapsedNow()).isLessThan(REPLACE_WAIT_SECONDS.seconds)
         val now = SharedK3s.client().use { it.nodes().withName(alias).get() }
         assertThat(now.metadata.uid).isEqualTo(replacementUid)
     }
@@ -215,7 +219,7 @@ class NodeCleanupIntegrationTest {
         return meta?.finalizers.orEmpty()
     }
 
-    /** Adds [HOLD_FINALIZER] with a JSON patch `add`, so a finalizer K3s put there stays. */
+    /** Adds [HOLD_FINALIZER] with a JSON patch `add`, which keeps the finalizers it read on the object (K3s adds its own before a test can). */
     private fun <T : HasMetadata> hold(resource: Resource<T>) {
         val first = finalizersOf(resource).isEmpty()
         val path = if (first) "/metadata/finalizers" else "/metadata/finalizers/-"

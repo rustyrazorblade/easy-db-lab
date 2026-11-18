@@ -215,7 +215,7 @@ class NodeBringUpTest {
         assertThat(h.fleet.calls).isEmpty()
         assertThat(result.nodes.getValue("db0")).isInstanceOf(NodeEnd.Ready::class.java)
         val failed = h.eventsOf<Event.Provision.NodeFailed>().single()
-        assertThat(failed.step).isEqualTo("join")
+        assertThat(failed.step).isEqualTo("node-cleanup")
         assertThat(failed.reason).contains("db1").contains("deletionTimestamp=t")
     }
 

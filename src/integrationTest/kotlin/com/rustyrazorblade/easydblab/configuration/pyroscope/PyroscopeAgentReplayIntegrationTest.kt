@@ -28,6 +28,8 @@ import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Duration
 import java.util.UUID
 
@@ -111,15 +113,27 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         return pyroscope
     }
 
-    /** The pinned agent jar, downloaded from the same release URL the AMI and EMR install it from. */
+    /**
+     * The pinned agent jar, from the same release URL the AMI and EMR install it from. It is kept in
+     * the machine's temp directory under its version, so only the first run on a machine downloads
+     * it; the download goes to a temporary file and is renamed into place, so a cut-off download is
+     * never used.
+     */
     private fun agentJar(): File {
-        val jar = File(tempDir, "pyroscope.jar")
-        val response =
-            http.send(
-                HttpRequest.newBuilder(URI(Constants.PyroscopeJavaAgent.DOWNLOAD_URL)).GET().build(),
-                HttpResponse.BodyHandlers.ofFile(jar.toPath()),
-            )
-        check(response.statusCode() == HTTP_OK) { "agent download answered ${response.statusCode()}" }
+        val jar = File(System.getProperty("java.io.tmpdir"), "easy-db-lab-pyroscope-${Constants.PyroscopeJavaAgent.VERSION}.jar")
+        if (jar.isFile) return jar
+        val partial = File.createTempFile("pyroscope-agent", ".part", jar.parentFile)
+        try {
+            val response =
+                http.send(
+                    HttpRequest.newBuilder(URI(Constants.PyroscopeJavaAgent.DOWNLOAD_URL)).GET().build(),
+                    HttpResponse.BodyHandlers.ofFile(partial.toPath()),
+                )
+            check(response.statusCode() == HTTP_OK) { "agent download answered ${response.statusCode()}" }
+            Files.move(partial.toPath(), jar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } finally {
+            partial.delete()
+        }
         return jar
     }
 

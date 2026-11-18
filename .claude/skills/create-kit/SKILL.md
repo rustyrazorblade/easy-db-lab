@@ -284,8 +284,9 @@ Append to the checklist printed in Step 4:
 All cluster nodes have the Pyroscope Java agent pre-installed at `/usr/local/pyroscope/pyroscope.jar`.
 For any JVM workload, the `start` phase **must** inject the agent into every JVM container.
 
-The pattern is a `kubectl patch` using `JAVA_TOOL_OPTIONS` + a `hostPath` volume mount. Use
-`component=<role>` labels to distinguish multiple JVM processes (e.g. coordinator vs worker).
+The pattern is `edl_patch_pyroscope`, which patches the deployment with `JAVA_TOOL_OPTIONS` and a
+`hostPath` volume mount. Pass the role (e.g. coordinator vs worker) as its `<component>` argument to
+tell apart multiple JVM processes.
 
 Full implementation pattern and explanation: `docs/development/kits.md` (Profiling section).
 User-facing documentation on what profiles are available and how to access them in Grafana:

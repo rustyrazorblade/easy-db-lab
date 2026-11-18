@@ -33,6 +33,7 @@
 - [x] 4.1 Add `Constants.PyroscopeJavaAgent` values for unlimited tries (-1) and a 360-snapshot queue
 - [x] 4.2 Pass `-Dpyroscope.ingest.max.tries` and `-Dpyroscope.push.queue.capacity` in `StressJobManifestBuilder`, `SidecarManifestBuilder`, `EMRProvisioningService` and `edl_pyroscope_opts` (`edl-kit-lib.sh`), with the tests that assert those options
 - [x] 4.3 `PyroscopeAgentReplayIntegrationTest`: the pinned agent with `OUTAGE_FLAGS` keeps every 10s snapshot through a 150s Pyroscope outage; without the flags the first 60s are lost
+- [x] 4.3a Pyroscope answers 422 to every push from SIGTERM to exit (about 30s), and the agent drops a 422, so the test lost the windows around the stop. `config.yaml` sets the metastore and segment-writer `min_ready_duration` to `0s` and turns usage reporting off, so the server exits within seconds; `PyroscopeManifestBuilderTest` asserts the three settings (found in review)
 
 ## 5. Green
 

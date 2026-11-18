@@ -862,6 +862,9 @@ object Constants {
     // 30 s count only on its first passing check (dskit ring/lifecycler.go:271-277). Measured from
     // container start: 48 s on a fresh data directory, 47 s on a restart over existing data. The
     // Pyroscope 1.x liveness probe (30 s delay, then 3 x 15 s) killed it during that window.
+    // config.yaml now sets both waits to 0s, because each one is also a wait at shutdown, during
+    // which Pyroscope refuses every push with an answer the Java agent does not retry (issue 991).
+    // With them off, /ready passed 18 s after container start; the budget below is kept as is.
     object PyroscopeProbes {
         /** How often the startup probe polls /ready while the server comes up. */
         const val STARTUP_PERIOD_SECONDS = 5

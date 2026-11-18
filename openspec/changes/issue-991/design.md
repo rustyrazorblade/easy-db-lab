@@ -118,6 +118,8 @@ A second test does the same for logs: the rendered collector in front of the pin
 
 `PyroscopeAgentReplayIntegrationTest` covers the Java agent: a JVM with the agent jar from `Constants.PyroscopeJavaAgent.DOWNLOAD_URL` and `OUTAGE_FLAGS` profiles a busy loop (with `itimer`, because perf events are not available in a container) and sends to the pinned Pyroscope with its rendered configuration (aliased `pyroscope.default.svc.cluster.local`).  The test stops Pyroscope for 150s, past the defaults (8 snapshots, about 80s, and 8 tries), starts it again on the same volume, and asserts that every whole 10s window of the outage holds CPU samples.  With the defaults, the first 60s of the outage hold none.
 
+The test also found a loss in the server's shutdown.  From SIGTERM until it exits, Pyroscope 2.3.1 keeps its HTTP port open with the segment writer already stopped, and answers every push with 422 ("service is unavailable").  The agent retries only 429 and 5xx, so it drops each snapshot it sends in that window; a graceful stop took 30s, and the windows around it held no profile.  The wait comes from fixed timers that also run at shutdown: the segment writer's `min_ready_duration` (30s), the metastore's (15s), and the usage-stats module (15s).  `config.yaml` sets both `min_ready_duration` to `0s` and `analytics.reporting_enabled: false`.  Measured in Docker: the server exits within 4s of SIGTERM, the agent then gets connection refused, which it retries, and 20 of 20 profiles pushed in the 20s before the stop are queryable after the restart on the same volume.  `/ready` still waits for every module, and passed 18s after start instead of 44s.
+
 ### 7. Real-cluster check
 
 1 db, 1 app, 1 control, `--tag embark_offhours=off`, a light stress load.  Restart Mimir and hold it down for a few minutes (scale to 0, then back to 1), then show in Mimir that a per-second series has no missing samples across the gap, and that `otelcol_exporter_send_failed_metric_points_total` did not rise.
@@ -129,7 +131,7 @@ A second test does the same for logs: the rendered collector in front of the pin
 - [Drain time: one consumer drains a backlog more slowly than many] → At tens of pushes a second, an hour's backlog drains in minutes.  The real-cluster check measures it.
 - [Replay pressure on Mimir: 429 is permanent in PRW] → Mimir's ingestion limits are far above a test cluster's rate (`ingestion_rate: 10000000`).
 - [Loki answers 500 while it starts, which `otlp_http` treats as permanent] → The Loki restart test decides, and this change fixes it (Decision 5a).
-- [Java agent heap: 360 snapshots in a small JVM] → JFR snapshots are compressed, and the queue fills only during a Pyroscope outage.
+- [Java agent heap: 360 snapshots in a small JVM] → The queue fills only during a Pyroscope outage, and it holds the snapshots in the profiled JVM's own heap.  Measured with agent 2.3.0, the production options (`jfr`, `alloc=512k`, `lock=10ms`) and a synthetic load of 8 threads with many distinct stacks, heavy allocation and a contended lock: each upload was 4.1 to 6.4 MB, and live heap after a full GC grew by about 15 MB per snapshot for the first 150s of an outage and about 5 MB per snapshot after that, reaching 260 MB after 240s (24 snapshots).  At 5 to 11 MB a snapshot, a full 360-snapshot queue is 1.8 to 4 GB.  A real workload's snapshots are not measured; the owner decides whether 360 stays or the queue is sized for the smallest JVM that gets the options.
 
 ## Migration Plan
 

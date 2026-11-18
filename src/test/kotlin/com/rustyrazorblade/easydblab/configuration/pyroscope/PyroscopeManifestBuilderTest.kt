@@ -157,6 +157,15 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `no fixed wait holds the server open after SIGTERM, where it refuses every push`() {
+        val config = serverConfig()
+
+        assertThat(scalarAt(config, "metastore", "min_ready_duration")).isEqualTo("0s")
+        assertThat(scalarAt(config, "segment_writer", "lifecycler", "min_ready_duration")).isEqualTo("0s")
+        assertThat(scalarAt(config, "analytics", "reporting_enabled")).isEqualTo("false")
+    }
+
+    @Test
     fun `profiles are stored under the observability profiles prefix of the account bucket, not the data bucket`() {
         val config = serverConfig()
 

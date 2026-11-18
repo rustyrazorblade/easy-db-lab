@@ -726,8 +726,8 @@ The `presto` and `trino` kits' `start.sh` are the reference. If a container buil
 command line itself, put `$(edl_pyroscope_opts <kit>)` in it instead of writing the agent options by
 hand.
 
-Use `component=coordinator`, `component=worker`, etc. in the `pyroscope.labels` to distinguish
-multiple JVM processes belonging to the same kit. Profiles appear in Grafana's Pyroscope
+Pass `coordinator`, `worker`, and so on as the `<component>` argument to tell apart the JVM
+processes of one kit; the helper adds it to the profile labels. Profiles appear in Grafana's Pyroscope
 datasource under `service_name=<kit>`.
 
 ### Operator-managed (CRD) kits

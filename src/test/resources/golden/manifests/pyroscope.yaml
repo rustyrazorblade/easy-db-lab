@@ -30,13 +30,30 @@ data:
     #
     # NEVER delete a profile by age: the index cleanup that drives v2 retention is off. v2 compaction
     # stays on: it merges this cluster's segments into blocks and keeps their data.
+    # Shutdown: after SIGTERM, Pyroscope 2.3.1 keeps its HTTP port open while its segment writer is
+    # already gone, so every push is refused for as long as the process waits to exit. The Java agent
+    # treats that answer (422) as permanent and drops the snapshot, so a restart lost about 30s of
+    # profiles. Each min_ready_duration below is also a wait at shutdown: the segment writer's 30s
+    # and the metastore's 15s. At 0s, and with usage reporting off (its 15s stop wait is the last one),
+    # the process exits within seconds of SIGTERM and the agent gets connection refused, which it
+    # retries. A restart loses no profile (PyroscopeAgentReplayIntegrationTest), and /ready still
+    # passes only once every module is up.
     metastore:
+      min_ready_duration: 0s
       data_dir: /data/metastore/data
       raft:
         dir: /data/metastore/raft
         snapshots_dir: /data/metastore/raft
       index:
         cleanup_interval: 0s
+
+    segment_writer:
+      lifecycler:
+        min_ready_duration: 0s
+
+    # Anonymous usage reporting to Grafana Labs. Its module stops last and holds shutdown 15s.
+    analytics:
+      reporting_enabled: false
 
     self_profiling:
       disable_push: true

@@ -76,7 +76,7 @@ data class ClusterContract(
                         storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Tunnel,
                         nodeCapabilities = capabilities,
-                        hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.NodePorts),
+                        hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.NodePorts, StoreCredentials.InstanceRole),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = state.initConfig?.region?.ifBlank { null },
                     )
@@ -91,7 +91,7 @@ data class ClusterContract(
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
                         // The node is a container: the CLI reaches Services by a port-forward, never a node port.
-                        hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.ClusterIp),
+                        hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                     )
@@ -105,7 +105,7 @@ data class ClusterContract(
                         storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
-                        hosting = hosted(Placement.ANY_NODE, nodeLabels, ServicePublishing.ClusterIp),
+                        hosting = hosted(Placement.ANY_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
                         namespace = Constants.ContractDefaults.BROUGHT_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                     )
@@ -113,19 +113,21 @@ data class ClusterContract(
         }
 
         /**
-         * Every environment's backends keep their local state in a host directory and write to the
-         * account bucket with the node's credentials, which is what [StoreKind.ObjectStore] names:
-         * #1035 changes the store kind and the storage together, and #1061 the credentials.
+         * Every environment's backends keep their local state in a host directory and name the account
+         * bucket, which is what [StoreKind.ObjectStore] names: #1035 changes the store kind and the storage
+         * together. Only an EC2 node has an instance role to reach it with; elsewhere the [credentials] are
+         * [StoreCredentials.NotProvided] until #1061 provisions them.
          */
         private fun hosted(
             placement: Placement,
             nodeLabels: Map<String, String>,
             publishing: ServicePublishing,
+            credentials: StoreCredentials,
         ): ObservabilityHosting =
             ObservabilityHosting(
                 placement = placement.withNodeLabels(nodeLabels),
                 storage = BackendStorage.HostPath,
-                credentials = StoreCredentials.InstanceRole,
+                credentials = credentials,
                 publishing = publishing,
             )
     }

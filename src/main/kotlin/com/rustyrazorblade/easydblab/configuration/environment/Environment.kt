@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.nio.file.Path
 
 /**
  * The execution environment a workspace targets, recorded once in `state.json` by `init`.
@@ -56,6 +57,10 @@ sealed interface Environment {
     data class K3sDocker(
         val dataDir: String,
     ) : Environment {
+        init {
+            requireAbsolute(K3S_DOCKER, "dataDir", dataDir)
+        }
+
         override val displayName: String get() = "K3s in Docker"
         override val declaredCapabilities: NodeCapabilities get() = NodeCapabilities.LOCAL_DOCKER
     }
@@ -63,7 +68,9 @@ sealed interface Environment {
     /**
      * A Kubernetes cluster the user brings. Its capabilities are probed (#1096), so it declares none.
      *
-     * @property source the kubeconfig the cluster was named by.
+     * @property source the absolute path of the kubeconfig the cluster was named by. Whoever records it
+     *   resolves a path the user gave against the current directory first, as `init --local` does for
+     *   `--data-dir`; a relative one would name a different file from another directory.
      */
     @Serializable
     @SerialName(KUBECONFIG)
@@ -71,6 +78,10 @@ sealed interface Environment {
     data class Kubeconfig(
         val source: String,
     ) : Environment {
+        init {
+            requireAbsolute(KUBECONFIG, "source", source)
+        }
+
         override val displayName: String get() = "your Kubernetes cluster"
         override val declaredCapabilities: NodeCapabilities get() = NodeCapabilities.NONE
     }
@@ -91,5 +102,24 @@ sealed interface Environment {
          * means a branch on the variant, which only [ClusterContract.of] takes.
          */
         val DEFAULT: Environment = Ec2K3s
+
+        /** Why [value], the [field] of a [typeId] environment, cannot be recorded, or null when it is an absolute path. */
+        internal fun relativePathProblem(
+            typeId: String,
+            field: String,
+            value: String,
+        ): String? =
+            when (Path.of(value).isAbsolute) {
+                true -> null
+                false -> "The '$typeId' execution environment's '$field' must be an absolute path, not '$value'"
+            }
+
+        private fun requireAbsolute(
+            typeId: String,
+            field: String,
+            value: String,
+        ) {
+            relativePathProblem(typeId, field, value)?.let { throw IllegalArgumentException(it) }
+        }
     }
 }

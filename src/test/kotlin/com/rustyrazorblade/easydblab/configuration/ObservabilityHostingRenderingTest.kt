@@ -236,6 +236,19 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
         }
     }
 
+    /** Off EC2 nothing provides the store credentials yet (#1061), so nothing is mounted, and nothing names a role. */
+    @Test
+    fun `with no store credentials provided no backend mounts a Secret`() {
+        val local = ObservabilityHosting.AWS.copy(credentials = StoreCredentials.NotProvided)
+
+        backends(local).minus(GRAFANA).forEach { (hostPath, resources) ->
+            val pod = pod(resources)
+
+            assertThat(pod.serviceAccountName).describedAs(hostPath).isEqualTo("default")
+            assertThat(pod.containers.flatMap { it.envFrom.orEmpty() }).describedAs(hostPath).isEmpty()
+        }
+    }
+
     @Test
     fun `a store-credentials Secret is mounted into each backend's own container`() {
         val withSecret = ObservabilityHosting.AWS.copy(credentials = StoreCredentials.FromSecret("store-credentials"))

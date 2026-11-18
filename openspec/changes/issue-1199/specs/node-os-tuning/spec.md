@@ -125,7 +125,7 @@ Because the ephemeral port range then covers the Kubernetes NodePort range and t
 
 ### Requirement: Stress metrics ports stay in a reserved window
 
-Each `cassandra stress start` SHALL bind its metrics endpoint to a port in the window 9500-9599 on the app node.  The Nth run SHALL take port 9500 + (N mod 100), so the port wraps after 100 runs and never leaves the window.  Node tuning SHALL reserve the whole window in `net.ipv4.ip_local_reserved_ports`, so no outbound connection takes a stress metrics port as its source port.
+Each `cassandra stress start` SHALL bind its metrics endpoint to a port in the window 9500-9599 on the app node.  The Nth run SHALL take port 9500 + (N mod 100), so the port wraps after 100 runs and never leaves the window.  A run whose port is still bound on that node by the run 100 before it cannot bind its metrics endpoint.  Node tuning SHALL reserve the whole window in `net.ipv4.ip_local_reserved_ports`, so no outbound connection takes a stress metrics port as its source port.
 
 #### Scenario: Ports wrap inside the window
 - **WHEN** the 99th, 100th and 101st stress runs start

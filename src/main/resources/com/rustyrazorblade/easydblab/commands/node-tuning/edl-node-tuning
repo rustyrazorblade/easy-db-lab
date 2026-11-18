@@ -69,9 +69,11 @@ skip() {
   say "skipped $1 on $(hostname): $(instance_type) $2"
 }
 
-# Writes [value] to [file]; a write the kernel refuses is reported by verify, not here.
+# Writes [value] to [file]; a write the kernel refuses is reported by verify, not here. The group
+# carries the redirect so the shell's own error, from opening [file], is silenced too, and a failed
+# write prints only the one line below.
 put() {
-  echo "$2" > "$1" 2> /dev/null || say "could not write $2 to $1"
+  { echo "$2" > "$1"; } 2> /dev/null || say "could not write $2 to $1"
 }
 
 # The CPU numbers in a kernel CPU list such as 0-3,8,10-11, one per line.

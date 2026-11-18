@@ -334,6 +334,17 @@ else
   fail "an offline CPU should be skipped, got: ${OUTPUT} / $(run verify)"
 fi
 
+# A write the kernel refuses is reported once, by apply's own line, with no shell error beside it.
+setup 2 1
+mkdir -p "${SYS}/block/nvme1n1/queue/scheduler"
+echo 128 > "${SYS}/block/nvme1n1/queue/read_ahead_kb"
+OUTPUT="$(run apply)"
+if [[ "$(printf '%s\n' "$OUTPUT" | grep -c "nvme1n1/queue/scheduler")" -eq 1 && "$OUTPUT" == *"could not write none to"* ]]; then
+  pass "a failed write prints one line"
+else
+  fail "a failed write should print only apply's line, got: ${OUTPUT}"
+fi
+
 # --- disks: apply sets the queue values itself, so the boot verify does not race udev ---
 setup 2 1
 mkdir -p "${SYS}/block/nvme1n1/queue" "${SYS}/block/xvda/queue" "${SYS}/block/loop0/queue"

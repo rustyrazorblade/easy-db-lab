@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.nodeGroups
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
@@ -60,13 +61,9 @@ data class NodeSetupContext(
                 telemetryRedirect = state.initConfig?.telemetryRedirect,
                 instanceTypes =
                     state.initConfig
-                        ?.let {
-                            mapOf(
-                                ServerType.Cassandra to it.instanceType,
-                                ServerType.Stress to it.stressInstanceType,
-                                ServerType.Control to it.controlInstanceType,
-                            )
-                        }.orEmpty(),
+                        ?.nodeGroups()
+                        ?.associate { it.serverType to it.instanceType }
+                        .orEmpty(),
             )
     }
 }

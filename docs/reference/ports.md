@@ -57,7 +57,7 @@ be added to the reserved list. See [Node OS Tuning](../user-guide/node-tuning.md
 
 | Port | Service |
 |------|---------|
-| 9500-9599 | Stress metrics (Prometheus). Each `cassandra stress start` takes the next port, wrapping after 100 runs. Reserved by node tuning. |
+| 9500-9599 | Stress metrics (Prometheus). Each `cassandra stress start` takes the next port, wrapping after 100 runs, so a run cannot bind its port while the run 100 before it is still running on that node. Reserved by node tuning. |
 
 ## Tailscale
 

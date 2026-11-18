@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
@@ -76,15 +77,32 @@ class KitRolePlacementTest : BaseKoinTest() {
         }
     }
 
-    /** The `nodeSelector` maps of a rendered document, in document order, and its node affinities. */
+    /**
+     * The restart-loop regression: CNPG compares the Cluster's `nodeSelector` with its pod's, and the API
+     * server drops an empty one from the pod, so any `nodeSelector` key in an unconstrained Cluster (an
+     * empty map, a null) differs forever. The key itself must be absent, not merely empty.
+     */
+    @Test
+    fun `an unconstrained postgres Cluster names no nodeSelector key at all`() {
+        val found = placements("postgres", "postgres-cluster.yaml.template", RoleSelectors.ANYWHERE)
+
+        assertThat(found.selectorKeys).`as`("nodeSelector keys").isZero()
+        assertThat(found.affinities).containsExactly(emptyMap<String, Any>())
+    }
+
+    /** The `nodeSelector` maps of a rendered document, in document order, its node affinities and its keys. */
     private class Placements {
         val selectors = mutableListOf<Map<*, *>>()
+        val affinities = mutableListOf<Any?>()
+        var selectorKeys = 0
         var nodeAffinities = 0
 
         fun collect(node: Any?) {
             when (node) {
                 is Map<*, *> ->
                     node.forEach { (key, value) ->
+                        if (key == "nodeSelector") selectorKeys++
+                        if (key == "affinity") affinities.add(value)
                         when {
                             key == "nodeSelector" && value is Map<*, *> -> selectors.add(value)
                             key == "nodeAffinity" -> nodeAffinities++

@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import kotlinx.serialization.json.Json
 
 /**
  * Where a kit's pods go and how many nodes each role has, as the variables kits read.
@@ -42,7 +43,12 @@ data class KitPlacementVariables(
          * names an empty `nodeSelector` restarts its instance on every reconcile.
          */
         private fun cnpgAffinity(selector: NodeSelector): String =
-            if (selector.labels.isEmpty()) "{}" else """{"nodeSelector":${selector.toJson()}}"""
+            Json.encodeToString(
+                when (selector.labels.isEmpty()) {
+                    true -> emptyMap<String, Map<String, String>>()
+                    false -> mapOf("nodeSelector" to selector.labels.toSortedMap() as Map<String, String>)
+                },
+            )
 
         /**
          * The placement with counts taken from the hosts `state.json` records. Only for callers

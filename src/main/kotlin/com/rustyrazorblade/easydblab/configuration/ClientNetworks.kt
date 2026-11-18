@@ -58,20 +58,21 @@ data class ClientNetworks(
          * value that is not an IPv4 network means the probe read something wrong, and fails.
          *
          * @throws IllegalArgumentException when a value is neither IPv4 nor IPv6, or no network is
-         * found, naming [OPTION].
+         * found, naming [OPTION] and, on an IPv6-only cluster, the IPv6 values it skipped.
          */
         fun probed(
             nodes: List<ProbedNode>,
             overrides: List<Ipv4Cidr>,
         ): ClientNetworks {
-            val found =
-                nodes
-                    .flatMap { node -> node.podCidrs + node.internalIps }
-                    .filterNot { it.contains(':') }
-                    .map(::parseProbed)
-            val cidrs = (found + overrides).distinct()
+            val (ipv6, ipv4) = nodes.flatMap { node -> node.podCidrs + node.internalIps }.partition { it.contains(':') }
+            val cidrs = (ipv4.map(::parseProbed) + overrides).distinct()
             require(cidrs.isNotEmpty()) {
-                "No client network found: the nodes report no IPv4 pod CIDR or InternalIP. Give one with $OPTION <cidr>."
+                val skipped =
+                    when (ipv6.isEmpty()) {
+                        true -> ""
+                        false -> " (skipped ${ipv6.size} IPv6 values, which the database kits cannot use: ${ipv6.joinToString(", ")})"
+                    }
+                "No client network found: the nodes report no IPv4 pod CIDR or InternalIP$skipped. Give one with $OPTION <cidr>."
             }
             return ClientNetworks(cidrs)
         }

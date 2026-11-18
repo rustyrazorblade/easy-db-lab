@@ -102,6 +102,18 @@ class ClientNetworksTest {
     }
 
     @Test
+    fun `an IPv6-only cluster is refused, saying its IPv6 values were skipped and naming the option`() {
+        val nodes = listOf(ProbedNode(podCidrs = listOf("fd00:10:244::/64"), internalIps = listOf("fd00::5")))
+
+        assertThatThrownBy { ClientNetworks.probed(nodes, emptyList()) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("skipped 2 IPv6 values")
+            .hasMessageContaining("fd00:10:244::/64")
+            .hasMessageContaining("fd00::5")
+            .hasMessageContaining(ClientNetworks.OPTION)
+    }
+
+    @Test
     fun `the networks render as a JSON list and as one trust line each`() {
         val networks = ClientNetworks(listOf(cidr("172.16.0.0/16"), cidr("10.42.0.0/16")))
 

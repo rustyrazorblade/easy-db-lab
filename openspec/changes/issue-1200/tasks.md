@@ -2,9 +2,9 @@
 
 - [ ] 1.1 `Constants.NodeOutput`: `TAIL_LINES = 30`, `MAX_LINE_BYTES = 8192`
 - [ ] 1.2 `output/LineSplittingOutputStream.kt` (D2) with `LineSplittingOutputStreamTest`: split chunks, a split UTF-8 character, `\r\n`, a lone `\r`, an empty line, the line cap, the partial last line on `close()`
-- [ ] 1.3 `output/NodeOutput.kt`: the `NodeOutput` port (`line`, `notice`, `tail`, `reset`, `quietly`), the narrow `NodeOutputTail` read side, the `OutputStream` enum (`Stdout`, `Stderr`)
+- [ ] 1.3 `output/NodeOutput.kt`: the `NodeOutput` port (`line`, `notice`, `passthrough`, `tail`, `reset`, `quietly`), the narrow `NodeOutputTail` read side, the `OutputStream` enum (`Stdout`, `Stderr`)
 - [ ] 1.4 `output/ConsoleNodeOutput.kt` (D3, D4, D6): the `[alias] ` tag, stdout and stderr streams from its constructor, one `ReentrantLock` around each write and tail update, a bounded ring buffer per alias, `quietly` with restore on exit.  Koin singleton in `OutputModule`, bound as both `NodeOutput` and `NodeOutputTail`
-- [ ] 1.5 `ConsoleNodeOutputTest`: tag format, stderr routing, quiet hides lines and keeps the tail, the tail bound, `reset`, `quietly` restores after an exception, nested `quietly`
+- [ ] 1.5 `ConsoleNodeOutputTest`: tag format, stderr routing, quiet hides lines and keeps the tail, the tail bound, `reset`, `quietly` restores after an exception, nested `quietly`, `passthrough` splits into tagged lines and keeps no tail
 - [ ] 1.6 Concurrency test: 32 virtual threads × 500 lines through one `ConsoleNodeOutput`; every line matches its own node's tag and each node's order holds
 - [ ] 1.7 A recording `NodeOutput` fake for tests in `src/test`, wired in `TestModules`
 
@@ -20,7 +20,7 @@
 
 ## 3. Events
 
-- [ ] 3.1 Remove `Ssh.ExecutingCommand`, `Ssh.ExecutingHiddenCommand`, `Ssh.CommandOutput`, `Ssh.UploadingFile`, `Ssh.UploadingDirectory`, `Cassandra.NodetoolOutput`, `Cassandra.PatchOutput`, `Cassandra.PatchStderr`
+- [ ] 3.1 Remove `Ssh.ExecutingCommand`, `Ssh.ExecutingHiddenCommand`, `Ssh.CommandOutput`, `Ssh.UploadingFile`, `Ssh.UploadingDirectory`, `Cassandra.NodetoolOutput`, `Cassandra.PatchOutput`, `Cassandra.PatchStderr`, `Cassandra.CqlQueryOutput`, `Stress.CommandOutput`, `Stress.PodLogOutput`, `Stress.PodLogHeader`, `Stress.PodLogsEmpty`, `Stress.PodLogSeparator`
 - [ ] 3.2 Add `outputTail: List<String> = emptyList()` to `Provision.NodeFailed`, `Provision.ControlNodeFailed` and `Provision.InstanceSetupFailed`; render `last output of <alias>:` and the indented lines under the reason, nothing when empty
 - [ ] 3.3 Tests: the rendered text with and without a tail; `EventSerializationTest` round-trips `outputTail`
 
@@ -44,15 +44,18 @@
 - [ ] 6.1 `cassandra nt`: run with `output = true`; drop the header event
 - [ ] 6.2 `cassandra update-config`: run `patch-config` with `output = true`; drop `PatchOutput` and `PatchStderr`; keep the success check and `PatchFailed`
 - [ ] 6.3 `exec run`: the journal command runs with `output = true`; drop the `=== host ===` block (D7).  Test that the journal lines come out tagged with the host through the recording `NodeOutput`
-- [ ] 6.4 Update the command tests that asserted the removed events
+- [ ] 6.4 `cassandra cql`: print the rows with `println`, untagged.  `CqlTest` reads them from captured stdout and checks no event carries them
+- [ ] 6.5 `cassandra stress info`, `list`, `fields`: print the job output with `println`, untagged.  `StressInfoTest`, `StressListTest` and a `StressFields` case read it from captured stdout
+- [ ] 6.6 `cassandra stress logs`: for each pod, `passthrough(pod, "status <status>")`, then its logs through `passthrough(pod, logs)` or `passthrough(pod, "(no logs available yet)")`; keep `Stress.PodLogFailed`.  `StressLogsTest`: two pods, one empty, through the recording `NodeOutput`
+- [ ] 6.7 Update the other command tests that asserted the removed events
 
 ## 7. Docs
 
-- [ ] 7.1 `events/CLAUDE.md`: the rule, the `Ssh` domain, `outputTail`
+- [ ] 7.1 `events/CLAUDE.md`: the rule, the `Ssh` domain, the `Cassandra` and `Stress` removals, `outputTail`
 - [ ] 7.2 `providers/CLAUDE.md`: the sink in the SSH section, the redaction sinks
 - [ ] 7.3 `services/CLAUDE.md` (bring-up): the tail reset and the failure tail
 - [ ] 7.4 Root `CLAUDE.md`: one line for node output beside the event and `println()` rules
-- [ ] 7.5 `docs/reference/commands.md`: `--quiet` on `up`, `init`, `setup-instances`; tagged output of `exec run` and `cassandra nt`
+- [ ] 7.5 `docs/reference/commands.md`: `--quiet` on `up`, `init`, `setup-instances`; tagged output of `exec run`, `cassandra nt` and `cassandra stress logs`
 - [ ] 7.6 `docs/user-guide/large-clusters.md`: tagged output, quiet mode, the tail in "When a node fails"
 
 ## 8. Verify

@@ -19,7 +19,15 @@ The consumers:
 - Tests: `SSHClientTest` ("a successful command's output is redacted before it reaches the event bus") reads it back through `BufferedOutputHandler`.  `EventSerializationTest` covers no `Ssh` type.  No integration test, no script in `bin/`, no skill and no doc reads them.  `providers/CLAUDE.md` names `Ssh.CommandOutput` as one of the four redaction sinks.
 - The server and the REPL have no special handling.  `ClusterStatusCollector` calls `getRemoteVersion`, which uses `output = false`.
 
-Other raw output paths, which this change does not move: kit shell steps run locally and already `println` each line (`WorkloadStepExecutor.runShellStep`); `exec run` prints the journal with `println` under `=== host ===`; `Cassandra.CqlQueryOutput`, `Stress.CommandOutput` and `Stress.PodLogOutput` are not node output (the CQL driver and K8s pod logs).
+Other raw-output events, which come from no SSH command but carry raw text all the same:
+
+- `Cassandra.CqlQueryOutput(output)`: emitted only by `Cql.execute` (`cassandra cql`) with the rows the driver returned, already formatted as text.
+- `Stress.CommandOutput(output)`: emitted by `StressInfo`, `StressList` and `StressFields` with the logs of the short-lived `cmd-<timestamp>` K8s job that `StressJobService.runCommand` starts and deletes.  The pod name stays inside the service.
+- `Stress.PodLogOutput(logs)`: emitted only by `StressLogs` (`cassandra stress logs`) with one pod's logs.  Around it, `StressLogs` emits `Stress.PodLogHeader(podName, podStatus)` (`=== Pod: <name> (<status>) ===`, only when the job has more than one pod), `Stress.PodLogsEmpty` (`(no logs available yet)`) and `Stress.PodLogSeparator` (a blank line, more than one pod).  `Stress.PodLogFailed` is an error.
+
+Their consumers are the same two listeners.  Their tests read them back through the test listener that forwards events to `BufferedOutputHandler.messages`: `CqlTest`, `StressInfoTest`, `StressListTest` (`StressLogsTest` asserts only the service calls).  No serializer registration lists them by hand: the sealed hierarchy is `@Serializable` and `EventSerializationTest` covers none of them.  No doc, script or skill reads them.
+
+Paths this change does not move: kit shell steps run locally and already `println` each line (`WorkloadStepExecutor.runShellStep`).
 
 ### Bring-up
 
@@ -38,7 +46,7 @@ Other raw output paths, which this change does not move: kit shell steps run loc
 **Non-Goals:**
 
 - Local process output (kit shell steps, hooks, `helm` run locally): it is already plain `println` and comes from one process.
-- The CQL, stress-pod and pod-log output events (see Open Questions, Q2).
+- A quiet mode on any command but `up`, `init` and `setup-instances` (owner decision).
 - A log file of the full output.  The tail in a failure report is the only kept copy.
 - Colour or column alignment of the tag.
 
@@ -53,6 +61,7 @@ New in `output/` (provider-neutral; it names a node by its alias string and impo
 interface NodeOutput {
     fun line(node: String, stream: OutputStream, text: String)   // stream: Stdout or Stderr
     fun notice(node: String, text: String)                       // a tool line such as an upload
+    fun passthrough(source: String, text: String)                // split into lines, tagged, never kept in a tail
     fun tail(node: String): List<String>
     fun reset(node: String)
     fun <T> quietly(block: () -> T): T
@@ -115,6 +124,12 @@ Their replacements:
 - `cassandra nt`: runs with `output = true`, so each host's lines are tagged; the `=== host ===` header goes.
 - `cassandra update-config`: `patch-config` runs with `output = true` (stdout and stderr both shown, tagged, once).  `Cassandra.PatchFailed` stays.
 
+Also removed, by owner decision: `Cassandra.CqlQueryOutput`, `Stress.CommandOutput`, `Stress.PodLogOutput`, and the three display-only events around the last one, `Stress.PodLogHeader`, `Stress.PodLogsEmpty` and `Stress.PodLogSeparator`.  They are formatting of raw text, not facts.  `Stress.PodLogFailed` (an error) and `Cassandra.CqlDdlOk`, `CqlQueryError`, `Stress.CommandRunning` stay.  The new shapes:
+
+- `cassandra cql`: the rows are printed with `println`, untagged.  They come from the driver, not from a node.
+- `cassandra stress info`, `list` and `fields`: the job's output is printed with `println`, untagged.  It comes from one throwaway `cmd-<timestamp>` pod whose name is internal to `StressJobService.runCommand`; a tag of that name would add nothing.
+- `cassandra stress logs`: each log line goes through the tagged-line path, tagged with its pod name (`[stress-job-1-abc12] ...`), on every pod, also when the job has one.  It uses `NodeOutput.passthrough(source, text)` (D1): each line tagged and written whole under the same lock, and never kept in a tail, because pod names are unique per job and a long-lived server or REPL would otherwise keep one buffer per pod forever.  Before each pod's lines it prints `[<pod>] status <status>` the same way; a pod with no logs prints `[<pod>] (no logs available yet)`.  The header, the separator and the empty-pod event go.
+
 Clusters are ephemeral and nothing in this repo subscribes to the removed types; no compatibility shim.
 
 ### D6. Quiet mode
@@ -125,7 +140,7 @@ What quiet hides: node lines and notice lines (D3, D5).  What still prints: ever
 
 `ConsoleNodeOutput` holds the mode in one `@Volatile` field that only `quietly` sets.  A `quietly` inside another `quietly` keeps quiet.
 
-Alternative: a global `--quiet` on the root command.  See Open Questions, Q1.
+Alternative: a global `--quiet` on the root command, for every command.  Rejected by the owner: the noise is in `up` and the setup scripts, and for `exec run`, `cassandra nt` and kits the output is the result.
 
 ### D7. `exec run`
 
@@ -144,6 +159,9 @@ Unit tier (`src/test`):
 - `Up` (`UpTestFixture`, which already wires a fake `RemoteOperationsService`): with `--quiet`, the fake's node lines do not reach stdout and the `NodeReady` line does; a failed node's error output has its tail.  `init --up --quiet` gives the scheduled `Up` quiet mode.
 - `Event` text: `NodeFailed` with a tail renders the header and the indented lines, and without a tail renders as today.  `EventSerializationTest` round-trips `outputTail`.
 - `ExecRun`: the journal lines come out tagged with the host, through the recording `NodeOutput`.
+- `ConsoleNodeOutputTest` also covers `passthrough`: a multi-line text comes out one tagged line per line, and no tail is kept for its source.
+- `StressLogsTest`: two pods, one with logs and one empty; the recording `NodeOutput` holds each pod's status line and log lines under its pod name, and the empty pod's `(no logs available yet)` line.  No event is emitted for them.
+- `CqlTest`, `StressInfoTest`, `StressListTest` (and a `StressFields` case): the rows or job output reach stdout (captured with the existing `captureStdout` pattern), untagged, and no event carries them.  The tests that read the removed events through `BufferedOutputHandler.messages` are rewritten this way.
 
 Integration tier (`src/integrationTest`): `SSHClientStreamingIntegrationTest` against a real `sshd` in a container (the alpine `sshd` image the proxy tests already build).  A command that prints a line, sleeps 2 s, then prints to stderr: the first line reaches the sink before `executeRemoteCommand` returns, and the stderr line arrives on the stderr stream.  This needs a socket, so it cannot be in the unit tier.
 
@@ -151,11 +169,11 @@ No test asserts help text, and no test only checks that a mock was called.
 
 ### D9. Docs
 
-- `events/CLAUDE.md`: the rule "raw remote output and per-command progress are not events; they go through `NodeOutput`", the `Ssh` domain now holding only `SsmToolsMissing`, and `outputTail` on `NodeFailed`, `ControlNodeFailed` and `InstanceSetupFailed`.
+- `events/CLAUDE.md`: the rule "raw output (remote commands, CQL rows, stress job and pod logs) and per-command progress are not events; node and pod lines go through `NodeOutput`, the rest is `println`", the `Ssh` domain now holding only `SsmToolsMissing`, the `Stress` and `Cassandra` removals, and `outputTail` on `NodeFailed`, `ControlNodeFailed` and `InstanceSetupFailed`.
 - `providers/CLAUDE.md`: the SSH section names the sink, and the redaction section's four sinks become the debug log, the node output lines, the `Response` and the exception.
 - `services/CLAUDE.md` (bring-up): `InstanceRun` resets the tail, failures carry it.
 - Root `CLAUDE.md`: next to the event and `println()` rules, one line for node output.
-- `docs/reference/commands.md`: `--quiet` on `up`, `init` and `setup-instances`; the tagged output of `exec run` and `cassandra nt`.
+- `docs/reference/commands.md`: `--quiet` on `up`, `init` and `setup-instances`; the tagged output of `exec run`, `cassandra nt` and `cassandra stress logs` (tagged by pod).
 - `docs/user-guide/large-clusters.md`: tagged output, quiet mode, and the output tail in "When a node fails".
 
 ## Risks / Trade-offs
@@ -170,20 +188,11 @@ No test asserts help text, and no test only checks that a mock was called.
 
 None.  Clusters are ephemeral; Redis subscribers see the removed types stop.
 
+## Owner Decisions
+
+- `--quiet` / `-q` is on `up`, `init` and `setup-instances` only, not on the root command (D6).
+- `Cassandra.CqlQueryOutput`, `Stress.CommandOutput` and `Stress.PodLogOutput` are removed in this change too; their output is plain text (D5).
+
 ## Open Questions
 
-**Q1. Where does `--quiet` live: on `up`, `init` and `setup-instances`, or on the root command for every command?**
-
-Context: the issue asks for "an option (for example `--quiet`) that suppresses the raw remote output on the console".  The flood is from `up` (and `init --up`, which runs `up`); `setup-instances` is the same setup scripts run again.  Other commands that print node output (`exec run`, `cassandra nt`, kits) print it because the user asked for it.  A root option would be `easy-db-lab --quiet up`, and would also work for `cassandra start`, `kit install` and others.
-
-Recommendation: the three commands, as designed (D6).
-
-Trade-offs: the three commands keep the option where the noise is, and `easy-db-lab up -q` reads naturally; but a user who wants a quiet `cassandra start` or `cassandra use` across 80 nodes has no switch, and a later root option would be a second spelling.  A root option covers every command at once, but it is the first root-level option in the CLI (picocli root options must come before the subcommand), and it lets a user hide the output of `exec run` or `cassandra nt`, where the output is the result.
-
-**Q2. Do the other raw-output events that are not node output (`Cassandra.CqlQueryOutput`, `Stress.CommandOutput`, `Stress.PodLogOutput`) also become `println` in this change?**
-
-Context: the rule in the issue is "raw remote output is plain text, not events".  These three carry raw text too: CQL query results through the driver, `cassandra-easy-stress info/list/fields` output from a K8s job, and stress pod logs.  They come from one source each, so they need no node tag.  Moving them is five call sites and three event types.
-
-Recommendation: yes, move them in this change, as `println` with no tag, so the event hierarchy holds no raw-text event when this merges.
-
-Trade-offs: in this change, the rule holds for the whole hierarchy at once and the diff grows by a few lines; it also widens the review past node output and changes what Redis receives for `cql` and `stress logs`.  Deferred, the change stays on node output only, and those three stay as exceptions to the rule until a follow-up.
+None.

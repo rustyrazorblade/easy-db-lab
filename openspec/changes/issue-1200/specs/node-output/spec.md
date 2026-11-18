@@ -48,6 +48,14 @@ Node output lines and upload lines MUST be printed as plain console text through
 - **WHEN** a remote command prints `https://ghp_token@github.com/acme/cassandra.git`
 - **THEN** the printed line shows `https://***@github.com/acme/cassandra.git`
 
+### Requirement: Pod log lines use the same tagged path
+
+Lines of a pod's logs that a command prints (`cassandra stress logs`) MUST go through the same tagged-line path, tagged with the pod name, each line one whole write.  They MUST NOT be kept in a per-source tail, so a long-lived process keeps no buffer per pod.
+
+#### Scenario: A pod's log text
+- **WHEN** a command prints the three-line log of pod `stress-job-1-abc12`
+- **THEN** the console shows three lines, each starting with `[stress-job-1-abc12] `, and no tail is kept for that pod
+
 ### Requirement: An upload prints one line
 
 Each call that uploads a file or a directory to a node MUST print one line tagged with the node, naming the local and the remote path.  A directory upload MUST print one line, not one per file.

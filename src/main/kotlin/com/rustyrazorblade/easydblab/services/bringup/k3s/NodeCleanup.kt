@@ -13,10 +13,14 @@ import java.util.concurrent.TimeUnit
  *
  * Either may already be gone (the node never finished registering, or a re-run cleaned it), which
  * is not a failure. The client comes from [K8sClientProvider], so it is on the per-client tunnel.
+ *
+ * @param waitSeconds how long to wait for each deleted object to go
+ * @param afterDelete runs between the deletes and the wait; a test uses it to put a replacement in place
  */
 class NodeCleanup(
     private val clientProvider: K8sClientProvider,
     private val waitSeconds: Long = Constants.Scale.NODE_CLEANUP_DELETE_WAIT_SECONDS,
+    private val afterDelete: () -> Unit = {},
 ) {
     /**
      * Deletes [alias]'s Node and its node-password secret, and waits until the objects deleted are
@@ -33,18 +37,22 @@ class NodeCleanup(
             val secretUid = secret.get()?.metadata?.uid
             node.delete()
             secret.delete()
+            afterDelete()
             if (nodeUid != null) {
                 try {
                     node.waitUntilCondition({ it == null || it.metadata.uid != nodeUid }, waitSeconds, TimeUnit.SECONDS)
                 } catch (e: KubernetesClientTimeoutException) {
-                    val stuck = node.get()
-                    throw NodeCleanupTimeoutException(
-                        alias,
-                        nodeUid,
-                        stuck?.metadata?.deletionTimestamp,
-                        stuck?.metadata?.finalizers.orEmpty(),
-                        waitSeconds,
-                    ).apply { addSuppressed(e) }
+                    // Read fresh: a Node with another UID is a replacement, so the deleted one is gone.
+                    val stuck = node.get()?.takeIf { it.metadata.uid == nodeUid }
+                    if (stuck != null) {
+                        throw NodeCleanupTimeoutException(
+                            alias,
+                            nodeUid,
+                            stuck.metadata.deletionTimestamp,
+                            stuck.metadata.finalizers.orEmpty(),
+                            waitSeconds,
+                        ).apply { addSuppressed(e) }
+                    }
                 }
             }
             if (secretUid != null) {

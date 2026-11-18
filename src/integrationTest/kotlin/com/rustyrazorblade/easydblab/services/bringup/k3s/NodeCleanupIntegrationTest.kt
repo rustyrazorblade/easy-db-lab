@@ -5,6 +5,9 @@ import com.rustyrazorblade.easydblab.WorkspaceK8s
 import io.fabric8.kubernetes.api.model.NodeBuilder
 import io.fabric8.kubernetes.api.model.SecretBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.KubernetesClientException
+import io.fabric8.kubernetes.client.dsl.base.PatchContext
+import io.fabric8.kubernetes.client.dsl.base.PatchType
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -14,7 +17,8 @@ import org.junit.jupiter.api.extension.RegisterExtension
 import org.junit.jupiter.api.extension.TestWatcher
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
-import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 
 /**
  * Proves [NodeCleanup] against a real K3s API server: whichever of a replaced node's Node object
@@ -132,18 +136,21 @@ class NodeCleanupIntegrationTest {
         val alias = "db90"
         create(alias, node = true, secret = false)
         hold(alias)
-        val patient = NodeCleanup(WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()), waitSeconds = REPLACE_WAIT_SECONDS)
-        val replacer =
-            thread {
-                Thread.sleep(REPLACE_DELAY_MILLIS)
-                SharedK3s.client().use { client ->
-                    release(client, alias)
-                    client.nodes().resource(node(alias)).create()
-                }
-            }
+        val replaced =
+            NodeCleanup(
+                WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()),
+                waitSeconds = REPLACE_WAIT_SECONDS,
+                afterDelete = {
+                    SharedK3s.client().use { client ->
+                        release(client, alias)
+                        client.nodes().resource(node(alias)).create()
+                    }
+                },
+            )
 
-        patient.clean(alias)
-        replacer.join()
+        val took = measureTime { replaced.clean(alias) }
+
+        assertThat(took).isLessThan(REPLACE_WAIT_SECONDS.seconds)
 
         assertThat(exists(alias).first).isTrue()
     }
@@ -171,9 +178,7 @@ class NodeCleanupIntegrationTest {
 
     private fun hold(alias: String) {
         SharedK3s.client().use { client ->
-            client.nodes().withName(alias).edit { node ->
-                node.also { it.metadata.finalizers = listOf(HOLD_FINALIZER) }
-            }
+            setFinalizers(client, alias, """["$HOLD_FINALIZER"]""")
         }
     }
 
@@ -181,15 +186,30 @@ class NodeCleanupIntegrationTest {
         client: KubernetesClient,
         alias: String,
     ) {
-        client.nodes().withName(alias).edit { node ->
-            node.also { it.metadata.finalizers = emptyList() }
+        try {
+            setFinalizers(client, alias, "null")
+        } catch (e: KubernetesClientException) {
+            // The Node finished deleting before the edit; nothing is left to release.
+            if (e.code != HTTP_NOT_FOUND) throw e
         }
+    }
+
+    /** A merge patch carries no resourceVersion, so K3s's own writes to the Node cannot conflict with it. */
+    private fun setFinalizers(
+        client: KubernetesClient,
+        alias: String,
+        json: String,
+    ) {
+        client
+            .nodes()
+            .withName(alias)
+            .patch(PatchContext.of(PatchType.JSON_MERGE), """{"metadata":{"finalizers":$json}}""")
     }
 
     private companion object {
         const val HOLD_FINALIZER = "easydblab.test/hold"
-        const val REPLACE_DELAY_MILLIS = 1500L
-        const val REPLACE_WAIT_SECONDS = 20L
+        const val HTTP_NOT_FOUND = 404
+        const val REPLACE_WAIT_SECONDS = 5L
         const val HELD_WAIT_SECONDS = 3L
     }
 }

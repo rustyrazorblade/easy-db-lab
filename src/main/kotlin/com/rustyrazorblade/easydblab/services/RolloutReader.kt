@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.apps.ControllerRevision
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.ReplicaSet
@@ -29,6 +30,9 @@ interface RolloutReader {
 
     /** The node named [name], or null when the cluster no longer has it. */
     fun node(name: String): Node?
+
+    /** Every ControllerRevision in the namespace (a DaemonSet's template history). */
+    fun controllerRevisions(): List<ControllerRevision>
 }
 
 /** Reads a rollout look's objects from [namespace] through [client]. */
@@ -68,4 +72,12 @@ class Fabric8RolloutReader(
             .items
 
     override fun node(name: String): Node? = client.nodes().withName(name).get()
+
+    override fun controllerRevisions(): List<ControllerRevision> =
+        client
+            .apps()
+            .controllerRevisions()
+            .inNamespace(namespace)
+            .list()
+            .items
 }

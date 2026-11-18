@@ -4,7 +4,10 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import io.fabric8.kubernetes.api.model.PodSpec
 import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
@@ -17,6 +20,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.time.Duration
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
 /**
@@ -57,13 +61,26 @@ class RolloutWaitIntegrationTest {
     /** Every workload a test created, deleted after it so the shared cluster keeps no broken pods. */
     private val created = mutableListOf<WorkloadRef>()
 
+    /** The events the wait emitted, for the test running now. */
+    private val events = CopyOnWriteArrayList<Event>()
+
     @BeforeAll
     fun setup() {
         SharedK3s.createNamespace(NAMESPACE)
         client = SharedK3s.client()
         // Each operation closes the client it is handed, so every call gets a fresh one.
         val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
-        ops = DefaultK8sNamespaceOperations(clientProvider, EventBus(), podPollInterval = Duration.ofMillis(500))
+        val eventBus = EventBus()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        ops = DefaultK8sNamespaceOperations(clientProvider, eventBus, podPollInterval = Duration.ofMillis(500))
     }
 
     @AfterEach
@@ -87,6 +104,7 @@ class RolloutWaitIntegrationTest {
             }
         }
         created.clear()
+        events.clear()
     }
 
     @AfterAll
@@ -234,14 +252,24 @@ class RolloutWaitIntegrationTest {
             .endContainer()
             .build()
 
-    /** Waits until a pod of [app] has a container in CrashLoopBackOff, so a fix lands on broken pods. */
+    /**
+     * Waits until a pod of [app] is in CrashLoopBackOff with at least
+     * [Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS] restarts, the point at which a rollout wait fails
+     * on it, so a fix lands on pods that would block the wait.
+     */
     private fun awaitCrashLoop(app: String) {
         client
             .pods()
             .inNamespace(NAMESPACE)
             .withLabel("app", app)
-            .informOnCondition { pods -> pods.any { K8sPodUtils.failureOf(it)?.contains("CrashLoopBackOff") == true } }
-            .get(FAIL_FAST_LIMIT_SECONDS, TimeUnit.SECONDS)
+            .informOnCondition { pods ->
+                pods.any { pod ->
+                    pod.status?.containerStatuses.orEmpty().any {
+                        it.state?.waiting?.reason == Constants.K8s.CRASH_LOOP_BACK_OFF &&
+                            (it.restartCount ?: 0) >= Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS
+                    }
+                }
+            }.get(FAIL_FAST_LIMIT_SECONDS, TimeUnit.SECONDS)
     }
 
     /** The highest container restart count among the pods of [app]. */
@@ -257,7 +285,8 @@ class RolloutWaitIntegrationTest {
 
     /**
      * Waits on [workloads] with the long [TIMEOUT_SECONDS] budget and asserts it failed well before
-     * it, with a message naming [ref], a pod of it, the node and [reason].
+     * it, because the wait was blocked and not because it timed out: with a message naming [ref], a pod
+     * of it, the node and [reason], and a [Event.K8s.RolloutBlocked] naming the same workload and node.
      */
     private fun assertFailsFast(
         ref: WorkloadRef,
@@ -270,19 +299,28 @@ class RolloutWaitIntegrationTest {
 
         assertThat(result.isFailure).isTrue()
         assertThat(elapsed).isLessThan(Duration.ofSeconds(FAIL_FAST_LIMIT_SECONDS))
-        val nodeName =
-            client
-                .nodes()
-                .list()
-                .items
-                .single()
-                .metadata.name
+        val nodeName = nodeName()
         assertThat(result.exceptionOrNull())
+            .hasMessageStartingWith("Rollout cannot complete: ")
+            .hasMessageNotContaining("Timed out")
             .hasMessageContaining(ref.toString())
             .hasMessageContaining("Pod ${ref.name}-")
             .hasMessageContaining("node $nodeName")
             .hasMessageContaining(reason)
+        val blocked = events.filterIsInstance<Event.K8s.RolloutBlocked>().single().block
+        assertThat(blocked.workload).isEqualTo(ref.toString())
+        assertThat(blocked.node).isEqualTo(nodeName)
+        assertThat(blocked.reason).contains(reason)
+        assertThat(events.filterIsInstance<Event.K8s.RolloutsTimedOut>()).isEmpty()
     }
+
+    private fun nodeName(): String =
+        client
+            .nodes()
+            .list()
+            .items
+            .single()
+            .metadata.name
 
     @Test
     fun `fails at once naming the pod when a DaemonSet's image cannot be pulled`() {
@@ -334,6 +372,9 @@ class RolloutWaitIntegrationTest {
         val name = "rollout-deploy-fixed"
         createDeployment(name, spec = crashingSpec())
         awaitCrashLoop(name)
+        // The control: the broken template blocks the wait, so the rollout below proves the fix unblocked it.
+        assertFailsFast(WorkloadRef(WorkloadKind.Deployment, name), "CrashLoopBackOff")
+        events.clear()
 
         client
             .apps()
@@ -359,6 +400,9 @@ class RolloutWaitIntegrationTest {
         val name = "rollout-ds-fixed"
         createDaemonSet(name, crashingSpec())
         awaitCrashLoop(name)
+        // The control: the broken template blocks the wait, so the rollout below proves the fix unblocked it.
+        assertFailsFast(WorkloadRef(WorkloadKind.DaemonSet, name), "CrashLoopBackOff")
+        events.clear()
 
         client
             .apps()
@@ -396,5 +440,29 @@ class RolloutWaitIntegrationTest {
             .hasMessageContaining("Timed out after ${SHORT_TIMEOUT_SECONDS}s")
             .hasMessageContaining("Deployment/$name")
             .hasMessageContaining("0 of 1 updated replicas are available")
+            .hasMessageContaining("Deployment/$name pod $name-")
+            .hasMessageContaining("on node ${nodeName()} (phase=Running")
+        val timedOut = events.filterIsInstance<Event.K8s.RolloutsTimedOut>().single()
+        assertThat(timedOut.pending).containsExactly("Deployment/$name")
+        assertThat(timedOut.unreadyPods.map { it.node }).containsExactly(nodeName())
+        assertThat(events.filterIsInstance<Event.K8s.RolloutBlocked>()).isEmpty()
+    }
+
+    @Test
+    fun `the reader reads the cluster's node by name, and null for a name the cluster does not have`() {
+        val reader = Fabric8RolloutReader(client, NAMESPACE)
+
+        val node = reader.node(nodeName())
+
+        assertThat(node?.metadata?.name).isEqualTo(nodeName())
+        assertThat(
+            node
+                ?.status
+                ?.conditions
+                .orEmpty()
+                .single { it.type == "Ready" }
+                .status,
+        ).isEqualTo("True")
+        assertThat(reader.node("no-such-node")).isNull()
     }
 }

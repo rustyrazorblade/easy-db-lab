@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -178,10 +177,13 @@ class DefaultK8sNamespaceOperations(
     ): Result<Unit> =
         runCatching {
             if (workloads.isEmpty()) return@runCatching
-            eventBus.emit(Event.K8s.RolloutsWaiting(workloads.map { it.toString() }))
+            val names = workloads.map { it.toString() }
+            eventBus.emit(Event.K8s.RolloutsWaiting(names))
 
             clientProvider.createClient().use { client ->
                 val looker = RolloutLooker(Fabric8RolloutReader(client, namespace))
+                val progress =
+                    RolloutWaitReport.Progress(Instant.now(), names, Duration.ofSeconds(Constants.Scale.PROGRESS_INTERVAL_SECONDS))
                 // Poll until nothing is pending, a rollout cannot finish, or the deadline passes. The
                 // deadline, not an attempt count, bounds the wait, so a slow API server cannot stretch it.
                 val outcome =
@@ -191,14 +193,27 @@ class DefaultK8sNamespaceOperations(
                         interval = podPollInterval,
                         deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
                         done = RolloutsLook::isFinal,
-                    ) { looker.look(workloads) }
-                when (outcome) {
-                    is RolloutsLook.Blocked -> error("Rollout cannot complete: ${outcome.reason}")
-                    is RolloutsLook.Pending ->
-                        check(outcome.reasons.isEmpty()) {
-                            "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: " +
-                                outcome.reasons.joinToString("; ")
+                    ) {
+                        looker.look(workloads).also { look ->
+                            if (look is RolloutsLook.Pending) {
+                                progress.next(Instant.now(), look.workloads.map { it.toString() })?.let(eventBus::emit)
+                            }
                         }
+                    }
+                val failure =
+                    when (outcome) {
+                        is RolloutsLook.Blocked -> Event.K8s.RolloutBlocked(outcome.block)
+                        is RolloutsLook.Pending ->
+                            outcome.takeIf { it.reasons.isNotEmpty() }?.let {
+                                RolloutWaitReport.timedOut(
+                                    timeoutSeconds,
+                                    it,
+                                )
+                            }
+                    }
+                failure?.let {
+                    eventBus.emit(it)
+                    error(it.toDisplayString())
                 }
             }
 
@@ -314,7 +329,7 @@ class DefaultK8sNamespaceOperations(
                     PodsPoll.Failed(failure)
                 } else {
                     val pending = pods.filter { K8sPodUtils.awaitsReadiness(it) && !Readiness.isPodReady(it) }
-                    val states = pending.associate { (it.metadata?.name ?: "unknown") to describePodState(it) }
+                    val states = pending.associate { (it.metadata?.name ?: "unknown") to K8sPodUtils.describeState(it) }
                     states.filter { (name, state) -> lastStates[name] != state }.forEach { (name, state) ->
                         log.info { "Pod $name: $state" }
                     }
@@ -350,57 +365,6 @@ class DefaultK8sNamespaceOperations(
         data class Pending(
             val states: Map<String, String>,
         ) : PodsPoll
-    }
-
-    private fun describePodState(pod: Pod): String {
-        val phase = pod.status?.phase ?: "Unknown"
-        val parts = mutableListOf("phase=$phase")
-
-        // Show init container progress
-        val initStatuses = pod.status?.initContainerStatuses.orEmpty()
-        if (initStatuses.isNotEmpty()) {
-            val initSummary =
-                initStatuses.joinToString(", ") { cs ->
-                    val state =
-                        when {
-                            cs.state?.running != null -> "running"
-                            cs.state?.terminated != null -> {
-                                val t = cs.state.terminated
-                                if (t.exitCode == 0) "done" else "failed(exit=${t.exitCode})"
-                            }
-                            cs.state?.waiting != null -> "waiting(${cs.state.waiting.reason ?: "unknown"})"
-                            else -> "unknown"
-                        }
-                    "${cs.name}=$state"
-                }
-            parts.add("init=[$initSummary]")
-        }
-
-        // Show container states
-        val containerStatuses = pod.status?.containerStatuses.orEmpty()
-        if (containerStatuses.isNotEmpty()) {
-            val containerSummary =
-                containerStatuses.joinToString(", ") { cs ->
-                    val state =
-                        when {
-                            cs.state?.running != null -> "running"
-                            cs.state?.terminated != null -> "terminated(${cs.state.terminated.reason})"
-                            cs.state?.waiting != null -> "waiting(${cs.state.waiting.reason ?: "unknown"})"
-                            else -> "unknown"
-                        }
-                    "${cs.name}=$state(restarts=${cs.restartCount ?: 0})"
-                }
-            parts.add("containers=[$containerSummary]")
-        }
-
-        // Show scheduling issues
-        val conditions = pod.status?.conditions.orEmpty()
-        val unschedulable = conditions.find { it.type == "PodScheduled" && it.status == "False" }
-        if (unschedulable != null) {
-            parts.add("unschedulable: ${unschedulable.message}")
-        }
-
-        return parts.joinToString(" ")
     }
 
     private fun logPvcStatus(

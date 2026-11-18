@@ -1190,7 +1190,64 @@ sealed interface Event {
         data class RolloutsWaiting(
             val workloads: List<String>,
         ) : K8s {
-            override fun toDisplayString(): String = "Waiting for ${workloads.size} workloads to finish rolling out..."
+            override fun toDisplayString(): String =
+                "Waiting for ${workloads.size} workloads to finish rolling out: ${workloads.joinToString(", ")}"
+        }
+
+        /**
+         * Which workloads a rollout wait still waits on, [elapsedSeconds] into it: emitted when that set
+         * changes, or every `Constants.Scale.PROGRESS_INTERVAL_SECONDS` while it does not.
+         */
+        @Serializable
+        @SerialName("K8s.RolloutsProgress")
+        data class RolloutsProgress(
+            val elapsedSeconds: Long,
+            val pending: List<String>,
+        ) : K8s {
+            override fun toDisplayString(): String =
+                when {
+                    pending.isEmpty() -> "[${elapsedSeconds}s] every workload has rolled out"
+                    else -> "[${elapsedSeconds}s] still rolling out: ${pending.joinToString(", ")}"
+                }
+        }
+
+        /** A rollout wait ended early: [block] names the workload, pod and node that cannot finish, and why. */
+        @Serializable
+        @SerialName("K8s.RolloutBlocked")
+        data class RolloutBlocked(
+            val block: RolloutBlock,
+        ) : K8s {
+            override fun toDisplayString(): String = "Rollout cannot complete: ${block.describe()}"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A rollout wait gave up after [timeoutSeconds] with workloads still [pending], each with what it
+         * waits on ([reasons]), and the pods they wait on ([unreadyPods], capped per workload by
+         * `Constants.K8s.ROLLOUT_UNREADY_PODS_LISTED_PER_WORKLOAD`, with [unreadyOmitted] more).
+         */
+        @Serializable
+        @SerialName("K8s.RolloutsTimedOut")
+        data class RolloutsTimedOut(
+            val timeoutSeconds: Int,
+            val pending: List<String>,
+            val reasons: List<String>,
+            val unreadyPods: List<UnreadyPod>,
+            val unreadyOmitted: Int,
+        ) : K8s {
+            override fun toDisplayString(): String {
+                val pods =
+                    when {
+                        unreadyPods.isEmpty() -> ""
+                        else ->
+                            ". Waiting on " + unreadyPods.joinToString("; ") { it.describe() } +
+                                (if (unreadyOmitted > 0) " (and $unreadyOmitted more pods)" else "")
+                    }
+                return "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: " + reasons.joinToString("; ") + pods
+            }
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable

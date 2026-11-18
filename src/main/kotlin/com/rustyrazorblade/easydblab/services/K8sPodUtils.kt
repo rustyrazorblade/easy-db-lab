@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.ContainerStatus
 import io.fabric8.kubernetes.api.model.Pod
 
@@ -14,7 +15,7 @@ object K8sPodUtils {
      */
     val TERMINAL_FAILURE_REASONS =
         setOf(
-            "CrashLoopBackOff",
+            Constants.K8s.CRASH_LOOP_BACK_OFF,
             "Error",
             "ImagePullBackOff",
             "ErrImagePull",
@@ -69,6 +70,46 @@ object K8sPodUtils {
             ?: containerFailure(pod?.status?.initContainerStatuses, podName, "init container", considered)
     }
 
+    /**
+     * [pod]'s state in one line for a wait's report: its phase, each init container's and container's
+     * state (with restart counts), and why it cannot be scheduled, when it cannot.
+     */
+    fun describeState(pod: Pod): String {
+        val initStatuses = pod.status?.initContainerStatuses.orEmpty()
+        val containerStatuses = pod.status?.containerStatuses.orEmpty()
+        val unschedulable =
+            pod.status
+                ?.conditions
+                .orEmpty()
+                .find { it.type == "PodScheduled" && it.status == "False" }
+        return listOfNotNull(
+            "phase=${pod.status?.phase ?: "Unknown"}",
+            initStatuses.takeIf { it.isNotEmpty() }?.joinToString(", ", "init=[", "]") { "${it.name}=${initState(it)}" },
+            containerStatuses.takeIf { it.isNotEmpty() }?.joinToString(", ", "containers=[", "]") {
+                "${it.name}=${containerState(it)}(restarts=${it.restartCount ?: 0})"
+            },
+            unschedulable?.let { "unschedulable: ${it.message}" },
+        ).joinToString(" ")
+    }
+
+    private fun initState(status: ContainerStatus): String {
+        val terminated = status.state?.terminated
+        return when {
+            terminated != null -> if (terminated.exitCode == 0) "done" else "failed(exit=${terminated.exitCode})"
+            else -> containerState(status)
+        }
+    }
+
+    private fun containerState(status: ContainerStatus): String {
+        val state = status.state
+        return when {
+            state?.running != null -> "running"
+            state?.terminated != null -> "terminated(${state.terminated.reason})"
+            state?.waiting != null -> "waiting(${state.waiting.reason ?: "unknown"})"
+            else -> "unknown"
+        }
+    }
+
     private fun containerFailure(
         statuses: List<ContainerStatus>?,
         podName: String,
@@ -89,6 +130,8 @@ object K8sPodUtils {
                             ?.let { ": $it" } ?: ""
                     ContainerFailure(
                         status = containerStatus,
+                        container = containerName,
+                        containerType = containerType,
                         reason = waitingReason.orEmpty(),
                         description = "Pod $podName $containerType $containerName is in $waitingReason state$suffix",
                     )
@@ -99,11 +142,14 @@ object K8sPodUtils {
 }
 
 /**
- * A container of a pod in a terminal failure state: its [status], the waiting [reason] (one of
+ * A container of a pod in a terminal failure state: its [status], its name ([container]) and whether
+ * it is a `container` or an `init container` ([containerType]), the waiting [reason] (one of
  * [K8sPodUtils.TERMINAL_FAILURE_REASONS]) and a [description] naming the pod, the container and why.
  */
 data class ContainerFailure(
     val status: ContainerStatus,
+    val container: String,
+    val containerType: String,
     val reason: String,
     val description: String,
 )

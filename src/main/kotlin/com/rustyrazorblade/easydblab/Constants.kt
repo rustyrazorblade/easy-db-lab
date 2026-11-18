@@ -703,8 +703,26 @@ object Constants {
          * kubelet reports CrashLoopBackOff after the first crash, and a pod may crash once or twice while
          * a dependency (a backend Service, a lease) comes up; three crashes is a loop. Every other
          * terminal reason, such as an image pull failure, blocks at once.
+         *
+         * `restartCount` counts over the life of the pod, not of one wait. A pod that crashed three
+         * times under an earlier rollout and is still current blocks at its next CrashLoopBackOff, even
+         * if a dependency it needed has since come up. That is deliberate: no per-wait baseline is
+         * kept, because one would stop a pod that is already crash-looping from a previous bad rollout,
+         * the main case, from failing the wait fast.
          */
         const val ROLLOUT_CRASH_LOOP_MIN_RESTARTS = 3
+
+        /** The waiting reason the kubelet gives a container it is restarting after crashes. */
+        const val CRASH_LOOP_BACK_OFF = "CrashLoopBackOff"
+
+        /**
+         * The label the DaemonSet controller puts on each pod and on each of its ControllerRevisions:
+         * the hash of the template the pod was made from.
+         */
+        const val CONTROLLER_REVISION_HASH_LABEL = "controller-revision-hash"
+
+        /** At most this many of a workload's unready pods are listed when a rollout wait times out. */
+        const val ROLLOUT_UNREADY_PODS_LISTED_PER_WORKLOAD = 5
 
         /** The annotation the Deployment controller keeps on a Deployment and its ReplicaSets: the revision. */
         const val DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"

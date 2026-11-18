@@ -41,6 +41,14 @@ class LabelSelectorMatcherTest {
             .endMatchExpression()
             .build()
 
+        /** A selector with one matchLabels entry and one matchExpressions requirement. */
+        private fun both(
+            label: Pair<String, String>,
+            key: String,
+            operator: String,
+            vararg values: String,
+        ) = LabelSelectorBuilder(expression(key, operator, *values)).addToMatchLabels(mapOf(label)).build()
+
         @JvmStatic
         fun cases(): Stream<Arguments> =
             Stream.of(
@@ -61,6 +69,11 @@ class LabelSelectorMatcherTest {
                 Arguments.of("DoesNotExist holds", expression("zone", "DoesNotExist"), pod, true),
                 Arguments.of("DoesNotExist fails", expression("tier", "DoesNotExist"), pod, false),
                 Arguments.of("unknown operator matches nothing", expression("app", "Gt", "1"), pod, false),
+                Arguments.of("matchLabels and matchExpressions both hold", both("app" to "otel", "tier", "In", "agent"), pod, true),
+                Arguments.of("matchLabels holds, matchExpressions fails", both("app" to "otel", "tier", "In", "db"), pod, false),
+                Arguments.of("matchExpressions holds, matchLabels fails", both("app" to "fluent", "tier", "In", "agent"), pod, false),
+                Arguments.of("matchLabels holds, In on a missing key fails", both("app" to "otel", "zone", "In", "a"), pod, false),
+                Arguments.of("matchLabels holds, NotIn on a missing key passes", both("app" to "otel", "zone", "NotIn", "a"), pod, true),
             )
     }
 }

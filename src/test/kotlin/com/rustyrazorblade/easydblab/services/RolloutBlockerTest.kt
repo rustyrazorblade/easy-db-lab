@@ -9,6 +9,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.MethodSource
 import java.time.Instant
 import java.util.stream.Stream
@@ -83,6 +84,14 @@ class RolloutBlockerTest {
 
     private val readyNodes = listOf(node("db0", "True"))
 
+    /** [RolloutBlocker.find], as the one line the wait fails with. */
+    private fun find(
+        now: Instant,
+        workload: WorkloadRef,
+        pods: List<Pod>,
+        node: (String) -> Node?,
+    ): String? = RolloutBlocker.find(now, workload, pods, node)?.describe()
+
     /** Reads a node by name from [nodes], recording each name it was asked for in [reads]. */
     private fun reader(
         nodes: List<Node>,
@@ -102,7 +111,7 @@ class RolloutBlockerTest {
         val workload = WorkloadRef(kind, "agent")
 
         val pods = listOf(pod(waitingReason = reason, restarts = Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS))
-        val blocker = RolloutBlocker.find(NOW, workload, pods, reader(readyNodes))
+        val blocker = find(NOW, workload, pods, reader(readyNodes))
 
         assertThat(blocker)
             .contains("$kind/agent")
@@ -116,7 +125,7 @@ class RolloutBlockerTest {
     fun `a DaemonSet pod on a node not Ready past the grace period blocks the rollout and is named`(ready: String) {
         val nodes = listOf(node("db0", "True"), node("db7", ready, transitioned = ago(GRACE + 1)))
 
-        val blocker = RolloutBlocker.find(NOW, daemonSet, listOf(pod(), pod(name = "otel-collector-zzz", node = "db7")), reader(nodes))
+        val blocker = find(NOW, daemonSet, listOf(pod(), pod(name = "otel-collector-zzz", node = "db7")), reader(nodes))
 
         assertThat(blocker)
             .contains("DaemonSet/otel-collector")
@@ -135,7 +144,7 @@ class RolloutBlockerTest {
     ) {
         val nodes = listOf(node("db7", ready, transitioned))
 
-        assertThat(RolloutBlocker.find(NOW, daemonSet, listOf(pod(node = "db7")), reader(nodes))).describedAs(case).isNull()
+        assertThat(find(NOW, daemonSet, listOf(pod(node = "db7")), reader(nodes))).describedAs(case).isNull()
     }
 
     @ParameterizedTest(name = "{0} after {1} restarts blocks: {2}")
@@ -146,7 +155,7 @@ class RolloutBlockerTest {
         blocks: Boolean,
     ) {
         for (workload in listOf(daemonSet, deployment)) {
-            val blocker = RolloutBlocker.find(NOW, workload, listOf(pod(waitingReason = reason, restarts = restarts)), reader(readyNodes))
+            val blocker = find(NOW, workload, listOf(pod(waitingReason = reason, restarts = restarts)), reader(readyNodes))
 
             when {
                 blocks -> assertThat(blocker).describedAs("$workload").contains(reason)
@@ -156,10 +165,71 @@ class RolloutBlockerTest {
     }
 
     @Test
+    fun `a crash loop names how its container last exited`() {
+        val pod =
+            PodBuilder(pod(waitingReason = "CrashLoopBackOff", restarts = 3))
+                .editStatus()
+                .editFirstContainerStatus()
+                .withNewLastState()
+                .withNewTerminated()
+                .withExitCode(137)
+                .withReason("OOMKilled")
+                .endTerminated()
+                .endLastState()
+                .endContainerStatus()
+                .endStatus()
+                .build()
+
+        assertThat(find(NOW, daemonSet, listOf(pod), reader(readyNodes))).contains("after 3 restarts, last exit 137 (OOMKilled)")
+    }
+
+    @Test
+    fun `the first failure counts the other current pods failing for the same reason`() {
+        val crashing = (0 until 3).map { pod(name = "p$it", waitingReason = "CrashLoopBackOff", restarts = 3) }
+        val pulling = pod(name = "puller", waitingReason = "ImagePullBackOff")
+        val early = pod(name = "early", waitingReason = "CrashLoopBackOff", restarts = 1)
+
+        val block = RolloutBlocker.find(NOW, daemonSet, crashing + pulling + early, reader(readyNodes))
+
+        assertThat(block?.pod).isEqualTo("p0")
+        assertThat(block?.otherPodsSameReason).isEqualTo(2)
+        assertThat(block?.describe()).endsWith("(and 2 more pods in CrashLoopBackOff)")
+    }
+
+    @ParameterizedTest(name = "init container after {0} restarts blocks: {1}")
+    @CsvSource("1, false", "2, false", "3, true")
+    fun `an init container's crash loop blocks only after the restart threshold, and is named`(
+        restarts: Int,
+        blocks: Boolean,
+    ) {
+        val pod =
+            PodBuilder(pod())
+                .editStatus()
+                .addNewInitContainerStatus()
+                .withName("init-db")
+                .withRestartCount(restarts)
+                .withNewState()
+                .withNewWaiting()
+                .withReason("CrashLoopBackOff")
+                .endWaiting()
+                .endState()
+                .endInitContainerStatus()
+                .endStatus()
+                .build()
+
+        val blocker = find(NOW, daemonSet, listOf(pod), reader(readyNodes))
+
+        when {
+            blocks -> assertThat(blocker).contains("init container init-db").contains("CrashLoopBackOff")
+            else -> assertThat(blocker).isNull()
+        }
+    }
+
+    @Test
     fun `a crash loop at the threshold names its restart count`() {
         val pods = listOf(pod(waitingReason = "CrashLoopBackOff", restarts = 3))
 
-        assertThat(RolloutBlocker.find(NOW, daemonSet, pods, reader(readyNodes))).contains("after 3 restarts")
+        assertThat(find(NOW, daemonSet, pods, reader(readyNodes))).contains("after 3 restarts")
     }
 
     @Test
@@ -179,7 +249,7 @@ class RolloutBlockerTest {
                 .endStatus()
                 .build()
 
-        assertThat(RolloutBlocker.find(NOW, daemonSet, listOf(pod), reader(readyNodes)))
+        assertThat(find(NOW, daemonSet, listOf(pod), reader(readyNodes)))
             .contains("sidecar")
             .contains("ImagePullBackOff")
     }
@@ -189,7 +259,7 @@ class RolloutBlockerTest {
         val nodes = listOf(node("db7", "False", transitioned = ago(1)))
         val pods = listOf(pod(node = "db7", waitingReason = "CrashLoopBackOff", restarts = 3))
 
-        assertThat(RolloutBlocker.find(NOW, daemonSet, pods, reader(nodes))).contains("CrashLoopBackOff")
+        assertThat(find(NOW, daemonSet, pods, reader(nodes))).contains("CrashLoopBackOff")
     }
 
     @ParameterizedTest(name = "waiting reason {0}")
@@ -197,13 +267,13 @@ class RolloutBlockerTest {
     fun `a state a slow rollout passes through does not block`(waitingReason: String?) {
         val pods = listOf(pod(waitingReason = waitingReason), pod(name = "unscheduled", node = null))
 
-        assertThat(RolloutBlocker.find(NOW, daemonSet, pods, reader(readyNodes))).isNull()
-        assertThat(RolloutBlocker.find(NOW, deployment, pods, reader(readyNodes))).isNull()
+        assertThat(find(NOW, daemonSet, pods, reader(readyNodes))).isNull()
+        assertThat(find(NOW, deployment, pods, reader(readyNodes))).isNull()
     }
 
     @Test
     fun `a Deployment pod on a node that is not Ready does not block, since it can be rescheduled`() {
-        val blocker = RolloutBlocker.find(NOW, deployment, listOf(pod(node = "db7")), reader(listOf(node("db7", "False"))))
+        val blocker = find(NOW, deployment, listOf(pod(node = "db7")), reader(listOf(node("db7", "False"))))
 
         assertThat(blocker).isNull()
     }
@@ -212,19 +282,19 @@ class RolloutBlockerTest {
     fun `a terminating pod does not block, since it is on its way out`() {
         val pods = listOf(pod(waitingReason = "CrashLoopBackOff", node = "db7", terminating = true))
 
-        assertThat(RolloutBlocker.find(NOW, daemonSet, pods, reader(listOf(node("db7", "False"))))).isNull()
+        assertThat(find(NOW, daemonSet, pods, reader(listOf(node("db7", "False"))))).isNull()
     }
 
     @Test
     fun `a pod on a node the cluster no longer lists does not block`() {
-        assertThat(RolloutBlocker.find(NOW, daemonSet, listOf(pod(node = "gone")), reader(readyNodes))).isNull()
+        assertThat(find(NOW, daemonSet, listOf(pod(node = "gone")), reader(readyNodes))).isNull()
     }
 
     @Test
     fun `a Ready DaemonSet pod on a node that is not Ready does not block, since it already counts`() {
         val pods = listOf(pod(node = "db7", ready = true))
 
-        assertThat(RolloutBlocker.find(NOW, daemonSet, pods, reader(listOf(node("db7", "Unknown"))))).isNull()
+        assertThat(find(NOW, daemonSet, pods, reader(listOf(node("db7", "Unknown"))))).isNull()
     }
 
     @Test
@@ -232,7 +302,7 @@ class RolloutBlockerTest {
         val reads = mutableListOf<String>()
         val pods = (0 until 50).map { pod(name = "p$it", node = "db$it", ready = true) }
 
-        RolloutBlocker.find(NOW, daemonSet, pods, reader(listOf(node("db0", "False")), reads))
+        find(NOW, daemonSet, pods, reader(listOf(node("db0", "False")), reads))
 
         assertThat(reads).isEmpty()
     }
@@ -243,7 +313,7 @@ class RolloutBlockerTest {
         val nodes = (0 until 50).map { node("db$it", "True") }
         val pods = (0 until 100).map { pod(name = "p$it", node = "db${it % 50}") }
 
-        assertThat(RolloutBlocker.find(NOW, daemonSet, pods, reader(nodes, reads))).isNull()
+        assertThat(find(NOW, daemonSet, pods, reader(nodes, reads))).isNull()
 
         assertThat(reads).doesNotHaveDuplicates().hasSize(Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK)
     }

@@ -5,6 +5,7 @@ import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.NodeBuilder
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
+import io.fabric8.kubernetes.api.model.apps.ControllerRevision
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -39,9 +40,11 @@ class RolloutLookerTest {
         var pods: List<Pod> = emptyList(),
         val replicaSets: List<ReplicaSet> = emptyList(),
         val nodes: Map<String, Node> = emptyMap(),
+        val controllerRevisions: List<ControllerRevision> = emptyList(),
     ) : RolloutReader {
         var podLists = 0
         var replicaSetLists = 0
+        var controllerRevisionLists = 0
         val nodeReads = mutableListOf<String>()
 
         override fun deployment(name: String): Deployment? = deployments[name]
@@ -53,6 +56,8 @@ class RolloutLookerTest {
         override fun replicaSets(): List<ReplicaSet> = replicaSets.also { replicaSetLists++ }
 
         override fun node(name: String): Node? = nodes[name].also { nodeReads += name }
+
+        override fun controllerRevisions(): List<ControllerRevision> = controllerRevisions.also { controllerRevisionLists++ }
     }
 
     private fun daemonSet(
@@ -64,6 +69,7 @@ class RolloutLookerTest {
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(name)
+            .withUid("$name-uid")
             .withGeneration(generation)
             .endMetadata()
             .withNewSpec()
@@ -135,6 +141,7 @@ class RolloutLookerTest {
         replicaSet: String? = null,
         generation: Long = 1,
         terminating: Boolean = false,
+        ownerUid: String? = null,
     ): Pod =
         PodBuilder()
             .withNewMetadata()
@@ -143,12 +150,19 @@ class RolloutLookerTest {
             .addToLabels("pod-template-generation", generation.toString())
             .apply { if (terminating) withDeletionTimestamp("2026-11-17T11:00:00Z") }
             .apply {
-                if (replicaSet != null) {
-                    addNewOwnerReference()
-                        .withKind("ReplicaSet")
-                        .withName(replicaSet)
-                        .withUid(replicaSet)
-                        .endOwnerReference()
+                when (replicaSet) {
+                    null ->
+                        addNewOwnerReference()
+                            .withKind("DaemonSet")
+                            .withName(app)
+                            .withUid(ownerUid ?: "$app-uid")
+                            .endOwnerReference()
+                    else ->
+                        addNewOwnerReference()
+                            .withKind("ReplicaSet")
+                            .withName(replicaSet)
+                            .withUid(replicaSet)
+                            .endOwnerReference()
                 }
             }.endMetadata()
             .withNewSpec()
@@ -203,7 +217,7 @@ class RolloutLookerTest {
         val look = RolloutLooker(counting).look(listOf(a, b))
 
         assertThat(look).isInstanceOf(RolloutsLook.Blocked::class.java)
-        assertThat((look as RolloutsLook.Blocked).reason).startsWith("DaemonSet/a:").contains("CrashLoopBackOff")
+        assertThat((look as RolloutsLook.Blocked).block.describe()).startsWith("DaemonSet/a:").contains("CrashLoopBackOff")
         assertThat(asked).isEqualTo(1)
     }
 
@@ -219,7 +233,7 @@ class RolloutLookerTest {
         val look = RolloutLooker(reader).look(listOf(WorkloadRef(WorkloadKind.Deployment, "d")))
 
         assertThat(look).isInstanceOf(RolloutsLook.Blocked::class.java)
-        assertThat((look as RolloutsLook.Blocked).reason)
+        assertThat((look as RolloutsLook.Blocked).block.describe())
             .startsWith("Deployment/d:")
             .contains("d-app0-d-rs2")
             .contains("CrashLoopBackOff")
@@ -236,7 +250,7 @@ class RolloutLookerTest {
 
         val look = RolloutLooker(reader).look(listOf(WorkloadRef(WorkloadKind.Deployment, "d")))
 
-        assertThat(look).isEqualTo(RolloutsLook.Pending(listOf("Deployment/d: 0 of 1 updated replicas are available")))
+        assertThat((look as RolloutsLook.Pending).reasons).containsExactly("Deployment/d: 0 of 1 updated replicas are available")
     }
 
     @Test
@@ -253,8 +267,81 @@ class RolloutLookerTest {
 
         assertThat(reader.podLists).isEqualTo(1)
         assertThat(reader.replicaSetLists).isEqualTo(1)
+        assertThat(reader.controllerRevisionLists).isEqualTo(1)
         // Two DaemonSets ask about the same two nodes; each is read once.
         assertThat(reader.nodeReads).containsExactlyInAnyOrder("db0", "db1")
+    }
+
+    @Test
+    fun `a complete Deployment beside a pending DaemonSet lists no ReplicaSets`() {
+        val complete =
+            DeploymentBuilder(deployment("d"))
+                .editStatus()
+                .withAvailableReplicas(1)
+                .endStatus()
+                .build()
+        val reader =
+            FakeReader(
+                deployments = mapOf("d" to complete),
+                daemonSets = mapOf("a" to daemonSet("a", 1, 0)),
+                pods = listOf(pod("a", "db0")),
+                nodes = mapOf("db0" to readyNode("db0")),
+            )
+
+        RolloutLooker(reader).look(listOf(WorkloadRef(WorkloadKind.Deployment, "d"), a))
+
+        assertThat(reader.replicaSetLists).isZero()
+        assertThat(reader.podLists).isEqualTo(1)
+    }
+
+    @Test
+    fun `a crash-looping pod another DaemonSet owns does not block, though the selector matches it`() {
+        val reader =
+            FakeReader(
+                daemonSets = mapOf("a" to daemonSet("a", 1, 0)),
+                pods = listOf(pod("a", "db0"), pod("a", "db1", crashing = true, ownerUid = "someone-else")),
+                nodes = mapOf("db0" to readyNode("db0")),
+            )
+
+        assertThat(RolloutLooker(reader).look(listOf(a))).isInstanceOf(RolloutsLook.Pending::class.java)
+    }
+
+    @Test
+    fun `a pending look lists each workload's unready current and stranded pods, capped per workload`() {
+        val cap = Constants.K8s.ROLLOUT_UNREADY_PODS_LISTED_PER_WORKLOAD
+        val names = (0 until cap + 3).map { "db%02d".format(it) }
+        val reader =
+            FakeReader(
+                daemonSets = mapOf("a" to daemonSet("a", names.size, 0, generation = 2), "b" to daemonSet("b", 1, 0)),
+                pods = names.map { pod("a", it, generation = 2) } + pod("b", "db00") + pod("a", "dbzz", generation = 1, terminating = true),
+                nodes = (names + "dbzz").associateWith(::readyNode),
+            )
+
+        val look = RolloutLooker(reader).look(listOf(a, b)) as RolloutsLook.Pending
+
+        assertThat(look.unready.filter { it.workload == a }).hasSize(cap)
+        assertThat(look.unready.filter { it.workload == b }.map { it.pod.metadata.name }).containsExactly("b-db00-ds-g1")
+        assertThat(look.unreadyOmitted).isEqualTo(names.size + 1 - cap)
+        assertThat(look.workloads).containsExactly(a, b)
+    }
+
+    @Test
+    fun `each DaemonSet's nodes are read within ceil(its nodes over bound) looks, beside another`() {
+        val bound = Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK
+        val aNodes = (0 until 45).map { "n%02d".format(it) }
+        val bNodes = (0 until 30).map { "m%02d".format(it) }
+        val reader =
+            FakeReader(
+                daemonSets = mapOf("a" to daemonSet("a", aNodes.size, 0), "b" to daemonSet("b", bNodes.size, 0)),
+                pods = aNodes.map { pod("a", it) } + bNodes.map { pod("b", it) },
+                nodes = (aNodes + bNodes).associateWith(::readyNode),
+            )
+        val looker = RolloutLooker(reader)
+
+        repeat((bNodes.size + bound - 1) / bound) { looker.look(listOf(a, b)) }
+        assertThat(reader.nodeReads.toSet()).containsAll(bNodes)
+        repeat((aNodes.size + bound - 1) / bound - (bNodes.size + bound - 1) / bound) { looker.look(listOf(a, b)) }
+        assertThat(reader.nodeReads.toSet()).containsAll(aNodes)
     }
 
     @Test
@@ -266,6 +353,7 @@ class RolloutLookerTest {
         assertThat(look.isFinal()).isTrue()
         assertThat(reader.podLists).isZero()
         assertThat(reader.replicaSetLists).isZero()
+        assertThat(reader.controllerRevisionLists).isZero()
         assertThat(reader.nodeReads).isEmpty()
     }
 
@@ -320,7 +408,7 @@ class RolloutLookerTest {
         when {
             blocks -> {
                 assertThat(look).isInstanceOf(RolloutsLook.Blocked::class.java)
-                assertThat((look as RolloutsLook.Blocked).reason)
+                assertThat((look as RolloutsLook.Blocked).block.describe())
                     .startsWith("DaemonSet/a:")
                     .contains("node db7")
                     .contains("not Ready")
@@ -349,7 +437,7 @@ class RolloutLookerTest {
 
         assertThat(looks.first()).isInstanceOf(RolloutsLook.Pending::class.java)
         assertThat(looks.last()).isInstanceOf(RolloutsLook.Blocked::class.java)
-        assertThat((looks.last() as RolloutsLook.Blocked).reason).contains("node db23")
+        assertThat((looks.last() as RolloutsLook.Blocked).block.describe()).contains("node db23")
         assertThat(reader.nodeReads.toSet()).containsAll(names.filter { it <= "db23" })
     }
 
@@ -392,7 +480,7 @@ class RolloutLookerTest {
                 looker.look(listOf(a)) as? RolloutsLook.Blocked
             }
 
-        assertThat(blocked?.reason).contains("node n20")
+        assertThat(blocked?.block?.describe()).contains("node n20")
     }
 
     @Test
@@ -442,7 +530,7 @@ class RolloutLookerTest {
 
         val look = RolloutLooker(reader, Clock.fixed(NOW, ZoneOffset.UTC)).look(listOf(a))
 
-        assertThat((look as RolloutsLook.Blocked).reason).contains("a-db7-ds-g2").doesNotContain("a-db7-ds-g1")
+        assertThat((look as RolloutsLook.Blocked).block.describe()).contains("a-db7-ds-g2").doesNotContain("a-db7-ds-g1")
         assertThat(reader.nodeReads).containsExactly("db7")
     }
 

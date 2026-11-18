@@ -178,7 +178,7 @@ tune_node() {
   fstab=$(comment_swap_lines < "$FSTAB") || fail "could not read $FSTAB to turn swap off"
   [[ "$fstab" == "$(cat "$FSTAB")" ]] || printf '%s\n' "$fstab" | sudo tee "$FSTAB" > /dev/null
 
-  sudo udevadm control --reload
+  sudo udevadm control --reload || fail "udev could not reload its rules"
   sudo udevadm trigger --subsystem-match=block --action=change
   sudo udevadm settle
 
@@ -187,7 +187,7 @@ tune_node() {
   sudo systemctl daemon-reload
   # irqbalance first: the unit's own verify reads it.
   sudo systemctl enable --now irqbalance
-  sudo systemctl enable edl-node-tuning.service
+  sudo systemctl enable edl-node-tuning.service || fail "could not enable edl-node-tuning.service"
   sudo systemctl restart edl-node-tuning.service || fail "edl-node-tuning.service failed: $(sudo systemctl status edl-node-tuning.service --no-pager 2>&1 | tail -5 | tr '\n' ' ')"
   # The unit's lines (skips, and its verify) went to the journal; show this run's here. Each is
   # prefixed, so only the verify below can report setup's failure.

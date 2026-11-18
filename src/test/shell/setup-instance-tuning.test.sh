@@ -54,12 +54,18 @@ if [ "\$1" = /usr/local/sbin/edl-node-tuning ]; then
 fi
 exec "\$@"
 EOF
-  for tool in rm swapoff udevadm; do
+  for tool in rm swapoff; do
     cat > "${WORK}/bin/${tool}" <<EOF
 #!/bin/bash
 echo "${tool} \$*" >> "${WORK}/calls.log"
 EOF
   done
+  cat > "${WORK}/bin/udevadm" <<EOF
+#!/bin/bash
+echo "udevadm \$*" >> "${WORK}/calls.log"
+[ "\$*" = "control --reload" ] && [ "\${UDEV_RELOAD_FAILS:-0}" = 1 ] && exit 1
+exit 0
+EOF
   # sysctl -p names a key the kernel rejects on stderr, and exits non-zero, as the real one does.
   cat > "${WORK}/bin/sysctl" <<EOF
 #!/bin/bash
@@ -75,6 +81,7 @@ EOF
 echo "systemctl \$*" >> "${WORK}/calls.log"
 case "\$*" in
   "restart edl-node-tuning.service") [ "\${RESTART_FAILS:-0}" = 1 ] && exit 1 ;;
+  "enable edl-node-tuning.service") [ "\${ENABLE_FAILS:-0}" = 1 ] && exit 1 ;;
   "status edl-node-tuning.service --no-pager") echo "edl-node-tuning.service: Main process exited, status=1/FAILURE" ;;
   "show -p InvocationID --value edl-node-tuning.service") echo 0123abcd ;;
 esac
@@ -224,6 +231,25 @@ else
 fi
 
 # --- the boot unit fails to start ---
+setup
+OUTPUT="$(ENABLE_FAILS=1 run_tune)"
+STATUS=$?
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"ERROR: could not enable edl-node-tuning.service"* ]] &&
+  ! grep -q "^edl-node-tuning verify" "${WORK}/calls.log"; then
+  pass "a boot unit that cannot be enabled fails setup"
+else
+  fail "a failed enable should fail setup, got ${STATUS}: ${OUTPUT}"
+fi
+
+setup
+OUTPUT="$(UDEV_RELOAD_FAILS=1 run_tune)"
+STATUS=$?
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"ERROR: udev could not reload its rules"* ]]; then
+  pass "a failed udev rule reload fails setup"
+else
+  fail "a failed udev reload should fail setup, got ${STATUS}: ${OUTPUT}"
+fi
+
 setup
 OUTPUT="$(RESTART_FAILS=1 run_tune)"
 STATUS=$?

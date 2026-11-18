@@ -66,6 +66,7 @@ setup() {
 #!/bin/bash
 case "$*" in
   "is-active irqbalance") echo "${IRQBALANCE:-active}" ;;
+  "is-enabled edl-node-tuning.service") echo "${UNIT_ENABLED:-enabled}" ;;
   "show -p DefaultLimitNOFILE --value") echo "${DEFAULT_NOFILE:-1048576}" ;;
   "show -p DefaultLimitMEMLOCK --value") echo infinity ;;
   "show -p LoadState --value cassandra.service") echo loaded ;;
@@ -466,6 +467,16 @@ expect_mismatch "a disk readahead" "ERROR: nvme1n1 read_ahead_kb: wanted 4, got 
 tuned_node
 echo "/swap.img file 1024 0 -2" >> "${PROC}/swaps"
 expect_mismatch "swap on" "ERROR: swap devices: wanted 0, got 1"
+
+# A boot unit that is not enabled would not restore anything after a reboot.
+tuned_node
+OUTPUT="$(UNIT_ENABLED=disabled run verify)"
+STATUS=$?
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"ERROR: edl-node-tuning.service: wanted enabled, got disabled"* ]]; then
+  pass "verify fails when the boot unit is not enabled"
+else
+  fail "a disabled boot unit should fail verify, got ${STATUS}: ${OUTPUT}"
+fi
 
 tuned_node
 OUTPUT=$(IRQBALANCE=inactive run verify)

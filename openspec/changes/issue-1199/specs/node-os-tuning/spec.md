@@ -8,7 +8,7 @@ Every value SHALL persist across a reboot: after a node reboots, it reports the 
 
 When node setup cannot apply a setting the node supports, setup on that node SHALL exit non-zero and name the setting, and `up` SHALL treat it as a failed node setup step.  Setup SHALL report every value that does not match, one line each, not only the first.  A sysctl key the kernel rejects SHALL fail setup with the kernel's message, which names the key.  A setting the instance does not expose (see "CPU frequency and idle states where the instance exposes them") is not a failure.
 
-At every boot the node SHALL check every value again after it applies the settings.  A value that does not match SHALL NOT fail the boot; it SHALL be logged to the node's journal under the `edl-node-tuning` tag, with the same line setup prints.  Every skip and mismatch line SHALL also go to the journal when the check is run by hand or by setup.
+At every boot the node SHALL check every value again after it applies the settings.  A value that does not match SHALL NOT fail the boot; it SHALL be logged to the node's journal under the `edl-node-tuning` tag, with the same line setup prints.  Every skip and mismatch line SHALL also go to the journal when the check is run by hand or by setup.  The check SHALL fail when the boot unit is not enabled, and setup SHALL fail when it cannot enable the boot unit or reload the udev rules, since either leaves the node untuned after a reboot with no line in its journal.
 
 #### Scenario: Fresh cluster reports the tuned values on every node
 - **WHEN** `up` completes on a cluster with db, app and control nodes
@@ -165,7 +165,7 @@ On a node whose instance exposes CPU frequency scaling, every CPU SHALL use the 
 #### Scenario: Instance without frequency or idle-state control
 - **GIVEN** an instance type that exposes neither CPU frequency scaling nor idle states
 - **WHEN** setup completes
-- **THEN** setup succeeds and the node's log has one line saying the governor and C-state tuning were skipped, naming the instance type
+- **THEN** setup succeeds and the node's log has one line for each skipped setting, the governor and the C-states, each naming the instance type
 
 ### Requirement: Network interrupt and packet steering
 

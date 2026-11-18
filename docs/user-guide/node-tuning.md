@@ -15,7 +15,9 @@ To check a node by hand, run `sudo edl-node-tuning verify` on it. It exits 0 whe
 matches, and prints no `ERROR:` line. It can still print a `skipped` line for a setting the node
 does not have, such as irqbalance on a node with one CPU.
 
-`edl-node-tuning.service` runs the same check at every boot, after it applies the settings. A
+`edl-node-tuning.service` runs the same check at every boot, after it applies the settings. The
+check also fails when that service is not enabled, since it would then restore nothing after a
+reboot. A
 value that drifted after a reboot does not fail the boot. The service logs it to the node's
 journal under the `edl-node-tuning` tag:
 
@@ -23,7 +25,7 @@ journal under the `edl-node-tuning` tag:
 journalctl -u edl-node-tuning -b --no-pager -o cat
 ```
 
-### When a value does not take
+## When a value does not take
 
 - **The value drifted, or setup was interrupted:** run `setup-instances` again on that node.
 - **A running process has old limits** (`restart <unit> to apply`): restart the named unit.

@@ -661,6 +661,9 @@ object Constants {
         /** Cassandra's JMX port. */
         const val CASSANDRA_JMX_PORT = 7199
 
+        /** Cassandra's native protocol port. */
+        const val CASSANDRA_NATIVE_PORT = 9042
+
         /** Cassandra's TLS native protocol port. */
         const val CASSANDRA_TLS_NATIVE_PORT = 9142
 
@@ -706,7 +709,7 @@ object Constants {
                 CASSANDRA_STORAGE_PORT,
                 CASSANDRA_TLS_STORAGE_PORT,
                 CASSANDRA_JMX_PORT,
-                Stress.DEFAULT_CASSANDRA_PORT,
+                CASSANDRA_NATIVE_PORT,
                 CASSANDRA_TLS_NATIVE_PORT,
                 Stress.PROMETHEUS_PORT,
                 TAILSCALE_WIREGUARD_PORT,

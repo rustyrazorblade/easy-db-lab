@@ -368,6 +368,9 @@ verify() {
     skip "irqbalance" "has one CPU"
   fi
 
+  # Not enabled, the boot unit restores nothing after a reboot, and logs no drift line either.
+  check "edl-node-tuning.service" enabled "$(systemctl is-enabled edl-node-tuning.service 2> /dev/null)"
+
   check "systemd DefaultLimitNOFILE" "$SERVICE_NOFILE" "$(systemctl show -p DefaultLimitNOFILE --value)"
   check "systemd DefaultLimitMEMLOCK" infinity "$(systemctl show -p DefaultLimitMEMLOCK --value)"
   for unit in $LIMITED_UNITS; do

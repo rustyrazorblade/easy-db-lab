@@ -503,6 +503,7 @@ tasks.register("testScripts") {
         "testCassandraScripts",
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
+        "testPyroscopeAgentPublished",
         "testKitShellLib",
         "testCassandraPodsStart",
         "testClickhouseBenchmarkReport",
@@ -806,6 +807,16 @@ tasks.register<Exec>("testCassandraResolveRef") {
     description = "Unit-test the build-cassandra-ref ref-resolution logic"
     workingDir = file(".")
     commandLine = listOf("bash", ".github/cassandra-image/resolve-ref.test.sh")
+}
+
+// Unit-test the publish-pyroscope-agent job's "is this tag published?" decision: a published tag
+// is skipped, only a definite not-found is pushed, and any other inspect error fails the job.
+// `docker` is a stub on PATH; no Docker, no network.
+tasks.register<Exec>("testPyroscopeAgentPublished") {
+    group = "Verification"
+    description = "Unit-test the Pyroscope agent image publish check"
+    workingDir = file(".")
+    commandLine = listOf("bash", ".github/pyroscope-agent/image-published.test.sh")
 }
 
 // Unit-test install-cassandra-version's decisions (argument handling, already-installed no-op,

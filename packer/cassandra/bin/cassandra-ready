@@ -75,17 +75,23 @@ fi
 
 # Whether anything is listening on PORT, on any address.
 #
-# `ss` is the tool on the nodes; `netstat` is the fallback that keeps this runnable on a macOS
-# developer machine, which has no `ss`. Both are asked for numeric output and matched on the port at
-# the end of the local address, which covers every spelling either prints: `10.0.1.234:9042`,
-# `[::]:9042`, `*:9042` and BSD's `10.0.1.234.9042`.
+# `ss` is the tool on the nodes. `lsof` is the macOS developer machine's, which has no `ss`: macOS
+# `netstat -an` run from bash can print only its multipath and UNIX-socket sections, with no TCP
+# listeners at all, so a listening database read as quiet there. `lsof -nP -iTCP:<port>
+# -sTCP:LISTEN` asks for exactly this port's listening TCP sockets on any address and exits 0 only
+# when it finds one. `netstat` stays the last resort; it and `ss` are matched on the port at the end
+# of the local address, which covers every spelling either prints: `10.0.1.234:9042`, `[::]:9042`,
+# `*:9042` and BSD's `10.0.1.234.9042`.
 #
-# Answers `listening`, `quiet`, or `unknown` when neither tool is present and the socket table
+# Answers `listening`, `quiet`, or `unknown` when none of the tools is present and the socket table
 # cannot be read at all.
 socket_state() {
   local addresses
   if command -v ss >/dev/null 2>&1; then
     addresses="$(ss -lnt 2>/dev/null | awk 'NR > 1 {print $4}')"
+  elif command -v lsof >/dev/null 2>&1; then
+    if lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then echo listening; else echo quiet; fi
+    return
   elif command -v netstat >/dev/null 2>&1; then
     addresses="$(netstat -an 2>/dev/null | awk '/LISTEN/ {print $4}')"
   else
@@ -123,7 +129,7 @@ fi
 # Said in the sentence rather than in the reason code: an unreadable socket table is a broken probe
 # environment, not a different readiness state, and it changes nothing about what the backstop does.
 if [[ "$SOCKET" == "unknown" ]]; then
-  observed="neither ss nor netstat is installed, so nothing could be observed on port ${PORT}"
+  observed="none of ss, lsof or netstat is installed, so nothing could be observed on port ${PORT}"
 else
   observed="nothing is listening on port ${PORT}"
 fi

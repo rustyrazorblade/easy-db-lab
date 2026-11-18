@@ -236,6 +236,8 @@ Create custom assertions for:
 
 6. **Integration Tier Tools**: `./gradlew integrationTest` needs `helm` and `kubectl` on `PATH`; CI installs pinned versions.
 
+7. **Shell Script Tests**: `./gradlew testScripts` (part of `check`) runs every Docker-free shell script test. It needs `bash`, `dash`, `jq` and mikefarah's Go `yq` (`brew install yq` on macOS) on `PATH`. On macOS the Cassandra readiness probe's tests also use `lsof` and `nc`, which ship with the OS.
+
 ## Testing Interactive Commands with TestPrompter
 
 Commands that require user input (like `profile setup`) can be tested deterministically using `TestPrompter`. This test utility replaces the real `Prompter` interface and returns predefined responses.

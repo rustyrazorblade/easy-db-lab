@@ -1054,8 +1054,11 @@ class OtelManifestBuilderTest : BaseKoinTest() {
             assertThat(scalarAt(yaml, "exporters", exporter, "retry_on_failure", "enabled")).describedAs(exporter).isEqualTo("true")
             assertThat(scalarAt(yaml, "exporters", exporter, "retry_on_failure", "max_elapsed_time")).describedAs(exporter).isEqualTo("0")
         }
-        assertThat(keysAt(yaml, "processors")).doesNotContain("memory_limiter")
-        assertThat(keysAt(yaml, "extensions")).doesNotContain("file_storage")
+        assertThat(keysAt(yaml, *prw)).describedAs("no remote-write WAL").doesNotContain("wal")
+        val components = keysAt(yaml, "processors") + keysAt(yaml, "extensions")
+        assertThat(components)
+            .describedAs("no memory limiter or on-disk storage, under any name")
+            .noneMatch { it.startsWith("memory_limiter") || it.startsWith("file_storage") }
     }
 
     /** Every logs pipeline exports to Loki, and no VictoriaLogs-only processor remains. */

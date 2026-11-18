@@ -65,6 +65,14 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         val AFTER: Duration = Duration.ofSeconds(15)
         val ARRIVAL: Duration = Duration.ofMinutes(4)
         val POLL: Duration = Duration.ofSeconds(5)
+
+        /** Older than Mimir's 1h out-of-order window, so Mimir answers 400. */
+        val TOO_OLD: Duration = Duration.ofHours(2)
+
+        /** Long enough for the rejected batch to be sent and later batches to queue behind it. */
+        val AFTER_REJECT: Duration = Duration.ofSeconds(30)
+        const val STALE_VALUE = -1
+        const val TOO_OLD_ERROR = "err-mimir-sample-"
         val MIMIR_HOST = "${Constants.K8s.MIMIR_APP_LABEL}.default.svc.cluster.local"
         val LOKI_HOST = "${Constants.K8s.LOKI_APP_LABEL}.default.svc.cluster.local"
         val TEMPO_HOST = "${Constants.K8s.TEMPO_APP_LABEL}.default.svc.cluster.local"
@@ -238,8 +246,13 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         return missing
     }
 
-    private fun metricBody(n: Int): String {
-        val nanos = System.currentTimeMillis() * NANOS_PER_MILLI
+    private fun metricBody(n: Int): String = metricBody(n, System.currentTimeMillis())
+
+    private fun metricBody(
+        n: Int,
+        timestampMillis: Long,
+    ): String {
+        val nanos = timestampMillis * NANOS_PER_MILLI
         return """
             {"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"replay"}}]},
              "scopeMetrics":[{"metrics":[{"name":"$METRIC","gauge":{"dataPoints":[{"asDouble":$n,"timeUnixNano":"$nanos"}]}}]}]}]}
@@ -339,6 +352,43 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
                 "of samples 1..$last sent, the ones missing from Mimir after a ${METRICS_OUTAGE.seconds}s restart; collector:\n" +
                     ClusterCollector.exportFailures(collector),
             ).isEmpty()
+    }
+
+    /**
+     * The remote-write queue has one consumer and retries without a time limit, so a batch Mimir
+     * rejects must be dropped, not retried: a batch retried forever would hold back every batch
+     * behind it. A sample older than Mimir's out-of-order window is answered with 400; every
+     * numbered sample sent after it must still arrive.
+     */
+    @Test
+    fun `a batch Mimir rejects is dropped and later samples still arrive`() {
+        prepare()
+        val mimir = startMimir()
+        val collector = startCollector()
+        val url = "${ObservabilityBackends.baseUrl(collector, Constants.K8s.OTEL_HTTP_PORT)}/v1/metrics"
+
+        val last =
+            produceAcross(collector, "/v1/metrics", ::metricBody) {
+                val stale = System.currentTimeMillis() - TOO_OLD.toMillis()
+                val response =
+                    ObservabilityBackends.send(
+                        HttpRequest
+                            .newBuilder(URI(url))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(metricBody(STALE_VALUE, stale)))
+                            .build(),
+                    )
+                assertThat(response.statusCode()).describedAs("the collector accepts the stale sample").isEqualTo(HTTP_OK)
+                Thread.sleep(AFTER_REJECT.toMillis())
+            }
+
+        val missing = missingAfterArrival(last) { samplesIn { mimir } }
+        assertThat(missing)
+            .describedAs(
+                "of samples 1..$last sent around a rejected one, the ones missing from Mimir; collector:\n" +
+                    ClusterCollector.exportFailures(collector),
+            ).isEmpty()
+        assertThat(collector.logs).describedAs("Mimir rejected the stale sample as too old").contains(TOO_OLD_ERROR)
     }
 
     @Test

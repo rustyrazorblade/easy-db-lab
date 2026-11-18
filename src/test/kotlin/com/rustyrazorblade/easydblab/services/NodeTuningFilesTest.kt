@@ -49,6 +49,14 @@ class NodeTuningFilesTest {
         assertThat(after).contains("irqbalance.service")
     }
 
+    // udev renames an interface in 80-net-setup-link.rules. A rules file that sorts before it sees
+    // the old name, so a hot-attached ENI would get no packet steering.
+    @Test
+    fun `the udev rules run after udev has named the interface`() {
+        val rules = packagedDir().list()!!.filter { it.endsWith(".rules") }
+        assertThat(rules).isNotEmpty.allSatisfy { assertThat(it).isGreaterThan("80-net-setup-link.rules") }
+    }
+
     @Test
     fun `a file missing from the distribution fails before the upload, naming it`() {
         var uploaded = false

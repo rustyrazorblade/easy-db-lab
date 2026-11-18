@@ -87,8 +87,9 @@ ERROR: cassandra running process open files: wanted 1048576, got 65536; restart 
 Swap is off, and any swap line in `/etc/fstab` is commented out so it stays off after a reboot.
 
 The data disk at `/mnt/db1` is mounted with `noatime`. Every NVMe and Xen disk uses the I/O scheduler
-`none` and a 4 KiB readahead. A udev rule applies both when a disk appears, so they also hold after
-a reboot.
+`none` and a 4 KiB readahead. A udev rule applies both when a disk appears, and
+`edl-node-tuning.service` applies them again at every boot before it checks them, so they also hold
+after a reboot.
 
 ## Network settings
 
@@ -157,7 +158,7 @@ Where the instance exposes them:
 - Every CPU uses the `performance` governor.
 - Every idle state deeper than C1 is disabled.
 
-C1 is the idle state named `C1` (or `C1_ACPI`). Where no state has that name, C1 is the first
+C1 is the idle state named `C1` (or `C1_ACPI`, or `C1-` followed by a CPU model, such as `C1-SKX`). Where no state has that name, C1 is the first
 state that is not `POLL`: `HALT` on older x86 kernels, and `WFI` on arm64. So on Graviton `.metal`
 `cpu-sleep` is disabled and `WFI` stays on.
 
@@ -183,6 +184,6 @@ on the node itself. Read them with `journalctl -u edl-node-tuning -b --no-pager 
 |---|---|
 | Kernel settings | `/etc/sysctl.d/60-easydblab.conf`, applied by systemd at every boot |
 | Process limits | systemd drop-ins and `system.conf.d` |
-| Disk scheduler and readahead, packet steering | `/etc/udev/rules.d/90-easydblab.rules`, applied whenever a device or a receive queue appears |
+| Disk scheduler and readahead, packet steering | `/etc/udev/rules.d/90-easydblab.rules`, applied whenever a device or a receive queue appears, and `edl-node-tuning.service` at every boot |
 | Transparent huge pages, CPU governor and idle states | `edl-node-tuning.service`, a oneshot that runs before K3s and the database at every boot, then checks every value |
 | `noatime` | the `/mnt/db1` line in `/etc/fstab` |

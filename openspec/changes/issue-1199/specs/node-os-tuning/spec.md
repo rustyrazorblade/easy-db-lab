@@ -137,7 +137,7 @@ Each `cassandra stress start` SHALL bind its metrics endpoint to a port in the w
 
 ### Requirement: Data disk mount and block-device settings
 
-The data disk mounted at `/mnt/db1` SHALL be mounted with `noatime`, at setup time and after every reboot; a node whose data disk was already mounted without it SHALL be remounted with it by a re-run of setup.  Every NVMe and Xen block device on the node SHALL use the I/O scheduler `none` and a readahead of 4 KiB, applied when the device appears, so a device that appears after setup or after a reboot gets the same values.  The readahead SHALL NOT be set only at run time.
+The data disk mounted at `/mnt/db1` SHALL be mounted with `noatime`, at setup time and after every reboot; a node whose data disk was already mounted without it SHALL be remounted with it by a re-run of setup.  Every NVMe and Xen block device on the node SHALL use the I/O scheduler `none` and a readahead of 4 KiB, applied when the device appears, so a device that appears after setup or after a reboot gets the same values.  The boot unit SHALL also apply them before its verify, so the boot verify does not depend on when udev finishes processing the boot's device events.  The readahead SHALL NOT be set only at run time.
 
 #### Scenario: Data disk mounted noatime
 - **WHEN** the operator reads the mount options of `/mnt/db1` on any node
@@ -150,7 +150,7 @@ The data disk mounted at `/mnt/db1` SHALL be mounted with `noatime`, at setup ti
 
 ### Requirement: CPU frequency and idle states where the instance exposes them
 
-On a node whose instance exposes CPU frequency scaling, every CPU SHALL use the `performance` governor.  On a node whose instance exposes CPU idle states, every idle state deeper than C1 SHALL be disabled.  C1 is the state named `C1` or `C1_ACPI`; where no state has that name, it is the first state that is not `POLL` (`HALT` on older x86 kernels, `WFI` on arm64).  The instance type the skip line names SHALL come from the cluster state, not from a cloud provider lookup on the node.  On a node whose instance exposes neither, setup SHALL change nothing for that part and SHALL log one line naming the node, the instance type and the setting it skipped.  A skip SHALL NOT fail setup.
+On a node whose instance exposes CPU frequency scaling, every CPU SHALL use the `performance` governor.  On a node whose instance exposes CPU idle states, every idle state deeper than C1 SHALL be disabled.  C1 is the state named `C1`, `C1_ACPI` or `C1-*` (such as `C1-SKX`); where no state has that name, it is the first state that is not `POLL` (`HALT` on older x86 kernels, `WFI` on arm64).  The instance type the skip line names SHALL come from the cluster state, not from a cloud provider lookup on the node.  On a node whose instance exposes neither, setup SHALL change nothing for that part and SHALL log one line naming the node, the instance type and the setting it skipped.  A skip SHALL NOT fail setup.
 
 #### Scenario: Instance with frequency scaling
 - **GIVEN** an instance type that exposes CPU frequency scaling

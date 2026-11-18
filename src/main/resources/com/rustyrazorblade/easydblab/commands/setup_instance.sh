@@ -120,15 +120,15 @@ mount_data_disk() {
   echo "$DATA_MOUNT is mounted from $mounted_source"
 }
 
-# Persists the data disk mount (file system [$1] UUID, type [$2]) in /etc/fstab, replacing any
+# Persists the data disk mount (file system [$1] UUID, type [$2]) in $FSTAB, replacing any
 # earlier entry for $DATA_MOUNT. Without it k3s (whose data dir is a symlink onto /mnt/db1)
 # crash-loops after a reboot with "extracting data: no such file or directory". Device names can
 # change across reboots, so the entry is keyed on the UUID. 'noatime' saves a metadata write per
 # read, 'nofail' keeps the node bootable if a stop/terminate wiped the instance store, and
 # 'x-systemd.device-timeout' avoids a long boot hang in that case.
 persist_mount() {
-  sudo sed -i "\#[[:space:]]${DATA_MOUNT}[[:space:]]#d" /etc/fstab
-  echo "UUID=$1 $DATA_MOUNT $2 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2" | sudo tee -a /etc/fstab
+  sudo sed -i "\#[[:space:]]${DATA_MOUNT}[[:space:]]#d" "$FSTAB"
+  echo "UUID=$1 $DATA_MOUNT $2 defaults,noatime,nofail,x-systemd.device-timeout=10s 0 2" | sudo tee -a "$FSTAB"
   # Pick up the fstab-generated mnt-db1.mount unit so services can order against it.
   sudo systemctl daemon-reload
 }

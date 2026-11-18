@@ -317,6 +317,37 @@ else
   fail "expected performance on cpu1, got $(cat "${SYS}/devices/system/cpu/cpu1/cpufreq/scaling_governor")"
 fi
 
+# An offline CPU has no cpufreq directory: apply and verify use only the online CPUs.
+setup 3 1
+echo "0-1" > "${SYS}/devices/system/cpu/online"
+for i in 0 1; do
+  mkdir -p "${SYS}/devices/system/cpu/cpu${i}/cpufreq"
+  echo "powersave performance" > "${SYS}/devices/system/cpu/cpu${i}/cpufreq/scaling_available_governors"
+  echo powersave > "${SYS}/devices/system/cpu/cpu${i}/cpufreq/scaling_governor"
+done
+OUTPUT="$(run apply)"
+if [[ "$OUTPUT" != *"could not write"* && "$(cat "${SYS}/devices/system/cpu/cpu1/cpufreq/scaling_governor")" == performance ]] &&
+  ! run verify | grep -q "cpu2"; then
+  pass "an offline CPU is left alone by apply and verify"
+else
+  fail "an offline CPU should be skipped, got: ${OUTPUT} / $(run verify)"
+fi
+
+# --- disks: apply sets the queue values itself, so the boot verify does not race udev ---
+setup 2 1
+mkdir -p "${SYS}/block/nvme1n1/queue" "${SYS}/block/xvda/queue" "${SYS}/block/loop0/queue"
+for d in nvme1n1 xvda loop0; do
+  echo "none [mq-deadline]" > "${SYS}/block/${d}/queue/scheduler"
+  echo 128 > "${SYS}/block/${d}/queue/read_ahead_kb"
+done
+run apply > /dev/null
+if [[ "$(cat "${SYS}/block/nvme1n1/queue/scheduler")" == none && "$(cat "${SYS}/block/nvme1n1/queue/read_ahead_kb")" == 4 &&
+  "$(cat "${SYS}/block/xvda/queue/read_ahead_kb")" == 4 && "$(cat "${SYS}/block/loop0/queue/read_ahead_kb")" == 128 ]]; then
+  pass "apply sets the scheduler and readahead of every NVMe and Xen disk, and no other"
+else
+  fail "expected nvme1n1 and xvda tuned and loop0 untouched, got $(cat "${SYS}/block"/*/queue/read_ahead_kb | tr '\n' ' ')"
+fi
+
 # --- idle states exposed: every state deeper than C1 is disabled ---
 # Each row: the states as "<n> <name> <latency>" separated by commas, the disable flags expected
 # on cpu1 (state0 first), and what the case is.

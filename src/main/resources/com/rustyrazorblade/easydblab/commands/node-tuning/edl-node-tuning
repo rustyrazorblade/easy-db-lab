@@ -2,9 +2,13 @@
 #
 # easy-db-lab node tuning: the settings no config file persists, and a read-back of all of them.
 #
-#   edl-node-tuning apply              transparent huge pages, CPU governor and idle states, and
-#                                      packet steering on every physical network interface. Run
-#                                      by edl-node-tuning.service at boot and at setup.
+#   edl-node-tuning apply              transparent huge pages, CPU governor and idle states,
+#                                      disk scheduler and readahead, and packet steering on every
+#                                      physical network interface. Run by edl-node-tuning.service
+#                                      at boot and at setup. The udev disk rule sets the disk
+#                                      values too, for a disk attached later; apply sets them
+#                                      itself so the boot verify does not depend on when udev
+#                                      finishes processing its coldplug events.
 #   edl-node-tuning rps <iface>        packet steering on one interface. Run by udev when a
 #                                      physical interface appears, such as a secondary ENI the
 #                                      CNI attaches later.
@@ -172,12 +176,23 @@ physical_links() {
   done
 }
 
+# The sysfs directory of every online CPU. A present but offline CPU has no cpufreq or cpuidle
+# directory, so it is left out, as it is from the RPS mask.
 cpus() {
-  ls -d "$SYS/devices/system/cpu"/cpu[0-9]* 2> /dev/null
+  for n in $(cpu_numbers "$(cat "$SYS/devices/system/cpu/online")"); do
+    echo "$SYS/devices/system/cpu/cpu$n"
+  done
 }
 
-# The exit latency of C1, the shallowest real idle state: the state named C1 (C1_ACPI on some
-# kernels), else the first state that is not POLL (HALT on an x86 VM, WFI on arm64, which has
+# The NVMe and Xen block disks, the ones the udev disk rule tunes.
+disks() {
+  for disk in "$SYS/block"/nvme*n* "$SYS/block"/xvd*; do
+    [ -d "$disk/queue" ] && echo "$disk"
+  done
+}
+
+# The exit latency of C1, the shallowest real idle state: the state named C1 (C1_ACPI or C1-<cpu>,
+# such as C1-SKX, on some kernels), else the first state that is not POLL (HALT on an x86 VM, WFI on arm64, which has
 # no POLL).
 c1_latency() {
   for state in "$SYS/devices/system/cpu/cpu0/cpuidle"/state*; do
@@ -227,6 +242,11 @@ apply() {
   else
     skip "CPU idle states" "exposes no idle states"
   fi
+
+  for disk in $(disks); do
+    put "$disk/queue/scheduler" "$DISK_SCHEDULER"
+    put "$disk/queue/read_ahead_kb" "$DISK_READAHEAD_KB"
+  done
 
   for iface in $(physical_links); do rps "$iface"; done
 }
@@ -332,8 +352,7 @@ verify() {
     done
   done
 
-  for disk in "$SYS/block"/nvme*n* "$SYS/block"/xvd*; do
-    [ -d "$disk/queue" ] || continue
+  for disk in $(disks); do
     check "${disk##*/} scheduler" "$DISK_SCHEDULER" "$(selected "$disk/queue/scheduler")"
     check "${disk##*/} read_ahead_kb" "$DISK_READAHEAD_KB" "$(cat "$disk/queue/read_ahead_kb")"
   done

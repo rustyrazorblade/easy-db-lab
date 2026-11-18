@@ -81,7 +81,7 @@ The packaged sysctl file holds the literal list.  A unit test parses it and fail
 ### D6. Disk: `noatime`, scheduler and readahead by udev
 
 - `mount_data_disk` mounts with `-o noatime` and writes `defaults,noatime,nofail,x-systemd.device-timeout=10s` to `/etc/fstab`.  On a re-run where `/mnt/db1` is already mounted, it rewrites the fstab line and runs `mount -o remount,noatime /mnt/db1`.  The data-disk requirement pending in `openspec/changes/issue-969` is unchanged; `noatime` is stated in `node-os-tuning`.
-- The udev rule sets `queue/scheduler=none` and `queue/read_ahead_kb=4` on `ACTION=="add|change"` for `nvme[0-9]*n[0-9]*` and `xvd[a-z]*` whole disks.  It replaces `blockdev --setra`; the `READAHEAD` variable goes.  The rule also matches the root EBS volume.  That is deliberate (one rule, the same values on every disk) and costs little: the root volume holds binaries and config, not data.
+- The udev rule sets `queue/scheduler=none` and `queue/read_ahead_kb=4` on `ACTION=="add|change"` for `nvme[0-9]*n[0-9]*` and `xvd[a-z]*` whole disks.  It replaces `blockdev --setra`; the `READAHEAD` variable goes.  `edl-node-tuning apply` writes the same two values to every such disk at boot, before its `verify`.  `systemd-udev-trigger.service` only queues the coldplug events, so without that the boot verify could read a disk before udev has set it and journal a false drift line.  The rule also matches the root EBS volume.  That is deliberate (one rule, the same values on every disk) and costs little: the root volume holds binaries and config, not data.
 
 ### D7. Memory and THP
 

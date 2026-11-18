@@ -5,6 +5,8 @@
 - [x] 1.3 Add the Loki restart test: the rendered collector in front of the pinned Loki with its rendered config, Loki aliased `loki.default.svc.cluster.local`; send one numbered log line a second, stop Loki for 60s, start it, and assert that every line is in Loki
 - [x] 1.4 Run it against the current config and record the result: whether lines of the outage are lost (the 300s retry limit is not reached in 60s) and whether lines are lost to Loki's answers while it starts
   - Result: the Mimir test failed with samples 11-70 missing, exactly the 60s outage (`context deadline exceeded`, dropped items). The Loki test passed: no line was lost, because the 300s retry limit is not reached in 60s, and the Service reaches Loki only once it answers `/ready`, so the collector sees a connection error, never a 500.
+  - Review follow-up: a 60s outage never reaches the old 300s retry limit, so the Loki test now keeps Loki down for 6 minutes. On the old config it failed with lines 11-110 missing (`no more retries left`, dropped items).
+  - The Tempo restart test keeps Tempo down for 6 minutes too. On the old config (`otlp_grpc/tempo` `max_elapsed_time: 300s`) it failed with spans 1-100 of 392 missing. It first passed on the old config, because Tempo 3.0.3 answers `/api/v2/traces/{id}` with 200 and an empty `trace` for an id it does not have; the test now counts a trace only when the response carries its span.
 
 ## 2. Collector exporters
 
@@ -17,7 +19,7 @@
 
 - [x] 2a.1 If 1.4 shows lines lost while Loki starts: find which status Loki answers and pick the fix the test proves (a readiness gate on the Loki Service so the collector gets a retried connection error, or an `otlp_http/logs` setting in 0.161.0 that retries a 500), and apply it in `LokiManifestBuilder` or the exporter config
 - [x] 2a.2 The Loki restart test fails without that fix and passes with it; if 1.4 lost nothing, record that the test passes with no fix
-  - Result: 1.4 lost nothing, so no Loki fix was needed; the test passes with no fix. The unlimited retry (2.2) still matters for outages past 300s.
+  - Result: 1.4 lost nothing, so no Loki fix was needed; the test passes with no fix. The unlimited retry (2.2) still matters for outages past 300s, and the 6-minute Loki test proves it (see 1.4).
 
 ## 3. Mimir
 
@@ -45,5 +47,5 @@
 ## 7. Review and real cluster
 
 - [ ] 7.1 roborev (`roborev review --branch --wait`), fix and close each job
-- [ ] 7.2 Real cluster (1 db, 1 app, 1 control, `--tag embark_offhours=off`, default profile): light stress, Mimir down for a few minutes, then show a per-second series in Mimir with no missing samples across the gap, and no rise in `otelcol_exporter_send_failed_metric_points_total`; `down`
-- [ ] 7.3 Open the PR with "Closes #991." and the cluster evidence
+- [x] 7.2 Real cluster (1 db, 1 app, 1 control, `--tag embark_offhours=off`, default profile): light stress, Mimir down for a few minutes, then show a per-second series in Mimir with no missing samples across the gap, and no rise in `otelcol_exporter_send_failed_metric_points_total`; `down`
+- [x] 7.3 Open the PR with "Closes #991." and the cluster evidence

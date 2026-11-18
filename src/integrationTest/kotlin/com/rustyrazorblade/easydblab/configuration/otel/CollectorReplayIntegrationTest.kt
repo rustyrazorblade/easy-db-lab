@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -43,8 +44,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * backend on a new address is found again. The backend restarts on the same data volume, as the
  * control node's hostPath keeps it.
  *
- * A producer sends one numbered metric sample or log line a second to the collector, before,
- * during and after a [OUTAGE] outage, and the test asserts that every number arrives.
+ * A producer sends one numbered metric sample, log line or span a second to the collector, before,
+ * during and after the outage, and the test asserts that every number arrives. Each outage is
+ * chosen to fail the old configuration: Mimir's [METRICS_OUTAGE] outlasts the 5s push deadline that
+ * dropped every batch, and the Loki and Tempo [RETRY_LIMIT_OUTAGE] outlasts the 300s retry limit
+ * the logs and traces exporters had.
  */
 class CollectorReplayIntegrationTest : BaseKoinTest() {
     private companion object {
@@ -56,18 +60,26 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         const val LOKI_LIMIT = 5000
         val SEND_INTERVAL: Duration = Duration.ofSeconds(1)
         val BEFORE: Duration = Duration.ofSeconds(15)
-        val OUTAGE: Duration = Duration.ofSeconds(60)
+        val METRICS_OUTAGE: Duration = Duration.ofSeconds(60)
+        val RETRY_LIMIT_OUTAGE: Duration = Duration.ofMinutes(6)
         val AFTER: Duration = Duration.ofSeconds(15)
         val ARRIVAL: Duration = Duration.ofMinutes(4)
         val POLL: Duration = Duration.ofSeconds(5)
         val MIMIR_HOST = "${Constants.K8s.MIMIR_APP_LABEL}.default.svc.cluster.local"
         val LOKI_HOST = "${Constants.K8s.LOKI_APP_LABEL}.default.svc.cluster.local"
+        val TEMPO_HOST = "${Constants.K8s.TEMPO_APP_LABEL}.default.svc.cluster.local"
     }
 
     private val s3 = SharedLocalStack.s3Client()
     private val docker = DockerClientFactory.instance().client()
     private val bucket = "collector-replay-${UUID.randomUUID().toString().take(8)}"
     private val volume = "replay-${UUID.randomUUID().toString().take(8)}"
+    private val traceRun =
+        UUID
+            .randomUUID()
+            .toString()
+            .replace("-", "")
+            .take(SPAN_ID_LENGTH)
     private val network: Network = Network.newNetwork()
     private val containers = mutableListOf<GenericContainer<*>>()
     private val state =
@@ -120,6 +132,18 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
                 CLUSTER,
             ).also { serve(it, LOKI_HOST) }
 
+    private fun startTempo(): GenericContainer<*> =
+        ObservabilityBackends
+            .startTempo(
+                ObservabilityBackends.tempoConfig(
+                    TempoManifestBuilder(templates()).buildConfigMap().data.getValue(TEMPO_CONFIG_FILE),
+                ),
+                volume,
+                bucket,
+                Constants.Observability.TRACES_ROOT,
+                CLUSTER,
+            ).also { serve(it, TEMPO_HOST) }
+
     private fun serve(
         backend: GenericContainer<*>,
         serviceName: String,
@@ -143,6 +167,8 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
      * Sends `body(n)` to [path] on [collector] once per [SEND_INTERVAL] for n = 1, 2, ... while
      * [restart] stops and starts the backend, then for [AFTER] more. Returns the last number sent.
      * The collector accepts every request: what it cannot deliver is its to hold, not the producer's.
+     * A send that throws is recorded as refused, because a throwing task would silently end the
+     * schedule and the test would report the unsent numbers as lost.
      */
     private fun produceAcross(
         collector: GenericContainer<*>,
@@ -157,7 +183,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         producer.scheduleAtFixedRate(
             {
                 val n = sent.incrementAndGet()
-                val response =
+                runCatching {
                     ObservabilityBackends.send(
                         HttpRequest
                             .newBuilder(URI(url))
@@ -165,7 +191,9 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
                             .POST(HttpRequest.BodyPublishers.ofString(body(n)))
                             .build(),
                     )
-                if (response.statusCode() != HTTP_OK) refused.add("$n: ${response.statusCode()} ${response.body()}")
+                }.onSuccess { response ->
+                    if (response.statusCode() != HTTP_OK) refused.add("$n: ${response.statusCode()} ${response.body()}")
+                }.onFailure { refused.add("$n: $it") }
             },
             0,
             SEND_INTERVAL.toMillis(),
@@ -183,15 +211,16 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         return sent.get()
     }
 
-    /** Stops [backend] gracefully, keeps it down for [OUTAGE] in all, and starts its replacement. */
+    /** Stops [backend] gracefully, keeps it down for [outage] in all, and starts its replacement. */
     private fun restartAfterOutage(
         backend: GenericContainer<*>,
+        outage: Duration,
         start: () -> GenericContainer<*>,
     ) {
         val down = System.nanoTime()
         ObservabilityBackends.stopGracefully(backend)
         containers.remove(backend)
-        Thread.sleep(maxOf(0L, OUTAGE.toMillis() - Duration.ofNanos(System.nanoTime() - down).toMillis()))
+        Thread.sleep(maxOf(0L, outage.toMillis() - Duration.ofNanos(System.nanoTime() - down).toMillis()))
         start()
     }
 
@@ -223,6 +252,41 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
             {"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"replay"}}]},
              "scopeLogs":[{"logRecords":[{"timeUnixNano":"$nanos","body":{"stringValue":"$LINE_PREFIX$n"}}]}]}]}
             """.trimIndent()
+    }
+
+    /** A trace id unique to this run that carries the sequence number [n] in its low 16 hex digits. */
+    private fun traceId(n: Int): String = traceRun + "%016x".format(n)
+
+    private fun spanBody(n: Int): String {
+        val nanos = System.currentTimeMillis() * NANOS_PER_MILLI
+        val id = traceId(n)
+        return """
+            {"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"replay"}}]},
+             "scopeSpans":[{"spans":[{"traceId":"$id","spanId":"${id.takeLast(SPAN_ID_LENGTH)}","name":"$SPAN_NAME","kind":1,
+             "startTimeUnixNano":"$nanos","endTimeUnixNano":"${nanos + NANOS_PER_MILLI}"}]}]}]}
+            """.trimIndent()
+    }
+
+    /**
+     * Adds to [found] every number in 1..[last] whose trace Tempo now finds, and returns [found].
+     * Tempo answers 200 with an empty `trace` object for an id it does not have, so a trace counts
+     * as found only when the response carries its span.
+     */
+    private fun tracesIn(
+        tempo: GenericContainer<*>,
+        last: Int,
+        found: MutableSet<Int>,
+    ): Set<Int> {
+        val url = ObservabilityBackends.baseUrl(tempo, Constants.K8s.TEMPO_PORT)
+        (1..last)
+            .filter { it !in found }
+            .filter { n ->
+                runCatching {
+                    val response = ObservabilityBackends.get("$url/api/v2/traces/${traceId(n)}", TENANT)
+                    response.statusCode() == HTTP_OK && response.body().contains("\"$SPAN_NAME\"")
+                }.getOrDefault(false)
+            }.forEach { found.add(it) }
+        return found
     }
 
     /** Every value of [METRIC] in Mimir over the last 30 minutes, as the sequence numbers sent. */
@@ -264,12 +328,15 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         var mimir = startMimir()
         val collector = startCollector()
 
-        val last = produceAcross(collector, "/v1/metrics", ::metricBody) { restartAfterOutage(mimir) { startMimir().also { mimir = it } } }
+        val last =
+            produceAcross(collector, "/v1/metrics", ::metricBody) {
+                restartAfterOutage(mimir, METRICS_OUTAGE) { startMimir().also { mimir = it } }
+            }
 
         val missing = missingAfterArrival(last) { samplesIn { mimir } }
         assertThat(missing)
             .describedAs(
-                "of samples 1..$last sent, the ones missing from Mimir after a ${OUTAGE.seconds}s restart; collector:\n" +
+                "of samples 1..$last sent, the ones missing from Mimir after a ${METRICS_OUTAGE.seconds}s restart; collector:\n" +
                     ClusterCollector.exportFailures(collector),
             ).isEmpty()
     }
@@ -280,12 +347,35 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         var loki = startLoki()
         val collector = startCollector()
 
-        val last = produceAcross(collector, "/v1/logs", ::logBody) { restartAfterOutage(loki) { startLoki().also { loki = it } } }
+        val last =
+            produceAcross(collector, "/v1/logs", ::logBody) {
+                restartAfterOutage(loki, RETRY_LIMIT_OUTAGE) { startLoki().also { loki = it } }
+            }
 
         val missing = missingAfterArrival(last) { linesIn { loki } }
         assertThat(missing)
             .describedAs(
-                "of lines 1..$last sent, the ones missing from Loki after a ${OUTAGE.seconds}s restart; collector:\n" +
+                "of lines 1..$last sent, the ones missing from Loki after a ${RETRY_LIMIT_OUTAGE.seconds}s outage; collector:\n" +
+                    ClusterCollector.exportFailures(collector),
+            ).isEmpty()
+    }
+
+    @Test
+    fun `a Tempo restart loses no span`() {
+        prepare()
+        var tempo = startTempo()
+        val collector = startCollector()
+
+        val last =
+            produceAcross(collector, "/v1/traces", ::spanBody) {
+                restartAfterOutage(tempo, RETRY_LIMIT_OUTAGE) { startTempo().also { tempo = it } }
+            }
+
+        val found = mutableSetOf<Int>()
+        val missing = missingAfterArrival(last) { tracesIn(tempo, last, found) }
+        assertThat(missing)
+            .describedAs(
+                "of spans 1..$last sent, the ones missing from Tempo after a ${RETRY_LIMIT_OUTAGE.seconds}s outage; collector:\n" +
                     ClusterCollector.exportFailures(collector),
             ).isEmpty()
     }
@@ -293,3 +383,6 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
 
 private const val HTTP_OK = 200
 private const val NANOS_PER_MILLI = 1_000_000L
+private const val SPAN_ID_LENGTH = 16
+private const val SPAN_NAME = "replay-span"
+private const val TEMPO_CONFIG_FILE = "tempo.yaml"

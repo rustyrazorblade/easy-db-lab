@@ -12,7 +12,7 @@ Every series carries a `cluster` label (`<name>-<clusterId>`), so clusters that 
 
 A Mimir restart or outage of up to an hour loses no sample. While Mimir cannot take a write, each collector keeps the batches in an in-memory queue (`remote_write_queue`, 20000 batches) and retries every 5 seconds without a time limit. When Mimir is back, the collector sends the queue, oldest first, alongside new samples. Mimir accepts samples up to an hour older than the newest sample of their series (`out_of_order_time_window: 1h`), so the replayed samples are stored, not refused as too old.
 
-The queue is in memory. A collector that restarts while Mimir is down loses what it held. A batch that Mimir rejects with a 4xx status (other than a timeout or a connection error) is not retried, because sending it again would fail the same way.
+The queue is in memory. A collector that restarts while Mimir is down loses what it held. A batch that Mimir rejects with a 4xx status, 429 included, is not retried, because sending it again would fail the same way. 5xx responses, timeouts and connection errors are retried.
 
 To watch a backlog drain, query the collector's own metrics in Mimir: `otelcol_exporter_queue_size{exporter="prometheus_remote_write"}` is the number of batches waiting, and `otelcol_exporter_send_failed_metric_points_total` counts the points that were dropped. During an outage the queue grows and the failed count stays flat.
 

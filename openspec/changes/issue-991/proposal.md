@@ -9,7 +9,7 @@ The cause, read from the collector contrib 0.161.0 source (the version `Constant
 - **Metrics (Mimir).**  Keep `prometheus_remote_write` and its in-memory queue (owner decision, option A).  In `otel-collector-config.yaml`:
   - Move `endpoint`, `tls` and `headers` under `http:`, and give each HTTP request a 30s timeout there (`http.timeout`).
   - Set the top-level `timeout: 0`, so no deadline wraps the retries.
-  - Set `retry_on_failure.max_elapsed_time: 0` (retry until Mimir answers), `initial_interval: 5s` and `max_interval: 30s`.
+  - Set `retry_on_failure.max_elapsed_time: 0` (retry until Mimir answers), and a fixed `initial_interval: 5s` (this exporter ignores `max_interval`).
   - Size `remote_write_queue.queue_size` to hold one hour of a collector's batches.
 - **Mimir.**  Raise `limits.out_of_order_time_window` from 10m to 1h, so the samples a collector replays after an outage of up to an hour are accepted.
 - **Logs (Loki) and traces (Tempo).**  These exporters have a related gap: their retries stop after 300s (`max_elapsed_time` default), and their in-memory `sending_queue` holds 1000 requests.  Set `retry_on_failure.max_elapsed_time: 0` and size `sending_queue.queue_size` for the same hour.  The queues stay in memory.

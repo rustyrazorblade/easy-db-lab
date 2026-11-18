@@ -73,6 +73,26 @@ class OffThreadOutputSinkTest {
         assertThat(stillInterrupted).isTrue()
     }
 
+    /** A stalled console (a paused terminal) must not hold an abandoned worker forever. */
+    @Test
+    fun `an interrupted writer stops waiting for a sink that never returns`() {
+        val stalled = CountDownLatch(1)
+        val sink = OffThreadOutputSink(java.time.Duration.ofMillis(SETTLE_MILLIS)) { _, _ -> stalled.await() }
+        var stillInterrupted = false
+
+        val writer =
+            Thread.ofVirtual().start {
+                sink.line(NodeStream.Stdout, "stuck")
+                Thread.currentThread().interrupt()
+                sink.close()
+                stillInterrupted = Thread.currentThread().isInterrupted
+            }
+
+        assertThat(writer.join(java.time.Duration.ofSeconds(WAIT_SECONDS))).isTrue()
+        assertThat(stillInterrupted).isTrue()
+        stalled.countDown()
+    }
+
     private companion object {
         const val SETTLE_MILLIS = 100L
         const val WAIT_SECONDS = 5L

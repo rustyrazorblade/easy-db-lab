@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.ssh
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.output.NodeStream
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.time.Duration
 import java.util.concurrent.LinkedBlockingQueue
 
 /**
@@ -16,9 +18,11 @@ import java.util.concurrent.LinkedBlockingQueue
  *
  * A failing sink cannot reach MINA: its exception is logged on the drain thread and the next line
  * is still delivered.  [close] waits until every queued line has been handed over, so a command's
- * output is all printed before the command returns.
+ * output is all printed before the command returns.  On an interrupted thread it waits at most
+ * [interruptedWait], so a stalled console cannot hold an abandoned worker.
  */
 class OffThreadOutputSink(
+    private val interruptedWait: Duration = Constants.NodeOutput.INTERRUPTED_DRAIN_WAIT,
     private val sink: RemoteOutputSink,
 ) : RemoteOutputSink,
     AutoCloseable {
@@ -41,20 +45,32 @@ class OffThreadOutputSink(
     }
 
     /**
-     * Waits for the drain thread to finish even if this thread is interrupted, then restores the
-     * interrupt. A worker that is abandoned interrupts the command's thread; giving up here would
-     * replace the command's own failure with an [InterruptedException] and lose its last lines.
+     * Waits for the drain thread to finish, then restores any interrupt. An abandoned worker is
+     * interrupted while its command runs; throwing here would replace the command's own failure
+     * with an [InterruptedException] and lose its last lines. So an interrupt does not end the wait
+     * at once, but it does bound it to [interruptedWait]: a stalled console (a paused terminal, or
+     * another node holding the console lock) must not hold the worker forever. Lines still queued
+     * after that are printed by the drain thread when the console frees up.
      */
     private fun awaitDrain() {
-        var interrupted = false
-        while (drain.isAlive) {
+        if (!Thread.interrupted()) {
             try {
                 drain.join()
+                return
             } catch (_: InterruptedException) {
-                interrupted = true
+                // Interrupted while waiting: fall through to the bounded wait.
             }
         }
-        if (interrupted) Thread.currentThread().interrupt()
+        val deadline = System.nanoTime() + interruptedWait.toNanos()
+        while (drain.isAlive && System.nanoTime() < deadline) {
+            try {
+                drain.join(Duration.ofNanos(maxOf(1L, deadline - System.nanoTime())))
+            } catch (_: InterruptedException) {
+                // Keep waiting until the deadline; the interrupt is restored below.
+            }
+        }
+        if (drain.isAlive) log.warn { "Stopped waiting for remote output to print after $interruptedWait" }
+        Thread.currentThread().interrupt()
     }
 
     private fun deliver() {

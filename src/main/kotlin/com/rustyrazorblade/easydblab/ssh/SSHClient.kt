@@ -97,7 +97,7 @@ class SSHClient(
             val stderrStream = ByteArrayOutputStream()
             // A secret command echoes its own argument, so nothing of it is ever streamed. MINA writes
             // into these streams on its shared I/O threads, so the sink is called off them.
-            val lineSink = sink.takeUnless { secret }?.let(::OffThreadOutputSink)
+            val lineSink = sink.takeUnless { secret }?.let { OffThreadOutputSink(sink = it) }
             val stdoutLines = lineSink?.let { lines(it, NodeStream.Stdout) }
             val stderrLines = lineSink?.let { lines(it, NodeStream.Stderr) }
             try {

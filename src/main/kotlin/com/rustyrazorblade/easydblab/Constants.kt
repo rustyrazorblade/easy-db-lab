@@ -1481,6 +1481,15 @@ object Constants {
 
         /** Bytes after which a line with no newline is emitted anyway, so it never grows without bound. */
         const val MAX_LINE_BYTES = 8192
+
+        /**
+         * How long an interrupted command still waits for its queued output to print. A console
+         * that is stalled (a paused terminal) must not hold an abandoned worker forever.
+         */
+        val INTERRUPTED_DRAIN_WAIT: java.time.Duration = java.time.Duration.ofSeconds(INTERRUPTED_DRAIN_WAIT_SECONDS)
+
+        /** [INTERRUPTED_DRAIN_WAIT] in seconds. */
+        const val INTERRUPTED_DRAIN_WAIT_SECONDS = 5L
     }
 
     // OpenSSH options the generated sshConfig sets for every SSH transport

@@ -278,8 +278,9 @@ prints before the call returns. `DefaultRemoteOperationsService` builds the sink
 `upload` or `uploadDirectory` call. When the retry policy runs a command again, it prints a
 `notice` first ("retrying the command (attempt N)"), so the next run's lines are marked; a secret
 command streams nothing, so it gets no notice. `SSHClient` closes the splitters and the off-thread
-sink each in turn even if one throws, and the sink ignores an interrupt (it restores the flag), so
-an abandoned worker neither leaks the drain thread nor loses its own failure. Nothing in this layer emits an event: raw output is not a
+sink each in turn even if one throws. On an interrupted thread the sink waits at most
+`Constants.NodeOutput.INTERRUPTED_DRAIN_WAIT` and then restores the flag, so an abandoned worker
+neither leaks the drain thread, loses its own failure, nor hangs on a stalled console. Nothing in this layer emits an event: raw output is not a
 domain fact (see `events/CLAUDE.md`). A test double of `ISSHClient` feeds its configured output
 into the sink it is given (`MockSSHClient`).
 

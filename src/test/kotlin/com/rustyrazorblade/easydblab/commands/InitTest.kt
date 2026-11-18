@@ -942,6 +942,26 @@ class InitTest : BaseKoinTest() {
                 )
         }
 
+        /**
+         * `clientNetworks == null` reads as the owned VPC and cluster CIDR (`ClientNetworks.from`), so a
+         * brought cluster gets its own networks only because `init` records them, flags or not.
+         */
+        @Test
+        fun `on a cluster the user brings, with no --client-network, init records the probed networks alone`() {
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            val saved = argumentCaptor<ClusterState>()
+            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            val state = saved.lastValue
+            assertThat(state.clientNetworks).containsExactly("10.244.0.0/24", "192.168.1.5/32")
+            assertThat(ClientNetworks.from(state).cidrs.map { it.value }).containsExactly("10.244.0.0/24", "192.168.1.5/32")
+            assertThat(state.roleSelectors).isEqualTo(RoleSelectors.ANYWHERE)
+        }
+
         @Test
         fun `on the nodes init builds, no cluster is probed`() {
             Init().apply { clean = true }.execute()

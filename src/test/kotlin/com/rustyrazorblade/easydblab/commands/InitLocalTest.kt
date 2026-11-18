@@ -5,11 +5,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.DockerClientInterface
 import com.rustyrazorblade.easydblab.configuration.Arch
+import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
@@ -259,6 +261,20 @@ class InitLocalTest : BaseKoinTest() {
 
         assertThat(workspace.list().orEmpty().toSortedSet()).isEqualTo(before)
         assertThat(state().environment).isInstanceOf(Environment.K3sDocker::class.java)
+    }
+
+    /**
+     * The local nodes are ones easy-db-lab builds, like AWS (kit-host-independence spec): every role keeps
+     * its `type=<role>` label and the client networks include the K3s cluster CIDR, with nothing probed.
+     */
+    @Test
+    fun `with no --role-nodes or --client-network it records the owned roles and the owned client networks`() {
+        parsed("--local").execute()
+
+        val state = state()
+        assertThat(state.roleSelectors).isEqualTo(RoleSelectors.OWNED_NODES)
+        assertThat(state.clientNetworks).isNull()
+        assertThat(ClientNetworks.from(state).cidrs.map { it.value }).contains(Constants.K3s.CLUSTER_CIDR)
     }
 
     @Test

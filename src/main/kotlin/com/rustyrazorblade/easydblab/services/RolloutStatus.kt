@@ -78,7 +78,8 @@ object RolloutStatus {
         }
     }
 
-    private fun observed(
+    /** Whether a workload's controller has acted on its latest spec; no generation means nothing to observe. */
+    internal fun observed(
         generation: Long?,
         observedGeneration: Long?,
     ): Boolean = generation == null || (observedGeneration != null && observedGeneration >= generation)

@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues />
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:DefaultK8sNamespaceOperations.kt$DefaultK8sNamespaceOperations$private fun describePodState(pod: io.fabric8.kubernetes.api.model.Pod): String</ID>
     <ID>CyclomaticComplexMethod:KitInfo.kt$KitInfo.Companion$fun buildInfoText( config: KitConfig, templateFiles: List&lt;String&gt;, ): String</ID>
     <ID>HasPlatformType:BeylaManifestBuilder.kt$BeylaManifestBuilder$@Suppress("LongMethod") fun buildDaemonSet()</ID>
     <ID>HasPlatformType:BeylaManifestBuilder.kt$BeylaManifestBuilder$fun buildConfigMap()</ID>

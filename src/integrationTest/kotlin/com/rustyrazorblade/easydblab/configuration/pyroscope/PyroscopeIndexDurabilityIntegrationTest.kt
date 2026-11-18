@@ -1,9 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
-import com.github.dockerjava.api.model.Bind
-import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -21,8 +20,6 @@ import org.mockito.kotlin.whenever
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.images.builder.Transferable
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import java.net.URI
 import java.net.URLEncoder
@@ -49,16 +46,8 @@ import java.util.UUID
 class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
     private companion object {
         const val TENANT = "acme"
-        const val DATA_MOUNT = "/data"
         const val SERVICE = "it-profiled"
         val WAIT: Duration = Duration.ofMinutes(2)
-
-        /** How long the server's startup probe lets it take to answer `/ready`. */
-        val STARTUP_PROBE_BUDGET: Duration =
-            Duration.ofSeconds(
-                Constants.PyroscopeProbes.STARTUP_PERIOD_SECONDS.toLong() *
-                    Constants.PyroscopeProbes.STARTUP_FAILURE_THRESHOLD,
-            )
         val POLL: Duration = Duration.ofSeconds(2)
 
         /** Pyroscope's default `max_profile_stacktrace_samples`; edbl-ab1172 sent 18,995 and lost them. */
@@ -105,51 +94,14 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
     private fun newVolumeName() = "pyroscope-data-${UUID.randomUUID().toString().take(8)}"
 
     /** The cluster's rendered config.yaml, with the S3 client pointed at LocalStack. */
-    private fun testConfig(): String {
-        val rendered = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap().data.getValue("config.yaml")
-        val endpointLine = "    endpoint: s3.${SharedLocalStack.region()}.amazonaws.com"
-        check(rendered.contains(endpointLine)) { "rendered config no longer names the regional S3 endpoint" }
-        return rendered.replace(
-            endpointLine,
-            """
-            |    endpoint: host.testcontainers.internal:${SharedLocalStack.hostPort()}
-            |    insecure: true
-            |    force_path_style: true
-            |    access_key_id: ${SharedLocalStack.accessKey()}
-            |    secret_access_key: ${SharedLocalStack.secretKey()}
-            """.trimMargin(),
+    private fun testConfig(): String =
+        ObservabilityBackends.pyroscopeConfig(
+            PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap().data.getValue("config.yaml"),
         )
-    }
 
-    /**
-     * Starts a Pyroscope server with [config] on the data [volume].
-     *
-     * It must answer `/ready` within the Deployment's startup-probe budget, which is the window the
-     * kubelet allows before it kills the server, so every start here also checks that budget.
-     */
-    private fun startPyroscope(
-        config: String,
-        volume: String = dataVolume,
-    ): GenericContainer<*> {
-        val pyroscope =
-            GenericContainer(PyroscopeManifestBuilder.SERVER_IMAGE)
-                .withCreateContainerCmdModifier { cmd ->
-                    cmd.withUser("root")
-                    cmd.hostConfig?.withBinds(Bind(volume, Volume(DATA_MOUNT)))
-                }.withCopyToContainer(Transferable.of(config), "/etc/pyroscope/config.yaml")
-                .withCommand("-config.file=/etc/pyroscope/config.yaml")
-                .withExposedPorts(PyroscopeManifestBuilder.SERVER_PORT)
-                .waitingFor(
-                    Wait
-                        .forHttp("/ready")
-                        .forPort(PyroscopeManifestBuilder.SERVER_PORT)
-                        .forStatusCode(200)
-                        .withStartupTimeout(STARTUP_PROBE_BUDGET),
-                )
-        pyroscope.start()
-        containers.add(pyroscope)
-        return pyroscope
-    }
+    /** Starts a Pyroscope server with [config] on the data volume ([ObservabilityBackends.startPyroscope]). */
+    private fun startPyroscope(config: String): GenericContainer<*> =
+        ObservabilityBackends.startPyroscope(config, dataVolume).also { containers.add(it) }
 
     private fun baseUrl(pyroscope: GenericContainer<*>) =
         "http://${pyroscope.host}:${pyroscope.getMappedPort(PyroscopeManifestBuilder.SERVER_PORT)}"

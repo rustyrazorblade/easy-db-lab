@@ -7,6 +7,7 @@ import com.github.dockerjava.api.model.HostConfig
 import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
@@ -23,7 +24,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 
 /**
- * Runs Mimir, Loki and Tempo at the images the cluster deploys, with the configuration the cluster renders,
+ * Runs Mimir, Loki, Tempo and Pyroscope at the images the cluster deploys, with the configuration the cluster renders,
  * against the shared LocalStack.
  *
  * The one edit to a rendered config is the harness's: the S3 endpoint and credentials point at
@@ -36,6 +37,15 @@ object ObservabilityBackends {
     private const val MIMIR_DATA = "/data"
     private const val LOKI_DATA = "/loki"
     private const val TEMPO_DATA = "/var/tempo"
+    private const val PYROSCOPE_DATA = "/data"
+    private const val HTTP_OK = 200
+
+    /** How long the Pyroscope Deployment's startup probe lets the server take to answer `/ready`. */
+    private val PYROSCOPE_STARTUP_PROBE_BUDGET: Duration =
+        Duration.ofSeconds(
+            Constants.PyroscopeProbes.STARTUP_PERIOD_SECONDS.toLong() *
+                Constants.PyroscopeProbes.STARTUP_FAILURE_THRESHOLD,
+        )
 
     /** Tempo's OTLP HTTP receiver port. */
     const val TEMPO_OTLP_HTTP_PORT = 4321
@@ -90,6 +100,48 @@ object ObservabilityBackends {
             """.trimMargin(),
         )
     }
+
+    /** Pyroscope's rendered config.yaml, pointed at LocalStack. */
+    fun pyroscopeConfig(rendered: String): String {
+        val endpointLine = "    endpoint: s3.${SharedLocalStack.region()}.amazonaws.com"
+        check(rendered.contains(endpointLine)) { "rendered config no longer names the regional S3 endpoint" }
+        return rendered.replace(
+            endpointLine,
+            """
+            |    endpoint: host.testcontainers.internal:${SharedLocalStack.hostPort()}
+            |    insecure: true
+            |    force_path_style: true
+            |    access_key_id: ${SharedLocalStack.accessKey()}
+            |    secret_access_key: ${SharedLocalStack.secretKey()}
+            """.trimMargin(),
+        )
+    }
+
+    /**
+     * Starts the Pyroscope server with [config] on the Docker volume [volume] (its v2 metastore,
+     * the control node's `/mnt/db1/pyroscope`). Runs as root so a fresh volume needs no chown.
+     *
+     * It must answer `/ready` within the Deployment's startup-probe budget, the window the kubelet
+     * allows before it kills the server, so every start also checks that budget.
+     */
+    fun startPyroscope(
+        config: String,
+        volume: String,
+    ): GenericContainer<*> =
+        GenericContainer(PyroscopeManifestBuilder.SERVER_IMAGE)
+            .withCreateContainerCmdModifier { cmd ->
+                cmd.withUser("root")
+                cmd.hostConfig?.withBinds(Bind(volume, Volume(PYROSCOPE_DATA)))
+            }.withCopyToContainer(Transferable.of(config), "/etc/pyroscope/config.yaml")
+            .withCommand("-config.file=/etc/pyroscope/config.yaml")
+            .withExposedPorts(PyroscopeManifestBuilder.SERVER_PORT)
+            .waitingFor(
+                Wait
+                    .forHttp("/ready")
+                    .forPort(PyroscopeManifestBuilder.SERVER_PORT)
+                    .forStatusCode(HTTP_OK)
+                    .withStartupTimeout(PYROSCOPE_STARTUP_PROBE_BUDGET),
+            ).apply { start() }
 
     /**
      * Starts Tempo with [config] on the Docker volume [volume] (its WAL, the control node's

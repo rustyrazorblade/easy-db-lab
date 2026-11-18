@@ -956,6 +956,25 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * The EMR and stress-sidecar collectors send to a cluster collector that restarts on every kit
+     * start and stop, so each holds what it cannot send in memory and retries without a limit.
+     */
+    @Test
+    fun `the EMR and stress-sidecar exporters queue in memory and retry without a limit`() {
+        for ((resource, exporter) in listOf(
+            "/com/rustyrazorblade/easydblab/configuration/emr/otel-collector-config.yaml" to "otlp_grpc/control",
+            "/com/rustyrazorblade/easydblab/configuration/cassandra/otel-stress-sidecar-config.yaml" to "otlp_grpc",
+        )) {
+            val yaml = checkNotNull(javaClass.getResource(resource)).readText()
+            val path = arrayOf("exporters", exporter)
+            assertThat(scalarAt(yaml, *path, "retry_on_failure", "max_elapsed_time")).describedAs(resource).isEqualTo("0")
+            assertThat(scalarAt(yaml, *path, "sending_queue", "enabled")).describedAs(resource).isEqualTo("true")
+            assertThat(scalarAt(yaml, *path, "sending_queue", "queue_size")).describedAs(resource).isEqualTo("20000")
+            assertThat(keysAt(yaml, *path, "sending_queue")).describedAs(resource).doesNotContain("storage")
+        }
+    }
+
     /** Per-core CPU is opt-in on the host CPU scraper; dashboards break down CPU time by core. */
     @Test
     fun `the host CPU scraper reports time per core`() {

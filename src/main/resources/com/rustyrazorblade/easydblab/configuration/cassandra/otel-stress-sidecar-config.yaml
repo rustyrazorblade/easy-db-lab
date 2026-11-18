@@ -22,12 +22,19 @@ processors:
     override: false
 
 exporters:
+  # The node collector restarts on every kit start and stop (its config changes). This exporter
+  # holds what it cannot send in memory and retries without a time limit, as the node collector's
+  # backend exporters do (issue 991). No on-disk queue.
   otlp_grpc:
     endpoint: ${env:HOST_IP}:4317
     tls:
       insecure: true
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0
     sending_queue:
-      enabled: false
+      enabled: true
+      queue_size: 20000
 
 service:
   telemetry:

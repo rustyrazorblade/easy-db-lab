@@ -13,6 +13,7 @@
 - [x] 2.1 `prometheus_remote_write`: move `endpoint`, `tls`, `headers` under `http:` with `timeout: 30s`; set top-level `timeout: 0`; `retry_on_failure` with `initial_interval: 5s`, `max_elapsed_time: 0`; `remote_write_queue` enabled with `queue_size: 20000`; comments state why (the 0.161.0 deadline, the uncopied `max_interval`)
 - [x] 2.2 `otlp_http/logs` and `otlp_grpc/tempo`: `retry_on_failure.max_elapsed_time: 0` and `sending_queue.queue_size: 20000`, in memory
 - [x] 2.3 Update `OtelManifestBuilderTest` (endpoint now under `http`, the retry, timeout and queue settings, and no `storage`, `wal` or `memory_limiter`) and the `otel.yaml` golden manifest
+- [x] 2.3a The collectors that send to a cluster collector (EMR `otlp_grpc/control`, stress sidecar `otlp_grpc`, whose queue was disabled) get the same unlimited retry and 20000-batch in-memory queue, because the cluster collector restarts on every kit start and stop; `OtelManifestBuilderTest` asserts both (found in review)
 - [x] 2.4 Run `OtelCollectorConfigValidationIntegrationTest` so the pinned collector accepts the new keys
 
 ## 2a. Loki at start
@@ -30,6 +31,7 @@
 
 - [x] 4.1 Add `Constants.PyroscopeJavaAgent` values for unlimited tries (-1) and a 360-snapshot queue
 - [x] 4.2 Pass `-Dpyroscope.ingest.max.tries` and `-Dpyroscope.push.queue.capacity` in `StressJobManifestBuilder`, `SidecarManifestBuilder`, `EMRProvisioningService` and `edl_pyroscope_opts` (`edl-kit-lib.sh`), with the tests that assert those options
+- [x] 4.3 `PyroscopeAgentReplayIntegrationTest`: the pinned agent with `OUTAGE_FLAGS` keeps every 10s snapshot through a 150s Pyroscope outage; without the flags the first 60s are lost
 
 ## 5. Green
 

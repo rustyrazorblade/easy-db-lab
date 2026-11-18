@@ -24,7 +24,7 @@ What a sender holds in memory is lost if the sender itself restarts.  Two signal
 - **AND** Mimir accepts the replayed samples after it starts, none rejected as too old
 
 #### Scenario: A rejected batch is not retried forever
-- **WHEN** Mimir answers a remote write with a 4xx status other than 429
+- **WHEN** Mimir answers a remote write with any 4xx status, 429 included
 - **THEN** the collector drops that batch and sends the next one
 
 #### Scenario: A Loki restart loses no log line

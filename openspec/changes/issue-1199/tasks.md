@@ -11,14 +11,14 @@
 
 - [x] 2.1 Add `commands/node-tuning/60-easydblab.conf` (every sysctl in the spec, `ip_local_reserved_ports` per design D5, no `nr_open` / `file-max` / `rp_filter` / `ip_forward` / `nf_conntrack_*` key).
 - [x] 2.2 Add `easydblab-limits.conf` (service drop-in), `system.conf` (`DefaultLimit*`), `limits.conf` (PAM).
-- [x] 2.3 Add `90-easydblab.rules` (block scheduler and readahead; ENA `add` runs `edl-node-tuning rps`).
+- [x] 2.3 Add `90-easydblab.rules` (block scheduler and readahead; physical interface `add` runs `edl-node-tuning rps`; rx queue add/remove runs `rps-queue`).
 - [x] 2.4 Add `edl-node-tuning` (`apply`, `rps`, `verify`) and `edl-node-tuning.service`.
 - [x] 2.5 Shell unit tests `edl-node-tuning.test.sh` and `setup-instance-tuning.test.sh` (Docker-free; sysfs root and IMDS stubbed through environment variables): RPS mask for 2, 8, 33 and 96 CPUs; flow count per queue; governor applied when exposed and skip line otherwise; C-states deeper than C1 disabled; `verify` exits 1 naming the setting on each kind of mismatch.  Gradle task in `testScripts`.
 
 ## 3. Setup wiring
 
 - [x] 3.1 `NodeSetupService`: copy `node-tuning/` from the classpath to a temp dir and upload it beside `setup_instance.sh` in one `uploadDirectory`; unit test that a missing resource fails setup naming it.
-- [x] 3.2 `setup_instance.sh`: install the files, remove the old `60-cassandra.conf` and `limits.d/cassandra.conf`, `sysctl --system`, udev reload and trigger, `daemon-reexec`, `daemon-reload`, enable `edl-node-tuning.service` and `irqbalance`, comment out fstab swap, run `verify`; drop the heredocs, the echo, `READAHEAD` and `blockdev --setra`.
+- [x] 3.2 `setup_instance.sh`: install the files, remove the old `60-cassandra.conf` and `limits.d/cassandra.conf`, `sysctl -p` on the packaged file, udev reload and trigger, `daemon-reexec`, `daemon-reload`, enable `edl-node-tuning.service` and `irqbalance`, comment out fstab swap, run `verify`; drop the heredocs, the echo, `READAHEAD` and `blockdev --setra`.
 - [x] 3.3 `mount_data_disk`: `noatime` on mount and in fstab; remount on a re-run.  Extend `setup-instance-data-disk.test.sh` for both paths.
 - [x] 3.4 Unit test (`NodeTuningReservedPortsTest`): every fixed listener port below 32768 that `Constants` or a host-network manifest builder names is in the packaged `ip_local_reserved_ports`, and 30000-32767 is reserved.
 
@@ -31,8 +31,8 @@
 
 - [x] 5.1 (`clusters/issue1199-post`) `./gradlew installDist`; provision `clusters/os-tuning-after` (same shape and tags as 1.1); record it in the state file.
 - [x] 5.2 On every db, app and control node: `edl-node-tuning verify` passes, and the evidence is captured with `sysctl` for every key, THP sysfs, `cat /sys/block/*/queue/{scheduler,read_ahead_kb}`, `findmnt -no OPTIONS /mnt/db1`, every ENA `rps_cpus` / `rps_flow_cnt`, `systemctl is-active irqbalance`, and the governor or the skip line.
-- [x] 5.3 (partly: `cassandra use` fails on the current AMI, fixed by #1192, so no Cassandra process ran. The `cassandra` unit reports LimitNOFILE=1048576 and LimitMEMLOCK=infinity, and a `systemd-run` service, an otel pod process and containerd all read nofile 1048576 and memlock unlimited from `/proc/<pid>/limits`.) `/proc/<cassandra pid>/limits` shows nofile 1048576 and memlock unlimited, and Cassandra logs no `mlockall` failure; a kit pod process shows the same (bugs 1 and 2 gone).
-- [x] 5.4 (Hubble UI on 31234 from every node, Grafana, Mimir, Loki, Tempo and Pyroscope answered; no kit was installed and no stress run made, so the source-port check read the idle cluster's 39-247 connections per node, none in the reserved set) NodePorts and host-network listeners: Hubble UI on 31234, a kit NodePort, Grafana, Mimir, Loki all answer; under load from a stress run, no outbound source port falls in the reserved set (`ss -tn`).
+- [x] 5.3 (`clusters/issue1199-stress/evidence/stress-db0-3b.txt`: the running Cassandra JVM reads nofile 1048576 and memlock unlimited from `/proc/<pid>/limits`; `stress-app0-3b.txt` shows the same for the stress run's pod process) `/proc/<cassandra pid>/limits` shows nofile 1048576 and memlock unlimited, and Cassandra logs no `mlockall` failure; a kit pod process shows the same (bugs 1 and 2 gone).
+- [x] 5.4 (`clusters/issue1199-stress/evidence/unreserved-db0.txt` and `unreserved-app0.txt`: under a running stress load, no outbound source port is in the reserved set; the stress run bound its metrics port inside 9500-9599) NodePorts and host-network listeners: Hubble UI on 31234, a kit NodePort, Grafana, Mimir, Loki all answer; under load from a stress run, no outbound source port falls in the reserved set (`ss -tn`).
 - [x] 5.5 (the first run found the secondary ENI ens6 on control0 without RPS: the udev rule ran before the rename; fixed by numbering it 90) Reboot one db, one app and the control node; after each returns, `verify` passes, the K3s node is Ready, and 5.2's evidence is unchanged.  Confirm a secondary ENI that Cilium attached has the RPS mask.
 - [x] 5.6 Re-run `setup-instances` on the live cluster; it succeeds with no duplicated config.
 - [x] 5.7 `down` the cluster; put the commands, output and results in the PR.

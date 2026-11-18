@@ -9,7 +9,15 @@ TUNING_DIR="$(dirname "${BASH_SOURCE[0]}")/node-tuning"
 
 # The units that get the database process limits. A drop-in for a unit that is not installed yet
 # (k3s and k3s-agent come from the K3s installer later in `up`) is read when the unit appears.
-LIMITED_UNITS="cassandra cassandra-easy-stress k3s k3s-agent"
+# Stress runs as a K8s Job, so it gets them from k3s-agent.
+LIMITED_UNITS="cassandra k3s k3s-agent"
+
+# The instance type node setup read from the cluster state (EDL_INSTANCE_TYPE), kept where
+# edl-node-tuning reads it at boot to name the instance in a skip line.
+TUNING_DEFAULTS=/etc/default/edl-node-tuning
+
+# The file system table tune_node turns swap off in.
+FSTAB=/etc/fstab
 
 # Every node writes its data here: databases and kit PVs, the observability backends, the K3s
 # data directory and pod logs. It must be the data disk, never the 20 GB root volume.
@@ -132,6 +140,11 @@ install_tuning_file() {
   sudo install -m "$1" -D "$TUNING_DIR/$2" "$3" || fail "could not install the node tuning file $2 to $3"
 }
 
+# Copies a file system table from stdin to stdout with every active swap line commented out.
+comment_swap_lines() {
+  sed -E '/^[^#].*[[:space:]]swap[[:space:]]/s/^/#/'
+}
+
 # Installs the packaged tuning files (node-os-tuning) and applies them now; each also applies at
 # every boot. Re-running replaces the files in place. Fails, naming the setting, when one did not
 # take.
@@ -152,11 +165,18 @@ tune_node() {
   install_tuning_file 0644 edl-node-tuning.service /etc/systemd/system/edl-node-tuning.service
   install_tuning_file 0644 90-easydblab.rules /etc/udev/rules.d/90-easydblab.rules
 
-  sudo sysctl --system > /dev/null || fail "sysctl --system failed applying /etc/sysctl.d/60-easydblab.conf"
+  echo "EDL_INSTANCE_TYPE=${EDL_INSTANCE_TYPE:-}" | sudo tee "$TUNING_DEFAULTS" > /dev/null
+
+  # Only this file: sysctl --system would apply every other sysctl.d file again too.
+  local rejected
+  rejected=$(sudo sysctl -p /etc/sysctl.d/60-easydblab.conf 2>&1 > /dev/null) ||
+    fail "sysctl did not apply /etc/sysctl.d/60-easydblab.conf: $(echo "$rejected" | tr '\n' ' ')"
 
   sudo swapoff --all
   # Keep swap off after a reboot too.
-  sudo sed -i -E '/^[^#].*[[:space:]]swap[[:space:]]/s/^/#/' /etc/fstab
+  local fstab
+  fstab=$(comment_swap_lines < "$FSTAB") || fail "could not read $FSTAB to turn swap off"
+  [[ "$fstab" == "$(cat "$FSTAB")" ]] || printf '%s\n' "$fstab" | sudo tee "$FSTAB" > /dev/null
 
   sudo udevadm control --reload
   sudo udevadm trigger --subsystem-match=block --action=change
@@ -165,9 +185,16 @@ tune_node() {
   # PID 1 reads DefaultLimit* only on a re-exec; it keeps every service running.
   sudo systemctl daemon-reexec
   sudo systemctl daemon-reload
+  # irqbalance first: the unit's own verify reads it.
+  sudo systemctl enable --now irqbalance
   sudo systemctl enable edl-node-tuning.service
   sudo systemctl restart edl-node-tuning.service || fail "edl-node-tuning.service failed: $(sudo systemctl status edl-node-tuning.service --no-pager 2>&1 | tail -5 | tr '\n' ' ')"
-  sudo systemctl enable --now irqbalance
+  # The unit's lines (skips, and its verify) went to the journal; show this run's here. Each is
+  # prefixed, so only the verify below can report setup's failure.
+  sudo journalctl --sync
+  # One invocation, so a re-run does not repeat the lines of earlier ones.
+  sudo journalctl -b \
+    _SYSTEMD_INVOCATION_ID="$(sudo systemctl show -p InvocationID --value edl-node-tuning.service)" --no-pager -o cat | sed 's/^/edl-node-tuning.service: /'
 
   sudo /usr/local/sbin/edl-node-tuning verify || exit 1
 }

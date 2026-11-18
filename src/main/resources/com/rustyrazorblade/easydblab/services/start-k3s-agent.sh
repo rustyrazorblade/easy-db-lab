@@ -81,6 +81,16 @@ EOF
     echo "Kubelet disk eviction signals set to 0% in /etc/rancher/k3s/config.yaml.d/10-kubelet-eviction.yaml"
 fi
 
+# K3s runs the kubelet in its own process, and the kubelet sets that process's open-file limit to
+# its max-open-files, 1000000 by default, below the 1048576 node tuning gives the unit. Set it to
+# the unit's value, so the running k3s-agent process has the limit edl-node-tuning verify checks.
+# kubelet-arg+ adds to the kubelet args of the eviction file instead of replacing them.
+mkdir -p /etc/rancher/k3s/config.yaml.d
+cat > /etc/rancher/k3s/config.yaml.d/15-kubelet-limits.yaml <<'EOF'
+kubelet-arg+:
+  - "max-open-files=1048576"
+EOF
+
 # Cilium chains the portmap CNI plugin for hostPort. With --flannel-backend=none, K3s leaves
 # containerd on its default CNI bin dir, /opt/cni/bin, where Cilium installs only cilium-cni.
 # Link K3s's bundled portmap (its stable data/cni dir, populated when K3s starts) there so every

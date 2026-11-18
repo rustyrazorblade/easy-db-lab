@@ -5,13 +5,14 @@
 # not, and verify naming each setting that does not match.
 #
 # The script runs against a fake /sys and /proc under a temporary directory (EDL_SYS_ROOT,
-# EDL_PROC_ROOT); logger, systemctl, hostname and curl are stubbed on PATH. No root, no Docker.
+# EDL_PROC_ROOT); logger, systemctl and hostname are stubbed on PATH. No root, no Docker.
 # It runs under dash when dash is installed, as on the nodes.
 #
 # Run directly:  bash src/test/shell/edl-node-tuning.test.sh
 # Or via gradle: ./gradlew testEdlNodeTuning
 
 set -uo pipefail
+unset JOURNAL_STREAM
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 RESOURCES="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/commands/node-tuning"
@@ -35,7 +36,8 @@ fail() {
   echo "FAIL - $1"
 }
 
-# A node with [cpus] online CPUs, one ENA link ens5 with [queues] receive queues, and a loopback.
+# A node with [cpus] online CPUs, one physical link ens5 (an ENA NIC) with [queues] receive
+# queues, and a loopback.
 setup() {
   local cpus="$1" queues="$2" i
   [ -n "${WORK}" ] && rm -rf "${WORK}"
@@ -48,17 +50,18 @@ setup() {
   echo "always [madvise] never" > "${SYS}/kernel/mm/transparent_hugepage/enabled"
   echo "always defer defer+madvise [madvise] never" > "${SYS}/kernel/mm/transparent_hugepage/defrag"
 
-  mkdir -p "${SYS}/class/net/ens5/device" "${SYS}/class/net/lo/queues/rx-0"
-  ln -s "${SYS}/bus/pci/drivers/ena" "${SYS}/class/net/ens5/device/driver"
-  for ((i = 0; i < queues; i++)); do
-    mkdir -p "${SYS}/class/net/ens5/queues/rx-${i}"
-    echo 0 > "${SYS}/class/net/ens5/queues/rx-${i}/rps_cpus"
-    echo 0 > "${SYS}/class/net/ens5/queues/rx-${i}/rps_flow_cnt"
-  done
+  # ens5 is a physical link (it has a device/ entry, as an ENA, gve or virtio NIC does); lo has
+  # none. Its device directory holds net/ens5, as the kernel's does.
+  mkdir -p "${SYS}/devices/pci0000:00/0000:00:05.0/net/ens5" "${SYS}/class/net/lo/queues/rx-0"
+  ln -s "${SYS}/devices/pci0000:00/0000:00:05.0/net/ens5" "${SYS}/class/net/ens5"
+  ln -s "${SYS}/devices/pci0000:00/0000:00:05.0" "${SYS}/devices/pci0000:00/0000:00:05.0/net/ens5/device"
+  ln -s "${SYS}/bus/pci/drivers/ena" "${SYS}/devices/pci0000:00/0000:00:05.0/driver"
+  add_queues ens5 "${queues}"
   echo 0 > "${SYS}/class/net/lo/queues/rx-0/rps_cpus"
 
   echo "Filename Type Size Used Priority" > "${PROC}/swaps"
 
+  # Cassandra is loaded; it is running (pid 4242, limits in the fake /proc) only when CASSANDRA_ACTIVE=active.
   cat > "${WORK}/bin/systemctl" <<'EOF'
 #!/bin/bash
 case "$*" in
@@ -69,16 +72,61 @@ case "$*" in
   "show -p LoadState --value "*) echo not-found ;;
   "show -p LimitNOFILE --value cassandra.service") echo "${CASSANDRA_NOFILE:-1048576}" ;;
   "show -p LimitMEMLOCK --value cassandra.service") echo "${CASSANDRA_MEMLOCK:-infinity}" ;;
+  "show -p ActiveState --value cassandra.service") echo "${CASSANDRA_ACTIVE:-inactive}" ;;
+  "show -p MainPID --value cassandra.service") echo 4242 ;;
 esac
 EOF
+  mkdir -p "${PROC}/4242"
+  process_limits 1048576 unlimited
   cat > "${WORK}/bin/logger" <<EOF
 #!/bin/bash
 echo "\$*" >> "${WORK}/logger.log"
 EOF
   printf '#!/bin/bash\necho db0\n' > "${WORK}/bin/hostname"
-  printf '#!/bin/bash\necho call >> "%s/curl.log"\nexit 7\n' "${WORK}" > "${WORK}/bin/curl"
   chmod +x "${WORK}"/bin/*
   : > "${WORK}/logger.log"
+}
+
+# Gives link [$1] [$2] receive queues, each with steering off.
+add_queues() {
+  local i
+  for ((i = 0; i < $2; i++)); do
+    mkdir -p "${SYS}/class/net/$1/queues/rx-${i}"
+    echo 0 > "${SYS}/class/net/$1/queues/rx-${i}/rps_cpus"
+    echo 0 > "${SYS}/class/net/$1/queues/rx-${i}/rps_flow_cnt"
+  done
+}
+
+# The running Cassandra's /proc/<pid>/limits, as the kernel prints it: open files [$1] and locked
+# memory [$2], soft and hard alike.
+process_limits() {
+  printf '%-26s%-21s%-21s%-10s\n' \
+    "Limit" "Soft Limit" "Hard Limit" "Units" \
+    "Max processes" unlimited unlimited processes \
+    "Max open files" "$1" "$1" files \
+    "Max locked memory" "$2" "$2" bytes > "${PROC}/4242/limits"
+}
+
+# CPU idle states on every CPU, one "<n> <name> <latency>" argument per state.
+idle_states() {
+  local cpu row n name latency d
+  for cpu in "${SYS}/devices/system/cpu"/cpu[0-9]*; do
+    for row in "$@"; do
+      read -r n name latency <<< "${row}"
+      d="${cpu}/cpuidle/state${n}"
+      mkdir -p "$d"
+      echo "$name" > "$d/name"
+      echo "$latency" > "$d/latency"
+      echo 0 > "$d/disable"
+    done
+  done
+}
+
+# cpu1's disable flags, state0 first, as one string.
+disable_flags() {
+  local d flags=""
+  for d in "${SYS}/devices/system/cpu/cpu1/cpuidle"/state*; do flags="${flags}$(cat "$d/disable")"; done
+  echo "$flags"
 }
 
 # Writes every key of the packaged sysctl file into the fake /proc/sys with its tuned value, the
@@ -99,7 +147,8 @@ tuned_sysctls() {
 
 run() {
   PATH="${WORK}/bin:${PATH}" EDL_SYS_ROOT="${SYS}" EDL_PROC_ROOT="${PROC}" \
-    EDL_SYSCTL_CONF="${RESOURCES}/60-easydblab.conf" "${TEST_SH}" "${SCRIPT}" "$@" 2>&1
+    EDL_SYSCTL_CONF="${RESOURCES}/60-easydblab.conf" EDL_DEFAULTS="${WORK}/edl-node-tuning.defaults" \
+    "${TEST_SH}" "${SCRIPT}" "$@" 2>&1
 }
 
 # --- RPS mask covers every CPU, flow count is shared across the queues ---
@@ -137,13 +186,81 @@ for row in "3 16384" "6 8192" "12 4096"; do
   fi
 done
 
-# --- apply steers ENA links only ---
-setup 4 2
-run apply > /dev/null
-if [[ "$(cat "${SYS}/class/net/ens5/queues/rx-1/rps_cpus")" == f && "$(cat "${SYS}/class/net/lo/queues/rx-0/rps_cpus")" == 0 ]]; then
-  pass "apply steers the ENA link and leaves loopback alone"
+# --- RPS mask for a sparse CPU list: CPUs 0-3, 8, 10 and 11 ---
+setup 12 1
+echo "0-3,8,10-11" > "${SYS}/devices/system/cpu/online"
+run rps ens5 > /dev/null
+if [[ "$(cat "${SYS}/class/net/ens5/queues/rx-0/rps_cpus")" == d0f ]]; then
+  pass "a sparse online CPU list 0-3,8,10-11 gives the mask d0f"
 else
-  fail "apply should steer ens5 only, got ens5=$(cat "${SYS}/class/net/ens5/queues/rx-1/rps_cpus") lo=$(cat "${SYS}/class/net/lo/queues/rx-0/rps_cpus")"
+  fail "expected d0f for 0-3,8,10-11, got $(cat "${SYS}/class/net/ens5/queues/rx-0/rps_cpus")"
+fi
+
+# --- rps edge cases ---
+setup 2 0
+OUTPUT=$(EDL_QUEUE_WAIT_TRIES=1 run rps ens5)
+STATUS=$?
+if [[ "$STATUS" -eq 0 && -z "$OUTPUT" && -z "$(ls "${SYS}/class/net/ens5/queues" 2> /dev/null)" ]]; then
+  pass "an interface whose queues never appear is waited for, then left alone"
+else
+  fail "expected exit 0 and nothing written, got ${STATUS}: ${OUTPUT} / $(ls "${SYS}/class/net/ens5/queues" 2> /dev/null)"
+fi
+setup 2 1
+OUTPUT=$(run rps)
+STATUS=$?
+if [[ "$STATUS" -eq 1 && "$OUTPUT" == *"usage: edl-node-tuning rps <iface>"* ]]; then
+  pass "rps with no interface exits 1 with its usage"
+else
+  fail "rps with no interface should exit 1, got ${STATUS}: ${OUTPUT}"
+fi
+OUTPUT=$(run tune)
+STATUS=$?
+if [[ "$STATUS" -eq 2 && "$OUTPUT" == *"usage: edl-node-tuning apply"* ]]; then
+  pass "an unknown subcommand exits 2 with the usage"
+else
+  fail "an unknown subcommand should exit 2, got ${STATUS}: ${OUTPUT}"
+fi
+
+# --- a changed receive queue count (ethtool -L) steers the whole interface again ---
+setup 4 2
+run rps ens5 > /dev/null
+add_queues ens5 4
+run rps-queue /devices/pci0000:00/0000:00:05.0/net/ens5/queues/rx-3 > /dev/null
+if [[ "$(cat "${SYS}/class/net/ens5/queues/rx-3/rps_cpus")" == f && "$(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")" == 8192 ]]; then
+  pass "a new receive queue gets the mask, and every queue the flow share for the new count"
+else
+  fail "after 2 -> 4 queues expected rx-3 mask f and rx-0 flows 8192, got $(cat "${SYS}/class/net/ens5/queues/rx-3/rps_cpus") / $(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")"
+fi
+OUTPUT=$(run rps-queue /devices/pci0000:00/0000:00:06.0/net/eth0/queues/rx-0)
+STATUS=$?
+if [[ "$STATUS" -eq 0 && -z "$OUTPUT" ]]; then
+  pass "a queue of an interface renamed since is left to that interface's own add event"
+else
+  fail "a queue of a gone interface should be a no-op, got ${STATUS}: ${OUTPUT}"
+fi
+
+# --- apply steers physical links only ---
+setup 4 2
+# A virtual link the CNI creates: queues, no device behind it.
+mkdir -p "${SYS}/class/net/lxc1234/queues/rx-0"
+echo 0 > "${SYS}/class/net/lxc1234/queues/rx-0/rps_cpus"
+run apply > /dev/null
+if [[ "$(cat "${SYS}/class/net/ens5/queues/rx-1/rps_cpus")" == f && "$(cat "${SYS}/class/net/lo/queues/rx-0/rps_cpus")" == 0 &&
+  "$(cat "${SYS}/class/net/lxc1234/queues/rx-0/rps_cpus")" == 0 ]]; then
+  pass "apply steers the physical link and leaves loopback and virtual links alone"
+else
+  fail "apply should steer ens5 only, got ens5=$(cat "${SYS}/class/net/ens5/queues/rx-1/rps_cpus") lo=$(cat "${SYS}/class/net/lo/queues/rx-0/rps_cpus") lxc=$(cat "${SYS}/class/net/lxc1234/queues/rx-0/rps_cpus")"
+fi
+# A physical NIC with another driver (gve, virtio) is steered too: selection is by device, not driver.
+setup 4 1
+rm "${SYS}/devices/pci0000:00/0000:00:05.0/driver"
+mkdir -p "${SYS}/bus/pci/drivers/gve"
+ln -s "${SYS}/bus/pci/drivers/gve" "${SYS}/devices/pci0000:00/0000:00:05.0/driver"
+run apply > /dev/null
+if [[ "$(cat "${SYS}/class/net/ens5/queues/rx-0/rps_cpus")" == f ]]; then
+  pass "apply steers a physical link whatever its driver"
+else
+  fail "a gve link should be steered, got $(cat "${SYS}/class/net/ens5/queues/rx-0/rps_cpus")"
 fi
 if [[ "$(cat "${SYS}/kernel/mm/transparent_hugepage/enabled")" == madvise && "$(cat "${SYS}/kernel/mm/transparent_hugepage/defrag")" == never ]]; then
   pass "apply sets THP to madvise with defrag never"
@@ -163,11 +280,27 @@ else
   fail "expected two skip lines and success, got ${STATUS}: ${OUTPUT} / $(cat "${WORK}/logger.log")"
 fi
 setup 2 1
+echo "EDL_INSTANCE_TYPE=c6id.2xlarge" > "${WORK}/edl-node-tuning.defaults"
+run apply > /dev/null
+if grep -q "skipped CPU governor on db0: c6id.2xlarge exposes no frequency scaling" "${WORK}/logger.log"; then
+  pass "with no EDL_INSTANCE_TYPE the instance type comes from the file node setup wrote"
+else
+  fail "expected the instance type from the defaults file, got $(cat "${WORK}/logger.log")"
+fi
+setup 2 1
 run apply > /dev/null
 if grep -q "skipped CPU governor on db0: unknown instance type" "${WORK}/logger.log"; then
-  pass "an unreachable instance metadata service says unknown instance type"
+  pass "a node setup did not tell its instance type says unknown instance type"
 else
   fail "expected unknown instance type, got $(cat "${WORK}/logger.log")"
+fi
+# Under systemd the output is the journal already, so nothing is logged a second time.
+setup 2 1
+OUTPUT=$(JOURNAL_STREAM=8:1234 EDL_INSTANCE_TYPE=i4i.xlarge run apply)
+if [[ ! -s "${WORK}/logger.log" && "$OUTPUT" == *"skipped CPU governor on db0: i4i.xlarge"* ]]; then
+  pass "under systemd the skip lines are printed once, to the journal stream"
+else
+  fail "expected no logger calls under JOURNAL_STREAM, got: $(cat "${WORK}/logger.log") / ${OUTPUT}"
 fi
 
 # --- frequency scaling exposed: every CPU gets performance ---
@@ -185,25 +318,26 @@ else
 fi
 
 # --- idle states exposed: every state deeper than C1 is disabled ---
-setup 2 1
-for i in 0 1; do
-  for s in "0 POLL 0" "1 C1 2" "2 C1E 10" "3 C6 133"; do
-    read -r n name latency <<< "$s"
-    d="${SYS}/devices/system/cpu/cpu${i}/cpuidle/state${n}"
-    mkdir -p "$d"
-    echo "$name" > "$d/name"
-    echo "$latency" > "$d/latency"
-    echo 0 > "$d/disable"
-  done
-done
-run apply > /dev/null
-states=""
-for n in 0 1 2 3; do states="${states}$(cat "${SYS}/devices/system/cpu/cpu1/cpuidle/state${n}/disable")"; done
-if [[ "$states" == 0011 ]]; then
-  pass "C1E and C6 are disabled, POLL and C1 stay"
-else
-  fail "expected disable flags 0011, got ${states}"
-fi
+# Each row: the states as "<n> <name> <latency>" separated by commas, the disable flags expected
+# on cpu1 (state0 first), and what the case is.
+while IFS='|' read -r states expected description; do
+  setup 2 1
+  IFS=',' read -r -a rows <<< "${states}"
+  idle_states "${rows[@]}"
+  run apply > /dev/null
+  actual=$(disable_flags)
+  if [[ "$actual" == "$expected" ]]; then
+    pass "idle states: ${description}"
+  else
+    fail "idle states, ${description}: expected disable flags ${expected}, got ${actual}"
+  fi
+done <<'EOF'
+0 POLL 0,1 C1 2,2 C1E 10,3 C6 133|0011|C1E and C6 are disabled, POLL and C1 stay
+0 POLL 0,1 C1_ACPI 1,2 C2 50,3 C3 100|0011|C1_ACPI is C1; C2 and C3 are disabled
+0 POLL 0,1 HALT 1,2 C6 100|001|HALT, the first state after POLL, is C1; C6 is disabled
+0 WFI 1,1 cpu-sleep 300|01|arm64 metal: WFI is C1, cpu-sleep is disabled
+0 WFI 1|0|an arm64 VM with only WFI: nothing is disabled
+EOF
 
 # --- verify: a fully tuned node passes ---
 setup 4 2
@@ -217,37 +351,16 @@ else
   fail "verify should pass, got ${STATUS}: ${OUTPUT}"
 fi
 
-# --- verify: a node with 3 queues passes with the rounded flow count the kernel reads back ---
-setup 4 3
-tuned_sysctls
-run apply > /dev/null
-for q in 0 1 2; do echo 16384 > "${SYS}/class/net/ens5/queues/rx-${q}/rps_flow_cnt"; done
-OUTPUT=$(run verify)
-STATUS=$?
-if [[ "$STATUS" -eq 0 && -z "$OUTPUT" ]]; then
-  pass "verify accepts the power-of-two flow count on 3 receive queues"
-else
-  fail "verify with 3 queues should pass, got ${STATUS}: ${OUTPUT}"
-fi
-
-# --- the instance type is read from metadata once per run, however many settings are skipped ---
-setup 2 1
-run apply > /dev/null
-if [[ $(wc -l < "${WORK}/curl.log") -le 2 && $(grep -c "unknown instance type" "${WORK}/logger.log") -eq 2 ]]; then
-  pass "one metadata lookup (token and type) serves every skip line"
-else
-  fail "expected at most 2 metadata calls for 2 skips, got $(wc -l < "${WORK}/curl.log"): $(cat "${WORK}/logger.log")"
-fi
-
 # --- verify: each kind of mismatch fails, naming the setting, the wanted and the read value ---
+# The line is also in the journal, where a mismatch after a reboot is read.
 expect_mismatch() {
   local description="$1" expected="$2"
   OUTPUT=$(run verify)
   STATUS=$?
-  if [[ "$STATUS" -eq 1 && "$OUTPUT" == *"$expected"* ]]; then
+  if [[ "$STATUS" -eq 1 && "$OUTPUT" == *"$expected"* ]] && grep -qF -- "-t edl-node-tuning ${expected}" "${WORK}/logger.log"; then
     pass "verify fails on ${description}"
   else
-    fail "verify on ${description}: expected status 1 and '${expected}', got ${STATUS}: ${OUTPUT}"
+    fail "verify on ${description}: expected status 1 and '${expected}' printed and journalled, got ${STATUS}: ${OUTPUT} / $(cat "${WORK}/logger.log")"
   fi
 }
 
@@ -276,6 +389,34 @@ expect_mismatch "THP" "ERROR: transparent_hugepage/enabled: wanted madvise, got 
 tuned_node
 echo 1 > "${SYS}/class/net/ens5/queues/rx-1/rps_cpus"
 expect_mismatch "an RPS mask" "ERROR: ens5 rx-1 rps_cpus: wanted f, got 1"
+
+# 3 queues: the kernel keeps 16384, so an unrounded 10922 means the write did not take.
+setup 4 3
+tuned_sysctls
+run apply > /dev/null
+echo 10922 > "${SYS}/class/net/ens5/queues/rx-2/rps_flow_cnt"
+expect_mismatch "an unrounded flow count" "ERROR: ens5 rx-2 rps_flow_cnt: wanted 16384, got 10922"
+
+tuned_node
+for i in 0 1 2 3; do
+  mkdir -p "${SYS}/devices/system/cpu/cpu${i}/cpufreq"
+  echo "powersave performance" > "${SYS}/devices/system/cpu/cpu${i}/cpufreq/scaling_available_governors"
+  echo performance > "${SYS}/devices/system/cpu/cpu${i}/cpufreq/scaling_governor"
+done
+echo powersave > "${SYS}/devices/system/cpu/cpu1/cpufreq/scaling_governor"
+expect_mismatch "a CPU governor" "ERROR: cpu1 scaling_governor: wanted performance, got powersave"
+
+tuned_node
+idle_states "0 POLL 0" "1 C1 2" "2 C1E 10" "3 C6 133"
+run apply > /dev/null
+echo 0 > "${SYS}/devices/system/cpu/cpu2/cpuidle/state3/disable"
+expect_mismatch "an idle state turned back on" "ERROR: cpu2 idle state3 disable: wanted 1, got 0"
+
+tuned_node
+mkdir -p "${SYS}/block/nvme1n1/queue"
+echo "none [mq-deadline]" > "${SYS}/block/nvme1n1/queue/scheduler"
+echo 4 > "${SYS}/block/nvme1n1/queue/read_ahead_kb"
+expect_mismatch "a disk scheduler" "ERROR: nvme1n1 scheduler: wanted none, got mq-deadline"
 
 tuned_node
 echo 0000000f > "${SYS}/class/net/ens5/queues/rx-1/rps_cpus"
@@ -321,6 +462,38 @@ if [[ "$STATUS" -eq 1 && "$OUTPUT" == *"ERROR: cassandra LimitMEMLOCK: wanted in
   pass "verify fails when a database service lacks its limits"
 else
   fail "expected the cassandra limit failure, got ${STATUS}: ${OUTPUT}"
+fi
+
+# A running service keeps the limits it started with: verify reads them from its process.
+tuned_node
+OUTPUT=$(CASSANDRA_ACTIVE=active run verify)
+STATUS=$?
+if [[ "$STATUS" -eq 0 && -z "$OUTPUT" ]]; then
+  pass "verify passes when the running database process has the limits"
+else
+  fail "verify with a running Cassandra at the limits should pass, got ${STATUS}: ${OUTPUT}"
+fi
+
+tuned_node
+process_limits 524288 8388608
+OUTPUT=$(CASSANDRA_ACTIVE=active run verify)
+STATUS=$?
+if [[ "$STATUS" -eq 1 &&
+  "$OUTPUT" == *"ERROR: cassandra running process open files: wanted 1048576, got 524288; restart cassandra to apply"* &&
+  "$OUTPUT" == *"ERROR: cassandra running process locked memory: wanted unlimited, got 8388608; restart cassandra to apply"* ]]; then
+  pass "verify fails, saying to restart it, when a running service started before its limits"
+else
+  fail "expected the running-process limit failures, got ${STATUS}: ${OUTPUT}"
+fi
+
+tuned_node
+process_limits 524288 8388608
+OUTPUT=$(run verify)
+STATUS=$?
+if [[ "$STATUS" -eq 0 && -z "$OUTPUT" ]]; then
+  pass "a stopped service is checked by its unit only"
+else
+  fail "an inactive Cassandra's stale /proc should not be read, got ${STATUS}: ${OUTPUT}"
 fi
 
 tuned_node

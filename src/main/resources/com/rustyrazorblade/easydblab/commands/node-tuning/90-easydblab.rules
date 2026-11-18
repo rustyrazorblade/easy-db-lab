@@ -5,8 +5,17 @@
 # Every NVMe and Xen whole disk: no I/O scheduler, 4 KiB readahead.
 ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="nvme[0-9]*n[0-9]*|xvd[a-z]*", ATTR{queue/scheduler}="none", ATTR{queue/read_ahead_kb}="4"
 
-# Every ENA interface, including a secondary ENI the CNI attaches for pod IPs: packet steering
-# to every CPU. A new interface arrives as eth0 and 80-net-setup-link.rules names it (ens6), so
-# this file sorts after 80: $name is then the final name. Before 80 it is still eth0, which no
-# longer exists when RUN executes, and the interface is left without steering.
-ACTION=="add", SUBSYSTEM=="net", DRIVERS=="ena", RUN+="/usr/local/sbin/edl-node-tuning rps $name"
+# Every physical network interface (a device outside /devices/virtual, so not lo, veth, cilium_*,
+# lxc* or tailscale0), including a secondary ENI the CNI attaches for pod IPs: packet steering to
+# every CPU. udev expands $name when it applies this rule, to the name the rules before it have
+# set. A new interface arrives as eth0, 80-net-setup-link.rules sets its final name (ens6), and
+# udev renames it after the last rule and before any RUN program starts. This file sorts after
+# 80, so $name is ens6. Numbered before 80, it would pass eth0, which no longer exists when RUN
+# starts, and the interface would be left without steering.
+ACTION=="add", SUBSYSTEM=="net", DEVPATH!="/devices/virtual/*", RUN+="/usr/local/sbin/edl-node-tuning rps $name"
+
+# A receive queue added or removed on a physical interface (ethtool -L sends no event for the
+# interface itself): steer the whole interface again, because every queue's flow share depends on
+# the queue count. The queues of a new interface also arrive here, under its first name; the
+# script leaves those to the interface's own add event above.
+ACTION=="add|remove", SUBSYSTEM=="queues", KERNEL=="rx-*", DEVPATH!="/devices/virtual/*", RUN+="/usr/local/sbin/edl-node-tuning rps-queue $devpath"

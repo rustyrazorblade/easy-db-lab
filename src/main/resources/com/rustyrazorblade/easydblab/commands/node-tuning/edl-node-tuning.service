@@ -1,17 +1,13 @@
-# easy-db-lab node tuning: restores at every boot the sysfs settings no config file persists
-# (transparent huge pages, CPU governor and idle states, packet steering), before K3s or a
-# database starts. Installed to /etc/systemd/system/ and enabled by setup_instance.sh.
 [Unit]
 Description=easy-db-lab node tuning
-# network-online lets the one instance-metadata lookup for a skip line succeed; K3s waits for it too.
-Wants=network-online.target
-After=systemd-sysctl.service systemd-udev-trigger.service network-online.target
-Before=k3s.service k3s-agent.service cassandra.service cassandra-easy-stress.service
-
+After=systemd-sysctl.service systemd-udev-trigger.service
+Before=k3s.service k3s-agent.service cassandra.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/local/sbin/edl-node-tuning apply
-
+# Reads every value back at every boot, so drift after a reboot is in the journal
+# (journalctl -u edl-node-tuning -b). A mismatch is reported there and does not fail the unit.
+ExecStartPost=-/usr/local/sbin/edl-node-tuning verify
 [Install]
 WantedBy=multi-user.target

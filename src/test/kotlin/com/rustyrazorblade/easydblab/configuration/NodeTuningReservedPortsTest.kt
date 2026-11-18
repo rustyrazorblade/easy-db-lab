@@ -36,6 +36,8 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * Node tuning widens the ephemeral port range to 1024-65535, so every port a host-network
@@ -53,60 +55,24 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
         const val EPHEMERAL_MIN = 1024
 
         /**
-         * Host listeners no manifest builder names: K3s, its embedded etcd and containerd, the
-         * kubelet and kube-proxy, the Cilium agent and Hubble, Pyroscope's built-in Raft default,
-         * and the database on db nodes. Read from `ss -tlnp` on a running cluster's nodes.
+         * A port a config binds: `*_port: N`, `port: N`, a listen address `host:N`, or a bare `:N`
+         * listen address after `=` or a quote (`-listen=:9400`, `":8080"`).
          */
-        val HOST_SERVICE_PORTS =
-            setOf(
-                // K3s API server and supervisor, embedded etcd client, peer, metrics and
-                // loopback client, and containerd's CRI stream server
-                6443,
-                6444,
-                2379,
-                2380,
-                Constants.K3s.ETCD_METRICS_PORT,
-                2382,
-                10010,
-                // Pyroscope's metastore Raft listener (its default, not in its config file)
-                9099,
-                // kubelet, kube-proxy, controller manager, scheduler, kubelet read-only
-                10248,
-                10249,
-                10250,
-                10251,
-                10252,
-                10255,
-                10256,
-                10257,
-                10259,
-                // Cilium health, Hubble server and relay, agent pprof and metrics, operator, Hubble metrics
-                4240,
-                4244,
-                4245,
-                9234,
-                9878,
-                9879,
-                9890,
-                9891,
-                Constants.Cilium.AGENT_METRICS_PORT,
-                Constants.Cilium.OPERATOR_METRICS_PORT,
-                Constants.Cilium.HUBBLE_METRICS_PORT,
-                // Cassandra storage, TLS storage, JMX, native and TLS native
-                7000,
-                7001,
-                7199,
-                Constants.Stress.DEFAULT_CASSANDRA_PORT,
-                9142,
-                // The stress server's metrics endpoint on app nodes
-                Constants.Stress.PROMETHEUS_PORT,
-            )
-
-        /** A port a config binds: `*_port: N`, `port: N`, or a listen address `host:N`. */
         val CONFIG_PORT =
             Regex(
-                """(?:\b[a-z_]*port["']?\s*[:=]\s*["']?(\d{2,5})\b)|(?:\b(?:0\.0\.0\.0|localhost|127\.0\.0\.1|\[::]):(\d{2,5})\b)""",
+                """(?:\b[a-z_]*port["']?\s*[:=]\s*["']?(\d{2,5})\b)""" +
+                    """|(?:\b(?:0\.0\.0\.0|localhost|127\.0\.0\.1|\[::]):(\d{2,5})\b)""" +
+                    """|(?:[="']:(\d{2,5})\b)""",
             )
+
+        /** The source tree of the manifest builders, read from the project directory Gradle runs tests in. */
+        val CONFIGURATION_SOURCES: Path = Path.of("src/main/kotlin/com/rustyrazorblade/easydblab/configuration")
+
+        /** A builder line that puts a pod on the host network. */
+        val HOST_NETWORK_CALL = Regex("""\bhostNetworked\(\)|withHostNetwork\(true\)""")
+
+        /** Where `hostNetworked()` itself is defined, which no workload is built from. */
+        const val HOST_NETWORK_HELPER = "PodPlacement.kt"
     }
 
     override fun additionalTestModules(): List<Module> =
@@ -121,45 +87,85 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
             },
         )
 
-    /** The packaged reserved list, expanded to single ports. */
-    private fun reservedPorts(): Set<Int> {
-        val line =
-            javaClass
-                .getResource("${Constants.NodeTuning.RESOURCE_DIR}/${Constants.NodeTuning.SYSCTL_FILE}")!!
-                .readText()
-                .lines()
-                .single { it.startsWith("net.ipv4.ip_local_reserved_ports") }
-        return line
+    /** The port a [CONFIG_PORT] match captured, from whichever alternative matched. */
+    private fun portIn(match: MatchResult): Int =
+        match.groupValues
+            .drop(1)
+            .first { it.isNotEmpty() }
+            .toInt()
+
+    /** The packaged reserved list, as written after `=`. */
+    private fun reservedList(): String =
+        javaClass
+            .getResource("${Constants.NodeTuning.RESOURCE_DIR}/${Constants.NodeTuning.SYSCTL_FILE}")!!
+            .readText()
+            .lines()
+            .single { it.startsWith("net.ipv4.ip_local_reserved_ports") }
             .substringAfter("=")
             .trim()
+
+    /** [ports] sorted, with adjacent ports merged into ranges: the form the kernel reads back. */
+    private fun canonical(ports: Set<Int>): String {
+        val ranges = mutableListOf<IntRange>()
+        ports.sorted().forEach { port ->
+            val last = ranges.lastOrNull()
+            if (last != null && port == last.last + 1) {
+                ranges[ranges.lastIndex] = last.first..port
+            } else {
+                ranges += port..port
+            }
+        }
+        return ranges.joinToString(",") { if (it.first == it.last) "${it.first}" else "${it.first}-${it.last}" }
+    }
+
+    /** The packaged reserved list, expanded to single ports. */
+    private fun reservedPorts(): Set<Int> =
+        reservedList()
             .split(",")
             .flatMap { part ->
                 val bounds = part.split("-").map { it.trim().toInt() }
                 (bounds.first()..bounds.last()).toList()
             }.toSet()
-    }
 
+    /** Every workload builder's resources, keyed by the builder's class name. */
     private fun workloads(): Map<String, List<HasMetadata>> {
         val templates: TemplateService = getKoin().get()
+        val compactorJar = CompactorAgentJar("0".repeat(64))
+        val sidecar = SidecarManifestBuilder(templates).buildAllResources("sidecar:test", "10.0.0.1", "test-1", "tenant")
         return mapOf(
-            "loki" to LokiManifestBuilder(templates).buildAllResources(),
-            "mimir" to MimirManifestBuilder(templates).buildAllResources(),
-            "tempo" to TempoManifestBuilder(templates).buildAllResources(),
-            "grafana" to GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2")),
-            "pyroscope" to PyroscopeManifestBuilder(templates).buildAllResources(),
-            "registry" to RegistryManifestBuilder().buildAllResources(),
-            "s3manager" to S3ManagerManifestBuilder(templates).buildAllResources(),
-            "yace" to YaceManifestBuilder(templates).buildAllResources(),
-            "kube-state-metrics" to KubeStateMetricsManifestBuilder().buildAllResources(),
-            "compactor" to CompactorManifestBuilder(templates).buildAllResources(CompactorAgentJar("0".repeat(64)), "eu-west-1"),
-            "otel" to OtelManifestBuilder(templates).buildAllResources(),
-            "journald-otel" to JournaldOtelManifestBuilder(templates).buildAllResources(),
-            "ebpf-exporter" to EbpfExporterManifestBuilder().buildAllResources(),
-            "beyla" to BeylaManifestBuilder(templates).buildAllResources(),
-            "sidecar" to SidecarManifestBuilder(templates).buildAllResources("sidecar:test", "10.0.0.1", "test-1", "tenant"),
-            "stress" to stressJobs(),
+            builder<LokiManifestBuilder>() to LokiManifestBuilder(templates).buildAllResources(),
+            builder<MimirManifestBuilder>() to MimirManifestBuilder(templates).buildAllResources(),
+            builder<TempoManifestBuilder>() to TempoManifestBuilder(templates).buildAllResources(),
+            builder<GrafanaManifestBuilder>() to
+                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2")),
+            builder<PyroscopeManifestBuilder>() to PyroscopeManifestBuilder(templates).buildAllResources(),
+            builder<RegistryManifestBuilder>() to RegistryManifestBuilder().buildAllResources(),
+            builder<S3ManagerManifestBuilder>() to S3ManagerManifestBuilder(templates).buildAllResources(),
+            builder<YaceManifestBuilder>() to YaceManifestBuilder(templates).buildAllResources(),
+            builder<KubeStateMetricsManifestBuilder>() to KubeStateMetricsManifestBuilder().buildAllResources(),
+            builder<CompactorManifestBuilder>() to
+                CompactorManifestBuilder(templates).buildAllResources(compactorJar, "eu-west-1"),
+            builder<OtelManifestBuilder>() to OtelManifestBuilder(templates).buildAllResources(),
+            builder<JournaldOtelManifestBuilder>() to JournaldOtelManifestBuilder(templates).buildAllResources(),
+            builder<EbpfExporterManifestBuilder>() to EbpfExporterManifestBuilder().buildAllResources(),
+            builder<BeylaManifestBuilder>() to BeylaManifestBuilder(templates).buildAllResources(),
+            builder<SidecarManifestBuilder>() to sidecar,
+            builder<StressJobManifestBuilder>() to stressJobs(),
         )
     }
+
+    private inline fun <reified T : Any> builder(): String = T::class.simpleName!!
+
+    /** The builders under configuration/ that put a pod on the host network, by file name. */
+    private fun hostNetworkBuilders(): Set<String> =
+        Files.walk(CONFIGURATION_SOURCES).use { paths ->
+            paths
+                .filter { it.toString().endsWith(".kt") && it.fileName.toString() != HOST_NETWORK_HELPER }
+                .filter { HOST_NETWORK_CALL.containsMatchIn(Files.readString(it)) }
+                .map { it.fileName.toString().removeSuffix(".kt") }
+                .toList()
+                .toSet()
+        }
 
     /** The stress Job and the command Job, both on the host network of an app node. */
     private fun stressJobs(): List<HasMetadata> {
@@ -210,7 +216,7 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
                 val rendered = resources.joinToString("\n") { Serialization.asYaml(it) }
                 CONFIG_PORT
                     .findAll(rendered)
-                    .map { (it.groupValues[1].ifEmpty { it.groupValues[2] }).toInt() }
+                    .map { match -> portIn(match) }
                     .forEach { ports.putIfAbsent(it, name) }
             }
         return ports.filterKeys { it in EPHEMERAL_MIN until Constants.NodeTuning.NODE_PORT_MIN }
@@ -245,6 +251,36 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
 
     @Test
     fun `every host service port is reserved`() {
-        assertThat(reservedPorts()).containsAll(HOST_SERVICE_PORTS)
+        assertThat(reservedPorts()).containsAll(Constants.NodeTuning.HOST_SERVICE_PORTS)
+    }
+
+    // verify compares the kernel's read-back string with the packaged one exactly, so the packaged
+    // list must already be sorted and merged.
+    @Test
+    fun `the packaged reserved list is in the form the kernel reads back`() {
+        assertThat(reservedList()).isEqualTo(canonical(reservedPorts()))
+    }
+
+    @Test
+    fun `the canonical form sorts and merges adjacent ports`() {
+        assertThat(canonical(setOf(9043, 7000, 9042, 7001, 7199, 9044))).isEqualTo("7000-7001,7199,9042-9044")
+    }
+
+    @Test
+    fun `bare listen addresses are scanned for ports`() {
+        val ports =
+            CONFIG_PORT
+                .findAll("args: [\"-listen=:9400\"]\naddr: \":8080\"\nlisten: '0.0.0.0:3100'")
+                .map { match -> portIn(match) }
+                .toList()
+        assertThat(ports).containsExactly(9400, 8080, 3100)
+    }
+
+    @Test
+    fun `every host-network builder is scanned`() {
+        val builders = hostNetworkBuilders()
+        // The source walk must find the builders; an empty result would pass vacuously.
+        assertThat(builders).contains(builder<MimirManifestBuilder>(), builder<StressJobManifestBuilder>())
+        assertThat(workloads().keys).containsAll(builders)
     }
 }

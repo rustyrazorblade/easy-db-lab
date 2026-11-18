@@ -53,6 +53,18 @@ be added to the reserved list. See [Node OS Tuning](../user-guide/node-tuning.md
 | 9965 | Hubble metrics (Prometheus, every node) |
 | 31234 | Hubble UI (NodePort, any node's private IP) |
 
+## Stress Ports (App Nodes)
+
+| Port | Service |
+|------|---------|
+| 9500-9599 | Stress metrics (Prometheus). Each `cassandra stress start` takes the next port, wrapping after 100 runs. Reserved by node tuning. |
+
+## Tailscale
+
+| Port | Service |
+|------|---------|
+| 41641/udp | tailscaled WireGuard (every node that joins the tailnet). Reserved by node tuning. |
+
 ## Kit Ports
 
 Kits publish client ports through NodePort Services, reachable on any node's private IP.

@@ -7,10 +7,28 @@ easy-db-lab, uploaded to each node by setup.
 
 When a value the node supports does not take, setup fails on that node with a line naming the
 setting, the value it wanted and the value it read back, for example
-`ERROR: vm.swappiness: wanted 1, got 60`. `up` reports it as the node's failed setup step.
+`ERROR: vm.swappiness: wanted 1, got 60`. Every value that does not match gets its own line. `up`
+reports it as the node's failed setup step. A sysctl key the kernel rejects fails setup with the
+kernel's message, which names the key.
 
 To check a node by hand, run `sudo edl-node-tuning verify` on it. It prints nothing and exits 0
 when every value matches.
+
+`edl-node-tuning.service` runs the same check at every boot, after it applies the settings. A
+value that drifted after a reboot does not fail the boot. The service logs it to the node's
+journal under the `edl-node-tuning` tag:
+
+```
+journalctl -u edl-node-tuning -b --no-pager -o cat
+```
+
+### When a value does not take
+
+- **The value drifted, or setup was interrupted:** run `setup-instances` again on that node.
+- **A running process has old limits** (`restart <unit> to apply`): restart the named unit.
+- **The node itself is bad:** replace the node.
+- **The value cannot exist on that instance type:** open an issue naming the instance type and
+  the line.
 
 ## Process limits
 
@@ -27,9 +45,11 @@ These limits come from systemd, not from `/etc/security/limits.d`, which only ap
 sessions:
 
 - A drop-in, `/etc/systemd/system/<unit>.service.d/50-easydblab-limits.conf`, sets them for
-  `cassandra`, `cassandra-easy-stress`, `k3s` and `k3s-agent`.
+  `cassandra`, `k3s` and `k3s-agent`.
 - Every pod is a child of the container runtime inside `k3s` or `k3s-agent`, so every kit
-  database gets the same limits.
+  database and every stress run (a Kubernetes Job) gets the same limits. The K3s start scripts
+  also set the kubelet's `max-open-files` to 1048576, because the kubelet inside K3s otherwise
+  lowers the K3s process's open-file limit to 1000000.
 - `/etc/systemd/system.conf.d/50-easydblab-limits.conf` makes them the default for any other
   service.
 - `/etc/security/limits.d/50-easydblab.conf` gives SSH sessions the same limits.
@@ -38,7 +58,13 @@ sessions:
 higher at boot, so setup never writes them.
 
 A service that is already running gets new limits only at its next restart. A re-run of
-`setup-instances` against a live cluster does not restart Cassandra or K3s.
+`setup-instances` against a live cluster does not restart Cassandra or K3s. Instead `verify`
+reads each running unit's own limits from `/proc/<pid>/limits`, and fails with a line that
+names the unit, for example:
+
+```
+ERROR: cassandra running process open files: wanted 1048576, got 65536; restart cassandra to apply
+```
 
 ## Kernel memory and file-system settings
 
@@ -89,6 +115,7 @@ source port, and the listener would then fail to bind it when it restarts. So
   sidecar on db nodes.
 - The stress metrics ports 9500-9599 on app nodes. Each `cassandra stress start` takes the next
   port in that window, and wraps after 100 runs.
+- Tailscale's UDP port 41641.
 
 A reserved port can still be bound explicitly. Only the kernel's automatic source-port choice
 skips it.
@@ -104,19 +131,23 @@ host-network pod, which is the whole observability stack. They do not reach a ki
 pod network, which starts at kernel defaults. Tuning pod network namespaces is follow-up
 [#1202](https://github.com/rustyrazorblade/easy-db-lab/issues/1202). The global keys
 (`netdev_max_backlog`, `rmem_max`, `wmem_max`, `rps_sock_flow_entries`) and the packet steering
-below do reach pods, because pod traffic arrives on the node's ENA interfaces.
+below do reach pods, because pod traffic arrives on the node's physical interfaces.
 
 ## Packet steering and interrupts
 
 - `irqbalance` runs on every node with more than one CPU. There is no manual IRQ pinning.
-- Every ENA interface has receive packet steering (RPS) and receive flow steering (RFS) on:
+- Every physical network interface has receive packet steering (RPS) and receive flow steering
+  (RFS) on. A physical interface is one backed by a device; `lo`, `veth`, `cilium_*`, `lxc*` and
+  `tailscale0` are not.
   - every receive queue steers to every CPU;
   - `net.core.rps_sock_flow_entries` is 32768;
   - each queue's flow count is 32768 divided by the number of queues, rounded up to a power of
     two as the kernel stores it (3 queues get 16384 each).
-- A udev rule applies the same settings to an ENA interface that appears later, such as a
+- A udev rule applies the same settings to a physical interface that appears later, such as a
   secondary ENI that Cilium attaches for pod IPs. The rule file is `90-easydblab.rules`: it runs
   after udev gives the new interface its final name (`eth0` becomes `ens6`).
+- A second rule steers the interface again when its receive queues change, for example after
+  `ethtool -L`, because each queue's flow count depends on the queue count.
 
 ## CPU frequency and idle states
 
@@ -125,17 +156,25 @@ Where the instance exposes them:
 - Every CPU uses the `performance` governor.
 - Every idle state deeper than C1 is disabled.
 
+C1 is the idle state named `C1` (or `C1_ACPI`). Where no state has that name, C1 is the first
+state that is not `POLL`: `HALT` on older x86 kernels, and `WFI` on arm64. So on Graviton `.metal`
+`cpu-sleep` is disabled and `WFI` stays on.
+
 Most EC2 instance types expose neither, including the defaults (`i4i.xlarge`, `c6id.2xlarge`,
 `m5d.xlarge`) and all Graviton types. Only some whole-socket and `.metal` sizes have processor
-state control. On a node without them, setup logs one line per skipped setting, naming the node
-and the instance type, and carries on:
+state control. On a node without them, the tuning service logs one line per skipped setting,
+naming the node and the instance type (from the cluster state), and carries on:
 
 ```
 edl-node-tuning: skipped CPU governor on db0: i4i.xlarge exposes no frequency scaling
 edl-node-tuning: skipped CPU idle states on db0: i4i.xlarge exposes no idle states
 ```
 
-The same lines go to the journal under the `edl-node-tuning` tag.
+These lines come from `edl-node-tuning.service`, so they are in the node's journal. Setup prints
+the service's lines from its own run after it starts the service, prefixed with
+`edl-node-tuning.service:`. Later boots log them only to the journal. The node's log collector
+does not ship journal lines from before it started, so lines from setup and early boot are only
+on the node itself. Read them with `journalctl -u edl-node-tuning -b --no-pager -o cat`.
 
 ## Persistence
 
@@ -143,6 +182,6 @@ The same lines go to the journal under the `edl-node-tuning` tag.
 |---|---|
 | Kernel settings | `/etc/sysctl.d/60-easydblab.conf`, applied by systemd at every boot |
 | Process limits | systemd drop-ins and `system.conf.d` |
-| Disk scheduler and readahead, ENA packet steering | `/etc/udev/rules.d/90-easydblab.rules`, applied whenever a device appears |
-| Transparent huge pages, CPU governor and idle states | `edl-node-tuning.service`, a oneshot that runs before K3s and the database at every boot |
+| Disk scheduler and readahead, packet steering | `/etc/udev/rules.d/90-easydblab.rules`, applied whenever a device or a receive queue appears |
+| Transparent huge pages, CPU governor and idle states | `edl-node-tuning.service`, a oneshot that runs before K3s and the database at every boot, then checks every value |
 | `noatime` | the `/mnt/db1` line in `/etc/fstab` |

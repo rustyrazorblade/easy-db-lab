@@ -5,13 +5,13 @@ easy-db-lab clusters exist so that test results transfer to real, production dat
 ## What Changes
 
 - **Packaged node-tuning files.**  The distribution carries a small set of tuning files as classpath resources: one sysctl drop-in, one systemd service limits drop-in, one systemd manager drop-in (`DefaultLimit*`), one PAM limits file, one udev rule, and a boot-time tuning script with its oneshot unit.  `up` and `setup-instances` stage them on every node (db, app, control) before `setup_instance.sh` runs; `setup_instance.sh` installs and applies them.  No AMI bake.
-- **Limits.**  `LimitNOFILE=1048576`, `LimitMEMLOCK=infinity`, `LimitNPROC=infinity`, `LimitAS=infinity` for `cassandra.service`, `cassandra-easy-stress.service`, `k3s.service` and `k3s-agent.service` (every kit database runs in a pod under K3s's containerd), and the same values as systemd's `DefaultLimit*`.  The PAM file gives interactive sessions the same values.
+- **Limits.**  `LimitNOFILE=1048576`, `LimitMEMLOCK=infinity`, `LimitNPROC=infinity`, `LimitAS=infinity` for `cassandra.service`, `k3s.service` and `k3s-agent.service` (every kit database and every stress run, a K8s Job, runs in a pod under K3s's containerd), and the same values as systemd's `DefaultLimit*`.  The PAM file gives interactive sessions the same values.
 - **inotify** (closes #1087): `max_user_instances = 8192`, `max_user_watches = 1048576`.
 - **Memory:** THP `madvise`, defrag `never`; `vm.max_map_count` kept; `vm.swappiness = 1`; fixed `vm.dirty_background_bytes` / `vm.dirty_bytes`; `vm.zone_reclaim_mode = 0` and the perf `kernel.*` sysctls persisted.
 - **Network:** `somaxconn` and `tcp_max_syn_backlog` 65535, `netdev_max_backlog` 250000, 16 MiB socket buffers with matching `tcp_rmem`/`tcp_wmem`, keepalive 60 s / 10 s / 3 probes, `tcp_slow_start_after_idle = 0`, `tcp_tw_reuse = 1`, `ip_local_port_range = 1024 65535` with the NodePort range and the cluster's fixed listener ports reserved in `ip_local_reserved_ports`.
 - **Disk:** the data disk is mounted `noatime`; NVMe scheduler `none` and 4 KiB readahead through the udev rule (replaces the run-time `blockdev --setra`); `fs.aio-max-nr = 1048576`.
 - **CPU:** `kernel.numa_balancing = 0`; `performance` governor and shallow C-states where the instance exposes them, otherwise a logged skip.
-- **IRQ:** `irqbalance` kept and enabled; RPS/RFS on every ENA interface, including the secondary ENIs Cilium attaches at run time.
+- **IRQ:** `irqbalance` kept and enabled; RPS/RFS on every physical interface, including the secondary ENIs Cilium attaches at run time.
 - Replaces `/etc/sysctl.d/60-cassandra.conf` and `/etc/security/limits.d/cassandra.conf`.
 - Every value survives a reboot.  A tuning step that fails fails the node's setup.
 - **Docs:** a new user-guide page lists every value and why.

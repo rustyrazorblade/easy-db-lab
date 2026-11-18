@@ -239,6 +239,7 @@ class StressStart : PicoBaseCommand() {
         return args
     }
 
+    /** How a stress run picks its metrics port, shared with the node tuning reserved-port test. */
     companion object {
         /**
          * The stress metrics port for the [counter]th run: the next port in the reserved window
@@ -246,6 +247,9 @@ class StressStart : PicoBaseCommand() {
          * [Constants.Stress.PROMETHEUS_PORT_COUNT] runs. A port outside the window could be handed to
          * an outbound connection as its source port, and the run could not bind it.
          */
-        internal fun promPortFor(counter: Int): Int = Constants.Stress.PROMETHEUS_PORT + counter % Constants.Stress.PROMETHEUS_PORT_COUNT
+        internal fun promPortFor(counter: Int): Int {
+            val offset = counter % Constants.Stress.PROMETHEUS_PORT_COUNT
+            return Constants.Stress.PROMETHEUS_PORT + offset
+        }
     }
 }

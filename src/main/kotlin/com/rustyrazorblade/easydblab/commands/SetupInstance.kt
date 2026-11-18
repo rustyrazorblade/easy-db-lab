@@ -40,7 +40,7 @@ class SetupInstance : PicoBaseCommand() {
             reported { nodeSetupService.setupDatabase(it.toHost(), context) }
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") {
-            reported { nodeSetupService.setupControl(it.toHost()) }
+            reported { nodeSetupService.setupControl(it.toHost(), context) }
         }
     }
 

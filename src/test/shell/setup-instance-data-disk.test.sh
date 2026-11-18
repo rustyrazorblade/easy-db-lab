@@ -83,7 +83,7 @@ EOF
 #!/bin/bash
 echo "mount \$*" >> "${WORK}/calls.log"
 [ "\${MOUNT_FAILS:-0}" = 1 ] && exit 32
-case " \$* " in *" remount,"*) exit 0 ;; esac
+case " \$* " in *" remount,"*) [ "\${REMOUNT_FAILS:-0}" = 1 ] && exit 32; exit 0 ;; esac
 dev="\${@: -2:1}"
 if [ "\${MOUNT_ON_ROOT:-0}" = 1 ]; then echo /dev/nvme0n1p1 > "${WORK}/mounted"; else echo "\$dev" > "${WORK}/mounted"; fi
 EOF
@@ -251,6 +251,18 @@ if grep -q '^mount -o remount,noatime /mnt/db1$' "${WORK}/calls.log" &&
   pass "a re-run remounts the data disk noatime and rewrites its one fstab entry"
 else
   fail "a re-run should remount noatime and rewrite fstab once, got: $(cat "${WORK}/calls.log")"
+fi
+
+# --- a re-run whose noatime remount fails stops setup, naming it ---
+setup "$(lsblk_json ',
+  {"name": "nvme1n1", "type": "disk", "mountpoints": ["/mnt/db1"]}')"
+echo /dev/nvme1n1 > "${WORK}/mounted"
+OUTPUT="$(FS_TYPE=xfs REMOUNT_FAILS=1 run_mount)"
+STATUS=$?
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"ERROR: remounting /mnt/db1 with noatime failed"* ]]; then
+  pass "a failed noatime remount fails setup, naming the mount"
+else
+  fail "a failed remount should fail setup, got ${STATUS}: ${OUTPUT}"
 fi
 
 # --- on_root_disk: a partition belongs to the root disk, a disk with a longer name does not ---

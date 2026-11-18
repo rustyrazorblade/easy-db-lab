@@ -2,23 +2,33 @@
 #
 # easy-db-lab node tuning: the settings no config file persists, and a read-back of all of them.
 #
-#   edl-node-tuning apply        transparent huge pages, CPU governor and idle states, and packet
-#                                steering on every ENA interface. Run by edl-node-tuning.service at
-#                                boot and by setup_instance.sh at setup.
-#   edl-node-tuning rps <iface>  packet steering on one interface. Run by udev when an ENA
-#                                interface appears, such as a secondary ENI the CNI attaches later.
-#   edl-node-tuning verify       reads back every value node setup applies. Prints one
-#                                "ERROR: <setting>: wanted <x>, got <y>" line per mismatch and
-#                                exits 1 when there is any.
+#   edl-node-tuning apply              transparent huge pages, CPU governor and idle states, and
+#                                      packet steering on every physical network interface. Run
+#                                      by edl-node-tuning.service at boot and at setup.
+#   edl-node-tuning rps <iface>        packet steering on one interface. Run by udev when a
+#                                      physical interface appears, such as a secondary ENI the
+#                                      CNI attaches later.
+#   edl-node-tuning rps-queue <path>   packet steering again on the interface that owns the
+#                                      receive queue at sysfs path <path>. Run by udev when a
+#                                      receive queue is added or removed (ethtool -L).
+#   edl-node-tuning verify             reads back every value node setup applies. Prints one
+#                                      "ERROR: <setting>: wanted <x>, got <y>" line per mismatch
+#                                      and exits 1 when there is any.
 #
 # CPU frequency and idle states are tuned only where the instance exposes them; otherwise apply
-# logs one line naming the node, the instance type and what it skipped, and carries on.
+# logs one line naming the node, the instance type and what it skipped, and carries on. The
+# instance type is EDL_INSTANCE_TYPE, else the value setup wrote to /etc/default/edl-node-tuning
+# from the cluster state.
+#
+# Every line it prints also goes to the journal under the edl-node-tuning tag. When systemd runs
+# it, its output already is the journal, so each line is written there once.
 #
 # The paths are overridable only so edl-node-tuning.test.sh can run this against a fake sysfs.
 
 SYS="${EDL_SYS_ROOT:-/sys}"
 PROC="${EDL_PROC_ROOT:-/proc}"
 SYSCTL_CONF="${EDL_SYSCTL_CONF:-/etc/sysctl.d/60-easydblab.conf}"
+DEFAULTS="${EDL_DEFAULTS:-/etc/default/edl-node-tuning}"
 
 THP_ENABLED=madvise
 THP_DEFRAG=never
@@ -30,30 +40,29 @@ DISK_READAHEAD_KB=4
 DISK_SCHEDULER=none
 
 # The units node setup gives the service limits, when they are installed on this node.
-LIMITED_UNITS="cassandra cassandra-easy-stress k3s k3s-agent"
+LIMITED_UNITS="cassandra k3s k3s-agent"
 
-say() {
-  echo "edl-node-tuning: $*"
-  command -v logger > /dev/null 2>&1 && logger -t edl-node-tuning "$*"
+# Sends [line] to the journal under the edl-node-tuning tag, unless the output already goes there
+# (systemd sets JOURNAL_STREAM for a unit whose output is the journal).
+journal() {
+  [ -z "${JOURNAL_STREAM:-}" ] && command -v logger > /dev/null 2>&1 && logger -t edl-node-tuning "$1"
   return 0
 }
 
-# The instance type from instance metadata (IMDSv2), or "unknown instance type". Looked up once
-# per run and kept in INSTANCE_TYPE, so several skip lines cost one metadata round trip.
-INSTANCE_TYPE="${EDL_INSTANCE_TYPE:-}"
+say() {
+  echo "edl-node-tuning: $*"
+  journal "$*"
+}
+
+# The node's instance type as node setup read it from the cluster state: EDL_INSTANCE_TYPE, else
+# the value setup wrote to $DEFAULTS, else "unknown instance type".
 instance_type() {
-  if [ -z "$INSTANCE_TYPE" ]; then
-    token=$(curl -s -m 2 -X PUT http://169.254.169.254/latest/api/token \
-      -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2> /dev/null)
-    INSTANCE_TYPE=$(curl -s -m 2 -H "X-aws-ec2-metadata-token: $token" \
-      http://169.254.169.254/latest/meta-data/instance-type 2> /dev/null)
-    INSTANCE_TYPE="${INSTANCE_TYPE:-unknown instance type}"
-  fi
+  found="${EDL_INSTANCE_TYPE:-$(sed -n 's/^EDL_INSTANCE_TYPE=//p' "$DEFAULTS" 2> /dev/null)}"
+  echo "${found:-unknown instance type}"
 }
 
 skip() {
-  instance_type
-  say "skipped $1 on $(hostname): $INSTANCE_TYPE $2"
+  say "skipped $1 on $(hostname): $(instance_type) $2"
 }
 
 # Writes [value] to [file]; a write the kernel refuses is reported by verify, not here.
@@ -124,22 +133,42 @@ wait_for_queues() {
   done
 }
 
-rps() {
-  iface="$1"
-  [ -n "$iface" ] || { echo "usage: edl-node-tuning rps <iface>" >&2; return 1; }
-  wait_for_queues "$iface"
+# Every receive queue of [iface] steers to every CPU, with its share of the flow table.
+steer() {
   mask=$(rps_mask)
-  flows=$(flow_count "$iface")
-  for q in $(rx_queues "$iface"); do
+  flows=$(flow_count "$1")
+  for q in $(rx_queues "$1"); do
     put "$q/rps_cpus" "$mask"
     put "$q/rps_flow_cnt" "$flows"
   done
 }
 
-ena_links() {
+rps() {
+  iface="$1"
+  [ -n "$iface" ] || { echo "usage: edl-node-tuning rps <iface>" >&2; return 1; }
+  wait_for_queues "$iface"
+  steer "$iface"
+}
+
+# A changed queue count (ethtool -L adds or removes rx-N queues and sends no event for the
+# interface) changes every queue's flow share, so the whole interface is steered again. [path] is
+# the queue's sysfs path, /devices/.../net/<iface>/queues/rx-N. When that interface no longer
+# exists under that name (udev has renamed it since the queue appeared), its own add event steers
+# it, and nothing is done here.
+rps_queue() {
+  path="$1"
+  [ -n "$path" ] || { echo "usage: edl-node-tuning rps-queue <path>" >&2; return 1; }
+  iface="${path%/queues/*}"
+  iface="${iface##*/}"
+  [ -d "$SYS/class/net/$iface/queues" ] || return 0
+  steer "$iface"
+}
+
+# The physical network interfaces: every link with a device behind it (an ENA, gve or virtio NIC).
+# Virtual links (lo, veth, cilium_*, lxc*, tailscale0) have none.
+physical_links() {
   for link in "$SYS/class/net"/*; do
-    driver=$(readlink "$link/device/driver" 2> /dev/null)
-    [ "${driver##*/}" = ena ] && echo "${link##*/}"
+    [ -e "$link/device" ] && echo "${link##*/}"
   done
 }
 
@@ -148,14 +177,20 @@ cpus() {
 }
 
 # The exit latency of C1, the shallowest real idle state: the state named C1 (C1_ACPI on some
-# kernels), else the first state after POLL.
+# kernels), else the first state that is not POLL (HALT on an x86 VM, WFI on arm64, which has
+# no POLL).
 c1_latency() {
   for state in "$SYS/devices/system/cpu/cpu0/cpuidle"/state*; do
     case "$(cat "$state/name" 2> /dev/null)" in
       C1 | C1_ACPI | C1-*) cat "$state/latency"; return ;;
     esac
   done
-  cat "$SYS/devices/system/cpu/cpu0/cpuidle/state1/latency" 2> /dev/null || echo 0
+  for state in "$SYS/devices/system/cpu/cpu0/cpuidle"/state*; do
+    [ "$(cat "$state/name" 2> /dev/null)" = POLL ] && continue
+    cat "$state/latency"
+    return
+  done
+  echo 0
 }
 
 # The idle states of [cpu] deeper than C1, one directory per line.
@@ -193,13 +228,17 @@ apply() {
     skip "CPU idle states" "exposes no idle states"
   fi
 
-  for iface in $(ena_links); do rps "$iface"; done
+  for iface in $(physical_links); do rps "$iface"; done
 }
 
 FAILED=0
 
+# Prints and journals the ERROR line for setting [1]: wanted [2], got [3], and [4], what to do
+# about it, when there is something to say.
 mismatch() {
-  echo "ERROR: $1: wanted $2, got $3"
+  line="ERROR: $1: wanted $2, got $3${4:+; $4}"
+  echo "$line"
+  journal "$line"
   FAILED=1
 }
 
@@ -226,11 +265,36 @@ verify_sysctls() {
     key=$(echo "$key" | tr -d ' ')
     value=$(echo "$value" | sed 's/^ *//; s/ *$//' | tr -s ' ')
     actual=$(read_sysctl "$key")
-    [ "$actual" = "$value" ] || echo "ERROR: $key: wanted $value, got ${actual:-nothing}"
+    [ "$actual" = "$value" ] || mismatch "$key" "$value" "${actual:-nothing}"
+  done
+}
+
+# Process [1]'s limit [2] ("open files", "locked memory") from its /proc limits: the soft value,
+# followed by the hard one when the two differ.
+process_limit() {
+  awk -v name="Max $2" 'index($0, name) == 1 {
+    split(substr($0, length(name) + 1), f, " ")
+    print (f[1] == f[2] ? f[1] : f[1] " (hard " f[2] ")")
+  }' "$PROC/$1/limits" 2> /dev/null
+}
+
+# A running service keeps the limits it started with, whatever its drop-in says now, so for an
+# active unit [1] the limits are read from its main process. Nothing restarts it here.
+verify_running_limits() {
+  [ "$(systemctl show -p ActiveState --value "$1.service")" = active ] || return 0
+  pid=$(systemctl show -p MainPID --value "$1.service")
+  [ -n "$pid" ] && [ "$pid" != 0 ] || return 0
+  for row in "open files:$SERVICE_NOFILE" "locked memory:unlimited"; do
+    limit="${row%%:*}"
+    wanted="${row#*:}"
+    got=$(process_limit "$pid" "$limit")
+    [ "$got" = "$wanted" ] ||
+      mismatch "$1 running process $limit" "$wanted" "${got:-nothing}" "restart $1 to apply"
   done
 }
 
 verify() {
+  # verify_sysctls reads in a pipeline, a subshell that cannot set FAILED; its output tells.
   errors=$(verify_sysctls)
   if [ -n "$errors" ]; then
     echo "$errors"
@@ -260,7 +324,7 @@ verify() {
   fi
 
   mask=$(normal_mask "$(rps_mask)")
-  for iface in $(ena_links); do
+  for iface in $(physical_links); do
     flows=$(flow_count "$iface")
     for q in $(rx_queues "$iface"); do
       check "$iface ${q##*/} rps_cpus" "$mask" "$(normal_mask "$(cat "$q/rps_cpus" 2> /dev/null)")"
@@ -291,6 +355,7 @@ verify() {
     [ "$(systemctl show -p LoadState --value "$unit.service")" = loaded ] || continue
     check "$unit LimitNOFILE" "$SERVICE_NOFILE" "$(systemctl show -p LimitNOFILE --value "$unit.service")"
     check "$unit LimitMEMLOCK" infinity "$(systemctl show -p LimitMEMLOCK --value "$unit.service")"
+    verify_running_limits "$unit"
   done
 
   return "$FAILED"
@@ -299,9 +364,10 @@ verify() {
 case "${1:-}" in
   apply) apply ;;
   rps) rps "${2:-}" ;;
+  rps-queue) rps_queue "${2:-}" ;;
   verify) verify ;;
   *)
-    echo "usage: edl-node-tuning apply | rps <iface> | verify" >&2
+    echo "usage: edl-node-tuning apply | rps <iface> | rps-queue <path> | verify" >&2
     exit 2
     ;;
 esac

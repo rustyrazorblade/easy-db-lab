@@ -40,7 +40,8 @@ class NodeTuningFiles(
     ) {
         val resource = "$resourceDir/$name"
         val content =
-            NodeTuningFiles::class.java.getResourceAsStream(resource) ?: error("Node tuning file missing from the distribution: $resource")
+            NodeTuningFiles::class.java.getResourceAsStream(resource)
+                ?: error("Node tuning file missing from the distribution: $resource")
         content.use { input -> Files.newOutputStream(target).use { output -> input.copyTo(output) } }
     }
 }

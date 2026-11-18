@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.RegisterExtension
 import org.junit.jupiter.api.extension.TestWatcher
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTime
 
@@ -38,7 +39,12 @@ class NodeCleanupIntegrationTest {
             context: ExtensionContext,
             cause: Throwable?,
         ) {
-            System.err.println("K3s log tail after ${context.displayName} failed:\n${SharedK3s.logTail()}")
+            val tail = SharedK3s.logTail(LOG_TAIL_CHARS)
+            val relevant = tail.lines().filter { RELEVANT_LOG_LINE.containsMatchIn(it) }.joinToString("\n")
+            System.err.println(
+                "K3s log lines about the nodes, wrangler or the node controller after ${context.displayName} failed:\n$relevant\n" +
+                    "K3s log tail:\n$tail",
+            )
         }
     }
 
@@ -147,6 +153,10 @@ class NodeCleanupIntegrationTest {
                 afterDelete = {
                     SharedK3s.client().use { client ->
                         release(client.nodes().withName(alias))
+                        client
+                            .nodes()
+                            .withName(alias)
+                            .waitUntilCondition({ it == null }, OLD_NODE_GONE_SECONDS, TimeUnit.SECONDS)
                         replacementUid =
                             client
                                 .nodes()
@@ -213,22 +223,34 @@ class NodeCleanupIntegrationTest {
         resource.patch(PatchContext.of(PatchType.JSON), """[{"op":"add","path":"$path","value":$value}]""")
     }
 
-    /** Removes [HOLD_FINALIZER] and nothing else. A merge patch carries no resourceVersion, so K3s's own writes cannot conflict with it. */
+    /**
+     * Removes [HOLD_FINALIZER] and nothing else, with a JSON patch that tests the entry it removes,
+     * so a finalizer K3s removed or added meanwhile is not lost; a failed test reads the list again.
+     */
     private fun <T : HasMetadata> release(resource: Resource<T>) {
-        try {
-            val kept = finalizersOf(resource) - HOLD_FINALIZER
-            val json = if (kept.isEmpty()) "null" else kept.joinToString(",", "[", "]") { "\"$it\"" }
-            resource.patch(PatchContext.of(PatchType.JSON_MERGE), """{"metadata":{"finalizers":$json}}""")
-        } catch (e: KubernetesClientException) {
-            // The object finished deleting before the patch; nothing is left to release.
-            if (e.code != Constants.HttpStatus.NOT_FOUND) throw e
+        repeat(RELEASE_ATTEMPTS) {
+            val index = finalizersOf(resource).indexOf(HOLD_FINALIZER)
+            if (index < 0) return
+            val path = "/metadata/finalizers/$index"
+            val ops =
+                """[{"op":"test","path":"$path","value":"$HOLD_FINALIZER"},{"op":"remove","path":"$path"}]"""
+            try {
+                resource.patch(PatchContext.of(PatchType.JSON), ops)
+                return
+            } catch (e: KubernetesClientException) {
+                // 404: the object finished deleting. Any other failure is a lost race on the list.
+                if (e.code == Constants.HttpStatus.NOT_FOUND) return
+            }
         }
+        error("could not remove $HOLD_FINALIZER from ${resource.get()?.metadata?.name}")
     }
 
     private companion object {
         const val HOLD_FINALIZER = "easydblab.test/hold"
         const val REPLACE_WAIT_SECONDS = 30L
         const val HELD_WAIT_SECONDS = 3L
+        const val RELEASE_ATTEMPTS = 5
+        const val OLD_NODE_GONE_SECONDS = 20L
         const val LOG_TAIL_CHARS = 64_000
         val RELEVANT_LOG_LINE = Regex("wrangler|node-controller|\\bdb\\d+")
     }

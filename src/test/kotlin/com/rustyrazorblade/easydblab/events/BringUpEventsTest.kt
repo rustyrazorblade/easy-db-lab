@@ -123,4 +123,47 @@ class BringUpEventsTest {
                 "Every instance is kept; run up again after fixing the cause.",
         )
     }
+
+    @Test
+    fun `a failed node shows its last output indented under the failure line`() {
+        val event =
+            Event.Provision.NodeFailed(
+                "db7",
+                "setup",
+                "exit 1",
+                "i-0abc",
+                instanceKept = false,
+                outputTail = listOf("Installing packages", "E: Unable to locate package foo"),
+            )
+
+        assertThat(event.toDisplayString()).isEqualTo(
+            """
+            db7 failed at setup: exit 1 (i-0abc terminated)
+            last output of db7:
+                Installing packages
+                E: Unable to locate package foo
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `a failed control node and a failed instance setup show their last output`() {
+        val control = Event.Provision.ControlNodeFailed("control0", "k3s", "exit 1", outputTail = listOf("k3s: bad flag"))
+        val setup = Event.Provision.InstanceSetupFailed("db0", "exit 2", outputTail = listOf("disk not found"))
+
+        assertThat(control.toDisplayString()).endsWith("fixing the cause.\nlast output of control0:\n    k3s: bad flag")
+        assertThat(setup.toDisplayString()).isEqualTo("Instance setup failed on db0: exit 2\nlast output of db0:\n    disk not found")
+    }
+
+    @Test
+    fun `the output tail survives a round trip through JSON`() {
+        val envelope =
+            EventEnvelope(
+                event = Event.Provision.NodeFailed("db1", "setup", "exit 1", "i-1", true, listOf("a", "b")),
+                timestamp = "2026-01-01T00:00:00.000Z",
+                commandName = "up",
+            )
+
+        assertThat(EventEnvelope.fromJson(EventEnvelope.toJson(envelope))).isEqualTo(envelope)
+    }
 }

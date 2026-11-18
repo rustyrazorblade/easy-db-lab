@@ -2,9 +2,9 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.output.NodeOutput
+import com.rustyrazorblade.easydblab.ssh.RemoteOutputSink
 import com.rustyrazorblade.easydblab.ssh.Response
 import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -30,7 +30,7 @@ class DefaultRemoteOperationsService(
     retryConfig: RetryConfig = defaultRetryConfig,
 ) : RemoteOperationsService,
     KoinComponent {
-    private val eventBus: EventBus by inject()
+    private val nodeOutput: NodeOutput by inject()
 
     companion object {
         private val log = KotlinLogging.logger {}
@@ -90,7 +90,8 @@ class DefaultRemoteOperationsService(
         log.debug {
             "Executing command on ${host.alias}: ${if (secret) "[REDACTED]" else redactUrlCredentials(command)}"
         }
-        return withRetry(host) { connectionProvider.getConnection(host).executeRemoteCommand(command, output, secret) }
+        val sink = if (output) RemoteOutputSink { stream, line -> nodeOutput.line(host.alias, stream, line) } else null
+        return withRetry(host) { connectionProvider.getConnection(host).executeRemoteCommand(command, sink, secret) }
     }
 
     override fun upload(
@@ -99,6 +100,7 @@ class DefaultRemoteOperationsService(
         remote: String,
     ) {
         log.info { "Uploading $local to ${host.alias}:$remote" }
+        nodeOutput.notice(host.alias, "uploading $local to $remote")
         withRetry(host) {
             connectionProvider.getConnection(host).uploadFile(local, remote)
         }
@@ -110,7 +112,7 @@ class DefaultRemoteOperationsService(
         remoteDir: String,
     ) {
         log.info { "Uploading directory $localDir to ${host.alias}:$remoteDir" }
-        eventBus.emit(Event.Ssh.UploadingDirectory(localDir.toString(), remoteDir))
+        nodeOutput.notice(host.alias, "uploading $localDir to $remoteDir")
         withRetry(host) {
             connectionProvider.getConnection(host).uploadDirectory(localDir, remoteDir)
         }

@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.providers.ssh
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
+import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.resilience4j.retry.RetryConfig
 import org.apache.sshd.common.SshException
@@ -16,6 +18,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.koin.core.module.Module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
@@ -82,7 +85,7 @@ class DefaultRemoteOperationsServiceTest :
     fun `test getRemoteVersion from current symlink`() {
         // Given the remote command will return a path to version 5.0
         whenever(
-            mockSSHClient.executeRemoteCommand(eq("readlink -f /usr/local/cassandra/current"), any(), any()),
+            mockSSHClient.executeRemoteCommand(eq("readlink -f /usr/local/cassandra/current"), anyOrNull(), any()),
         ).thenReturn(Response(TEST_VERSION_PATH))
 
         // When getting the current version
@@ -174,7 +177,7 @@ class DefaultRemoteOperationsServiceTest :
         // Given a command to execute
         val command = "ls -la"
         val expectedOutput = "file1\nfile2\n"
-        whenever(mockSSHClient.executeRemoteCommand(eq(command), any(), any())).thenReturn(Response(expectedOutput))
+        whenever(mockSSHClient.executeRemoteCommand(eq(command), anyOrNull(), any())).thenReturn(Response(expectedOutput))
 
         // When executing the command
         val result = service.executeRemotely(host, command)
@@ -196,14 +199,14 @@ class DefaultRemoteOperationsServiceTest :
             )
         // doAnswer, not thenThrow: Kotlin emits no `throws` clause, so Mockito rejects stubbing a
         // checked exception on this method even though it propagates fine at runtime.
-        doAnswer { throw failure }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+        doAnswer { throw failure }.whenever(mockSSHClient).executeRemoteCommand(eq(command), anyOrNull(), any())
 
         assertThatThrownBy { service.executeRemotely(host, command) }
             .isInstanceOf(RemoteCommandFailedException::class.java)
             .hasMessageContaining("ERROR: Ant build failed")
 
         // A deterministic command failure must run once — re-running a failed build wastes minutes
-        verify(mockSSHClient, times(1)).executeRemoteCommand(eq(command), any(), any())
+        verify(mockSSHClient, times(1)).executeRemoteCommand(eq(command), anyOrNull(), any())
     }
 
     @Test
@@ -213,10 +216,10 @@ class DefaultRemoteOperationsServiceTest :
         doAnswer {
             attempts++
             if (attempts < 3) error("connection reset") else Response("1")
-        }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+        }.whenever(mockSSHClient).executeRemoteCommand(eq(command), anyOrNull(), any())
 
         assertThat(service.executeRemotely(host, command).text).isEqualTo("1")
-        verify(mockSSHClient, times(3)).executeRemoteCommand(eq(command), any(), any())
+        verify(mockSSHClient, times(3)).executeRemoteCommand(eq(command), anyOrNull(), any())
     }
 
     /**
@@ -230,7 +233,7 @@ class DefaultRemoteOperationsServiceTest :
         doAnswer {
             attempts++
             if (attempts < 3) throw SshException("Connection refused") else Response("1")
-        }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+        }.whenever(mockSSHClient).executeRemoteCommand(eq(command), anyOrNull(), any())
 
         assertThat(fastRetryService().executeRemotely(host, command).text).isEqualTo("1")
         assertThat(attempts).isEqualTo(3)
@@ -258,6 +261,61 @@ class DefaultRemoteOperationsServiceTest :
         verify(mockSSHConnectionProvider, never()).discard(any())
     }
 
+    /** A service over [MockSSHClient], which feeds its configured output into the sink it is given. */
+    private fun serviceOver(client: MockSSHClient): DefaultRemoteOperationsService {
+        val provider = mock<SSHConnectionProvider>()
+        whenever(provider.getConnection(any())).thenReturn(client)
+        return DefaultRemoteOperationsService(provider)
+    }
+
+    private val nodeOutput: RecordingNodeOutput get() = getKoin().get()
+
+    /** A host with an alias, as every cluster host has; the node output tags its lines with it. */
+    private val namedHost get() = host.copy(alias = TEST_HOST_NAME)
+
+    @Test
+    fun `a command's output lines reach the node output tagged with the host alias`() {
+        val client =
+            MockSSHClient().apply {
+                commandOutput = "step one\nstep two\n"
+                commandStderr = "warning: slow\n"
+            }
+
+        val response = serviceOver(client).executeRemotely(namedHost, "sudo bash setup_instance.sh")
+
+        assertThat(nodeOutput.stdout).containsExactly("[$TEST_HOST_NAME] step one", "[$TEST_HOST_NAME] step two")
+        assertThat(nodeOutput.stderr).containsExactly("[$TEST_HOST_NAME] warning: slow")
+        assertThat(nodeOutput.tail(TEST_HOST_NAME)).containsExactly("step one", "step two", "warning: slow")
+        assertThat(response.text).isEqualTo("step one\nstep two\n")
+    }
+
+    @Test
+    fun `a command run without output reaches no node output`() {
+        val client = MockSSHClient().apply { commandOutput = "quiet\n" }
+
+        serviceOver(client).executeRemotely(namedHost, "readlink -f x", output = false)
+
+        assertThat(nodeOutput.printed).isEmpty()
+        assertThat(nodeOutput.tail(TEST_HOST_NAME)).isEmpty()
+    }
+
+    @Test
+    fun `an upload prints one notice and a directory upload prints one notice in total`(
+        @TempDir localDir: File,
+    ) {
+        File(localDir, "a").writeText("a")
+        File(localDir, "b").writeText("b")
+        val service = serviceOver(MockSSHClient())
+
+        service.upload(namedHost, File(localDir, "a").toPath(), "/tmp/a")
+        service.uploadDirectory(namedHost, localDir, "/tmp/dir")
+
+        assertThat(nodeOutput.stdout).containsExactly(
+            "[$TEST_HOST_NAME] uploading ${File(localDir, "a")} to /tmp/a",
+            "[$TEST_HOST_NAME] uploading $localDir to /tmp/dir",
+        )
+    }
+
     /** The production retry policy with a 1ms wait, so retries run without the 2s production pause. */
     private fun fastRetryService() =
         DefaultRemoteOperationsService(
@@ -268,8 +326,8 @@ class DefaultRemoteOperationsServiceTest :
     /** Stubs the staging command to return a fixed path and every other command to succeed silently. */
     private fun stubStaging(): String {
         val staging = "/mnt/db1/grafana/dashboards.staging.k3Xq9z"
-        whenever(mockSSHClient.executeRemoteCommand(any(), any(), any())).thenReturn(Response(""))
-        whenever(mockSSHClient.executeRemoteCommand(argThat { startsWith("d=\$(sudo mktemp") }, any(), any()))
+        whenever(mockSSHClient.executeRemoteCommand(any(), anyOrNull(), any())).thenReturn(Response(""))
+        whenever(mockSSHClient.executeRemoteCommand(argThat { startsWith("d=\$(sudo mktemp") }, anyOrNull(), any()))
             .thenReturn(Response("$staging\n"))
         return staging
     }
@@ -287,10 +345,10 @@ class DefaultRemoteOperationsServiceTest :
 
         val commands = argumentCaptor<String>()
         val order = inOrder(mockSSHClient)
-        order.verify(mockSSHClient).executeRemoteCommand(commands.capture(), any(), any())
+        order.verify(mockSSHClient).executeRemoteCommand(commands.capture(), anyOrNull(), any())
         order.verify(mockSSHClient).uploadDirectory(localDir, staging)
-        order.verify(mockSSHClient).executeRemoteCommand(commands.capture(), any(), any())
-        verify(mockSSHClient, times(2)).executeRemoteCommand(any(), any(), any())
+        order.verify(mockSSHClient).executeRemoteCommand(commands.capture(), anyOrNull(), any())
+        verify(mockSSHClient, times(2)).executeRemoteCommand(any(), anyOrNull(), any())
 
         assertThat(commands.firstValue).isEqualTo(
             "d=\$(sudo mktemp -d -p /mnt/db1/grafana dashboards.staging.XXXXXX) && " +
@@ -322,7 +380,7 @@ class DefaultRemoteOperationsServiceTest :
         assertThatThrownBy { service.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472") }
             .hasMessage("sftp failed")
 
-        verify(mockSSHClient).executeRemoteCommand(eq("sudo rm -rf $staging"), any(), any())
-        verify(mockSSHClient, never()).executeRemoteCommand(argThat { contains("mv ") }, any(), any())
+        verify(mockSSHClient).executeRemoteCommand(eq("sudo rm -rf $staging"), anyOrNull(), any())
+        verify(mockSSHClient, never()).executeRemoteCommand(argThat { contains("mv ") }, anyOrNull(), any())
     }
 }

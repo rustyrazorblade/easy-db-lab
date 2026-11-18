@@ -14,6 +14,8 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.output.NodeStream
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
@@ -215,6 +217,47 @@ class SetupInstanceTest : BaseKoinTest() {
 
         assertThat(failed.reason).isNotBlank().isEqualTo(failure.message)
         assertThat(failed.reason).contains("exit status 1", "lsblk: command not found")
+    }
+
+    @Test
+    fun `a failed setup carries the lines its node printed`() {
+        val output = getKoin().get<RecordingNodeOutput>()
+        output.line("db1", NodeStream.Stdout, "left over from an earlier command")
+        whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, eq("sudo bash setup_instance.sh"), any(), any()))
+            .thenAnswer {
+                output.line("db1", NodeStream.Stdout, "Checking block devices")
+                output.line("db1", NodeStream.Stderr, "ERROR: no data disk found")
+                throw setupScriptFailure(stdout = "Checking block devices\n", stderr = "ERROR: no data disk found\n")
+            }
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        assertThatThrownBy { SetupInstance().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(events.filterIsInstance<Event.Provision.InstanceSetupFailed>().single().outputTail)
+            .containsExactly("Checking block devices", "ERROR: no data disk found")
+    }
+
+    @Test
+    fun `setup-instances --quiet prints none of the nodes' lines`() {
+        val output = getKoin().get<RecordingNodeOutput>()
+        whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
+            output.line(invocation.getArgument<Host>(0).alias, NodeStream.Stdout, "setting up")
+            Response("")
+        }
+
+        SetupInstance().apply { quiet = true }.execute()
+
+        assertThat(output.printed).isEmpty()
+        assertThat(output.tail("db0")).isNotEmpty()
     }
 
     private companion object {

@@ -171,6 +171,21 @@ While the control node's own steps run, the line starts with its step, for examp
 `control control-plane`. The per-step counts are the nodes in that step now. `join` is the join
 slots in use against the limit. Each step's start and end is published to Redis only, not printed.
 
+### Node output
+
+Each line a node's scripts print is shown as it arrives, tagged with the node, so lines from
+many nodes running at once can be told apart:
+
+```
+[db12] Installing packages
+[db40] Mounting /dev/nvme1n1 on /mnt/db1
+```
+
+This output is plain text. It is not an event and is not published to Redis; subscribers see the
+node's step, Ready and failure events instead. At a few hundred nodes the output scrolls faster
+than it can be read. `up --quiet` (or `init --up --quiet`) hides it, and still prints the progress
+lines, each node's Ready line and every failure.
+
 ### When a node fails
 
 When a node has used its replacements, or the cluster has used its limit, the node fails and
@@ -183,6 +198,18 @@ Then `up` names each failed node, its instance, its step and the reason, and exi
   db7 (i-0abc..., kept for debugging): setup: setup failed (ERROR: no data disk); the node had its 2 replacements
   db9 (i-0def..., terminated, no instance left): join: join failed (...); the replacement failed at launch: ...
 ```
+
+The failure line ends with the last 30 lines the node's last instance printed, also under
+`--quiet`, so the cause is on screen without scrolling back:
+
+```
+db7 failed at setup: setup failed (ERROR: no data disk)
+last output of db7:
+    Checking block devices
+    ERROR: no data disk found: no unused non-root block device
+```
+
+A replacement starts with an empty tail, so these lines are always from the instance that failed.
 
 A failed join's reason says what it was waiting for (for example, that the agent started but no
 node registered) and ends with the last lines of the node's K3s agent log.

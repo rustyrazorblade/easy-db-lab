@@ -10,7 +10,10 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.NodeOutput
+import com.rustyrazorblade.easydblab.output.NodeOutputTail
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.AwsIamRoles
@@ -136,6 +139,9 @@ object TestModules {
             // This matches the production pattern but uses a test-friendly handler
             // Use single to ensure all components get the same instance within a test
             single<OutputHandler> { BufferedOutputHandler() }
+            single { RecordingNodeOutput() }
+            single<NodeOutput> { get<RecordingNodeOutput>() }
+            single<NodeOutputTail> { get<RecordingNodeOutput>() }
         }
 
     /**

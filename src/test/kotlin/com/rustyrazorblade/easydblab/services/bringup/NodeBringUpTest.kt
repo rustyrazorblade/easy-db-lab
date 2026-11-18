@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.services.bringup.BringUpHarness.Companion.hang
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -586,6 +587,44 @@ class NodeBringUpTest {
         assertThat(h.steps.callsOf("join")).isEmpty()
         assertThat(h.fleet.calls).isEmpty()
         assertThat(h.saved(ServerType.Cassandra)).hasSize(3)
+    }
+
+    @Test
+    fun `a node that fails for good carries the last output of its last instance only`() {
+        val h = harness(dbs = 2)
+        h.steps.scripts["db0 setup"] = { host, attempt ->
+            h.nodeOutput.line(host.alias, NodeStream.Stdout, "${host.instanceId} attempt $attempt")
+            h.nodeOutput.line(host.alias, NodeStream.Stderr, "${host.instanceId} E: no disk")
+            error("setup_instance.sh exited 1")
+        }
+
+        h.run()
+
+        val failed = h.eventsOf<Event.Provision.NodeFailed>().single()
+        assertThat(failed.instanceId).isEqualTo("i-db0-2")
+        assertThat(failed.outputTail).containsExactly(
+            "i-db0-2 attempt 1",
+            "i-db0-2 E: no disk",
+            "i-db0-2 attempt 2",
+            "i-db0-2 E: no disk",
+        )
+        // Every attempt's lines still reached the console, tagged with the node.
+        assertThat(h.nodeOutput.stdout.filter { it.startsWith("[db0] ") }).hasSize(6)
+    }
+
+    @Test
+    fun `a failed control node carries the control node's last output`() {
+        val h = harness(dbs = 2)
+        h.steps.scripts["db1 setup"] = { host, _ -> h.nodeOutput.line(host.alias, NodeStream.Stdout, "db1 is fine") }
+        h.steps.scripts["control0 control-plane"] = { host, _ ->
+            h.nodeOutput.line(host.alias, NodeStream.Stderr, "k3s: bad flag")
+            error("k3s.service failed")
+        }
+
+        assertThatThrownBy { h.run() }.isInstanceOf(ControlNodeFailedException::class.java)
+
+        assertThat(h.eventsOf<Event.Provision.ControlNodeFailed>().single().outputTail)
+            .containsExactly("k3s: bad flag", "k3s: bad flag")
     }
 
     @Test

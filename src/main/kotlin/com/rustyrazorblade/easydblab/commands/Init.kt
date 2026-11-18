@@ -115,6 +115,12 @@ class Init : PicoBaseCommand() {
     var start = false
 
     @Option(
+        names = ["--quiet", "-q"],
+        description = ["With --up: hide the output of each node's scripts; Ready lines, progress and failures still print"],
+    )
+    var quiet = false
+
+    @Option(
         names = ["--instance", "-i"],
         description = [
             "Legacy alias for --db.instance-type. Database instance type. " +
@@ -394,7 +400,7 @@ class Init : PicoBaseCommand() {
         if (start) {
             eventBus.emit(Event.Setup.ProvisioningInstances)
             // Schedule Up to run after Init's full lifecycle completes
-            commandExecutor.schedule { Up() }
+            commandExecutor.schedule { Up().also { it.quiet = quiet } }
         } else {
             eventBus.emit(Event.Setup.InitNextSteps)
         }

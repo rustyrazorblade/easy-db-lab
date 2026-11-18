@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.ssh
 
+import com.rustyrazorblade.easydblab.output.NodeStream
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.scp.client.CloseableScpClient
@@ -32,14 +33,32 @@ class MockSSHClient : ISSHClient {
      */
     var commandStderr = ""
 
+    /**
+     * Answers each command; by default with [commandOutput] and [commandStderr]. A test that needs
+     * a different answer per command, or a failure, replaces it. The answer is streamed into the
+     * sink line by line before it is returned, as the real client does while the command runs.
+     */
+    var onCommand: (String) -> Response = { Response(commandOutput, commandStderr) }
+
     override fun executeRemoteCommand(
         command: String,
-        output: Boolean,
+        sink: RemoteOutputSink?,
         secret: Boolean,
     ): Response {
         log.debug { "MOCK: Executing command: $command" }
         executedCommands.add(command)
-        return Response(commandOutput, commandStderr)
+        val response = onCommand(command)
+        if (sink != null && !secret) {
+            response.text
+                .lineSequence()
+                .filter { it.isNotEmpty() }
+                .forEach { sink.line(NodeStream.Stdout, it) }
+            response.stderr
+                .lineSequence()
+                .filter { it.isNotEmpty() }
+                .forEach { sink.line(NodeStream.Stderr, it) }
+        }
+        return response
     }
 
     override fun uploadFile(

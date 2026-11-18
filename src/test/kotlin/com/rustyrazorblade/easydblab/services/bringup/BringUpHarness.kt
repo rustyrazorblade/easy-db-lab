@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import java.io.File
 import java.time.Duration
 import java.util.Collections
@@ -30,6 +31,9 @@ class BringUpHarness(
     val fleet = FakeInstanceFleet()
     val events: MutableList<Event> = Collections.synchronizedList(mutableListOf())
     val stateFile = File(dir, "state.json")
+
+    /** The real node output, recording: what the fake steps write here is each node's tail. */
+    val nodeOutput = RecordingNodeOutput()
     private val state = ClusterState(name = "lab")
     val writer = ClusterStateWriter(state, ClusterStateManager(stateFile))
 
@@ -77,7 +81,7 @@ class BringUpHarness(
                     Triple(serverType, hosts.filter { originOf(it) == origin }, origin)
                 }
             }
-        return NodeBringUp(ports, settings, eventBus).run { sink ->
+        return NodeBringUp(ports, settings, eventBus, nodeOutput).run { sink ->
             sink.launched(ServerType.Control, listOf(control), LaunchSink.Origin.LAUNCHED)
             handOvers
                 .filter { (_, hosts, _) -> hosts.isNotEmpty() }

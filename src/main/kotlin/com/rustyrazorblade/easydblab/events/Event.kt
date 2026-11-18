@@ -403,16 +403,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Cassandra.PatchStderr")
-        data class PatchStderr(
-            val stderr: String,
-        ) : Cassandra {
-            override fun toDisplayString(): String = "patch-config stderr: $stderr"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
         @SerialName("Cassandra.PatchFailed")
         data class PatchFailed(
             val host: String,
@@ -421,14 +411,6 @@ sealed interface Event {
             override fun toDisplayString(): String = "ERROR: patch-config failed on $host: $reason"
 
             override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Cassandra.PatchOutput")
-        data class PatchOutput(
-            val output: String,
-        ) : Cassandra {
-            override fun toDisplayString(): String = output
         }
 
         @Serializable
@@ -494,15 +476,6 @@ sealed interface Event {
             override fun toDisplayString(): String =
                 "Usage: easy-db-lab cassandra nt [--hosts host1,host2] <nodetool-command>\n" +
                     "Example: easy-db-lab cassandra nt status"
-        }
-
-        @Serializable
-        @SerialName("Cassandra.NodetoolOutput")
-        data class NodetoolOutput(
-            val host: String,
-            val output: String,
-        ) : Cassandra {
-            override fun toDisplayString(): String = "=== $host ===\n$output"
         }
 
         @Serializable
@@ -699,14 +672,6 @@ sealed interface Event {
                 |  easy-db-lab cassandra cql "SELECT * FROM system.local"
                 |  easy-db-lab cassandra cql --file schema.cql
                 """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Cassandra.CqlQueryOutput")
-        data class CqlQueryOutput(
-            val output: String,
-        ) : Cassandra {
-            override fun toDisplayString(): String = output
         }
 
         @Serializable
@@ -3747,15 +3712,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Stress.PodLogHeader")
-        data class PodLogHeader(
-            val podName: String,
-            val podStatus: String,
-        ) : Stress {
-            override fun toDisplayString(): String = "=== Pod: $podName ($podStatus) ==="
-        }
-
-        @Serializable
         @SerialName("Stress.PodLogFailed")
         data class PodLogFailed(
             val podName: String,
@@ -3767,39 +3723,11 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Stress.PodLogsEmpty")
-        data object PodLogsEmpty : Stress {
-            override fun toDisplayString(): String = "(no logs available yet)"
-        }
-
-        @Serializable
-        @SerialName("Stress.PodLogOutput")
-        data class PodLogOutput(
-            val logs: String,
-        ) : Stress {
-            override fun toDisplayString(): String = logs
-        }
-
-        @Serializable
         @SerialName("Stress.CommandRunning")
         data class CommandRunning(
             val commandName: String,
         ) : Stress {
             override fun toDisplayString(): String = "Running cassandra-easy-stress $commandName..."
-        }
-
-        @Serializable
-        @SerialName("Stress.CommandOutput")
-        data class CommandOutput(
-            val output: String,
-        ) : Stress {
-            override fun toDisplayString(): String = output
-        }
-
-        @Serializable
-        @SerialName("Stress.PodLogSeparator")
-        data object PodLogSeparator : Stress {
-            override fun toDisplayString(): String = ""
         }
     }
 
@@ -3852,8 +3780,9 @@ sealed interface Event {
         data class InstanceSetupFailed(
             val host: String,
             val reason: String,
+            val outputTail: List<String> = emptyList(),
         ) : Provision {
-            override fun toDisplayString(): String = "Instance setup failed on $host: $reason"
+            override fun toDisplayString(): String = "Instance setup failed on $host: $reason" + outputTailBlock(host, outputTail)
 
             override fun isError(): Boolean = true
         }
@@ -4340,9 +4269,11 @@ sealed interface Event {
             val reason: String,
             val instanceId: String,
             val instanceKept: Boolean,
+            val outputTail: List<String> = emptyList(),
         ) : Provision {
             override fun toDisplayString(): String =
-                "$alias failed at $step: $reason" + if (instanceKept) "" else " ($instanceId terminated)"
+                "$alias failed at $step: $reason" + (if (instanceKept) "" else " ($instanceId terminated)") +
+                    outputTailBlock(alias, outputTail)
 
             override fun isError(): Boolean = true
         }
@@ -4358,9 +4289,11 @@ sealed interface Event {
             val alias: String,
             val step: String,
             val reason: String,
+            val outputTail: List<String> = emptyList(),
         ) : Provision {
             override fun toDisplayString(): String =
-                "Control node $alias failed at $step: $reason. Every instance is kept; run up again after fixing the cause."
+                "Control node $alias failed at $step: $reason. Every instance is kept; run up again after fixing the cause." +
+                    outputTailBlock(alias, outputTail)
 
             override fun isError(): Boolean = true
         }
@@ -6226,47 +6159,6 @@ sealed interface Event {
 
     @Serializable
     sealed interface Ssh : Event {
-        @Serializable
-        @SerialName("Ssh.ExecutingCommand")
-        data class ExecutingCommand(
-            val command: String,
-        ) : Ssh {
-            override fun toDisplayString(): String = "Executing remote command: $command"
-        }
-
-        @Serializable
-        @SerialName("Ssh.ExecutingHiddenCommand")
-        data object ExecutingHiddenCommand : Ssh {
-            override fun toDisplayString(): String = "Executing remote command: [hidden]"
-        }
-
-        @Serializable
-        @SerialName("Ssh.CommandOutput")
-        data class CommandOutput(
-            val output: String,
-        ) : Ssh {
-            override fun toDisplayString(): String = output
-        }
-
-        @Serializable
-        @SerialName("Ssh.UploadingFile")
-        data class UploadingFile(
-            val localPath: String,
-            val remoteAddress: String,
-            val remotePath: String,
-        ) : Ssh {
-            override fun toDisplayString(): String = "Uploading file $localPath to $remoteAddress:$remotePath"
-        }
-
-        @Serializable
-        @SerialName("Ssh.UploadingDirectory")
-        data class UploadingDirectory(
-            val localDir: String,
-            val remoteDir: String,
-        ) : Ssh {
-            override fun toDisplayString(): String = "Uploading directory $localDir to $remoteDir"
-        }
-
         /**
          * The profile's SSH transport is `ssm`, but programs it needs cannot run on this machine.
          *
@@ -7083,6 +6975,20 @@ private fun resolvedFrom(
     url: String,
     java: String,
 ): String = "  source: $source, url: $url, JDK $java"
+
+/**
+ * A node's recent output under its failure line: a `last output of <node>:` header and the lines
+ * indented, or nothing when no output was kept.
+ */
+private fun outputTailBlock(
+    node: String,
+    tail: List<String>,
+): String =
+    if (tail.isEmpty()) {
+        ""
+    } else {
+        tail.joinToString(separator = "\n", prefix = "\nlast output of $node:\n") { "    $it" }
+    }
 
 /** A CIDR as the ingress events show it, naming it as this machine's public IP when it was detected. */
 private fun cidrLabel(

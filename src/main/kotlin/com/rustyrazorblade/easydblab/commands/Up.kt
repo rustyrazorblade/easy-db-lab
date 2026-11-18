@@ -20,6 +20,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
+import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
@@ -128,6 +129,7 @@ class Up(
     private val documentService: DocumentService by inject()
     private val tcpReachabilityProbe: TcpReachabilityProbe by inject()
     private val ec2BringUpPorts: Ec2BringUpPorts by inject()
+    private val nodeOutput: NodeOutput by inject()
 
     // Working copy loaded during execute(). Once the launch starts, every change goes through [writer].
     private lateinit var workingState: ClusterState
@@ -146,6 +148,12 @@ class Up(
     )
     var noSetup = false
 
+    @CommandLine.Option(
+        names = ["--quiet", "-q"],
+        description = ["Hide the output of each node's scripts; Ready lines, progress and failures (with their last output) still print"],
+    )
+    var quiet = false
+
     @CommandLine.Mixin
     var hosts = HostsMixin()
 
@@ -153,6 +161,10 @@ class Up(
     private var preflightTunnel: SocksProxyState? = null
 
     override fun execute() {
+        if (quiet) nodeOutput.quietly(::bringUpCluster) else bringUpCluster()
+    }
+
+    private fun bringUpCluster() {
         // Read before any nested command runs: the executor clears the record before each command.
         preflightTunnel = proxyPreflight.tunnelForCommand()
         workingState = clusterStateManager.load()
@@ -213,7 +225,7 @@ class Up(
                 replacementPlan,
             )
         val result =
-            NodeBringUp(ec2BringUpPorts.ports(request), bringUpSettings(initConfig), eventBus).run { sink ->
+            NodeBringUp(ec2BringUpPorts.ports(request), bringUpSettings(initConfig), eventBus, nodeOutput).run { sink ->
                 existingHosts.forEach { (serverType, hosts) -> sink.launched(serverType, hosts, LaunchSink.Origin.FOUND_RUNNING) }
                 try {
                     reportProvisioningFailures(executeProvisioning(instanceConfig, servicesConfig, existingHosts, sink, launched))

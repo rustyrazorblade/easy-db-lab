@@ -18,6 +18,8 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.output.NodeStream
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
@@ -1020,6 +1022,32 @@ class UpTest : UpTestFixture() {
 
         assertThat(sshCheckedAliases).isNotEmpty()
         assertThat(echoedCommands).doesNotContain("echo 1")
+    }
+
+    @Test
+    fun `up prints each node's script output tagged with the node`() {
+        newUp().execute()
+
+        val printed = getKoin().get<RecordingNodeOutput>().stdout.toList()
+        assertThat(printed).isNotEmpty()
+        assertThat(printed).allSatisfy { assertThat(it).matches("""\[(control0|db0|app0)] ran .+""") }
+    }
+
+    @Test
+    fun `up --quiet prints no node output, but the Ready lines still print, and output is shown again afterwards`() {
+        val events = captureEvents()
+        val recorded = getKoin().get<RecordingNodeOutput>()
+
+        newUp().apply { quiet = true }.execute()
+
+        assertThat(recorded.printed).isEmpty()
+        assertThat(recorded.tail("db0")).isNotEmpty()
+        assertThat(events.filterIsInstance<Event.Provision.NodeReady>().map { it.alias }).contains("db0", "app0")
+        assertThat(outputHandler.messages.joinToString("\n")).contains("db0 (", "is Ready after")
+
+        recorded.line("db0", NodeStream.Stdout, "after up")
+
+        assertThat(recorded.stdout).containsExactly("[db0] after up")
     }
 
     @Test

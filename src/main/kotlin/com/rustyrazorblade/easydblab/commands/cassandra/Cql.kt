@@ -64,7 +64,8 @@ class Cql : PicoBaseCommand() {
             .execute(query)
             .onSuccess { output ->
                 if (output.isNotBlank()) {
-                    eventBus.emit(Event.Cassandra.CqlQueryOutput(output))
+                    // Rows are the command's result, not an event.
+                    println(output)
                 } else {
                     // DDL statements (CREATE, ALTER, DROP, etc.) return no rows
                     eventBus.emit(Event.Cassandra.CqlDdlOk)

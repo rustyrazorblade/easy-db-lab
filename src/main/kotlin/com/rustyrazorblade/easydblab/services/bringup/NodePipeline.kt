@@ -149,7 +149,16 @@ internal class NodePipeline(
 
     private fun failed(end: NodeEnd.Failed): NodeEnd {
         run.progress.failed(alias)
-        run.eventBus.emit(Event.Provision.NodeFailed(alias, end.step.wireName, end.reason, end.host.instanceId, end.instanceKept))
+        run.eventBus.emit(
+            Event.Provision.NodeFailed(
+                alias,
+                end.step.wireName,
+                end.reason,
+                end.host.instanceId,
+                end.instanceKept,
+                run.nodeOutput.tail(alias),
+            ),
+        )
         return end
     }
 

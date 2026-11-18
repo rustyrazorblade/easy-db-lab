@@ -211,6 +211,11 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
   `NodeReplacer` (budget in `ReplacementBudget`). Control steps are retried and never replaced:
   `ControlNodeFailedException`. `ClusterStateWriter` is the only writer of hosts to `state.json`
   during bring-up.
+- **Output tail**: every node's script lines go to `output/NodeOutput` as `[alias] ...` (hidden by
+  `up --quiet`). `BringUpRun` holds the read side, `NodeOutputTail`. `InstanceRun` resets the
+  alias's tail when an instance starts its steps, so a replacement's tail holds only its own lines;
+  `NodePipeline.failed` and `NodeBringUp.controlFailed` put the tail on `NodeFailed` and
+  `ControlNodeFailed` as `outputTail`. The tail is kept in quiet mode too.
 - **Tests**: `src/test/.../services/bringup/BringUpFakes.kt` and `FakeInstanceFleet` drive every
   pipeline without SSH or AWS; `UpTestFixture` wires the real `K3sBringUpSteps` over a fake
   `RemoteOperationsService` with fake tracker, fleet and control plane.

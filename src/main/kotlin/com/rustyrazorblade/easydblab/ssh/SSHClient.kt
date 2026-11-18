@@ -1,16 +1,16 @@
 package com.rustyrazorblade.easydblab.ssh
 
-import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.output.LineSplittingOutputStream
+import com.rustyrazorblade.easydblab.output.NodeStream
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.apache.commons.io.output.TeeOutputStream
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.scp.client.CloseableScpClient
 import org.apache.sshd.scp.client.ScpClientCreator
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.file.Path
 import java.rmi.RemoteException
@@ -41,9 +41,7 @@ import java.util.ArrayDeque
  */
 class SSHClient(
     private val session: ClientSession,
-) : ISSHClient,
-    KoinComponent {
-    private val eventBus: EventBus by inject()
+) : ISSHClient {
     private val log = KotlinLogging.logger {}
 
     companion object {
@@ -67,19 +65,19 @@ class SSHClient(
      * Execute a command on a remote host
      *
      * @param command The command to execute
-     * @param output Whether to print the command output
+     * @param sink Receives each redacted output line while the command runs; never used for a secret command
      * @param secret Whether the command contains sensitive information
      * @return The command output wrapped in a Response object
      */
     override fun executeRemoteCommand(
         command: String,
-        output: Boolean,
+        sink: RemoteOutputSink?,
         secret: Boolean,
     ): Response =
         synchronized(operationLock) {
             require(command.isNotBlank()) { "Command cannot be blank" }
 
-            // Every sink below — the debug log, the emitted event, the returned Response and the
+            // Every sink below — the debug log, the streamed output lines, the returned Response and the
             // thrown exception — is redacted here rather than at each call site. A remote command
             // legitimately carries a git URL with an embedded token, and the remote side echoes it
             // straight back; a per-call-site convention only has to be forgotten once to leak it.
@@ -94,17 +92,25 @@ class SSHClient(
             // and the command's own error message is the only thing that explains the failure.
             val stdoutStream = ByteArrayOutputStream()
             val stderrStream = ByteArrayOutputStream()
+            // A secret command echoes its own argument, so nothing of it is ever streamed.
+            val lineSink = sink.takeUnless { secret }
+            val stdoutLines = lineSink?.let { lines(it, NodeStream.Stdout) }
+            val stderrLines = lineSink?.let { lines(it, NodeStream.Stderr) }
             try {
-                session.executeRemoteCommand(command, stdoutStream, stderrStream, Charset.defaultCharset())
+                session.executeRemoteCommand(
+                    command,
+                    tee(stdoutStream, stdoutLines),
+                    tee(stderrStream, stderrLines),
+                    Charset.defaultCharset(),
+                )
             } catch (e: RemoteException) {
                 throw remoteCommandFailure(command, secret, stdoutStream, stderrStream, e)
+            } finally {
+                stdoutLines?.close()
+                stderrLines?.close()
             }
 
             val result = redactUrlCredentials(stdoutStream.toString(Charset.defaultCharset()))
-
-            if (output) {
-                eventBus.emit(Event.Ssh.CommandOutput(result))
-            }
 
             return@synchronized Response(result, redactUrlCredentials(stderrStream.toString(Charset.defaultCharset())))
         }
@@ -134,6 +140,18 @@ class SSHClient(
         )
     }
 
+    /** Splits one remote stream into whole lines and hands each, redacted, to [sink]. */
+    private fun lines(
+        sink: RemoteOutputSink,
+        stream: NodeStream,
+    ) = LineSplittingOutputStream { sink.line(stream, redactUrlCredentials(it)) }
+
+    /** Writes to [capture] always, and also to [lines] when there is one. */
+    private fun tee(
+        capture: OutputStream,
+        lines: OutputStream?,
+    ): OutputStream = if (lines == null) capture else TeeOutputStream(capture, lines)
+
     /** Keeps a failure message readable when the command spewed (e.g. a replayed ant build log). */
     private fun tail(text: String): String =
         redactUrlCredentials(
@@ -152,7 +170,6 @@ class SSHClient(
             require(local.toFile().exists()) { "Local file does not exist: ${local.toAbsolutePath()}" }
             require(local.toFile().isFile) { "Local path is not a file: ${local.toAbsolutePath()}" }
 
-            eventBus.emit(Event.Ssh.UploadingFile(local.toAbsolutePath().toString(), remoteAddress, remote))
             getScpClient().upload(local, remote)
         }
 
@@ -191,7 +208,7 @@ class SSHClient(
                     directoriesToCreate
                         .sorted()
                         .joinToString(" && ") { dir -> "mkdir -p '$dir'" }
-                executeRemoteCommand(mkdirCommand, false, false)
+                executeRemoteCommand(mkdirCommand, null, false)
             }
         }
 
@@ -295,7 +312,7 @@ class SSHClient(
 
             log.debug { "Downloading directory from $remoteAddress:$remoteDir to ${localDir.absolutePath}" }
 
-            val fileListOutput = executeRemoteCommand("find $remoteDir -type f", false, false)
+            val fileListOutput = executeRemoteCommand("find $remoteDir -type f", null, false)
             val remoteFiles = fileListOutput.text.split("\n").filter { it.isNotEmpty() }
 
             // Download each file

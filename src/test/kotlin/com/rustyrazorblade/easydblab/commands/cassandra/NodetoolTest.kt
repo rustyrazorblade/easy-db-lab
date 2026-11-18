@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultRemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
@@ -28,8 +29,8 @@ import java.io.OutputStream
 import java.nio.charset.Charset
 
 /**
- * Tests `cassandra nt` through the real remote-operations and SSH layers, so a host's output that
- * is printed both as it streams and under its `=== <alias> ===` header shows up twice.
+ * Tests `cassandra nt` through the real remote-operations, SSH and node-output layers: each host's
+ * output must come out once, every line tagged with that host, and never as an event.
  */
 class NodetoolTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -106,17 +107,15 @@ class NodetoolTest : BaseKoinTest() {
     }
 
     @Test
-    fun `each host's output appears exactly once, under its header`() {
+    fun `each host's output appears exactly once, tagged with the host`() {
         val command = Nodetool()
         command.args = listOf("status")
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        cassandraHosts.map { it.alias }.forEach { alias ->
-            assertThat(output.split(ringOf(alias)).size - 1)
-                .describedAs("occurrences of $alias's output in:\n$output")
-                .isEqualTo(1)
-            assertThat(output).contains("=== $alias ===\n${ringOf(alias)}")
-        }
+        val printed = getKoin().get<RecordingNodeOutput>().stdout.toList()
+        assertThat(printed).containsExactlyInAnyOrderElementsOf(
+            cassandraHosts.map { "[${it.alias}] ${ringOf(it.alias)}" },
+        )
+        assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("ring-of-")
     }
 }

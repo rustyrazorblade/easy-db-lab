@@ -1474,6 +1474,15 @@ object Constants {
         const val BACKEND_STATE_TIMED_OUT = "timed out"
     }
 
+    // Raw output of commands run on cluster nodes, printed through NodeOutput
+    object NodeOutput {
+        /** Lines of a node's recent output kept for its failure report. */
+        const val TAIL_LINES = 30
+
+        /** Bytes after which a line with no newline is emitted anyway, so it never grows without bound. */
+        const val MAX_LINE_BYTES = 8192
+    }
+
     // OpenSSH options the generated sshConfig sets for every SSH transport
     object Ssh {
         /** Name prefix of a file staged in the login directory by `installFile` before it is moved into place. */

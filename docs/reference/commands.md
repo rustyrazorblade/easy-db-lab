@@ -150,7 +150,20 @@ determined fails at `init`, before any instance is created.
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--up` | Auto-provision after init | false |
+| `--quiet`, `-q` | With `--up`: run `up --quiet` | false |
 | `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
+
+### setup-instances
+
+Run the setup scripts on every node again. Each line a node prints is tagged with the node, as in `up`.
+
+```bash
+easy-db-lab setup-instances [--quiet]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--quiet`, `-q` | Hide what each node's scripts print. A failed node's error still shows its last output |
 
 ### up
 
@@ -163,6 +176,16 @@ easy-db-lab up [options]
 | Option | Description |
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
+| `--quiet`, `-q` | Hide what each node's scripts print. Ready lines, progress lines and failures still print, and a failed node's error still shows its last output |
+
+Each line a node's script prints is shown as it arrives, tagged with the node:
+
+```
+[db3] Installing packages
+[db3] E: Unable to locate package foo
+```
+
+When a node fails, its error ends with `last output of <node>:` and the last 30 lines its last instance printed, indented, also with `--quiet`.
 
 Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Deploys the [account compactor](../user-guide/compactor.md) pod with the observability stack.
 
@@ -577,6 +600,24 @@ easy-db-lab cassandra restart [options]
 |--------|-------------|
 | `--hosts` | Filter to specific hosts |
 
+### cassandra nt
+
+Run `nodetool` on database nodes. Each line of output is tagged with its host.
+
+```bash
+easy-db-lab cassandra nt status
+easy-db-lab cassandra nt --hosts db0,db2 info
+```
+
+```
+[db0] Datacenter: us-west-2
+[db0] ...
+```
+
+| Option | Description |
+|--------|-------------|
+| `--hosts` | Filter to specific hosts |
+
 ### cassandra list
 
 List the Cassandra versions you can install, and the ones on each node.
@@ -747,6 +788,8 @@ View logs from stress jobs.
 easy-db-lab cassandra stress logs [options]
 ```
 
+Each pod's status and log lines are printed tagged with the pod name, for example `[stress-kv-1716-abcde] status Running`. A pod with no logs yet prints `[<pod>] (no logs available yet)`.
+
 ### cassandra stress list
 
 List available workloads.
@@ -782,6 +825,8 @@ Execute commands on remote hosts via `systemd-run`. Tool output is captured by t
 #### exec run
 
 Run a command on remote hosts (foreground by default). The command runs through `bash -c`: pass a whole command line as one quoted argument, or pass words after `--`, which are quoted one by one. If the command fails on any host, `exec run` prints that host's output, reports the host, and exits non-zero.
+
+In the foreground, each line of the unit's output is printed tagged with its host, `[db0] ...`, so the output of a parallel run (`-p`) stays readable.
 
 ```bash
 # Foreground (blocks until complete, shows output)

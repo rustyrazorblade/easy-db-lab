@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
 import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.output.NodeOutputTail
 import java.time.Clock
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
@@ -50,6 +51,7 @@ class NodeBringUp(
     private val ports: BringUpPortSet,
     private val settings: BringUpSettings,
     private val eventBus: EventBus,
+    private val nodeOutput: NodeOutputTail,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -58,7 +60,7 @@ class NodeBringUp(
      * after the pipelines already started are stopped.
      */
     fun run(launch: (LaunchSink) -> Unit): BringUpResult =
-        BringUpRun(ports, settings, eventBus, clock).use { run ->
+        BringUpRun(ports, settings, eventBus, nodeOutput, clock).use { run ->
             Executors.newVirtualThreadPerTaskExecutor().use { executor ->
                 Coordinator(run, executor).bringUp(launch)
             }
@@ -138,7 +140,9 @@ class NodeBringUp(
         /** The control node failed: record why first, so every waiter sees it, report it once, then stop every node. */
         private fun controlFailed(failure: ControlNodeFailedException) {
             if (!controlFailure.complete(failure)) return
-            run.eventBus.emit(Event.Provision.ControlNodeFailed(failure.alias, failure.step, failure.reason))
+            run.eventBus.emit(
+                Event.Provision.ControlNodeFailed(failure.alias, failure.step, failure.reason, run.nodeOutput.tail(failure.alias)),
+            )
             nodes.values.forEach { it.cancel(true) }
         }
 

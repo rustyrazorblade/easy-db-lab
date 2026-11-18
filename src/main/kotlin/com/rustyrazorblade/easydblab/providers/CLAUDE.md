@@ -238,7 +238,7 @@ function for the same reason).
 Remote commands legitimately carry a URL with an embedded credential — a git clone of a private
 fork is the common case — and the remote side echoes the command straight back on failure.
 `ssh/SSHClient` therefore redacts at the single point every remote command passes through, covering
-all four sinks at once: the debug log, the emitted `Event.Ssh.CommandOutput`, the returned
+all four sinks at once: the debug log, each line passed to the `RemoteOutputSink`, the returned
 `Response`, and the thrown `RemoteCommandFailedException`. The helper is
 `ssh/Redaction.kt`'s `redactUrlCredentials`.
 
@@ -259,6 +259,21 @@ Rules that follow from this:
   that list and in `LogbackConfigurationTest`.
 - `executeRemotely(secret = true)` is stronger still: neither the command nor any of its output is
   repeated anywhere, because a failing secret command routinely echoes its own argument back.
+  `SSHClient` gives a secret command no sink at all.
+
+### Remote Output Streams To A Sink, Never To Events
+
+`ISSHClient.executeRemoteCommand(command, sink: RemoteOutputSink?, secret)` takes the sink that
+receives what the command prints, one whole line at a time, while it runs. `SSHClient` tees each
+MINA stream into its capture buffer (for the `Response` and the failure) and a
+`output/LineSplittingOutputStream` (UTF-8 safe across reads, `\r\n` and `\r`, lines capped at
+`Constants.NodeOutput.MAX_LINE_BYTES`) that redacts each line and hands it to the sink with its
+`NodeStream` (`Stdout` or `Stderr`). Both splitters are closed in `finally`, so a failed command
+still delivers its partial last line. `DefaultRemoteOperationsService` builds the sink from
+`host.alias` when `output = true`, writing to `output/NodeOutput`, and prints one `notice` per
+`upload` or `uploadDirectory` call. Nothing in this layer emits an event: raw output is not a
+domain fact (see `events/CLAUDE.md`). A test double of `ISSHClient` feeds its configured output
+into the sink it is given (`MockSSHClient`).
 
 ## Docker Provider
 

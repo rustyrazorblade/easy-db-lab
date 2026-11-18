@@ -149,15 +149,13 @@ class ExecRun : PicoBaseCommand() {
         run.getOrThrow()
     }
 
+    /** Prints the unit's journal, each line tagged with the host, so parallel hosts never interleave inside a line. */
     private fun printUnitOutput(
         host: Host,
         systemdUnit: String,
     ) {
         val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
-        val logOutput = remoteOps.executeRemotely(host, journalCmd, output = false, secret = false)
-        println("=== ${host.alias} ===")
-        if (logOutput.text.isNotEmpty()) println(logOutput.text)
-        if (logOutput.stderr.isNotEmpty()) println(logOutput.stderr)
+        remoteOps.executeRemotely(host, journalCmd, output = true, secret = false)
     }
 
     internal fun deriveUnitName(commandString: String): String {

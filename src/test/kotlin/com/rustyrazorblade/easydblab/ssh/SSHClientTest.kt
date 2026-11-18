@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.ssh
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.common.io.IoSession
@@ -77,7 +78,7 @@ class SSHClientTest :
         stubRemoteCommand(stdout = expectedOutput, stderr = "a warning")
 
         // When
-        val response = sshClient.executeRemoteCommand(command, output = false, secret = false)
+        val response = sshClient.executeRemoteCommand(command, sink = null, secret = false)
 
         // Then
         assertThat(response.text).isEqualTo(expectedOutput)
@@ -94,7 +95,7 @@ class SSHClientTest :
             failWith = RemoteException("Remote command failed (1): $command"),
         )
 
-        assertThatThrownBy { sshClient.executeRemoteCommand(command, output = false, secret = false) }
+        assertThatThrownBy { sshClient.executeRemoteCommand(command, sink = null, secret = false) }
             .isInstanceOf(RemoteCommandFailedException::class.java)
             .hasMessageContaining("Cassandra version 5.1 is not installed on this node.")
             .hasMessageContaining("cassandra install 5.1")
@@ -109,7 +110,7 @@ class SSHClientTest :
         )
 
         assertThatThrownBy {
-            sshClient.executeRemoteCommand("install-cassandra-version trunk", output = false, secret = false)
+            sshClient.executeRemoteCommand("install-cassandra-version trunk", sink = null, secret = false)
         }.isInstanceOf(RemoteCommandFailedException::class.java)
             .hasMessageContaining("ERROR: Ant build failed for version trunk")
             .hasMessageContaining("Building version trunk with ant")
@@ -123,7 +124,7 @@ class SSHClientTest :
             failWith = RemoteException("Remote command failed (1): $command"),
         )
 
-        assertThatThrownBy { sshClient.executeRemoteCommand(command, output = false, secret = false) }
+        assertThatThrownBy { sshClient.executeRemoteCommand(command, sink = null, secret = false) }
             .isInstanceOf(RemoteCommandFailedException::class.java)
             .hasMessageNotContaining("ghp_secrettoken")
             .hasMessageContaining("***@github.com")
@@ -140,32 +141,78 @@ class SSHClientTest :
         )
 
         assertThatThrownBy {
-            sshClient.executeRemoteCommand("tailscale up --authkey=tskey-auth-hunter2", output = false, secret = true)
+            sshClient.executeRemoteCommand("tailscale up --authkey=tskey-auth-hunter2", sink = null, secret = true)
         }.isInstanceOf(RemoteCommandFailedException::class.java)
             .hasMessageNotContaining("hunter2")
     }
 
+    /** Records what the client streams, line by line, per stream. */
+    private class CollectingSink : RemoteOutputSink {
+        val lines = mutableListOf<Pair<NodeStream, String>>()
+
+        override fun line(
+            stream: NodeStream,
+            text: String,
+        ) {
+            lines.add(stream to text)
+        }
+    }
+
+    /** Stubs the session to write each chunk of [stdoutChunks] and [stderrChunks] as a separate write. */
+    private fun stubChunkedCommand(
+        stdoutChunks: List<String>,
+        stderrChunks: List<String> = emptyList(),
+        failWith: RemoteException? = null,
+    ) {
+        whenever(mockSession.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->
+            val out = invocation.getArgument<OutputStream>(1)
+            val err = invocation.getArgument<OutputStream>(2)
+            stdoutChunks.forEach { out.write(it.toByteArray()) }
+            stderrChunks.forEach { err.write(it.toByteArray()) }
+            failWith?.let { throw it }
+            null
+        }
+    }
+
     @Test
-    fun `a successful command's output is redacted before it reaches the event bus`() {
-        // install-cassandra-version echoes the clone URL it was given; that output is emitted as a
-        // @Serializable event reaching every Redis subscriber.
-        stubRemoteCommand(
-            stdout = "Cloning repo for version fork from https://ghp_secrettoken@github.com/acme/cassandra.git",
+    fun `output written in pieces reaches the sink as whole redacted lines on its own stream`() {
+        // install-cassandra-version echoes the clone URL it was given.
+        stubChunkedCommand(
+            stdoutChunks = listOf("Cloning from https://ghp_secret", "token@github.com/acme/c.git\nbuil", "ding\npartial"),
+            stderrChunks = listOf("warn", "ing: slow\n"),
         )
+        val sink = CollectingSink()
 
-        val response = sshClient.executeRemoteCommand("install-cassandra-version fork", output = true, secret = false)
+        val response = sshClient.executeRemoteCommand("install-cassandra-version fork", sink, secret = false)
 
-        assertThat(response.text).doesNotContain("ghp_secrettoken")
-        assertThat(response.text).contains("***@github.com")
-        val emitted = outputHandler.messages.joinToString("\n")
-        assertThat(emitted).doesNotContain("ghp_secrettoken")
+        // Each stream keeps its own order; the unterminated last line comes out when the command ends.
+        assertThat(sink.lines.filter { it.first == NodeStream.Stdout }.map { it.second })
+            .containsExactly("Cloning from https://***@github.com/acme/c.git", "building", "partial")
+        assertThat(sink.lines.filter { it.first == NodeStream.Stderr }.map { it.second }).containsExactly("warning: slow")
+        assertThat(response.text).isEqualTo("Cloning from https://***@github.com/acme/c.git\nbuilding\npartial")
+        assertThat(response.stderr).isEqualTo("warning: slow\n")
+        // Raw output is not an event: the test bus forwards every event into the output handler.
+        assertThat(outputHandler.messages).isEmpty()
+    }
+
+    @Test
+    fun `a failed command still streams what it said before the failure`() {
+        stubChunkedCommand(
+            stdoutChunks = listOf("step 1\nERROR: no"),
+            failWith = RemoteException("Remote command failed (1): setup"),
+        )
+        val sink = CollectingSink()
+
+        assertThatThrownBy { sshClient.executeRemoteCommand("setup", sink, secret = false) }
+            .isInstanceOf(RemoteCommandFailedException::class.java)
+        assertThat(sink.lines.map { it.second }).containsExactly("step 1", "ERROR: no")
     }
 
     @Test
     fun `a successful command's stderr is redacted too`() {
         stubRemoteCommand(stderr = "warning: fetching https://ghp_secrettoken@github.com/acme/cassandra.git")
 
-        val response = sshClient.executeRemoteCommand("git fetch", output = false, secret = false)
+        val response = sshClient.executeRemoteCommand("git fetch", sink = null, secret = false)
 
         assertThat(response.stderr).doesNotContain("ghp_secrettoken")
     }
@@ -173,22 +220,20 @@ class SSHClientTest :
     @Test
     fun `executeRemoteCommand should reject blank command`() {
         assertThatThrownBy {
-            sshClient.executeRemoteCommand("", output = false, secret = false)
+            sshClient.executeRemoteCommand("", sink = null, secret = false)
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("Command cannot be blank")
     }
 
     @Test
-    fun `executeRemoteCommand with secret flag should hide command in output`() {
-        // Given
-        val command = "echo secret"
-        stubRemoteCommand(stdout = "secret")
+    fun `a secret command streams nothing to the sink`() {
+        stubRemoteCommand(stdout = "logged in with tskey-auth-hunter2\n")
+        val sink = CollectingSink()
 
-        // When
-        sshClient.executeRemoteCommand(command, output = true, secret = true)
+        val response = sshClient.executeRemoteCommand("tailscale up --authkey=tskey-auth-hunter2", sink, secret = true)
 
-        // Then - verify outputHandler was called with hidden message
-        // Note: In real test we'd verify outputHandler.handleMessage was called with "[hidden]"
+        assertThat(sink.lines).isEmpty()
+        assertThat(response.text).contains("logged in")
     }
 
     // ========== File Upload Tests ==========

@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.StressJobService
-import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -25,7 +24,6 @@ import picocli.CommandLine.Parameters
     description = ["List available cassandra-easy-stress field generators"],
 )
 class StressFields : PicoBaseCommand() {
-    private val log = KotlinLogging.logger {}
     private val stressJobService: StressJobService by inject()
 
     @Option(
@@ -55,7 +53,7 @@ class StressFields : PicoBaseCommand() {
                 }
 
         if (output.isNotEmpty()) {
-            eventBus.emit(Event.Stress.CommandOutput(output))
+            println(output)
         }
     }
 }

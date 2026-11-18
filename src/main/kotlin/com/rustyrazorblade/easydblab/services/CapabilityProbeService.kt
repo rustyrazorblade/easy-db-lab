@@ -4,16 +4,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CapabilityProbePods
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
-import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
-import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
-import java.time.Duration
-import java.util.concurrent.TimeUnit
 
 /**
  * What a probe found: the admission capabilities the namespace admits, and a note for each one it
@@ -39,17 +36,16 @@ data class ProbeResult(
  * no Pod at all, which is not a capability fact, and the probe fails. Then each admission
  * capability's Pod ([CapabilityProbePods]) is submitted; [ProbeRejection] decides what a rejection
  * means. Nothing is persisted except the namespace, which the probe creates when it is missing (a
- * dry run in a missing namespace answers 404). Version 1 needs cluster-admin for that.
+ * dry run in a missing namespace answers 404), and the namespace's `default` ServiceAccount, which
+ * it creates rather than waiting for the controller. Version 1 needs cluster-admin for that.
  *
  * Not called on AWS or local Docker, whose capabilities are declared. `init --kubeconfig` (#1082)
  * calls it.
  *
  * @param clientFactory builds the client for the cluster named by the [KubeApi]
- * @param namespaceReadyTimeout how long to wait for a created namespace's default ServiceAccount
  */
 class CapabilityProbeService(
     private val clientFactory: KubernetesClientFactory,
-    private val namespaceReadyTimeout: Duration = Duration.ofSeconds(Constants.Capabilities.NAMESPACE_READY_TIMEOUT_SECONDS),
 ) {
     /**
      * Probes [namespace] on the cluster [api] names.
@@ -115,51 +111,55 @@ class CapabilityProbeService(
             } catch (e: KubernetesClientException) {
                 fail(namespace, "reading the namespace: ${explain(e)}")
             }
-        if (existing != null) return
-        try {
-            client
-                .namespaces()
-                .resource(
-                    NamespaceBuilder()
-                        .withNewMetadata()
-                        .withName(namespace)
-                        .endMetadata()
-                        .build(),
-                ).create()
-        } catch (e: KubernetesClientException) {
-            // Another caller created it between the read and the create.
-            if (e.code != Constants.HttpStatus.CONFLICT) fail(namespace, "creating the namespace: ${explain(e)}")
+        if (existing == null) {
+            createIfAbsent(namespace, "creating the namespace") {
+                client
+                    .namespaces()
+                    .resource(
+                        NamespaceBuilder()
+                            .withNewMetadata()
+                            .withName(namespace)
+                            .endMetadata()
+                            .build(),
+                    ).create()
+            }
         }
-        awaitDefaultServiceAccount(client, namespace)
+        ensureDefaultServiceAccount(client, namespace)
     }
 
     /**
-     * Until its default ServiceAccount exists, the API server rejects every Pod in a new namespace
-     * with 403, which would read as a refused capability. Fabric8 reports a timeout, a refused watch
-     * and an interrupt all as a [KubernetesClientException]; an interrupt is rethrown as the
-     * [InterruptedException] it wraps, with the thread's flag set again.
+     * Until its default ServiceAccount exists, the API server rejects every Pod in a namespace with
+     * 403, which would read as a refused capability. The kube-controller-manager creates it
+     * asynchronously, and on a busy cluster it lags by over a minute, so the probe creates it itself
+     * instead of waiting: the controller only ever creates the same empty ServiceAccount, and an
+     * existing one (the controller won, or the namespace is old) is left as it is.
      */
-    private fun awaitDefaultServiceAccount(
+    private fun ensureDefaultServiceAccount(
         client: KubernetesClient,
         namespace: String,
+    ) = createIfAbsent(namespace, "creating the default ServiceAccount") {
+        client
+            .serviceAccounts()
+            .inNamespace(namespace)
+            .resource(
+                ServiceAccountBuilder()
+                    .withNewMetadata()
+                    .withName(DEFAULT_SERVICE_ACCOUNT)
+                    .endMetadata()
+                    .build(),
+            ).create()
+    }
+
+    /** Runs [create]; an object that already exists (409) is success, any other error fails naming [step]. */
+    private fun createIfAbsent(
+        namespace: String,
+        step: String,
+        create: () -> Unit,
     ) {
         try {
-            client
-                .serviceAccounts()
-                .inNamespace(namespace)
-                .withName(DEFAULT_SERVICE_ACCOUNT)
-                .waitUntilCondition({ it != null }, namespaceReadyTimeout.toMillis(), TimeUnit.MILLISECONDS)
+            create()
         } catch (e: KubernetesClientException) {
-            val interrupted = e.causeChain().filterIsInstance<InterruptedException>().firstOrNull()
-            if (interrupted != null) {
-                Thread.currentThread().interrupt()
-                throw interrupted
-            }
-            val reason = "the default ServiceAccount did not appear within ${namespaceReadyTimeout.toSeconds()} s"
-            when (e) {
-                is KubernetesClientTimeoutException -> fail(namespace, reason)
-                else -> fail(namespace, "$reason: ${explain(e)}")
-            }
+            if (e.code != Constants.HttpStatus.CONFLICT) fail(namespace, "$step: ${explain(e)}")
         }
     }
 
@@ -168,7 +168,8 @@ class CapabilityProbeService(
         val message = e.status?.message ?: e.message.orEmpty()
         return when (e.code) {
             Constants.HttpStatus.FORBIDDEN ->
-                "$message. The capability probe needs cluster-admin on this cluster, to read and create the namespace"
+                "$message. The capability probe needs cluster-admin on this cluster, to read and create the namespace " +
+                    "and its default ServiceAccount"
             else -> message
         }
     }

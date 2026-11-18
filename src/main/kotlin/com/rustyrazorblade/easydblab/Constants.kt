@@ -1266,9 +1266,6 @@ object Constants {
 
         /** The non-root user the restricted baseline probe Pod runs as. */
         const val PROBE_RUN_AS_USER = 65532L
-
-        /** How long the probe waits for a namespace it created to get its default ServiceAccount. */
-        const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
     }
 
     /**

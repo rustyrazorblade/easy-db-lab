@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.nodeGroups
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
@@ -28,8 +29,9 @@ class InstanceSetupFailedException(
 
 /**
  * The cluster facts a node's setup needs: the database host app nodes point stress at, the
- * control node Pyroscope runs on, and the names profiling data is filed under. They come from
- * `state.json` once, so every node's setup reads the same values.
+ * control node Pyroscope runs on, the names profiling data is filed under, and the instance type
+ * of each server type, which node tuning names when it skips a setting the instance lacks. They
+ * come from `state.json` once, so every node's setup reads the same values.
  */
 data class NodeSetupContext(
     val databaseHost: String,
@@ -37,6 +39,7 @@ data class NodeSetupContext(
     val clusterName: String,
     val tenant: String,
     val telemetryRedirect: TelemetryRedirect? = null,
+    val instanceTypes: Map<ServerType, String> = emptyMap(),
 ) {
     /** Building a context from the cluster state. */
     companion object {
@@ -56,6 +59,11 @@ data class NodeSetupContext(
                 clusterName = state.clusterLabelName(),
                 tenant = state.tenant(),
                 telemetryRedirect = state.initConfig?.telemetryRedirect,
+                instanceTypes =
+                    state.initConfig
+                        ?.nodeGroups()
+                        ?.associate { it.serverType to it.instanceType }
+                        .orEmpty(),
             )
     }
 }
@@ -72,6 +80,7 @@ data class NodeSetupContext(
 class NodeSetupService(
     private val remoteOps: RemoteOperationsService,
     private val profilingService: CassandraProfilingService,
+    private val tuningFiles: NodeTuningFiles,
 ) {
     /** Sets up [host] as a node of [serverType]. */
     fun setup(
@@ -81,7 +90,7 @@ class NodeSetupService(
     ) = when (serverType) {
         ServerType.Cassandra -> setupDatabase(host, context)
         ServerType.Stress -> setupApp(host, context)
-        ServerType.Control -> setupControl(host)
+        ServerType.Control -> setupControl(host, context)
     }
 
     /** A database node: JMX rules and seeded profiling state as well as the common setup. */
@@ -92,7 +101,7 @@ class NodeSetupService(
         installEnvironment(host)
         writeJmxRules(host)
         seedProfilingConfig(host, context)
-        common(host)
+        common(host, context.instanceTypes[ServerType.Cassandra])
     }
 
     /** An app node: the stress service's environment file as well as the common setup. */
@@ -102,13 +111,16 @@ class NodeSetupService(
     ) {
         installEnvironment(host)
         installStressEnv(host, context.databaseHost, readRegion(host))
-        common(host)
+        common(host, context.instanceTypes[ServerType.Stress])
     }
 
     /** The control node: the common setup only. */
-    fun setupControl(host: Host) {
+    fun setupControl(
+        host: Host,
+        context: NodeSetupContext,
+    ) {
         installEnvironment(host)
-        common(host)
+        common(host, context.instanceTypes[ServerType.Control])
     }
 
     /**
@@ -149,9 +161,12 @@ class NodeSetupService(
     /** The region [host] runs in, from its instance metadata. */
     fun readRegion(host: Host): String = ImdsRegion.parse(remoteOps.executeRemotely(host, ImdsRegion.COMMAND).text)
 
-    private fun common(host: Host) {
+    private fun common(
+        host: Host,
+        instanceType: String?,
+    ) {
         remoteOps.executeRemotely(host, "sudo hostnamectl set-hostname ${host.alias.shellQuote()}").text
-        runSetupScript(host)
+        runSetupScript(host, instanceType)
     }
 
     // The OTel Java agent reads these JMX rules at Cassandra startup. They live in the cluster
@@ -185,12 +200,21 @@ class NodeSetupService(
         )
     }
 
-    // A non-zero setup (no data disk, a failed mount) fails the node, naming the host and the
-    // reason the script printed, so the node never joins K3s.
-    private fun runSetupScript(host: Host) {
+    // A non-zero setup (no data disk, a failed mount, a tuning value that did not take) fails the
+    // node, naming the host and the reason the script printed, so the node never joins K3s. The
+    // packaged OS tuning files go beside the script, which installs them. The instance type comes
+    // from the cluster state, so nothing on the node asks the cloud provider for it.
+    private fun runSetupScript(
+        host: Host,
+        instanceType: String?,
+    ) {
+        tuningFiles.stage { dir ->
+            remoteOps.executeRemotely(host, "rm -rf ${Constants.NodeTuning.REMOTE_DIR}", output = false)
+            remoteOps.uploadDirectory(host, dir, Constants.NodeTuning.REMOTE_DIR)
+        }
         remoteOps.upload(host, Path.of(SETUP_SCRIPT), SETUP_SCRIPT)
         try {
-            remoteOps.executeRemotely(host, "sudo bash $SETUP_SCRIPT").text
+            remoteOps.executeRemotely(host, setupCommand(instanceType)).text
         } catch (e: RemoteCommandFailedException) {
             throw InstanceSetupFailedException(host.alias, setupFailureReason(e))
         }
@@ -206,6 +230,13 @@ class NodeSetupService(
 
         /** The prefix `setup_instance.sh` puts on the line that says why it failed. */
         private const val SCRIPT_ERROR_PREFIX = "ERROR: "
+
+        /** How the setup script is run, as root, with the node's [instanceType] when the state has one. */
+        fun setupCommand(instanceType: String?): String {
+            val environment =
+                instanceType?.let { "${Constants.NodeTuning.INSTANCE_TYPE_VARIABLE}=${it.shellQuote()} " }.orEmpty()
+            return "sudo ${environment}bash $SETUP_SCRIPT"
+        }
 
         /** The script's own `ERROR:` lines, or the remote failure itself when it printed none. */
         fun setupFailureReason(e: RemoteCommandFailedException): String =

@@ -24,6 +24,7 @@ class StartK3sScriptsIntegrationTest {
         private const val RESOURCE_DIR = "com/rustyrazorblade/easydblab/services"
         private const val EVICTION_CONFIG = "/etc/rancher/k3s/config.yaml.d/10-kubelet-eviction.yaml"
         private const val DATASTORE_CONFIG = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
+        private const val KUBELET_LIMITS_CONFIG = "/etc/rancher/k3s/config.yaml.d/15-kubelet-limits.yaml"
         private const val CALLS_LOG = "/tmp/calls.log"
         private const val SERVER = "start-k3s-server.sh"
         private const val AGENT = "start-k3s-agent.sh"
@@ -211,6 +212,24 @@ class StartK3sScriptsIntegrationTest {
         runScript(script, mounted = true, runs = 2) { node ->
             assertThat(node.exitCode).describedAs(node.output).isZero()
             assertThat(node.sh("grep -c eviction-hard= $EVICTION_CONFIG")).isEqualTo("1")
+        }
+    }
+
+    /**
+     * The kubelet runs inside the k3s process and sets its open-file limit to max-open-files
+     * (1000000 by default), below the unit's 1048576 that node tuning verifies on the running
+     * process. The file appends to the eviction file's kubelet args, so neither replaces the other.
+     */
+    @ParameterizedTest
+    @CsvSource("$SERVER, true", "$AGENT, true", "$AGENT, false")
+    fun `the kubelet keeps the open-file limit the unit gives k3s`(
+        script: String,
+        mounted: Boolean,
+    ) {
+        runScript(script, mounted = mounted, runs = 2) { node ->
+            assertThat(node.exitCode).describedAs(node.output).isZero()
+            assertThat(node.sh("cat $KUBELET_LIMITS_CONFIG"))
+                .isEqualTo("kubelet-arg+:\n  - \"max-open-files=1048576\"")
         }
     }
 

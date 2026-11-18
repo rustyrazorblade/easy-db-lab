@@ -11,8 +11,9 @@ setting, the value it wanted and the value it read back, for example
 reports it as the node's failed setup step. A sysctl key the kernel rejects fails setup with the
 kernel's message, which names the key.
 
-To check a node by hand, run `sudo edl-node-tuning verify` on it. It prints nothing and exits 0
-when every value matches.
+To check a node by hand, run `sudo edl-node-tuning verify` on it. It exits 0 when every value
+matches, and prints no `ERROR:` line. It can still print a `skipped` line for a setting the node
+does not have, such as irqbalance on a node with one CPU.
 
 `edl-node-tuning.service` runs the same check at every boot, after it applies the settings. A
 value that drifted after a reboot does not fail the boot. The service logs it to the node's

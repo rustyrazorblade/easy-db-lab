@@ -37,6 +37,18 @@ class NodeTuningFilesTest {
         assertThat(staged!!).doesNotExist()
     }
 
+    // The unit's ExecStartPost verify reads irqbalance's state, so at boot the unit must start
+    // after irqbalance, or every boot logs a false irqbalance drift line.
+    @Test
+    fun `the boot unit verifies only after irqbalance has started`() {
+        val after =
+            File(packagedDir(), "edl-node-tuning.service")
+                .readLines()
+                .filter { it.startsWith("After=") }
+                .flatMap { it.substringAfter("=").split(" ") }
+        assertThat(after).contains("irqbalance.service")
+    }
+
     @Test
     fun `a file missing from the distribution fails before the upload, naming it`() {
         var uploaded = false

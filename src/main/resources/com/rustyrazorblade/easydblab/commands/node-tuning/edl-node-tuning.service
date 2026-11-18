@@ -1,6 +1,7 @@
 [Unit]
 Description=easy-db-lab node tuning
-After=systemd-sysctl.service systemd-udev-trigger.service
+# After irqbalance too: the verify below reads its state, and it starts from the same target.
+After=systemd-sysctl.service systemd-udev-trigger.service irqbalance.service
 Before=k3s.service k3s-agent.service cassandra.service
 [Service]
 Type=oneshot

@@ -849,6 +849,65 @@ object Constants {
 
         /** Pod-template annotation carrying a hash of the ConfigMaps a workload reads; see ConfigHashAnnotator. */
         const val CONFIG_HASH_ANNOTATION = "easydblab.com/config-hash"
+
+        /** The Node condition the kubelet keeps True while the node can run pods. */
+        const val NODE_READY_CONDITION = "Ready"
+
+        /** The status of a Kubernetes condition that holds. */
+        const val CONDITION_TRUE = "True"
+
+        /** The label the DaemonSet controller puts on each pod: the DaemonSet generation it was made from. */
+        const val POD_TEMPLATE_GENERATION_LABEL = "pod-template-generation"
+
+        /**
+         * The DaemonSet annotation holding the generation of its current pod template; the controller
+         * copies it into [POD_TEMPLATE_GENERATION_LABEL]. Unlike `metadata.generation` it does not move
+         * on a spec change outside the template, such as the update strategy.
+         */
+        const val DAEMONSET_TEMPLATE_GENERATION_ANNOTATION = "deprecated.daemonset.template.generation"
+
+        /**
+         * At most this many nodes are read for each pending DaemonSet on each rollout look, for its pods
+         * that are not Ready, so a fresh rollout on a large cluster does not read every node on every
+         * poll. Each look reads on, by node name, from where the last one stopped. A node is read once per
+         * look however many DaemonSets ask for it.
+         */
+        const val ROLLOUT_NODE_CHECKS_PER_LOOK = 20
+
+        /**
+         * How long a node's Ready condition must have been False or Unknown before a DaemonSet pod on it
+         * blocks a rollout. A node that is still joining, or misses one heartbeat, recovers within it.
+         */
+        const val ROLLOUT_NODE_NOT_READY_GRACE_SECONDS = 60L
+
+        /**
+         * How many restarts a container in CrashLoopBackOff must have before it blocks a rollout. The
+         * kubelet reports CrashLoopBackOff after the first crash, and a pod may crash once or twice while
+         * a dependency (a backend Service, a lease) comes up; three crashes is a loop. Every other
+         * terminal reason, such as an image pull failure, blocks at once.
+         *
+         * `restartCount` counts over the life of the pod, not of one wait. A pod that crashed three
+         * times under an earlier rollout and is still current blocks at its next CrashLoopBackOff, even
+         * if a dependency it needed has since come up. That is deliberate: no per-wait baseline is
+         * kept, because one would stop a pod that is already crash-looping from a previous bad rollout,
+         * the main case, from failing the wait fast.
+         */
+        const val ROLLOUT_CRASH_LOOP_MIN_RESTARTS = 3
+
+        /** The waiting reason the kubelet gives a container it is restarting after crashes. */
+        const val CRASH_LOOP_BACK_OFF = "CrashLoopBackOff"
+
+        /**
+         * The label the DaemonSet controller puts on each pod and on each of its ControllerRevisions:
+         * the hash of the template the pod was made from.
+         */
+        const val CONTROLLER_REVISION_HASH_LABEL = "controller-revision-hash"
+
+        /** At most this many of a workload's unready pods are listed when a rollout wait times out. */
+        const val ROLLOUT_UNREADY_PODS_LISTED_PER_WORKLOAD = 5
+
+        /** The annotation the Deployment controller keeps on a Deployment and its ReplicaSets: the revision. */
+        const val DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
     }
 
     // OpenSearch configuration

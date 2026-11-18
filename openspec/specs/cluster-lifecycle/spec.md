@@ -571,6 +571,33 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 - Per-host work (instance setup, AxonOps, registry TLS, K3s agents, the SSH readiness wait, the Cilium node image check) MUST run in parallel on at most `Constants.Scale.HOST_CONCURRENCY` hosts at once.  The SSH readiness wait MUST re-probe only the hosts not yet ready, within one time budget.
 - After the K3s agents start, `up` MUST wait until every node is registered.  The node type and ordinal labels MUST be set in each agent's K3s configuration, not by a later per-node label call.
 - The observability readiness wait MUST list pods once per poll under one deadline, and the rollout deadline MUST grow with the node count.  A pod with a container in a terminal state (`CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, `Error`) MUST end the wait at the poll that sees it, naming the pod, the container and the reason; it MUST NOT be retried until the deadline.
+- The observability rollout wait MUST, for each workload still rolling out, inspect that workload's pods of its latest template on every poll.  Those are the pods its selector matches that the workload owns (a pod's `ownerReferences` name the DaemonSet's uid, or the uid of the Deployment's current ReplicaSet), so another workload whose selector overlaps never fails it.  A DaemonSet's pod is of its latest template when its `pod-template-generation` label is the template's generation, or when its `controller-revision-hash` label is the hash of the DaemonSet's highest ControllerRevision, so a pod kept through a template set back to an earlier one (A, then B, then A) counts as current.  It MUST end the wait at the poll that sees a container of such a pod in a terminal state (the same classification as the readiness wait, except that a container in `CrashLoopBackOff` counts only once its `restartCount` reaches 3, `Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS`, and the error then names the restart count and, for any container failure, how the container last exited (`last exit <code> (<reason>)`) and how many other current pods of the workload fail for the same reason), or a pending DaemonSet's pod that is not Ready on a node whose `Ready` condition has been `False` or `Unknown` for longer than 60 seconds (`Constants.K8s.ROLLOUT_NODE_NOT_READY_GRACE_SECONDS`), measured from the condition's `lastTransitionTime` (a pod that is already Ready never fails the wait for its node; a missing or unparseable `lastTransitionTime` counts as just transitioned).  A pending DaemonSet's terminating pod of an older template, on a node with no pod of the current template, MUST have its node judged the same way, because a rolling update creates the new pod there only after the old one is gone; the error then names the DaemonSet, the old pod and the node.  An image pull failure (`ErrImagePull`, `ImagePullBackOff`) or an `Error` still fails the wait at once; a crash loop fails it after 3 restarts.  It MUST read only the nodes of those pods, by name, and not list every node; it reads at most `Constants.K8s.ROLLOUT_NODE_CHECKS_PER_LOOK` of them per workload per poll, each poll reading on, by node name, from the last node the previous poll read and wrapping round, so a node that stays unready is read within `ceil(S / bound)` polls, where S is the number of distinct such nodes over those polls, even while other pods become Ready or are scheduled between polls.  The error MUST start with `Rollout cannot complete:` and name the workload, the pod, the node and the reason, and the wait MUST emit `K8s.RolloutBlocked` with those fields first.  A rollout that is only slow (pods being created, images being pulled) MUST still wait until the deadline.  While it waits, it MUST emit `K8s.RolloutsProgress` (the elapsed time and the workloads still pending) when that set changes, and every `Constants.Scale.PROGRESS_INTERVAL_SECONDS` while it does not.  When the deadline passes, it MUST emit `K8s.RolloutsTimedOut` and fail with an error naming each pending workload, what it waits on, and the pods it waits on (current pods not Ready, and stranded old pods) with each pod's node and state, at most `Constants.K8s.ROLLOUT_UNREADY_PODS_LISTED_PER_WORKLOAD` per workload and a count of the rest.
+
+#### Scenario: A crash-looping pod fails the rollout wait after 3 restarts
+
+- **GIVEN** an observability workload still rolling out whose current pod's container is in `CrashLoopBackOff`
+- **WHEN** `up` waits for the observability rollouts
+- **THEN** the wait goes on while the container has restarted fewer than 3 times
+- **AND** fails at the poll that sees it in `CrashLoopBackOff` with 3 or more restarts, naming the workload, the pod, the node, the reason, the restart count and the container's last exit code
+
+#### Scenario: A rollout that times out names the pods it waits on
+
+- **GIVEN** an observability workload whose pod never becomes Ready, and has no container in a terminal state
+- **WHEN** `up` waits for the observability rollouts and the deadline passes
+- **THEN** the wait fails with an error naming the workload, what it waits on, and its unready pods, each with its node and state
+
+#### Scenario: A DaemonSet pod that cannot pull its image fails the rollout wait at once
+
+- **GIVEN** an observability DaemonSet whose pod on one node is in `ErrImagePull` or `ImagePullBackOff`
+- **WHEN** `up` waits for the observability rollouts
+- **THEN** the wait fails at the poll that sees it, well before the deadline, with an error naming the DaemonSet, the pod, the node and the reason
+
+#### Scenario: A DaemonSet pod on a NotReady node fails the rollout wait after the node has been NotReady for 60 s
+
+- **GIVEN** a pending observability DaemonSet with a pod that is not Ready on a node whose `Ready` condition is `False` or `Unknown`
+- **WHEN** `up` waits for the observability rollouts
+- **THEN** the wait fails after the node has been NotReady for 60 s, naming the DaemonSet, the pod, the node and the node's condition
+- **AND** a node that has been NotReady for 60 s or less does not fail the wait
 
 #### Scenario: Launched instances survive a failure later in up
 

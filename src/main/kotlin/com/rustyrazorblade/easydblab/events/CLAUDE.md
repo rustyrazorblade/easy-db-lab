@@ -28,6 +28,7 @@ The console and, when `EASY_DB_LAB_REDIS_URL` is set, Redis are the only destina
 | `RedisEndpoint.kt` | Parses `EASY_DB_LAB_REDIS_URL` (`redis://host:port/channel`) into host, port and channel, with the default channel. Only `redis://` with no user name or password is accepted (the connection uses no TLS and no auth); `url` is redacted anyway. An unusable value throws `RedisConfigurationException`, which `Main` reports like `RedisUnavailableException` (both are `RedisStartupException`) |
 | `RedisPublisher.kt` | The one Redis connection of the process; its constructor pings and throws `RedisUnavailableException`, whose message names `EASY_DB_LAB_REDIS_URL` and the URL |
 | `RedisConfiguration.kt` | `NotConfigured` or `Configured(endpoint)`, read once from the environment (Koin singleton) |
+| `RolloutBlock.kt` | Why a rollout wait ended early (`RolloutBlock`, its `RolloutBlockCause`) and a pod a timed-out wait still waits on (`UnreadyPod`), carried by `K8s.RolloutBlocked` and `K8s.RolloutsTimedOut` |
 | `InvalidMetricName.kt` | One bad `--metrics` entry (position, value, reason), carried by `Metrics.InvalidNames` |
 
 ## Event Hierarchy
@@ -38,7 +39,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Profiling.*` — Runtime async-profiler control on Cassandra nodes (start/stop, attach and shipping health, fetch/flamegraph)
 - `Event.K3s.*` — K3s cluster management
 - `Event.Cilium.*` — Cilium CNI operations
-- `Event.K8s.*` — Kubernetes operations
+- `Event.K8s.*` — Kubernetes operations. The rollout wait (`waitForRollouts`) emits `RolloutsWaiting` (the workload names), `RolloutsProgress` (elapsed seconds and the workloads still pending; when that set changes, and every `Constants.Scale.PROGRESS_INTERVAL_SECONDS`), `RolloutsComplete`, and two errors, each emitted before the wait throws: `RolloutBlocked` (a `RolloutBlock`: workload, pod, node, cause, reason, container, restarts, NotReady seconds, last exit code and reason, and the count of other pods failing the same way) and `RolloutsTimedOut` (the timeout, the pending workloads and their reasons, and the `UnreadyPod`s with node and state, capped per workload, with a count of the rest)
 - `Event.Infra.*` — AWS infrastructure (VPC, subnet, security group)
 - `Event.Ec2.*` — EC2 instance operations
 - `Event.Emr.*` — EMR/Spark operations

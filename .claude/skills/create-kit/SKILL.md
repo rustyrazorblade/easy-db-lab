@@ -294,27 +294,18 @@ User-facing documentation on what profiles are available and how to access them 
 ### What to add to `start` phase scripts for a JVM workload
 
 ```bash
-PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar \
-  -Dpyroscope.application.name=<workload> \
-  -Dpyroscope.server.address=http://${CONTROL_HOST_PRIVATE}:4040 \
-  -Dpyroscope.format=jfr \
-  -Dpyroscope.profiler.event=cpu \
-  -Dpyroscope.profiler.alloc=512k \
-  -Dpyroscope.profiler.lock=10ms"
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+CLUSTER_LABEL="$(edl_cluster_label)"
 
-PATCH=$(jq -n \
-  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_NAME},component=<component>" \
-  '{spec:{template:{spec:{
-    volumes:[{name:"pyroscope-agent",hostPath:{path:"/usr/local/pyroscope"}}],
-    containers:[{name:"<container-name>",env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],
-      volumeMounts:[{name:"pyroscope-agent",mountPath:"/usr/local/pyroscope",readOnly:true}]}]
-  }}}}')
-kubectl patch deployment <deployment-name> --namespace default --type=strategic -p="$PATCH"
+# <deployment> <container> <app> <cluster-label> <component> [<port>...]
+edl_patch_pyroscope <deployment-name> <container-name> <workload> "${CLUSTER_LABEL}" <component>
 ```
 
-Run this patch for each JVM deployment (coordinator, worker, broker, etc.) before the rollout
-wait. `CONTROL_HOST_PRIVATE` and `CLUSTER_NAME` are injected as environment variables at runtime —
-use them directly as shell variables, not as `__VAR__` template substitutions.
+Run this for each JVM deployment (coordinator, worker, broker, etc.) before the rollout wait. Never
+write the agent options by hand: `edl_patch_pyroscope` takes them from `edl_pyroscope_opts`, which
+carries the outage options (unlimited upload retries, an hour of snapshots) that keep profiles
+through a Pyroscope restart. A container that builds its own JVM command line uses
+`$(edl_pyroscope_opts <workload>)`. The `presto` and `trino` kits' `start.sh` are the reference.
 
 ---
 

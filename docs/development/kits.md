@@ -708,28 +708,23 @@ method-level CPU, allocation, and lock contention profiles — much richer than 
 
 ### Wiring up the Java agent for a K8s kit
 
-The agent JAR lives on the host at `/usr/local/pyroscope`. Mount it into each JVM container via a
-`hostPath` volume, then inject `JAVA_TOOL_OPTIONS` via a `kubectl patch` in the `start` phase.
-`CONTROL_HOST_PRIVATE` and `CLUSTER_NAME` are available as environment variables at runtime.
+The agent JAR lives on the host at `/usr/local/pyroscope`. Call `edl_patch_pyroscope` from the
+[shared shell library](#shared-shell-library) in the `start` phase, once per JVM deployment, before
+the rollout wait. It mounts the JAR into the container with a `hostPath` volume and sets
+`JAVA_TOOL_OPTIONS` from `edl_pyroscope_opts`, which also makes the agent retry uploads without a
+limit and hold an hour of snapshots, so a Pyroscope restart loses no profile.
 
 ```bash
-PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar \
-  -Dpyroscope.application.name=<kit> \
-  -Dpyroscope.server.address=http://${CONTROL_HOST_PRIVATE}:4040 \
-  -Dpyroscope.format=jfr \
-  -Dpyroscope.profiler.event=cpu \
-  -Dpyroscope.profiler.alloc=512k \
-  -Dpyroscope.profiler.lock=10ms"
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+CLUSTER_LABEL="$(edl_cluster_label)"
 
-PATCH=$(jq -n \
-  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_NAME},component=<component>" \
-  '{spec:{template:{spec:{
-    volumes:[{name:"pyroscope-agent",hostPath:{path:"/usr/local/pyroscope"}}],
-    containers:[{name:"<container-name>",env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],
-      volumeMounts:[{name:"pyroscope-agent",mountPath:"/usr/local/pyroscope",readOnly:true}]}]
-  }}}}')
-kubectl patch deployment <deployment-name> --namespace default --type=strategic -p="$PATCH"
+# <deployment> <container> <app> <cluster-label> <component> [<port>...]
+edl_patch_pyroscope <deployment-name> <container-name> <kit> "${CLUSTER_LABEL}" coordinator
 ```
+
+The `presto` and `trino` kits' `start.sh` are the reference. If a container builds its JVM
+command line itself, put `$(edl_pyroscope_opts <kit>)` in it instead of writing the agent options by
+hand.
 
 Use `component=coordinator`, `component=worker`, etc. in the `pyroscope.labels` to distinguish
 multiple JVM processes belonging to the same kit. Profiles appear in Grafana's Pyroscope

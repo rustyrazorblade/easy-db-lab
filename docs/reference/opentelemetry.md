@@ -48,7 +48,7 @@ Each node's collector holds what it cannot deliver while Mimir, Loki or Tempo is
 | `otlp_http/logs` | Loki | `sending_queue`, 20000 batches | 5s backoff growing to 30s, no time limit |
 | `otlp_grpc/tempo` | Tempo | `sending_queue`, 20000 batches | 5s backoff growing to 30s, no time limit |
 
-The collectors that send to a cluster collector, rather than to a backend, do the same: the EMR collector (`otlp_grpc/control`, to the control node's collector) and the stress-job sidecar collector (`otlp_grpc`, to its node's collector) each keep a 20000-batch in-memory `sending_queue` and retry without a time limit. The cluster collector restarts whenever a kit starts or stops, and the senders hold their data through that restart.
+The collectors that send to a cluster collector, rather than to a backend, do the same: the EMR collector (`otlp_grpc/control`, to the control node's collector) and the stress-job sidecar collector (`otlp_grpc`, to its node's collector) each keep a 20000-batch in-memory `sending_queue` and retry without a time limit. The cluster collector restarts whenever a kit starts or stops, and the senders hold their data through that restart. Fluent Bit, which sends each node's systemd journal to its node's collector, retries without a limit (`retry_limit: no_limits`) and holds the chunks in memory.
 
 Notes on `prometheus_remote_write` in collector 0.161.0:
 

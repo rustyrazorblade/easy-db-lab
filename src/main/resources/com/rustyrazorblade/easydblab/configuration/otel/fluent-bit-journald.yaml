@@ -27,8 +27,12 @@ pipeline:
       call: process
 
   outputs:
+    # The node collector restarts on every kit start and stop, and its config roll can outlast
+    # Fluent Bit's default of one retry. Retry without a limit so no journal line is dropped
+    # (issue 991). Chunks stay in memory: there is no storage.path, by owner decision.
     - name: opentelemetry
       match: journald
+      retry_limit: no_limits
       host: 127.0.0.1
       port: 4318
       logs_uri: /v1/logs

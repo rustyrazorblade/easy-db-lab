@@ -975,6 +975,22 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * Fluent Bit sends the journal to the same node collector. Its default is one retry, so a
+     * collector roll would drop journal chunks; it retries without a limit and buffers in memory.
+     */
+    @Test
+    fun `the journald sender retries without a limit and buffers in memory`() {
+        val yaml =
+            checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/configuration/otel/fluent-bit-journald.yaml"))
+                .readText()
+        val output = (nodeAt(yaml, "pipeline", "outputs") as YamlList).items.single() as YamlMap
+
+        assertThat(output.get<YamlScalar>("retry_limit")?.content).isEqualTo("no_limits")
+        assertThat(keysAt(yaml, "service")).noneMatch { it.startsWith("storage.") }
+        assertThat(output.entries.keys.map { it.content }).noneMatch { it.startsWith("storage.") }
+    }
+
     /** Per-core CPU is opt-in on the host CPU scraper; dashboards break down CPU time by core. */
     @Test
     fun `the host CPU scraper reports time per core`() {

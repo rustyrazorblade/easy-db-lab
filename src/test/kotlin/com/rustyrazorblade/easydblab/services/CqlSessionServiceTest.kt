@@ -51,7 +51,7 @@ class CqlSessionServiceTest : BaseKoinTest() {
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Cassandra to listOf(testHost)),
             // As init records it: a Tailscale cluster is a Direct one.
-            exposure = Exposure.atInit(tailscaleActive = tailscaleActive, directNetwork = false),
+            exposure = Exposure.atInit(tailscaleActive = tailscaleActive),
         )
 
     override fun additionalTestModules(): List<Module> =

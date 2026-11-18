@@ -5,9 +5,9 @@ import java.nio.file.Path
 /**
  * Resolves the cluster's [KubeApi] for the current command.
  *
- * This is the seam the Kubernetes-forward epic (#1040) later implements from an `Environment`; today
- * the only implementation reads the workspace. Resolving once per command keeps the control node's
- * identity out of every K8s service.
+ * It is environment-neutral: every execution environment (EC2 + K3s, K3s in Docker, a brought
+ * kubeconfig) reaches its cluster through the workspace kubeconfig, so one implementation serves all
+ * of them. Resolving once per command keeps the control node's identity out of every K8s service.
  */
 fun interface KubeApiLocator {
     fun locate(): KubeApi

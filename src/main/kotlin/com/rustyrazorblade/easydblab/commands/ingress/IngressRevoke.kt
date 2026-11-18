@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.commands.ingress
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.SshCidrMixin
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.aws.RevokeOutcome
@@ -19,6 +21,7 @@ import picocli.CommandLine.Mixin
  * command, but the rules that do match are still removed.  It never starts the SOCKS tunnel.
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "revoke",
     description = ["Remove the SSH rule for an IPv4 address or CIDR (default: this machine's public IP)"],

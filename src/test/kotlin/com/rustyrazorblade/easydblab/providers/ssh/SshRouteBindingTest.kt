@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmProxyWrapper
-import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSshRoute
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -44,7 +43,6 @@ internal class SshRouteBindingTest : BaseKoinTest() {
         useTransport(SshTransport.Ssm)
 
         getKoin().get<SshRoute>().use { route ->
-            assertThat(route).isInstanceOf(SsmSshRoute::class.java)
             assertThat(route.proxyCommand(host)).contains("AWS-StartSSHSession", "--target i-0abc", "--region us-west-2")
             assertThat(route.tunnelVerifyAttempts).isEqualTo(Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)
             assertThat(route.authTimeout).isEqualTo(Duration.ofSeconds(30))
@@ -62,7 +60,6 @@ internal class SshRouteBindingTest : BaseKoinTest() {
 
         val route = getKoin().get<SshRoute>()
 
-        assertThat(route).isInstanceOf(DirectSshRoute::class.java)
         assertThat(route.proxyCommand(host)).isNull()
         assertThat(route.endpoint(host)).isEqualTo(SshEndpoint("54.1.2.3", 22))
         assertThat(route.tunnelVerifyAttempts).isEqualTo(Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS)

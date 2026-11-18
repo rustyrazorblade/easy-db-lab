@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -31,6 +32,16 @@ class RecordedTunnelRoutesTest : BaseKoinTest() {
         state.tailscaleActive = true
 
         assertThat(routes().current(state)).isEqualTo(RouteLookup.Usable(ObservabilityRoute.Direct))
+    }
+
+    /** A stale tunnel record in a local workspace must not route a reader through SOCKS. */
+    @Test
+    fun `a K3s in Docker workspace gives a direct route and ignores any recorded tunnel`() {
+        envFile.recordTunnel(PORT, PID)
+        state.environment = Environment.K3sDocker("/data")
+
+        assertThat(routes(FakeTunnelProcess.tunnelScript(PID, PORT, sshConfig)).current(state))
+            .isEqualTo(RouteLookup.Usable(ObservabilityRoute.Direct))
     }
 
     @Test

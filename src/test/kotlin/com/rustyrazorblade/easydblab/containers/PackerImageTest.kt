@@ -77,6 +77,8 @@ class PackerImageTest : BaseKoinTest() {
             containerId: String,
             removeVolumes: Boolean,
         ) = error("not used")
+
+        override fun serverArchitecture(): String = error("not used")
     }
 
     private fun docker(client: DockerClientInterface) = Docker(context, client)

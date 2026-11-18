@@ -56,7 +56,7 @@ class TemplateServiceTest : BaseKoinTest() {
         mockClusterStateManager = getKoin().get()
     }
 
-    private fun createService() = TemplateService(mockClusterStateManager, getKoin().get())
+    private fun createService() = TemplateService(mockClusterStateManager)
 
     private fun setupClusterState(
         bucketName: String? = "my-test-bucket",
@@ -92,13 +92,24 @@ class TemplateServiceTest : BaseKoinTest() {
         assertThat(createService().storeBackend()).isEqualTo(S3Backend(bucket = "easy-db-lab-x", region = "eu-west-1"))
     }
 
+    /** An EC2 state with no init config (a restore's bootstrap state) is in the profile's region, not a hardcoded one. */
     @Test
-    fun `the store backend falls back to the profile's region when the cluster records none`() {
+    fun `the store backend and AWS_REGION fall back to the profile's region when the cluster records none`() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "easy-db-lab-x"),
         )
+        val service = TemplateService(mockClusterStateManager) { "ap-south-1" }
 
-        assertThat(createService().storeBackend()).isEqualTo(S3Backend(bucket = "easy-db-lab-x", region = "us-west-2"))
+        assertThat(service.storeBackend()).isEqualTo(S3Backend(bucket = "easy-db-lab-x", region = "ap-south-1"))
+        assertThat(service.buildContextVariables()).containsEntry("AWS_REGION", "ap-south-1")
+    }
+
+    @Test
+    fun `a recorded region never asks the profile`() {
+        setupClusterState(region = "eu-west-1")
+        val service = TemplateService(mockClusterStateManager) { error("the profile must not be loaded") }
+
+        assertThat(service.buildContextVariables()).containsEntry("AWS_REGION", "eu-west-1")
     }
 
     @Test

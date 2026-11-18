@@ -38,6 +38,7 @@ providers/
 │   ├── SSHConnectionProvider.kt
 │   ├── DefaultSSHConnectionProvider.kt
 │   ├── SshRoute.kt        # How each SSH transport reaches a node (DirectSshRoute)
+│   ├── DeferredSshRoute.kt # The bound SshRoute: picks the real one on first use, so building it needs no profile
 │   ├── RemoteOperationsService.kt
 │   └── DefaultRemoteOperationsService.kt
 ```
@@ -148,6 +149,13 @@ itself is the same either way. It is read from the profile at runtime, never sna
 The transport is decided in exactly one place: the `SshRoute` binding in `SSHModule.kt`
 (`DirectSshRoute` or `aws/ssm/SsmSshRoute`). Everything else asks the route; do not add another
 `when (sshTransport)` elsewhere. The only other reader is `up`'s local-tooling preflight.
+
+The binding is a `DeferredSshRoute`: it picks the route, which loads the profile, the first time a
+host is reached, and a route never used closes without picking one. `DefaultSSHConnectionProvider`
+likewise loads the profile's key and starts MINA on the first connection, and `ProxyModule` reads
+the tunnel verify budget when a tunnel starts. That is what lets a command in a local workspace,
+which has no profile, build `remoteOps`, the SOCKS service and the service-access seam
+(`LocalWorkspaceNeedsNoProfileTest`). Do not read the route, the key or `User` at construction.
 
 - **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper and the `bin/` SSH wrappers) use
   `sshConfig`. `ClusterConfigWriter.writeSshConfig` puts every cluster-wide option (host keys, user,

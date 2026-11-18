@@ -1,0 +1,43 @@
+package com.rustyrazorblade.easydblab.configuration.environment
+
+/**
+ * How cluster tooling (`helm`, `kubectl`, `cilium`) runs. Koin maps each form to an implementation,
+ * so this package names no service.
+ */
+enum class ToolingForm {
+    /** Over SSH on the control node, where the tools are baked into the image. */
+    Ssh,
+
+    /** On this machine, through the workspace `bin/` wrappers. */
+    Local,
+}
+
+/** How easy-db-lab runs a command on a cluster node (#1039 implements the non-SSH forms). */
+enum class NodeAccessForm {
+    /** SSH to the node. */
+    Ssh,
+
+    /** `docker exec` into the node's container. */
+    ContainerExec,
+
+    /** The nodes are not easy-db-lab's to run commands on. */
+    None,
+}
+
+/** Where the observability backends keep their data. Nothing renders [Volume] yet; #1035 adds it. */
+enum class StoreKind {
+    /** An object store bucket. */
+    ObjectStore,
+
+    /** A volume in the cluster. */
+    Volume,
+}
+
+/** How this machine reaches the cluster API and its nodes. */
+enum class NetworkMode {
+    /** Through the SOCKS tunnel, unless Tailscale, which keeps its own flag, connects directly. */
+    Tunnel,
+
+    /** With no tunnel: the cluster is reachable from this machine as it is. */
+    Direct,
+}

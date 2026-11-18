@@ -1,10 +1,12 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -14,6 +16,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.time.Instant
@@ -63,6 +66,30 @@ internal class ProxyPreflightTest {
         verify(socksProxyService, never()).ensureRunning(any())
         assertThat(preflight.tunnelForCommand()).isNull()
         assertThat(envFile.read().tailscaleActive).isFalse()
+    }
+
+    /** Even a state that would otherwise get a tunnel (UP, Socks, a control host) gets none in direct mode. */
+    @Test
+    fun `a K3s in Docker workspace restores a lost direct key and never asks for a tunnel`() {
+        stateManager.save(clusterState(tailscale = false).apply { environment = Environment.K3sDocker("/data") })
+
+        preflight.ensureTunnel()
+
+        verifyNoInteractions(socksProxyService)
+        assertThat(preflight.tunnelForCommand()).isNull()
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = true))
+    }
+
+    @Test
+    fun `an EC2 plus K3s workspace keeps its tunnel and has no direct key`() {
+        envFile.recordDirect(true)
+        stateManager.save(clusterState(tailscale = false))
+
+        preflight.ensureTunnel()
+
+        verify(socksProxyService).ensureRunning(CONTROL)
+        assertThat(envFile.read().direct).isFalse()
+        assertThat(envFile.file.readText()).doesNotContain(Constants.Proxy.ENV_NETWORK_MODE)
     }
 
     @Test

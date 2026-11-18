@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.di.configurationModule
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -52,8 +53,9 @@ import java.net.InetAddress
  * prove what the unit tests cannot: that stdin reaches the tool (`apply -f -`, `--values -`), that a
  * failure carries the tool's exit status and stderr, and that helm keeps its repository under the
  * workspace. A fixture kit (`typed-steps-kit`) then runs the ten typed steps that drive helm or
- * kubectl through [WorkloadStepExecutor] and the production services, with `ClusterTooling` rebound
- * to the local form and every [RemoteOperationsService] call failing the test: no step may use SSH.
+ * kubectl through [WorkloadStepExecutor] and the production services. A recorded K3s in Docker state
+ * makes the production binding resolve `ClusterTooling` to the local form, and every
+ * [RemoteOperationsService] call fails the test: no step may use SSH.
  *
  * The test starts its own K3s container and does not share [SharedK3s]'s, because the kit applies
  * cluster-scoped kinds (a namespace, a CRD). Its workspace is a `@TempDir` that holds the container's kubeconfig and the
@@ -242,8 +244,8 @@ class LocalClusterToolingIntegrationTest {
 
     /**
      * Runs the fixture kit's install, stop and uninstall steps through [WorkloadStepExecutor] with the production
-     * services, rebinding only [ClusterTooling] to the local form. [RemoteOperationsService] is a mock that
-     * throws on any call, so a step that reached for SSH fails its phase, and the recorded calls are checked
+     * services; a recorded K3s in Docker state makes the production binding resolve [ClusterTooling] to the
+     * local form. [RemoteOperationsService] is a mock that throws on any call, so a step that reached for SSH fails its phase, and the recorded calls are checked
      * to be none at the end. Kit files, the chart repository and the url-served manifest all come from the
      * test, through one [MockWebServer] and the workspace.
      */
@@ -268,8 +270,13 @@ class LocalClusterToolingIntegrationTest {
                 )
             val remoteOps =
                 mock<RemoteOperationsService>(defaultAnswer = Answer<Any> { throw AssertionError("SSH used: ${it.method.name}") })
-            val app = koinApplication { modules(servicesModule, configurationModule, localToolingModule(remoteOps)) }
+            val app = koinApplication { modules(servicesModule, configurationModule, leafDependencies(remoteOps)) }
             try {
+                // The production binding picks the local form from the recorded environment.
+                app.koin.get<ClusterStateManager>().save(
+                    ClusterState(name = "local", versions = mutableMapOf(), environment = Environment.K3sDocker(workspace.absolutePath)),
+                )
+                assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(LocalClusterTooling::class.java)
                 val events = recordEvents(app.koin.get())
                 val phase = { name: String, steps: List<InstallStep> -> runPhase(app.koin.get(), name, steps, kitDir, variables) }
 
@@ -288,10 +295,9 @@ class LocalClusterToolingIntegrationTest {
         }
     }
 
-    /** Production wiring with the seam rebound to the local form, which is how a harness selects it until #1040. */
-    private fun localToolingModule(remoteOps: RemoteOperationsService) =
+    /** The leaf dependencies the production modules leave to the entry point; no seam is rebound. */
+    private fun leafDependencies(remoteOps: RemoteOperationsService) =
         module {
-            single<ClusterTooling> { tooling }
             single<RemoteOperationsService> { remoteOps }
             single<K8sService> { mock() }
             single { EventBus() }

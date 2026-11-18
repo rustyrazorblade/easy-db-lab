@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.proxy.LoopbackPortSelector
 import com.rustyrazorblade.easydblab.proxy.ProxiedHttpClientFactory
@@ -52,17 +51,6 @@ class PortForwardServiceAccessIntegrationTest {
         private const val CONNECT_TIMEOUT_MS = 2_000
         private const val CLOSE_ATTEMPTS = 50
         private val CLOSE_POLL = Duration.ofMillis(100)
-
-        /** TemplateService needs a user; nothing in the Mimir Service reads it. */
-        private val TEST_USER =
-            User(
-                region = "us-west-2",
-                email = "test@example.com",
-                keyName = "",
-                awsProfile = "",
-                awsAccessKey = "",
-                awsSecret = "",
-            )
 
         // The real-tunnel tests' range, so a run never collides with a live tunnel on the machine.
         private val TEST_PORTS = 10_000..19_999
@@ -273,7 +261,7 @@ class PortForwardServiceAccessIntegrationTest {
      */
     @Test
     fun `a backend Service published ClusterIP only is reached through the port-forward`() {
-        val templateService = TemplateService(mock<ClusterStateManager>(), TEST_USER)
+        val templateService = TemplateService(mock<ClusterStateManager>())
         val rendered = MimirManifestBuilder(templateService).buildService(ServicePublishing.ClusterIp)
         assertThat(rendered.spec.type).isEqualTo("ClusterIP")
         assertThat(rendered.spec.ports.mapNotNull { it.nodePort }).isEmpty()

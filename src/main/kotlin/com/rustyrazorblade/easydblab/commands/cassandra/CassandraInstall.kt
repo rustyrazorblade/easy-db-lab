@@ -2,11 +2,13 @@ package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.CassandraVersion
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.CommandExecutionException
@@ -32,6 +34,11 @@ import java.io.File
  * remotely, the same script the AMI bake uses.
  */
 @RequireProfileSetup
+@RequiresCapability(
+    NodeCapability.NODE_SSH,
+    NodeCapability.AWS_ACCOUNT,
+    alternative = Constants.Cassandra.KIT_ALTERNATIVE,
+)
 @Command(
     name = "install",
     description = ["Install a Cassandra version onto a running cluster"],

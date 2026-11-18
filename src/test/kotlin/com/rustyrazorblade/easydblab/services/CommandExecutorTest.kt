@@ -2,22 +2,59 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
+import com.rustyrazorblade.easydblab.commands.BuildBaseImage
+import com.rustyrazorblade.easydblab.commands.BuildCassandraImage
+import com.rustyrazorblade.easydblab.commands.BuildImage
+import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.Down
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.commands.PruneAMIs
+import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
+import com.rustyrazorblade.easydblab.commands.aws.Region
+import com.rustyrazorblade.easydblab.commands.aws.S3Bucket
+import com.rustyrazorblade.easydblab.commands.aws.Vpcs
+import com.rustyrazorblade.easydblab.commands.cassandra.CassandraBuild
+import com.rustyrazorblade.easydblab.commands.cassandra.CassandraInstall
+import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
+import com.rustyrazorblade.easydblab.commands.ingress.IngressAllow
+import com.rustyrazorblade.easydblab.commands.ingress.IngressRevoke
+import com.rustyrazorblade.easydblab.commands.observability.CompactorStart
+import com.rustyrazorblade.easydblab.commands.observability.CompactorStatus
+import com.rustyrazorblade.easydblab.commands.observability.CompactorStop
+import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
+import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
+import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStop
+import com.rustyrazorblade.easydblab.commands.spark.SparkDown
+import com.rustyrazorblade.easydblab.commands.spark.SparkInit
+import com.rustyrazorblade.easydblab.commands.spark.SparkJobs
+import com.rustyrazorblade.easydblab.commands.spark.SparkLogs
+import com.rustyrazorblade.easydblab.commands.spark.SparkStatus
+import com.rustyrazorblade.easydblab.commands.spark.SparkStop
+import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStatus
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStop
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
+import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
@@ -26,6 +63,8 @@ import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.tngtech.archunit.core.importer.ClassFileImporter
+import com.tngtech.archunit.core.importer.ImportOption
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -36,6 +75,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import picocli.CommandLine.Command
 import java.io.File
@@ -110,21 +150,187 @@ class CommandExecutorTest : BaseKoinTest() {
         // Default: profile is already set up
         whenever(mockUserConfigProvider.isSetup()).thenReturn(true)
 
-        commandExecutor =
-            DefaultCommandExecutor(
-                context = context,
-                clusterStateManager = mockClusterStateManager,
-                requirementCheckDeps =
-                    RequirementCheckDeps(
-                        userConfigProvider = mockUserConfigProvider,
-                        dockerClientProvider = mockDockerClientProvider,
-                    ),
-                resourceManager = mockResourceManager,
-                eventBus = eventBus,
-                proxyPreflight = ProxyPreflight(mockClusterStateManager, mockSocksProxyService, ProxyEnvFile(context.workingDirectory)),
-                proxyAvailability = proxyAvailability,
-                profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
-            )
+        commandExecutor = executorWith(ProfileSetupCommandProvider { error("profile setup must not run here") })
+    }
+
+    private fun executorWith(profileSetupProvider: ProfileSetupCommandProvider) =
+        DefaultCommandExecutor(
+            context = context,
+            clusterStateManager = mockClusterStateManager,
+            requirementCheckDeps =
+                RequirementCheckDeps(
+                    userConfigProvider = mockUserConfigProvider,
+                    dockerClientProvider = mockDockerClientProvider,
+                    environmentRequirements = EnvironmentRequirements(StateClusterContractSource(mockClusterStateManager)),
+                ),
+            resourceManager = mockResourceManager,
+            eventBus = eventBus,
+            proxyPreflight = ProxyPreflight(mockClusterStateManager, mockSocksProxyService, ProxyEnvFile(context.workingDirectory)),
+            proxyAvailability = proxyAvailability,
+            profileSetupProvider = profileSetupProvider,
+        )
+
+    private fun recordEnvironment(environment: Environment) {
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load())
+            .thenReturn(ClusterState(name = "test", versions = mutableMapOf(), environment = environment))
+    }
+
+    // ========== ENVIRONMENT REQUIREMENTS ==========
+
+    @Test
+    fun `an AWS-only command in a K3s in Docker workspace fails before running and before the profile check`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        whenever(mockUserConfigProvider.isSetup()).thenReturn(false)
+        var ran = false
+
+        val exitCode = commandExecutor.executeTopLevel(AwsOnlyCommand { ran = true }, "cassandra use")
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(ran).isFalse()
+        verify(mockUserConfigProvider, never()).isSetup()
+        val unavailable = emitted.filterIsInstance<Event.Environment.CommandUnavailable>().single()
+        assertThat(unavailable.command).isEqualTo("cassandra use")
+        assertThat(unavailable.environment).isEqualTo("K3s in Docker")
+        assertThat(unavailable.missing).containsExactly(NodeCapability.NODE_SSH, NodeCapability.AWS_ACCOUNT)
+        assertThat(unavailable.alternative).isEqualTo("the cassandra-pods kit")
+        assertThat(unavailable.toDisplayString()).contains("cassandra use", "K3s in Docker", "aws-account", "cassandra-pods")
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `cassandra use in a K3s in Docker workspace names the environment and suggests the kit, with no SSH`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        whenever(mockUserConfigProvider.isSetup()).thenReturn(false)
+
+        val exitCode = commandExecutor.executeTopLevel(UseCassandra().apply { version = "5.0" }, "cassandra use")
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        val unavailable = emitted.filterIsInstance<Event.Environment.CommandUnavailable>().single()
+        assertThat(unavailable.toDisplayString()).contains("cassandra use", "K3s in Docker", "aws-account", "cassandra-pods")
+        // Its first act is to announce the switch, before any SSH; that it never did proves nothing ran.
+        assertThat(emitted.filterIsInstance<Event.Cassandra.UsingVersion>()).isEmpty()
+        verify(mockUserConfigProvider, never()).isSetup()
+    }
+
+    @Test
+    fun `every spark subcommand in a K3s in Docker workspace fails fast naming the environment`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        val commands = listOf(SparkInit(), SparkSubmit(), SparkStatus(), SparkJobs(), SparkLogs(), SparkStop(), SparkDown())
+
+        val exitCodes = commands.map { commandExecutor.executeTopLevel(it) }
+
+        assertThat(exitCodes).allMatch { it == Constants.ExitCodes.ERROR }
+        assertThat(emitted.filterIsInstance<Event.Environment.CommandUnavailable>().map { it.environment })
+            .hasSize(commands.size)
+            .containsOnly("K3s in Docker")
+    }
+
+    /**
+     * The spec's list of AWS-only commands, run through the executor in a K3s in Docker workspace with
+     * no profile. Dropping `@RequiresCapability` from any one of them makes it run (or ask for a
+     * profile) instead of failing fast, and this fails naming it.
+     */
+    @Test
+    fun `every AWS-only command in a K3s in Docker workspace fails fast before the profile check`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        whenever(mockUserConfigProvider.isSetup()).thenReturn(false)
+
+        val refusedBeforeRunning =
+            awsOnlyCommands().associate { factory ->
+                val command = factory()
+                emitted.clear()
+                val exitCode = commandExecutor.executeTopLevel(command)
+                val unavailable = emitted.filterIsInstance<Event.Environment.CommandUnavailable>().singleOrNull()
+                command::class.simpleName to
+                    (exitCode == Constants.ExitCodes.ERROR && unavailable?.environment == "K3s in Docker")
+            }
+
+        assertThat(refusedBeforeRunning.filterValues { !it }.keys).describedAs("AWS-only commands that ran").isEmpty()
+        verify(mockUserConfigProvider, never()).isSetup()
+    }
+
+    /** The table above covers every command main code declares AWS-only, so a new one cannot be left out. */
+    @Test
+    fun `the AWS-only table names every command that requires aws-account`() {
+        val declared =
+            ClassFileImporter()
+                .withImportOption(ImportOption.DoNotIncludeTests())
+                .importPackages("com.rustyrazorblade.easydblab.commands")
+                .filter { it.isAnnotatedWith(RequiresCapability::class.java) }
+                .filter { NodeCapability.AWS_ACCOUNT in it.reflect().getAnnotation(RequiresCapability::class.java).capabilities }
+                .map { it.name }
+
+        assertThat(awsOnlyCommands().map { it()::class.java.name }).containsExactlyInAnyOrderElementsOf(declared)
+    }
+
+    private fun awsOnlyCommands(): List<() -> PicoCommand> =
+        listOf(
+            { UseCassandra().apply { version = "5.0" } },
+            ::CassandraInstall,
+            ::BuildImage,
+            ::BuildBaseImage,
+            ::BuildCassandraImage,
+            ::PruneAMIs,
+            ::ShowIamPolicies,
+            ::SparkInit,
+            ::SparkSubmit,
+            ::SparkStatus,
+            ::SparkJobs,
+            ::SparkLogs,
+            ::SparkStop,
+            ::SparkDown,
+            ::OpenSearchStart,
+            ::OpenSearchStatus,
+            ::OpenSearchStop,
+            ::TailscaleStart,
+            ::TailscaleStatus,
+            ::TailscaleStop,
+            ::IngressAllow,
+            ::IngressRevoke,
+            ::Region,
+            ::S3Bucket,
+            ::Vpcs,
+            ::CompactorStart,
+            ::CompactorStop,
+            ::CompactorStatus,
+            ::ConfigureAWS,
+            { CassandraBuild().apply { javaVersion = "21" } },
+        )
+
+    @Test
+    fun `an AWS-only command outside a workspace passes the capability check`() {
+        var ran = false
+
+        val exitCode = commandExecutor.executeTopLevel(AwsOnlyCommand { ran = true })
+
+        assertThat(exitCode).isZero()
+        assertThat(ran).isTrue()
+        assertThat(emitted.filterIsInstance<Event.Environment.CommandUnavailable>()).isEmpty()
+    }
+
+    @Test
+    fun `a profile command in a K3s in Docker workspace runs with no profile and no setup`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        whenever(mockUserConfigProvider.isSetup()).thenReturn(false)
+        var ran = false
+
+        val exitCode = commandExecutor.execute { ProfileRequiringCommand { ran = true } }
+
+        assertThat(exitCode).isZero()
+        assertThat(ran).isTrue()
+    }
+
+    @Test
+    fun `a command declaring a local environment needs no profile even in a workspace recorded as EC2`() {
+        recordEnvironment(Environment.Ec2K3s)
+        whenever(mockUserConfigProvider.isSetup()).thenReturn(false)
+        var ran = false
+
+        val exitCode = commandExecutor.execute { DeclaringCommand(Environment.K3sDocker("/data")) { ran = true } }
+
+        assertThat(exitCode).isZero()
+        assertThat(ran).isTrue()
     }
 
     // ========== EXECUTE IMMEDIATE TESTS ==========
@@ -522,6 +728,19 @@ class CommandExecutorTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a command without RequiresProxy restores a lost direct key before it runs and starts no tunnel`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        val envFile = ProxyEnvFile(context.workingDirectory)
+        var directWhenRun: Boolean? = null
+
+        val exitCode = commandExecutor.executeTopLevel(TestCommand { directWhenRun = envFile.read().direct })
+
+        assertThat(exitCode).isZero()
+        assertThat(directWhenRun).isTrue()
+        verifyNoInteractions(mockSocksProxyService)
+    }
+
+    @Test
     fun `executeTopLevel starts proxy for a RequiresProxy command when infra is UP and Tailscale is disabled`() {
         // Given
         val controlHost =
@@ -741,6 +960,44 @@ class CommandExecutorTest : BaseKoinTest() {
     inner class TestCommand(
         private val action: () -> Unit = {},
     ) : PicoBaseCommand() {
+        override fun execute() {
+            action()
+        }
+    }
+
+    /** Test command declared AWS-only the way `cassandra use` is, otherwise identical to [TestCommand]. */
+    @RequiresCapability(NodeCapability.NODE_SSH, NodeCapability.AWS_ACCOUNT, alternative = "the cassandra-pods kit")
+    @RequireProfileSetup
+    @Command(name = "aws-only-command")
+    inner class AwsOnlyCommand(
+        private val action: () -> Unit = {},
+    ) : PicoBaseCommand() {
+        override fun execute() {
+            action()
+        }
+    }
+
+    /** Test command carrying [RequireProfileSetup], otherwise identical to [TestCommand]. */
+    @RequireProfileSetup
+    @Command(name = "profile-requiring-command")
+    inner class ProfileRequiringCommand(
+        private val action: () -> Unit = {},
+    ) : PicoBaseCommand() {
+        override fun execute() {
+            action()
+        }
+    }
+
+    /** A profile command that, like `init`, is about to record [environment]. */
+    @RequireProfileSetup
+    @Command(name = "declaring-command")
+    inner class DeclaringCommand(
+        private val environment: Environment,
+        private val action: () -> Unit = {},
+    ) : PicoBaseCommand(),
+        DeclaresEnvironment {
+        override fun declaredEnvironment(): Environment = environment
+
         override fun execute() {
             action()
         }

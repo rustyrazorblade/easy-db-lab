@@ -72,6 +72,13 @@ interface DockerClientInterface {
         containerId: String,
         removeVolumes: Boolean,
     )
+
+    /**
+     * The CPU architecture the Docker daemon runs containers on (`docker info`'s `Architecture`, e.g.
+     * `x86_64` or `aarch64`). It can differ from this JVM's: an x86_64 JVM under Rosetta on Apple Silicon
+     * talks to a Docker Desktop VM that runs arm64.
+     */
+    fun serverArchitecture(): String
 }
 
 // Default implementation that delegates to the actual DockerClient
@@ -150,6 +157,9 @@ class DefaultDockerClient(
             .withRemoveVolumes(removeVolumes)
             .exec()
     }
+
+    override fun serverArchitecture(): String =
+        requireNotNull(dockerClient.infoCmd().exec().architecture) { "The Docker daemon reported no architecture" }
 }
 
 // Wrapper class for container creation commands to make testing easier

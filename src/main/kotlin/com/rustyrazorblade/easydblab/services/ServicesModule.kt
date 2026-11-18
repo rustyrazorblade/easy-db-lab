@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
+import com.rustyrazorblade.easydblab.configuration.environment.ToolingForm
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -43,11 +45,14 @@ import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import java.nio.file.Path
+
+private val servicesModuleLog = KotlinLogging.logger {}
 
 /**
  * Koin module for registering business services.
@@ -72,11 +77,19 @@ val servicesModule =
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
         factory { KitStorageResolver(get(), get()) }
-        // helm and kubectl run on the control node over SSH. A local cluster has no SSH host, so a
-        // harness rebinds this to LocalClusterTooling until #1040 selects the form per environment.
-        // The directory holds the SSH form's local staging copy of stdin; it is injected because the
-        // JVM caches java.io.tmpdir at startup.
-        single<ClusterTooling> { SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir"))) }
+        // Where helm and kubectl run follows the recorded environment: over SSH on the control node, or
+        // locally through the workspace bin/ wrappers. A factory, resolved from state.json each time,
+        // so an `init` inside the REPL or the server switches it for the next command. The SSH form's
+        // directory holds its local staging copy of stdin; it is injected because the JVM caches
+        // java.io.tmpdir at startup.
+        factory<ClusterTooling> {
+            val form = get<ClusterContractSource>().current().toolingForm
+            servicesModuleLog.debug { "Cluster tooling form: $form" }
+            when (form) {
+                ToolingForm.Ssh -> SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir")))
+                ToolingForm.Local -> LocalClusterTooling(get<Context>().workingDirectory, get())
+            }
+        }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
@@ -86,7 +99,7 @@ val servicesModule =
         // Reads the Tailscale client on the developer's own machine. Explicit factory so the
         // constructor defaults (the real CLI runner, the status timeout) apply.
         factory<LocalTailscaleClient> { DefaultLocalTailscaleClient() }
-        factory { ProvisioningPreflight(get(), get(), get(), get()) }
+        factory { ProvisioningPreflight(get(), get(), get(), lazy { get<User>() }) }
         factory<LocalSsmTooling> { DefaultLocalSsmTooling() }
 
         // Proves this machine has a route to the cluster's private network before `up` relies
@@ -142,7 +155,7 @@ val servicesModule =
         // GrafanaClient reaches Grafana through the service-access seam, with the route on its own client.
         factoryOf(::DefaultGrafanaClient) bind GrafanaClient::class
         factory { DashboardInstallContextFactory(get()) }
-        factoryOf(::TemplateService)
+        factory { TemplateService(get(), get()) }
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
         factoryOf(::KitStorageProvisioner)
@@ -150,47 +163,17 @@ val servicesModule =
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
-        // Explicit factory: factoryOf would look up the defaulted capabilitiesOf function.
-        factory<OtelSyncService> {
-            DefaultOtelSyncService(
-                k8sClientProvider = get(),
-                k8sService = get(),
-                otelManifestBuilder = get(),
-                clusterStateManager = get(),
-                user = get(),
-                configChangeReport = get(),
-            )
-        }
+        factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factory { ConfigChangeReport(get<K8sService>(), get()) }
         factory { TenantDirectory(get()) }
         factory<TestDocumentService> { DefaultTestDocumentService(get()) }
-        // Built by name, so no two collaborators can be swapped; environmentOf keeps its default.
-        factory<ObservabilityStackService> {
-            DefaultObservabilityStackService.build {
-                k8sService = get()
-                k8sClientProvider = get()
-                remoteOps = get()
-                clusterStateManager = get()
-                user = get()
-                eventBus = get()
-                grafanaDeployService = get()
-                otelManifestBuilder = get()
-                otelHostCollectorManifestBuilder = get()
-                journaldOtelManifestBuilder = get()
-                ebpfExporterManifestBuilder = get()
-                mimirManifestBuilder = get()
-                lokiManifestBuilder = get()
-                tempoManifestBuilder = get()
-                registryManifestBuilder = get()
-                s3ManagerManifestBuilder = get()
-                beylaManifestBuilder = get()
-                pyroscopeManifestBuilder = get()
-                yaceManifestBuilder = get()
-                kubeStateMetricsManifestBuilder = get()
-                configChangeReport = get()
-                installContextFactory = get()
-            }
-        }
+        factoryOf(::ObservabilityDeployInputs)
+        factoryOf(::CoreCollectorManifests)
+        factoryOf(::CollectorAgentManifests)
+        factoryOf(::BackendManifests)
+        factoryOf(::ObservabilityStageManifests)
+        factoryOf(::GrafanaStage)
+        factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<GrafanaAnnotationBackupService> {
             DefaultGrafanaAnnotationBackupService(get(), get(), get())
@@ -323,6 +306,7 @@ val servicesModule =
                 RequirementCheckDeps(
                     get<UserConfigProvider>(),
                     get<DockerClientProvider>(),
+                    EnvironmentRequirements(get()),
                 ),
                 get<ResourceManager>(),
                 get<EventBus>(),

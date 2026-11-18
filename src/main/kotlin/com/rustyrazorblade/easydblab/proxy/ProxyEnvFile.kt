@@ -89,8 +89,18 @@ class ProxyEnvFile(
         locked { if (file.exists()) write(read().copy(tunnel = null)) }
     }
 
-    /** Replaces the recorded state with [change] applied to it, under the lock. */
-    private fun update(change: (ProxyEnv) -> ProxyEnv) = locked { write(change(read())) }
+    /**
+     * Replaces the recorded state with [change] applied to it, under the lock. A change that leaves
+     * the state as it is writes nothing and takes no lock (every command re-records the network mode).
+     */
+    private fun update(change: (ProxyEnv) -> ProxyEnv) {
+        if (file.exists() && read().let { change(it) == it }) return
+        locked {
+            val current = read()
+            val changed = change(current)
+            if (!file.exists() || changed != current) write(changed)
+        }
+    }
 
     /** Runs [block] while this thread holds [localLock] and this process holds the lock file. */
     private fun <T> locked(block: () -> T): T =

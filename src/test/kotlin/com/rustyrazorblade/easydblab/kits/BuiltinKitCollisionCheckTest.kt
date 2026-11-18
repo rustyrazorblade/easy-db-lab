@@ -81,7 +81,7 @@ class BuiltinKitCollisionCheckTest : BaseKoinTest() {
      */
     @Test
     fun `sysbench's runtime selects the run pods its start script labels`() {
-        val kit = BuiltinKitFixture("sysbench", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        val kit = BuiltinKitFixture("sysbench", TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
         val runtime = requireNotNull(kit.config.runtime) { "sysbench declares no runtime" }
         val runLabels =
             parseLabelSelector(

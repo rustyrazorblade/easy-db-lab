@@ -5,13 +5,13 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
@@ -71,9 +71,8 @@ import java.time.format.DateTimeFormatter
  * `openspec/changes/up-fail-fast/design.md`. **No command that mutates state may take this
  * exception.**
  *
- * @property capabilitiesOf derives what the environment provides from cluster state; a test seam
- *   whose default keeps the no-argument construction picocli's factories use
- *   (see [com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService]); consolidated by #1040.
+ * What the environment provides comes from the injected [ClusterContractSource], the one source every
+ * consumer of the cluster contract reads.
  */
 @RequireProfileSetup
 @RequiresProxy(tolerateFailure = true)
@@ -82,11 +81,11 @@ import java.time.format.DateTimeFormatter
     description = ["Display full environment status"],
 )
 @Suppress("TooManyFunctions")
-class Status(
-    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
-) : PicoCommand,
+class Status :
+    PicoCommand,
     KoinComponent {
     private val context: Context by inject()
+    private val contractSource: ClusterContractSource by inject()
     private val proxyAvailability: ProxyAvailability by inject()
 
     companion object {
@@ -139,8 +138,9 @@ class Status(
         displayKitsSection()
         renderProxyDependentSection("Stress jobs") { displayStressJobsSection() }
         displayObservabilitySection()
-        if (NodeCapability.S3 in capabilitiesOf(clusterState)) displayS3ManagerSection()
-        displayCapabilitiesSection()
+        val capabilities = contractSource.current().nodeCapabilities
+        if (NodeCapability.S3 in capabilities) displayS3ManagerSection()
+        displayCapabilitiesSection(capabilities)
         displayCassandraVersionSection()
 
         // A degraded report is still an unsuccessful command: fail after rendering so a script
@@ -562,8 +562,7 @@ S3 Manager:
      * Every capability in enum order: present, or absent with the reason the workloads needing it
      * are skipped. Read from the recorded set, so it shows what `up` will gate on.
      */
-    private fun displayCapabilitiesSection() {
-        val capabilities = capabilitiesOf(clusterState)
+    private fun displayCapabilitiesSection(capabilities: NodeCapabilities) {
         val lines =
             NodeCapability.entries.joinToString("\n") { capability ->
                 when (capability) {

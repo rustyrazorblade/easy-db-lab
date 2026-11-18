@@ -26,7 +26,7 @@ import java.io.File
  */
 class MemcachedKitTest : BaseKoinTest() {
     private val kit by lazy {
-        BuiltinKitFixture("memcached", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        BuiltinKitFixture("memcached", TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
     }
 
     /** The phase's one label-selected `delete` step. */

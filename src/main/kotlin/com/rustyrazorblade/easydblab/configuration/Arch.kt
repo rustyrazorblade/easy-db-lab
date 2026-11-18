@@ -14,6 +14,21 @@ enum class Arch(
 
     companion object {
         /**
+         * Maps a platform architecture name onto an [Arch]: `amd64`/`x86_64` is [AMD64], `aarch64`/`arm64`
+         * is [ARM64]. It reads both a JVM `os.arch` and the Docker daemon's `Architecture`.
+         *
+         * @throws IllegalArgumentException for any other value, naming it
+         */
+        fun fromOsArch(osArch: String): Arch =
+            when (osArch) {
+                "amd64", "x86_64" -> AMD64
+                "aarch64", "arm64" -> ARM64
+                else -> throw IllegalArgumentException(
+                    "Unsupported CPU architecture '$osArch'; only x86_64 and arm64 are supported",
+                )
+            }
+
+        /**
          * Maps the EC2 `SupportedArchitectures` values reported by `DescribeInstanceTypes` onto an
          * [Arch]. The `x86_64` value maps to [AMD64] and `arm64` maps to [ARM64].
          *

@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import com.rustyrazorblade.easydblab.services.aws.AMIService
@@ -12,6 +14,7 @@ import picocli.CommandLine.Option
  * Prune older private AMIs while keeping the newest N per architecture and type.
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "prune-amis",
     description = ["Prune older private AMIs while keeping the newest N per architecture and type"],

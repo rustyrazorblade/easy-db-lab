@@ -507,7 +507,8 @@ class StatusCacheTest : BaseKoinTest() {
         whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
 
         fun accessInfo(capabilities: NodeCapabilities): JsonObject {
-            statusCache = StatusCache(refreshIntervalSeconds = 3600, capabilitiesOf = { capabilities })
+            whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(capabilities = capabilities.present().toSet()))
+            statusCache = StatusCache(refreshIntervalSeconds = 3600)
             statusCache.forceRefresh()
             return Json.parseToJsonElement(statusCache.getStatus("accessInfo")!!).jsonObject
         }

@@ -24,6 +24,19 @@ class ClusterConfigDataTest {
     /** A cluster the user brought: no control host in state. */
     private val broughtCluster = state.copy(hosts = emptyMap())
 
+    /** Every node-facing capability: the account-level `aws-account` describes no node and is never published. */
+    private val nodeCapabilityNames =
+        NodeCapability.entries.filterNot { it == NodeCapability.AWS_ACCOUNT }.joinToString(",") { it.serialName }
+
+    @Test
+    fun `the account capability is never published to the nodes`() {
+        val recorded = setOf(NodeCapability.S3, NodeCapability.AWS_ACCOUNT)
+
+        val data = ClusterConfigData.of(state.copy(capabilities = recorded), "us-west-2")
+
+        assertThat(data).containsEntry("capabilities", "s3")
+    }
+
     @Test
     fun `publishes the tenant so every producer reads it from one place`() {
         val data = ClusterConfigData.of(state, "us-west-2")
@@ -53,7 +66,7 @@ class ClusterConfigDataTest {
                 "logs_store_prefix" to "loki",
                 "cluster_name" to "lab-abc123",
                 "tenant" to "acme",
-                "capabilities" to NodeCapability.entries.joinToString(",") { it.serialName },
+                "capabilities" to nodeCapabilityNames,
             ),
         )
     }
@@ -92,7 +105,7 @@ class ClusterConfigDataTest {
     fun `a state with no recorded set publishes every capability`() {
         val data = ClusterConfigData.of(state, "us-west-2")
 
-        assertThat(data).containsEntry("capabilities", NodeCapability.entries.joinToString(",") { it.serialName })
+        assertThat(data).containsEntry("capabilities", nodeCapabilityNames)
     }
 
     @Test

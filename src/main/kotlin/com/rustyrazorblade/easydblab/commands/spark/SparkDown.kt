@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -17,6 +19,7 @@ import picocli.CommandLine.Command
  * - An EMR cluster must exist in the cluster state
  */
 @RequireProfileSetup
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "down",
     description = ["Terminate the Spark EMR cluster"],

@@ -5,6 +5,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -81,6 +83,35 @@ internal class ProxyEnvFileTest {
         assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false")
         assertThat(envFile.read().direct).isFalse()
     }
+
+    /** Every command re-records the network mode; an unchanged value must not replace the file or take the lock. */
+    @Test
+    fun `re-recording an unchanged network mode or Tailscale flag writes nothing`() {
+        envFile.recordTailscale(active = false)
+        envFile.recordDirect(active = true)
+        val before = inode()
+        val lock = File(workspace, Constants.Proxy.ENV_LOCK_FILE).apply { delete() }
+
+        envFile.recordDirect(active = true)
+        envFile.recordTailscale(active = false)
+
+        assertThat(inode()).isEqualTo(before)
+        assertThat(lock).doesNotExist()
+    }
+
+    @Test
+    fun `re-recording a changed network mode still replaces the file`() {
+        envFile.recordDirect(active = false)
+        envFile.recordTailscale(active = false)
+        val before = inode()
+
+        envFile.recordDirect(active = true)
+
+        assertThat(inode()).isNotEqualTo(before)
+        assertThat(envFile.read().direct).isTrue()
+    }
+
+    private fun inode(): Any = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java).fileKey()
 
     @Test
     fun `only the value direct turns direct mode on`() {

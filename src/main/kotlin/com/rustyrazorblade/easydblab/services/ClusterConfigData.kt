@@ -12,7 +12,8 @@ import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
  * keys ([StoreBackend]: bucket, prefix, region and endpoint) and the Tempo, Mimir and Loki prefixes
  * in it, the cluster name (metric label), the tenant every in-cluster producer and backend sends in
  * `X-Scope-OrgID`, the present node capabilities (serial names in enum order, comma-joined, so an
- * unchanged set never changes the hash). It names no node address: every in-cluster caller reaches
+ * unchanged set never changes the hash; the account-level `aws-account` describes no node and is
+ * left out). It names no node address: every in-cluster caller reaches
  * the backends by Service DNS, so a cluster with no control host in its state renders it the same way.
  *
  * The collectors and Tempo read it, so their config hashes
@@ -50,6 +51,7 @@ object ClusterConfigData {
                 NodeCapabilities
                     .from(clusterState)
                     .present()
+                    .filter { it.describesNode }
                     .joinToString(Constants.Capabilities.CLUSTER_CONFIG_SEPARATOR) { it.serialName },
             )
         }

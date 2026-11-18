@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.LogQl
 import com.rustyrazorblade.easydblab.services.LokiQueryService
@@ -24,6 +26,7 @@ import picocli.CommandLine.Option
  */
 @RequireProfileSetup
 @RequiresProxy
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "logs",
     description = ["Query Spark/EMR logs from Loki"],

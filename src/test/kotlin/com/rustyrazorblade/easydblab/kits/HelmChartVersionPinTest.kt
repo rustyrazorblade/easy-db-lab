@@ -27,7 +27,7 @@ class HelmChartVersionPinTest : BaseKoinTest() {
         version: String,
     ) {
         val script =
-            BuiltinKitFixture(kitName, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+            BuiltinKitFixture(kitName, TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
                 .resource("bin/update-catalogs.sh.template")
         val installs = helmInstalls(script, chart)
 

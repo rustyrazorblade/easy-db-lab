@@ -9,7 +9,9 @@ import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.fixedContract
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -109,9 +111,9 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 mockK8sService,
                 otelManifestBuilder,
                 getKoin().get(),
-                getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
-                capabilitiesOf = { capabilities },
+                fixedContract({ capabilities }),
+                getKoin().get<ProfileRegion>(),
             )
     }
 

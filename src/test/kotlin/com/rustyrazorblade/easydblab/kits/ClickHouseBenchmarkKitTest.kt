@@ -22,7 +22,7 @@ import java.io.File
  */
 class ClickHouseBenchmarkKitTest : BaseKoinTest() {
     private val kit by lazy {
-        BuiltinKitFixture("clickhouse-benchmark", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        BuiltinKitFixture("clickhouse-benchmark", TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
     }
 
     private fun defaults(args: List<KitArgSpec>) = args.associate { it.flag to it.default }

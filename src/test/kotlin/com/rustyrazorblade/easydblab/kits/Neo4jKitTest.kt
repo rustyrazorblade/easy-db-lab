@@ -26,7 +26,7 @@ import java.io.File
  */
 class Neo4jKitTest : BaseKoinTest() {
     private val kit by lazy {
-        BuiltinKitFixture("neo4j", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        BuiltinKitFixture("neo4j", TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
     }
 
     private fun statefulSet(args: Map<String, String> = emptyMap()): StatefulSet =

@@ -17,11 +17,14 @@ import kotlinx.serialization.Serializable
  * @property serialName the capability's name outside the code
  * @property absentReason why the workloads needing this capability are skipped without it, stated
  *   as a fact about the environment so any environment lacking it reuses the text.
+ * @property isOverridable whether `init --capability` may set it; false for a capability the
+ *   environment declares and no probe could correct.
  */
 @Serializable
 enum class NodeCapability(
     val serialName: String,
     val absentReason: String,
+    val isOverridable: Boolean = true,
 ) {
     @SerialName("systemd-journal")
     @JsonProperty("systemd-journal")
@@ -50,7 +53,21 @@ enum class NodeCapability(
     @SerialName("node-ssh")
     @JsonProperty("node-ssh")
     NODE_SSH("node-ssh", "easy-db-lab cannot run commands on this environment's nodes over SSH"),
+
+    /**
+     * The workspace has an AWS account behind it. Declared by the environment, never probed, so
+     * `init --capability` cannot add or remove it ([isOverridable]).
+     */
+    @SerialName("aws-account")
+    @JsonProperty("aws-account")
+    AWS_ACCOUNT("aws-account", "this environment has no AWS account", isOverridable = false),
     ;
+
+    /**
+     * Whether this is a fact about the nodes, and so published to them in `cluster-config`.
+     * [AWS_ACCOUNT] describes the workspace's account, so no node-side script is told about it.
+     */
+    val describesNode: Boolean get() = this != AWS_ACCOUNT
 
     companion object {
         /** The capability named [name], or null when no capability has that serial name. */
@@ -75,7 +92,7 @@ value class NodeCapabilities(
     fun absent(): List<NodeCapability> = NodeCapability.entries.filterNot { it in provided }
 
     companion object {
-        /** AWS nodes run systemd and sshd, admit any pod, and the account has CloudWatch and S3. */
+        /** AWS nodes run systemd and sshd, admit any pod, and the account has CloudWatch and S3; the only set with [NodeCapability.AWS_ACCOUNT]. */
         val AWS = NodeCapabilities(NodeCapability.entries.toSet())
 
         /**
@@ -85,10 +102,20 @@ value class NodeCapabilities(
         val LOCAL_DOCKER =
             NodeCapabilities(setOf(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH))
 
+        /** Nothing declared: an environment whose capabilities are probed rather than known up front. */
+        val NONE = NodeCapabilities(emptySet())
+
         /**
-         * The capabilities [state] records. A state written before capabilities were recorded has
-         * none and reads as [AWS], the only environment such a state can describe.
+         * The capabilities [state] records, or, when it records none, the set its environment
+         * declares. A state written before capabilities were recorded is an EC2 + K3s state and so
+         * reads as [AWS]. A capability that is not [NodeCapability.isOverridable] always comes from
+         * the environment, so a recorded set can neither drop nor add it.
          */
-        fun from(state: ClusterState): NodeCapabilities = state.capabilities?.let(::NodeCapabilities) ?: AWS
+        fun from(state: ClusterState): NodeCapabilities {
+            val declared = state.environment.declaredCapabilities
+            val recorded = state.capabilities ?: return declared
+            val fixed = NodeCapability.entries.filterNot { it.isOverridable }
+            return NodeCapabilities(recorded.filter { it.isOverridable }.toSet() + fixed.filter { it in declared })
+        }
     }
 }

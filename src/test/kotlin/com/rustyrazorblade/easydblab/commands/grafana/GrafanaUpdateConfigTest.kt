@@ -24,12 +24,15 @@ import com.rustyrazorblade.easydblab.services.ConfigChangeReport
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
 import com.rustyrazorblade.easydblab.services.GrafanaDeployService
+import com.rustyrazorblade.easydblab.services.GrafanaStage
 import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.ObservabilityDeployInputs
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TenantDirectory
+import com.rustyrazorblade.easydblab.services.realStageManifests
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -103,30 +106,15 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 // Real service under test — the command is a thin wrapper over it. RemoteOperationsService,
                 // User, and EventBus come from BaseKoinTest's core mocks via get().
                 single<ObservabilityStackService> {
-                    DefaultObservabilityStackService.build {
-                        k8sService = get()
-                        k8sClientProvider = get()
-                        remoteOps = get()
-                        clusterStateManager = get()
-                        user = get()
-                        eventBus = get()
-                        grafanaDeployService = get()
-                        otelManifestBuilder = get()
-                        otelHostCollectorManifestBuilder = get()
-                        journaldOtelManifestBuilder = get()
-                        ebpfExporterManifestBuilder = get()
-                        mimirManifestBuilder = get()
-                        lokiManifestBuilder = get()
-                        tempoManifestBuilder = get()
-                        registryManifestBuilder = get()
-                        s3ManagerManifestBuilder = get()
-                        beylaManifestBuilder = get()
-                        pyroscopeManifestBuilder = get()
-                        yaceManifestBuilder = get()
-                        kubeStateMetricsManifestBuilder = get()
-                        configChangeReport = get()
-                        installContextFactory = DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore()))
-                    }
+                    DefaultObservabilityStackService(
+                        get(),
+                        get(),
+                        get(),
+                        ObservabilityDeployInputs(get(), get(), get()),
+                        realStageManifests(getKoin(), get()),
+                        GrafanaStage(get(), DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore()))),
+                        get(),
+                    )
                 }
             },
         )

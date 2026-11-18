@@ -667,6 +667,24 @@ object Constants {
         }
     }
 
+    // The fixed per-environment values ClusterContract.of resolves, until #1094/#1097 add their flags
+    object ContractDefaults {
+        /** The namespace a cluster easy-db-lab built runs its workloads in. */
+        const val OWNED_NAMESPACE = "default"
+
+        /** The namespace easy-db-lab uses on a cluster the user brings, so it never mixes with theirs. */
+        const val BROUGHT_NAMESPACE = "easy-db-lab"
+
+        /** The datacenter name of a cluster with no cloud region to name it after. */
+        const val LOCAL_DATACENTER = "dc1"
+    }
+
+    // `init --local`: K3s in Docker on this machine
+    object Local {
+        /** The data directory under the workspace when `init --local` is given no `--data-dir`. */
+        const val DEFAULT_DATA_DIRECTORY = "observability-data"
+    }
+
     // Node capabilities: `init --capability` overrides and the admission probe (CapabilityProbeService)
     object Capabilities {
         /** The `init` option that overrides one capability, `--capability <name>=<bool>`. */
@@ -965,6 +983,10 @@ object Constants {
 
     // Cassandra node configuration
     object Cassandra {
+        /** What to use for a Cassandra version switch or install where there are no AWS nodes to SSH into. */
+        const val KIT_ALTERNATIVE =
+            "run Cassandra as the cassandra-pods kit ('easy-db-lab kit install cassandra-pods') and choose the image there"
+
         /** UID of the cassandra OS user — must match the cassandra-sidecar container image */
         const val USER_ID = 999L
 

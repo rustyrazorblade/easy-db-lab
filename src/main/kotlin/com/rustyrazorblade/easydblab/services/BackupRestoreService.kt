@@ -179,7 +179,7 @@ class DefaultBackupRestoreService(
 
             // A restored workspace is used as it is, without `up`, so it needs the tool wrappers
             // and the Tailscale flag that `up` would have written.
-            workspaceShellTools.prepare(File(workingDirectory), restoredState.isTailscaleEnabled())
+            workspaceShellTools.prepare(File(workingDirectory), restoredState)
 
             VpcRestoreResult(restoredState, result)
         }

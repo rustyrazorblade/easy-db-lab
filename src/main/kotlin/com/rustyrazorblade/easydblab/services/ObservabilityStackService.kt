@@ -4,29 +4,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
-import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -72,79 +56,21 @@ interface ObservabilityStackService {
 
 /**
  * Default implementation that applies the stack over the K8s API and configures on-node
- * directories over SSH.
- *
- * Built with [build], which sets each collaborator by name: the stack takes more than twenty, and
- * several share a role, so a positional constructor could swap two without a compile error.
- *
- * [Builder.environmentOf] derives what the environment provides and how the stack is hosted on it
- * from cluster state. It is a test seam so a unit test can run a non-AWS environment; production
- * takes the default. The four capability seams (here, [DefaultOtelSyncService], [com.rustyrazorblade.easydblab.commands.Status] and
- * [com.rustyrazorblade.easydblab.server.StatusCache]) are consolidated by #1040 into one provider.
+ * directories over SSH. Its collaborators are grouped by concern: what the deploy reads
+ * ([ObservabilityDeployInputs]), what it renders ([ObservabilityStageManifests]), and Grafana
+ * ([GrafanaStage]). Each has its own type, so no two can be swapped at a call site.
  */
-class DefaultObservabilityStackService private constructor(
-    builder: Builder,
+class DefaultObservabilityStackService(
+    private val k8sService: K8sService,
+    remoteOps: RemoteOperationsService,
+    private val eventBus: EventBus,
+    private val inputs: ObservabilityDeployInputs,
+    private val manifests: ObservabilityStageManifests,
+    private val grafana: GrafanaStage,
+    private val configChangeReport: ConfigChangeReport,
 ) : ObservabilityStackService {
-    private val k8sService = builder.k8sService
-    private val k8sClientProvider = builder.k8sClientProvider
-    private val clusterStateManager = builder.clusterStateManager
-    private val user = builder.user
-    private val eventBus = builder.eventBus
-    private val grafanaDeployService = builder.grafanaDeployService
-    private val otelManifestBuilder = builder.otelManifestBuilder
-    private val otelHostCollectorManifestBuilder = builder.otelHostCollectorManifestBuilder
-    private val journaldOtelManifestBuilder = builder.journaldOtelManifestBuilder
-    private val ebpfExporterManifestBuilder = builder.ebpfExporterManifestBuilder
-    private val mimirManifestBuilder = builder.mimirManifestBuilder
-    private val lokiManifestBuilder = builder.lokiManifestBuilder
-    private val tempoManifestBuilder = builder.tempoManifestBuilder
-    private val registryManifestBuilder = builder.registryManifestBuilder
-    private val s3ManagerManifestBuilder = builder.s3ManagerManifestBuilder
-    private val beylaManifestBuilder = builder.beylaManifestBuilder
-    private val pyroscopeManifestBuilder = builder.pyroscopeManifestBuilder
-    private val yaceManifestBuilder = builder.yaceManifestBuilder
-    private val kubeStateMetricsManifestBuilder = builder.kubeStateMetricsManifestBuilder
-    private val configChangeReport = builder.configChangeReport
-    private val installContextFactory = builder.installContextFactory
-    private val environmentOf = builder.environmentOf
-
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
-
-        /**
-         * Builds the service from the collaborators [configure] sets.
-         *
-         * @throws UninitializedPropertyAccessException when a required collaborator was not set.
-         */
-        fun build(configure: Builder.() -> Unit): DefaultObservabilityStackService =
-            DefaultObservabilityStackService(Builder().apply(configure))
-    }
-
-    /** Collects the collaborators of a [DefaultObservabilityStackService], each set by name. */
-    class Builder internal constructor() {
-        lateinit var k8sService: K8sService
-        lateinit var k8sClientProvider: K8sClientProvider
-        lateinit var remoteOps: RemoteOperationsService
-        lateinit var clusterStateManager: ClusterStateManager
-        lateinit var user: User
-        lateinit var eventBus: EventBus
-        lateinit var grafanaDeployService: GrafanaDeployService
-        lateinit var otelManifestBuilder: OtelManifestBuilder
-        lateinit var otelHostCollectorManifestBuilder: OtelHostCollectorManifestBuilder
-        lateinit var journaldOtelManifestBuilder: JournaldOtelManifestBuilder
-        lateinit var ebpfExporterManifestBuilder: EbpfExporterManifestBuilder
-        lateinit var mimirManifestBuilder: MimirManifestBuilder
-        lateinit var lokiManifestBuilder: LokiManifestBuilder
-        lateinit var tempoManifestBuilder: TempoManifestBuilder
-        lateinit var registryManifestBuilder: RegistryManifestBuilder
-        lateinit var s3ManagerManifestBuilder: S3ManagerManifestBuilder
-        lateinit var beylaManifestBuilder: BeylaManifestBuilder
-        lateinit var pyroscopeManifestBuilder: PyroscopeManifestBuilder
-        lateinit var yaceManifestBuilder: YaceManifestBuilder
-        lateinit var kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder
-        lateinit var configChangeReport: ConfigChangeReport
-        lateinit var installContextFactory: DashboardInstallContextFactory
-        var environmentOf: (ClusterState) -> StackEnvironment = StackEnvironment::from
     }
 
     /**
@@ -175,23 +101,24 @@ class DefaultObservabilityStackService private constructor(
             missing.isEmpty()
         }
 
-    private val stateDirectories = OnNodeStateDirectories(builder.remoteOps, eventBus)
+    private val stateDirectories = OnNodeStateDirectories(remoteOps, eventBus)
     private val retainedClaimCheck = RetainedClaimCheck(k8sService)
     private val placementCheck = PlacementCheck(k8sService)
 
     override fun deploy(): Result<Unit> =
         runCatching {
-            val clusterState = clusterStateManager.load()
+            val reading = inputs.read()
+            val clusterState = reading.state
             val telemetryRedirect = clusterState.initConfig?.telemetryRedirect
-            val environment = environmentOf(clusterState)
-            val hosting = environment.hosting
+            val contract = reading.contract
+            val hosting = contract.hosting
             // Before anything is applied: a claim on a class that deletes its volume would lose the state.
             retainedClaimCheck.require(hosting.storage)
             // A selector no node matches would leave every backend Pending until the rollout wait times out.
             placementCheck.require(hosting.placement)
 
-            val clusterConfig = createClusterConfigMap(clusterState)
-            val collector = collectorStage(clusterState, environment)
+            val clusterConfig = createClusterConfigMap(reading)
+            val collector = Stage("OTel Collector", manifests.coreCollector.resources(reading))
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
@@ -199,7 +126,7 @@ class DefaultObservabilityStackService private constructor(
             val stages =
                 applyCapabilityGate(
                     buildStages(telemetryRedirect, clusterState.initConfig?.cni ?: CniMode.Flannel, hosting),
-                    environment.capabilities,
+                    contract.nodeCapabilities,
                 )
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
@@ -215,7 +142,7 @@ class DefaultObservabilityStackService private constructor(
                 stateDirectories.prepareGrafana(stateNode(clusterState))
             }
             if (telemetryRedirect == null) {
-                uploadDashboards(clusterState, hosting)
+                grafana.deploy(clusterState, hosting)
             }
 
             awaitStack(appliedWorkloads(appliedResources) + grafanaWorkloads(telemetryRedirect))
@@ -237,30 +164,6 @@ class DefaultObservabilityStackService private constructor(
         checkNotNull(clusterState.getControlHost()) {
             "The backends keep their state in host directories on the control node, but the cluster state has no control node."
         }
-
-    /**
-     * The collector stage. It arrives already hashed, by the same function the kit sync uses, so both
-     * stamp it with the same config hash.
-     */
-    private fun collectorStage(
-        clusterState: ClusterState,
-        environment: StackEnvironment,
-    ): Stage {
-        val scrapeConfigs =
-            k8sClientProvider.createClient().use { client ->
-                otelManifestBuilder.listWorkloadScrapeConfigs(client)
-            }
-        return Stage(
-            "OTel Collector",
-            CollectorResources.build(
-                otelManifestBuilder,
-                clusterState,
-                user.region,
-                scrapeConfigs,
-                environment.capabilities,
-            ),
-        )
-    }
 
     /**
      * Reports where the backends, Grafana and kube-state-metrics are placed, before anything is
@@ -351,7 +254,7 @@ class DefaultObservabilityStackService private constructor(
         hosting: ObservabilityHosting,
     ): List<Stage> =
         ObservabilityStage.declared(telemetryRedirect).map { stage ->
-            Stage(stage.label, resourcesOf(stage, telemetryRedirect, cni, hosting), stage.requires, rolledOutFirstFor(stage))
+            Stage(stage.label, manifests.resourcesOf(stage, telemetryRedirect, cni, hosting), stage.requires, rolledOutFirstFor(stage))
         }
 
     private fun rolledOutFirstFor(stage: ObservabilityStage): List<WorkloadRef> =
@@ -359,51 +262,6 @@ class DefaultObservabilityStackService private constructor(
             ObservabilityStage.OTEL_HOST_COLLECTOR -> listOf(WorkloadRef(WorkloadKind.DaemonSet, Constants.K8s.OTEL_COLLECTOR_APP_LABEL))
             else -> emptyList()
         }
-
-    private fun resourcesOf(
-        stage: ObservabilityStage,
-        telemetryRedirect: TelemetryRedirect?,
-        cni: CniMode,
-        hosting: ObservabilityHosting,
-    ): List<HasMetadata> =
-        when (stage) {
-            ObservabilityStage.OTEL_HOST_COLLECTOR -> otelHostCollectorManifestBuilder.buildAllResources(cni)
-            ObservabilityStage.KUBE_STATE_METRICS -> kubeStateMetricsManifestBuilder.buildAllResources(hosting.placement)
-            ObservabilityStage.FLUENT_BIT_JOURNALD -> journaldOtelManifestBuilder.buildAllResources()
-            ObservabilityStage.EBPF_EXPORTER -> ebpfExporterManifestBuilder.buildAllResources()
-            ObservabilityStage.REGISTRY -> registryManifestBuilder.buildAllResources()
-            ObservabilityStage.S3_MANAGER -> s3ManagerManifestBuilder.buildAllResources()
-            ObservabilityStage.BEYLA -> beylaManifestBuilder.buildAllResources()
-            ObservabilityStage.YACE -> yaceManifestBuilder.buildAllResources()
-            ObservabilityStage.MIMIR -> mimirManifestBuilder.buildAllResources(hosting)
-            ObservabilityStage.LOKI -> lokiManifestBuilder.buildAllResources(hosting)
-            ObservabilityStage.TEMPO -> tempoManifestBuilder.buildAllResources(hosting)
-            ObservabilityStage.PYROSCOPE -> pyroscopeManifestBuilder.buildServerResources(hosting)
-            // Every node, in both modes; under a redirect it points at the external Pyroscope.
-            ObservabilityStage.PYROSCOPE_AGENT -> pyroscopeManifestBuilder.buildAgentResources(telemetryRedirect)
-            // The core collector already left its pod-log receiver out (CollectorResources).
-            ObservabilityStage.POD_LOGS -> emptyList()
-        }
-
-    /**
-     * Deploys Grafana with a datasource for every tenant in the shared store, so each deploy picks up
-     * new ones, and the dashboards with the install-time pass for this cluster.
-     */
-    private fun uploadDashboards(
-        clusterState: ClusterState,
-        hosting: ObservabilityHosting,
-    ) {
-        grafanaDeployService
-            .deploy(
-                // Null on a cluster the operator brought; only the dashboard tree copy needs it.
-                clusterState.getControlHost(),
-                installContextFactory.forCluster(clusterState),
-                ObservabilityStore.from(clusterState).bucket,
-                hosting,
-            ).getOrElse { exception ->
-                error("Failed to upload dashboards: ${exception.message}")
-            }
-    }
 
     private fun applyStage(stage: Stage) {
         eventBus.emit(Event.Grafana.LabelResourcesApplying(stage.label))
@@ -434,8 +292,8 @@ class DefaultObservabilityStackService private constructor(
      * Creates the cluster-config ConfigMap with runtime values needed by OTel and Tempo
      * ([ClusterConfigData]), returning its data.
      */
-    private fun createClusterConfigMap(clusterState: ClusterState): Map<String, String> {
-        val configData = ClusterConfigData.of(clusterState, user.region)
+    private fun createClusterConfigMap(reading: ObservabilityDeployInputs.Reading): Map<String, String> {
+        val configData = ClusterConfigData.of(reading.state, reading.region)
 
         k8sService
             .createConfigMap(
@@ -452,23 +310,5 @@ class DefaultObservabilityStackService private constructor(
                 error("Failed to create cluster-config ConfigMap: ${exception.message}")
             }
         return configData
-    }
-}
-
-/**
- * What one stack deploy needs to know about the environment it deploys into: the capabilities that
- * gate stages and the hosting the backends and Grafana are placed with. One value, resolved once
- * per deploy from cluster state, so the two never come from different readings of it.
- *
- * @property capabilities what the environment's nodes and account provide.
- * @property hosting where the backends and Grafana run and keep their state.
- */
-data class StackEnvironment(
-    val capabilities: NodeCapabilities,
-    val hosting: ObservabilityHosting,
-) {
-    companion object {
-        /** The environment [state] records. */
-        fun from(state: ClusterState): StackEnvironment = StackEnvironment(NodeCapabilities.from(state), ObservabilityHosting.from(state))
     }
 }

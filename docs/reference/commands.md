@@ -161,6 +161,37 @@ determined fails at `init`, before any instance is created.
 | `--capability` | Override one node capability, as `<name>=true` or `<name>=false`; repeatable. Names: `systemd-journal`, `cloudwatch`, `s3`, `privileged`, `host-network`, `host-path`, `node-ssh`. An unknown name, a value other than `true`/`false`, or one name given both values fails `init` before anything is written. See [Node capabilities](#node-capabilities) | (the environment's declared set) |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
+| `--local` | Create a K3s in Docker workspace on this machine instead of an AWS cluster. Needs no AWS profile. See [Local workspaces](#local-workspaces) | false |
+| `--data-dir` | With `--local`: the directory the observability data is kept in. A relative path is resolved against the current directory of the easy-db-lab process (in the REPL or the server, the directory it was started in, which need not be the workspace), like every other path option, and recorded as an absolute path. Without `--local`, `init` fails and writes nothing | `observability-data` |
+
+#### Local workspaces
+
+`init --local` records a K3s in Docker workspace and makes no AWS call: no profile is loaded, and
+none needs to exist. It records the counts and observability options you give (`--db.count`,
+`--app.count`, `--tenant`, `--tag`, `--node-label`, `--capability`), Flannel, the Docker daemon's CPU
+architecture for every node group (from `docker info`, not the JVM's, which differs under
+Rosetta, so `init --local` needs Docker running: when Docker does not answer it fails and names the error, and writes nothing), and no region. The cluster's API and Services are reached from
+this machine with no SOCKS tunnel: `init` writes `EDL_NETWORK_MODE=direct` to the workspace's
+`.socks5-proxy.env`, every command writes it again before it runs, and `socks start` reports that
+no tunnel is needed.
+
+```bash
+mkdir -p clusters/local && cd clusters/local
+easy-db-lab init local --local --db.count 3
+```
+
+The options that describe AWS instances, networking or services are refused by name before
+anything is written: `--db.instance-type` (`--instance`), `--azs`, `--vpc`, `--cidr`, `--cni`,
+`--ami`, `--open`, and every `--ebs.*`, `--spark.*` and `--opensearch.*` option. `--up` is
+refused too, since a local workspace cannot be provisioned yet, and so is `--data-dir` without
+`--local`.
+
+The data directory (`--data-dir`, by default `observability-data` in the workspace) holds the
+owner's observability data. `clean` and `init --clean` never list or remove it, and an existing one
+does not stop `init`. It goes away only when you delete it, or the workspace that holds it.
+
+`up` and `down` do not provision a local workspace yet: both fail with a message naming the
+environment, before they touch AWS or the workspace state.
 
 #### Node capabilities
 
@@ -260,7 +291,7 @@ easy-db-lab clean
 ```
 
 In `bin/` it deletes only the tool wrappers and their marker, and removes `bin/` only when nothing
-else is left in it.
+else is left in it. It never lists or removes a local workspace's data directory (`init --data-dir`).
 
 ### socks start
 
@@ -271,7 +302,8 @@ wrappers and `env.sh`, and print the port for browser setup.
 easy-db-lab socks start
 ```
 
-On a Tailscale cluster it starts nothing and says that no tunnel is needed. See
+On a Tailscale cluster, and in a local workspace (`init --local`), it starts nothing and says that
+no tunnel is needed. See
 [SOCKS Proxy](../user-guide/network-connectivity.md#socks-proxy-alternative).
 
 ### socks stop

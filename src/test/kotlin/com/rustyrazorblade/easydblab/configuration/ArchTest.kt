@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.configuration
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 
 /**
  * Tests for [Arch.fromEc2], which maps the EC2 `SupportedArchitectures` values reported by
@@ -11,6 +13,22 @@ import org.junit.jupiter.api.Test
  * cluster cannot pick an AMI for an ambiguous or unknown architecture.
  */
 class ArchTest {
+    @ParameterizedTest
+    @CsvSource("amd64,AMD64", "x86_64,AMD64", "aarch64,ARM64", "arm64,ARM64")
+    fun `maps the JVM's os arch onto an architecture`(
+        osArch: String,
+        expected: Arch,
+    ) {
+        assertThat(Arch.fromOsArch(osArch)).isEqualTo(expected)
+    }
+
+    @Test
+    fun `rejects an os arch it cannot run, naming it`() {
+        assertThatThrownBy { Arch.fromOsArch("ppc64le") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("ppc64le")
+    }
+
     @Test
     fun `maps x86_64 to AMD64`() {
         assertThat(Arch.fromEc2(listOf("x86_64"))).isEqualTo(Arch.AMD64)

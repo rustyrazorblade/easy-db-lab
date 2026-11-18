@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import io.fabric8.kubernetes.api.model.PodSpec
 import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import io.fabric8.kubernetes.api.model.Toleration
@@ -54,10 +55,9 @@ data class Placement(
         val ANY_NODE = Placement(nodeSelector = emptyMap(), tolerations = emptyList())
 
         /**
-         * The placement for [state]'s environment, with the node labels given at `init` merged in.
-         * Every cluster is AWS until the execution environment is recorded in state (#1040), which
-         * will make this return the recorded environment's placement.
+         * The placement the cluster contract resolves for [state]'s recorded environment, with the
+         * node labels given at `init` merged in.
          */
-        fun from(state: ClusterState): Placement = CONTROL_NODE.withNodeLabels(state.initConfig?.nodeLabels.orEmpty())
+        fun from(state: ClusterState): Placement = ClusterContract.of(state).hosting.placement
     }
 }

@@ -11,10 +11,12 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
@@ -46,6 +48,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.iam.model.IamException
@@ -100,6 +103,26 @@ class UpTest : UpTestFixture() {
         order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
         order.verify(mockDocumentService).rebuildIndex(state.capture())
         assertThat(state.firstValue.s3Bucket).isEqualTo("easy-db-lab-test-bucket")
+    }
+
+    /** No provisioner exists for a local workspace yet: `up` says so before it loads the profile or calls AWS. */
+    @Test
+    fun `up in a K3s in Docker workspace reports no provisioner and makes no AWS call`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().apply { environment = Environment.K3sDocker("/data") })
+        getKoin().loadModules(listOf(module { single<User> { error("up must not load the profile") } }), allowOverride = true)
+        val events = captureEvents()
+
+        assertThatThrownBy { newUp().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(events).contains(Event.Environment.ProvisionerUnavailable("up", "K3s in Docker"))
+        verifyNoInteractions(
+            mockAwsInfrastructureService,
+            mockEc2InstanceService,
+            mockClusterProvisioningService,
+            mockDocumentService,
+            getKoin().get<CompactorService>(),
+        )
+        verify(mockClusterStateManager, never()).save(any())
     }
 
     // =========================================================================

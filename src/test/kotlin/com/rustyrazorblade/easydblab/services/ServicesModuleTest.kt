@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.Docker
 import com.rustyrazorblade.easydblab.TestContextFactory
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.containers.PackerImage
 import com.rustyrazorblade.easydblab.di.KoinModules
@@ -50,6 +51,7 @@ class ServicesModuleTest {
             single<ClusterStateManager> { mock() }
             single { EventBus() }
             single<User> { mock() }
+            single<ProfileRegion> { ProfileRegion.NONE }
             single<ImagePullSecretService> { mock() }
         }
 

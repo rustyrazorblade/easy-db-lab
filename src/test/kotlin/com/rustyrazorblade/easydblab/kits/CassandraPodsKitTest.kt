@@ -27,7 +27,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
     private val kit by lazy {
         BuiltinKitFixture(
             "cassandra-pods",
-            TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()),
+            TemplateService(ClusterStateManager(File(tempDir, "state.json"))),
         )
     }
 

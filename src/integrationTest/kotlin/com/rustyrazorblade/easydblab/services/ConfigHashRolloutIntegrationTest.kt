@@ -6,13 +6,16 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.region
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -52,6 +55,9 @@ class ConfigHashRolloutIntegrationTest {
         private const val NAMESPACE = "config-hash-rollout"
         private const val TEMPLATE_NAMESPACE = "config-hash-template-only"
 
+        /** How long a rollout may take to create its new ReplicaSet; see [awaitReplicaSets]. */
+        private val ROLLOUT_WAIT: Duration = Duration.ofMinutes(3)
+
         /**
          * The AWS hosting with ClusterIP Services: a fixed NodePort is cluster-wide, so the two
          * namespaces' Pyroscope Services on the shared K3s could not both claim it.
@@ -66,6 +72,7 @@ class ConfigHashRolloutIntegrationTest {
             name = "test",
             versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
+            initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
         )
 
@@ -80,7 +87,6 @@ class ConfigHashRolloutIntegrationTest {
     private lateinit var otel: OtelManifestBuilder
     private lateinit var otelSync: OtelSyncService
     private lateinit var stateManager: ClusterStateManager
-    private lateinit var user: User
 
     @BeforeAll
     fun setup() {
@@ -94,22 +100,22 @@ class ConfigHashRolloutIntegrationTest {
 
         stateManager = mock()
         whenever(stateManager.load()).thenReturn(clusterState)
-        user =
-            User(
-                region = "us-west-2",
-                email = "test@example.com",
-                keyName = "",
-                awsProfile = "",
-                awsAccessKey = "",
-                awsSecret = "",
-            )
-        val templateService = TemplateService(stateManager, user)
+        whenever(stateManager.exists()).thenReturn(true)
+        val templateService = TemplateService(stateManager)
         tempo = TempoManifestBuilder(templateService)
         pyroscope = PyroscopeManifestBuilder(templateService)
         otel = OtelManifestBuilder(templateService)
         val k8sService = DefaultK8sService(clientProvider, EventBus())
         otelSync =
-            DefaultOtelSyncService(clientProvider, k8sService, otel, stateManager, user, ConfigChangeReport(k8sService, EventBus()))
+            DefaultOtelSyncService(
+                clientProvider,
+                k8sService,
+                otel,
+                stateManager,
+                ConfigChangeReport(k8sService, EventBus()),
+                StateClusterContractSource(stateManager),
+                ProfileRegion.NONE,
+            )
     }
 
     @AfterAll
@@ -165,13 +171,17 @@ class ConfigHashRolloutIntegrationTest {
             .map { it.metadata.name }
             .toSet()
 
-    /** Waits for the Deployment controller to have created a ReplicaSet for [app]'s current template. */
+    /**
+     * Waits for the Deployment controller to have created a ReplicaSet for [app]'s current template.
+     * Tempo rolls with `Recreate`: the new ReplicaSet appears only once the old pod has terminated,
+     * which on a loaded shared K3s took longer than a minute, so the wait allows [ROLLOUT_WAIT].
+     */
     private fun awaitReplicaSets(
         app: String,
         atLeast: Int,
         namespace: String = NAMESPACE,
     ): Set<String> {
-        val deadline = System.nanoTime() + Duration.ofMinutes(1).toNanos()
+        val deadline = System.nanoTime() + ROLLOUT_WAIT.toNanos()
         var sets = replicaSets(app, namespace)
         while (sets.size < atLeast && System.nanoTime() < deadline) {
             Thread.sleep(500)
@@ -324,7 +334,7 @@ class ConfigHashRolloutIntegrationTest {
             CollectorResources.build(
                 otel,
                 state,
-                user.region,
+                state.region(ProfileRegion.NONE),
                 scrapeConfigs,
                 NodeCapabilities.AWS,
             )

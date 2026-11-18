@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -107,7 +108,21 @@ class SocksStartTest : BaseKoinTest() {
 
         assertThat(launched).isEmpty()
         assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null, direct = false))
-        assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded)
+        assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded(Event.Proxy.TunnelNotNeeded.Reason.TAILSCALE))
+        assertThat(events.single().toDisplayString()).contains("Tailscale")
+    }
+
+    /** A local workspace has no provisioned hosts, and still is not "no running cluster": it needs no tunnel. */
+    @Test
+    fun `in a K3s in Docker workspace it starts nothing and says the cluster is reached directly`() {
+        save(ClusterState(name = "local", versions = mutableMapOf(), environment = Environment.K3sDocker("/data")))
+
+        SocksStart().call()
+
+        assertThat(launched).isEmpty()
+        assertThat(ProxyEnvFile(context.workingDirectory).read().direct).isTrue()
+        assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded(Event.Proxy.TunnelNotNeeded.Reason.DIRECT))
+        assertThat(events.single().toDisplayString()).doesNotContain("Tailscale")
     }
 
     @Test

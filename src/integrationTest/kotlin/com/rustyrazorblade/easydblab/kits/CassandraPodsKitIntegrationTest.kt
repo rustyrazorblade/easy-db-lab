@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.DefaultK8sStorageOperations
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
@@ -88,7 +87,6 @@ class CassandraPodsKitIntegrationTest {
                 "cassandra-pods",
                 TemplateService(
                     ClusterStateManager(File(Files.createTempDirectory("cassandra-pods-it").toFile(), "state.json")),
-                    mock<User>(),
                 ),
             )
         createPersistentVolume()

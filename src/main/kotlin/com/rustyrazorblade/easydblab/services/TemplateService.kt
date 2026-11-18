@@ -3,7 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
+import com.rustyrazorblade.easydblab.configuration.region
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
@@ -19,21 +20,25 @@ private val UNRESOLVED_VAR_PATTERN = Regex("""__([A-Z][A-Z0-9_]*)__""")
  * that perform the actual substitution. Uses Apache Commons StringSubstitutor
  * with `__` prefix/suffix to avoid conflicts with Grafana's `${var}` syntax.
  *
+ * The region is the one the cluster state records. Only an EC2 state with no init configuration
+ * falls back to the AWS profile's ([profileRegion]); a local workspace records one, so rendering a
+ * template there never loads a profile.
+ *
  * @property clusterStateManager Provides access to current cluster state
- * @property user Provides fallback region configuration
+ * @property profileRegion the region of a state that records none; loads the profile when asked
  */
 class TemplateService(
     private val clusterStateManager: ClusterStateManager,
-    private val user: User,
+    private val profileRegion: ProfileRegion = ProfileRegion.NONE,
 ) {
     /**
-     * Builds the variable map from current cluster state and user configuration.
+     * Builds the variable map from current cluster state.
      *
      * @return Map of variable names (without delimiters) to their runtime values
      */
     fun buildContextVariables(): Map<String, String> {
         val state = clusterStateManager.load()
-        val region = regionOf(state)
+        val region = state.region(profileRegion)
         val controlHost = state.getControlHost()
         val backend = StoreBackend.from(state, region)
         val store = ObservabilityStore(backend.bucket, state.tenant(), backend.prefix)
@@ -52,15 +57,13 @@ class TemplateService(
     }
 
     /**
-     * The store the cluster writes to, in its region (the profile's when the cluster records none).
+     * The store the cluster writes to, in the region the cluster recorded.
      * The backend builders pick each config's object-store block from it ([StoreBlockRenderer.of]).
      */
     fun storeBackend(): StoreBackend {
         val state = clusterStateManager.load()
-        return StoreBackend.from(state, regionOf(state))
+        return StoreBackend.from(state, state.region(profileRegion))
     }
-
-    private fun regionOf(state: ClusterState): String = state.initConfig?.region ?: user.region
 
     /** Where the store is reached, for the build-time store fragments (Pyroscope's): only its S3 fragment reads these. */
     private fun storeLocation(backend: StoreBackend): Map<String, String> =

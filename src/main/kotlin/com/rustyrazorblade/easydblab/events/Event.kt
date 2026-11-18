@@ -5369,6 +5369,68 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `init --local` recorded a K3s in Docker workspace whose observability data lives in
+         * [dataDir], with [dbCount] database and [appCount] application nodes.
+         */
+        @Serializable
+        @SerialName("Setup.LocalWorkspaceInitialized")
+        data class LocalWorkspaceInitialized(
+            val dataDir: String,
+            val dbCount: Int,
+            val appCount: Int,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |Your workspace has been initialized for K3s in Docker on this machine, with $dbCount database and $appCount application nodes.
+                |Observability data is kept in $dataDir. 'clean' never removes it; delete it yourself when you no longer need it.
+                """.trimMargin()
+        }
+
+        /**
+         * `init --local` could not ask the Docker daemon for its architecture, which every node of a
+         * K3s in Docker workspace runs, so it wrote nothing. [detail] is the client's own failure.
+         */
+        @Serializable
+        @SerialName("Setup.LocalDockerUnavailable")
+        data class LocalDockerUnavailable(
+            val detail: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Error: init --local needs a running Docker daemon to read its architecture, and Docker did not answer " +
+                    "($detail). Start Docker and run init again. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `init --local` was given [options] that only an AWS cluster uses, so it wrote nothing. */
+        @Serializable
+        @SerialName("Setup.LocalOptionsRefused")
+        data class LocalOptionsRefused(
+            val options: List<String>,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Error: ${options.joinToString(", ")} cannot be used with --local: they configure AWS instances, " +
+                    "networking or services, and a K3s in Docker cluster has none. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `init` was given [option] in a combination it cannot run ([problem], e.g. "requires --local"),
+         * so it wrote nothing. Reported the same way as [LocalOptionsRefused].
+         */
+        @Serializable
+        @SerialName("Setup.InitOptionConflict")
+        data class InitOptionConflict(
+            val option: String,
+            val problem: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Error: $option $problem. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {
@@ -6182,12 +6244,31 @@ sealed interface Event {
                 """.trimMargin()
         }
 
-        /** The cluster reaches its nodes over Tailscale, so no tunnel was started. */
+        /** The cluster is reached without a tunnel, for [reason], so no tunnel was started. */
         @Serializable
         @SerialName("Proxy.TunnelNotNeeded")
-        data object TunnelNotNeeded : Proxy {
+        data class TunnelNotNeeded(
+            val reason: Reason,
+        ) : Proxy {
+            /** Why the cluster needs no tunnel. */
+            @Serializable
+            enum class Reason {
+                /** Tailscale routes this machine to the nodes' private addresses. */
+                @SerialName("tailscale")
+                TAILSCALE,
+
+                /** The environment's network mode is direct: the cluster is reachable from this machine as it is. */
+                @SerialName("direct")
+                DIRECT,
+            }
+
             override fun toDisplayString(): String =
-                "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                when (reason) {
+                    Reason.TAILSCALE ->
+                        "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                    Reason.DIRECT ->
+                        "This cluster is reachable from this machine, so no SOCKS5 tunnel is needed: tools connect to it directly."
+                }
         }
 
         /** No tunnel could be started because the workspace has no running cluster. */
@@ -6467,6 +6548,56 @@ sealed interface Event {
             override fun toDisplayString(): String =
                 "Error: security group $securityGroupId from the cluster state does not exist in AWS " +
                     "(the cluster may be down, or the profile may use another region)."
+
+            override fun isError(): Boolean = true
+        }
+    }
+
+    // =========================================================================
+    // Event.Environment — what the execution environment provides
+    // =========================================================================
+
+    /** Facts about the execution environment a command runs in. */
+    @Serializable
+    sealed interface Environment : Event {
+        /**
+         * [command] needs the [missing] capabilities, and the [environment] (its display name) does
+         * not provide them, so it stopped before doing anything. [alternative] is what to use instead,
+         * or null when there is nothing.
+         */
+        @Serializable
+        @SerialName("Environment.CommandUnavailable")
+        data class CommandUnavailable(
+            val command: String,
+            val environment: String,
+            val missing: List<NodeCapability>,
+            val alternative: String? = null,
+        ) : Environment {
+            override fun toDisplayString(): String =
+                buildString {
+                    append("Error: '$command' is not available in $environment: it needs ")
+                    append(missing.joinToString { it.serialName })
+                    append(", and ")
+                    append(missing.joinToString("; ") { it.absentReason })
+                    append(".")
+                    alternative?.let { append(" Instead: $it.") }
+                }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * [command] (`up` or `down`) provisions or tears down infrastructure, and this easy-db-lab has
+         * no provisioner for the [environment] (its display name), so it stopped before doing anything.
+         */
+        @Serializable
+        @SerialName("Environment.ProvisionerUnavailable")
+        data class ProvisionerUnavailable(
+            val command: String,
+            val environment: String,
+        ) : Environment {
+            override fun toDisplayString(): String =
+                "Error: '$command' cannot run in this workspace: this easy-db-lab has no provisioner for $environment yet."
 
             override fun isError(): Boolean = true
         }

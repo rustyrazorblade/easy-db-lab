@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import org.koin.dsl.module
 
 /**
@@ -9,14 +10,16 @@ import org.koin.dsl.module
  * Provides:
  * - [KubernetesClientFactory]: Creates K8s API clients. When the SOCKS5 proxy is active,
  *   the proxy port is read from the private `Constants.Proxy.PORT_PROPERTY` system property and the
- *   SOCKS proxy is configured explicitly (the global `socksProxyHost` is not set, keeping AWS direct).
+ *   SOCKS proxy is configured explicitly (the global `socksProxyHost` is not set, keeping AWS direct),
+ *   only while the recorded environment's network mode is the tunnel.
  * - [KubernetesService]: High-level service for K8s operations, reaching the cluster named by the
  *   injected [KubeApiLocator] (the workspace kubeconfig and the context pinned in cluster state).
  */
 val kubernetesModule =
     module {
         factory<KubernetesClientFactory> {
-            ProxiedKubernetesClientFactory()
+            val contracts = get<ClusterContractSource>()
+            ProxiedKubernetesClientFactory { contracts.current().networkMode }
         }
 
         // Holds no client: every operation asks the locator for the kubeconfig and context, builds a

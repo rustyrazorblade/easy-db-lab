@@ -13,11 +13,16 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
+import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
+import com.rustyrazorblade.easydblab.configuration.environment.fixedContract
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
@@ -168,33 +173,20 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
         whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
 
-        service =
-            DefaultObservabilityStackService.build {
-                k8sService = mockK8sService
-                k8sClientProvider = mockK8sClientProvider
-                remoteOps = mockRemoteOps
-                clusterStateManager = mockClusterStateManager
-                user = getKoin().get()
-                eventBus = getKoin().get()
-                grafanaDeployService = mockDashboardService
-                otelManifestBuilder = getKoin().get()
-                otelHostCollectorManifestBuilder = getKoin().get()
-                journaldOtelManifestBuilder = getKoin().get()
-                ebpfExporterManifestBuilder = getKoin().get()
-                mimirManifestBuilder = getKoin().get()
-                lokiManifestBuilder = getKoin().get()
-                tempoManifestBuilder = getKoin().get()
-                registryManifestBuilder = getKoin().get()
-                s3ManagerManifestBuilder = getKoin().get()
-                beylaManifestBuilder = getKoin().get()
-                pyroscopeManifestBuilder = getKoin().get()
-                yaceManifestBuilder = getKoin().get()
-                kubeStateMetricsManifestBuilder = getKoin().get()
-                configChangeReport = ConfigChangeReport(mockK8sService, getKoin().get())
-                installContextFactory = DashboardInstallContextFactory(sharedStoreTenants())
-                environmentOf = { state -> StackEnvironment(capabilities, hosting(state)) }
-            }
+        service = serviceWith(fixedContract({ capabilities }, { hosting(mockClusterStateManager.load()) }))
     }
+
+    /** The service under test, reading its contract from [contractSource]. */
+    private fun serviceWith(contractSource: ClusterContractSource): DefaultObservabilityStackService =
+        DefaultObservabilityStackService(
+            mockK8sService,
+            mockRemoteOps,
+            getKoin().get(),
+            ObservabilityDeployInputs(mockClusterStateManager, contractSource, getKoin().get<ProfileRegion>()),
+            realStageManifests(getKoin(), mockK8sClientProvider),
+            GrafanaStage(mockDashboardService, DashboardInstallContextFactory(sharedStoreTenants())),
+            ConfigChangeReport(mockK8sService, getKoin().get()),
+        )
 
     /** The capabilities the service under test sees; AWS unless a test declares otherwise. */
     private var capabilities: NodeCapabilities = NodeCapabilities.AWS
@@ -214,6 +206,32 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             },
         )
         return emitted
+    }
+
+    @Test
+    fun `a K3s in Docker contract skips the stages its capabilities lack`() {
+        val local =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts = controlHosts,
+                s3Bucket = "easy-db-lab-test",
+                environment = Environment.K3sDocker("/data"),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(local)
+        val localService = serviceWith(StateClusterContractSource(mockClusterStateManager))
+        val emitted = collectEvents()
+
+        localService.deploy().getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        // No journal, no CloudWatch, no S3: journald, YACE and s3manager are skipped.
+        assertThat(applied).doesNotContain("fluent-bit-journald", "yace", "s3manager")
+        // Privileged pods are admitted, so the privileged agents still deploy.
+        assertThat(applied).contains("otel-collector", "beyla", "ebpf-exporter")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().map { it.capability })
+            .contains(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.CLOUDWATCH, NodeCapability.S3)
     }
 
     @Test
@@ -1035,9 +1053,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             mockK8sService,
             getKoin().get(),
             mockClusterStateManager,
-            getKoin().get(),
             ConfigChangeReport(mockK8sService, getKoin().get()),
-            { sharedCapabilities },
+            fixedContract({ sharedCapabilities }, { ObservabilityHosting.from(state) }),
+            getKoin().get<ProfileRegion>(),
         ).syncConfigMap().getOrThrow()
 
         assertThat(appliedCollectorHash()).isEqualTo(deployHash)

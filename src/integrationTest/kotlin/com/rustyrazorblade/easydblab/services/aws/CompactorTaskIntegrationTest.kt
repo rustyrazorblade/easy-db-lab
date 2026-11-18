@@ -9,7 +9,7 @@ import com.rustyrazorblade.easydblab.PrometheusRemoteWrite
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -117,18 +117,16 @@ class CompactorTaskIntegrationTest {
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         val clusterStateManager =
             mock<ClusterStateManager>().also {
-                whenever(it.load()).thenReturn(ClusterState(name = "compactor-it", versions = mutableMapOf(), s3Bucket = bucket))
+                whenever(it.load()).thenReturn(
+                    ClusterState(
+                        name = "compactor-it",
+                        versions = mutableMapOf(),
+                        s3Bucket = bucket,
+                        initConfig = InitConfig(region = SharedLocalStack.region()),
+                    ),
+                )
             }
-        val user =
-            User(
-                region = SharedLocalStack.region(),
-                email = "test@example.com",
-                keyName = "",
-                awsProfile = "",
-                awsAccessKey = "",
-                awsSecret = "",
-            )
-        templateService = TemplateService(clusterStateManager, user)
+        templateService = TemplateService(clusterStateManager)
     }
 
     @AfterAll

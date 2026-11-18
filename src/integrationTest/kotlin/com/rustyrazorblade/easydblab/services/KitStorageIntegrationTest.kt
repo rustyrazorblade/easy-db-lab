@@ -10,7 +10,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kits.BuiltinKitFixture
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -271,7 +270,7 @@ class KitStorageIntegrationTest {
         kitStorageClass: String?,
     ) = BuiltinKitFixture(
         kit,
-        TemplateService(ClusterStateManager(File(Files.createTempDirectory("kit-storage-it").toFile(), "state.json")), mock<User>()),
+        TemplateService(ClusterStateManager(File(Files.createTempDirectory("kit-storage-it").toFile(), "state.json"))),
         kitStorageClass,
     )
 

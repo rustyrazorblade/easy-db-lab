@@ -100,6 +100,9 @@ class Down : PicoBaseCommand() {
 
         /** The step a failure of the save itself names, as opposed to one of its signals. */
         const val SAVE_STEP = "pre-teardown save"
+
+        /** The name `down` reports itself by. */
+        const val COMMAND_NAME = "down"
     }
 
     /**
@@ -127,6 +130,7 @@ class Down : PicoBaseCommand() {
     }
 
     override fun execute() {
+        ProvisionerGuard.require(COMMAND_NAME, clusterStateManager.takeIf { it.exists() }?.load(), eventBus)
         val mode = determineTeardownMode()
 
         eventBus.emit(Event.Teardown.Starting)

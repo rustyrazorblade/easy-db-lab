@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.koin.core.component.inject
@@ -12,6 +14,7 @@ import picocli.CommandLine.Command
  *
  * Displays one VPC per line with: name, vpc-id, cluster-id
  */
+@RequiresCapability(NodeCapability.AWS_ACCOUNT)
 @Command(
     name = "vpcs",
     description = ["List all easy-db-lab VPCs"],

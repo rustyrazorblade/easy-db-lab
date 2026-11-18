@@ -17,7 +17,7 @@ import java.io.File
  */
 class PostgresKitTest : BaseKoinTest() {
     private val kit by lazy {
-        BuiltinKitFixture("postgres", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        BuiltinKitFixture("postgres", TemplateService(ClusterStateManager(File(tempDir, "state.json"))))
     }
 
     private fun shellSelectors(steps: List<InstallStep>): List<Map<String, String>> =

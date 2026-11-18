@@ -192,7 +192,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
             single { CiliumNodeImageCheck(get()) }
             single { AWSResourceSetupService(get(), get(), get(), AwsErrorHandler()) }
-            single { ProvisioningPreflight(get(), get(), get(), get()) }
+            single { ProvisioningPreflight(get(), get(), get(), lazy { get<User>() }) }
             single { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
         }
 

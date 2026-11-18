@@ -10,6 +10,7 @@ import java.io.File
 import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.nio.file.NoSuchFileException
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -106,6 +107,29 @@ internal class DefaultSSHConnectionProviderTest {
             held.forEach { it.close() }
             holder.join(TimeUnit.SECONDS.toMillis(1))
         }
+    }
+
+    /**
+     * The key lives in the AWS profile, which a local workspace does not have; every command there
+     * still builds the provider (through `remoteOps`) without ever dialing a node.
+     */
+    @Test
+    fun `the key is read when a host is first reached, not when the provider is built`() {
+        val missing = File(dir, "no-such-key.pem")
+
+        val provider = DefaultSSHConnectionProvider(DefaultSSHConfiguration(keyPath = missing.absolutePath), route).also { created = it }
+
+        assertThatThrownBy { provider.getConnection(host) }.isInstanceOf(NoSuchFileException::class.java)
+        assertThat(route.endpointRequests).isEmpty()
+    }
+
+    @Test
+    fun `stopping a provider that never connected starts nothing`() {
+        val provider = DefaultSSHConnectionProvider(DefaultSSHConfiguration(keyPath = File(dir, "absent.pem").absolutePath), route)
+
+        provider.stop()
+
+        assertThat(route.endpointRequests).isEmpty()
     }
 
     @Test

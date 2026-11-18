@@ -123,9 +123,11 @@ Handles multi-document YAML (separated by `---`). Each document is parsed for it
 ```kotlin
 val kubernetesModule = module {
     factory<KubernetesClientFactory> {
-        // No proxy args — the factory reads the SOCKS port from Constants.Proxy.PORT_PROPERTY at
-        // client-creation time (per-client, explicit; the global socksProxyHost is never set).
-        ProxiedKubernetesClientFactory()
+        // The factory reads the SOCKS port from Constants.Proxy.PORT_PROPERTY at client-creation
+        // time (per-client, explicit; the global socksProxyHost is never set), and only while the
+        // recorded environment's network mode is Tunnel: a direct cluster never gets httpsProxy.
+        val contracts = get<ClusterContractSource>()
+        ProxiedKubernetesClientFactory { contracts.current().networkMode }
     }
     // The KubeApiLocator (services/WorkspaceKubeApiLocator) is bound in ServicesModule.
     factory<KubernetesService> { DefaultKubernetesService(clientFactory = get(), locator = get()) }

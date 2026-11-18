@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvFromSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -238,10 +239,11 @@ data class ObservabilityHosting(
             )
 
         /**
-         * The hosting for [state]'s environment. Every cluster is AWS until the execution environment
-         * is recorded in state (#1040) and the off-AWS store and its StorageClass exist (#1035,
-         * #1061); until then the retained-claim and Secret branches are rendered only by tests.
+         * The hosting the cluster contract resolves for [state]'s recorded environment. The placement
+         * follows the environment; storage and credentials stay [AWS]'s until the off-AWS store and its
+         * StorageClass exist (#1035, #1061), so the retained-claim and Secret branches are rendered
+         * only by tests.
          */
-        fun from(state: ClusterState): ObservabilityHosting = AWS.copy(placement = Placement.from(state))
+        fun from(state: ClusterState): ObservabilityHosting = ClusterContract.of(state).hosting
     }
 }

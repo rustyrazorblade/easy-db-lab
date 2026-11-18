@@ -38,6 +38,28 @@ The agent uses automatic instrumentation only - there is no custom manual instru
 
 The following instrumentation applies to cluster nodes (Cassandra, stress, Spark) and is separate from the CLI tool:
 
+### Backend Outages: Queues and Retries
+
+Each node's collector holds what it cannot deliver while Mimir, Loki or Tempo is down or restarting, and sends it when the backend is back. The queues are in memory. Nothing is written to disk, so a collector that restarts during an outage loses what it held.
+
+| Exporter | Backend | Queue | Retry |
+|----------|---------|-------|-------|
+| `prometheus_remote_write` | Mimir | `remote_write_queue`, 20000 batches | every 5s, no time limit |
+| `otlp_http/logs` | Loki | `sending_queue`, 20000 batches | 5s backoff growing to 30s, no time limit |
+| `otlp_grpc/tempo` | Tempo | `sending_queue`, 20000 batches | 5s backoff growing to 30s, no time limit |
+
+Notes on `prometheus_remote_write` in collector 0.161.0:
+
+- Its queue is `remote_write_queue`; it has no `sending_queue`.
+- It retries inside each push, and the top-level `timeout` bounds the whole push, retries included. The default of 5s dropped every batch while Mimir was down, so the config sets `timeout: 0` and bounds each request with `http.timeout: 30s` instead.
+- It copies only `initial_interval`, `randomization_factor` and `multiplier` into its backoff. `max_interval` has no effect, so the config sets a fixed `initial_interval: 5s` and no `max_interval`.
+- It retries 5xx responses and connection errors. Any other 4xx (including 429) is a rejected batch and is not retried.
+- `endpoint`, `tls` and `headers` sit under `http:`. Once `http` is set, the deprecated top-level fields are ignored.
+
+How long an outage loses nothing depends on the backend: metrics for an hour (Mimir's `out_of_order_time_window: 1h`), logs for 30 minutes (Loki's out-of-order window), and traces for as long as the queue holds. The Pyroscope Java agent retries uploads without limit (`-Dpyroscope.ingest.max.tries=-1`) and holds 360 snapshots, about an hour (`-Dpyroscope.push.queue.capacity=360`); see [Profiling](../user-guide/profiling.md) for the eBPF agent.
+
+`otelcol_exporter_queue_size` (by `exporter`) in Mimir shows a backlog; `otelcol_exporter_send_failed_metric_points_total`, `..._log_records_total` and `..._spans_total` count what was dropped.
+
 ### Node Role Labeling
 
 The OTel Collector (0.161.0) on cluster nodes sets the `node_role` resource attribute of host metrics and host log files from the node's host name: `db<N>` is `db`, `app<N>` is `app`, and `control<N>` is `control` (`transform/node_role_from_host`). A `node_role` that is already set is kept. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.

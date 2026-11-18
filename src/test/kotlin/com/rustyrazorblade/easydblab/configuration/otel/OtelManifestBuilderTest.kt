@@ -836,7 +836,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `local mode ConfigMap exports to the in-cluster backend services`() {
         val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
 
-        assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "endpoint"))
+        assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "http", "endpoint"))
             .isEqualTo("http://mimir.default.svc.cluster.local:9009/api/v1/push")
         assertThat(scalarAt(yaml, "exporters", "otlp_http/logs", "endpoint"))
             .isEqualTo("http://loki.default.svc.cluster.local:3100/otlp")
@@ -1000,9 +1000,62 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val redirected = yamlFrom(builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
 
         for (yaml in listOf(local, redirected)) {
-            assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
+            assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "http", "headers", "X-Scope-OrgID"))
+                .isEqualTo("\${env:TENANT}")
             assertThat(scalarAt(yaml, "exporters", "otlp_http/logs", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
         }
+    }
+
+    /**
+     * Once `http` is set on the remote write exporter, the collector ignores the deprecated
+     * top-level endpoint, tls and headers. A setting left at the top level would silently not
+     * apply, so none may remain there.
+     */
+    @Test
+    fun `remote write sets its connection only under http, locally and under redirect`() {
+        val local = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
+        val redirected = yamlFrom(builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+
+        for (yaml in listOf(local, redirected)) {
+            assertThat(keysAt(yaml, "exporters", "prometheus_remote_write")).doesNotContain("endpoint", "tls", "headers")
+            assertThat(keysAt(yaml, "exporters", "prometheus_remote_write", "http")).contains("endpoint", "tls", "headers")
+        }
+        assertThat(scalarAt(redirected, "exporters", "prometheus_remote_write", "http", "endpoint")).contains("10.0.0.9")
+    }
+
+    /**
+     * Issue 991: a backend outage must not drop telemetry. Remote write has no whole-push deadline
+     * (its 5s default dropped every batch while Mimir was down) and each exporter retries without
+     * a limit into an in-memory queue sized for about an hour.
+     */
+    @Test
+    fun `every backend exporter queues in memory and retries without a limit`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val prw = arrayOf("exporters", "prometheus_remote_write")
+
+        assertThat(scalarAt(yaml, *prw, "timeout")).isEqualTo("0")
+        assertThat(scalarAt(yaml, *prw, "http", "timeout")).isEqualTo("30s")
+        assertThat(scalarAt(yaml, *prw, "retry_on_failure", "initial_interval")).isEqualTo("5s")
+        assertThat(keysAt(yaml, *prw, "retry_on_failure")).doesNotContain("max_interval")
+        assertThat(keysAt(yaml, *prw)).doesNotContain("sending_queue")
+
+        val queues =
+            listOf(
+                arrayOf(*prw, "remote_write_queue"),
+                arrayOf("exporters", "otlp_http/logs", "sending_queue"),
+                arrayOf("exporters", "otlp_grpc/tempo", "sending_queue"),
+            )
+        for (queue in queues) {
+            assertThat(scalarAt(yaml, *queue, "enabled")).describedAs(queue.joinToString("/")).isEqualTo("true")
+            assertThat(scalarAt(yaml, *queue, "queue_size")).describedAs(queue.joinToString("/")).isEqualTo("20000")
+            assertThat(keysAt(yaml, *queue)).describedAs("no on-disk queue").doesNotContain("storage")
+        }
+        for (exporter in listOf("prometheus_remote_write", "otlp_http/logs", "otlp_grpc/tempo")) {
+            assertThat(scalarAt(yaml, "exporters", exporter, "retry_on_failure", "enabled")).describedAs(exporter).isEqualTo("true")
+            assertThat(scalarAt(yaml, "exporters", exporter, "retry_on_failure", "max_elapsed_time")).describedAs(exporter).isEqualTo("0")
+        }
+        assertThat(keysAt(yaml, "processors")).doesNotContain("memory_limiter")
+        assertThat(keysAt(yaml, "extensions")).doesNotContain("file_storage")
     }
 
     /** Every logs pipeline exports to Loki, and no VictoriaLogs-only processor remains. */

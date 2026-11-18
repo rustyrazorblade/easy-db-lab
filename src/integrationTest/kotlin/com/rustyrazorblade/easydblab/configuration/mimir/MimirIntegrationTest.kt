@@ -44,7 +44,7 @@ import java.util.UUID
  *
  * - a sample written while the cluster keeps writing is in a block under `mimir/<tenant>/` within
  *   about three minutes, with no flush and no shutdown: blocks are one minute long and ship every
- *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 10m out-of-order window;
+ *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 1h out-of-order window;
  * - after the head is compacted into a block, the block lands under `mimir/<tenant>/`
  *   and the samples are still answered, now from the local block;
  * - after a SIGKILL and a restart on the same data volume, every sample written before the kill is

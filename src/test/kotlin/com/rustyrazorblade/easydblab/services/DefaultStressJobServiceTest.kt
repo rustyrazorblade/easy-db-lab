@@ -497,6 +497,8 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.event=cpu")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.alloc=512k")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.lock=10ms")
+        // A Pyroscope outage holds profiles in the agent instead of dropping them (issue 991).
+        assertThat(javaToolOptions).contains("-Dpyroscope.ingest.max.tries=-1", "-Dpyroscope.push.queue.capacity=360")
         // The cluster label is <name>-<id>, the value every other signal carries, so the profiling
         // dashboards' cluster filter matches these profiles.
         val cluster = getKoin().get<ClusterStateManager>().load().clusterLabelName()

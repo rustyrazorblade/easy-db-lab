@@ -8,6 +8,14 @@ The OpenTelemetry Collector runs on every node. It gathers host metrics, scrapes
 
 Every series carries a `cluster` label (`<name>-<clusterId>`), so clusters that share a tenant stay distinguishable.
 
+### When Mimir restarts or is down
+
+A Mimir restart or outage of up to an hour loses no sample. While Mimir cannot take a write, each collector keeps the batches in an in-memory queue (`remote_write_queue`, 20000 batches) and retries every 5 seconds without a time limit. When Mimir is back, the collector sends the queue, oldest first, alongside new samples. Mimir accepts samples up to an hour older than the newest sample of their series (`out_of_order_time_window: 1h`), so the replayed samples are stored, not refused as too old.
+
+The queue is in memory. A collector that restarts while Mimir is down loses what it held. A batch that Mimir rejects with a 4xx status (other than a timeout or a connection error) is not retried, because sending it again would fail the same way.
+
+To watch a backlog drain, query the collector's own metrics in Mimir: `otelcol_exporter_queue_size{exporter="prometheus_remote_write"}` is the number of batches waiting, and `otelcol_exporter_send_failed_metric_points_total` counts the points that were dropped. During an outage the queue grows and the failed count stays flat.
+
 ## Configuration
 
 Mimir 3.2.1 runs as one process on the control node:
@@ -73,7 +81,7 @@ with-proxy curl -H 'X-Scope-OrgID: <tenant>' \
    kubectl logs -l app.kubernetes.io/name=mimir
    ```
 
-2. Check that the collector is sending. It scrapes its own telemetry into Mimir (job `otel-collector`); a failing exporter shows up in `otelcol_exporter_send_failed_metric_points_total`, and in the collector's log:
+2. Check that the collector is sending. It scrapes its own telemetry into Mimir (job `otel-collector`). A growing `otelcol_exporter_queue_size` means the collector is holding batches it cannot deliver yet; a rising `otelcol_exporter_send_failed_metric_points_total` means points were dropped. Both show in the collector's log:
    ```bash
    kubectl logs -l app.kubernetes.io/name=otel-collector
    ```

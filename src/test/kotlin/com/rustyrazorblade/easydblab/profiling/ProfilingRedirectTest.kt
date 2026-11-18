@@ -161,6 +161,8 @@ class ProfilingRedirectTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains(redirect.profiles)
         assertThat(javaToolOptions).doesNotContain(localPyroscopeUrl)
         assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=acme")
+        // An outage of the external stack holds profiles in the agent instead of dropping them (issue 991).
+        assertThat(javaToolOptions).contains("-Dpyroscope.ingest.max.tries=-1", "-Dpyroscope.push.queue.capacity=360")
     }
 
     companion object {

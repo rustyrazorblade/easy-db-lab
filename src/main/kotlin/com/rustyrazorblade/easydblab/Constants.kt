@@ -829,6 +829,27 @@ object Constants {
         const val DOWNLOAD_URL =
             "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
         const val EMR_INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+
+        /**
+         * `pyroscope.ingest.max.tries`: a negative value retries an upload without limit, so a
+         * Pyroscope outage or restart does not drop profiles (issue 991). The default, 8 tries
+         * with 1s-30s backoff, gave up within about two minutes.
+         */
+        const val INGEST_MAX_TRIES = -1
+
+        /**
+         * `pyroscope.push.queue.capacity`: snapshots the agent holds while it cannot upload. One
+         * snapshot is taken every 10s, so 360 is an hour, Mimir's and the collectors' window. When
+         * full the agent drops the oldest. The default is 8, about 80 seconds.
+         */
+        const val PUSH_QUEUE_CAPACITY = 360
+
+        /** The two agent options above, as JVM flags, for every JVM the tool attaches the agent to. */
+        val OUTAGE_FLAGS: List<String> =
+            listOf(
+                "-Dpyroscope.ingest.max.tries=$INGEST_MAX_TRIES",
+                "-Dpyroscope.push.queue.capacity=$PUSH_QUEUE_CAPACITY",
+            )
     }
 
     // Probe timings for the in-cluster Pyroscope 2.x server.

@@ -263,6 +263,7 @@ class SidecarManifestBuilder(
             "-Dpyroscope.profiler.event=cpu",
             "-Dpyroscope.profiler.alloc=512k",
             "-Dpyroscope.profiler.lock=10ms",
-        ).joinToString(" ")
+        ).plus(Constants.PyroscopeJavaAgent.OUTAGE_FLAGS)
+            .joinToString(" ")
     }
 }

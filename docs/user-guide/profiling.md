@@ -281,6 +281,8 @@ Thread identity is **not** available through this path; use `flamegraph -- --thr
 | `alloc` | Memory allocation by method |
 | `lock` | Lock contention |
 
+When Pyroscope is down or restarting, the Java agent keeps its snapshots and retries the upload without a limit. It holds up to 360 snapshots, about an hour; past that it drops the oldest.
+
 ### eBPF agent (all processes)
 
 | Profile | Description |
@@ -290,6 +292,8 @@ Thread identity is **not** available through this path; use `flamegraph -- --thr
 The eBPF agent profiles **all processes** on every node, including ClickHouse and other kit databases (TiDB, TiKV, PD). Since these are written in C++/Go, only CPU profiles are available.
 
 Processes running inside Kubernetes pods are attributed to their pod: they carry `namespace`, `pod`, `container`, and a `service_name` derived as `<namespace>/<container>` (for example `tidb-cluster/tikv`). Host processes that don't run in a pod are still profiled, just without pod labels.
+
+The eBPF agent has no queue. Each 15-second profile must reach Pyroscope within that interval, so the eBPF profiles of a Pyroscope outage longer than about 15 seconds are lost. Issue #1206 tracks closing that gap.
 
 ## Stress job profiling
 

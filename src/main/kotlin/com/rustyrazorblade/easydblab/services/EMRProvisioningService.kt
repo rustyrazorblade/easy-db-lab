@@ -212,7 +212,7 @@ class DefaultEMRProvisioningService(
                 "-Dpyroscope.profiler.lock=10ms",
                 // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
                 "-Dpyroscope.tenant.id=${clusterState.tenant()}",
-            )
+            ) + Constants.PyroscopeJavaAgent.OUTAGE_FLAGS
         val extraJavaOptions = "$otelAgentFlag ${pyroscopeFlags.joinToString(" ")}"
 
         val otelEnvVars =

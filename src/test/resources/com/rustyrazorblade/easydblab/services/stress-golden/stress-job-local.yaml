@@ -37,10 +37,10 @@ spec:
             \ -Dpyroscope.server.address=http://10.0.1.5:4040 -Dpyroscope.format=jfr\
             \ -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms\
             \ -Dpyroscope.labels=cluster=test-cluster-golden-cluster-id,job_name=stress-golden\
-            \ -Dpyroscope.tenant.id=acme -javaagent:/usr/local/otel/opentelemetry-javaagent.jar\
-            \ -Dotel.service.name=cassandra-easy-stress -Dotel.resource.attributes=job_name=stress-golden,team=perf,run=42\
-            \ -Dotel.exporter.otlp.endpoint=http://10.0.1.5:4318 -Dotel.metric.export.interval=5s\
-            \ -Dotel.logs.exporter=none -Dotel.traces.sampler=parentbased_traceidratio\
+            \ -Dpyroscope.tenant.id=acme -Dpyroscope.ingest.max.tries=-1 -Dpyroscope.push.queue.capacity=360\
+            \ -javaagent:/usr/local/otel/opentelemetry-javaagent.jar -Dotel.service.name=cassandra-easy-stress\
+            \ -Dotel.resource.attributes=job_name=stress-golden,team=perf,run=42 -Dotel.exporter.otlp.endpoint=http://10.0.1.5:4318\
+            \ -Dotel.metric.export.interval=5s -Dotel.logs.exporter=none -Dotel.traces.sampler=parentbased_traceidratio\
             \ -Dotel.traces.sampler.arg=0.01"
         image: "ghcr.io/apache/cassandra-easy-stress:latest"
         name: "stress"

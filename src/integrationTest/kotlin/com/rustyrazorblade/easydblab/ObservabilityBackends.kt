@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab
 
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.model.Bind
+import com.github.dockerjava.api.model.ContainerNetwork
 import com.github.dockerjava.api.model.HostConfig
 import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
@@ -39,6 +40,7 @@ object ObservabilityBackends {
     /** Tempo's OTLP HTTP receiver port. */
     const val TEMPO_OTLP_HTTP_PORT = 4321
     private val STARTUP: Duration = Duration.ofMinutes(3)
+    private val GRACE: Duration = Duration.ofSeconds(30)
     private val http: HttpClient = HttpClient.newHttpClient()
 
     /** Mimir's rendered config, pointed at LocalStack. */
@@ -162,6 +164,43 @@ object ObservabilityBackends {
             .withExposedPorts(Constants.K8s.LOKI_HTTP_PORT)
             .waitingFor(Wait.forHttp("/ready").forPort(Constants.K8s.LOKI_HTTP_PORT).withStartupTimeout(STARTUP))
             .apply { start() }
+
+    /**
+     * Puts the started, ready [container] behind the in-cluster name [alias] on the Docker network
+     * [networkId], as a Kubernetes Service does: the name resolves to the backend only once its
+     * readiness wait has passed, and stops resolving when the container is gone, so a client sees a
+     * connection error, never a backend that is still starting.
+     */
+    fun attachAsService(
+        container: GenericContainer<*>,
+        networkId: String,
+        alias: String,
+    ) {
+        DockerClientFactory
+            .instance()
+            .client()
+            .connectToNetworkCmd()
+            .withContainerId(container.containerId)
+            .withNetworkId(networkId)
+            .withContainerNetwork(ContainerNetwork().withAliases(alias))
+            .exec()
+    }
+
+    /**
+     * Stops [container] the way a pod restart does: SIGTERM and a grace period to flush, then it is
+     * removed. Its Service name keeps resolving until the process exits. Kubernetes removes a
+     * terminating pod's endpoint at the same time as it signals the pod, not before, so a client can
+     * still reach a backend that is shutting down; this is the harsher end of that race.
+     */
+    fun stopGracefully(container: GenericContainer<*>) {
+        DockerClientFactory
+            .instance()
+            .client()
+            .stopContainerCmd(container.containerId)
+            .withTimeout(GRACE.toSeconds().toInt())
+            .exec()
+        container.stop()
+    }
 
     /** The base URL of [container]'s HTTP port [port] on the Docker host. */
     fun baseUrl(

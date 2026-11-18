@@ -194,7 +194,7 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         val yaml = config()
 
         assertThat(scalarAt(yaml, "limits", "max_global_series_per_user")).isEqualTo("0")
-        assertThat(scalarAt(yaml, "limits", "out_of_order_time_window")).isEqualTo("10m")
+        assertThat(scalarAt(yaml, "limits", "out_of_order_time_window")).isEqualTo("1h")
         assertThat(scalarAt(yaml, "limits", "ingestion_rate")?.toDouble()).isGreaterThan(DEFAULT_INGESTION_RATE)
         assertThat(scalarAt(yaml, "limits", "max_label_names_per_series")?.toInt()).isGreaterThan(DEFAULT_LABEL_NAMES)
     }

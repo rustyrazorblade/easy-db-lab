@@ -1,0 +1,14 @@
+[Unit]
+Description=easy-db-lab node tuning
+# After irqbalance too: the verify below reads its state, and it starts from the same target.
+After=systemd-sysctl.service systemd-udev-trigger.service irqbalance.service
+Before=k3s.service k3s-agent.service cassandra.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/edl-node-tuning apply
+# Reads every value back at every boot, so drift after a reboot is in the journal
+# (journalctl -u edl-node-tuning -b). A mismatch is reported there and does not fail the unit.
+ExecStartPost=-/usr/local/sbin/edl-node-tuning verify
+[Install]
+WantedBy=multi-user.target

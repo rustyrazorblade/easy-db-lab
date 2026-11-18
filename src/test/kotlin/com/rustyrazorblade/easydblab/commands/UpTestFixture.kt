@@ -41,6 +41,7 @@ import com.rustyrazorblade.easydblab.services.LocalSsmTooling
 import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.NodeSetupService
+import com.rustyrazorblade.easydblab.services.NodeTuningFiles
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
@@ -257,7 +258,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             single<K8sStorageOperations> { get<K8sService>() }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
-            single { NodeSetupService(get(), DefaultCassandraProfilingService(get())) }
+            single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles()) }
             single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { _ -> plane })) }
             single<Ec2BringUpPorts> {
                 val steps = get<K3sBringUpSteps>()

@@ -542,6 +542,188 @@ object Constants {
         const val BYTES_PER_MIB = 1024L * 1024
     }
 
+    /**
+     * The OS tuning every node runs with (node-os-tuning): files packaged under [RESOURCE_DIR],
+     * uploaded by node setup into [REMOTE_DIR] beside `setup_instance.sh`, which installs them.
+     */
+    object NodeTuning {
+        /** The classpath directory that holds the tuning files. */
+        const val RESOURCE_DIR = "/com/rustyrazorblade/easydblab/commands/node-tuning"
+
+        /** Where node setup uploads them, relative to the login directory `setup_instance.sh` runs from. */
+        const val REMOTE_DIR = "node-tuning"
+
+        /** The sysctl file, which also holds the reserved ports. */
+        const val SYSCTL_FILE = "60-easydblab.conf"
+
+        /** Every file in [RESOURCE_DIR]; `setup_instance.sh` installs each one. */
+        val FILES =
+            listOf(
+                SYSCTL_FILE,
+                "90-easydblab.rules",
+                "easydblab-limits.conf",
+                "edl-node-tuning",
+                "edl-node-tuning.service",
+                "limits.conf",
+                "system.conf",
+            )
+
+        /** The first port of the Kubernetes NodePort range. */
+        const val NODE_PORT_MIN = 30000
+
+        /** The last port of the Kubernetes NodePort range. */
+        const val NODE_PORT_MAX = 32767
+
+        /** The variable node setup passes `setup_instance.sh` the node's instance type in. */
+        const val INSTANCE_TYPE_VARIABLE = "EDL_INSTANCE_TYPE"
+
+        // Host listeners no manifest builder names, read from `ss -tlnp` and `ss -ulnp` on a
+        // running cluster's nodes. Each one is in the packaged ip_local_reserved_ports.
+
+        /** The K3s API server. */
+        const val K3S_API_PORT = 6443
+
+        /** The K3s supervisor's API proxy. */
+        const val K3S_SUPERVISOR_PORT = 6444
+
+        /** Embedded etcd's client port. */
+        const val ETCD_CLIENT_PORT = 2379
+
+        /** Embedded etcd's peer port. */
+        const val ETCD_PEER_PORT = 2380
+
+        /** Embedded etcd's loopback client port. */
+        const val ETCD_LOOPBACK_CLIENT_PORT = 2382
+
+        /** containerd's CRI stream server. */
+        const val CONTAINERD_STREAM_PORT = 10010
+
+        /** Pyroscope's metastore Raft listener, its built-in default, which its config file does not name. */
+        const val PYROSCOPE_RAFT_PORT = 9099
+
+        /** kubelet health. */
+        const val KUBELET_HEALTH_PORT = 10248
+
+        /** kube-proxy metrics. */
+        const val KUBE_PROXY_METRICS_PORT = 10249
+
+        /** The kubelet API. */
+        const val KUBELET_API_PORT = 10250
+
+        /** The legacy scheduler port. */
+        const val SCHEDULER_LEGACY_PORT = 10251
+
+        /** The legacy controller manager port. */
+        const val CONTROLLER_MANAGER_LEGACY_PORT = 10252
+
+        /** The kubelet read-only API. */
+        const val KUBELET_READ_ONLY_PORT = 10255
+
+        /** kube-proxy health. */
+        const val KUBE_PROXY_HEALTH_PORT = 10256
+
+        /** The controller manager. */
+        const val CONTROLLER_MANAGER_PORT = 10257
+
+        /** The scheduler. */
+        const val SCHEDULER_PORT = 10259
+
+        /** Cilium's health endpoint. */
+        const val CILIUM_HEALTH_PORT = 4240
+
+        /** The Hubble server. */
+        const val HUBBLE_SERVER_PORT = 4244
+
+        /** Hubble relay. */
+        const val HUBBLE_RELAY_PORT = 4245
+
+        /** The Cilium operator's health endpoint. */
+        const val CILIUM_OPERATOR_HEALTH_PORT = 9234
+
+        /** The Cilium agent's health endpoint. */
+        const val CILIUM_AGENT_HEALTH_PORT = 9878
+
+        /** The Cilium agent's local Envoy health endpoint. */
+        const val CILIUM_ENVOY_HEALTH_PORT = 9879
+
+        /** The Cilium agent's pprof endpoint. */
+        const val CILIUM_AGENT_PPROF_PORT = 9890
+
+        /** The Cilium operator's pprof endpoint. */
+        const val CILIUM_OPERATOR_PPROF_PORT = 9891
+
+        /** Cassandra's internode storage port. */
+        const val CASSANDRA_STORAGE_PORT = 7000
+
+        /** Cassandra's TLS internode storage port. */
+        const val CASSANDRA_TLS_STORAGE_PORT = 7001
+
+        /** Cassandra's JMX port. */
+        const val CASSANDRA_JMX_PORT = 7199
+
+        /** Cassandra's native protocol port. */
+        const val CASSANDRA_NATIVE_PORT = 9042
+
+        /** Cassandra's TLS native protocol port. */
+        const val CASSANDRA_TLS_NATIVE_PORT = 9142
+
+        /**
+         * The UDP port flannel's VXLAN backend binds when it creates flannel.1, on every node of a
+         * cluster whose CNI is flannel (`init --cni=flannel`).
+         */
+        const val FLANNEL_VXLAN_PORT = 8472
+
+        /** tailscaled's WireGuard UDP port, on every node that joins the tailnet. */
+        const val TAILSCALE_WIREGUARD_PORT = 41641
+
+        /**
+         * Every host listener no manifest builder names: K3s, its embedded etcd and containerd, the
+         * kubelet and kube-proxy, the Cilium agent and Hubble, Pyroscope's built-in Raft default,
+         * the database on db nodes, the stress metrics endpoint, flannel's VXLAN socket, and
+         * Tailscale. Each is reserved in
+         * [SYSCTL_FILE]; NodeTuningReservedPortsTest checks it.
+         */
+        val HOST_SERVICE_PORTS =
+            setOf(
+                K3S_API_PORT,
+                K3S_SUPERVISOR_PORT,
+                ETCD_CLIENT_PORT,
+                ETCD_PEER_PORT,
+                K3s.ETCD_METRICS_PORT,
+                ETCD_LOOPBACK_CLIENT_PORT,
+                CONTAINERD_STREAM_PORT,
+                PYROSCOPE_RAFT_PORT,
+                KUBELET_HEALTH_PORT,
+                KUBE_PROXY_METRICS_PORT,
+                KUBELET_API_PORT,
+                SCHEDULER_LEGACY_PORT,
+                CONTROLLER_MANAGER_LEGACY_PORT,
+                KUBELET_READ_ONLY_PORT,
+                KUBE_PROXY_HEALTH_PORT,
+                CONTROLLER_MANAGER_PORT,
+                SCHEDULER_PORT,
+                CILIUM_HEALTH_PORT,
+                HUBBLE_SERVER_PORT,
+                HUBBLE_RELAY_PORT,
+                CILIUM_OPERATOR_HEALTH_PORT,
+                CILIUM_AGENT_HEALTH_PORT,
+                CILIUM_ENVOY_HEALTH_PORT,
+                CILIUM_AGENT_PPROF_PORT,
+                CILIUM_OPERATOR_PPROF_PORT,
+                Cilium.AGENT_METRICS_PORT,
+                Cilium.OPERATOR_METRICS_PORT,
+                Cilium.HUBBLE_METRICS_PORT,
+                CASSANDRA_STORAGE_PORT,
+                CASSANDRA_TLS_STORAGE_PORT,
+                CASSANDRA_JMX_PORT,
+                CASSANDRA_NATIVE_PORT,
+                CASSANDRA_TLS_NATIVE_PORT,
+                Stress.PROMETHEUS_PORT,
+                FLANNEL_VXLAN_PORT,
+                TAILSCALE_WIREGUARD_PORT,
+            )
+    }
+
     // Configuration file paths
     object ConfigPaths {
         // Local config files
@@ -1125,6 +1307,13 @@ object Constants {
         const val ROLE_COMMAND = "stress-command"
         const val DEFAULT_CASSANDRA_PORT = 9042
         const val PROMETHEUS_PORT = 9500
+
+        /**
+         * The width of the stress metrics port window, starting at [PROMETHEUS_PORT]. Each run takes
+         * the next port in it, wrapping, so every run binds a port node tuning reserves. Run N and
+         * run N+100 on one node therefore share a port, and so the same `instance` label in metrics.
+         */
+        const val PROMETHEUS_PORT_COUNT = 100
 
         /**
          * The share of stress requests the OpenTelemetry agent traces. At 100% a stress job sent

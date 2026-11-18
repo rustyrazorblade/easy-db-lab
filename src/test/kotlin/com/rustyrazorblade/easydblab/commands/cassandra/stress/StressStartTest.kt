@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -427,6 +428,16 @@ class StressStartTest : BaseKoinTest() {
     fun `extractWorkloadName should return lowercased workload from explicit run`() {
         val command = StressStart()
         assertThat(command.extractWorkloadName(listOf("run", "BasicTimeSeries"))).isEqualTo("basictimeseries")
+    }
+
+    @Test
+    fun `the metrics port stays inside the reserved stress window as the job counter grows`() {
+        val first = Constants.Stress.PROMETHEUS_PORT
+        val window = first until first + Constants.Stress.PROMETHEUS_PORT_COUNT
+        assertThat(StressStart.promPortFor(1)).isEqualTo(first + 1)
+        assertThat(StressStart.promPortFor(Constants.Stress.PROMETHEUS_PORT_COUNT)).isEqualTo(first)
+        assertThat(StressStart.promPortFor(Constants.Stress.PROMETHEUS_PORT_COUNT + 2)).isEqualTo(first + 2)
+        assertThat((1..1000).map { StressStart.promPortFor(it) }).allMatch { it in window }
     }
 
     @Test

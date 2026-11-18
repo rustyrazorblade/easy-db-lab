@@ -480,6 +480,8 @@ tasks.register("testScripts") {
         "testBasePrimaryEniNetwork",
         "testCompactorGate",
         "testSetupInstanceDataDisk",
+        "testSetupInstanceTuning",
+        "testEdlNodeTuning",
     )
 }
 
@@ -529,6 +531,26 @@ tasks.register<Exec>("testSetupInstanceDataDisk") {
     description = "Unit-test the data disk handling of setup_instance.sh"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/setup-instance-data-disk.test.sh")
+}
+
+// Unit-test the OS tuning step of setup_instance.sh: every packaged node-tuning file installed
+// where the system reads it, the old files removed, swap kept off, and a failure when the files
+// are missing or a setting did not take. The system tools are stubbed.
+tasks.register<Exec>("testSetupInstanceTuning") {
+    group = "Verification"
+    description = "Unit-test the OS tuning step of setup_instance.sh"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/setup-instance-tuning.test.sh")
+}
+
+// Unit-test edl-node-tuning, under dash as on the nodes: the RPS mask and flow counts, the CPU
+// governor and idle states or a logged skip, and verify naming each setting that does not match.
+// Runs against a fake /sys and /proc.
+tasks.register<Exec>("testEdlNodeTuning") {
+    group = "Verification"
+    description = "Unit-test the edl-node-tuning node script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/edl-node-tuning.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug

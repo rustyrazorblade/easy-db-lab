@@ -146,4 +146,4 @@ None.  The collector and Mimir roll through `ConfigHashAnnotator` on the next `u
 
 ## Open Questions
 
-None.
+- The Java agent queue (`-Dpyroscope.push.queue.capacity=360`) can take 1.8 to 4 GB of the profiled JVM's heap when full, measured on a synthetic load (see Risks). This applies to the sidecar, stress, Spark and kit JVMs. The owner decides whether 360 stays or the queue is sized for the smallest JVM that gets these options. Until then the code ships 360, and `profiling.md` states the heap cost.

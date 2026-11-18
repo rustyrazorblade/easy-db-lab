@@ -281,7 +281,7 @@ Thread identity is **not** available through this path; use `flamegraph -- --thr
 | `alloc` | Memory allocation by method |
 | `lock` | Lock contention |
 
-When Pyroscope is down or restarting, the Java agent keeps its snapshots and retries the upload without a limit. It holds up to 360 snapshots, about an hour; past that it drops the oldest. The agent drops a snapshot that Pyroscope answers with a 4xx other than 429, and Pyroscope answers 422 to every push while it shuts down, so the server's configuration turns off the fixed waits that kept it in that state for 30 seconds after SIGTERM (the metastore's and segment writer's `min_ready_duration`, and usage reporting). It now exits within seconds, and the agent retries the refused connection.
+When Pyroscope is down or restarting, the Java agent keeps its snapshots and retries the upload without a limit. It holds up to 360 snapshots, about an hour; past that it drops the oldest. The queue is in the profiled JVM's heap: with the production options and a synthetic load, each queued snapshot took about 5 to 11 MB, so a full queue can take 1.8 to 4 GB in a JVM whose Pyroscope stays down for most of an hour. The agent drops a snapshot that Pyroscope answers with a 4xx other than 429, and Pyroscope answers 422 to every push while it shuts down, so the server's configuration turns off the fixed waits that kept it in that state for 30 seconds after SIGTERM (the metastore's and segment writer's `min_ready_duration`, and usage reporting). It now exits within seconds, and the agent retries the refused connection.
 
 ### eBPF agent (all processes)
 

@@ -60,7 +60,7 @@ Notes on `prometheus_remote_write` in collector 0.161.0:
 
 How long an outage loses nothing depends on the backend: metrics for an hour (Mimir's `out_of_order_time_window: 1h`), logs for 30 minutes (Loki's out-of-order window), and traces for as long as the queue holds. The Pyroscope Java agent retries uploads without limit (`-Dpyroscope.ingest.max.tries=-1`) and holds 360 snapshots, about an hour (`-Dpyroscope.push.queue.capacity=360`); see [Profiling](../user-guide/profiling.md) for the eBPF agent.
 
-`otelcol_exporter_queue_size` (by `exporter`) in Mimir shows a backlog; `otelcol_exporter_send_failed_metric_points_total`, `..._log_records_total` and `..._spans_total` count what was dropped.
+`otelcol_exporter_queue_size` (by `exporter`) in Mimir shows a backlog; `otelcol_exporter_send_failed_metric_points_total`, `..._log_records_total` and `..._spans_total` count what was dropped. These reach Mimir through the `prometheus_remote_write` queue too, so during a Mimir outage they cannot be queried; they fill in once Mimir is back. During the outage, the collector's log shows each retry.
 
 ### Node Role Labeling
 

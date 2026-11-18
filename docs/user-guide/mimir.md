@@ -14,7 +14,7 @@ A Mimir restart or outage of up to an hour loses no sample. While Mimir cannot t
 
 The queue is in memory. A collector that restarts while Mimir is down loses what it held. A batch that Mimir rejects with a 4xx status is dropped, not retried: the collector's `prometheus_remote_write` exporter treats every 4xx as permanent. That includes 429, so a rate-limited batch is lost too; Mimir's `ingestion_rate` and `ingestion_burst_size` are set high so a replay after an outage is not rate-limited. 5xx responses, timeouts and connection errors are retried.
 
-To watch a backlog drain, query the collector's own metrics in Mimir: `otelcol_exporter_queue_size{exporter="prometheus_remote_write"}` is the number of batches waiting, and `otelcol_exporter_send_failed_metric_points_total` counts the points that were dropped. During an outage the queue grows and the failed count stays flat.
+The collector's own metrics show the backlog: `otelcol_exporter_queue_size{exporter="prometheus_remote_write"}` is the number of batches waiting, and `otelcol_exporter_send_failed_metric_points_total` counts the points that were dropped. They reach Mimir through the same queue, so while Mimir is down you cannot query them; once Mimir is back the series fills in, showing the queue's growth during the outage and its drain, with the failed count flat. To watch the backlog live during an outage, read the collector's log on the node (`kubectl logs` of the `otel-collector` pod), where each failed push is a retry line.
 
 ## Configuration
 
@@ -81,7 +81,7 @@ with-proxy curl -H 'X-Scope-OrgID: <tenant>' \
    kubectl logs -l app.kubernetes.io/name=mimir
    ```
 
-2. Check that the collector is sending. It scrapes its own telemetry into Mimir (job `otel-collector`). A growing `otelcol_exporter_queue_size` means the collector is holding batches it cannot deliver yet; a rising `otelcol_exporter_send_failed_metric_points_total` means points were dropped. Both show in the collector's log:
+2. Check that the collector is sending. It scrapes its own telemetry into Mimir (job `otel-collector`), so these series are only current while Mimir accepts writes. A growing `otelcol_exporter_queue_size` means the collector is holding batches it cannot deliver yet; a rising `otelcol_exporter_send_failed_metric_points_total` means points were dropped. Both show in the collector's log:
    ```bash
    kubectl logs -l app.kubernetes.io/name=otel-collector
    ```

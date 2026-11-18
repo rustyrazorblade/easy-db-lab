@@ -51,7 +51,8 @@ object ObservabilityBackends {
     const val TEMPO_OTLP_HTTP_PORT = 4321
     private val STARTUP: Duration = Duration.ofMinutes(3)
     private val GRACE: Duration = Duration.ofSeconds(30)
-    private val http: HttpClient = HttpClient.newHttpClient()
+    private val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(10)
+    private val http: HttpClient = HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build()
 
     /** Mimir's rendered config, pointed at LocalStack. */
     fun mimirConfig(rendered: String): String {
@@ -260,8 +261,20 @@ object ObservabilityBackends {
         port: Int,
     ): String = "http://${container.host}:${container.getMappedPort(port)}"
 
-    /** Sends [request] and returns the response, body as text. */
-    fun send(request: HttpRequest): HttpResponse<String> = http.send(request, HttpResponse.BodyHandlers.ofString())
+    /**
+     * Sends [request] and returns the response, body as text. A request without its own timeout
+     * gets [REQUEST_TIMEOUT], so a backend that accepts the connection and then hangs while it
+     * restarts cannot hold a poll loop past its deadline or stall the producer.
+     */
+    fun send(request: HttpRequest): HttpResponse<String> {
+        val bounded =
+            if (request.timeout().isPresent) {
+                request
+            } else {
+                HttpRequest.newBuilder(request) { _, _ -> true }.timeout(REQUEST_TIMEOUT).build()
+            }
+        return http.send(bounded, HttpResponse.BodyHandlers.ofString())
+    }
 
     /** A GET of [url] carrying [tenant] in `X-Scope-OrgID`. */
     fun get(

@@ -220,6 +220,19 @@ class NodeBringUpTest {
     }
 
     @Test
+    fun `a cleanup that fails once and then succeeds ends Ready with no replacement`() {
+        val h = harness(dbs = 2)
+        h.plane.cleanupFlakes["db1"] = 1
+
+        val result = h.run()
+
+        assertThat(result.nodes.getValue("db1")).isInstanceOf(NodeEnd.Ready::class.java)
+        assertThat(result.nodes.getValue("db1").replacements).isEqualTo(0)
+        assertThat(h.fleet.calls).isEmpty()
+        assertThat(h.plane.cleaned).contains("db1")
+    }
+
+    @Test
     fun `a registered node that never becomes Ready is removed from the cluster before its replacement joins`() {
         val h = harness(dbs = 2)
         h.plane.neverReady += h.dbs[1].privateIp

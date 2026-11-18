@@ -80,6 +80,9 @@ class FakeControlPlane(
 
     /** The aliases whose cleanup fails, with the reason it fails with. */
     val cleanupFailures: MutableMap<String, String> = ConcurrentHashMap()
+
+    /** How many times an alias's cleanup fails before it succeeds. */
+    val cleanupFlakes: MutableMap<String, Int> = ConcurrentHashMap()
     val registered: MutableList<String> = Collections.synchronizedList(mutableListOf())
     private val watches = ConcurrentHashMap<String, NodeWatch>()
     private val joining = AtomicInteger()
@@ -98,6 +101,7 @@ class FakeControlPlane(
 
     override fun cleanup(alias: String) {
         cleanupFailures[alias]?.let { error(it) }
+        if (cleanupFlakes.merge(alias, -1, Int::plus)?.let { it >= 0 } == true) error("transient cleanup failure for $alias")
         cleaned += alias
     }
 

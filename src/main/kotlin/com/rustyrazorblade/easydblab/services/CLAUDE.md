@@ -219,3 +219,17 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
 - **Tests**: `src/test/.../services/bringup/BringUpFakes.kt` and `FakeInstanceFleet` drive every
   pipeline without SSH or AWS; `UpTestFixture` wires the real `K3sBringUpSteps` over a fake
   `RemoteOperationsService` with fake tracker, fleet and control plane.
+
+## Node Setup and OS Tuning
+
+`NodeSetupService` sets up one node: `environment.sh`, the per-type files, the hostname, then
+`setup_instance.sh`. Before the script runs it uploads the packaged OS tuning files
+(`commands/node-tuning/`, listed in `Constants.NodeTuning.FILES`) into `node-tuning/` beside
+it with one directory upload, staged by `NodeTuningFiles`. The script's `tune_node` installs
+them, applies them and runs `edl-node-tuning verify`, whose `ERROR:` lines fail the node's setup
+step. A new tuning file goes in that directory, in `Constants.NodeTuning.FILES` and in
+`tune_node`; `NodeTuningFilesTest` and `setup-instance-tuning.test.sh` fail until all three
+agree. The script is run as `sudo EDL_INSTANCE_TYPE=<type> bash setup_instance.sh` with the
+node's instance type from `NodeSetupContext.instanceTypes` (the cluster state), so nothing on the
+node asks the cloud provider. The values and why are in `docs/user-guide/node-tuning.md`; the decisions are in
+`openspec/changes/issue-1199/design.md` until it is archived.

@@ -10,7 +10,7 @@ import kotlin.concurrent.withLock
 /**
  * Where every node is, for the progress line `up` prints every `PROGRESS_INTERVAL_SECONDS`. Each
  * pipeline reports the step it enters, and its end as Ready or failed; [snapshot] counts them.
- * A node in [PipelineStep.JOIN] is counted as joining, against the join limit, not in `byStep`.
+ * A node in [PipelineStep.JOIN], or in [PipelineStep.NODE_CLEANUP] (it holds a join slot too), is counted as joining, against the join limit, not in `byStep`.
  * The control node is not one of the [total]; its current step is shown on its own.
  *
  * Thread-safe: every pipeline reports from its own thread.
@@ -69,10 +69,10 @@ class BringUpProgress(
                 total = total,
                 byStep =
                     PipelineStep.entries
-                        .filter { it != PipelineStep.JOIN }
+                        .filter { it !in HOLDING_A_JOIN_SLOT }
                         .associate { step -> step.wireName to steps.count { it == step } }
                         .filterValues { it > 0 },
-                joining = steps.count { it == PipelineStep.JOIN },
+                joining = steps.count { it in HOLDING_A_JOIN_SLOT },
                 joinLimit = joinLimit,
                 ready = states.count { it == State.Ready },
                 replacements = replacements,
@@ -81,4 +81,9 @@ class BringUpProgress(
                 controlStep = controlStep?.wireName,
             )
         }
+
+    private companion object {
+        /** The steps a node runs while it holds one of the join slots. */
+        val HOLDING_A_JOIN_SLOT = setOf(PipelineStep.NODE_CLEANUP, PipelineStep.JOIN)
+    }
 }

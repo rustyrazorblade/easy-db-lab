@@ -1,0 +1,130 @@
+## Context
+
+Every node runs the OTel collector DaemonSet (`otel-collector-config.yaml`, rendered by `OtelManifestBuilder`).  It is the only process that writes metrics to Mimir: the stress-job sidecar and the EMR collectors send OTLP to a node collector, and Tempo's metrics generator is configured but inert.  The same collector writes logs to Loki (`otlp_http/logs`) and traces to Tempo (`otlp_grpc/tempo`).  Profiles reach Pyroscope from two other senders: the Alloy eBPF DaemonSet (`pyroscope.write`) and the Pyroscope Java agent (stress jobs, the Cassandra sidecar, EMR Spark, and kits through `edl_pyroscope_opts`).
+
+Mimir, Loki and Tempo run as one-replica `Recreate` Deployments.  Every config roll that `ConfigHashAnnotator` triggers takes the backend down for its whole restart, and a bad config takes it down until someone fixes it (11 minutes on qa971f).
+
+All facts below were read from the source of the versions this repo deploys: collector contrib 0.161.0 (`Constants.OtelCollector.VERSION`; core exporterhelper v1.67.0, `cenkalti/backoff` v5.0.3), Alloy v1.20.0, Pyroscope Java agent 2.3.0 (`Constants.PyroscopeJavaAgent.VERSION`).
+
+### How `prometheus_remote_write` fails today (0.161.0)
+
+- The exporter builds its exporterhelper chain with `WithTimeout`, `WithQueue`, `WithStart` and `WithShutdown`.  It does **not** call `WithRetry`.  Retries happen inside its own push function, with `backoff.Retry(ctx, ...)`.
+- The exporterhelper timeout sender (top-level `timeout`, default 5s) wraps that push in `context.WithTimeout`.  The push checks `ctx.Done()` before every attempt and stops.  So the whole push, retries included, gets 5 seconds; then the batch is dropped as "context deadline exceeded".  The sender is left out when `timeout` is 0 (`if be.timeoutCfg.Timeout != 0`).
+- **There is no `sending_queue`.**  The owner's comment says "in-memory sending_queue"; the exporter's in-memory queue is named `remote_write_queue` (`enabled`, `queue_size`, `num_consumers`).  It maps to an exporterhelper memory queue with the `requests` sizer.  `block_on_overflow` is not set, so a full queue rejects new batches.  It has one consumer unless the alpha `EnableMultipleWorkers` gate is on; each push still sends up to 5 requests in parallel.  Defaults: enabled, 10000 requests.
+- Retry backoff: only `initial_interval`, `randomization_factor` and `multiplier` are copied into the backoff.  **`max_interval` is not copied**, so the backoff never grows: every retry waits about `initial_interval` (PRW default 50ms).  `max_elapsed_time: 0` means no limit (the library checks `> 0`); the default is 5m.
+- Status handling: 5xx and transport errors (connection refused, a request timeout) are retried.  Every other status, including 429 (unless an alpha gate is on), is permanent and drops the batch.
+- HTTP settings: since v0.158.0 the top-level `endpoint`, `tls` and `headers` are deprecated in favour of an `http:` block.  If `http:` is set, it wins and the top-level keys are ignored, so all of them move together.  `http.timeout` is the per-request timeout of the HTTP client.
+
+### The other exporters (0.161.0)
+
+- `otlp_http/logs`: forces the exporterhelper timeout to 0 and relies on the HTTP client timeout (30s).  It uses exporterhelper's `retry_on_failure` (5s initial, 30s max interval, **300s `max_elapsed_time`**) and an in-memory `sending_queue` of 1000 requests with 10 consumers.  It retries transport errors and 429, 502, 503 and 504; every other status, 500 included, is permanent.
+- `otlp_grpc/tempo`: the 5s timeout applies to each attempt, inside the retry sender, so it does not cut retries short.  Same retry (300s) and queue (1000) defaults.
+- So logs and traces survive an outage of up to 5 minutes, and lose data in a longer one.  This is the same gap with a longer fuse.
+
+### Profiles
+
+- Alloy v1.20.0 `pyroscope.write` has no queue.  `pyroscope.ebpf` wraps each send in a context that ends after the collect interval (15s), and drops what is not sent by then (`pprofsDroppedTotal`).  No argument changes this.
+- The Pyroscope Java agent keeps up to 8 snapshots (`PYROSCOPE_PUSH_QUEUE_CAPACITY`, one per 10s upload interval) in memory, drops the oldest when full, and gives up on a snapshot after 8 tries (`PYROSCOPE_INGEST_MAX_TRIES`; a negative value retries forever).  It retries 429, 5xx and I/O errors with backoff from 1s to 30s.  It reads both from system properties (`pyroscope.push.queue.capacity`, `pyroscope.ingest.max.tries`).
+
+### Why Mimir rejects a replay
+
+Mimir's head accepts an in-order sample only if it is no older than half a block range (30s here, with 1-minute blocks) behind the head's newest sample.  After an outage, the first collector to drain moves the head forward, and older samples from the others are then accepted only within `out_of_order_time_window` (10m today).  A sample older than that is answered with 400, which is permanent, and dropped.
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- A Mimir outage or restart of up to 1 hour loses no metric sample, while the collectors keep running.
+- The same for traces and profiles from the Java agent; logs up to Loki's window (see Decision 5).
+- The integration test proves it for metrics, and fails before the fix.
+
+**Non-Goals:**
+
+- Surviving a collector restart during an outage.  The queues are in memory (owner decision): what a collector holds when it restarts is lost.
+- A persistent queue, a WAL, or `file_storage` (owner decision, option A).
+- A `memory_limiter` (absolute rule).
+- Switching metrics to OTLP (option C).
+- Outages longer than 1 hour.
+
+## Decisions
+
+### 1. `prometheus_remote_write` settings
+
+```yaml
+prometheus_remote_write:
+  http:
+    endpoint: __METRICS_ENDPOINT__
+    tls: {insecure: true}
+    headers: {X-Scope-OrgID: ${env:TENANT}}
+    timeout: 30s
+  timeout: 0
+  retry_on_failure:
+    enabled: true
+    initial_interval: 5s
+    max_elapsed_time: 0
+  remote_write_queue:
+    enabled: true
+    queue_size: 20000
+  resource_to_telemetry_conversion: {enabled: true}
+```
+
+- `timeout: 0` removes the deadline around the retries.  `http.timeout: 30s` bounds one request, so a Mimir that accepts a connection and hangs fails that attempt, and the next attempt runs.
+- `max_elapsed_time: 0` retries a batch until Mimir answers.
+- `initial_interval: 5s`: since the backoff never grows, this is the retry cadence.  At the 50ms default a down Mimir is hit 20 times a second by every collector.
+- `max_interval` is **not** set.  The owner asked for `max_interval: 30s`, but 0.161.0 does not pass it to the backoff, so it would do nothing.  This is an open point for the owner.
+- `queue_size: 20000`: the batch processor flushes at 1024 points or 10s.  qa971f sent about 4,700 samples/s in all.  If one collector sent all of it, that is about 4.6 batches a second, about 16,500 an hour; 20000 holds that.  A collector on a db node sends far less.
+- `num_consumers` stays at the default.  Without the alpha gate the queue has one consumer, which keeps a collector's batches in order (so its own series replay in order) and each push still sends 5 requests in parallel.
+
+Alternatives considered: a longer `timeout` alone (still a deadline; a long outage still drops); `max_elapsed_time` alone (does nothing while the 5s deadline wraps it, as the findings comment says); the PRW `wal` (option B) and OTLP with `file_storage` (option C), both declined by the owner.
+
+### 2. Mimir `out_of_order_time_window: 1h`
+
+The window must cover the longest outage the queues cover, or the replay is rejected as too old.  1 hour covers a config roll, a crash loop that someone notices and fixes, and the 11-minute qa971f outage with room to spare, and it matches the queue size.  A larger window keeps more out-of-order samples in the head's memory, and is not needed for an outage the queue cannot hold.  The rendered value is shared by the account compactor (it reads the same `mimir.yaml`); the compactor does not use the limit.
+
+### 3. Loki and Tempo exporters
+
+For `otlp_http/logs` and `otlp_grpc/tempo`: `retry_on_failure.max_elapsed_time: 0` and `sending_queue.queue_size: 20000` (requests sizer, the default).  The queues stay in memory, with no `storage`.  `otlp_grpc`'s 5s per-attempt timeout stays: it is not a deadline around the retries.
+
+### 4. Pyroscope Java agent
+
+Add `-Dpyroscope.ingest.max.tries=-1` and `-Dpyroscope.push.queue.capacity=360` (1 hour of 10s snapshots) wherever the tool starts the agent: `StressJobManifestBuilder`, `SidecarManifestBuilder`, `EMRProvisioningService`, and `edl_pyroscope_opts` in `edl-kit-lib.sh`.  The values go in `Constants.PyroscopeJavaAgent`.  The queue holds compressed JFR snapshots in the JVM heap.
+
+### 5. Coverage differs per signal
+
+- Metrics, traces, Java-agent profiles: 1 hour.
+- Logs: 30 minutes.  Loki's `max_chunk_age: 1h` makes its per-stream out-of-order window 30 minutes; a line older than that is rejected with 400, which `otlp_http` drops.  Raising the window means raising `max_chunk_age`, which delays when logs reach S3 (the observability-store spec says within about 1 hour).  This change leaves Loki's window as it is and records the limit.
+- eBPF profiles: about 15 seconds; Alloy cannot queue (see Context).
+
+### 6. Integration test
+
+`CollectorReplayIntegrationTest` in `src/integrationTest`: the pinned collector with its rendered configuration, unedited, in front of the pinned Mimir with its rendered configuration (`ObservabilityBackends.startMimir`, LocalStack S3).  The containers share a user-defined Docker network, and Mimir carries the network alias `mimir.default.svc.cluster.local`, so the collector finds it again after a restart.
+
+1. Push one gauge sample a second over OTLP to the collector, each with its own timestamp and a value equal to its sequence number.
+2. After about 30s, stop the Mimir container (its data volume stays), keep pushing for 60s (well past the old 5s deadline), start Mimir again, keep pushing for 30s.
+3. Assert that every pushed timestamp is in Mimir: a `query_range` at a 1s step over the whole run returns every sequence number, none missing.  Wait up to 2 minutes for the queue to drain.
+
+Before the fix, the batches sent while Mimir was down are dropped after 5s and the gap's sequence numbers are missing, so the test fails.  A unit test asserts the rendered exporter settings (`OtelManifestBuilderTest`), and `OtelCollectorConfigValidationIntegrationTest` validates the new keys against the pinned collector.
+
+### 7. Real-cluster check
+
+1 db, 1 app, 1 control, `--tag embark_offhours=off`, a light stress load.  Restart Mimir and hold it down for a few minutes (scale to 0, then back to 1), then show in Mimir that a per-second series has no missing samples across the gap, and that `otelcol_exporter_send_failed_metric_points_total` did not rise.
+
+## Risks / Trade-offs
+
+- [A collector restart during an outage loses its queue] → Accepted by the owner (in-memory, option A).  It includes a `down` that stops the collectors while Mimir is down; `down` flushes Mimir after the collectors stop, so it never stops them during a backend outage it causes.
+- [Memory: a full queue holds an hour of batches in the collector's memory, up to a few GB on a busy node] → The nodes have the memory, and there is no limiter by rule.  The queue only grows while a backend is down.
+- [Drain time: one consumer drains a backlog more slowly than many] → At tens of pushes a second, an hour's backlog drains in minutes.  The real-cluster check measures it.
+- [Replay pressure on Mimir: 429 is permanent in PRW] → Mimir's ingestion limits are far above a test cluster's rate (`ingestion_rate: 10000000`).
+- [Loki answers 500 while it starts, which `otlp_http` treats as permanent] → Not fixed by this change; see Open Questions.
+- [Java agent heap: 360 snapshots in a small JVM] → JFR snapshots are compressed, and the queue fills only during a Pyroscope outage.
+
+## Migration Plan
+
+None.  The collector and Mimir roll through `ConfigHashAnnotator` on the next `up` or `grafana update-config`.  Clusters are ephemeral.
+
+## Open Questions
+
+- `max_interval: 30s` does nothing in PRW 0.161.0 (not copied into the backoff).  This design sets `initial_interval: 5s` instead and leaves `max_interval` unset.  Is that acceptable?
+- Logs coverage is 30 minutes because of Loki's out-of-order window, not 1 hour.  Keep it, or raise `max_chunk_age` (and so the 1-hour S3 latency in the spec)?
+- eBPF profiles cannot be queued by configuration in Alloy v1.20.0.  Accept the gap, or open a follow-up?
+- `otlp_http` treats a 500 from Loki as permanent.  If Loki answers 500 while it starts, those log batches are dropped.  Extend the integration test to restart Loki, and fix it in this change if it fails?

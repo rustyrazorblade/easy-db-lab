@@ -47,6 +47,18 @@ class BringUpProgressTest {
     }
 
     @Test
+    fun `a node cleaning up the old node holds a join slot, so it counts as joining`() {
+        val progress = BringUpProgress(total = 2, joinLimit = 16, clock = Clock.fixed(start, ZoneOffset.UTC), startedAt = start)
+
+        progress.enter("db0", PipelineStep.NODE_CLEANUP)
+        progress.enter("db1", PipelineStep.JOIN)
+
+        val snapshot = progress.snapshot()
+        assertThat(snapshot.joining).isEqualTo(2)
+        assertThat(snapshot.byStep).isEmpty()
+    }
+
+    @Test
     fun `the steps are listed in pipeline order whatever order nodes entered them`() {
         val progress = BringUpProgress(total = 3, joinLimit = 16, clock = Clock.fixed(start, ZoneOffset.UTC), startedAt = start)
 

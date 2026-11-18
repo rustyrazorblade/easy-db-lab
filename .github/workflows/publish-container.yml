@@ -99,6 +99,8 @@ jobs:
   # a pull request's own run), and a version that is already published is never overwritten.
   publish-pyroscope-agent:
     runs-on: ubuntu-latest
+    # The push trigger fires only for v* tags (see on.push), so no branch push reaches this job;
+    # branches arrive only through workflow_run, which is limited to PR Checks on a push to main.
     if: |
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||

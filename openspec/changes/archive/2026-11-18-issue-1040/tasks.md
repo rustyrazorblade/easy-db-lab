@@ -70,4 +70,4 @@
 - [x] 8.1 `help provisioning`, and the user-guide provisioning and networking pages: `init --local`, `--data-dir`, and the data directory surviving `clean` and being deleted with the workspace.
 - [x] 8.2 Root `CLAUDE.md`: the env file holds `EDL_NETWORK_MODE`, written from the recorded environment.
 - [x] 8.3 `configuration/CLAUDE.md` (environment, contract, hosting and declared set), `services/CLAUDE.md` (tooling selection), `commands/CLAUDE.md` (`@RequiresCapability`, the `@RequireProfileSetup` rule) and `docs/development/kits.md:113`.
-- [ ] 8.4 Run `./gradlew ktlintFormat detekt test integrationTest` in a subagent, on JDK 21. Every test passes.
+- [x] 8.4 Run `./gradlew ktlintFormat detekt test integrationTest` in a subagent, on JDK 21. Every test passes. Done in CI on JDK 21: PR Checks ran `test integrationTest` (with ktlint and detekt) green on #1163 (c9e5b8f8) and #1204 (cbad8f02).

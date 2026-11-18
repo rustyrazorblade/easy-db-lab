@@ -84,6 +84,15 @@ The proxy MUST be started eagerly by the command executor rather than lazily by 
 
 When `tailscaleActive` is `true` in cluster state, the SOCKS proxy SHALL NOT be started or used; all traffic connects directly to cluster private IPs.
 
+When the recorded execution environment resolves to the `direct` network mode (K3s in Docker, or a cluster the user brings), the SOCKS proxy SHALL NOT be started, required, or used:
+
+- The executor starts no tunnel for `@RequiresProxy` commands.
+- `socks start` reports that no tunnel is needed.
+- The Kubernetes client is configured with no proxy.
+- Cluster Services are reached through the recorded service exposure.
+
+The executor MUST re-assert `EDL_NETWORK_MODE=direct` in the proxy env file from the recorded environment before command logic runs. The recorded environment, never the env file, decides the network mode.
+
 The CLI is the only component that starts or stops the proxy. `env.sh` and the tool wrappers MUST NOT start or stop it. Shell-side tools learn the active port only from the proxy env file, which the CLI updates each time it verifies, starts, or stops the tunnel.
 
 #### Scenario: Proxy starts before command logic
@@ -157,6 +166,31 @@ The CLI is the only component that starts or stops the proxy. `env.sh` and the t
 - **WHEN** `down` is run
 - **THEN** the SSH proxy process is killed and `.socks5-proxy-state` is deleted
 - **AND** the port is removed from the proxy env file
+
+#### Scenario: A proxy-requiring command in a local workspace connects directly
+
+- **GIVEN** a `k3s-docker` workspace whose cluster is running
+- **WHEN** a `@RequiresProxy` command runs
+- **THEN** no SOCKS tunnel is started and none is required
+- **AND** the Kubernetes client reaches the API server with no proxy configured
+
+#### Scenario: socks start in a local workspace
+
+- **GIVEN** a `k3s-docker` workspace
+- **WHEN** the user runs `socks start`
+- **THEN** it reports that no tunnel is needed and starts none
+
+#### Scenario: The env file follows the recorded environment
+
+- **GIVEN** a `k3s-docker` workspace whose env file has lost `EDL_NETWORK_MODE`
+- **WHEN** any command runs
+- **THEN** the env file holds `EDL_NETWORK_MODE=direct` before command logic runs
+
+#### Scenario: An AWS workspace keeps its tunnel
+
+- **GIVEN** an `ec2-k3s` workspace with infrastructure UP and Tailscale not active
+- **WHEN** any command runs
+- **THEN** the tunnel is started or reused as today, and the env file holds no `EDL_NETWORK_MODE`
 
 ### Requirement: Host Discovery
 
@@ -1125,7 +1159,14 @@ A workspace MAY record that the cluster API is reachable from this machine with 
 
 Only the env file decides. Each wrapper MUST unset an inherited `EDL_NETWORK_MODE` before it sources the env file, so a value exported in the caller's environment has no effect. When the env file holds `EDL_NETWORK_MODE=direct`, each wrapper MUST run the real binary with no proxy variable set or cleared, and MUST NOT require a recorded tunnel, exactly as on a Tailscale cluster, including the `KUBECONFIG` rule of the "Wrappers use the workspace kubeconfig" requirement. Proxy variables the caller exported (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, upper and lower case, for example a corporate `http_proxy`) MUST pass through to the real binary untouched, as on a Tailscale cluster. `with-proxy` and `socks5-status` in `env.sh` follow the same mode (see "env.sh puts the workspace tool wrappers on PATH"). When the key is absent, the env file and the wrappers MUST behave as they did before this mode existed.
 
-Nothing in production writes the key until the local execution environment (#1040) records it.
+`init --local` writes the key. The command executor re-asserts it from the recorded execution environment, so a workspace whose environment resolves to the direct network mode always holds it, and one that does not never does. `init` MUST NOT read the key to decide anything.
+
+#### Scenario: A local workspace's wrappers set no proxy variables
+
+- **GIVEN** a workspace created by `init --local`
+- **WHEN** any `bin/` wrapper runs
+- **THEN** no proxy variable is set by the wrapper
+- **AND** no SOCKS tunnel is started or required
 
 #### Scenario: Direct mode runs the real tool with no proxy variables
 

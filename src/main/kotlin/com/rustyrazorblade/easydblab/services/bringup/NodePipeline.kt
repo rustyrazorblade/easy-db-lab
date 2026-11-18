@@ -101,16 +101,29 @@ internal class NodePipeline(
             val watch = nodes.watch(alias, it.host.privateIp)
             // Whether the last attempt's agent started, so a failed join says what it was waiting for.
             val started = AtomicBoolean(false)
-            val explain = { reason: String -> joinFailure(it.host, started.get(), reason) }
+            // Whether the last attempt reached the join script; an attempt that failed before it has no agent log to read.
+            val ran = AtomicBoolean(false)
+            val explain = { reason: String -> joinFailure(it.host, ran.get(), started.get(), reason) }
             try {
                 run.joins.acquire().use { _ ->
+                    if (!cleaned.get()) {
+                        // The control plane's old objects are not the instance's fault, so a cleanup
+                        // that fails (a Node stuck in deletion) fails the node: a replacement would
+                        // find the same objects and waste a replacement slot.
+                        it.step(
+                            PipelineStep.NODE_CLEANUP,
+                            run.timing.join.copy(replaceable = false),
+                            { reason -> "removing the old node $alias from the control plane failed: $reason" },
+                        ) { _ -> plane.connection.cleanup(alias) }
+                        cleaned.set(true)
+                    }
                     it.step(PipelineStep.JOIN, run.timing.join, explain) { attempt ->
                         started.set(false)
-                        if (!cleaned.get()) {
-                            plane.connection.cleanup(alias)
-                            cleaned.set(true)
+                        ran.set(false)
+                        run.ssh.withSession {
+                            ran.set(true)
+                            run.ports.nodeSteps.join(it.host, serverType, plane.access, attempt)
                         }
-                        run.ssh.withSession { run.ports.nodeSteps.join(it.host, serverType, plane.access, attempt) }
                         started.set(true)
                         watch.registered.get()
                     }
@@ -154,14 +167,16 @@ internal class NodePipeline(
     }
 
     /**
-     * The reason a join of [host] failed: what it waited for, when its agent had [started], and the
+     * The reason a join of [host] failed: what it waited for (just the [reason] when the attempt never reached the join script), when its agent had [started], and the
      * tail of the agent's log. A log that cannot be read is named, not fatal: the join failed anyway.
      */
     private fun joinFailure(
         host: ClusterHost,
+        ran: Boolean,
         started: Boolean,
         reason: String,
     ): String {
+        if (!ran) return reason
         val waited = if (started) "its agent started, but no node $alias at ${host.privateIp} registered: $reason" else reason
         val log =
             runCatchingException { run.ssh.withSession { run.ports.nodeSteps.joinLog(host) } }

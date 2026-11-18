@@ -25,6 +25,7 @@ enum class PipelineStep(
     CNI("cni"),
     GATE("gate"),
     JOIN_WAIT("join-wait"),
+    NODE_CLEANUP("node-cleanup"),
     JOIN("join"),
     READINESS("readiness"),
     REPLACING("replacing"),

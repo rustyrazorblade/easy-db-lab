@@ -345,6 +345,8 @@ object Constants {
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
+        const val CONFLICT = 409
+        const val UNPROCESSABLE_ENTITY = 422
         const val TOO_MANY_REQUESTS = 429
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599

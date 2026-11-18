@@ -1,7 +1,7 @@
 # execution-environment Specification
 
 ## Purpose
-TBD - created by archiving change issue-1040. Update Purpose after archive.
+How a workspace records its execution environment in `state.json`, and how every command resolves its tooling form, network mode, node capabilities and need for an AWS profile from that record.
 ## Requirements
 ### Requirement: The workspace records its execution environment
 
@@ -98,9 +98,10 @@ These commands require `aws-account`:
 - `prune-amis`, `show-iam-policies`
 - `configure-aws`, `cassandra build`
 
-These commands require `node-ssh`, because they run on the database nodes over SSH and read the AxonOps settings from the AWS profile:
+These commands require `node-ssh`, because they run on the database nodes over SSH:
 
-- `cassandra start` (the alternative is the Cassandra kit), `configure-axonops`
+- `cassandra use`, `cassandra install` (which also require `aws-account`) and `cassandra start`; the alternative for each is the Cassandra kit
+- `configure-axonops`
 
 Outside a workspace, the target environment is `ec2-k3s`.
 

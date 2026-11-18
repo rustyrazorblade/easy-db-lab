@@ -33,6 +33,7 @@ SYS="${EDL_SYS_ROOT:-/sys}"
 PROC="${EDL_PROC_ROOT:-/proc}"
 SYSCTL_CONF="${EDL_SYSCTL_CONF:-/etc/sysctl.d/60-easydblab.conf}"
 DEFAULTS="${EDL_DEFAULTS:-/etc/default/edl-node-tuning}"
+LOCK_DIR="${EDL_LOCK_DIR:-/run}"
 
 THP_ENABLED=madvise
 THP_DEFRAG=never
@@ -139,14 +140,20 @@ wait_for_queues() {
   done
 }
 
-# Every receive queue of [iface] steers to every CPU, with its share of the flow table.
+# Every receive queue of [iface] steers to every CPU, with its share of the flow table. ethtool -L
+# sends one event per queue added or removed, and udev runs them in parallel, so one interface is
+# steered by one call at a time, and the queue count is read inside the lock: the last call to
+# run sees the final count, and no call that saw a partial count can finish after it.
 steer() {
-  mask=$(rps_mask)
-  flows=$(flow_count "$1")
-  for q in $(rx_queues "$1"); do
-    put "$q/rps_cpus" "$mask"
-    put "$q/rps_flow_cnt" "$flows"
-  done
+  (
+    flock 9
+    mask=$(rps_mask)
+    flows=$(flow_count "$1")
+    for q in $(rx_queues "$1"); do
+      put "$q/rps_cpus" "$mask"
+      put "$q/rps_flow_cnt" "$flows"
+    done
+  ) 9> "$LOCK_DIR/edl-node-tuning-$1.lock"
 }
 
 rps() {

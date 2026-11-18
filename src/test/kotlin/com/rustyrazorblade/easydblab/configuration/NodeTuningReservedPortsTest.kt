@@ -55,12 +55,13 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
         const val EPHEMERAL_MIN = 1024
 
         /**
-         * A port a config binds: `*_port: N`, `port: N`, a listen address `host:N`, or a bare `:N`
-         * listen address after `=` or a quote (`-listen=:9400`, `":8080"`).
+         * A port a config binds: `*_port: N`, `port: N` or a camelCase `httpPort: N`, a listen
+         * address `host:N`, or a bare `:N` listen address after `=` or a quote (`-listen=:9400`,
+         * `":8080"`).
          */
         val CONFIG_PORT =
             Regex(
-                """(?:\b[a-z_]*port["']?\s*[:=]\s*["']?(\d{2,5})\b)""" +
+                """(?:\b(?i:[a-z_]*port)["']?\s*[:=]\s*["']?(\d{2,5})\b)""" +
                     """|(?:\b(?:0\.0\.0\.0|localhost|127\.0\.0\.1|\[::]):(\d{2,5})\b)""" +
                     """|(?:[="']:(\d{2,5})\b)""",
             )
@@ -270,10 +271,10 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
     fun `bare listen addresses are scanned for ports`() {
         val ports =
             CONFIG_PORT
-                .findAll("args: [\"-listen=:9400\"]\naddr: \":8080\"\nlisten: '0.0.0.0:3100'")
+                .findAll("args: [\"-listen=:9400\"]\naddr: \":8080\"\nlisten: '0.0.0.0:3100'\nhttpPort: 3200\nlistenPort=9401")
                 .map { match -> portIn(match) }
                 .toList()
-        assertThat(ports).containsExactly(9400, 8080, 3100)
+        assertThat(ports).containsExactly(9400, 8080, 3100, 3200, 9401)
     }
 
     @Test

@@ -149,7 +149,7 @@ tuned_sysctls() {
 run() {
   PATH="${WORK}/bin:${PATH}" EDL_SYS_ROOT="${SYS}" EDL_PROC_ROOT="${PROC}" \
     EDL_SYSCTL_CONF="${RESOURCES}/60-easydblab.conf" EDL_DEFAULTS="${WORK}/edl-node-tuning.defaults" \
-    "${TEST_SH}" "${SCRIPT}" "$@" 2>&1
+    EDL_LOCK_DIR="${WORK}" "${TEST_SH}" "${SCRIPT}" "$@" 2>&1
 }
 
 # --- RPS mask covers every CPU, flow count is shared across the queues ---
@@ -238,6 +238,25 @@ if [[ "$STATUS" -eq 0 && -z "$OUTPUT" ]]; then
   pass "a queue of an interface renamed since is left to that interface's own add event"
 else
   fail "a queue of a gone interface should be a no-op, got ${STATUS}: ${OUTPUT}"
+fi
+
+# ethtool -L sends one event per queue and udev runs them in parallel: steering one interface is
+# serialized, and the flow share is computed inside the lock, so the last event to run uses the
+# final queue count. Here an event waits on the lock while the count drops from 8 to 4.
+setup 4 2
+add_queues ens5 8
+flock "${WORK}/edl-node-tuning-ens5.lock" sleep 2 &
+HOLDER=$!
+sleep 0.5
+run rps-queue /devices/pci0000:00/0000:00:05.0/net/ens5/queues/rx-7 > /dev/null &
+WAITER=$!
+sleep 0.5
+rm -rf "${SYS}/class/net/ens5/queues"/rx-[4-7]
+wait "$HOLDER" "$WAITER"
+if [[ "$(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")" == 8192 ]]; then
+  pass "steering waits for the interface lock and uses the queue count it sees inside it"
+else
+  fail "after 8 -> 4 queues under the lock expected rx-0 flows 8192, got $(cat "${SYS}/class/net/ens5/queues/rx-0/rps_flow_cnt")"
 fi
 
 # --- apply steers physical links only ---

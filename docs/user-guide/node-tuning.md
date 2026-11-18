@@ -117,7 +117,7 @@ Where the instance exposes them:
 
 C1 is the idle state named `C1` (or `C1_ACPI`, or `C1-` followed by a CPU model, such as `C1-SKX`). Where no state has that name, C1 is the first state that is not `POLL`: `HALT` on older x86 kernels, and `WFI` on arm64. So on Graviton `.metal` `cpu-sleep` is disabled and `WFI` stays on.
 
-Most EC2 instance types expose neither, including the defaults (`i4i.xlarge`, `c6id.2xlarge`, `m5d.xlarge`) and all Graviton types. Only some whole-socket and `.metal` sizes have processor state control. On a node without them, the tuning service logs one line per skipped setting, naming the node and the instance type (from the cluster state), and carries on:
+Most EC2 instance types expose neither, including the defaults (`i4i.xlarge`, `c6id.2xlarge`, `m5d.xlarge`) and every Graviton type except `.metal`. Only some whole-socket and `.metal` sizes have processor state control; Graviton `.metal` exposes idle states but no frequency scaling. On a node without them, the tuning service logs one line per skipped setting, naming the node and the instance type (from the cluster state), and carries on:
 
 ```
 edl-node-tuning: skipped CPU governor on db0: i4i.xlarge exposes no frequency scaling

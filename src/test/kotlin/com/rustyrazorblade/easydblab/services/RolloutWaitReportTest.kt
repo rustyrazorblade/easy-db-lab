@@ -111,7 +111,10 @@ class RolloutWaitReportTest {
                 Arguments.of("a workload finished", listOf(Step(1, xy, false), Step(2, y, true), Step(3, y, false))),
                 Arguments.of("a change restarts the interval", listOf(Step(10, y, true), Step(24, y, false), Step(25, y, true))),
                 Arguments.of("the same set in another order is no change", listOf(Step(1, listOf("y", "x"), false))),
-                Arguments.of("every workload done is a change", listOf(Step(3, emptyList(), true))),
+                Arguments.of(
+                    "every workload done is left to RolloutsComplete",
+                    listOf(Step(3, emptyList(), false), Step(20, emptyList(), false)),
+                ),
             )
     }
 }

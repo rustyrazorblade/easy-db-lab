@@ -48,12 +48,16 @@ object RolloutWaitReport {
         private var reported = initial.toSet()
         private var reportedAt = start
 
-        /** The progress event due at [now] with [pending] workloads left, or null when none is due. */
+        /**
+         * The progress event due at [now] with [pending] workloads left, or null when none is due. None
+         * is due once nothing is pending: `K8s.RolloutsComplete` reports that.
+         */
         fun next(
             now: Instant,
             pending: List<String>,
         ): Event.K8s.RolloutsProgress? {
             val current = pending.toSet()
+            if (current.isEmpty()) return null
             if (current == reported && Duration.between(reportedAt, now) < interval) return null
             reported = current
             reportedAt = now

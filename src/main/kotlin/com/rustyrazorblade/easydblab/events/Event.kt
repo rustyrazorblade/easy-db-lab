@@ -1204,11 +1204,7 @@ sealed interface Event {
             val elapsedSeconds: Long,
             val pending: List<String>,
         ) : K8s {
-            override fun toDisplayString(): String =
-                when {
-                    pending.isEmpty() -> "[${elapsedSeconds}s] every workload has rolled out"
-                    else -> "[${elapsedSeconds}s] still rolling out: ${pending.joinToString(", ")}"
-                }
+            override fun toDisplayString(): String = "[${elapsedSeconds}s] still rolling out: ${pending.joinToString(", ")}"
         }
 
         /** A rollout wait ended early: [block] names the workload, pod and node that cannot finish, and why. */

@@ -427,6 +427,14 @@ class RolloutWaitIntegrationTest {
     fun `fails naming the workload when its rollout does not finish within the timeout`() {
         val name = "rollout-never-ready"
         createDeployment(name, readinessCommand = "false")
+        // The timeout lists the pods it waits on with their node and phase, so the pod must be running
+        // (never Ready: its probe fails) before the short wait starts, or a slow start leaves it Pending.
+        client
+            .pods()
+            .inNamespace(NAMESPACE)
+            .withLabel("app", name)
+            .informOnCondition { pods -> pods.any { it.status?.phase == "Running" } }
+            .get(FAIL_FAST_LIMIT_SECONDS, TimeUnit.SECONDS)
 
         val result =
             ops.waitForRollouts(

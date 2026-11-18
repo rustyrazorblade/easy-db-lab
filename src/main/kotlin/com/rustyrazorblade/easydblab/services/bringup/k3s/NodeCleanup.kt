@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
+import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -15,28 +16,40 @@ import java.util.concurrent.TimeUnit
  */
 class NodeCleanup(
     private val clientProvider: K8sClientProvider,
+    private val waitSeconds: Long = Constants.Scale.NODE_CLEANUP_DELETE_WAIT_SECONDS,
 ) {
-    /** Deletes [alias]'s Node and its node-password secret, and waits until both are gone. */
+    /**
+     * Deletes [alias]'s Node and its node-password secret, and waits until the objects deleted are
+     * gone. The wait is on each object's UID, so a replacement that registers under [alias] during
+     * the wait ends it. An object that did not exist is not waited for.
+     *
+     * @throws NodeCleanupTimeoutException when the deleted Node is still there after the wait
+     */
     fun clean(alias: String) {
         clientProvider.createClient().use { client ->
-            client
-                .nodes()
-                .withName(alias)
-                .delete()
-            client
-                .secrets()
-                .inNamespace(NAMESPACE)
-                .withName(passwordSecret(alias))
-                .delete()
-            client
-                .nodes()
-                .withName(alias)
-                .waitUntilCondition({ it == null }, Constants.Scale.NODE_CLEANUP_DELETE_WAIT_SECONDS, TimeUnit.SECONDS)
-            client
-                .secrets()
-                .inNamespace(NAMESPACE)
-                .withName(passwordSecret(alias))
-                .waitUntilCondition({ it == null }, Constants.Scale.NODE_CLEANUP_DELETE_WAIT_SECONDS, TimeUnit.SECONDS)
+            val node = client.nodes().withName(alias)
+            val secret = client.secrets().inNamespace(NAMESPACE).withName(passwordSecret(alias))
+            val nodeUid = node.get()?.metadata?.uid
+            val secretUid = secret.get()?.metadata?.uid
+            node.delete()
+            secret.delete()
+            if (nodeUid != null) {
+                try {
+                    node.waitUntilCondition({ it == null || it.metadata.uid != nodeUid }, waitSeconds, TimeUnit.SECONDS)
+                } catch (e: KubernetesClientTimeoutException) {
+                    val stuck = node.get()
+                    throw NodeCleanupTimeoutException(
+                        alias,
+                        nodeUid,
+                        stuck?.metadata?.deletionTimestamp,
+                        stuck?.metadata?.finalizers.orEmpty(),
+                        waitSeconds,
+                    ).apply { addSuppressed(e) }
+                }
+            }
+            if (secretUid != null) {
+                secret.waitUntilCondition({ it == null || it.metadata.uid != secretUid }, waitSeconds, TimeUnit.SECONDS)
+            }
         }
     }
 

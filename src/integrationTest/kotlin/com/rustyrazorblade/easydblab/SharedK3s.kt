@@ -60,6 +60,9 @@ object SharedK3s {
     /** A new client for the shared cluster. The caller owns it and closes it. */
     fun client(): KubernetesClient = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(kubeConfigYaml())).build()
 
+    /** The last part of the K3s container's log, for a failure report. */
+    fun logTail(): String = container.logs.takeLast(LOG_TAIL_CHARS)
+
     /**
      * Creates [name] and waits for its `default` ServiceAccount, which the API server requires
      * before it admits a pod into the namespace.

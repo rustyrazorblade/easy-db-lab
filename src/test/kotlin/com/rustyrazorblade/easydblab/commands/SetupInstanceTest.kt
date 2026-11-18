@@ -37,6 +37,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -150,7 +151,7 @@ class SetupInstanceTest : BaseKoinTest() {
     private fun setupFailureOnDb1(failure: RemoteCommandFailedException): Event.Provision.InstanceSetupFailed {
         whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, eq(DB_SETUP_COMMAND), any(), any()))
             .thenAnswer { throw failure }
-        val events = mutableListOf<Event>()
+        val events = CopyOnWriteArrayList<Event>()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {
@@ -230,7 +231,7 @@ class SetupInstanceTest : BaseKoinTest() {
                 output.line("db1", NodeStream.Stderr, "ERROR: no data disk found")
                 throw setupScriptFailure(stdout = "Checking block devices\n", stderr = "ERROR: no data disk found\n")
             }
-        val events = mutableListOf<Event>()
+        val events = CopyOnWriteArrayList<Event>()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {

@@ -62,6 +62,7 @@ import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 import java.io.IOException
 import java.time.Instant
 import java.util.Collections
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -1104,8 +1105,9 @@ class UpTest : UpTestFixture() {
         assertThat(events.filterIsInstance<Event.Provision.InstanceCapacityShortage>()).isEmpty()
     }
 
+    /** Every event `up` emits; node pipelines emit from their own threads, so the list is concurrent. */
     private fun captureEvents(): List<Event> {
-        val emitted = mutableListOf<Event>()
+        val emitted = CopyOnWriteArrayList<Event>()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {

@@ -21,7 +21,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * The attempt runs on a thread of its own so a timeout or an ended instance can abandon it; the
  * attempt thread is interrupted and carries the caller's command name, so its events keep it.
  * An interrupt of the caller (the control node failed, or `up` is stopping) is never retried: it
- * interrupts the attempt and is rethrown.
+ * interrupts the attempt, waits up to [abandonGrace] for it to stop, and is rethrown, so an attempt
+ * does not outlive its pipeline. An attempt whose instance ended is stopped the same way.
  *
  * A timed-out attempt is interrupted, then waited for up to [abandonGrace], so the next attempt
  * never runs beside it on the same instance. One that does not stop in time fails the step with
@@ -155,16 +156,25 @@ class StepRunner(
             } catch (_: ExecutionException) {
                 finished(outcome, worker)
             } catch (e: InterruptedException) {
-                worker.interrupt()
+                stop(worker)
                 throw e
             }
         }
 
+        /**
+         * Interrupts [worker] and waits up to the grace for it to stop, so nothing the attempt does
+         * outlives the step that ran it. Whether it stopped is the caller's concern: an
+         * interrupted or ended step stops regardless.
+         */
+        private fun stop(worker: Thread): Boolean {
+            worker.interrupt()
+            return worker.join(abandonGrace)
+        }
+
         /** Interrupts a timed-out [worker] and waits up to the grace for it to stop. */
         private fun abandon(worker: Thread): AttemptResult<T> {
-            worker.interrupt()
             val timedOut = "timed out after ${describe(policy.timeout)}"
-            return if (worker.join(abandonGrace)) {
+            return if (stop(worker)) {
                 AttemptResult.Error(timedOut)
             } else {
                 AttemptResult.Stuck("$timedOut, and the attempt did not stop within ${describe(abandonGrace)}")
@@ -181,7 +191,7 @@ class StepRunner(
             return when {
                 outcome.isDone && !outcome.isCompletedExceptionally -> AttemptResult.Done(outcome.resultNow())
                 ended != null -> {
-                    worker.interrupt()
+                    stop(worker)
                     AttemptResult.Ended(ended)
                 }
                 else -> outcome.exceptionNow().let { AttemptResult.Error(it.message ?: it::class.java.simpleName) }

@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class StepRunnerTest {
@@ -226,6 +227,62 @@ class StepRunnerTest {
 
         assertThat(failure.get(5, TimeUnit.SECONDS)).isInstanceOf(InterruptedException::class.java)
         assertThat(calls.get()).isEqualTo(1)
+    }
+
+    /**
+     * The interrupt reaches the caller only once the attempt has stopped, so nothing the attempt
+     * does (a state write, a command on the instance) outlives the pipeline that ran it.
+     */
+    @Test
+    fun `an interrupted step returns only after its attempt has stopped`() {
+        val attemptStopped = AtomicBoolean(false)
+        val stoppedWhenRethrown = CompletableFuture<Boolean>()
+        val running = CountDownLatch(1)
+
+        val pipeline =
+            Thread.ofVirtual().start {
+                try {
+                    runner.run("db4", PipelineStep.SETUP, policy(3), neverEnds) {
+                        try {
+                            running.countDown()
+                            sleepThenCleanUp()
+                        } finally {
+                            attemptStopped.set(true)
+                        }
+                    }
+                    stoppedWhenRethrown.complete(false)
+                } catch (_: InterruptedException) {
+                    stoppedWhenRethrown.complete(attemptStopped.get())
+                }
+            }
+        running.await()
+        pipeline.interrupt()
+
+        assertThat(stoppedWhenRethrown.get(5, TimeUnit.SECONDS)).isTrue()
+    }
+
+    @Test
+    fun `a step whose instance ended returns only after its attempt has stopped`() {
+        val ended = CompletableFuture<String>()
+        val attemptStopped = AtomicBoolean(false)
+        val running = CountDownLatch(1)
+
+        Thread.ofVirtual().start {
+            running.await()
+            ended.complete("terminated")
+        }
+        val outcome =
+            runner.run("db2", PipelineStep.SETUP, policy(2), ended) {
+                try {
+                    running.countDown()
+                    sleepThenCleanUp()
+                } finally {
+                    attemptStopped.set(true)
+                }
+            }
+
+        assertThat(outcome).isEqualTo(StepOutcome.InstanceEnded("terminated"))
+        assertThat(attemptStopped.get()).isTrue()
     }
 
     /** resilience4j turns an interrupt of its pause into the last failure; the step must still stop as interrupted. */

@@ -107,14 +107,7 @@ internal class NodePipeline(
             try {
                 run.joins.acquire().use { _ ->
                     if (!cleaned.get()) {
-                        // The control plane's old objects are not the instance's fault, so a cleanup
-                        // that fails (a Node stuck in deletion) fails the node: a replacement would
-                        // find the same objects and waste a replacement slot.
-                        it.step(
-                            PipelineStep.NODE_CLEANUP,
-                            run.timing.join.copy(replaceable = false),
-                            { reason -> "removing the old node $alias from the control plane failed: $reason" },
-                        ) { _ -> plane.connection.cleanup(alias) }
+                        cleanUp(it, plane)
                         cleaned.set(true)
                     }
                     it.step(PipelineStep.JOIN, run.timing.join, explain) { attempt ->
@@ -134,6 +127,22 @@ internal class NodePipeline(
             }
             ready(it.host, replacements)
         }
+    }
+
+    /**
+     * Removes the alias's old Node and node password from the control plane. The control plane's
+     * old objects are not the instance's fault, so a cleanup that fails (a Node stuck in deletion)
+     * fails the node: a replacement would find the same objects and waste a replacement slot.
+     */
+    private fun cleanUp(
+        instance: InstanceRun,
+        plane: OpenControlPlane,
+    ) {
+        instance.step(
+            PipelineStep.NODE_CLEANUP,
+            run.timing.join.copy(replaceable = false),
+            { reason -> "removing the old node $alias from the control plane failed: $reason" },
+        ) { _ -> plane.connection.cleanup(alias) }
     }
 
     /** The node's setup, inside an SSH session slot. */

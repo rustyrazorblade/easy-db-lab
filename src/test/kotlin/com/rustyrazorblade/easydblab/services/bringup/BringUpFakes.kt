@@ -77,6 +77,9 @@ class FakeControlPlane(
     /** While set, no started agent registers. */
     val holdRegistration = AtomicBoolean(false)
     val cleaned: MutableList<String> = Collections.synchronizedList(mutableListOf())
+
+    /** The aliases whose cleanup fails, with the reason it fails with. */
+    val cleanupFailures: MutableMap<String, String> = ConcurrentHashMap()
     val registered: MutableList<String> = Collections.synchronizedList(mutableListOf())
     private val watches = ConcurrentHashMap<String, NodeWatch>()
     private val joining = AtomicInteger()
@@ -94,6 +97,7 @@ class FakeControlPlane(
     override val recovery: String = RECOVERY
 
     override fun cleanup(alias: String) {
+        cleanupFailures[alias]?.let { error(it) }
         cleaned += alias
     }
 

@@ -197,6 +197,28 @@ class NodeBringUpTest {
         )
     }
 
+    /**
+     * A cleanup that fails (the control plane still holds the old Node) is a control-plane fault, not
+     * an instance fault: replacing the healthy instance would burn a budget slot and wait on the
+     * same Node, so the node fails on its instance, which is kept.
+     */
+    @Test
+    fun `a failed cleanup of the old node fails the node with no replacement`() {
+        val h = harness(dbs = 2)
+        h.plane.cleanupFailures["db1"] = "Node db1 (uid u1) was still present: deletionTimestamp=t"
+
+        val result = h.run()
+
+        val end = result.nodes.getValue("db1")
+        assertThat(end).isInstanceOf(NodeEnd.Failed::class.java)
+        assertThat(end.replacements).isEqualTo(0)
+        assertThat(h.fleet.calls).isEmpty()
+        assertThat(result.nodes.getValue("db0")).isInstanceOf(NodeEnd.Ready::class.java)
+        val failed = h.eventsOf<Event.Provision.NodeFailed>().single()
+        assertThat(failed.step).isEqualTo("join")
+        assertThat(failed.reason).contains("db1").contains("deletionTimestamp=t")
+    }
+
     @Test
     fun `a registered node that never becomes Ready is removed from the cluster before its replacement joins`() {
         val h = harness(dbs = 2)

@@ -61,7 +61,7 @@ object SharedK3s {
     fun client(): KubernetesClient = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(kubeConfigYaml())).build()
 
     /** The last part of the K3s container's log, for a failure report. */
-    fun logTail(): String = container.logs.takeLast(LOG_TAIL_CHARS)
+    fun logTail(chars: Int = LOG_TAIL_CHARS): String = container.logs.takeLast(chars)
 
     /**
      * Creates [name] and waits for its `default` ServiceAccount, which the API server requires
@@ -94,9 +94,7 @@ object SharedK3s {
                             )
                         }.getOrElse {
                             "cluster diagnostics unavailable: ${it.messageOrString()}"
-                        }}\nK3s log tail:\n${container.logs.takeLast(
-                            LOG_TAIL_CHARS,
-                        )}",
+                        }}\nK3s log tail:\n${logTail()}",
                     e,
                 )
             }

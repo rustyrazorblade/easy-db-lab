@@ -1,8 +1,12 @@
 package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
+import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
+import io.fabric8.kubernetes.client.dsl.Resource
 import java.util.concurrent.TimeUnit
 
 /**
@@ -27,7 +31,7 @@ class NodeCleanup(
      * gone. The wait is on each object's UID, so a replacement that registers under [alias] during
      * the wait ends it. An object that did not exist is not waited for.
      *
-     * @throws NodeCleanupTimeoutException when the deleted Node is still there after the wait
+     * @throws NodeCleanupTimeoutException when a deleted object is still there after the wait
      */
     fun clean(alias: String) {
         clientProvider.createClient().use { client ->
@@ -38,28 +42,37 @@ class NodeCleanup(
             node.delete()
             secret.delete()
             afterDelete()
-            if (nodeUid != null) {
-                try {
-                    node.waitUntilCondition({ it == null || it.metadata.uid != nodeUid }, waitSeconds, TimeUnit.SECONDS)
-                } catch (e: KubernetesClientTimeoutException) {
-                    // Read fresh: a Node with another UID is a replacement, so the deleted one is gone.
-                    val stuck = node.get()?.takeIf { it.metadata.uid == nodeUid }
-                    if (stuck != null) {
-                        throw NodeCleanupTimeoutException(
-                            alias,
-                            nodeUid,
-                            stuck.metadata.deletionTimestamp,
-                            stuck.metadata.finalizers.orEmpty(),
-                            waitSeconds,
-                        ).apply { addSuppressed(e) }
-                    }
-                }
-            }
-            if (secretUid != null) {
-                secret.waitUntilCondition({ it == null || it.metadata.uid != secretUid }, waitSeconds, TimeUnit.SECONDS)
-            }
+            nodeUid?.let { awaitGone("Node", alias, it, node) }
+            secretUid?.let { awaitGone("Secret", passwordSecret(alias), it, secret) }
         }
     }
+
+    /**
+     * Waits until [resource] is gone or has a UID other than [uid]. After a timeout it reads the
+     * object fresh: one with another UID is a replacement, so the deleted object is gone; one with
+     * [uid] is what holds it, and the error says how.
+     */
+    private fun <T : HasMetadata> awaitGone(
+        kind: String,
+        name: String,
+        uid: String,
+        resource: Resource<T>,
+    ) {
+        try {
+            resource.waitUntilCondition({ it == null || it.metadata.uid != uid }, waitSeconds, TimeUnit.SECONDS)
+        } catch (e: KubernetesClientTimeoutException) {
+            val state =
+                runCatchingException { resource.get() }.fold(
+                    { held -> held?.takeIf { it.metadata.uid == uid }?.let(::describe) },
+                    { "state unreadable: ${it.messageOrString()}" },
+                )
+            if (state != null) throw NodeCleanupTimeoutException(kind, name, uid, state, waitSeconds).apply { addSuppressed(e) }
+        }
+    }
+
+    private fun describe(held: HasMetadata): String =
+        "deletionTimestamp=${held.metadata.deletionTimestamp ?: "not set (delete not applied)"}, " +
+            "finalizers=${held.metadata.finalizers.orEmpty()}"
 
     /** Names. */
     companion object {

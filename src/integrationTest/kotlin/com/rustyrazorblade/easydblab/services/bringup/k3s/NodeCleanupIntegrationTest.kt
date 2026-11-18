@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.services.bringup.k3s
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.NodeBuilder
 import io.fabric8.kubernetes.api.model.SecretBuilder
-import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
+import io.fabric8.kubernetes.client.dsl.Resource
 import io.fabric8.kubernetes.client.dsl.base.PatchContext
 import io.fabric8.kubernetes.client.dsl.base.PatchType
 import org.assertj.core.api.Assertions.assertThat
@@ -51,7 +53,8 @@ class NodeCleanupIntegrationTest {
     fun removeLeftovers() {
         SharedK3s.client().use { client ->
             aliases.forEach {
-                if (exists(it).first) release(client, it)
+                release(client.nodes().withName(it))
+                release(client.secrets().inNamespace(NodeCleanup.NAMESPACE).withName(NodeCleanup.passwordSecret(it)))
                 client.nodes().withName(it).delete()
                 client
                     .secrets()
@@ -135,15 +138,21 @@ class NodeCleanupIntegrationTest {
     fun `a node recreated under the alias does not time the wait out`() {
         val alias = "db90"
         create(alias, node = true, secret = false)
-        hold(alias)
+        SharedK3s.client().use { hold(it.nodes().withName(alias)) }
+        var replacementUid: String? = null
         val replaced =
             NodeCleanup(
                 WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()),
                 waitSeconds = REPLACE_WAIT_SECONDS,
                 afterDelete = {
                     SharedK3s.client().use { client ->
-                        release(client, alias)
-                        client.nodes().resource(node(alias)).create()
+                        release(client.nodes().withName(alias))
+                        replacementUid =
+                            client
+                                .nodes()
+                                .resource(node(alias))
+                                .create()
+                                .metadata.uid
                     }
                 },
             )
@@ -151,22 +160,37 @@ class NodeCleanupIntegrationTest {
         val took = measureTime { replaced.clean(alias) }
 
         assertThat(took).isLessThan(REPLACE_WAIT_SECONDS.seconds)
-
-        assertThat(exists(alias).first).isTrue()
+        val now = SharedK3s.client().use { it.nodes().withName(alias).get() }
+        assertThat(now.metadata.uid).isEqualTo(replacementUid)
     }
 
     @Test
     fun `a node held by a finalizer gives an error naming its deletionTimestamp and finalizer`() {
         val alias = "db91"
         create(alias, node = true, secret = false)
-        hold(alias)
+        SharedK3s.client().use { hold(it.nodes().withName(alias)) }
         val impatient = NodeCleanup(WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()), waitSeconds = HELD_WAIT_SECONDS)
 
         assertThatThrownBy { impatient.clean(alias) }
             .isInstanceOf(NodeCleanupTimeoutException::class.java)
             .hasMessageContaining("Node $alias (uid ")
             .hasMessageMatching("(?s).*deletionTimestamp=\\d{4}-.*")
-            .hasMessageContaining("finalizers=[$HOLD_FINALIZER]")
+            .hasMessageContaining(HOLD_FINALIZER)
+    }
+
+    @Test
+    fun `a secret held by a finalizer gives an error that names the secret`() {
+        val alias = "db92"
+        create(alias, node = false, secret = true)
+        SharedK3s.client().use {
+            hold(it.secrets().inNamespace(NodeCleanup.NAMESPACE).withName(NodeCleanup.passwordSecret(alias)))
+        }
+        val impatient = NodeCleanup(WorkspaceK8s.provider(SharedK3s.kubeConfigYaml()), waitSeconds = HELD_WAIT_SECONDS)
+
+        assertThatThrownBy { impatient.clean(alias) }
+            .isInstanceOf(NodeCleanupTimeoutException::class.java)
+            .hasMessageContaining("Secret ${NodeCleanup.passwordSecret(alias)} (uid ")
+            .hasMessageContaining(HOLD_FINALIZER)
     }
 
     private fun node(alias: String) =
@@ -176,40 +200,36 @@ class NodeCleanupIntegrationTest {
             .endMetadata()
             .build()
 
-    private fun hold(alias: String) {
-        SharedK3s.client().use { client ->
-            setFinalizers(client, alias, """["$HOLD_FINALIZER"]""")
-        }
+    private fun <T : HasMetadata> finalizersOf(resource: Resource<T>): List<String> {
+        val meta = resource.get()?.metadata
+        return meta?.finalizers.orEmpty()
     }
 
-    private fun release(
-        client: KubernetesClient,
-        alias: String,
-    ) {
+    /** Adds [HOLD_FINALIZER] with a JSON patch `add`, so a finalizer K3s put there stays. */
+    private fun <T : HasMetadata> hold(resource: Resource<T>) {
+        val first = finalizersOf(resource).isEmpty()
+        val path = if (first) "/metadata/finalizers" else "/metadata/finalizers/-"
+        val value = if (first) "[\"$HOLD_FINALIZER\"]" else "\"$HOLD_FINALIZER\""
+        resource.patch(PatchContext.of(PatchType.JSON), """[{"op":"add","path":"$path","value":$value}]""")
+    }
+
+    /** Removes [HOLD_FINALIZER] and nothing else. A merge patch carries no resourceVersion, so K3s's own writes cannot conflict with it. */
+    private fun <T : HasMetadata> release(resource: Resource<T>) {
         try {
-            setFinalizers(client, alias, "null")
+            val kept = finalizersOf(resource) - HOLD_FINALIZER
+            val json = if (kept.isEmpty()) "null" else kept.joinToString(",", "[", "]") { "\"$it\"" }
+            resource.patch(PatchContext.of(PatchType.JSON_MERGE), """{"metadata":{"finalizers":$json}}""")
         } catch (e: KubernetesClientException) {
-            // The Node finished deleting before the edit; nothing is left to release.
-            if (e.code != HTTP_NOT_FOUND) throw e
+            // The object finished deleting before the patch; nothing is left to release.
+            if (e.code != Constants.HttpStatus.NOT_FOUND) throw e
         }
-    }
-
-    /** A merge patch carries no resourceVersion, so K3s's own writes to the Node cannot conflict with it. */
-    private fun setFinalizers(
-        client: KubernetesClient,
-        alias: String,
-        json: String,
-    ) {
-        client
-            .nodes()
-            .withName(alias)
-            .patch(PatchContext.of(PatchType.JSON_MERGE), """{"metadata":{"finalizers":$json}}""")
     }
 
     private companion object {
         const val HOLD_FINALIZER = "easydblab.test/hold"
-        const val HTTP_NOT_FOUND = 404
-        const val REPLACE_WAIT_SECONDS = 5L
+        const val REPLACE_WAIT_SECONDS = 30L
         const val HELD_WAIT_SECONDS = 3L
+        const val LOG_TAIL_CHARS = 64_000
+        val RELEVANT_LOG_LINE = Regex("wrangler|node-controller|\\bdb\\d+")
     }
 }

@@ -6,7 +6,11 @@ import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.client.KubernetesClientException
 
-/** What a server-side dry-run pod came back with. */
+/**
+ * What a server-side dry-run pod came back with. `up` probes again until the deadline after any
+ * result that lacks a tuned value, a refusal and an unreachable server included: right after K3s
+ * starts, a refusal can be transient (the `default` ServiceAccount does not exist yet).
+ */
 sealed interface ProbeResult {
     /** The API server admitted the pod; [sysctls] is its `spec.securityContext.sysctls`, name to value. */
     data class Admitted(
@@ -18,7 +22,7 @@ sealed interface ProbeResult {
         val reason: String,
     ) : ProbeResult
 
-    /** The API server could not be reached (a transport failure); [reason] says why. The probe is tried again. */
+    /** The API server could not be reached (a transport failure); [reason] says why. */
     data class Unreachable(
         val reason: String,
     ) : ProbeResult
@@ -64,7 +68,7 @@ class Fabric8PodSysctlProbe(
     private fun probePod() =
         PodBuilder()
             .withNewMetadata()
-            .withName(Constants.NodeTuning.POD_SYSCTL_PROBE_NAME)
+            .withGenerateName(Constants.NodeTuning.POD_SYSCTL_PROBE_NAME_PREFIX)
             .endMetadata()
             .withNewSpec()
             .addNewContainer()

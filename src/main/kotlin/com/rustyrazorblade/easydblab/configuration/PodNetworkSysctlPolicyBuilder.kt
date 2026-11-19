@@ -103,6 +103,11 @@ class PodNetworkSysctlPolicyBuilder(
         /**
          * No security context: add one holding every sysctl. No sysctls (absent or empty): add the
          * list. Otherwise append each sysctl whose name the pod does not set.
+         *
+         * The first branch is defensive only. The API server defaults `spec.securityContext` to `{}`
+         * before mutating admission, so a real pod takes the second branch. The first is kept because,
+         * under `failurePolicy: Fail`, reading `securityContext.sysctls` from an absent context would
+         * refuse the pod.
          */
         val PATCH_EXPRESSION =
             """

@@ -96,6 +96,18 @@ class PodNetworkTuningTest {
     }
 
     @Test
+    fun `a refusal is probed again, so a transient one after K3s starts does not fail up`() {
+        var probes = 0
+        tuning {
+            probes++
+            if (probes == 1) ProbeResult.Refused("serviceaccount \"default\" not found") else ProbeResult.Admitted(sysctls)
+        }.apply()
+
+        assertThat(probes).isEqualTo(2)
+        assertThat(events).containsExactly(Event.Platform.PodSysctlPolicyReady(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, sysctls))
+    }
+
+    @Test
     fun `an API server unreachable until the deadline fails naming every key and the reason`() {
         val probe = PodSysctlProbe { ProbeResult.Unreachable("connect timed out") }
 

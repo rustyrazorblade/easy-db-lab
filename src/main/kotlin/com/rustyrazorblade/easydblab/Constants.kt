@@ -698,11 +698,11 @@ object Constants {
         /** The namespace of the dry-run pod `up` checks the policy with; it is never created, so any namespace that exists does. */
         const val POD_SYSCTL_PROBE_NAMESPACE = "default"
 
-        /** The dry-run pod's name. */
-        const val POD_SYSCTL_PROBE_NAME = "easydblab-pod-sysctl-probe"
+        /** The dry-run pod's generateName prefix; a generated name never collides with a pod that exists. */
+        const val POD_SYSCTL_PROBE_NAME_PREFIX = "easydblab-pod-sysctl-probe-"
 
         /** The dry-run pod's image; a dry run never pulls it. */
-        const val POD_SYSCTL_PROBE_IMAGE = Compactor.GATE_IMAGE
+        const val POD_SYSCTL_PROBE_IMAGE = "busybox:1.37.0-musl"
 
         /** The K3s config drop-in that lets every kubelet admit [POD_NETWORK_SYSCTLS]. */
         const val KUBELET_SYSCTLS_DROP_IN = "/etc/rancher/k3s/config.yaml.d/25-kubelet-sysctls.yaml"

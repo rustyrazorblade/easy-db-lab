@@ -30,12 +30,12 @@ args:
     default: "/mnt/db1/cassandra/data"
   - flag: --data-root
     variable: CASSANDRA_DATA_ROOT
-    description: "Host path under which per-disk Cassandra data dirs live (e.g. /mnt, with /mnt/db1, /mnt/db2). An init container scans this read-only and never blocks the rollout. It warns when more than one <root>/*/cassandra/data dir exists, empty ones included, since cqlite-flight serves one and reads miss the rest. It warns that it cannot verify the layout when the served --data-dir is not the only data dir there. The root must exist: a missing one fails the pod at start"
+    description: "Host path under which per-disk Cassandra data dirs live (e.g. /mnt, with /mnt/db1, /mnt/db2). An init container scans this read-only; the layout check only warns. It warns when more than one <root>/*/cassandra/data dir exists, empty ones included, since cqlite-flight serves one and reads miss the rest. It warns that it cannot verify the layout when the served --data-dir is not the only data dir there. The root must exist: a missing one fails the pod at start"
     type: string
     default: "/mnt"
   - flag: --data-gid
     variable: CASSANDRA_DATA_GID
-    description: "Host GID that owns the Cassandra data dir; added as a pod supplementalGroup so the image's uid-10001 process can read it"
+    description: "Host GID that owns the Cassandra data dir; added as a pod supplementalGroup so the image's uid-10001 process can read it. The init container fails the pod at start, naming --data-gid, when the data dir is not readable with it"
     type: int
     default: "999"
   - flag: --otel-endpoint

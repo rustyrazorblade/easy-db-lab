@@ -53,7 +53,9 @@ spec:
         # every read, with no error (pmcfadin/cqlite#2114). This container runs
         # pod/detect-multidisk.sh (ConfigMap cqlite-flight-detect-multidisk, created by start),
         # which scans --data-root read-only and warns in `kubectl logs <pod> -c detect-multidisk`.
-        # It reuses the flight image, so there is no extra pull, and always exits 0.
+        # It then checks the pod can read the served dir: it runs with the pod's uid and
+        # --data-gid and mounts the data dir as the Flight container does, and fails the pod start,
+        # naming --data-gid, when it cannot. It reuses the flight image, so there is no extra pull.
         - name: detect-multidisk
           image: "ghcr.io/pmcfadin/cqlite-flight:__TAG__"
           imagePullPolicy: Always
@@ -65,9 +67,16 @@ spec:
               value: "__CASSANDRA_DATA_ROOT__"
             - name: DETECT_ROOT
               value: /data-root
+            - name: DETECT_DATA
+              value: /data
+            - name: DETECT_DATA_GID
+              value: "__CASSANDRA_DATA_GID__"
           volumeMounts:
             - name: cassandra-data-root
               mountPath: /data-root
+              readOnly: true
+            - name: cassandra-data
+              mountPath: /data
               readOnly: true
             - name: detect-multidisk-script
               mountPath: /detect

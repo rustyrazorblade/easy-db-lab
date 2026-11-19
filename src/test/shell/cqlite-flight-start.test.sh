@@ -53,6 +53,10 @@ test_a_healthy_rollout_prints_no_multi_disk_note() {
   start_test "healthy rollout"
   run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
   grep -Fq "cqlite-flight is ready" "${WORK}/out.txt" || fail "no ready line: $(cat "${WORK}/out.txt")"
+  grep -Eq "^create configmap cqlite-flight-detect-multidisk .*--from-file=detect-multidisk.sh=\S*/pod/detect-multidisk.sh( |$)" \
+    "${STUB_STATE}/kubectl.calls" || fail "the detector ConfigMap is not made from the packaged script: $(cat "${STUB_STATE}/kubectl.calls")"
+  grep -Fq "label --local -f - easydblab/kit=cqlite-flight easydblab/role=flight" "${STUB_STATE}/kubectl.calls" ||
+    fail "the detector ConfigMap lacks the labels stop deletes by: $(cat "${STUB_STATE}/kubectl.calls")"
   if grep -Eq "2114|multi-disk|detect-multidisk" "${WORK}/out.txt"; then fail "printed the multi-disk note on a healthy start: $(cat "${WORK}/out.txt")"; fi
 }
 

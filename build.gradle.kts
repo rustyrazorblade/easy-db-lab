@@ -537,6 +537,7 @@ tasks.register("testScripts") {
         "testTrinoLoadtestStopScript",
         "testCqliteFlightDetectMultidisk",
         "testCqliteFlightStartScript",
+        "testCqliteFlightStopScript",
     )
 }
 
@@ -729,7 +730,8 @@ tasks.register<Exec>("testTrinoLoadtestStopScript") {
 
 // Unit-test the cqlite-flight kit's detect-multidisk init-container script against fake data roots:
 // the verified single disk, the multi-disk warning and the cannot-verify warning, with doubled
-// slashes and symlinked disks. Runs under dash when installed, as the image's /bin/sh is POSIX sh.
+// slashes and symlinked disks, and the --data-gid access check that fails the pod. Runs under dash
+// when installed, as the image's /bin/sh is POSIX sh.
 tasks.register<Exec>("testCqliteFlightDetectMultidisk") {
     group = "Verification"
     description = "Unit-test the cqlite-flight detect-multidisk script"
@@ -744,6 +746,15 @@ tasks.register<Exec>("testCqliteFlightStartScript") {
     description = "Unit-test the cqlite-flight kit start script"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cqlite-flight-start.test.sh")
+}
+
+// Unit-test the cqlite-flight kit stop script: it deletes by the kit and role labels. kubectl is
+// stubbed; no cluster. Runs under bash 5 and /bin/bash 3.2.
+tasks.register<Exec>("testCqliteFlightStopScript") {
+    group = "Verification"
+    description = "Unit-test the cqlite-flight kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cqlite-flight-stop.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,

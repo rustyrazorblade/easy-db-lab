@@ -15,6 +15,7 @@
 #   full-log          what `kubectl logs <pod>` (no -f) prints
 #   curl-out.<n>      what the n-th curl call prints, in place of curl-out
 #   curl-out          what every other curl call prints; curl-exit their exit status (default 0)
+#   curl-exit.<n>     the exit status of the n-th curl call, in place of curl-exit
 #   run-exit          the exit status of `kubectl run` (default 0)
 #   rollout-exit      the exit status of `kubectl rollout status` (default 0)
 #
@@ -143,7 +144,7 @@ n=$(( $(cat "${S}/curl.count" 2>/dev/null || echo 0) + 1 ))
 echo "${n}" > "${S}/curl.count"
 printf '%s\n' "$@" > "${S}/curl.${n}"
 if [ -f "${S}/curl-out.${n}" ]; then cat "${S}/curl-out.${n}"; elif [ -f "${S}/curl-out" ]; then cat "${S}/curl-out"; fi
-exit "$(cat "${S}/curl-exit" 2>/dev/null || echo 0)"
+exit "$(cat "${S}/curl-exit.${n}" 2>/dev/null || cat "${S}/curl-exit" 2>/dev/null || echo 0)"
 EOF
   cat > "${dir}/date" <<'EOF'
 #!/usr/bin/env bash

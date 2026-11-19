@@ -30,8 +30,10 @@ TRINO_LOADTEST_PORT="${TRINO_LOADTEST_HOST_PORT##*:}"
   edl_fail "TARGET_HTTP_URL (${TARGET_HTTP_URL}) has no numeric port; the trino kit's http endpoint must be http://<host>:<port>."
 TRINO_LOADTEST_USER="${TARGET_JDBC_USER:-cqlite-loadtest}"
 
-# The kit runner passes an unset optional arg whose kit.yaml default is "" as the literal string
-# "null" (issue #2132). Succeeds when $1 holds a real value.
+# The kit runner passed an unset optional arg whose kit.yaml default is "" as the literal string
+# "null" (pmcfadin/cqlite#2132). Succeeds when $1 holds a real value.
+# TODO(pmcfadin/cqlite#2132): drop the "null" comparison. The kit runner now records an unset arg
+# as "" (KitArgOptions.UnsetArg.EMPTY), so only the -n check is still needed.
 is_set() {
   [ -n "$1" ] && [ "$1" != "null" ]
 }

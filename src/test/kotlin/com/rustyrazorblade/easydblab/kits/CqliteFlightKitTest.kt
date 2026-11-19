@@ -17,8 +17,9 @@ import java.io.File
  * SSTables of the db node it runs on, so a client must reach the pod of one particular node: the
  * pods run on the pod network (never `hostNetwork` or a `hostPort`), and a NodePort Service with
  * `externalTrafficPolicy: Local` sends `<db-node-ip>:<nodePort>` to that node's own pod. Metrics and
- * traces go to the collector on the pod's node through the downward-API host IP, and `stop`
- * deletes by the label every object carries.
+ * traces go to the collector on the pod's node through the downward-API host IP, and every object
+ * carries the kit and role labels `stop` deletes by. The scripts themselves are covered by the
+ * cqlite-flight shell tests.
  */
 class CqliteFlightKitTest : BaseKoinTest() {
     private val kit by lazy {
@@ -109,40 +110,64 @@ class CqliteFlightKitTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the multi-disk detector runs the packaged script from the ConfigMap start creates`() {
+    fun `the multi-disk detector runs the script from the detector ConfigMap`() {
         val pod = daemonSet().spec.template.spec
         val detector = pod.initContainers.single { it.name == "detect-multidisk" }
         val scriptMount = detector.volumeMounts.single { it.name == DETECTOR_VOLUME }
-        val configMap = pod.volumes.single { it.name == DETECTOR_VOLUME }.configMap
-        val start = kit.renderText("bin/start.sh.template")
 
         assertThat(detector.command).containsExactly("/bin/sh", "${scriptMount.mountPath}/$DETECTOR_SCRIPT")
-        assertThat(configMap.name).isEqualTo(DETECTOR_CONFIGMAP)
-        assertThat(start).contains("create configmap $DETECTOR_CONFIGMAP", "--from-file=$DETECTOR_SCRIPT=")
-        assertThat(kit.resource("pod/$DETECTOR_SCRIPT")).startsWith("#!/bin/sh")
-        assertThat(detector.env.map { it.name }).contains("DETECT_SERVED", "DETECT_ROOT_HOST", "DETECT_ROOT")
+        assertThat(
+            pod.volumes
+                .single { it.name == DETECTOR_VOLUME }
+                .configMap.name,
+        ).isEqualTo(DETECTOR_CONFIGMAP)
+        assertThat(scriptMount.readOnly).isTrue()
     }
 
     @Test
-    fun `stop deletes the DaemonSet and the Service by the label both carry`() {
-        val stop = kit.resource("bin/stop.sh.template")
-        val selector =
-            requireNotNull(SELECTOR.find(stop)) { "stop.sh deletes by no easydblab/kit selector" }
-                .groupValues[1]
-                .replace("__KIT_NAME__", "cqlite-flight")
-        val labels = parseLabelSelector(selector)
+    fun `the detector checks the served dir with the same mount and data GID the Flight server reads it with`() {
+        val pod = daemonSet(mapOf("CASSANDRA_DATA_GID" to "1234")).spec.template.spec
+        val detector = pod.initContainers.single { it.name == "detect-multidisk" }
+        val flight = pod.containers.single { it.name == "cqlite-flight" }
+        val flightData = flight.volumeMounts.single { it.name == DATA_VOLUME }
+        val detectorData = detector.volumeMounts.single { it.name == DATA_VOLUME }
 
-        assertThat(stop).contains("delete daemonset,service,configmap")
-        assertThat(daemonSet().metadata.labels).containsAllEntriesOf(labels)
-        assertThat(service().metadata.labels).containsAllEntriesOf(labels)
+        assertThat(pod.securityContext.supplementalGroups).containsExactly(1234L)
+        assertThat(env(detector, "DETECT_DATA_GID").value).isEqualTo("1234")
+        assertThat(env(detector, "DETECT_DATA").value).isEqualTo(detectorData.mountPath)
+        assertThat(detectorData.readOnly).isTrue().isEqualTo(flightData.readOnly)
+        // No container-level identity, so both run as the pod's uid with --data-gid.
+        assertThat(listOf(detector, flight).map { it.securityContext?.runAsUser }).containsOnlyNulls()
+        assertThat(listOf(detector, flight).map { it.securityContext?.runAsGroup }).containsOnlyNulls()
+        assertThat(env(detector, "DETECT_SERVED").value)
+            .isEqualTo(
+                pod.volumes
+                    .single { it.name == DATA_VOLUME }
+                    .hostPath.path,
+            )
+    }
+
+    @Test
+    fun `every object carries the kit and role labels stop deletes by`() {
+        val objects = kit.render(MANIFEST)
+
+        assertThat(objects.map { it.kind }).containsExactlyInAnyOrder("DaemonSet", "Service")
+        objects.forEach { assertThat(it.metadata.labels).containsAllEntriesOf(STOP_LABELS) }
+        assertThat(
+            daemonSet()
+                .spec.template.metadata.labels,
+        ).containsAllEntriesOf(STOP_LABELS)
     }
 
     private companion object {
         const val MANIFEST = "daemonset.yaml.template"
         const val FLIGHT_NODE_PORT = 30816
+        const val DATA_VOLUME = "cassandra-data"
         const val DETECTOR_VOLUME = "detect-multidisk-script"
         const val DETECTOR_SCRIPT = "detect-multidisk.sh"
         const val DETECTOR_CONFIGMAP = "cqlite-flight-detect-multidisk"
-        val SELECTOR = Regex("""LABELS="(easydblab/kit=[^"]+)"""")
+
+        /** The selector `stop` deletes by; `cqlite-flight-stop.test.sh` checks stop uses exactly it. */
+        val STOP_LABELS = mapOf("easydblab/kit" to "cqlite-flight", "easydblab/role" to "flight")
     }
 }

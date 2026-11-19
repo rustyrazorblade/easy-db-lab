@@ -63,7 +63,7 @@ cannot read a database that runs in Kubernetes pods with its own volumes.
 | `--flight-port` | `8815` | Arrow Flight gRPC container port; clients connect to NodePort 30816, which forwards to it |
 | `--data-dir` | `/mnt/db1/cassandra/data` | Host path to the database data directory, mounted read-only. Serves **exactly one** directory |
 | `--data-root` | `/mnt` | Host path under which per-disk data dirs live; an init container scans it and warns on multi-disk layouts. It must exist: a missing one fails the pod at start |
-| `--data-gid` | `999` | Host GID that owns the data directory; added as a pod `supplementalGroup` |
+| `--data-gid` | `999` | Host GID that owns the data directory; added as a pod `supplementalGroup`. The init container fails the pod at start, naming `--data-gid`, when the data directory, a keyspace dir or a table dir is not readable with it |
 | `--otel-endpoint` | `http://$(HOST_IP):4317` | OTLP gRPC endpoint for metrics/traces (defaults to the OTel collector on the pod's node) |
 
 ## Multi-disk nodes
@@ -72,7 +72,7 @@ cqlite-flight serves exactly one data directory. On a multi-disk node where the 
 spreads its data across `/mnt/db1`, `/mnt/db2`, … the SSTables on every disk other than
 the served `--data-dir` are invisible, and reads that touch that data return partial or
 empty results with no error. Each pod's `detect-multidisk` init container scans
-`--data-root` and never blocks the rollout. It prints `OK` when the served dir is the only
+`--data-root`; this layout check only warns, never blocking the rollout. It prints `OK` when the served dir is the only
 data dir there (paths compared after dropping repeated slashes and resolving symlinks). It
 warns when it finds more than one, naming the dirs that are not served,
 and it warns that it cannot verify the layout when the root holds no data dir, or holds a

@@ -42,13 +42,20 @@ disk() {
 }
 
 # Runs the detector serving host path $1 (default /mnt/db1/cassandra/data). Its stdout goes to
-# out.txt and its stderr to err.txt. ROOT_HOST overrides the host path of the root (default /mnt); it fails the test unless the detector exits 0, since the
-# detector must never block the rollout.
-run_detector() {
-  local status=0
+# out.txt and its stderr to err.txt, and its exit status to ${detector_status}. ROOT_HOST overrides
+# the host path of the root (default /mnt) and DATA the pod path of the served dir (default the
+# root's db1 data dir). Only an unreadable data dir may fail the pod, so the layout tests use
+# run_detector, which fails the test unless the detector exits 0.
+run_detector_status() {
+  detector_status=0
   env DETECT_SERVED="${1:-/mnt/db1/cassandra/data}" DETECT_ROOT_HOST="${ROOT_HOST:-/mnt}" DETECT_ROOT="${WORK}/root" \
-    "${TEST_SH}" "${SCRIPT}" > "${WORK}/out.txt" 2> "${WORK}/err.txt" || status=$?
-  [ "${status}" -eq 0 ] || fail "exited ${status}, want 0: $(cat "${WORK}/err.txt")"
+    DETECT_DATA="${DATA:-${WORK}/root/db1/cassandra/data}" DETECT_DATA_GID=999 \
+    "${TEST_SH}" "${SCRIPT}" > "${WORK}/out.txt" 2> "${WORK}/err.txt" || detector_status=$?
+}
+
+run_detector() {
+  run_detector_status "$@"
+  [ "${detector_status}" -eq 0 ] || fail "exited ${detector_status}, want 0: $(cat "${WORK}/err.txt")"
 }
 
 test_one_data_dir_that_is_served_is_ok() {
@@ -132,6 +139,37 @@ test_layouts_it_cannot_check_warn_that_it_cannot_verify() {
   done
 }
 
+# The flight process reads the served dir as uid 10001 with --data-gid as a supplementary group,
+# and so does this init container. When it cannot list the dir or a table dir in it, every read
+# would fail, so the pod must not start, and the message must name --data-gid.
+test_an_unreadable_data_dir_fails_the_pod_naming_data_gid() {
+  local layer
+  for layer in data-dir table-dir; do
+    start_test "unreadable ${layer}"
+    disk db1
+    mkdir -p "${WORK}/root/db1/cassandra/data/ks1/t1-abc"
+    case "${layer}" in
+      data-dir) chmod 000 "${WORK}/root/db1/cassandra/data" ;;
+      table-dir) chmod 000 "${WORK}/root/db1/cassandra/data/ks1" ;;
+    esac
+    run_detector_status
+    chmod -R u+rwx "${WORK}/root"
+    [ "${detector_status}" -ne 0 ] || fail "exited 0 on an unreadable ${layer}"
+    grep -Fq -- "--data-gid (999)" "${WORK}/err.txt" || fail "does not name --data-gid: $(cat "${WORK}/err.txt")"
+    grep -Fq -- "/mnt/db1/cassandra/data" "${WORK}/err.txt" || fail "does not name the host dir: $(cat "${WORK}/err.txt")"
+  done
+}
+
+test_a_readable_data_dir_with_table_dirs_passes_the_access_check() {
+  start_test "readable table dirs"
+  disk db1
+  mkdir -p "${WORK}/root/db1/cassandra/data/ks1/t1-abc"
+  run_detector
+  grep -Fq "access check: passed" "${WORK}/out.txt" || fail "no access line: $(cat "${WORK}/out.txt") $(cat "${WORK}/err.txt")"
+}
+
+test_an_unreadable_data_dir_fails_the_pod_naming_data_gid
+test_a_readable_data_dir_with_table_dirs_passes_the_access_check
 test_one_data_dir_that_is_served_is_ok
 test_a_trailing_slash_on_the_served_dir_still_matches
 test_doubled_slashes_in_the_served_dir_and_the_root_still_match

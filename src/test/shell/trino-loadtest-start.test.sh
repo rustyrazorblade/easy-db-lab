@@ -317,6 +317,21 @@ test_the_pod_logs_that_it_is_installing_the_trino_client_before_pip() {
     fail "no installing line before pip: $(run_call)"
 }
 
+# A collector that refuses every push must not end the run: the script runs under set -e, and each
+# push happens inside the log-follow loop's handler. The lines still print, the run finishes, and
+# one warning says the dashboard will not show it.
+test_failed_gauge_pushes_do_not_abort_the_run() {
+  start_test "failed gauge pushes"
+  echo 7 > "${STUB_STATE}/curl-exit.2"
+  echo 7 > "${STUB_STATE}/curl-exit.3"
+  run_script || { fail "a failed push aborted the run: $(cat "${WORK}/out.txt")"; return; }
+  grep -Fq "[ 20s ] threads: 4" "${WORK}/out.txt" || fail "stopped streaming after a failed push: $(cat "${WORK}/out.txt")"
+  grep -Fq "trino-loadtest run complete" "${WORK}/out.txt" || fail "did not finish: $(cat "${WORK}/out.txt")"
+  [ "$(grep -c "could not push trino-loadtest gauges" "${WORK}/out.txt")" -eq 1 ] ||
+    fail "want one push warning: $(cat "${WORK}/out.txt")"
+  [ "$(cat "${STUB_STATE}/curl.count")" -eq 3 ] || fail "want the preflight and two pushes, got $(cat "${STUB_STATE}/curl.count") curl calls"
+}
+
 test_pushes_interval_figures_as_otlp_gauges_to_the_collector
 test_the_driver_pod_is_labelled_and_pinned_to_an_app_node
 test_the_driver_configmap_carries_the_role_labels
@@ -342,6 +357,7 @@ test_the_preflight_follows_next_uri_to_the_rows
 test_an_unreachable_target_runs_no_pod
 test_a_failed_catalog_query_runs_no_pod_and_shows_the_error
 test_the_pod_logs_that_it_is_installing_the_trino_client_before_pip
+test_failed_gauge_pushes_do_not_abort_the_run
 
 echo "trino-loadtest start (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

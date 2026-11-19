@@ -51,7 +51,7 @@ installed into a Grafana folder named after the kit on `start`.
 | `--flight-port` | `FLIGHT_PORT` | `8815` | Arrow Flight gRPC container port. Clients connect to NodePort 30816 on each db node, which forwards to it. |
 | `--data-dir` | `CASSANDRA_DATA_DIR` | `/mnt/db1/cassandra/data` | Host path to the Cassandra data dir, mounted read-only. **Exactly one** — see [Multi-disk nodes](#multi-disk-nodes-single-data-dir-limitation-2114). |
 | `--data-root` | `CASSANDRA_DATA_ROOT` | `/mnt` | Host path under which per-disk data dirs live; the `detect-multidisk` init container scans it read-only and warns on more than one candidate (#2114). |
-| `--data-gid` | `CASSANDRA_DATA_GID` | `999` | Host GID that owns the Cassandra data dir; added as a pod `supplementalGroup`. |
+| `--data-gid` | `CASSANDRA_DATA_GID` | `999` | Host GID that owns the Cassandra data dir; added as a pod `supplementalGroup`. The init container fails the pod at start when the data dir is not readable with it. |
 | `--otel-endpoint` | `OTEL_ENDPOINT` | `http://$(HOST_IP):4317` | OTLP gRPC endpoint (defaults to the collector on the pod's node). |
 
 ## Multi-disk nodes: single-data-dir limitation (#2114)
@@ -73,8 +73,9 @@ make the failure mode **visible** if it ever does.
 that `start` creates) in the flight image. It mounts `--data-root`
 (`CASSANDRA_DATA_ROOT`, default `/mnt`) read-only and lists the
 `<root>/*/cassandra/data` dirs that exist. A dir counts whether or not it holds
-files, because an empty second data dir receives SSTables later. It always
-exits 0, so it never blocks the rollout. Read it per node:
+files, because an empty second data dir receives SSTables later. The layout check
+only warns and never blocks the rollout; the access check below can fail the pod.
+Read it per node:
 
 ```bash
 kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix
@@ -151,11 +152,12 @@ This assumes the host directory is at least group-readable
 (`rwxr-x---` or looser) for gid 999. `fsGroup` was deliberately **not** used —
 Kubernetes' `fsGroup` recursive-chown does not apply to `hostPath` volumes, so it
 would silently do nothing here; `supplementalGroups` is the correct mechanism for
-a pre-existing hostPath tree. **Open risk**: the exact host directory permissions
-were not verified against a live cluster (no cluster was available while
-authoring this kit) — if a real run shows permission-denied errors, either loosen
-the host directory's group permissions or pass `--data-gid` to match whatever GID
-actually owns it.
+a pre-existing hostPath tree. The `detect-multidisk` init container checks this at
+start: it runs with the same uid and `--data-gid`, mounts the data dir as the Flight
+container does, and fails the pod (`Init:Error`, so the rollout and `start` fail) when
+it cannot list and enter the data dir and its keyspace and table dirs. Its log names
+the unreadable dir and `--data-gid`; fix the host permissions or reinstall with the
+`--data-gid` that owns the dir (`stat -c %g <data-dir>` on a db node).
 
 ## Observability
 

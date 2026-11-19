@@ -124,10 +124,13 @@ data class TemplateVariables(
                 "OTEL_AGENT_IMAGE",
                 "PYROSCOPE_AGENT_IMAGE",
                 "DB_NODE_SELECTOR",
+                "DB_AFFINITY",
                 "APP_NODE_SELECTOR",
                 "DB_NODE_LABELS",
                 "APP_NODE_LABELS",
                 "CONTROL_NODE_LABELS",
+                "CLIENT_NETWORKS_JSON",
+                "CLIENT_NETWORKS_HBA_JSON",
                 "BACKUP_NAME",
             )
 

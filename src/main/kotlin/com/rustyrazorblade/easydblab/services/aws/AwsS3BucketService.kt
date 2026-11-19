@@ -62,14 +62,11 @@ class AwsS3BucketService(
      * `up` and the AMI build path call this so the bucket (and the S3 build cache it backs) come
      * online without re-running `profile setup`.
      *
-     * A bucket that already exists gets any marker tag it lacks ([ensureMarkerTags]): a bucket
-     * created before the `easy_db_lab` key existed carries only the legacy one.
+     * It reads nothing from S3 for a bucket already set, because path resolution calls it often.
+     * The setup paths add a missing marker tag with [ensureMarkerTags].
      */
     fun ensureAccountBucket(user: User): String {
-        if (user.s3Bucket.isNotBlank()) {
-            ensureMarkerTags(user.s3Bucket)
-            return user.s3Bucket
-        }
+        if (user.s3Bucket.isNotBlank()) return user.s3Bucket
         eventBus.emit(Event.Setup.S3BucketCreating)
         val bucketName = "easy-db-lab-${UUID.randomUUID()}"
         createBucket(bucketName)

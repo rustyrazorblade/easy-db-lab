@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.AwsKeyName
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
@@ -77,17 +78,33 @@ class AwsKeyPairService(
     /**
      * Adds every marker tag ([Constants.Vpc.MARKER_TAGS]) the key pair [keyName] lacks; its other
      * tags stay. Nothing is written when it carries them all.
+     *
+     * Only a key pair that carries the legacy marker is tagged: the IAM policy allows `ec2:*` on a
+     * resource only through that tag, and a key pair without it was not marked by this tool.
+     * A key pair that does not exist fails with a message naming it.
      */
     fun ensureMarkerTags(
         keyName: AwsKeyName,
         ec2Client: Ec2Client,
     ) {
         val keyPair =
-            ec2Client
-                .describeKeyPairs(DescribeKeyPairsRequest.builder().keyNames(keyName).build())
-                .keyPairs()
-                .single()
+            try {
+                ec2Client
+                    .describeKeyPairs(DescribeKeyPairsRequest.builder().keyNames(keyName).build())
+                    .keyPairs()
+                    .single()
+            } catch (e: Ec2Exception) {
+                if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_KEY_PAIR_NOT_FOUND) throw e
+                throw ConfigurationException(
+                    "The key pair $keyName named in the profile does not exist in this region. Run `profile setup` again.",
+                    e,
+                )
+            }
         val current = keyPair.tags().associate { it.key() to it.value() }
+        if (current[Constants.Vpc.LEGACY_TAG_KEY] != Constants.Vpc.TAG_VALUE) {
+            log.info { "Key pair $keyName has no ${Constants.Vpc.LEGACY_TAG_KEY} marker; leaving its tags alone" }
+            return
+        }
         val missing = Constants.Vpc.MARKER_TAGS.filter { (key, value) -> current[key] != value }
         if (missing.isEmpty()) return
         ec2Client.createTags(

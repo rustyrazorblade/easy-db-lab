@@ -46,6 +46,22 @@ class UpMarkerTagsTest : UpTestFixture() {
         ).containsAllEntriesOf(bothMarkers).containsEntry(Constants.Vpc.CLUSTER_ID_TAG_KEY, state.clusterId)
     }
 
+    /**
+     * An account bucket made before the new key existed carries only the legacy marker, so `up`
+     * runs the bucket backfill on it (the merge itself is covered by `AwsS3BucketServiceTest` and
+     * its LocalStack test).
+     */
+    @Test
+    fun `up backfills the marker tags on the account bucket it uses`() {
+        val state = happyState()
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        Up(tailnetRetryInterval = Duration.ZERO, timing = BringUpHarness.FAST).execute()
+
+        assertThat(state.s3Bucket).isEqualTo("easy-db-lab-test-bucket")
+        verify(mockS3BucketService).ensureMarkerTags("easy-db-lab-test-bucket")
+    }
+
     /** A user `--tag` that names a marker or the cluster id must not override them, or teardown would lose the cluster. */
     @Test
     fun `user tags cannot override the marker tags or the cluster id`() {

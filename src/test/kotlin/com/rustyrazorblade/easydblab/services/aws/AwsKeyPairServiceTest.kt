@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
@@ -121,6 +122,45 @@ class AwsKeyPairServiceTest {
         service.ensureMarkerTags("lab-key", ec2)
 
         verify(ec2, never()).createTags(any<CreateTagsRequest>())
+    }
+
+    /** The IAM policy allows tagging only a resource that carries the legacy marker; the tool never marked this one. */
+    @Test
+    fun `a key pair without the legacy marker is left alone`() {
+        existingKeyPair("Purpose" to "lab")
+
+        service.ensureMarkerTags("lab-key", ec2)
+
+        verify(ec2, never()).createTags(any<CreateTagsRequest>())
+    }
+
+    @Test
+    fun `a key pair the profile names that does not exist fails naming it`() {
+        val notFound =
+            Ec2Exception
+                .builder()
+                .statusCode(400)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("InvalidKeyPair.NotFound").build())
+                .build()
+        whenever(ec2.describeKeyPairs(any<DescribeKeyPairsRequest>())).thenThrow(notFound)
+
+        assertThatThrownBy { service.ensureMarkerTags("lab-key", ec2) }
+            .isInstanceOf(ConfigurationException::class.java)
+            .hasMessageContaining("lab-key")
+            .hasCause(notFound)
+    }
+
+    @Test
+    fun `any other failure looking up the key pair is rethrown untouched`() {
+        val denied =
+            Ec2Exception
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("UnauthorizedOperation").build())
+                .build()
+        whenever(ec2.describeKeyPairs(any<DescribeKeyPairsRequest>())).thenThrow(denied)
+
+        assertThatThrownBy { service.ensureMarkerTags("lab-key", ec2) }.isSameAs(denied)
     }
 
     @Test

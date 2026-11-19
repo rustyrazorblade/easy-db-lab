@@ -44,7 +44,7 @@ class BuildCassandraImage : PicoBaseCommand() {
         // Ensure AWS infrastructure (IAM roles, S3) exists first
         awsResourceSetupService.ensureAWSResources(userConfig)
         // Ensure the account bucket exists so the S3 build cache is active (migrates old profiles)
-        s3BucketService.ensureAccountBucket(userConfig)
+        s3BucketService.ensureMarkerTags(s3BucketService.ensureAccountBucket(userConfig))
         keyPairService.ensureMarkerTags(userConfig)
 
         // Ensure Packer VPC infrastructure exists before building, scoping SSH to this machine's IP

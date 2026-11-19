@@ -425,6 +425,9 @@ object Constants {
         // eventual consistency, not a missing instance.
         const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
 
+        // EC2 error code for a key pair name it does not know in the region.
+        const val EC2_KEY_PAIR_NOT_FOUND = "InvalidKeyPair.NotFound"
+
         // EC2 error code for a launch AWS has no capacity for. AWS answers it with HTTP 500, so
         // the retry policy must name it: it is a shortage, not a transient server error.
         const val EC2_INSUFFICIENT_CAPACITY = "InsufficientInstanceCapacity"

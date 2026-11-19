@@ -19,6 +19,7 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.s3.S3Client
@@ -119,9 +120,18 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
                 .build()
         }
 
+    /** Path resolution calls ensureAccountBucket often; for a bucket already set it must not touch S3. */
     @Test
-    fun `an existing account bucket with only the legacy marker gains the new one and keeps its other tags`() {
+    fun `an account bucket already in the profile is returned without any S3 call`() {
         val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+
+        assertThat(service.ensureAccountBucket(user)).isEqualTo("easy-db-lab-existing")
+
+        verifyNoInteractions(mockS3Client)
+    }
+
+    @Test
+    fun `a bucket with only the legacy marker gains the new one and keeps its other tags`() {
         whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
             GetBucketTaggingResponse
                 .builder()
@@ -129,7 +139,7 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
                 .build(),
         )
 
-        assertThat(service.ensureAccountBucket(user)).isEqualTo("easy-db-lab-existing")
+        service.ensureMarkerTags("easy-db-lab-existing")
 
         val request = argumentCaptor<PutBucketTaggingRequest>()
         verify(mockS3Client).putBucketTagging(request.capture())
@@ -151,20 +161,18 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `an existing account bucket that carries both markers is not rewritten`() {
-        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+    fun `a bucket that carries both markers is not rewritten`() {
         whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
             GetBucketTaggingResponse.builder().tagSet(s3Tags("easy_db_lab" to "1", "easy_cass_lab" to "1")).build(),
         )
 
-        service.ensureAccountBucket(user)
+        service.ensureMarkerTags("easy-db-lab-existing")
 
         verify(mockS3Client, never()).putBucketTagging(any<PutBucketTaggingRequest>())
     }
 
     @Test
-    fun `an existing account bucket with no tags at all gets both markers`() {
-        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+    fun `a bucket with no tags at all gets both markers`() {
         val noTagSet =
             S3Exception
                 .builder()
@@ -173,7 +181,7 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
                 .build()
         whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenThrow(noTagSet)
 
-        service.ensureAccountBucket(user)
+        service.ensureMarkerTags("easy-db-lab-existing")
 
         val request = argumentCaptor<PutBucketTaggingRequest>()
         verify(mockS3Client).putBucketTagging(request.capture())
@@ -186,8 +194,7 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `any other failure reading an existing bucket's tags is rethrown and nothing is written`() {
-        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+    fun `any other failure reading a bucket's tags is rethrown and nothing is written`() {
         val denied =
             S3Exception
                 .builder()
@@ -196,7 +203,7 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
                 .build()
         whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenThrow(denied)
 
-        assertThatThrownBy { service.ensureAccountBucket(user) }.isSameAs(denied)
+        assertThatThrownBy { service.ensureMarkerTags("easy-db-lab-existing") }.isSameAs(denied)
         verify(mockS3Client, never()).putBucketTagging(any<PutBucketTaggingRequest>())
     }
 

@@ -22,10 +22,15 @@ class AccountBucketSetup(
         private val log = KotlinLogging.logger {}
     }
 
-    /** Configures the buckets for [state], saving it when they change, and re-applies the policies. */
+    /**
+     * Configures the buckets for [state], saving it when they change, re-applies the policies, and
+     * gives the account bucket any marker tag it lacks (one made before `easy_db_lab` existed).
+     */
     fun prepare(state: ClusterState) {
         configureBuckets(state)
-        reapplyPolicies(requireBucket(state))
+        val accountBucket = requireBucket(state)
+        reapplyPolicies(accountBucket)
+        s3BucketService.ensureMarkerTags(accountBucket)
     }
 
     /**

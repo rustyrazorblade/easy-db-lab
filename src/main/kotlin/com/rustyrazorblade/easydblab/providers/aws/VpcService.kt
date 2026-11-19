@@ -218,10 +218,11 @@ interface VpcDiscoveryOperations {
     fun getVpcTags(vpcId: VpcId): Map<String, String>
 
     /**
-     * Adds or updates tags on a VPC.
+     * Adds or updates [tags] on every resource in [resourceIds] (VPCs, subnets, gateways, security
+     * groups, route tables), keeping the tags already on them.
      */
-    fun addTagsToVpc(
-        vpcId: VpcId,
+    fun addTags(
+        resourceIds: List<String>,
         tags: Map<String, String>,
     )
 

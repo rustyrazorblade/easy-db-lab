@@ -14,8 +14,8 @@
         "iam:PassRole"
       ],
       "Resource": [
-        "arn:aws:iam::ACCOUNT_ID:role/EasyDBLabEMRServiceRole",
-        "arn:aws:iam::ACCOUNT_ID:role/EasyDBLabEMREC2Role"
+        "arn:aws:iam::__ACCOUNT_ID__:role/EasyDBLabEMRServiceRole",
+        "arn:aws:iam::__ACCOUNT_ID__:role/EasyDBLabEMREC2Role"
       ]
     },
     {

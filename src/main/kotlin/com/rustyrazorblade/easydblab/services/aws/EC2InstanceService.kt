@@ -244,7 +244,7 @@ class EC2InstanceService(
                 CreateTagsRequest
                     .builder()
                     .resources(instance.instanceId)
-                    .tags(RunInstancesRequests.tag("Name", instance.alias))
+                    .tags(RunInstancesRequests.tag(Constants.Vpc.NAME_TAG_KEY, instance.alias))
                     .build()
             withEc2ThrottleRetry("name-${instance.alias}", throttleBackoff) { ec2Client.createTags(request) }
         }
@@ -471,7 +471,7 @@ class EC2InstanceService(
         tags: Map<String, String>,
         launchIndex: Int?,
     ): String? =
-        tags["Name"]
+        tags[Constants.Vpc.NAME_TAG_KEY]
             ?: tags["ServerType"]?.let { serverType ->
                 OrdinalRun.ordinalOf(tags, launchIndex)?.let { "$serverType$it" }
             }

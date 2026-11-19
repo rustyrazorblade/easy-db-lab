@@ -107,6 +107,16 @@ To manually rebuild:
 docker build -t easy-db-lab-packer-test .
 ```
 
+## Marker tags (`marker_tags`)
+
+Both templates take a required `marker_tags` variable of type `map(string)`, with no default.  They put it on the builder instance and its volumes (`run_tags`, `run_volume_tags`) and on the AMI and its snapshots (`tags`, `snapshot_tags`).  `build-image` passes it from `Constants.Vpc.MARKER_TAGS`, so the keys are defined in one place:
+
+```shell
+-var 'marker_tags={"easy_cass_lab" = "1", "easy_db_lab" = "1"}'
+```
+
+When you run `packer build` or `packer validate` by hand, pass the same `-var`.  Without it, Packer stops and asks for the variable.  A builder without the legacy `easy_cass_lab` tag is outside the IAM conditions, which match on that key.
+
 ## Base AMI networking (Cilium ENI mode)
 
 Cilium ENI native-routing requires the OS to leave Cilium's runtime-attached secondary ENIs alone, while it keeps the primary ENI managed.  `base/install/configure_cilium_eni_networkd.sh` sets this up.  No file names a NIC or a PCI slot: the primary's name differs per instance family (`ens5` on c7gd and c6id, `ens52` on c8gd and m8gd, `enp39s0` on i7i).

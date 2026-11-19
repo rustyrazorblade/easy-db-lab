@@ -4813,12 +4813,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Teardown.FindingTaggedVpcs")
-        data object FindingTaggedVpcs : Teardown {
-            override fun toDisplayString(): String = "Finding all VPCs tagged with easy_cass_lab..."
-        }
-
-        @Serializable
         @SerialName("Teardown.NoTaggedVpcsFound")
         data object NoTaggedVpcsFound : Teardown {
             override fun toDisplayString(): String = "No tagged VPCs found to tear down"

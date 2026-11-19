@@ -144,7 +144,7 @@ sealed class TeardownMode {
     ) : TeardownMode()
 
     /**
-     * Tear down all VPCs tagged with easy_cass_lab.
+     * Tear down all VPCs that carry the legacy marker tag (`Constants.Vpc.LEGACY_TAG_KEY`).
      */
     data object AllTagged : TeardownMode()
 

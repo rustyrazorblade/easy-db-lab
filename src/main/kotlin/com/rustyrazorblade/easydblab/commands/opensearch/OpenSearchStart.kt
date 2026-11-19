@@ -111,10 +111,7 @@ class OpenSearchStart : PicoBaseCommand() {
         accountId = openSearchService.getAccountId(),
         region = user.region,
         tags =
-            mapOf(
-                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
-                Constants.Vpc.CLUSTER_ID_TAG_KEY to clusterState.clusterId,
-            ),
+            Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to clusterState.clusterId),
     )
 
     private fun saveOpenSearchState(result: OpenSearchDomainResult) {

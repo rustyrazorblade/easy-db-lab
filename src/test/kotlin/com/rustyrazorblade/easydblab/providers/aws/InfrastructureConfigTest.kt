@@ -131,7 +131,9 @@ class InfrastructureConfigTest {
                     sshPort = 22,
                 )
 
-            assertThat(config.tags).containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+            assertThat(config.tags)
+                .containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+                .containsEntry(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
         }
 
         @Test
@@ -212,6 +214,15 @@ class InfrastructureConfigTest {
 
             val sshRule = config.securityGroupRules.find { it.fromPort == 22 }
             assertThat(sshRule?.cidr).isEqualTo("203.0.113.10/32")
+        }
+
+        @Test
+        fun `the packer infrastructure carries both marker tags`() {
+            val config = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
+
+            assertThat(config.tags).containsExactlyInAnyOrderEntriesOf(
+                mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE),
+            )
         }
 
         @Test

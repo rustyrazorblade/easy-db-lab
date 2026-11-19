@@ -178,7 +178,7 @@ class EC2VpcServiceIntegrationTest {
         fun `should add tags to existing VPC`() {
             val vpcId = vpcService.createVpc("test-add-tags", "10.0.0.0/16", emptyMap())
 
-            vpcService.addTagsToVpc(vpcId, mapOf("NewTag" to "new-value"))
+            vpcService.addTags(listOf(vpcId), mapOf("NewTag" to "new-value"))
 
             val tags = vpcService.getVpcTags(vpcId)
             assertThat(tags["NewTag"]).isEqualTo("new-value")

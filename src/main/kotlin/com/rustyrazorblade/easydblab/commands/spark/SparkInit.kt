@@ -87,10 +87,7 @@ class SparkInit : PicoBaseCommand() {
             }
 
         val tags =
-            mapOf(
-                "easy_cass_lab" to "1",
-                Constants.Vpc.CLUSTER_ID_TAG_KEY to state.clusterId,
-            )
+            Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to state.clusterId)
 
         val initConfig =
             requireNotNull(state.initConfig) { "Cluster must be initialized before running spark init" }

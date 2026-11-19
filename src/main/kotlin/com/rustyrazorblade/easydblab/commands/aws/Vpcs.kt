@@ -21,7 +21,7 @@ class Vpcs : PicoBaseCommand() {
     private val vpcService: VpcService by inject()
 
     override fun execute() {
-        val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+        val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
 
         if (vpcIds.isEmpty()) {
             eventBus.emit(Event.Command.NoVpcsFound)
@@ -30,7 +30,7 @@ class Vpcs : PicoBaseCommand() {
 
         for (vpcId in vpcIds) {
             val tags = vpcService.getVpcTags(vpcId)
-            val name = tags["Name"] ?: "(unnamed)"
+            val name = tags[Constants.Vpc.NAME_TAG_KEY] ?: "(unnamed)"
             val clusterId = tags[Constants.Vpc.CLUSTER_ID_TAG_KEY] ?: "(no cluster id)"
             println("$name $vpcId $clusterId")
         }

@@ -34,7 +34,7 @@ import java.io.IOException
  * This command provides multiple modes of operation:
  * - Default: Tear down the current cluster's VPC (from cluster state)
  * - VPC ID: Tear down a specific VPC by ID
- * - --all: Tear down all VPCs tagged with easy_cass_lab
+ * - --all: Tear down all VPCs that carry the legacy marker tag ([Constants.Vpc.LEGACY_TAG_KEY])
  * - --packer: Tear down the packer infrastructure VPC
  *
  * Resources are deleted in the correct dependency order:
@@ -57,7 +57,7 @@ class Down : PicoBaseCommand() {
 
     @CommandLine.Option(
         names = ["--all"],
-        description = ["Tear down all VPCs tagged with easy_cass_lab"],
+        description = ["Tear down all VPCs tagged with ${Constants.Vpc.LEGACY_TAG_KEY}=${Constants.Vpc.TAG_VALUE}"],
     )
     var teardownAll = false
 
@@ -464,11 +464,10 @@ class Down : PicoBaseCommand() {
         }
 
     /**
-     * Tears down all VPCs tagged with easy_cass_lab.
+     * Tears down all VPCs that carry the legacy marker tag.
      */
     private fun teardownAllTagged(): TeardownOutcome {
-        eventBus.emit(Event.Teardown.FindingTaggedVpcs)
-
+        // The search itself reports what it looks for (Infra.VpcTeardownSearching).
         val stop =
             previewAndConfirm(
                 preview = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker),

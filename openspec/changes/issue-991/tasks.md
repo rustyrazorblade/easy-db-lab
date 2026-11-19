@@ -52,6 +52,6 @@
 
 ## 7. Review and real cluster
 
-- [ ] 7.1 roborev (`roborev review --branch --wait`), fix and close each job
+- [x] 7.1 roborev (`roborev review --branch --wait`), fix and close each job
 - [x] 7.2 Real cluster (1 db, 1 app, 1 control, `--tag embark_offhours=off`, default profile): light stress, Mimir down for a few minutes, then show a per-second series in Mimir with no missing samples across the gap, and no rise in `otelcol_exporter_send_failed_metric_points_total`; `down`
 - [x] 7.3 Open the PR with "Closes #991." and the cluster evidence

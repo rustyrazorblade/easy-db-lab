@@ -137,6 +137,16 @@ class BringUpEventsTest {
         assertThat(event.toDisplayString()).isEqualTo(expected)
     }
 
+    /** An attempt left running is an error: it goes to stderr, where `up --quiet` users look. */
+    @Test
+    fun `an abandoned attempt is an error naming the node, step, attempt and grace`() {
+        val event = Event.Provision.AttemptAbandoned("db3", "setup", 2, 5000)
+
+        assertThat(event.isError()).isTrue()
+        assertThat(event.toDisplayString())
+            .isEqualTo("db3: setup attempt 2 did not stop within 5000ms of its interrupt and is still running")
+    }
+
     @Test
     fun `a failed control node says every instance is kept`() {
         val event = Event.Provision.ControlNodeFailed("control0", "gate", "the API server was not ready after 600s")

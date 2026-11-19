@@ -20,8 +20,11 @@ fun redactUrlCredentials(text: String): String = URL_CREDENTIALS.replace(text, "
 /** The userinfo [redactUrlCredentials] writes in place of a credential. */
 private const val REDACTED_USERINFO = "***@"
 
-/** `key=value` style secrets: the value after `authkey=`, `token=`, `secret=`, `password=` or `key=`, as a whole word. */
-private val ASSIGNED_SECRET = Regex("(?i)\\b(authkey|token|secret|password|key)=\\S+")
+/**
+ * `key=value` style secrets: the value after `authkey=`, `token=`, `secret=`, `password=` or `key=`,
+ * as a whole word or as the end of an environment name (`AWS_SECRET_ACCESS_KEY=`, `K3S_TOKEN=`).
+ */
+private val ASSIGNED_SECRET = Regex("(?i)\\b((?:\\w*_)?(?:authkey|token|secret|password|key))=\\S+")
 
 /** An HTTP `Authorization:` header: the scheme and the credential after it. */
 private val AUTHORIZATION_HEADER = Regex("(?i)(authorization:)\\s*\\S+\\s+\\S+")

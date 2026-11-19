@@ -121,6 +121,29 @@ internal class SSHClientStreamingIntegrationTest {
         assertThat(delivered.get()).isEqualTo(callers)
     }
 
+    /**
+     * A virtual caller's SCP calls run on a platform thread; the SCP client must be in hand before
+     * that hop, or the platform thread waits for the lock its virtual caller holds.
+     */
+    @Test
+    fun `a virtual thread uploads and downloads a file over SCP`() {
+        val local = File(keyDirectory, "scp-upload.txt").apply { writeText("over scp\n") }
+        val back = File(keyDirectory, "scp-download.txt")
+        val executor = Executors.newVirtualThreadPerTaskExecutor()
+        try {
+            executor
+                .submit {
+                    val client = client()
+                    client.uploadFile(local.toPath(), "/tmp/scp-upload.txt")
+                    client.downloadFile("/tmp/scp-upload.txt", back.toPath())
+                }.get(SATURATION_DEADLINE_SECONDS, TimeUnit.SECONDS)
+        } finally {
+            executor.shutdownNow()
+        }
+
+        assertThat(back.readText()).isEqualTo("over scp\n")
+    }
+
     private fun client(): SSHClient = SSHClient(session)
 
     companion object {
@@ -135,11 +158,11 @@ internal class SSHClientStreamingIntegrationTest {
         /** `0600`: sshd refuses an `authorized_keys` others can write. */
         private const val AUTHORIZED_KEYS_MODE = 384
 
-        /** An Alpine `sshd` that takes the test's key for root, pinned to the alpine:3.20 image index. */
+        /** An Alpine `sshd` that takes the test's key for root, pinned to the alpine:3.20 image index; `openssh-client` brings the `scp` the SCP test runs remotely. */
         private val SSHD_DOCKERFILE =
             """
             FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
-            RUN apk add --no-cache openssh-server \
+            RUN apk add --no-cache openssh-server openssh-client \
              && ssh-keygen -A \
              && mkdir -p /root/.ssh \
              && chmod 700 /root/.ssh
@@ -160,7 +183,7 @@ internal class SSHClientStreamingIntegrationTest {
             val keygen = ProcessBuilder("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", privateKey.absolutePath).inheritIO().start()
             check(keygen.waitFor() == 0) { "ssh-keygen failed" }
             sshd =
-                GenericContainer(ImageFromDockerfile("edl-test-sshd-plain", false).withFileFromString("Dockerfile", SSHD_DOCKERFILE))
+                GenericContainer(ImageFromDockerfile("edl-test-sshd-scp", false).withFileFromString("Dockerfile", SSHD_DOCKERFILE))
                     .withExposedPorts(SSHD_PORT)
                     .withCopyToContainer(
                         Transferable.of(File(keyDirectory, "id_ed25519.pub").readText(), AUTHORIZED_KEYS_MODE),

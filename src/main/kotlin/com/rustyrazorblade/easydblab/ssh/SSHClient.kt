@@ -207,7 +207,8 @@ class SSHClient(
             require(local.toFile().exists()) { "Local file does not exist: ${local.toAbsolutePath()}" }
             require(local.toFile().isFile) { "Local path is not a file: ${local.toAbsolutePath()}" }
 
-            PlatformThreadCall.run { getScpClient().upload(local, remote) }
+            val scp = getScpClient()
+            PlatformThreadCall.run { scp.upload(local, remote) }
         }
 
     /**
@@ -323,7 +324,8 @@ class SSHClient(
             require(remote.isNotBlank()) { "Remote path cannot be blank" }
 
             log.debug { "Downloading file from $remoteAddress:$remote to ${local.toAbsolutePath()}" }
-            PlatformThreadCall.run { getScpClient().download(remote, local) }
+            val scp = getScpClient()
+            PlatformThreadCall.run { scp.download(remote, local) }
         }
 
     /**

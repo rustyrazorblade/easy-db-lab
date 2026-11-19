@@ -70,6 +70,7 @@
 - [x] 8.8 `up --quiet` covers the node pipelines only; `init --quiet` without `--up` is refused; `NodesFailed` prints one line per node.  `UpTest` quiet-failure case, `InitTest`, `BringUpEventsTest`
 - [x] 8.9 `setup-instances` reports any failed remote command of a setup as `InstanceSetupFailed`; `cassandra nt` fails with the summary; `exec run` prints `no output` for an empty journal; `logs query` prints its lines and `Logs.QueryResults` is removed
 - [x] 8.10 Test fixes: thread-safe event lists in `UpVpcCidrTest` and `ClusterProvisioningServiceTest`; `MockSSHClient` streams through the real splitter; `UpdateConfigTest` checks `patch-config` runs with its output; `SSHClientTest` lost-connection case
+- [x] 8.11 roborev 6460: SCP upload and download fetch the SCP client before the platform-thread hop (a virtual-thread SCP integration test hung before); the interrupt hand-off is ordered by one lock; `redact` covers names ending in a secret key (`AWS_SECRET_ACCESS_KEY=`, `K3S_TOKEN=`); `AttemptAbandoned` is an error
 
 ## 9. Verify
 

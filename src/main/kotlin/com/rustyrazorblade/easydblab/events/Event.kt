@@ -4206,6 +4206,8 @@ sealed interface Event {
         ) : Provision {
             override fun toDisplayString(): String =
                 "$alias: $step attempt $attempt did not stop within ${graceMs}ms of its interrupt and is still running"
+
+            override fun isError(): Boolean = true
         }
 
         /**

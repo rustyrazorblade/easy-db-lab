@@ -63,4 +63,40 @@ class PlatformThreadCallTest {
         assertThat(blockSawInterrupt.get(5, TimeUnit.SECONDS)).isTrue()
         assertThat(callerFlag.get(5, TimeUnit.SECONDS)).isTrue()
     }
+
+    /** A caller interrupted before the block starts must not run the block as if it had not been. */
+    @Test
+    fun `a virtual caller interrupted before the call starts interrupts the block`() {
+        val blockSawInterrupt = CompletableFuture<Boolean>()
+        Thread.ofVirtual().start {
+            Thread.currentThread().interrupt()
+            PlatformThreadCall.run {
+                try {
+                    Thread.sleep(10_000)
+                    blockSawInterrupt.complete(false)
+                } catch (_: InterruptedException) {
+                    blockSawInterrupt.complete(true)
+                }
+            }
+        }
+
+        assertThat(blockSawInterrupt.get(5, TimeUnit.SECONDS)).isTrue()
+    }
+
+    /** A pooled thread must start every call clear of an earlier caller's interrupt. */
+    @Test
+    fun `a later call does not inherit an earlier caller's interrupt`() {
+        repeat(RACE_ROUNDS) {
+            val caller = Thread.ofVirtual().start { PlatformThreadCall.run { } }
+            caller.interrupt()
+            caller.join()
+            val laterSawInterrupt = CompletableFuture<Boolean>()
+            Thread.ofVirtual().start { laterSawInterrupt.complete(PlatformThreadCall.run { Thread.currentThread().isInterrupted }) }
+            assertThat(laterSawInterrupt.get(5, TimeUnit.SECONDS)).isFalse()
+        }
+    }
+
+    private companion object {
+        const val RACE_ROUNDS = 2_000
+    }
 }

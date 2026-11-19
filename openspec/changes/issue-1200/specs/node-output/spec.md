@@ -64,7 +64,7 @@ A `\r` that is not followed by `\n` MUST start a new segment that replaces the c
 
 ### Requirement: Node output is plain text, not events
 
-Node output lines and notices MUST be printed as plain console text through a provider-neutral port.  They MUST NOT be emitted on the event bus, and MUST NOT reach Redis.  The port MUST NOT depend on the SSH transport or a cloud provider's types, so another transport feeds the same port.  Output of a command marked secret MUST NOT be printed or kept; the provider-neutral remote operations MUST NOT build an output sink for it.  Every line, pod log lines too, MUST be redacted before it is printed or kept: URL credentials, `authkey=`, `token=`, `secret=`, `password=` and `key=` values, `Authorization:` header values, and AWS access key ids.
+Node output lines and notices MUST be printed as plain console text through a provider-neutral port.  They MUST NOT be emitted on the event bus, and MUST NOT reach Redis.  The port MUST NOT depend on the SSH transport or a cloud provider's types, so another transport feeds the same port.  Output of a command marked secret MUST NOT be printed or kept; the provider-neutral remote operations MUST NOT build an output sink for it.  Every line, pod log lines too, MUST be redacted before it is printed or kept: URL credentials, `authkey=`, `token=`, `secret=`, `password=` and `key=` values, also at the end of an environment name such as `AWS_SECRET_ACCESS_KEY=` or `K3S_TOKEN=`, `Authorization:` header values, and AWS access key ids.
 
 #### Scenario: Redis sees no node output
 - **GIVEN** `EASY_DB_LAB_REDIS_URL` is set
@@ -80,8 +80,8 @@ Node output lines and notices MUST be printed as plain console text through a pr
 - **THEN** the printed line shows `https://***@github.com/acme/cassandra.git`
 
 #### Scenario: Other credentials are redacted
-- **WHEN** a node or a pod prints `TOKEN=xyz`, `Authorization: Bearer abc.def` or an AWS access key id
-- **THEN** the printed line shows `TOKEN=***`, `Authorization: ***` or `***` in its place
+- **WHEN** a node or a pod prints `TOKEN=xyz`, `AWS_SECRET_ACCESS_KEY=abc`, `Authorization: Bearer abc.def` or an AWS access key id
+- **THEN** the printed line shows `TOKEN=***`, `AWS_SECRET_ACCESS_KEY=***`, `Authorization: ***` or `***` in its place
 
 ### Requirement: Pod log lines use the same tagged path
 

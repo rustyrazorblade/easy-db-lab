@@ -204,9 +204,9 @@ data class InitConfig(
     val sparkReleaseLabel: String = Constants.EMR.DEFAULT_RELEASE_LABEL,
     val opensearchEnabled: Boolean = false,
     val opensearchInstanceType: String = Constants.OpenSearch.DEFAULT_INSTANCE_TYPE,
-    val opensearchInstanceCount: Int = 1,
-    val opensearchVersion: String = "2.11",
-    val opensearchEbsSize: Int = 100,
+    val opensearchInstanceCount: Int = Constants.OpenSearch.DEFAULT_INSTANCE_COUNT,
+    val opensearchVersion: String = Constants.OpenSearch.DEFAULT_VERSION,
+    val opensearchEbsSize: Int = Constants.OpenSearch.DEFAULT_EBS_SIZE_GB,
     val cidr: String? = null,
     val cni: CniMode = CniMode.Cilium,
     // Life-of-cluster telemetry redirect target. Null means local mode (the unchanged default):

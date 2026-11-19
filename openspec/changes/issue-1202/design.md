@@ -84,8 +84,8 @@ Rejected alternatives:
 A new reader, `PodNetworkSysctls`, reads `Constants.NodeTuning.RESOURCE_DIR/SYSCTL_FILE` from the classpath (as `NodeTuningFiles` does), parses its `key = value` lines, and returns the keys named in `Constants.NodeTuning.POD_NETWORK_SYSCTLS` with the file's values.  The values are never repeated in Kotlin, so the host file and the pods cannot drift.  The reader fails, naming the key, when a key in `POD_NETWORK_SYSCTLS` is missing from the file.
 
 `Constants.NodeTuning` gets two name lists:
-- `POD_NETWORK_SYSCTLS`: the per-namespace keys to inject (the table above, less what OQ1 settles).
-- `HOST_ONLY_NETWORK_SYSCTLS`: `net.core.netdev_max_backlog`, `net.core.rmem_max`, `net.core.wmem_max`, `net.core.rps_sock_flow_entries`, plus any per-namespace key OQ1 keeps on the host only.
+- `POD_NETWORK_SYSCTLS`: the nine per-namespace keys to inject: the table above less `ip_local_port_range` and `ip_local_reserved_ports` (R1).
+- `HOST_ONLY_NETWORK_SYSCTLS`: `net.core.netdev_max_backlog`, `net.core.rmem_max`, `net.core.wmem_max`, `net.core.rps_sock_flow_entries`, `net.ipv4.ip_local_port_range` and `net.ipv4.ip_local_reserved_ports` (R1).
 
 A unit test parses the packaged file and fails when a `net.*` key in it is in neither list or in both.  A new network key added to the host file therefore fails the build until someone decides whether pods get it.
 
@@ -127,7 +127,7 @@ The policy, its builder and `PodNetworkSysctls` are provider-neutral Kubernetes 
 
 One cluster: 3 db, 2 app, 1 control (`r`-class or `i`-class db with NVMe, as the kit guides require), tag `embark_offhours=off`, default profile.  Kits are installed, checked, then stopped one after another, so no two contend for ports or disks.
 
-The value check is the same for every pod, so it works on images without `sysctl` or `cat`: on the pod's node, read the values inside the pod's network namespace with `nsenter -t <pid> -n sysctl <keys>`, where the PID is the pod sandbox's from `crictl inspect`.  Also `kubectl get pod -o jsonpath='{.spec.securityContext.sysctls}'`.  Every pod of the kit must report every value in `PodNetworkSysctls`.
+The value check is the same for every pod, so it works on images without `sysctl` or `cat`: on the pod's node, read the values inside the pod's network namespace with `nsenter -t <pid> -n sysctl <keys>`, where the PID is the pod sandbox's from `crictl inspect`.  Also `kubectl get pod -o jsonpath='{.spec.securityContext.sysctls}'`.  Every pod of the kit must report every value in `PodNetworkSysctls`, and the kernel default `ip_local_port_range` (`32768 60999`) with no reserved ports (R1).
 
 | Kit | Pods checked | Workload |
 |---|---|---|
@@ -145,7 +145,7 @@ The value check is the same for every pod, so it works on images without `sysctl
 | flink | JobManager and TaskManagers | submit the bundled streaming example over REST from a pod; it reaches RUNNING |
 | ferrosa | every FerrosaDB pod | `cassandra stress start -- KeyValue -d 2m --host ferrosa-0.default.svc.cluster.local` |
 
-Also checked once: a host-network pod (the OTel collector) has no injected `sysctls` and still reads the host values; an operator pod has the values; `up` on a fresh cluster reports the policy ready.  The PR carries the commands and their output.
+Also checked once: a host-network pod (the OTel collector) has no injected `sysctls` and still reads the host values; an operator pod (for example the CNPG operator in `cnpg-system`) has the values (R2); `up` on a fresh cluster reports the policy ready.  The PR carries the commands and their output.
 
 ## Risks / Trade-offs
 
@@ -154,21 +154,12 @@ Also checked once: a host-network pod (the OTel collector) has no injected `sysc
 - [A namespace that enforces Pod Security `baseline` or `restricted` rejects the unsafe sysctls] → no namespace in the cluster sets Pod Security labels today; the kit checks above would show one.
 - [Pods created before the policy (CoreDNS, metrics-server at K3s start) are untuned] → they are not under test.  The policy is applied before the observability stack and before any kit.
 - [A cluster brought up by an older CLI has no kubelet allowlist; kit pods there fail `SysctlForbidden`] → clusters are ephemeral; such a cluster needs a new `up`.  The failure names the sysctl.
-- [The policy also touches system and operator pods] → they get the same values a tuned production host gives every process; owner's call in OQ2.
+- [The policy also touches system and operator pods] → they get the same values a tuned production host gives every process; owner's decision R2.
 
-## Open Questions
+## Resolved (owner decisions, 2026-11-19)
 
-The spec delta is written to the recommendation of each question.  A different answer changes the spec before code starts.
+**R1. Pods keep the kernel defaults for `ip_local_port_range` and `ip_local_reserved_ports`.**  Both are in `HOST_ONLY_NETWORK_SYSCTLS`, not injected.  The host's reserved list names host ports, not a pod's own listener ports, so the host's wide 1024-65535 range in a pod would let a database's outbound connection take its own listener port; the default 32768-60999 range sits above every kit's listener port.
 
-**OQ1. Do pods get `ip_local_port_range` and `ip_local_reserved_ports`?**
-#1199 widens the host's ephemeral range to 1024-65535 and reserves every host listener port and the NodePort range.  That list names host ports; inside a pod namespace it means nothing, and the pod's own listener ports (ClickHouse 9000, Kafka 9092, Neo4j 7687, Postgres 5432 and so on) are not on it.  With the wide range in a pod, an outbound connection from a database (to a peer, to S3, to Keeper) could take its own listener port as a source port, and the listener could not bind it again after a container restart in the same pod.
-- **Recommendation:** leave both at the kernel default in pods (32768-60999, no reservations), and put them in `HOST_ONLY_NETWORK_SYSCTLS`.  The default range sits above every kit's listener port, so it never collides, and a pod's outbound connection count fits easily in 28,000 ports per destination.
-- Trade-off: pods differ from the host on this one key.  The alternative is to inject the wide range plus a per-pod reserved list of that pod's listener ports, which needs a per-kit port list (the drift D1 avoids) or a CEL expression that reads the pod's `containerPort`s (misses ports a database binds without declaring, such as Kafka's controller port or Ignite's internal ports).
+**R2. Every pod in the pod network gets the values, not only kit pods.**  Operator-built pods carry the operator's labels, not the kit's, so a kit-label match would miss them; every pod also matches a tuned production host, where every process gets these values.
 
-**OQ2. Every pod in the pod network, or only kit pods?**
-- **Recommendation:** every pod in the pod network (D1).  It covers operators, client pods and later kits with no labels to remember, and matches a production host, where every process gets the tuned values.
-- Trade-off: it changes system pods too (operators, kube-state-metrics, any pod-network observability pod).  The alternative matches only pods labeled `easydblab/kit`, which misses operator-built pods whose labels a kit does not set (CNPG, Strimzi, TiDB, Altinity, Flink pods carry the operator's labels), so it would need a label per kit in five CRD shapes.
-
-**OQ3. One admission policy, or a block per kit as the issue's direction says?**
-- **Recommendation:** the policy (D1).  One place, the values from the host file, and nothing for a new kit to forget.
-- Trade-off: it needs the beta API flags on K3s 1.35 (D4), and an existing-cluster provider later needs Kubernetes 1.36+.  A block per kit needs no API server change, but it is about fifteen copies in eight shapes, and the two Helm charts may not expose `sysctls` at all.
+**R3. One cluster-wide MutatingAdmissionPolicy (D1), not a sysctls block per kit.**  It is one place that reads the host file and covers later kits with nothing to remember, where per-kit blocks would be about fifteen copies in eight shapes; the cost, the beta API flags on K3s 1.35 (D4), is accepted.

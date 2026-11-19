@@ -40,6 +40,6 @@
 ## 7. Real-cluster verification (design table)
 
 - [ ] 7.1 Provision 3 db, 2 app, 1 control from the branch build; record it in the state file.
-- [ ] 7.2 `up` reports the policy ready; the OTel collector pod has no injected sysctls; an operator pod has the values.
+- [ ] 7.2 `up` reports the policy ready; the OTel collector pod has no injected sysctls; an operator pod has the values (R2); every kit pod reports the kernel default port range and no reserved ports (R1).
 - [ ] 7.3 For each kit in the design table (clickhouse, clickhouse-benchmark, postgres, tidb, sysbench, kafka, neo4j, presto, trino, ignite3, memcached RAM and extstore, flink, ferrosa): install, start, read the values in every pod, run the workload, stop.  Record commands and output.
 - [ ] 7.4 `down`; put the evidence in the PR.

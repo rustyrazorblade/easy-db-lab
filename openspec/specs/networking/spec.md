@@ -753,7 +753,7 @@ The CLI MUST write a sourceable file, `.socks5-proxy.env`, in the workspace. It 
 - `EDL_TAILSCALE_ACTIVE=true` or `EDL_TAILSCALE_ACTIVE=false`, from the cluster state.
 - `EDL_SOCKS_PORT=<port>`, only while a verified tunnel is recorded.
 - `EDL_SOCKS_PID=<pid>`, the PID of the recorded `edl-socks-tunnel` script, written and removed together with `EDL_SOCKS_PORT`.
-- `EDL_NETWORK_MODE=direct`, only while direct network mode is active (see "Wrappers use no tunnel in direct network mode").
+- `EDL_NETWORK_MODE=direct`, only while direct network mode is active (see "Wrappers branch on the network mode" in change `issue-1077`).
 
 This file is the only source of proxy state for shell-side tools. Any value that a shell-side tool needs MUST be written by the CLI to this file. No script in the system MAY parse JSON to read proxy state, and `jq` is not required.
 
@@ -1188,7 +1188,7 @@ The CLI MUST provide a `socks` command group with `socks start` and `socks stop`
 
 `with-proxy` and `socks5-status` stay. They read the port from the proxy env file. `with-proxy` fails with the same `easy-db-lab socks start` message as the wrappers when no port is recorded, and runs its command directly on a Tailscale cluster.
 
-Both helpers MUST follow direct network mode exactly as the wrappers do (see "Wrappers use no tunnel in direct network mode"). They MUST read `EDL_NETWORK_MODE` from the proxy env file only and ignore a value inherited from the shell. When the env file holds `EDL_NETWORK_MODE=direct`, `with-proxy` MUST run its command with no proxy variable set or cleared, so inherited proxy variables (for example `http_proxy`) reach the command untouched. It MUST NOT require a recorded tunnel, and it MUST NOT use one that is recorded: direct mode wins. In the same case `socks5-status` MUST report that the workspace uses direct network mode, not that no tunnel is recorded.
+Both helpers MUST follow direct network mode exactly as the wrappers do (see "Wrappers branch on the network mode" in change `issue-1077`). They MUST read `EDL_NETWORK_MODE` from the proxy env file only and ignore a value inherited from the shell. When the env file holds `EDL_NETWORK_MODE=direct`, `with-proxy` MUST run its command with no proxy variable set or cleared, so inherited proxy variables (for example `http_proxy`) reach the command untouched. It MUST NOT require a recorded tunnel, and it MUST NOT use one that is recorded: direct mode wins. In the same case `socks5-status` MUST report that the workspace uses direct network mode, not that no tunnel is recorded.
 
 #### Scenario: Sourced shell resolves the wrappers
 

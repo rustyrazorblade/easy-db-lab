@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.di
 
+import com.rustyrazorblade.easydblab.runCatchingException
 import org.koin.core.component.KoinComponent
 import picocli.CommandLine
 
@@ -20,12 +21,9 @@ class KoinCommandFactory :
     CommandLine.IFactory,
     KoinComponent {
     override fun <K : Any> create(cls: Class<K>): K =
-        try {
-            // Try to get from Koin first (for commands registered in Koin)
-            getKoin().get(cls.kotlin)
-        } catch (e: Exception) {
-            // Fall back to default factory for classes not in Koin
-            // This handles parent commands (Runnable) and other PicoCLI internals
-            CommandLine.defaultFactory().create(cls)
-        }
+        // Try to get from Koin first (for commands registered in Koin); fall back to the default
+        // factory for classes not in Koin. This handles parent commands (Runnable) and other
+        // PicoCLI internals.
+        runCatchingException { getKoin().get(cls.kotlin) }
+            .getOrElse { CommandLine.defaultFactory().create(cls) }
 }

@@ -24,15 +24,14 @@ class Fabric8ControlPlaneConnector(
 ) : ControlPlaneConnector {
     override fun open(cni: CniMode): ControlPlaneConnection {
         val opened = mutableListOf<AutoCloseable>()
-        try {
+        return runCatching {
             val reader = Fabric8ControlPlaneReader.open(clientProvider, cni).also(opened::add)
             val sampler = ControlPlaneSampler.open(clientProvider).also(opened::add)
             val nodes = NodeWatcher.open(clientProvider).also(opened::add)
-            return Connection(reader, sampler, nodes, NodeCleanup(clientProvider))
-        } catch (e: Exception) {
+            Connection(reader, sampler, nodes, NodeCleanup(clientProvider))
+        }.onFailure {
             opened.forEach { runCatchingException { it.close() } }
-            throw e
-        }
+        }.getOrThrow()
     }
 
     private class Connection(

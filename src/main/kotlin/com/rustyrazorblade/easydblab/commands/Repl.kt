@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.ResourceManager
@@ -105,43 +106,47 @@ class Repl : PicoBaseCommand() {
         context.isInteractive = true
 
         try {
-            val terminal = createTerminal()
-            val commandLine = createCommandLine(terminal)
-            val picocliCommands = PicocliCommands(commandLine)
-            val parser: Parser = DefaultParser()
-
-            // Set up working directory supplier
-            val workDir = Supplier { Paths.get(context.workingDirectory.absolutePath) }
-
-            // Create system registry with just picocli commands (skip builtins for simplicity)
-            val systemRegistry: SystemRegistry = SystemRegistryImpl(parser, terminal, workDir, null)
-            systemRegistry.setCommandRegistries(picocliCommands)
-
-            // Build LineReader with completers
-            val reader = createLineReader(terminal, systemRegistry, parser)
-
-            // Set up TailTipWidgets for command descriptions
-            val widgets =
-                TailTipWidgets(
-                    reader,
-                    systemRegistry::commandDescription,
-                    TAILTIP_DESCRIPTION_LINES,
-                    TailTipWidgets.TipType.COMPLETER,
-                )
-            widgets.enable()
-
-            printWelcomeMessage()
-
-            // Run the REPL loop
-            runReplLoop(reader, systemRegistry)
-        } catch (e: Exception) {
-            log.error(e) { "Error in REPL" }
-            eventBus.emit(Event.Command.ReplStartError(e.message ?: e::class.simpleName ?: "Unknown error"))
+            runCatchingException { runRepl() }.onFailure { e ->
+                log.error(e) { "Error in REPL" }
+                eventBus.emit(Event.Command.ReplStartError(e.message ?: e::class.simpleName ?: "Unknown error"))
+            }
         } finally {
             // Clean up resources on REPL exit
             log.debug { "REPL exiting, cleaning up resources" }
             resourceManager.closeAll()
         }
+    }
+
+    private fun runRepl() {
+        val terminal = createTerminal()
+        val commandLine = createCommandLine(terminal)
+        val picocliCommands = PicocliCommands(commandLine)
+        val parser: Parser = DefaultParser()
+
+        // Set up working directory supplier
+        val workDir = Supplier { Paths.get(context.workingDirectory.absolutePath) }
+
+        // Create system registry with just picocli commands (skip builtins for simplicity)
+        val systemRegistry: SystemRegistry = SystemRegistryImpl(parser, terminal, workDir, null)
+        systemRegistry.setCommandRegistries(picocliCommands)
+
+        // Build LineReader with completers
+        val reader = createLineReader(terminal, systemRegistry, parser)
+
+        // Set up TailTipWidgets for command descriptions
+        val widgets =
+            TailTipWidgets(
+                reader,
+                systemRegistry::commandDescription,
+                TAILTIP_DESCRIPTION_LINES,
+                TailTipWidgets.TipType.COMPLETER,
+            )
+        widgets.enable()
+
+        printWelcomeMessage()
+
+        // Run the REPL loop
+        runReplLoop(reader, systemRegistry)
     }
 
     private fun createTerminal(): Terminal =
@@ -222,7 +227,7 @@ class Repl : PicoBaseCommand() {
         reader: LineReader,
         systemRegistry: SystemRegistry,
     ): Boolean =
-        try {
+        runCatchingException {
             systemRegistry.cleanUp()
             val line = reader.readLine(PROMPT)
             when {
@@ -233,13 +238,15 @@ class Repl : PicoBaseCommand() {
                     true
                 }
             }
-        } catch (e: UserInterruptException) {
-            true
-        } catch (e: EndOfFileException) {
-            false
-        } catch (e: Exception) {
-            systemRegistry.trace(e)
-            true
+        }.getOrElse { e ->
+            when (e) {
+                is UserInterruptException -> true
+                is EndOfFileException -> false
+                else -> {
+                    systemRegistry.trace(e)
+                    true
+                }
+            }
         }
 
     private fun isExitCommand(line: String): Boolean {
@@ -261,11 +268,8 @@ private class ChainedCommandFactory(
 ) : CommandLine.IFactory {
     override fun <K : Any> create(cls: Class<K>): K {
         for (factory in factories) {
-            try {
-                return factory.create(cls)
-            } catch (e: Exception) {
-                // Try next factory
-            }
+            // A factory that cannot create the class is skipped; the next one gets its turn.
+            runCatchingException { factory.create(cls) }.onSuccess { return it }
         }
         // Fall back to default factory
         return CommandLine.defaultFactory().create(cls)

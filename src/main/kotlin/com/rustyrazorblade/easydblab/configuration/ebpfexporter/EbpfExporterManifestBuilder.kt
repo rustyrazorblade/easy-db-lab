@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.ebpfexporter
 
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -61,7 +62,7 @@ class EbpfExporterManifestBuilder {
      * Mounts kernel, BPF, proc, modules, and kernel source directories.
      */
     @Suppress("LongMethod")
-    fun buildDaemonSet() =
+    fun buildDaemonSet(): DaemonSet =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)

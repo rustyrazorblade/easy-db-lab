@@ -42,3 +42,14 @@ inline fun <T> runCatchingException(block: () -> T): Result<T> =
         if (it !is Exception) throw it
         if (it is InterruptedException) Thread.currentThread().interrupt()
     }
+
+/**
+ * Like [runCatchingException], except an [InterruptedException] is not captured: it sets the
+ * thread's interrupt flag again and propagates, so a poll loop or a retry stops when its thread is
+ * interrupted instead of treating the interrupt as one more failed attempt. Use it where a failure
+ * of the work is a value to act on but an interrupt is a request to stop.
+ */
+inline fun <T> runCatchingInterruptibly(block: () -> T): Result<T> =
+    runCatchingException(block).onFailure {
+        if (it is InterruptedException) throw it
+    }

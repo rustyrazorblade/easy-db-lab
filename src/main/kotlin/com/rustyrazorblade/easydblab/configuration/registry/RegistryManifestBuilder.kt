@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.registry
 
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
@@ -43,7 +44,7 @@ class RegistryManifestBuilder {
      * a hostPath volume and HTTPS health probes.
      */
     @Suppress("LongMethod")
-    fun buildDeployment() =
+    fun buildDeployment(): Deployment =
         controlPlaneDeployment(APP_LABEL, NAMESPACE) {
             hostNetworked()
                 .addNewContainer()

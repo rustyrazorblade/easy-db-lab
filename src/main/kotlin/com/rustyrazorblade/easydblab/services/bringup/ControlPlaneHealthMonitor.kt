@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
@@ -60,11 +61,7 @@ class ControlPlaneHealthMonitor(
     }
 
     private fun sample(): ControlPlaneHealth.Sample =
-        try {
-            sampler.sample()
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: Exception) {
+        runCatchingInterruptibly { sampler.sample() }.getOrElse { e ->
             log.debug(e) { "Health sample failed" }
             ControlPlaneHealth.Sample.Unreachable(e.messageOrString())
         }

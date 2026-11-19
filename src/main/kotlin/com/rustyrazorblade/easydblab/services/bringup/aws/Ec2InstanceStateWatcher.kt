@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.bringup.aws
 
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceStateReader
@@ -63,14 +64,9 @@ class Ec2InstanceStateWatcher(
         what: String,
         read: () -> T,
     ): T? =
-        try {
-            read()
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: Exception) {
-            log.warn(e) { "Could not read $what; reading again next poll" }
-            null
-        }
+        runCatchingInterruptibly(read)
+            .onFailure { e -> log.warn(e) { "Could not read $what; reading again next poll" } }
+            .getOrNull()
 
     private fun readStates(batch: List<Watched>) {
         val found =

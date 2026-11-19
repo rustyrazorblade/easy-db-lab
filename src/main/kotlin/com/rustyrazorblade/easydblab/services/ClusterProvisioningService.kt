@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -292,7 +293,7 @@ class DefaultClusterProvisioningService(
             .filter { it.neededCount > 0 }
             .map { spec ->
                 thread(start = true, name = "create-${spec.serverType.name}") {
-                    try {
+                    runCatchingException {
                         val infraContext = instanceConfig.toInfrastructureContext()
                         createInstancesForType(spec, infraContext) { hosts ->
                             synchronized(ctx.stateLock) {
@@ -300,10 +301,7 @@ class DefaultClusterProvisioningService(
                                 ctx.callbacks.onHostsCreated(spec.serverType, hosts)
                             }
                         }
-                    } catch (e: Exception) {
-                        log.error(e) { "Failed to create ${spec.serverType.name} instances" }
-                        ctx.threadErrors["${spec.serverType.name} instances"] = e
-                    }
+                    }.onFailure { ctx.record("${spec.serverType.name} instances", it) }
                 }
             }
 
@@ -319,7 +317,7 @@ class DefaultClusterProvisioningService(
             return null
         }
         return thread(start = true, name = "create-EMR") {
-            try {
+            runCatchingException {
                 instancesReady.await()
                 val cluster =
                     emrProvisioningService.provisionEmrCluster(
@@ -340,10 +338,7 @@ class DefaultClusterProvisioningService(
                     ctx.emrCluster = cluster
                     ctx.callbacks.onEmrCreated(cluster)
                 }
-            } catch (e: Exception) {
-                log.error(e) { "Failed to create EMR cluster" }
-                ctx.threadErrors["EMR cluster"] = e
-            }
+            }.onFailure { ctx.record("EMR cluster", it) }
         }
     }
 
@@ -353,7 +348,7 @@ class DefaultClusterProvisioningService(
     ): Thread? {
         if (!servicesConfig.initConfig.opensearchEnabled) return null
         return thread(start = true, name = "create-OpenSearch") {
-            try {
+            runCatchingException {
                 val domain =
                     createOpenSearchDomain(
                         initConfig = servicesConfig.initConfig,
@@ -365,11 +360,17 @@ class DefaultClusterProvisioningService(
                     ctx.openSearchDomain = domain
                     ctx.callbacks.onOpenSearchCreated(domain)
                 }
-            } catch (e: Exception) {
-                log.error(e) { "Failed to create OpenSearch domain" }
-                ctx.threadErrors["OpenSearch domain"] = e
-            }
+            }.onFailure { ctx.record("OpenSearch domain", it) }
         }
+    }
+
+    /** Logs [failure] and records it under [resource], for the report read after the threads join. */
+    private fun ThreadContext.record(
+        resource: String,
+        failure: Throwable,
+    ) {
+        log.error(failure) { "Failed to create $resource" }
+        threadErrors[resource] = failure as? Exception ?: IllegalStateException("Creating $resource failed", failure)
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.beyla
 
+import io.fabric8.kubernetes.api.model.ConfigMap
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -44,7 +46,7 @@ class BeylaManifestBuilder(
     /**
      * Builds the Beyla ConfigMap containing beyla-config.yaml.
      */
-    fun buildConfigMap() =
+    fun buildConfigMap(): ConfigMap =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
@@ -66,7 +68,7 @@ class BeylaManifestBuilder(
      * Runs on all nodes with hostNetwork, hostPID, and privileged mode for eBPF access.
      */
     @Suppress("LongMethod")
-    fun buildDaemonSet() =
+    fun buildDaemonSet(): DaemonSet =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)

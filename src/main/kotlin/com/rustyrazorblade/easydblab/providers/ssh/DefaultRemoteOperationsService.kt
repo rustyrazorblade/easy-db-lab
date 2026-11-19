@@ -166,13 +166,10 @@ class DefaultRemoteOperationsService(
                 output = false,
             ).text.trim()
         check(staging.startsWith("$parent/")) { "Staging directory '$staging' is not under $parent" }
-        try {
+        runCatching {
             uploadDirectory(host, localDir, staging)
             executeRemotely(host, swapCommand(staging, remoteDir, owner), output = false)
-        } catch (e: Exception) {
-            executeRemotely(host, "sudo rm -rf $staging", output = false)
-            throw e
-        }
+        }.onFailure { executeRemotely(host, "sudo rm -rf $staging", output = false) }.getOrThrow()
     }
 
     /**

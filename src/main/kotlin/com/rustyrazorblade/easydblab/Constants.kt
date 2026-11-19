@@ -11,8 +11,6 @@ object Constants {
         const val SSH_KEY_MOUNT = "/secret.pem"
     }
 
-    // Server types
-
     /** Default EC2 and EMR instance types. All x86, because the account's AMIs are amd64 only. */
     object InstanceTypes {
         /** Database node: 4 vCPU, 32 GiB, local NVMe. */
@@ -27,6 +25,8 @@ object Constants {
         /** Spark (EMR) master and worker nodes. */
         const val SPARK = "m7i.xlarge"
     }
+
+    // Server types
 
     object Servers {
         const val DATABASE = "cassandra"

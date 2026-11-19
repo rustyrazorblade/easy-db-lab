@@ -7,7 +7,7 @@ production-readiness dimensions. Every scenario is independently runnable and ta
 
 > Coordination: this plan supersedes the ad-hoc round checklists. Per-round results are
 > posted to the active cqlite tracker issue (currently **pmcfadin/cqlite#2367**) and saved
-> to `clusters/RUN-FINDINGS-<round>.md`. easy-db-lab-side defects are **comment-only
+> to `$CLUSTER_DIR/RUN-FINDINGS-<round>.md`. easy-db-lab-side defects are **comment-only
 > upstream** on `rustyrazorblade/easy-db-lab` (never fixed in the cqlite tree).
 
 ---
@@ -47,19 +47,22 @@ Verify with `docker buildx imagetools inspect` or a GHCR index-accept `curl`.
 
 ## Environment prerequisites (verified findings, not guesses)
 
-- **AWS SSO:** `aws sso login --sso-session ehc-embark` (profile `edl`, acct 417835013894).
-  Clusters run in **`us-west-2`** though the profile default is `us-west-1` — pass
-  `--region us-west-2` on raw `aws` CLI calls. The token often **expires mid-`down`**; if
-  teardown orphans the VPC, re-login then clean up directly with the AWS CLI (the tool
-  caches the stale token). See the Teardown section.
-- **JDK 21:** point `JAVA_HOME` at a Java 21 install (for example SDKMAN's
-  `~/.sdkman/candidates/java/21.0.11-tem`) when a bare `java` is not a working JDK 21.
-- **Local jar:** build once with `./gradlew installDist` on branch `fix/735-jdbc-socks-proxy`
-  so the SOCKS-JDBC (#735) and Grafana core-plugin fixes are baked in — otherwise the
-  per-run `JAVA_TOOL_OPTIONS` SOCKS export and Grafana hotfix are needed.
-- **SOCKS for kit commands:** `export ALL_PROXY=socks5h://localhost:1080
-  HTTPS_PROXY=socks5h://localhost:1080 HTTP_PROXY=socks5h://localhost:1080` for all
-  `helm`/`kubectl` and raw `kubectl`. SSH-based `cassandra` commands don't need it.
+- **AWS credentials:** set `AWS_PROFILE` to your own profile and log in (for SSO,
+  `aws sso login --profile "$AWS_PROFILE"`). Clusters run in **`us-west-2`** — if your
+  profile defaults to another region, pass `--region us-west-2` on raw `aws` CLI calls. An
+  SSO token can **expire mid-`down`**; if teardown orphans the VPC, re-login then clean up
+  directly with the AWS CLI (the tool caches the stale token). See the Teardown section.
+- **JDK 21:** point `JAVA_HOME` at a Java 21 install when a bare `java` is not a working
+  JDK 21.
+- **easy-db-lab build:** use a build that includes the SOCKS-JDBC fix (#735) and the Grafana
+  core-plugin fix — otherwise the per-run `JAVA_TOOL_OPTIONS` SOCKS export and Grafana hotfix
+  are needed.
+- **Cluster tools go through the workspace wrappers:** put `$CLUSTER_DIR/bin` first on
+  `PATH` (P0.2). Its `kubectl`, `helm`, `curl` and `ssh` read the tunnel port from
+  `.socks5-proxy.env` and set the proxy for their own call only, and `kubectl`/`helm` use the
+  workspace kubeconfig. Never export `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` globally: the port
+  is random, and global variables would route `aws` and other non-cluster tools through the
+  tunnel. SSH-based `cassandra` commands need nothing extra.
 - **Shell cap:** long `easy-db-lab`/`kubectl rollout` commands exceed a 2-min shell cap —
   background them.
 - **`count(*)` full-ring** on the big table is slow (super-linear cold parse, #2385) — use
@@ -80,18 +83,18 @@ that workspace directory.
 
 ```bash
 CLUSTER_DIR="$(dirname "$EDB")"
-export AWS_PROFILE=edl
+export AWS_PROFILE=<your-profile>
 "$EDB" init cqlite-flight-<round> --db 3 --app 1 --instance i4i.xlarge --stress-instance m5.xlarge --up
 ```
 
 ### P0.2 Tunnels + verify
 
-SOCKS (`-D 1080`) is started by `up`; add the Grafana tunnel and export proxy vars:
+`up` starts the SOCKS tunnel. Put the workspace wrappers first on `PATH`, then add the
+Grafana tunnel:
 
 ```bash
-SSH="$CLUSTER_DIR/sshConfig"
-ssh -F "$SSH" -N -o ServerAliveInterval=30 -o ServerAliveCountMax=1000 -o ExitOnForwardFailure=yes -L 3000:localhost:3000 control0 &
-export KUBECONFIG="$CLUSTER_DIR/kubeconfig" ALL_PROXY=socks5h://localhost:1080 HTTPS_PROXY=socks5h://localhost:1080 HTTP_PROXY=socks5h://localhost:1080
+export PATH="$CLUSTER_DIR/bin:$PATH"   # kubectl, helm, curl, ssh: proxy + kubeconfig per call
+ssh -N -o ServerAliveInterval=30 -o ServerAliveCountMax=1000 -o ExitOnForwardFailure=yes -L 3000:localhost:3000 control0 &
 kubectl get nodes                       # all 5 Ready
 kubectl get pods | grep grafana         # Running 2/2, 0 restarts (validates core-plugin fix)
 ```
@@ -129,6 +132,8 @@ for v in 1 2 3; do "$EDB" cassandra cql "INSERT INTO ${KS}.tiny (key,value) VALU
 "$EDB" kit install trino --version 481
 # #2116: replace the two web-ui.* lines under additionalConfigProperties with an empty list
 perl -0pi -e 's/additionalConfigProperties:\n(  - .*\n)+/additionalConfigProperties: []\n/' "$CLUSTER_DIR/trino/values.yaml"
+# The edit depends on the chart's YAML shape: stop here unless it took.
+grep -q '^additionalConfigProperties: \[\]$' "$CLUSTER_DIR/trino/values.yaml" && ! grep -q 'web-ui' "$CLUSTER_DIR/trino/values.yaml" || { echo "web-ui workaround did not apply"; exit 1; }
 "$EDB" trino start                        # both coordinator + worker must reach 1/1 Ready
 ```
 
@@ -153,7 +158,12 @@ for cm in trino-coordinator trino-worker; do
   case "$cur" in *"$FLAG"*) : ;; *) kubectl patch cm "$cm" --type merge -p "$(jq -n --arg v "${cur}"$'\n'"${FLAG}" '{data:{"jvm.config":$v}}')";; esac
 done
 kubectl rollout restart deployment/trino-coordinator deployment/trino-worker
-# Confirm: flag in running pod's /etc/trino/jvm.config AND cqlite catalog still present.
+# Confirm the flag reached the RUNNING pods (the patch is lost if cqlite start was still rolling):
+for d in trino-coordinator trino-worker; do
+  kubectl rollout status "deployment/$d"
+  kubectl exec "deploy/$d" -- grep -qF -- "$FLAG" /etc/trino/jvm.config || { echo "$d lacks add-opens"; exit 1; }
+done
+"$EDB" trino sql "SHOW CATALOGS" | grep -qx cqlite || { echo "cqlite catalog missing"; exit 1; }
 ```
 
 > When the kit ships #2290 (`--add-opens` baked in) drop the manual patch — verify the flag
@@ -216,9 +226,9 @@ the prelude. All read scenarios run in **snapshot** mode unless they say `needs:
 
 #### 1.1 [G] Row-count parity — no silent 0/short
 - **dimension:** d1 · **needs:** none
-- **Steps:** `$EDB trino sql "SELECT count(*) FROM cqlite.$KS.keyvalue"` (or a bounded
-  `SELECT count(*) FROM (SELECT * FROM ... LIMIT N)` if the full ring is impractical — note
-  which). Compare to `nt tablestats` partition estimate × nodes.
+- **Steps:** `$EDB trino sql "SELECT count(*) FROM cqlite.$KS.keyvalue"` — always the full
+  count, so rounds stay comparable (a bounded `LIMIT` count cannot show parity); record its
+  wall time. Compare to `nt tablestats` partition estimate × nodes.
 - **Pass:** Trino count matches Cassandra within expected bounds; non-zero; no short count.
 - **On fail:** the query, both counts, the ticket's token range, flight logs on the split's host. (A1, A2)
 
@@ -456,19 +466,19 @@ the prelude. All read scenarios run in **snapshot** mode unless they say `needs:
 "$EDB" down --auto-approve
 ```
 
-**Verify AWS clean** (profile default is us-west-1, clusters are us-west-2):
+**Verify AWS clean** (clusters are us-west-2):
 
 ```bash
-aws ec2 describe-instances --region us-west-2 --profile edl \
+aws ec2 describe-instances --region us-west-2 \
   --filters "Name=tag:Name,Values=*cqlite-flight-<round>*" \
   "Name=instance-state-name,Values=running,pending,stopping,stopped" \
   --query 'length(Reservations[].Instances[])' --output text     # expect 0
-aws ec2 describe-vpcs --region us-west-2 --profile edl \
+aws ec2 describe-vpcs --region us-west-2 \
   --filters "Name=tag:Name,Values=cqlite-flight-<round>" --query 'length(Vpcs)' --output text   # expect 0
 ```
 
 **Token-expiry fallback (known gotcha):** if `down` fails mid-teardown with "Token is
-expired" and orphans the VPC, re-login (`aws sso login --sso-session ehc-embark`), then clean
+expired" and orphans the VPC, re-login (`aws sso login --profile "$AWS_PROFILE"`), then clean
 up **directly with the AWS CLI** (the easy-db-lab JVM caches the stale token so re-`down`
 keeps failing): `terminate-instances` → `wait instance-terminated` (releases ENIs) →
 detach+delete IGW → delete subnets → delete non-default SG → `delete-vpc`. Always
@@ -482,4 +492,4 @@ detach+delete IGW → delete subnets → delete non-default SG → `delete-vpc`.
 2. **Metrics captured** (the cited A/B/C/D metrics).
 3. **GO/NO-GO** — emitted only when the gate subset ran; **NO-GO if any `[G]` fails**.
 4. **Failure capture bundles** attached for any fail.
-5. Posted to the round tracker issue (currently #2367) + saved to `clusters/RUN-FINDINGS-<round>.md`.
+5. Posted to the round tracker issue (currently #2367) + saved to `$CLUSTER_DIR/RUN-FINDINGS-<round>.md`.

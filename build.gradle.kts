@@ -409,7 +409,7 @@ tasks.withType<Test>().configureEach {
 // EbpfExporterManifestBuilderTest) read packer/, and NodeTuningReservedPortsTest reads Kotlin
 // source text under src/main. Gradle can't infer those reads, so without declaring them an edit
 // to a scanned file (a test plan, a doc page, a comment) would be masked by an up-to-date or
-// cached test result.
+// cached test result. When a test starts reading another path off disk, add it here.
 val sourceTreesReadByTests =
     mapOf(
         "mainSourceTree" to "src/main",

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -77,7 +78,7 @@ class ControlNodeFailureBringUpTest {
             while (!release.get()) Thread.onSpinWait()
         }
         h.steps.scripts["control0 control-plane"] = { _, _ ->
-            terminating.await()
+            check(terminating.await(BringUpHarness.WAIT.toMillis(), TimeUnit.MILLISECONDS)) { "db1 was never terminated" }
             error("k3s.service failed")
         }
 

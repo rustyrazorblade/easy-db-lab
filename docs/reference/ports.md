@@ -77,7 +77,7 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 
 | Port | Kit | Service |
 |------|-----|---------|
-| 30815 | cqlite-flight | Arrow Flight gRPC (NodePort → 8815, node-local: each db node's IP reaches that node's own pod) |
+| 30816 | cqlite-flight | Arrow Flight gRPC (NodePort → 8815, node-local: each db node's IP reaches that node's own pod) |
 | 31211 | memcached | memcached client port (NodePort → 11211) |
 | 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
 | 30942 | ferrosa | CQL (NodePort → 9042, first pod) |

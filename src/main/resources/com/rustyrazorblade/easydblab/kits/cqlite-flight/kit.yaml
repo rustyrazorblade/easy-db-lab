@@ -8,8 +8,8 @@ endpoints:
   - name: "Arrow Flight gRPC"
     node-type: db
     # The NodePort of cqlite-flight-nodeport (daemonset.yaml.template). It is node-local
-    # (externalTrafficPolicy: Local): <db-node-ip>:30815 reaches that node's own Flight pod.
-    port: 30815
+    # (externalTrafficPolicy: Local): <db-node-ip>:30816 reaches that node's own Flight pod.
+    port: 30816
     type: native
 
 args:
@@ -20,7 +20,7 @@ args:
     required: true
   - flag: --flight-port
     variable: FLIGHT_PORT
-    description: "Arrow Flight gRPC container port. Clients connect to NodePort 30815 on each db node, which forwards to it"
+    description: "Arrow Flight gRPC container port. Clients connect to NodePort 30816 on each db node, which forwards to it"
     type: int
     default: "8815"
   - flag: --data-dir

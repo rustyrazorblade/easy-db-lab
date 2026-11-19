@@ -13,10 +13,10 @@ namespace:
 - **`nodeSelector: {type: db}`** — schedules exactly one pod per Cassandra node,
   matching the pattern used by the Cassandra sidecar and OTel collector DaemonSets
   already in this lab.
-- **Pod network, NodePort 30815** — the pods run on the pod network (no
+- **Pod network, NodePort 30816** — the pods run on the pod network (no
   `hostNetwork`, no `hostPort`). The Flight gRPC port is published by the
-  `cqlite-flight-nodeport` Service on NodePort **30815** with
-  `externalTrafficPolicy: Local`, so `<db-node-private-ip>:30815` always reaches
+  `cqlite-flight-nodeport` Service on NodePort **30816** with
+  `externalTrafficPolicy: Local`, so `<db-node-private-ip>:30816` always reaches
   **that node's own pod** — the only pod holding that node's SSTables. This keeps
   the node-IP-addressing model the connector needs from Sidecar-based topology
   discovery. (With the default `Cluster` policy, kube-proxy would send a request to
@@ -48,7 +48,7 @@ installed into a Grafana folder named after the kit on `start`.
 | Flag | Variable | Default | Description |
 |------|----------|---------|--------------|
 | `--tag` | `TAG` | (required) | `cqlite-flight` image tag, for example `v0.18.0`. Required, so runs are comparable. |
-| `--flight-port` | `FLIGHT_PORT` | `8815` | Arrow Flight gRPC container port. Clients connect to NodePort 30815 on each db node, which forwards to it. |
+| `--flight-port` | `FLIGHT_PORT` | `8815` | Arrow Flight gRPC container port. Clients connect to NodePort 30816 on each db node, which forwards to it. |
 | `--data-dir` | `CASSANDRA_DATA_DIR` | `/mnt/db1/cassandra/data` | Host path to the Cassandra data dir, mounted read-only. **Exactly one** — see [Multi-disk nodes](#multi-disk-nodes-single-data-dir-limitation-2114). |
 | `--data-root` | `CASSANDRA_DATA_ROOT` | `/mnt` | Host path under which per-disk data dirs live; the `detect-multidisk` init container scans it read-only and warns on more than one candidate (#2114). |
 | `--data-gid` | `CASSANDRA_DATA_GID` | `999` | Host GID that owns the Cassandra data dir; added as a pod `supplementalGroup`. |
@@ -112,7 +112,7 @@ making the gap visible):
 
 - Keep the queried tables on the served disk.
 - Run one `cqlite-flight` DaemonSet per disk, each with its own Service on its own
-  NodePort (this kit publishes one, 30815).
+  NodePort (this kit publishes one, 30816).
 - There is deliberately **no way to silence the check entirely** — on a genuine
   single-disk node it is already a quiet one-line `OK`, and every other state
   is exactly the misconfiguration the detector exists to surface.
@@ -198,7 +198,7 @@ never by resource name, matching the issue's requirement.
 - **Host directory permissions** for the Cassandra data dir were not verified
   live (see [uid 10001](#uid-10001-and-the-cassandra-data-dir) above).
 - **Trino reachability** assumes the trino-connector resolves each replica's
-  `cqlite-flight` endpoint as `<db-node-private-ip>:30815` (consistent with the
+  `cqlite-flight` endpoint as `<db-node-private-ip>:30816` (consistent with the
   connector's stated Sidecar-based topology discovery). If the connector instead
   expects a stable per-pod DNS name, add a headless `Service` — not done here
   since it doesn't match the "replica's endpoint" model described in

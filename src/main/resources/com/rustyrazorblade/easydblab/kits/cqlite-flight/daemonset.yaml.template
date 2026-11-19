@@ -2,7 +2,7 @@
 #
 # Runs on the pod network. Each pod serves only the SSTables of the db node it runs on, so a
 # client must reach one particular node's pod: the NodePort Service at the end of this file
-# uses externalTrafficPolicy: Local, which sends <db-node-ip>:30815 to the pod on that node and
+# uses externalTrafficPolicy: Local, which sends <db-node-ip>:30816 to the pod on that node and
 # never to another node's. Telemetry goes to the OTel collector on the pod's node, at the
 # downward-API host IP (the collector listens on the host network).
 #
@@ -235,7 +235,7 @@ spec:
             path: "__CASSANDRA_DATA_ROOT__"
             type: Directory
 ---
-# The Flight endpoint. externalTrafficPolicy: Local keeps <db-node-ip>:30815 on that node's own
+# The Flight endpoint. externalTrafficPolicy: Local keeps <db-node-ip>:30816 on that node's own
 # pod, which is the only pod holding that node's SSTables; with Cluster, kube-proxy would send it
 # to any node's pod and a read would silently return another node's data.
 apiVersion: v1
@@ -255,5 +255,5 @@ spec:
     - name: flight-grpc
       port: 8815
       targetPort: flight-grpc
-      nodePort: 30815
+      nodePort: 30816
       protocol: TCP

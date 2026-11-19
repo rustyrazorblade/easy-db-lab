@@ -17,7 +17,7 @@ if ! kubectl rollout status daemonset/cqlite-flight --namespace default --timeou
   exit 1
 fi
 
-echo "cqlite-flight is ready — Arrow Flight gRPC on <db-node-ip>:30815 (NodePort, node-local: each db node's own pod)."
+echo "cqlite-flight is ready — Arrow Flight gRPC on <db-node-ip>:30816 (NodePort, node-local: each db node's own pod)."
 echo "Read path: live Cassandra data dir mount (__CASSANDRA_DATA_DIR__). Sidecar-snapshot reads are"
 echo "driven by the trino-connector's ticket, not by this kit."
 echo

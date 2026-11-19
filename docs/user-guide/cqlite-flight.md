@@ -44,7 +44,7 @@ easy-db-lab cqlite-flight status
 `cqlite-flight start` rolls out one Arrow Flight pod per db node (a DaemonSet with
 `nodeSelector: type=db`) and mounts each node's Cassandra data directory read-only into
 its pod. The pods run on the pod network. Clients reach the Flight gRPC port through the
-`cqlite-flight-nodeport` Service at `<db-node-private-ip>:30815`. That Service is node-local
+`cqlite-flight-nodeport` Service at `<db-node-private-ip>:30816`. That Service is node-local
 (`externalTrafficPolicy: Local`): a db node's IP always reaches that node's own pod, because
 that pod is the only one holding the node's SSTables.
 
@@ -60,7 +60,7 @@ cannot read a database that runs in Kubernetes pods with its own volumes.
 | Flag | Default | Description |
 |---|---|---|
 | `--tag` | (required) | `cqlite-flight` image tag (`ghcr.io/pmcfadin/cqlite-flight:<tag>`), for example `v0.18.0`. Required, so every run names the build it tests; pass `dev` or `latest` only to follow a moving tag on purpose. Without it, `kit install` fails with `Missing required option: --tag` |
-| `--flight-port` | `8815` | Arrow Flight gRPC container port; clients connect to NodePort 30815, which forwards to it |
+| `--flight-port` | `8815` | Arrow Flight gRPC container port; clients connect to NodePort 30816, which forwards to it |
 | `--data-dir` | `/mnt/db1/cassandra/data` | Host path to the database data directory, mounted read-only. Serves **exactly one** directory |
 | `--data-root` | `/mnt` | Host path under which per-disk data dirs live; an init container scans it and warns on multi-disk layouts. It must exist: a missing one fails the pod at start |
 | `--data-gid` | `999` | Host GID that owns the data directory; added as a pod `supplementalGroup` |

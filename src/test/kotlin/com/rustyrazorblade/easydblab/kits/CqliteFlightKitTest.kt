@@ -116,7 +116,7 @@ class CqliteFlightKitTest : BaseKoinTest() {
 
     private companion object {
         const val MANIFEST = "daemonset.yaml.template"
-        const val FLIGHT_NODE_PORT = 30815
+        const val FLIGHT_NODE_PORT = 30816
         val SELECTOR = Regex("""LABELS="(easydblab/kit=[^"]+)"""")
     }
 }

@@ -34,14 +34,15 @@ class GateFile(
         // A temporary file is created owner-only; the Loki and Tempo gates run as another user.
         val temporary = Files.createTempFile(dir, ".$VALID_UNTIL", ".tmp")
         // The loop retries a failed grant on every renewal, so a failure must not leave its file.
-        try {
+        // Any failure removes the temporary file; a cleanup that fails too is kept as suppressed, so
+        // the error that made the cleanup necessary is the one the caller sees.
+        runCatching {
             Files.writeString(temporary, "${validUntil.epochSeconds}\n")
             Files.setPosixFilePermissions(temporary, WORLD_READABLE)
             Files.move(temporary, dir.resolve(VALID_UNTIL), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } catch (e: Exception) {
-            Files.deleteIfExists(temporary)
-            throw e
-        }
+        }.onFailure { original ->
+            runCatching { Files.deleteIfExists(temporary) }.onFailure(original::addSuppressed)
+        }.getOrThrow()
     }
 
     override fun revoke() {

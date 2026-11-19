@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
@@ -15,6 +16,7 @@ import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DeleteSnapshotRequest
 import software.amazon.awssdk.services.ec2.model.DeregisterImageRequest
@@ -425,6 +427,41 @@ internal class AMIServiceTest {
         whenever(mockEc2Client.deregisterImage(any<DeregisterImageRequest>())).thenThrow(IllegalStateException("bug"))
 
         assertThatThrownBy { amiService.deleteWithSnapshots(ami) }.isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun `validateAMI reports an AWS failure while querying AMIs as an AWSServiceError`() {
+        val denied =
+            Ec2Exception
+                .builder()
+                .statusCode(403)
+                .message("denied")
+                .build()
+        whenever(mockAccountIdentity.getAccountId()).thenThrow(denied)
+
+        assertThatThrownBy { amiService.validateAMI("", Arch.AMD64, null) }
+            .isInstanceOf(AMIValidationException.AWSServiceError::class.java)
+            .hasMessageContaining("Failed to query AMIs")
+            .hasCause(denied)
+    }
+
+    @Test
+    fun `validateAMI reports a client-side AWS failure while querying AMIs as an AWSServiceError`() {
+        val unreachable = SdkClientException.create("unreachable")
+        whenever(mockAccountIdentity.getAccountId()).thenThrow(unreachable)
+
+        assertThatThrownBy { amiService.validateAMI("", Arch.AMD64, null) }
+            .isInstanceOf(AMIValidationException.AWSServiceError::class.java)
+            .hasCause(unreachable)
+    }
+
+    @Test
+    fun `validateAMI lets a failure that is not an AWS failure propagate`() {
+        whenever(mockAccountIdentity.getAccountId()).thenThrow(IllegalStateException("bug"))
+
+        assertThatThrownBy { amiService.validateAMI("", Arch.AMD64, null) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("bug")
     }
 
     // ===== Test Data Builders =====

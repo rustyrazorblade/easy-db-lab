@@ -435,7 +435,7 @@ class AMIService(
                 .decorateSupplier(validationRetry) {
                     listPrivateAMIs(pattern, accountIdentity.getAccountId())
                 }.get()
-        } catch (e: Exception) {
+        } catch (e: SdkException) {
             throw AMIValidationException.AWSServiceError(
                 "Failed to query AMIs: ${e.message}",
                 e,

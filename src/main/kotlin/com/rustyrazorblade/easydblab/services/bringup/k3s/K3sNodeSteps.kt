@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.isSshNotReady
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.services.AgentStartMode
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.K3sClusterService
@@ -36,13 +37,11 @@ class K3sNodeSteps(
     private val state: ClusterStateWriter,
 ) : NodeSteps {
     override fun sshAnswers(host: ClusterHost): Boolean =
-        try {
+        runCatchingInterruptibly {
             // Only that the host answers matters, so its output is not echoed.
             remoteOps.executeRemotely(host.toHost(), SSH_PROBE, output = false)
             true
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: Exception) {
+        }.getOrElse { e ->
             if (!isSshNotReady(e)) throw e
             false
         }

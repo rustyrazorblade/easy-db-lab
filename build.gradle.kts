@@ -410,6 +410,7 @@ tasks.withType<Test>().configureEach {
 // source text under src/main. Gradle can't infer those reads, so without declaring them an edit
 // to a scanned file (a test plan, a doc page, a comment) would be masked by an up-to-date or
 // cached test result. When a test starts reading another path off disk, add it here.
+// When a tree or file is removed from the repo, remove its entry too: a missing input fails the task.
 val sourceTreesReadByTests =
     mapOf(
         "mainSourceTree" to "src/main",

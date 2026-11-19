@@ -6,7 +6,7 @@ production-readiness dimensions. Every scenario is independently runnable and ta
 `[G]` (gate — fast per-round GO/NO-GO) or `[E]` (extended — fuller audit).
 
 > Coordination: this plan supersedes the ad-hoc round checklists. Per-round results are
-> posted to the active cqlite tracker issue (currently **pmcfadin/cqlite#2367**) and saved
+> posted to the round tracker issue `<tracker-issue>` (set per round in Pinned assets) and saved
 > to `$CLUSTER_DIR/RUN-FINDINGS-<round>.md`. easy-db-lab-side defects are **comment-only
 > upstream** on `rustyrazorblade/easy-db-lab` (never fixed in the cqlite tree).
 
@@ -39,6 +39,7 @@ scenarios only after `$EDB down --auto-approve` and a fresh prelude.
 | cqlite-flight image | `ghcr.io/pmcfadin/cqlite-flight:<round>@sha256:<INDEX-digest>` (multi-arch INDEX digest, never a child manifest) |
 | Trino connector | `in.mcfad:cqlite-trino:<version>` (verify live on Maven Central) |
 | Trino | image tag `481` (SPI pin) |
+| Tracker issue | `<tracker-issue>` (the cqlite issue this round reports to, e.g. `<owner>/cqlite#<n>`) |
 | Cluster shape | 3× `i4i.xlarge` db + 1× `m5.xlarge` app (stress/loadtest), Cassandra 5.0.x |
 
 **Digest discipline:** resolve the multi-arch **INDEX** digest, never an arch child
@@ -132,7 +133,7 @@ for v in 1 2 3; do "$EDB" cassandra cql "INSERT INTO ${KS}.tiny (key,value) VALU
 
 ```bash
 "$EDB" kit install trino --version 481
-# #2116: replace the two web-ui.* lines under additionalConfigProperties with an empty list
+# #2116: replace the whole additionalConfigProperties list (every item, including the web-ui.* lines) with an empty list
 perl -0pi -e 's/additionalConfigProperties:\n(  - .*\n)+/additionalConfigProperties: []\n/' "$CLUSTER_DIR/trino/values.yaml"
 # The edit depends on the chart's YAML shape: stop here unless it took.
 grep -q '^additionalConfigProperties: \[\]$' "$CLUSTER_DIR/trino/values.yaml" && ! grep -q 'web-ui' "$CLUSTER_DIR/trino/values.yaml" || { echo "web-ui workaround did not apply"; exit 1; }
@@ -483,9 +484,38 @@ aws ec2 describe-vpcs --region us-west-2 \
 **Token-expiry fallback (known gotcha):** if `down` fails mid-teardown with "Token is
 expired" and orphans the VPC, re-login (`aws sso login --profile "$AWS_PROFILE"`), then clean
 up **directly with the AWS CLI** (the easy-db-lab JVM caches the stale token so re-`down`
-keeps failing): `terminate-instances` → `wait instance-terminated` (releases ENIs) →
-detach+delete IGW → delete subnets → delete non-default SG → `delete-vpc`. Always
-`--region us-west-2`.
+keeps failing). Look the VPC up by the same `Name` tag the verify step uses, stop unless
+exactly one VPC matches, and scope every delete to that VPC id:
+
+```bash
+R="--region us-west-2"
+VPC_ID=$(aws ec2 describe-vpcs $R --filters "Name=tag:Name,Values=cqlite-flight-<round>" \
+  --query 'Vpcs[].VpcId' --output text)
+[ "$(echo "$VPC_ID" | wc -w | tr -d ' ')" = 1 ] || { echo "expected exactly one VPC, got: '$VPC_ID'"; exit 1; }
+echo "cleaning VPC $VPC_ID"
+
+# Instances in this VPC only; waiting for termination releases their ENIs.
+IDS=$(aws ec2 describe-instances $R --filters "Name=vpc-id,Values=$VPC_ID" \
+  "Name=instance-state-name,Values=running,pending,stopping,stopped" \
+  --query 'Reservations[].Instances[].InstanceId' --output text)
+[ -n "$IDS" ] && aws ec2 terminate-instances $R --instance-ids $IDS \
+  && aws ec2 wait instance-terminated $R --instance-ids $IDS
+
+for IGW in $(aws ec2 describe-internet-gateways $R --filters "Name=attachment.vpc-id,Values=$VPC_ID" \
+    --query 'InternetGateways[].InternetGatewayId' --output text); do
+  aws ec2 detach-internet-gateway $R --internet-gateway-id "$IGW" --vpc-id "$VPC_ID"
+  aws ec2 delete-internet-gateway $R --internet-gateway-id "$IGW"
+done
+for SUBNET in $(aws ec2 describe-subnets $R --filters "Name=vpc-id,Values=$VPC_ID" \
+    --query 'Subnets[].SubnetId' --output text); do
+  aws ec2 delete-subnet $R --subnet-id "$SUBNET"
+done
+for SG in $(aws ec2 describe-security-groups $R --filters "Name=vpc-id,Values=$VPC_ID" \
+    --query "SecurityGroups[?GroupName!='default'].GroupId" --output text); do
+  aws ec2 delete-security-group $R --group-id "$SG"
+done
+aws ec2 delete-vpc $R --vpc-id "$VPC_ID"
+```
 
 ---
 
@@ -495,4 +525,4 @@ detach+delete IGW → delete subnets → delete non-default SG → `delete-vpc`.
 2. **Metrics captured** (the cited A/B/C/D metrics).
 3. **GO/NO-GO** — emitted only when the gate subset ran; **NO-GO if any `[G]` fails**.
 4. **Failure capture bundles** attached for any fail.
-5. Posted to the round tracker issue (currently #2367) + saved to `$CLUSTER_DIR/RUN-FINDINGS-<round>.md`.
+5. Posted to the round tracker issue `<tracker-issue>` + saved to `$CLUSTER_DIR/RUN-FINDINGS-<round>.md`.

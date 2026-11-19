@@ -25,7 +25,7 @@ namespace:
   `/mnt/db1/cassandra/data`, matching `cassandra.service`'s
   `data_file_directories`), mounted at `/data` in the container and passed to
   `--data-dir`.
-- **Image**: `ghcr.io/pmcfadin/cqlite-flight:<tag>` (default `latest`).
+- **Image**: `ghcr.io/pmcfadin/cqlite-flight:<tag>` (`--tag` is required, so every run names the build it tests; pass `dev` or `latest` only to follow a moving tag on purpose).
 
 **Works only where the database runs on the node.** The kit reads the data
 directory straight off the db node's filesystem through a read-only `hostPath`
@@ -47,7 +47,7 @@ installed into a Grafana folder named after the kit on `start`.
 
 | Flag | Variable | Default | Description |
 |------|----------|---------|--------------|
-| `--tag` | `TAG` | `latest` | `cqlite-flight` image tag. |
+| `--tag` | `TAG` | (required) | `cqlite-flight` image tag, for example `v0.18.0`. Required, so runs are comparable. |
 | `--flight-port` | `FLIGHT_PORT` | `8815` | Arrow Flight gRPC container port. Clients connect to NodePort 30815 on each db node, which forwards to it. |
 | `--data-dir` | `CASSANDRA_DATA_DIR` | `/mnt/db1/cassandra/data` | Host path to the Cassandra data dir, mounted read-only. **Exactly one** — see [Multi-disk nodes](#multi-disk-nodes-single-data-dir-limitation-2114). |
 | `--data-root` | `CASSANDRA_DATA_ROOT` | `/mnt` | Host path under which per-disk data dirs live; the `detect-multidisk` init container scans it read-only and warns on more than one candidate (#2114). |
@@ -91,24 +91,21 @@ unchanged. If the lone candidate is some *other* `*/cassandra/data` dir (wrong
 `OK` (still exit 0).
 
 **Zero candidates is never a silent OK.** The detection volume uses `hostPath`
-`type: DirectoryOrCreate` — deliberately, so a missing `--data-root` can never
-block the rollout (the detector is non-fatal by contract). The benign side
-effect is that a **mistyped `--data-root` is auto-created as an empty directory
-on the node** and scanned as empty. The init script therefore treats zero
-candidates as a *cannot-verify* condition and warns loudly, distinguishing two
-cases:
+`type: Directory`, like the data dir, so a **missing or mistyped `--data-root`
+fails the pod at start**: `kubectl describe pod` shows the hostPath type check
+failure and `start` fails when the rollout times out. Nothing is created on the
+node. When the root exists, the init script treats zero candidates as a
+*cannot-verify* condition and warns loudly, distinguishing two cases:
 
-- root has **no entries at all** → "data root ABSENT or EMPTY" — likely a wrong
-  `--data-root`, or the hostPath was auto-created; the layout check is
-  meaningless until it's fixed.
+- root has **no entries at all** → "data root EMPTY" — likely a wrong
+  `--data-root`; the layout check is meaningless until it's fixed.
 - root is **non-empty but no `<root>/*/cassandra/data` dir exists** → the
   node's layout doesn't match the convention the detector scans; point
   `--data-root` at the directory holding the per-disk mounts.
 
-Both warn to the init container's log and still exit 0. In short: a wrong
-`--data-root` shows up as a loud cannot-verify warning (plus a leftover empty
-dir on the node), never as a rollout failure and never as a false single-disk
-`OK`.
+Both warn to the init container's log and still exit 0. In short: a missing
+`--data-root` fails the start, and an existing but wrong one shows up as a loud
+cannot-verify warning, never as a false single-disk `OK`.
 
 **Remedies** (the server side is out of scope for this kit — #2114 covers only
 making the gap visible):
@@ -131,7 +128,7 @@ there is no `kit source add` step. Its declared `args:` are substituted normally
 install time:
 
 ```bash
-easy-db-lab kit install cqlite-flight --tag v0.13.0
+easy-db-lab kit install cqlite-flight --tag v0.18.0
 easy-db-lab cqlite-flight start
 ```
 

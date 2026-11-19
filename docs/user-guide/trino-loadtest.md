@@ -1,12 +1,15 @@
 # trino-loadtest
 
 The `trino-loadtest` kit is a bench kit that drives concurrent read load against a running
-[Trino](install-trino.md) kit's `cqlite` catalog and reports throughput and latency. (That
-`cqlite` catalog is a planned capability, not shipped yet — its plugin delivery is deferred
-to `pmcfadin/cqlite#2869`, so this kit cannot run end-to-end until #2869 lands.) It
+[Trino](install-trino.md) kit's `cqlite` catalog and reports throughput and latency. It
 runs a fixed-size pool of persistent Trino connections, each issuing queries against
 `cqlite.<keyspace>.<table>` (or a custom query file) for a configured duration, and pushes
 per-interval stats (qps, rows/s, p50/p99 latency, error rate) to the metrics store (Mimir).
+
+```admonish note title="Waiting on the cqlite catalog"
+The Trino kit's `cqlite` catalog is planned, not shipped: its connector plugin delivery is
+deferred to `pmcfadin/cqlite#2869`. Until it lands, this kit cannot run end to end.
+```
 
 ```admonish warning title="Offline, read-only, flushed-SSTables-only load"
 This kit only reads. It issues `SELECT` queries against the `cqlite` catalog, which reads
@@ -26,9 +29,7 @@ database:
 
 - Cluster is up (`easy-db-lab up`)
 - A [Trino](install-trino.md) kit is installed and running, with its
-  [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads) wired. That
-  catalog is a planned capability, not shipped yet — its plugin delivery is deferred to
-  `pmcfadin/cqlite#2869`, so this kit cannot run end-to-end until #2869 lands.
+  [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads) wired.
 - The target keyspace/table has flushed SSTables to read
 
 ## Quick Start
@@ -64,6 +65,24 @@ Install-time:
 | `--duration` | `60` | Load duration in seconds |
 | `--interval` | `10` | Interval stats reporting period in seconds |
 | `--traceparent` | `false` | Attach a random W3C traceparent header to every query, for end-to-end Tempo traces |
+| `--snapshot-check-cmd` | (unset) | Command run with `bash -c` on your machine after the run, printing the raw `nodetool listsnapshots` listing of every db node; the run fails if any `cqlite-` snapshot remains |
+| `--snapshot-check-timeout-s` | `60` | Whole seconds `--snapshot-check-cmd` may run before the check fails |
+
+## Snapshot-leak check
+
+A cqlite snapshot-mode read takes a per-query snapshot on the db node and must remove it.
+`--snapshot-check-cmd` checks that none is left. The command runs on your machine, not in
+the driver pod, after the load finishes. Your machine reaches the db nodes through the
+workspace `ssh` wrapper, so a loop over the node aliases works:
+
+```bash
+easy-db-lab trino-loadtest-trino start --ks my_keyspace --tbl my_table \
+  --snapshot-check-cmd 'for h in db0 db1 db2; do ssh "$h" nodetool listsnapshots; done'
+```
+
+Print the raw listing and do not pipe it through `grep`. The kit matches `cqlite-` names
+itself, and a command that exits non-zero fails the check. That includes `grep` on a clean
+cluster. If the check is unset, the run reports `snapshot-leak check: SKIPPED`.
 
 ## Metrics
 
@@ -82,6 +101,5 @@ instance's driver pods and ConfigMaps.
 
 ## Related kits
 
-- The [Trino](install-trino.md) kit's `cqlite` catalog — the catalog this kit queries
-  (plugin delivery deferred to `pmcfadin/cqlite#2869`).
+- The [Trino](install-trino.md) kit's `cqlite` catalog — the catalog this kit queries.
 - [cqlite-flight](cqlite-flight.md) — the Arrow Flight data plane behind that catalog.

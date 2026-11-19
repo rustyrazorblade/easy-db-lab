@@ -941,8 +941,8 @@ tasks.register<Exec>("testProfilingReconcile") {
 }
 
 // Unit-test the trino-loadtest kit's driver.py pure logic (argument-error
-// contract, percentile math, cumulative-stats separation, snapshot-leak
-// parsing). The driver imports `trino` lazily, so the stdlib `unittest` runner
+// contract, percentile math, cumulative-stats separation, interval-line
+// format). The driver imports `trino` lazily, so the stdlib `unittest` runner
 // exercises every function under test with no third-party package and no
 // cluster. The tests live OUTSIDE the shipped kit resource dir (the kit ships
 // driver.py only), so this task points the runner at src/test/python.
@@ -950,6 +950,18 @@ tasks.register<Exec>("testTrinoLoadtestDriver") {
     group = "Verification"
     description = "Unit-test the trino-loadtest kit driver.py pure logic"
     workingDir = file(".")
+    // Fails, not skips, without python3: check is the gate, and a skipped driver test passes it.
+    // Bound at configuration time, so the action reaches no script object (configuration cache).
+    val searchPath = System.getenv("PATH").orEmpty()
+    doFirst {
+        val found =
+            searchPath
+                .split(File.pathSeparator)
+                .any { File(it, "python3").canExecute() }
+        if (!found) {
+            throw GradleException("testTrinoLoadtestDriver needs python3 on PATH; install Python 3 and run it again")
+        }
+    }
     commandLine =
         listOf(
             "python3",

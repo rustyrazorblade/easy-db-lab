@@ -68,6 +68,18 @@ The `trino-loadtest` kit SHALL drive concurrent read load against a running Trin
 - **WHEN** the `trino-loadtest` built-in kit resources are listed
 - **THEN** `driver.py` is present and `test_driver.py` is absent
 
+#### Scenario: Snapshot-leak check runs where the db nodes are reachable
+- **WHEN** `trino-loadtest start` is given `--snapshot-check-cmd`
+- **THEN** the command runs on the operator's machine after the driver pod exits (never inside the pod), the run fails when its output lists a `cqlite-` snapshot, when it exits non-zero, or when it outlives `--snapshot-check-timeout-s` (its whole process group is then killed), and an unset check is reported as SKIPPED
+
+#### Scenario: Runs are reproducible
+- **WHEN** `cqlite-flight` is installed with no `--tag`
+- **THEN** `kit install` fails with a missing-required-option error and installs nothing
+
+#### Scenario: The load driver's client is pinned
+- **WHEN** `trino-loadtest` starts its driver pod
+- **THEN** the `trino` client is installed at a pinned version
+
 ### Requirement: Lifecycle teardown restores prior state
 
 Each kit's stop/uninstall SHALL remove its resources and return the catalog list and cluster state to their prior condition.

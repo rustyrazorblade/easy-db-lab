@@ -15,9 +15,9 @@ endpoints:
 args:
   - flag: --tag
     variable: TAG
-    description: "cqlite-flight image tag (ghcr.io/pmcfadin/cqlite-flight:<tag>)"
+    description: "cqlite-flight image tag (ghcr.io/pmcfadin/cqlite-flight:<tag>), for example v0.18.0. Required, so every run names the build it tests; pass dev or latest only to follow a moving tag on purpose"
     type: string
-    default: "latest"
+    required: true
   - flag: --flight-port
     variable: FLIGHT_PORT
     description: "Arrow Flight gRPC container port. Clients connect to NodePort 30815 on each db node, which forwards to it"
@@ -30,7 +30,7 @@ args:
     default: "/mnt/db1/cassandra/data"
   - flag: --data-root
     variable: CASSANDRA_DATA_ROOT
-    description: "Host path under which per-disk Cassandra data dirs live (e.g. /mnt, with /mnt/db1, /mnt/db2). An init container scans this read-only and prints a LOUD, non-fatal warning on more than one EXISTING candidate data dir — empty ones count, they receive SSTables later (multi-disk — silent partial results, issue #2114) — AND on zero candidates (absent/empty/mismatched root = cannot-verify, never a silent OK) AND on a lone candidate that is not the served --data-dir. Exactly one existing candidate matching --data-dir = quiet OK"
+    description: "Host path under which per-disk Cassandra data dirs live (e.g. /mnt, with /mnt/db1, /mnt/db2). An init container scans this read-only and prints a LOUD, non-fatal warning on more than one EXISTING candidate data dir — empty ones count, they receive SSTables later (multi-disk — silent partial results, issue #2114) — AND on zero candidates (empty/mismatched root = cannot-verify, never a silent OK) AND on a lone candidate that is not the served --data-dir. Exactly one existing candidate matching --data-dir = quiet OK. The root must exist: a missing one fails the pod at start"
     type: string
     default: "/mnt"
   - flag: --data-gid

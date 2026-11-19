@@ -88,19 +88,18 @@ spec:
                 count=$((count + 1))
               done
               if [ "$count" -eq 0 ]; then
-                # Zero candidates is NEVER a clean OK (roborev on #2114): the
-                # root volume is DirectoryOrCreate, so a missing/mistyped
-                # --data-root is silently auto-created EMPTY on the node and
-                # must not masquerade as a verified single-disk layout.
-                # Distinguish WHY the scan came up empty:
+                # Zero candidates is NEVER a clean OK (roborev on #2114). A
+                # missing --data-root never gets here: its hostPath volume is
+                # type Directory, so the pod fails to start instead. An
+                # existing but empty root, or one with another layout, is
+                # warned about. Distinguish WHY the scan came up empty:
                 if [ -z "$(ls -A "$ROOT" 2>/dev/null)" ]; then
                   {
                     echo "#################################################################"
-                    echo "## WARNING (issue #2114): data root ABSENT or EMPTY            ##"
+                    echo "## WARNING (issue #2114): data root EMPTY                      ##"
                     echo "#################################################################"
-                    echo "--data-root (${ROOT_HOST}) contains no entries at all — likely a"
-                    echo "wrong --data-root, or the hostPath was auto-created empty on this"
-                    echo "node (the mount is DirectoryOrCreate so rollout never blocks)."
+                    echo "--data-root (${ROOT_HOST}) exists but contains no entries at all"
+                    echo "— likely a wrong --data-root."
                     echo "The detector CANNOT verify this node's disk layout — a multi-disk"
                     echo "configuration would NOT be caught. Fix --data-root so the check"
                     echo "is meaningful. Serving ${SERVED} regardless."
@@ -180,7 +179,7 @@ spec:
       containers:
         - name: cqlite-flight
           image: "ghcr.io/pmcfadin/cqlite-flight:__TAG__"
-          # Always: the harness iterates on MOVING tags (dev, latest). The k8s
+          # Always: --tag may name a MOVING tag (dev, latest) on purpose. The k8s
           # default (IfNotPresent for non-latest tags) would pin the first pull
           # of a reused tag forever and silently ignore rebuilt dev images.
           imagePullPolicy: Always
@@ -227,16 +226,14 @@ spec:
             path: "__CASSANDRA_DATA_DIR__"
             type: Directory
         # Read-only detection mount for the #2114 multi-disk check init container.
-        # DirectoryOrCreate (not Directory) so a missing --data-root never fails
-        # pod startup (the detector is non-fatal BY CONTRACT). Benign side effect
-        # (roborev): a mistyped --data-root is auto-created as an empty dir on
-        # the node; the init script detects that (root with zero entries) and
-        # prints a LOUD "ABSENT or EMPTY — cannot verify" warning instead of a
-        # false single-disk OK.
+        # Directory, like the data dir: a mistyped --data-root fails the pod at
+        # start (kubectl describe pod shows "hostPath type check failed ... is not
+        # a directory") and the rollout times out, instead of the kubelet creating
+        # the mistyped path on the node as root.
         - name: cassandra-data-root
           hostPath:
             path: "__CASSANDRA_DATA_ROOT__"
-            type: DirectoryOrCreate
+            type: Directory
 ---
 # The Flight endpoint. externalTrafficPolicy: Local keeps <db-node-ip>:30815 on that node's own
 # pod, which is the only pod holding that node's SSTables; with Cluster, kube-proxy would send it

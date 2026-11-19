@@ -30,6 +30,7 @@ write_kit_stubs "${WORK}/stubs"
 mkdir -p "${WORK}/kit/bin"
 cp "${KIT_SRC}/bin/start.sh.template" "${WORK}/kit/bin/start.sh"
 cp "${KIT_SRC}/driver.py" "${WORK}/kit/driver.py"
+cp -R "${KIT_SRC}/lib" "${WORK}/kit/"
 
 fail() {
   echo "FAIL: ${current_test}: $1"
@@ -114,12 +115,10 @@ test_the_driver_configmap_carries_the_role_labels() {
 
 test_driver_flags_are_passed_as_separate_arguments() {
   start_test "argv"
-  run_script TRINO_LOADTEST_SNAPSHOT_CHECK_CMD="nodetool listsnapshots | cat" TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S=30 \
-    || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
   local call
   call="$(run_call)"
-  for expected in "--host 10.0.0.9 --port 8080" "--ks ks1 --tbl t1" "--threads 4 --duration 20 --interval 10" \
-    "--snapshot-check-cmd nodetool listsnapshots | cat --snapshot-check-timeout-s 30"; do
+  for expected in "--host 10.0.0.9 --port 8080" "--ks ks1 --tbl t1" "--threads 4 --duration 20 --interval 10"; do
     grep -Fq -- "${expected}" <<< "${call}" || fail "expected '${expected}' in: ${call}"
   done
   if grep -q -- '--traceparent' <<< "${call}"; then fail "passed --traceparent while it is off"; fi
@@ -153,6 +152,75 @@ test_no_target_runs_no_pod() {
   [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
 }
 
+test_the_trino_client_is_pinned() {
+  start_test "pinned client"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  run_call | grep -Eq 'pip install --quiet trino==[0-9]+\.[0-9]+\.[0-9]+ ' || fail "trino is not pinned: $(run_call)"
+}
+
+test_an_interval_line_missing_a_field_pushes_no_gauges() {
+  start_test "missing field"
+  cat > "${WORK}/driver.log" <<'LOG'
+[ 10s ] threads: 4 qps: 12.50 rows_s: 1250.00 lat_p50_ms: 80.10 lat_p99_ms: 310.25
+[ 20s ] threads: 4 qps: 13.00 rows_s: 1300.00 lat_p50_ms: 75.00 lat_p99_ms: 290.00 err_s: 0.00
+LOG
+  sed 's/^/2026-10-15T10:00:00Z /' "${WORK}/driver.log" > "${STUB_STATE}/log.1"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  local gauges
+  gauges="$(pushed_gauges)"
+  [ "$(grep -c '^trino_loadtest_qps ' <<< "${gauges}")" -eq 1 ] || fail "pushed the incomplete line: ${gauges}"
+  grep -Fqx "trino_loadtest_qps tl1 13" <<< "${gauges}" || fail "complete line not pushed: ${gauges}"
+  grep -q "err_s" "${WORK}/out.txt" || fail "no warning naming the missing field: $(cat "${WORK}/out.txt")"
+}
+
+test_the_snapshot_check_runs_on_the_operator_machine_not_in_the_pod() {
+  start_test "snapshot check location"
+  run_script TRINO_LOADTEST_SNAPSHOT_CHECK_CMD="printf 'Snapshot Details:\nThere are no snapshots\n'" ||
+    { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  if run_call | grep -q -- '--snapshot-check'; then fail "passed the check into the pod: $(run_call)"; fi
+  grep -Fq "snapshot-leak check: PASS" "${WORK}/out.txt" || fail "no PASS line: $(cat "${WORK}/out.txt")"
+}
+
+test_a_leaked_snapshot_fails_the_run_and_names_it() {
+  start_test "snapshot leak"
+  run_script TRINO_LOADTEST_SNAPSHOT_CHECK_CMD="printf 'cqlite-abc ks t 1 KiB\nother ks t 1 KiB\n'" && fail "exited 0"
+  grep -Fq "snapshot-leak check: FAIL - 1 leaked snapshot(s): cqlite-abc" "${WORK}/out.txt" ||
+    fail "no leak line: $(cat "${WORK}/out.txt")"
+}
+
+test_a_check_command_that_fails_fails_the_run() {
+  start_test "snapshot check errors"
+  run_script TRINO_LOADTEST_SNAPSHOT_CHECK_CMD="echo unreachable >&2; exit 4" && fail "exited 0"
+  grep -Fq "snapshot-leak check: FAIL - the check command exited 4: unreachable" "${WORK}/out.txt" ||
+    fail "no failure line: $(cat "${WORK}/out.txt")"
+}
+
+test_a_wedged_check_command_times_out_and_leaves_nothing_running() {
+  start_test "snapshot check timeout"
+  run_script TRINO_LOADTEST_SNAPSHOT_CHECK_CMD="/bin/sleep 37 & /bin/sleep 37" TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S=1 &&
+    fail "exited 0"
+  grep -Fq "snapshot-leak check: FAIL - the check command did not finish within 1s" "${WORK}/out.txt" ||
+    fail "no timeout line: $(cat "${WORK}/out.txt")"
+  if pgrep -f '^/bin/sleep 37$' > /dev/null; then fail "the check command's children are still running"; fi
+}
+
+test_an_unset_check_is_reported_as_skipped() {
+  start_test "snapshot check skipped"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  grep -Fq "snapshot-leak check: SKIPPED" "${WORK}/out.txt" || fail "no SKIPPED line: $(cat "${WORK}/out.txt")"
+}
+
+test_bad_snapshot_check_args_fail_before_any_pod_runs() {
+  local case_args
+  for case_args in "TRINO_LOADTEST_SNAPSHOT_CHECK_CMD=   " \
+    "TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S=0" "TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S=abc"; do
+    start_test "bad snapshot args: ${case_args}"
+    run_script TRINO_LOADTEST_SNAPSHOT_CHECK_CMD=true "${case_args}" && fail "exited 0"
+    grep -q -- "--snapshot-check" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+    [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+  done
+}
+
 test_pushes_interval_figures_as_otlp_gauges_to_the_collector
 test_the_driver_pod_is_labelled_and_pinned_to_an_app_node
 test_the_driver_configmap_carries_the_role_labels
@@ -161,6 +229,14 @@ test_unset_optional_args_are_omitted
 test_a_failed_driver_fails_the_run
 test_no_app_node_runs_no_pod
 test_no_target_runs_no_pod
+test_the_trino_client_is_pinned
+test_an_interval_line_missing_a_field_pushes_no_gauges
+test_the_snapshot_check_runs_on_the_operator_machine_not_in_the_pod
+test_a_leaked_snapshot_fails_the_run_and_names_it
+test_a_check_command_that_fails_fails_the_run
+test_a_wedged_check_command_times_out_and_leaves_nothing_running
+test_an_unset_check_is_reported_as_skipped
+test_bad_snapshot_check_args_fail_before_any_pod_runs
 
 echo "trino-loadtest start (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

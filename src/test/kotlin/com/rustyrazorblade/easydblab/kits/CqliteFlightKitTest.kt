@@ -82,6 +82,25 @@ class CqliteFlightKitTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the image tag is required, so no run silently follows a moving tag`() {
+        val tag = kit.config.args.single { it.variable == "TAG" }
+
+        assertThat(tag.required).isTrue()
+        assertThat(tag.default).isEmpty()
+        assertThat(flightContainer(mapOf("TAG" to "v0.18.0")).image)
+            .isEqualTo("ghcr.io/pmcfadin/cqlite-flight:v0.18.0")
+    }
+
+    @Test
+    fun `a data root that does not exist fails the pod instead of being created`() {
+        val volumes =
+            daemonSet()
+                .spec.template.spec.volumes
+
+        assertThat(volumes.map { it.hostPath?.type }).containsOnly("Directory")
+    }
+
+    @Test
     fun `stop deletes the DaemonSet and the Service by the label both carry`() {
         val stop = kit.resource("bin/stop.sh.template")
         val selector =

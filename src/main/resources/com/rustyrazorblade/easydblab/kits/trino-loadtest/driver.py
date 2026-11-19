@@ -19,7 +19,6 @@ itself — can be imported and exercised by test_driver.py on a machine with no
 from __future__ import annotations
 
 import argparse
-import math
 import os
 import random
 import sys
@@ -375,170 +374,6 @@ def default_exec_fn(conn: object, sql: str, headers: Optional[dict]) -> int:
 
 
 # --------------------------------------------------------------------------
-# Snapshot leak check (D12 hygiene, issue #2399)
-# --------------------------------------------------------------------------
-#
-# Local mirror of the field's post-round hygiene check (#2367 round-9
-# "Proposed standard metrics", D12): ``nodetool listsnapshots | grep cqlite-``
-# must be empty on every node after a run — a cqlite snapshot-mode read takes
-# a transient per-query Cassandra snapshot and must clean it up. This driver
-# has no direct cluster/nodetool access (it runs in a plain Python pod that
-# only talks to Trino), so the actual ``nodetool listsnapshots`` invocation is
-# always operator-injected via ``--snapshot-check-cmd`` / the
-# ``TRINO_LOADTEST_SNAPSHOT_CHECK_CMD`` env var (e.g. a ``kubectl exec``
-# one-liner spanning every Cassandra pod). When it is not configured the
-# check is reported as SKIPPED, never as a silent pass (issue #2399,
-# "SHALL NOT pass vacuously").
-#
-# IMPORTANT — the injected command must emit the RAW ``nodetool listsnapshots``
-# output; ``find_leaked_snapshots`` below does the ``grep cqlite-`` matching in
-# Python. Do NOT bake ``| grep cqlite-`` (or any filter) into the command
-# itself: a clean cluster makes ``grep cqlite-`` match nothing and exit 1 with
-# empty output, and this check treats any nonzero exit as a FAILURE (the spec's
-# non-negotiable "a nonzero exit ... SHALL be reported as a check failure,
-# never 'ran cleanly, 0 snapshots found'" — an exit-1-empty grep is
-# indistinguishable from an auth failure / unreachable node, so it cannot be
-# whitelisted as a pass without reopening that vacuous-pass hole). A grep-style
-# command would therefore false-FAIL a healthy ring. The metric's canonical
-# ``| grep cqlite- == 0`` phrasing describes the human check; the driver's
-# ``--snapshot-check-cmd`` wants the un-filtered listing (roborev finding,
-# final branch review).
-
-DEFAULT_SNAPSHOT_PREFIX = "cqlite-"
-# The operator-injected probe (a kubectl-exec/nodetool one-liner spanning the
-# ring) can wedge — an unreachable pod, a hung `kubectl exec`, a stuck pipe —
-# and without a bound it would hang the driver forever AFTER the workload
-# finished, so the D12 verdict would never be produced. Bound it and surface a
-# timeout as a check FAILURE (same "no verdict" class as a nonzero exit),
-# never a silent hang (roborev finding, final review round).
-DEFAULT_SNAPSHOT_CHECK_TIMEOUT_S = 60
-
-
-def find_leaked_snapshots(listsnapshots_output: str, prefix: str = DEFAULT_SNAPSHOT_PREFIX) -> List[str]:
-    """Return the snapshot names in ``listsnapshots_output`` starting with ``prefix``.
-
-    Mirrors ``nodetool listsnapshots | grep cqlite-`` against that command's
-    tabular output: each line's first whitespace-separated token is treated
-    as a candidate snapshot name. Header/footer lines (``Snapshot Details:``,
-    column headers, ``Total ...`` summary lines, blank lines) never start
-    with ``prefix`` so they are excluded without any special-casing.
-    """
-    leaked = []
-    for line in listsnapshots_output.splitlines():
-        fields = line.split()
-        if fields and fields[0].startswith(prefix):
-            leaked.append(fields[0])
-    return leaked
-
-
-@dataclass
-class SnapshotLeakResult:
-    """Outcome of the D12 check. ``ran=False`` means "no verdict" — a caller
-    MUST NOT treat an unrun check as a pass (see :func:`run_snapshot_leak_check`).
-    """
-
-    ran: bool
-    leaked: List[str] = field(default_factory=list)
-
-    @property
-    def passed(self) -> bool:
-        return self.ran and not self.leaked
-
-
-def run_snapshot_leak_check(
-    list_snapshots_fn: Optional[Callable[[], str]],
-    prefix: str = DEFAULT_SNAPSHOT_PREFIX,
-) -> SnapshotLeakResult:
-    """Run the D12 hygiene check by calling the injected ``list_snapshots_fn``.
-
-    ``list_snapshots_fn`` is injected (never a hardcoded ``nodetool`` call) so
-    this is unit-testable without a live cluster and so operators can point
-    it at whatever cross-node listing mechanism their environment provides.
-    ``None`` means unconfigured: the check has NOT run, and the result's
-    ``ran`` flag is ``False`` so callers report a SKIP, not a pass.
-    """
-    if list_snapshots_fn is None:
-        return SnapshotLeakResult(ran=False)
-    output = list_snapshots_fn()
-    return SnapshotLeakResult(ran=True, leaked=find_leaked_snapshots(output, prefix))
-
-
-def make_default_list_snapshots_fn(
-    cmd: str,
-    timeout_s: float = DEFAULT_SNAPSHOT_CHECK_TIMEOUT_S,
-) -> Callable[[], str]:
-    """Build a ``list_snapshots_fn`` that runs the operator-provided shell ``cmd``.
-
-    ``cmd`` is expected to print ``nodetool listsnapshots``-style output for
-    every target node (e.g. a ``kubectl exec ... nodetool listsnapshots``
-    one-liner covering the whole ring). Import ``subprocess`` lazily here,
-    matching this module's lazy-import discipline for anything that touches
-    the outside world (see the module docstring) — ``test_driver.py`` never
-    needs it.
-
-    A nonzero exit raises ``RuntimeError`` (never returns as if it were a
-    clean, empty listing) — a probe that failed to run (auth failure,
-    unreachable pod, typo'd command) must surface as a check failure, not as
-    "0 snapshots found." Silently treating that as a pass is exactly the
-    vacuous-pass bug #2399 exists to prevent (roborev finding, round-1 review).
-
-    The probe is bounded by ``timeout_s`` (default
-    :data:`DEFAULT_SNAPSHOT_CHECK_TIMEOUT_S`): a wedged one-liner (unreachable
-    pod, hung ``kubectl exec``) would otherwise hang the driver indefinitely
-    after the workload finished and never yield a D12 verdict. A timeout also
-    raises ``RuntimeError`` so it lands in the same check-FAILURE path as a
-    nonzero exit, never a silent hang (roborev finding, final review round).
-
-    The command is launched in its own process group (``start_new_session``)
-    and, on timeout, the WHOLE group is killed — a bare ``subprocess.run(...,
-    shell=True, timeout=...)`` only kills the shell, leaving any child it
-    spawned (``kubectl exec``, ``nodetool``) running and merely moving the hang
-    off-driver instead of closing it (roborev finding, final review round).
-    """
-    import signal
-    import subprocess
-
-    def _run() -> str:
-        proc = subprocess.Popen(  # noqa: S602 - operator-provided, trusted CLI arg
-            cmd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-        )
-        # start_new_session makes the shell its own session/process-group leader,
-        # so its PGID == its PID. Capture it NOW, while the process is known
-        # alive — resolving it later inside the timeout handler races with the
-        # shell exiting first (which would raise ProcessLookupError and skip the
-        # kill, leaving a live grandchild). Using the captured pgid closes that
-        # ordering race structurally (roborev finding, final review round).
-        pgid = proc.pid
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout_s)
-        except subprocess.TimeoutExpired as exc:
-            # Kill the entire process group (the shell AND any children it
-            # spawned), then reap — so a wedged `kubectl exec`/`nodetool`
-            # cannot outlive the driver after we report the timeout. The
-            # except is a defensive backstop (harmless if the group is already
-            # gone), no longer the primary mechanism.
-            try:
-                os.killpg(pgid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
-            proc.wait()
-            raise RuntimeError(
-                f"snapshot-check-cmd timed out after {timeout_s}s (probe wedged; no D12 verdict)"
-            ) from exc
-        if proc.returncode != 0:
-            detail = stderr.strip() or "(no stderr)"
-            raise RuntimeError(f"snapshot-check-cmd exited {proc.returncode}: {detail}")
-        return stdout
-
-    return _run
-
-
-# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
@@ -615,34 +450,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=_env_flag("TRINO_LOADTEST_TRACEPARENT"),
         help="attach a random W3C traceparent header to every query (default: off)",
     )
-    parser.add_argument(
-        "--snapshot-check-cmd",
-        dest="snapshot_check_cmd",
-        default=_env_default("TRINO_LOADTEST_SNAPSHOT_CHECK_CMD"),
-        help=(
-            "shell command printing RAW `nodetool listsnapshots` output for every "
-            "target node (e.g. a kubectl-exec one-liner); if set, asserts zero "
-            "cqlite- snapshots remain after the run (D12 hygiene, issue #2399) and "
-            "exits nonzero on a leak. Emit the UNFILTERED listing — the driver does "
-            "the `grep cqlite-` matching itself; do NOT pipe through `grep`, since a "
-            "clean cluster makes grep exit 1 (empty) and any nonzero exit is treated "
-            "as a check FAILURE, which would false-FAIL a healthy ring. Unset: the "
-            "check is SKIPPED and reported as such, never a silent pass."
-        ),
-    )
-    parser.add_argument(
-        "--snapshot-check-timeout-s",
-        dest="snapshot_check_timeout_s",
-        type=float,
-        default=_float_env_default(
-            "TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S", float(DEFAULT_SNAPSHOT_CHECK_TIMEOUT_S)
-        ),
-        help=(
-            "seconds to allow the --snapshot-check-cmd probe to run before it is "
-            "treated as a check FAILURE (a wedged probe must not hang the driver; "
-            f"default {DEFAULT_SNAPSHOT_CHECK_TIMEOUT_S}s, D12 hygiene, issue #2399)."
-        ),
-    )
     return parser
 
 
@@ -660,20 +467,6 @@ def validate_args(args: argparse.Namespace) -> Optional[str]:
         return "--duration must be >= 1"
     if args.interval <= 0:
         return "--interval must be > 0"
-    if args.snapshot_check_cmd is not None and not args.snapshot_check_cmd.strip():
-        # A whitespace-only command shell-executes as a silent no-op (exit 0, empty
-        # stdout) — that would read as "ran cleanly, 0 leaks found" (PASS) despite the
-        # D12 probe never actually touching a node. Reject it as a config error up
-        # front instead of letting it degrade into the exact vacuous pass #2399 exists
-        # to prevent (roborev finding, review round 2).
-        return "--snapshot-check-cmd must not be blank/whitespace-only"
-    if not math.isfinite(args.snapshot_check_timeout_s) or args.snapshot_check_timeout_s <= 0:
-        # A non-positive timeout defeats the bound (0 = expire-immediately,
-        # negative errors); `inf`/`nan` are worse — `inf` silently removes the
-        # timeout entirely and reintroduces the indefinite-hang case the bound
-        # exists to prevent. Require a real, finite, positive budget so a wedged
-        # probe reliably surfaces as a FAIL (roborev finding, final review round).
-        return "--snapshot-check-timeout-s must be a finite value > 0"
     return None
 
 
@@ -723,37 +516,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     final = stats.cumulative_snapshot()
     print(format_final_line(args.threads, final), flush=True)
-
-    # D12 hygiene check (issue #2399) — local mirror of the field's
-    # `nodetool listsnapshots | grep cqlite-` == 0 post-run check.
-    if not args.snapshot_check_cmd:
-        print(
-            "snapshot-leak check: SKIPPED (no --snapshot-check-cmd configured; D12, issue #2399)",
-            flush=True,
-        )
-        return 0
-
-    try:
-        leak_result = run_snapshot_leak_check(
-            make_default_list_snapshots_fn(args.snapshot_check_cmd, args.snapshot_check_timeout_s)
-        )
-    except Exception as exc:  # noqa: BLE001 - a probe command that FAILED to run (auth, unreachable
-        # pod, typo'd one-liner) must surface as a check FAILURE, never be swallowed into an
-        # empty-stdout "0 leaks" pass (that vacuous-pass gap was a roborev finding on this
-        # change's first review round) or crash main() with a bare traceback.
-        print(f"snapshot-leak check: FAIL - check command errored: {exc}", file=sys.stderr, flush=True)
-        return 3
-
-    if leak_result.leaked:
-        print(
-            f"snapshot-leak check: FAIL - {len(leak_result.leaked)} leaked snapshot(s): "
-            f"{', '.join(leak_result.leaked)}",
-            file=sys.stderr,
-            flush=True,
-        )
-        return 3
-
-    print("snapshot-leak check: PASS (0 cqlite- snapshots remain)", flush=True)
     return 0
 
 

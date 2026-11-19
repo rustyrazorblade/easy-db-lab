@@ -45,8 +45,8 @@ easy-db-lab trino-loadtest-trino stop
 | `--duration` | `DURATION` | `60` | Load duration in seconds |
 | `--interval` | `INTERVAL` | `10` | Interval stats reporting period in seconds |
 | `--traceparent` | `TRACEPARENT` | `false` | Attach a random W3C `traceparent` header to every query (off by default) |
-| `--snapshot-check-cmd` | `TRINO_LOADTEST_SNAPSHOT_CHECK_CMD` | (unset) | Shell command printing **raw** `nodetool listsnapshots` output for every target node; if set, the driver asserts zero `cqlite-` snapshots remain after the run and exits nonzero on a leak (D12 hygiene, issue #2399). Emit the unfiltered listing — the driver does the `cqlite-` matching itself; **do not** pipe through `grep` (see the note below). Unset: SKIPPED and reported as such, never a silent pass. |
-| `--snapshot-check-timeout-s` | `TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S` | `60` | Seconds the `--snapshot-check-cmd` probe may run before it is treated as a check FAILURE — a wedged probe (unreachable pod, hung `kubectl exec`) must not hang the driver indefinitely with no D12 verdict. Must be `> 0`. |
+| `--snapshot-check-cmd` | `TRINO_LOADTEST_SNAPSHOT_CHECK_CMD` | (unset) | Command run with `bash -c` on your machine (not in the driver pod) after the run, printing the raw `nodetool listsnapshots` listing of every db node; the run fails if any `cqlite-` snapshot remains. Do **not** pipe it through `grep` (see the note below). Unset: SKIPPED. |
+| `--snapshot-check-timeout-s` | `TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S` | `60` | Whole seconds `--snapshot-check-cmd` may run before the check fails and its processes are killed. |
 
 Either `--ks`/`--tbl` or `--queries-file` is required (`--ks`/`--tbl` if you
 want the built-in default query set; `--queries-file` for anything custom).
@@ -80,41 +80,34 @@ otherwise produces no client-side trace context.
 
 ### Snapshot-leak check (D12 hygiene, issue #2399)
 
-The field's round-9 report (#2367) added a post-round hygiene check: after a
-run, `nodetool listsnapshots | grep cqlite-` must be empty on every node — a
-cqlite snapshot-mode read takes a transient per-query Cassandra snapshot and
-must clean it up; anything still present after the run is a leak. This driver
-runs in a plain Python pod with no direct cluster/`nodetool` access, so the
-check is only performed when `--snapshot-check-cmd` names an operator-provided
-shell command that prints **raw** `nodetool listsnapshots` output across every
-node (a `kubectl exec` one-liner, typically). Provide the *unfiltered* listing:
-the driver does the `cqlite-` matching itself, so **do not** bake `| grep
-cqlite-` into the command. A clean cluster makes `grep cqlite-` match nothing
-and exit `1` with empty output, and — per the spec's no-vacuous-pass rule —
-any nonzero probe exit is a check FAILURE (an exit-1-empty grep is
-indistinguishable from an auth failure or unreachable node, so it can't be
-whitelisted as a pass); a grep-style command would therefore *false-FAIL a
-healthy ring*. The metric's canonical `nodetool listsnapshots | grep cqlite-
-== 0` phrasing describes the human check — feed the driver the raw listing and
-let it apply the `cqlite-` filter. If configured, the driver prints
-`snapshot-leak check: PASS`/`FAIL` (with the leaked names) after the run and
-exits `3` on a leak. If not configured, it prints `snapshot-leak check:
-SKIPPED` — deliberately never a silent pass, per the requirement that the
-check must not appear green when it did not run
-(`openspec/changes/standard-metrics-template/specs/round-validation-reporting/spec.md`).
-**A configured check command that itself fails to run** (auth failure,
-unreachable pod, typo'd one-liner — nonzero exit) is also `FAIL` (exit `3`,
-with the command's stderr), never treated as "ran cleanly, 0 snapshots
-found" — an empty result from a broken probe must not read as a clean ring.
-A blank/whitespace-only `--snapshot-check-cmd` is rejected as a config error
-(`--threads`/`--interval`-style `validate_args` check, exit `2`) rather than
-silently accepted — it would otherwise shell-execute as a no-op and produce
-the exact same false-clean result. The probe is bounded by
-`--snapshot-check-timeout-s` (default 60s): a wedged one-liner that never
-returns is reported as `FAIL` (exit `3`) on timeout rather than hanging the
-driver forever after the workload finished with no D12 verdict.
-See `docs/development/round-validation-metrics.md` for the full 14-point
-standard this is one item of.
+After a run, `nodetool listsnapshots` must show no `cqlite-` snapshot on any
+node. A cqlite snapshot-mode read takes a per-query Cassandra snapshot and must
+remove it; one left behind is a leak.
+
+`start.sh` runs the check on **your machine**, after the driver pod exits, with
+`bash -c`. The driver pod has no `nodetool` and cannot reach the db nodes; your
+machine can, because kit scripts have the workspace `bin/` first on `PATH`, so
+`ssh db0` goes through the workspace ssh wrapper. The command must print the
+raw `nodetool listsnapshots` listing of every db node, for example:
+
+```bash
+easy-db-lab trino-loadtest-trino start --ks my_ks --tbl my_tbl \
+  --snapshot-check-cmd 'for h in db0 db1 db2; do ssh "$h" nodetool listsnapshots; done'
+```
+
+Do **not** pipe it through `grep cqlite-`: `start.sh` does that matching
+itself, and on a clean cluster `grep` exits 1, which fails the check.
+
+- No `cqlite-` snapshot remains: `snapshot-leak check: PASS`.
+- A snapshot remains: `snapshot-leak check: FAIL - N leaked snapshot(s): ...`,
+  and `start` fails.
+- The command exits non-zero (an unreachable node, a typo): `FAIL` with its
+  exit code and stderr, never a pass.
+- The command runs longer than `--snapshot-check-timeout-s` (default 60):
+  `FAIL`, and every process it started is killed.
+- A blank command or a timeout that is not a whole number above 0 fails
+  `start` before any pod runs.
+- Unset: `snapshot-leak check: SKIPPED`, never a silent pass.
 
 ## Metrics
 

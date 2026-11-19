@@ -54,10 +54,10 @@ commands:
       - flag: --snapshot-check-cmd
         variable: TRINO_LOADTEST_SNAPSHOT_CHECK_CMD
         type: string
-        description: "Shell command printing RAW `nodetool listsnapshots` output for every target node; if set, asserts zero cqlite- snapshots remain after the run (D12 hygiene) and fails on a leak. Emit the UNFILTERED listing — do NOT pipe through grep. Unset: the check is skipped."
+        description: "Shell command run with bash on your machine (not in the driver pod) after the run, printing the raw `nodetool listsnapshots` output of every db node, e.g. \"for h in db0 db1 db2; do ssh $h nodetool listsnapshots; done\" (ssh goes through the workspace wrapper). Fails the run if any cqlite- snapshot remains. Do NOT pipe through grep: a non-zero exit fails the check. Unset: the check is skipped."
         default: ""
       - flag: --snapshot-check-timeout-s
         variable: TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S
         type: string
-        description: "Seconds to allow the --snapshot-check-cmd probe to run before it is treated as a check failure. Ignored unless --snapshot-check-cmd is set."
+        description: "Whole seconds to allow --snapshot-check-cmd to run before the check fails and its processes are killed (default 60). Ignored unless --snapshot-check-cmd is set."
         default: ""

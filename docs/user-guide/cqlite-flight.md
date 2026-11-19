@@ -2,12 +2,15 @@
 
 The `cqlite-flight` kit deploys the [`cqlite-flight`](https://github.com/pmcfadin/cqlite)
 Arrow Flight server as a DaemonSet co-located with your database nodes — one pod per
-`type=db` node, each reading that node's own local SSTables. It is the data plane that the
-Trino kit's planned [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads)
-will talk to: Trino will ask each Flight pod for the SSTable data on its node, and
-cqlite-flight streams it back as Arrow record batches. That Trino catalog is not shipped yet
-— its connector-plugin delivery is deferred to `pmcfadin/cqlite#2869` — but the cqlite-flight
-data plane described here is fully functional today.
+`type=db` node, each reading that node's own local SSTables. It is the data plane behind
+the Trino kit's [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads):
+Trino asks each Flight pod for the SSTable data on its node, and cqlite-flight streams it
+back as Arrow record batches.
+
+```admonish note title="The Trino catalog is not shipped yet"
+The data plane on this page works today. The Trino `cqlite` catalog that queries it is
+planned: its connector plugin delivery is deferred to `pmcfadin/cqlite#2869`.
+```
 
 ```admonish warning title="Offline, read-only, flushed-SSTables-only view"
 cqlite-flight reads **SSTable files on disk**, not the live database. This has three
@@ -33,7 +36,7 @@ consequences you must keep in mind when interpreting results:
 ## Quick Start
 
 ```bash
-easy-db-lab kit install cqlite-flight
+easy-db-lab kit install cqlite-flight --tag v0.18.0
 easy-db-lab cqlite-flight start
 easy-db-lab cqlite-flight status
 ```
@@ -56,10 +59,10 @@ cannot read a database that runs in Kubernetes pods with its own volumes.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--tag` | `latest` | `cqlite-flight` image tag (`ghcr.io/pmcfadin/cqlite-flight:<tag>`) |
+| `--tag` | (required) | `cqlite-flight` image tag (`ghcr.io/pmcfadin/cqlite-flight:<tag>`), for example `v0.18.0`. Required, so every run names the build it tests; pass `dev` or `latest` only to follow a moving tag on purpose. Without it, `kit install` fails with `Missing required option: --tag` |
 | `--flight-port` | `8815` | Arrow Flight gRPC container port; clients connect to NodePort 30815, which forwards to it |
 | `--data-dir` | `/mnt/db1/cassandra/data` | Host path to the database data directory, mounted read-only. Serves **exactly one** directory |
-| `--data-root` | `/mnt` | Host path under which per-disk data dirs live; an init container scans it and warns on multi-disk layouts |
+| `--data-root` | `/mnt` | Host path under which per-disk data dirs live; an init container scans it and warns on multi-disk layouts. It must exist: a missing one fails the pod at start |
 | `--data-gid` | `999` | Host GID that owns the data directory; added as a pod `supplementalGroup` |
 | `--otel-endpoint` | `http://$(HOST_IP):4317` | OTLP gRPC endpoint for metrics/traces (defaults to the OTel collector on the pod's node) |
 
@@ -83,8 +86,6 @@ easy-db-lab cqlite-flight uninstall   # remove all kit resources
 
 ## Related kits
 
-- The [Trino](install-trino.md) kit's planned `cqlite` catalog — will read through these
-  Flight pods, giving `SELECT * FROM cqlite.<keyspace>.<table>` addressing. It is planned as
-  a catalog property file of the trino kit and is **not shipped yet**; its connector-plugin
-  delivery is deferred to `pmcfadin/cqlite#2869`.
+- The [Trino](install-trino.md) kit's `cqlite` catalog — reads through these Flight pods, giving
+  `SELECT * FROM cqlite.<keyspace>.<table>` addressing.
 - [trino-loadtest](trino-loadtest.md) — drives concurrent read load against that catalog.

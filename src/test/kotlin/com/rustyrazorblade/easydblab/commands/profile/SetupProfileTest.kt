@@ -51,6 +51,7 @@ import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.ec2.model.Tag as Ec2Tag
 import software.amazon.awssdk.services.s3.model.Tag as S3Tag
 
@@ -126,8 +127,8 @@ class SetupProfileTest : BaseKoinTest() {
 
     @Nested
     inner class WhenProfileAlreadySetUp {
-        @Test
-        fun `a key pair the complete profile names that is gone stops setup before any prompt`() {
+        /** A complete profile from before the new marker, naming bucket legacy-bucket and key pair test-key. */
+        private fun completeLegacyProfile() {
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
                 mapOf(
                     "email" to "test@example.com",
@@ -148,6 +149,20 @@ class SetupProfileTest : BaseKoinTest() {
                     s3Bucket = "legacy-bucket",
                 ),
             )
+            testPrompter = TestPrompter()
+            setupTestModule()
+        }
+
+        /** Nothing was asked, printed as an update prompt, or saved. */
+        private fun assertStoppedBeforeAnyChange() {
+            assertThat(testPrompter.getCallLog()).isEmpty()
+            assertThat(bufferedOutput.messages.joinToString("\n")).doesNotContain("Press Enter to keep")
+            verify(mockUserConfigProvider, never()).saveUserConfig(any())
+        }
+
+        @Test
+        fun `a key pair the complete profile names that is gone stops setup before any prompt`() {
+            completeLegacyProfile()
             whenever(mockEc2.describeKeyPairs(any<DescribeKeyPairsRequest>())).thenThrow(
                 Ec2Exception
                     .builder()
@@ -155,40 +170,34 @@ class SetupProfileTest : BaseKoinTest() {
                     .awsErrorDetails(AwsErrorDetails.builder().errorCode("InvalidKeyPair.NotFound").build())
                     .build(),
             )
-            testPrompter = TestPrompter()
-            setupTestModule()
 
             assertThatThrownBy { SetupProfile().execute() }
                 .isInstanceOf(ConfigurationException::class.java)
                 .hasMessageContaining("test-key")
 
-            assertThat(testPrompter.getCallLog()).isEmpty()
-            verify(mockUserConfigProvider, never()).saveUserConfig(any())
+            assertStoppedBeforeAnyChange()
+        }
+
+        @Test
+        fun `a credential failure reading the bucket stops setup before any prompt`() {
+            completeLegacyProfile()
+            val expired =
+                S3Exception
+                    .builder()
+                    .statusCode(400)
+                    .awsErrorDetails(AwsErrorDetails.builder().errorCode("ExpiredToken").build())
+                    .build()
+            whenever(get<S3Client>().getBucketTagging(any<GetBucketTaggingRequest>())).thenThrow(expired)
+
+            assertThatThrownBy { SetupProfile().execute() }.isSameAs(expired)
+
+            assertStoppedBeforeAnyChange()
         }
 
         /** The profiles that need the backfill are complete ones from before the new marker. */
         @Test
         fun `a complete profile's legacy-only bucket and key pair gain the new marker`() {
-            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
-                mapOf(
-                    "email" to "test@example.com",
-                    "region" to "us-west-2",
-                    "awsProfile" to "my-profile",
-                    "keyName" to "test-key",
-                    "s3Bucket" to "legacy-bucket",
-                ),
-            )
-            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(
-                User(
-                    email = "test@example.com",
-                    region = "us-west-2",
-                    keyName = "test-key",
-                    awsProfile = "my-profile",
-                    awsAccessKey = "",
-                    awsSecret = "",
-                    s3Bucket = "legacy-bucket",
-                ),
-            )
+            completeLegacyProfile()
             whenever(get<S3Client>().getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
                 GetBucketTaggingResponse
                     .builder()
@@ -200,8 +209,6 @@ class SetupProfileTest : BaseKoinTest() {
                             .build(),
                     ).build(),
             )
-            testPrompter = TestPrompter()
-            setupTestModule()
 
             SetupProfile().execute()
 

@@ -68,8 +68,6 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun handleExistingProfile(existingConfig: Map<String, Any>) {
         eventBus.emit(Event.Setup.ProfileAlreadyConfigured(context.profile))
-        eventBus.emit(Event.Setup.UpdatePrompt)
-
         val userConfig = loadExistingUser(existingConfig)
 
         // A profile made before the easy_db_lab marker has a bucket and key pair with only the
@@ -80,6 +78,7 @@ class SetupProfile : PicoBaseCommand() {
         keyPairService.ensureMarkerTags(userConfig)
 
         // Collect optional info, allowing updates
+        eventBus.emit(Event.Setup.UpdatePrompt)
         collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
 
         eventBus.emit(Event.Setup.ConfigurationUpdated)

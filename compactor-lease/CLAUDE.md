@@ -16,7 +16,7 @@ Keep the dependency direction one way: the root module may use this module, and 
 ## Classes
 
 - `ConditionalObjects` — the conditional-write port: `read`, `createIfAbsent` and `replaceIfVersionMatches`.  It is the only primitive the lease uses.  No operation is retried, because a retry of a write that landed reports a lost race.
-- `S3ConditionalObjects` — the port on S3, with `If-None-Match: *` and `If-Match: <ETag>`.  S3 412 and 409, and 404 `NoSuchKey` on a replace, are a lost race; everything else throws, a 404 `NoSuchBucket` included.  The SDK's retries are off for both PUTs.
+- `aws/S3ConditionalObjects` — the port on S3, with `If-None-Match: *` and `If-Match: <ETag>`.  S3 412 and 409, and 404 `NoSuchKey` on a replace, are a lost race; everything else throws, a 404 `NoSuchBucket` included.  The SDK's retries are off for both PUTs.
 - `LeaseRecord` — the body of `leases/compactor.json`: holder, sequence, TTL and renewal time.  No lease decision reads the renewal time.
 - `LeaseTiming` — the timing values.  It cannot be built when the worst-case stop is not less than the TTL.  The values come from `Constants.Compactor.Lease` in the root module, through environment variables.
 - `LeaseClock` — one node's monotonic and wall clocks.  Every lease decision uses the monotonic clock only.
@@ -24,7 +24,10 @@ Keep the dependency direction one way: the root module may use this module, and 
 - `Gate` and `GateFile` — what the agent tells the compactor containers.  `GateFile` writes `valid-until` (epoch seconds, by a write and a rename) and the `ready` marker for the readiness probe, in the emptyDir the pod shares.
 - `ScratchWipe` — empties the compactors' scratch directories when the agent takes the lease.
 - `LeaseAgentConfig` — the agent's configuration, read from the pod's environment.
-- `LeaseAgentMain` — the jar's entry point.  It uses the node's instance role through IMDS and logs every lease transition to stdout.
+- `aws/S3LeaseStore` — `withS3LeaseStore` builds the agent's S3 client (call timeouts within `LeaseTiming.storeCallTimeout`, the default credentials chain) and hands the block an `S3ConditionalObjects`.
+- `LeaseAgentMain` — the jar's entry point.  It uses the node's instance role through IMDS (by `withS3LeaseStore`) and logs every lease transition to stdout.
+
+The AWS SDK appears only in the `aws` subpackage.  The root module's `PackageBoundaryTest` scans this module too and names `compactorlease.aws..` as an adapter package; nothing else here may name an SDK type.
 
 The gate script that reads `valid-until` is not in this module.  It is `compactor-gate.sh` in the root module's resources, and its tests are in `src/test/shell/`.
 

@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.ssh
 
-import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmForwardNotReadyException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.sshd.common.SshException
 

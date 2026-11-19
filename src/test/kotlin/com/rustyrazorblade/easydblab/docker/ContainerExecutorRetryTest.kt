@@ -33,8 +33,9 @@ import java.util.stream.Stream
  * Which Docker API failures [ContainerExecutor] retries. The Docker daemon is an external system,
  * so its client is mocked; the retry policy is the production one with a 1ms backoff.
  *
- * docker-java's HTTP transport does not throw a socket error as an IOException: it wraps it in a
- * RuntimeException. Those are the failures the policy's IOException rule exists for.
+ * A socket error reaches the executor as the project [DockerException] the client seam
+ * (`DefaultDockerClient.dockerTransport`) raises around docker-java's bare
+ * RuntimeException(IOException); [socketFailure] builds that shape.
  */
 class ContainerExecutorRetryTest : BaseKoinTest() {
     private val client = mock<DockerClientInterface>()
@@ -98,7 +99,7 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
         var starts = 0
         doAnswer {
             starts++
-            if (starts < 3) throw RuntimeException(IOException("Broken pipe"))
+            if (starts < 3) throw socketFailure("Broken pipe")
         }.whenever(client).startContainer("c1")
         val inspect = mock<InspectContainerResponse>()
         val state = mock<InspectContainerResponse.ContainerState>()
@@ -125,11 +126,11 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
 
     @Test
     fun `a socket error that outlasts every retry is reported as a Docker start failure`() {
-        doAnswer { throw RuntimeException(IOException("Connection refused")) }.whenever(client).startContainer("c1")
+        doAnswer { throw socketFailure("Connection refused") }.whenever(client).startContainer("c1")
 
         assertThatThrownBy { executor().startAndWaitForCompletion("c1") }
             .isInstanceOf(DockerException::class.java)
-            .hasMessageContaining("c1")
+            .hasMessageContaining("Connection refused")
     }
 
     @Test
@@ -137,7 +138,7 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
         var removes = 0
         doAnswer {
             removes++
-            if (removes < 2) throw RuntimeException(IOException("Broken pipe"))
+            if (removes < 2) throw socketFailure("Broken pipe")
         }.whenever(client).removeContainer("c1", true)
 
         executor().removeContainer("c1")
@@ -179,14 +180,16 @@ class ContainerExecutorRetryTest : BaseKoinTest() {
     }
 
     companion object {
+        /** What the client seam throws for a socket docker-java could not use. */
+        fun socketFailure(message: String) =
+            DockerException("Docker could not reach the daemon: $message", RuntimeException(IOException(message)))
+
         @JvmStatic
         fun removeFailures(): Stream<Arguments> =
             Stream.of(
                 Arguments.of(ConflictException("removal of container c1 is already in progress"), "already in progress"),
                 Arguments.of(InternalServerErrorException("daemon error"), "daemon error"),
                 Arguments.of(DockerClientException("client failure"), "client failure"),
-                Arguments.of(IOException("Broken pipe"), "Broken pipe"),
-                // The transport's wrapper is read as the I-O error inside it.
                 Arguments.of(java.io.UncheckedIOException(IOException("Stream closed")), "Stream closed"),
                 Arguments.of(IllegalStateException("Connection pool shut down"), "Connection pool shut down"),
                 Arguments.of(RuntimeException("Container not found"), "Container not found"),

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -259,7 +260,8 @@ internal class AwsWaitsTransientErrorTest {
     // ---------- OpenSearch ----------
 
     private val openSearchClient: OpenSearchClient = mock()
-    private val openSearchService = OpenSearchService(openSearchClient, mock<IamRoles>(), mock<AccountIdentity>(), eventBus)
+    private val openSearchService =
+        OpenSearchService(openSearchClient, mock<IamRoles>(), mock<AccountIdentity>(), eventBus, AwsErrorHandler())
 
     private fun domain(
         processing: Boolean,

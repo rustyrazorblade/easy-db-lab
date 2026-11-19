@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DeleteSnapshotRequest
 import software.amazon.awssdk.services.ec2.model.DeregisterImageRequest
@@ -100,6 +101,31 @@ class AMIService(
         val kept: List<AMI>,
         val deleted: List<AMI>,
     )
+
+    /**
+     * What happened when one AMI and its snapshots were deleted.
+     *
+     * An AWS failure is a value here, so a caller reports it without naming an SDK type.
+     */
+    sealed interface AmiDeletion {
+        /** The AMI is deregistered and every snapshot it held is deleted. */
+        data object Deleted : AmiDeletion
+
+        /**
+         * AWS refused or failed a call, so the deletion stopped.
+         *
+         * @property amiId the AMI being deleted
+         * @property failedStep the call that failed: deregistering the AMI or deleting one snapshot
+         * @property remainingSnapshotIds the snapshots still in the account, the failed one first
+         * @property reason the AWS message
+         */
+        data class Failed(
+            val amiId: String,
+            val failedStep: String,
+            val remainingSnapshotIds: List<String>,
+            val reason: String,
+        ) : AmiDeletion
+    }
 
     // ==================== Low-Level EC2 AMI Operations ====================
 
@@ -216,6 +242,30 @@ class AMIService(
             .decorateRunnable(retry) {
                 ec2Client.deleteSnapshot(request)
             }.run()
+    }
+
+    /**
+     * Deregisters [ami], then deletes its snapshots.
+     *
+     * Each call is retried on its own. An AWS failure that is left after the retries stops the
+     * deletion and is returned as [AmiDeletion.Failed], naming the step that failed and the
+     * snapshots that are left; any other failure propagates.
+     */
+    fun deleteWithSnapshots(ami: AMI): AmiDeletion {
+        val remaining = ArrayDeque(ami.snapshotIds)
+        var step = "deregister ${ami.id}"
+        return try {
+            deregisterAMI(ami.id)
+            while (remaining.isNotEmpty()) {
+                step = "delete snapshot ${remaining.first()}"
+                deleteSnapshot(remaining.first())
+                remaining.removeFirst()
+            }
+            AmiDeletion.Deleted
+        } catch (e: SdkException) {
+            log.warn(e) { "Failed to $step; snapshots left: $remaining" }
+            AmiDeletion.Failed(ami.id, step, remaining.toList(), e.message ?: e::class.simpleName.orEmpty())
+        }
     }
 
     // ==================== Pruning ====================

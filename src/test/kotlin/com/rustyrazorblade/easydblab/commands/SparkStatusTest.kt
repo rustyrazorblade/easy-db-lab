@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.commands.spark.SparkStatus
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
+import com.rustyrazorblade.easydblab.services.SparkJobState
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -16,7 +17,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import software.amazon.awssdk.services.emr.model.StepState
 import java.time.Instant
 
 class SparkStatusTest : BaseKoinTest() {
@@ -80,7 +80,7 @@ class SparkStatusTest : BaseKoinTest() {
 
         val jobStatus =
             SparkService.JobStatus(
-                state = StepState.COMPLETED,
+                state = SparkJobState.COMPLETED,
                 stateChangeReason = null,
                 failureDetails = null,
             )
@@ -111,14 +111,14 @@ class SparkStatusTest : BaseKoinTest() {
                 SparkService.JobInfo(
                     stepId = "s-RECENT123",
                     name = "Most Recent Job",
-                    state = StepState.RUNNING,
+                    state = SparkJobState.RUNNING,
                     startTime = Instant.now(),
                 ),
             )
 
         val jobStatus =
             SparkService.JobStatus(
-                state = StepState.RUNNING,
+                state = SparkJobState.RUNNING,
                 stateChangeReason = null,
                 failureDetails = null,
             )

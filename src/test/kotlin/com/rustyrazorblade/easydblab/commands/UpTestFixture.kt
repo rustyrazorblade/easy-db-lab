@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -246,7 +247,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
             single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
             single { CiliumNodeImageCheck(get()) }
-            single { AWSResourceSetupService(get(), get(), get(), get()) }
+            single { AWSResourceSetupService(get(), get(), get(), get(), AwsErrorHandler()) }
             single { ProvisioningPreflight(get(), get(), get(), get()) }
             single<AccountCapacity> { FakeAccountCapacity().also { accountCapacity = it } }
             single { LaunchCapacityPreflight(get(), get()) }

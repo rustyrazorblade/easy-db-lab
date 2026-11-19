@@ -1,29 +1,34 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
-import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
-import software.amazon.awssdk.core.exception.SdkClientException
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.sts.model.StsException
-import java.util.stream.Stream
 
 /**
- * `show-iam-policies` needs the account ID. An AWS failure fetching it is reported as a credential
- * problem and still fails the command; a failure that is not an AWS failure is not mistaken for one.
+ * `show-iam-policies` needs the account ID. A failure fetching it propagates unchanged, and the
+ * command failure reporter turns it into exactly one report: a provider error with the profile
+ * setup remedy for expired credentials, the cause chain for anything else.
  */
 class ShowIamPoliciesCredentialFailureTest : BaseKoinTest() {
     private var accountFailure: Exception = IllegalStateException("unset")
+    private val events = mutableListOf<Event>()
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -35,37 +40,59 @@ class ShowIamPoliciesCredentialFailureTest : BaseKoinTest() {
                         override fun checkPermissions() = Unit
                     }
                 }
-                single { AWSResourceSetupService(get<AccountIdentity>(), mock<IamRoles>(), get(), get()) }
+                single { AWSResourceSetupService(get<AccountIdentity>(), mock<IamRoles>(), get(), get(), AwsErrorHandler()) }
             },
         )
 
-    companion object {
-        @JvmStatic
-        fun awsFailures(): Stream<Exception> =
-            Stream.of(
-                SdkClientException.create("Unable to load credentials"),
-                StsException.builder().message("ExpiredToken").build(),
-            )
+    @BeforeEach
+    fun captureEvents() {
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("awsFailures")
-    fun `an AWS failure fetching the account ID is reported as a credential error and rethrown`(failure: Exception) {
-        accountFailure = failure
-        val outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
-
-        assertThatThrownBy { ShowIamPolicies().execute() }.isSameAs(failure)
-
-        assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("Failed to get AWS account ID")
+    private fun runAndReport(): Throwable {
+        val failure = catchThrowable { ShowIamPolicies().execute() }
+        CommandFailureReporter(getKoin().get(), listOf(AwsErrorHandler())).report(failure)
+        return failure
     }
 
     @Test
-    fun `a failure that is not an AWS failure propagates without a credential error`() {
+    fun `expired credentials are reported once as a credentials provider error`() {
+        accountFailure =
+            StsException
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode("ExpiredToken")
+                        .errorMessage("expired")
+                        .build(),
+                ).message("expired")
+                .build()
+
+        assertThat(runAndReport()).isSameAs(accountFailure)
+
+        assertThat(events.filter { it.isError() }).hasSize(1)
+        val reported = events.single { it.isError() }
+        assertThat(reported).isInstanceOf(Event.Command.ProviderError::class.java)
+        assertThat((reported as Event.Command.ProviderError).kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
+    }
+
+    @Test
+    fun `a failure that is not an AWS failure is reported once as an execution error`() {
         accountFailure = IllegalStateException("bug")
-        val outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
-        assertThatThrownBy { ShowIamPolicies().execute() }.isSameAs(accountFailure)
+        assertThat(runAndReport()).isSameAs(accountFailure)
 
-        assertThat(outputHandler.errors).isEmpty()
+        assertThat(events.filter { it.isError() }).hasSize(1)
+        assertThat(events.single { it.isError() }).isInstanceOf(Event.Command.ExecutionError::class.java)
     }
 }

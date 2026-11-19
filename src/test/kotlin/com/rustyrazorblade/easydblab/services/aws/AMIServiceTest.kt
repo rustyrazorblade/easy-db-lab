@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -11,11 +12,15 @@ import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.spy
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.ec2.Ec2Client
+import software.amazon.awssdk.services.ec2.model.DeleteSnapshotRequest
+import software.amazon.awssdk.services.ec2.model.DeregisterImageRequest
 import software.amazon.awssdk.services.ec2.model.DescribeImagesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeImagesResponse
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.Image
 import software.amazon.awssdk.services.ec2.model.ImageState
 import java.time.Instant
@@ -361,6 +366,65 @@ internal class AMIServiceTest {
             .keptAMIsWithIds("ami-1", "ami-2", "ami-3")
 
         verify(amiService, never()).deregisterAMI(any())
+    }
+
+    @Test
+    fun `deleteWithSnapshots deregisters the AMI and deletes every snapshot`() {
+        val ami = cassandraAMI("ami-2", "amd64", "20240102", listOf("snap-2", "snap-3"))
+
+        assertThat(amiService.deleteWithSnapshots(ami)).isEqualTo(AMIService.AmiDeletion.Deleted)
+
+        verify(mockEc2Client).deregisterImage(any<DeregisterImageRequest>())
+        verify(mockEc2Client, times(2)).deleteSnapshot(any<DeleteSnapshotRequest>())
+    }
+
+    @Test
+    fun `deleteWithSnapshots returns an AWS refusal as a failure and keeps the snapshots`() {
+        val ami = cassandraAMI("ami-2", "amd64", "20240102", listOf("snap-2"))
+        whenever(mockEc2Client.deregisterImage(any<DeregisterImageRequest>()))
+            .thenThrow(
+                Ec2Exception
+                    .builder()
+                    .statusCode(403)
+                    .message("UnauthorizedOperation")
+                    .build(),
+            )
+
+        val deletion = amiService.deleteWithSnapshots(ami)
+
+        assertThat(deletion)
+            .isEqualTo(AMIService.AmiDeletion.Failed("ami-2", "deregister ami-2", listOf("snap-2"), "UnauthorizedOperation"))
+
+        verify(mockEc2Client, never()).deleteSnapshot(any<DeleteSnapshotRequest>())
+    }
+
+    @Test
+    fun `deleteWithSnapshots stops at the first snapshot AWS refuses and names the snapshots left`() {
+        val ami = cassandraAMI("ami-2", "amd64", "20240102", listOf("snap-2", "snap-3"))
+        whenever(mockEc2Client.deleteSnapshot(any<DeleteSnapshotRequest>()))
+            .thenThrow(
+                Ec2Exception
+                    .builder()
+                    .statusCode(400)
+                    .message("InvalidSnapshot.InUse")
+                    .build(),
+            )
+
+        val deletion = amiService.deleteWithSnapshots(ami)
+
+        assertThat(deletion)
+            .isEqualTo(
+                AMIService.AmiDeletion.Failed("ami-2", "delete snapshot snap-2", listOf("snap-2", "snap-3"), "InvalidSnapshot.InUse"),
+            )
+        verify(mockEc2Client, times(1)).deleteSnapshot(any<DeleteSnapshotRequest>())
+    }
+
+    @Test
+    fun `deleteWithSnapshots lets a failure that is not an AWS failure propagate`() {
+        val ami = cassandraAMI("ami-2", "amd64", "20240102", listOf("snap-2"))
+        whenever(mockEc2Client.deregisterImage(any<DeregisterImageRequest>())).thenThrow(IllegalStateException("bug"))
+
+        assertThatThrownBy { amiService.deleteWithSnapshots(ami) }.isInstanceOf(IllegalStateException::class.java)
     }
 
     // ===== Test Data Builders =====

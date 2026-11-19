@@ -13,7 +13,7 @@ import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.NodeOutput
-import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
 import org.koin.core.component.inject

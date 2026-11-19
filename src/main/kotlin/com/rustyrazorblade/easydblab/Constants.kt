@@ -402,6 +402,10 @@ object Constants {
     object AWS {
         const val DEFAULT_CREDENTIALS_NAME = "awscredentials"
 
+        // The account ID token in the IAM policy templates. AWSPolicy replaces it with the real
+        // account; setup paths that have no working credentials show the policies with it kept.
+        const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
+
         // The shared-credentials file the tool writes holds one profile under this name; the AWS CLI
         // (Packer, SSM sessions) is pointed at the file with SHARED_CREDENTIALS_FILE_ENV.
         const val CREDENTIALS_FILE_PROFILE = "default"
@@ -423,6 +427,67 @@ object Constants {
         // EC2 error code for a launch AWS has no capacity for. AWS answers it with HTTP 500, so
         // the retry policy must name it: it is a shortage, not a transient server error.
         const val EC2_INSUFFICIENT_CAPACITY = "InsufficientInstanceCapacity"
+
+        /**
+         * AWS error codes, grouped by what the user must do. `AwsErrorHandler` checks the code
+         * before the HTTP status, because STS, IAM and S3 answer 403 for bad credentials.
+         */
+        object ErrorCodes {
+            val CREDENTIALS =
+                setOf(
+                    "ExpiredToken",
+                    "ExpiredTokenException",
+                    "RequestExpired",
+                    "AuthFailure",
+                    "InvalidClientTokenId",
+                    "UnrecognizedClientException",
+                    "InvalidAccessKeyId",
+                    "SignatureDoesNotMatch",
+                    "InvalidSignatureException",
+                    "InvalidToken",
+                    "TokenRefreshRequired",
+                    "MissingAuthenticationToken",
+                    "IncompleteSignature",
+                )
+
+            val PERMISSION_DENIED =
+                setOf(
+                    "AccessDenied",
+                    "AccessDeniedException",
+                    "UnauthorizedOperation",
+                )
+
+            /** A 403 from clock skew is neither a credentials nor a permission problem. */
+            const val CLOCK_SKEW = "RequestTimeTooSkewed"
+
+            /**
+             * Prefixes of the `SdkClientException` messages a credentials or SSO token provider raises when it finds
+             * no usable credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGES]. The legacy SSO
+             * profile's expired session has its own type, `ExpiredTokenException`, so it needs no message here; an
+             * `sso_session` profile's `SsoOidcTokenProvider` raises the last two.
+             */
+            val CREDENTIALS_MESSAGES =
+                listOf(
+                    "Unable to load credentials",
+                    "Profile file contained no credentials for profile",
+                    "Token is expired",
+                    "Unable to load SSO token",
+                )
+
+            /**
+             * The SDK packages whose providers raise a missing-credentials `SdkClientException`: the credentials
+             * providers, the SSO OIDC token provider and the SSO credentials provider.
+             */
+            val CREDENTIALS_PROVIDER_PACKAGES =
+                listOf(
+                    "software.amazon.awssdk.auth.credentials.",
+                    "software.amazon.awssdk.services.ssooidc.",
+                    "software.amazon.awssdk.services.sso.",
+                )
+
+            /** The SDK package of the exception builders, skipped to find the code that raised an exception. */
+            const val SDK_EXCEPTION_PACKAGE = "software.amazon.awssdk.core.exception."
+        }
 
         // IAM Role Names
         object Roles {
@@ -740,6 +805,9 @@ object Constants {
 
         // Per-profile user settings, written under the active profile directory
         const val PROFILE_SETTINGS_FILE = "settings.yaml"
+
+        // The profile key pair's private key, written owner-only under the active profile directory
+        const val PROFILE_SSH_KEY_FILE = "secret.pem"
     }
 
     // K3s configuration

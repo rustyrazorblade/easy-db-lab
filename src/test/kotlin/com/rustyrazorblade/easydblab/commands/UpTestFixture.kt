@@ -22,7 +22,9 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
@@ -278,7 +280,14 @@ abstract class UpTestFixture : BaseKoinTest() {
                 }
             }
             // The real preflight the executor runs before `up`; a test calls ensureTunnel() to play the executor.
-            single { ProxyPreflight(get(), get(), WorkspaceShellTools(ToolWrapperInstaller()), get<Context>().workingDirectory) }
+            single {
+                ProxyPreflight(
+                    get(),
+                    get(),
+                    WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
+                    get<Context>().workingDirectory,
+                )
+            }
             single<SocksProxyService> {
                 mock<SocksProxyService> {
                     on { ensureRunning(any()) } doAnswer { invocation ->

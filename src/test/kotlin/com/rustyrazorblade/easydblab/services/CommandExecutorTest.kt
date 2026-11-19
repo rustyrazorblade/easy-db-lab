@@ -22,7 +22,9 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
@@ -128,7 +130,7 @@ class CommandExecutorTest : BaseKoinTest() {
                     ProxyPreflight(
                         mockClusterStateManager,
                         mockSocksProxyService,
-                        WorkspaceShellTools(ToolWrapperInstaller()),
+                        WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
                         context.workingDirectory,
                     ),
                 proxyAvailability = proxyAvailability,

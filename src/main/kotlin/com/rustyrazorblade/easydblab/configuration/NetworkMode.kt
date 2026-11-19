@@ -9,9 +9,8 @@ import com.rustyrazorblade.easydblab.Constants
  *
  * `init` records it in `state.json` (`networkMode`), and the CLI copies it into the workspace's proxy
  * env file (`EDL_NETWORK_MODE`) for the tool wrappers and `env.sh`. Both places use the same wire
- * [id], so one name means one thing everywhere. It replaced the `tailscaleActive` boolean, which
- * could not say "direct", and Patrick's second `EDL_NETWORK_MODE=direct` flag, which allowed
- * combinations that meant nothing.
+ * [id], so one name means one thing everywhere. One value with three cases cannot express a
+ * combination that means nothing, as two independent flags (Tailscale on, direct on) could.
  *
  * The name says how the cluster is reached, not which cloud runs it, so a later execution
  * environment (K3s in Docker, an existing cluster) records [Direct] without a provider type.
@@ -25,7 +24,7 @@ enum class NetworkMode(
     Socks("socks"),
 
     /** Over the tailnet, to the cluster's private addresses. */
-    Tailscale("tailscale"),
+    Tailscale(Constants.Proxy.NETWORK_MODE_TAILSCALE),
 
     /** The cluster API is reachable from this machine as it is, with no tunnel. */
     Direct(Constants.Proxy.NETWORK_MODE_DIRECT),

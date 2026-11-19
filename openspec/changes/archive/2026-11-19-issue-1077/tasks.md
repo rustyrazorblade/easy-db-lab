@@ -21,6 +21,7 @@
 - [x] 4.1 `tool-wrapper.sh`: resolve the mode (env key, then legacy key, then `socks`), branch per design D7, unknown-mode message.  Extend `ToolWrapperScriptTest`: each mode, the legacy file, an inherited mode, an unknown mode, direct with a recorded tunnel, direct with an inherited `http_proxy`.
 - [x] 4.2 `env.sh`: `_edl_network_mode` replaces `_edl_tailscale_active` and `_edl_network_direct`; `with-proxy` and `socks5-status` per the spec.  Extend `EnvShSourcingTest` the same way, in bash and zsh.
 - [x] 4.3 Test that an old wrapper (the `main` copy of `tool-wrapper.sh`, kept as a test fixture) is replaced by the install that precedes a mode write.
+- [x] 4.4 `WorkspaceShellTools.prepare` rewrites `env.sh` (`EnvScriptWriter`) after the wrappers and before the mode write, so every path that converts the env file leaves a current `env.sh`.  Test that an old `env.sh` (the `main` copy, kept as a test fixture) is replaced, and that `with-proxy` from the re-sourced file works on the converted Tailscale file where the old one fails.
 
 ## 5. Kotlin callers
 
@@ -28,6 +29,7 @@
 - [x] 5.2 Tailscale-only steps use `== Tailscale`: `ProvisioningPreflight.verifyLocalTailscale`, `K3sControlSteps` masquerade, `Up` tailnet route.
 - [x] 5.3 `Event.Proxy.TunnelNotNeeded(networkMode)` with the two texts from design D8.  Update `events/CLAUDE.md`.
 - [x] 5.4 Update every test that builds `ClusterState(tailscaleActive = ...)` or calls `recordTailscale`/`recordDirect`.
+- [x] 5.5 `ProxyPreflight` fails with the load's own message when `state.json` cannot be loaded, instead of skipping the tunnel.  `TunnelNotNeeded` has its own text for `tailscale` and `direct`, and a neutral one for any other id.
 
 ## 6. Specs and docs
 

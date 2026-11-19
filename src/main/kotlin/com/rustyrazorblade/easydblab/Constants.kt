@@ -1696,6 +1696,9 @@ object Constants {
          */
         const val NETWORK_MODE_DIRECT = "direct"
 
+        /** The wire id of the Tailscale network mode, for the same reason as [NETWORK_MODE_DIRECT]. */
+        const val NETWORK_MODE_TAILSCALE = "tailscale"
+
         /**
          * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script
          * runs and the script's own timestamped lines. It lives under the workspace `logs/` directory

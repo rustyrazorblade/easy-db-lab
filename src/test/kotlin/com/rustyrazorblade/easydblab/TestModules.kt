@@ -23,9 +23,11 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
 import com.rustyrazorblade.easydblab.providers.aws.StsAccountIdentity
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -125,7 +127,7 @@ object TestModules {
             single { ToolWrapperInstaller() }
 
             // Real: the wrappers, then the network mode, in the test workspace.
-            single { WorkspaceShellTools(get()) }
+            single { WorkspaceShellTools(get(), EnvScriptWriter(DirectSshRoute(22))) }
 
             // Real, over the test workspace, so stopping a tunnel (`down`, `socks stop`) runs the
             // real state file and env file code. Its ssh launcher refuses to start anything: a test

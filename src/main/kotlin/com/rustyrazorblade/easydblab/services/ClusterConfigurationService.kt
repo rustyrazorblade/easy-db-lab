@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.AxonOpsWorkbenchConfig
 import com.rustyrazorblade.easydblab.configuration.ClusterConfigWriter
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
@@ -10,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -95,18 +95,18 @@ interface ClusterConfigurationService {
  *
  * @property userConfigProvider Provider for user configuration including SSH key path
  * @property sshRoute supplies each host's `ProxyCommand` when the profile's SSH transport needs one
- * @property workspaceShellTools writes the tool wrappers and the network mode
+ * @property workspaceShellTools writes the tool wrappers, `env.sh` and the network mode
  */
 class DefaultClusterConfigurationService(
     private val userConfigProvider: UserConfigProvider,
     private val eventBus: EventBus,
     private val sshRoute: SshRoute,
-    private val workspaceShellTools: WorkspaceShellTools = WorkspaceShellTools(ToolWrapperInstaller()),
+    private val workspaceShellTools: WorkspaceShellTools = WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(sshRoute)),
 ) : ClusterConfigurationService {
     companion object {
         private val log = KotlinLogging.logger {}
         const val SSH_CONFIG_FILE = "sshConfig"
-        const val ENV_FILE = "env.sh"
+        const val ENV_FILE = EnvScriptWriter.FILE_NAME
         const val STRESS_ENV_FILE = "environment.sh"
         const val AXONOPS_CONFIG_FILE = "axonops-workbench.json"
         const val DEFAULT_CLUSTER_NAME = "easy-db-lab"
@@ -131,7 +131,7 @@ class DefaultClusterConfigurationService(
         val sshKeyPath = userConfigProvider.sshKeyPath
         // Built before the file is opened, so a host that cannot be routed fails the write instead of
         // leaving a half-written sshConfig behind.
-        val proxyCommands = proxyCommandsFor(clusterState.hosts)
+        val proxyCommands = EnvScriptWriter(sshRoute).proxyCommandsFor(clusterState.hosts)
         val sshConfigFile = File(workingDirectory.toFile(), SSH_CONFIG_FILE)
         sshConfigFile.bufferedWriter().use { writer ->
             ClusterConfigWriter.writeSshConfig(
@@ -142,27 +142,11 @@ class DefaultClusterConfigurationService(
             )
         }
 
-        val envFile = File(workingDirectory.toFile(), ENV_FILE)
-        envFile.bufferedWriter().use { writer ->
-            ClusterConfigWriter.writeEnvironmentFile(
-                writer,
-                clusterState.hosts,
-                clusterState.clusterLabelName(),
-                proxyCommands,
-            )
-        }
-
-        // env.sh puts bin/ on PATH, and a cluster that needs no tunnel never starts one that would
-        // record anything, so the wrappers and the network mode are written here, where every cluster passes.
-        workspaceShellTools.prepare(workingDirectory.toFile(), clusterState.networkMode)
+        // env.sh, the wrappers it puts first on PATH, and the network mode they read. A cluster that
+        // needs no tunnel never starts one that would record anything, so they are written here,
+        // where every cluster passes.
+        workspaceShellTools.prepare(workingDirectory.toFile(), clusterState)
     }
-
-    /** The `ProxyCommand` for each host alias whose route needs one; empty under the direct transport. */
-    private fun proxyCommandsFor(hosts: Map<ServerType, List<ClusterHost>>): Map<String, String> =
-        hosts.values
-            .flatten()
-            .mapNotNull { host -> sshRoute.proxyCommand(host.toHost())?.let { host.alias to it } }
-            .toMap()
 
     override fun writeStressEnvironmentVariables(
         workingDirectory: Path,

@@ -44,6 +44,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.EnumSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -882,9 +883,10 @@ class UpTest : UpTestFixture() {
         verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
     }
 
-    @Test
-    fun `up skips both Tailscale checks entirely when the cluster does not use Tailscale`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = NetworkMode.Socks))
+    @ParameterizedTest
+    @EnumSource(value = NetworkMode::class, names = ["Socks", "Direct"])
+    fun `up skips both Tailscale checks entirely when the cluster does not use Tailscale`(mode: NetworkMode) {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = mode))
         // Both checks would fail outright if they ran; a non-Tailscale cluster must not consult
         // them at all, and must not pay for a local process invocation or a socket connect.
         localTailscaleState = LocalTailscaleState.NotInstalled

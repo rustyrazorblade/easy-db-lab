@@ -32,7 +32,7 @@ class SocksStart : PicoBaseCommand() {
             eventBus.emit(Event.Proxy.NoRunningCluster(context.workingDirectory.absolutePath))
             throw CommandFailedException("no running cluster in ${context.workingDirectory.absolutePath}")
         }
-        workspaceShellTools.prepare(context.workingDirectory, state.networkMode)
+        workspaceShellTools.prepare(context.workingDirectory, state)
         if (!state.networkMode.needsTunnel) {
             eventBus.emit(Event.Proxy.TunnelNotNeeded(state.networkMode.id))
             return

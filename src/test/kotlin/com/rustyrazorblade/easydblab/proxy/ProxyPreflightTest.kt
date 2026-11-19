@@ -6,7 +6,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.any
@@ -16,6 +18,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -31,7 +34,12 @@ internal class ProxyPreflightTest {
     private val stateManager by lazy { ClusterStateManager(File(workspace, "state.json")) }
     private val envFile by lazy { ProxyEnvFile(workspace) }
     private val preflight by lazy {
-        ProxyPreflight(stateManager, socksProxyService, WorkspaceShellTools(ToolWrapperInstaller()), workspace)
+        ProxyPreflight(
+            stateManager,
+            socksProxyService,
+            WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
+            workspace,
+        )
     }
 
     @Test
@@ -102,6 +110,33 @@ internal class ProxyPreflightTest {
     }
 
     @Test
+    fun `an earlier release's env sh is rewritten, so sourcing it again works on the converted env file`() {
+        File(workspace, "sshConfig").writeText("")
+        File(workspace, "env.sh").writeText(oldEnvScript())
+        envFile.file.writeText("${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=true\n")
+        stateManager.save(clusterState(NetworkMode.Tailscale))
+
+        preflight.ensureTunnel()
+
+        assertThat(envFile.file).hasContent("${Constants.Proxy.ENV_NETWORK_MODE}=tailscale")
+        // The old with-proxy reads only EDL_TAILSCALE_ACTIVE, so on the converted file it looks for a tunnel and fails.
+        val withOldEnv = File(workspace, "env-old.sh").apply { writeText(oldEnvScript()) }
+        assertThat(sourceAndRun(withOldEnv, "with-proxy true").first).isEqualTo(1)
+        val (exitCode, output) = sourceAndRun(File(workspace, "env.sh"), "with-proxy true")
+        assertThat(exitCode).describedAs(output).isEqualTo(0)
+    }
+
+    @Test
+    fun `a state file that cannot be loaded fails with its own message and writes nothing`() {
+        File(workspace, "state.json").writeText("""{"name": "lab", "networkMode": "vpn"}""")
+
+        assertThatThrownBy { preflight.ensureTunnel() }.hasMessageContaining("Unknown networkMode 'vpn'")
+
+        verify(socksProxyService, never()).ensureRunning(any())
+        assertThat(envFile.file).doesNotExist()
+    }
+
+    @Test
     fun `a directory with no cluster state starts nothing and writes nothing`() {
         preflight.ensureTunnel()
 
@@ -151,6 +186,24 @@ internal class ProxyPreflightTest {
     private fun oldWrapperScript(): String =
         checkNotNull(javaClass.getResource(OLD_WRAPPER_FIXTURE)) { "missing $OLD_WRAPPER_FIXTURE" }.readText()
 
+    private fun oldEnvScript(): String = checkNotNull(javaClass.getResource(OLD_ENV_FIXTURE)) { "missing $OLD_ENV_FIXTURE" }.readText()
+
+    /** Sources [script] in a fresh bash in the workspace and runs [command]: its exit code and its output. */
+    private fun sourceAndRun(
+        script: File,
+        command: String,
+    ): Pair<Int, String> {
+        val process =
+            ProcessBuilder("/bin/bash", "-c", "source ./${script.name} >/dev/null 2>&1; $command")
+                .directory(workspace)
+                .redirectErrorStream(true)
+                .start()
+        process.outputStream.close()
+        val output = process.inputStream.bufferedReader().readText()
+        assertThat(process.waitFor(SHELL_LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+        return process.exitValue() to output
+    }
+
     private fun packagedWrapperScript(): String =
         checkNotNull(javaClass.getResource(Constants.ToolWrappers.RESOURCE)) { "missing packaged wrapper" }.readText()
 
@@ -159,5 +212,10 @@ internal class ProxyPreflightTest {
 
         /** The tool wrapper as `main` shipped it before the network mode, which knows only EDL_TAILSCALE_ACTIVE. */
         const val OLD_WRAPPER_FIXTURE = "tool-wrapper-before-network-mode.sh"
+
+        /** The `env.sh` template as `main` shipped it before the network mode; its helpers read only EDL_TAILSCALE_ACTIVE. */
+        const val OLD_ENV_FIXTURE = "env-before-network-mode.sh"
+
+        const val SHELL_LIMIT_SECONDS = 30L
     }
 }

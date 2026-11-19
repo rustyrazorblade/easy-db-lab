@@ -46,7 +46,7 @@ The CLI MUST read a `state.json` written before `networkMode` existed:
 
 Loading MUST NOT write the file. The next save MUST write `networkMode` and MUST NOT write `tailscaleActive`.
 
-A `networkMode` value other than `socks`, `tailscale` or `direct` MUST fail the load with one line that names `state.json`, the value, and the known values. It applies to every command that loads the state, `down` included; the value MUST NOT be read as `socks` or any other mode.
+A `networkMode` value other than `socks`, `tailscale` or `direct` MUST fail the load with one line that names `state.json`, the value, and the known values. It applies to every command that loads the state, `down` included, and to the proxy preflight of every `@RequiresProxy` command, which MUST fail rather than skip the tunnel; the value MUST NOT be read as `socks` or any other mode.
 
 #### Scenario: Old Tailscale state
 
@@ -77,10 +77,10 @@ A `networkMode` value other than `socks`, `tailscale` or `direct` MUST fail the 
 A workspace made by an earlier release has an env file with `EDL_TAILSCALE_ACTIVE` and no `EDL_NETWORK_MODE`, and wrappers in `<workspace>/bin/` that know only `EDL_TAILSCALE_ACTIVE`. Such a workspace MUST keep working with the new build, without the user running anything extra.
 
 - The CLI MUST read the old env file: `EDL_TAILSCALE_ACTIVE=true` as `tailscale`, `EDL_TAILSCALE_ACTIVE=false` as `socks`.
-- The CLI MUST write the packaged wrappers into `<workspace>/bin/`, replacing every copy that differs, before every write that records the network mode, and the env file MUST be converted only by a write that records the mode. That write MUST replace `EDL_TAILSCALE_ACTIVE` with `EDL_NETWORK_MODE`.
+- The CLI MUST write the packaged wrappers into `<workspace>/bin/`, replacing every copy that differs, and MUST rewrite `<workspace>/env.sh` from the packaged template, before every write that records the network mode. The env file MUST be converted only by a write that records the mode. That write MUST replace `EDL_TAILSCALE_ACTIVE` with `EDL_NETWORK_MODE`.
 - Recording or removing a tunnel MUST NOT convert the file: it keeps `EDL_TAILSCALE_ACTIVE` as it found it.
 - The new wrappers, `with-proxy` and `socks5-status` MUST read an old env file correctly (see "Wrappers branch on the network mode").
-- The CLI MUST NOT write `EDL_TAILSCALE_ACTIVE` for a transition. A shell that sourced an `env.sh` from an earlier release keeps that release's `with-proxy` and `socks5-status` functions until the user sources `env.sh` again; wrapped tools resolve to the new wrappers through `PATH` and are not affected.
+- The CLI MUST NOT write `EDL_TAILSCALE_ACTIVE` for a transition. A shell that sourced an `env.sh` from an earlier release keeps that release's `with-proxy` and `socks5-status` functions until the user sources `env.sh` again, which then loads the rewritten `env.sh`; wrapped tools resolve to the new wrappers through `PATH` and are not affected.
 
 #### Scenario: Upgraded Tailscale workspace
 
@@ -88,6 +88,13 @@ A workspace made by an earlier release has an env file with `EDL_TAILSCALE_ACTIV
 - **WHEN** the new build runs `socks start`, `up`, or any command that requires the proxy
 - **THEN** `bin/` holds the packaged wrappers, the env file holds `EDL_NETWORK_MODE=tailscale` and no `EDL_TAILSCALE_ACTIVE`
 - **AND** a wrapped `kubectl` connects directly
+
+#### Scenario: Upgraded workspace gets a current env.sh
+
+- **GIVEN** a Tailscale workspace made by an earlier release, whose `env.sh` defines helpers that read only `EDL_TAILSCALE_ACTIVE`
+- **WHEN** the new build runs `socks start`, `up`, or any command that requires the proxy
+- **THEN** `env.sh` is the packaged template, written before the env file is converted
+- **AND** after the user sources `env.sh` again, `with-proxy` runs its command directly
 
 #### Scenario: Upgraded SOCKS workspace with a running tunnel
 

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 
 /**
@@ -9,7 +8,7 @@ import java.io.File
  * SOCKS tunnel when the cluster is provisioned, its infrastructure is UP, and its network mode is
  * `socks`.
  *
- * Whenever the cluster state can be read, it also writes the wrappers and records the cluster's
+ * Whenever the workspace has a cluster state, it also writes the wrappers and records the cluster's
  * network mode in the proxy env file, through [WorkspaceShellTools]. A cluster in `tailscale` or
  * `direct` mode never starts a tunnel, so without this the tool wrappers and `env.sh` would have no
  * record of how to reach the cluster. A tunnel recorded earlier is left recorded and running when
@@ -41,22 +40,20 @@ class ProxyPreflight(
         obtained.remove()
     }
 
-    /** Starts or reuses the tunnel when the cluster needs one; does nothing in a directory with no cluster. */
+    /**
+     * Starts or reuses the tunnel when the cluster needs one; does nothing in a directory with no cluster.
+     *
+     * A `state.json` that cannot be loaded fails here, with the load's own message. Several
+     * `@RequiresProxy` commands (`stress list`, `kit uninstall`, ...) never load the state themselves,
+     * so skipping the tunnel would surface later as a connect timeout that names no cause.
+     */
     fun ensureTunnel() {
         obtained.remove()
         if (!clusterStateManager.exists()) return
-        val state =
-            runCatching { clusterStateManager.load() }.getOrElse { e ->
-                log.debug(e) { "Could not load cluster state for proxy startup check" }
-                return
-            }
-        workspaceShellTools.prepare(workspace, state.networkMode)
+        val state = clusterStateManager.load()
+        workspaceShellTools.prepare(workspace, state)
         if (!state.isInfrastructureUp() || !state.networkMode.needsTunnel) return
         val controlHost = state.getControlHost() ?: return
         obtained.set(socksProxyService.ensureRunning(controlHost))
-    }
-
-    private companion object {
-        val log = KotlinLogging.logger {}
     }
 }

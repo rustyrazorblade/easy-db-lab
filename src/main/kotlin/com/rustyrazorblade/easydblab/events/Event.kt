@@ -6668,7 +6668,8 @@ sealed interface Event {
 
         /**
          * The cluster's network mode needs no tunnel, so none was started. [networkMode] is the mode's
-         * wire id, `tailscale` or `direct`.
+         * wire id, `tailscale` or `direct`; each has its own text. Any other id (`socks` needs a tunnel,
+         * so it never comes here) gets a text that names the mode and claims nothing about it.
          */
         @Serializable
         @SerialName("Proxy.TunnelNotNeeded")
@@ -6676,10 +6677,12 @@ sealed interface Event {
             val networkMode: String,
         ) : Proxy {
             override fun toDisplayString(): String =
-                if (networkMode == Constants.Proxy.NETWORK_MODE_DIRECT) {
-                    "This cluster is reachable from this machine, so no SOCKS5 tunnel is needed: tools connect to it directly."
-                } else {
-                    "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                when (networkMode) {
+                    Constants.Proxy.NETWORK_MODE_DIRECT ->
+                        "This cluster is reachable from this machine, so no SOCKS5 tunnel is needed: tools connect to it directly."
+                    Constants.Proxy.NETWORK_MODE_TAILSCALE ->
+                        "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                    else -> "No SOCKS5 tunnel was started for this cluster's network mode '$networkMode'."
                 }
         }
 

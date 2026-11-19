@@ -44,9 +44,12 @@ import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsResponse
 import software.amazon.awssdk.services.ec2.model.KeyPairInfo
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
 import software.amazon.awssdk.services.ec2.model.Tag as Ec2Tag
+import software.amazon.awssdk.services.s3.model.Tag as S3Tag
 
 class SetupProfileTest : BaseKoinTest() {
     private lateinit var mockUserConfigProvider: UserConfigProvider
@@ -120,6 +123,61 @@ class SetupProfileTest : BaseKoinTest() {
 
     @Nested
     inner class WhenProfileAlreadySetUp {
+        /** The profiles that need the backfill are complete ones from before the new marker. */
+        @Test
+        fun `a complete profile's legacy-only bucket and key pair gain the new marker`() {
+            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
+                mapOf(
+                    "email" to "test@example.com",
+                    "region" to "us-west-2",
+                    "awsProfile" to "my-profile",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "legacy-bucket",
+                ),
+            )
+            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(
+                User(
+                    email = "test@example.com",
+                    region = "us-west-2",
+                    keyName = "test-key",
+                    awsProfile = "my-profile",
+                    awsAccessKey = "",
+                    awsSecret = "",
+                    s3Bucket = "legacy-bucket",
+                ),
+            )
+            whenever(get<S3Client>().getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
+                GetBucketTaggingResponse
+                    .builder()
+                    .tagSet(
+                        S3Tag
+                            .builder()
+                            .key("easy_cass_lab")
+                            .value("1")
+                            .build(),
+                    ).build(),
+            )
+            testPrompter = TestPrompter()
+            setupTestModule()
+
+            SetupProfile().execute()
+
+            verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
+            val bucketTags = argumentCaptor<PutBucketTaggingRequest>()
+            verify(get<S3Client>()).putBucketTagging(bucketTags.capture())
+            assertThat(bucketTags.firstValue.bucket()).isEqualTo("legacy-bucket")
+            assertThat(
+                bucketTags.firstValue
+                    .tagging()
+                    .tagSet()
+                    .associate { it.key() to it.value() },
+            ).containsExactlyInAnyOrderEntriesOf(mapOf("easy_cass_lab" to "1", "easy_db_lab" to "1"))
+            val keyTags = argumentCaptor<CreateTagsRequest>()
+            verify(mockEc2).createTags(keyTags.capture())
+            assertThat(keyTags.firstValue.tags().associate { it.key() to it.value() })
+                .containsExactlyEntriesOf(mapOf("easy_db_lab" to "1"))
+        }
+
         @Test
         fun `execute prompts for each optional field when profile exists`() {
             // Given - all required fields already exist with static credentials

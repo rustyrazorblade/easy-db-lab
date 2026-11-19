@@ -22,6 +22,7 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
+import java.io.File
 import software.amazon.awssdk.services.ec2.model.Tag as Ec2Tag
 import software.amazon.awssdk.services.s3.model.Tag as S3Tag
 
@@ -83,7 +84,7 @@ class ProfileResourceMarkersTest : BaseKoinTest() {
         val markers =
             ProfileResourceMarkers(
                 get<AwsS3BucketService>(),
-                AwsKeyPairService(get<EventBus>(), factory, AwsErrorHandler()),
+                AwsKeyPairService(get<EventBus>(), factory, AwsErrorHandler(), File("settings.yaml")),
             )
 
         assertThat(markers.ensureAccountBucketAndKeyPair(user)).isEqualTo("easy-db-lab-existing")

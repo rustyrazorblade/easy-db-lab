@@ -42,6 +42,7 @@ class AwsKeyPairService(
     private val eventBus: EventBus,
     private val clientFactory: AWSClientFactory,
     private val errorHandler: ProviderErrorHandler,
+    private val profileSettingsFile: File,
 ) {
     private companion object {
         const val OWNER_ONLY = "rw-------"
@@ -97,7 +98,7 @@ class AwsKeyPairService(
                 if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_KEY_PAIR_NOT_FOUND) throw e
                 throw ConfigurationException(
                     "The key pair $keyName named in the profile does not exist in this region. " +
-                        "Clear keyName in the profile settings, then run `profile setup` to create a new one.",
+                        "Clear keyName in ${profileSettingsFile.absolutePath}, then run `profile setup` to create a new one.",
                     e,
                 )
             }

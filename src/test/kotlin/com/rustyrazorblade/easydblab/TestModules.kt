@@ -273,7 +273,7 @@ object TestModules {
             // that has never run `cassandra build` actually looks like.
             single { mock<CassandraBuildCatalog>() }
 
-            factory { AwsKeyPairService(get(), get(), AwsErrorHandler()) }
+            factory { AwsKeyPairService(get(), get(), AwsErrorHandler(), File(get<Context>().profileDir, "settings.yaml")) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

@@ -75,6 +75,10 @@ class SetupProfile : PicoBaseCommand() {
         // Collect optional info, allowing updates
         collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
 
+        // A profile made before the easy_db_lab marker has a bucket and key pair with only the legacy one
+        if (userConfig.s3Bucket.isNotBlank()) s3BucketService.ensureMarkerTags(userConfig.s3Bucket)
+        keyPairService.ensureMarkerTags(userConfig)
+
         eventBus.emit(Event.Setup.ConfigurationUpdated)
     }
 

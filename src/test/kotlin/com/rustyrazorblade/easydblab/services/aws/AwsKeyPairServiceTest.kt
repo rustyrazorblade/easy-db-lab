@@ -56,7 +56,8 @@ class AwsKeyPairServiceTest {
             )
         }
     private val ec2: Ec2Client = mock()
-    private val service = AwsKeyPairService(eventBus, mock(), AwsErrorHandler())
+    private val settingsFile = File("/profiles/lab/settings.yaml")
+    private val service = AwsKeyPairService(eventBus, mock(), AwsErrorHandler(), settingsFile)
 
     @Test
     fun `the private key is saved owner-only and the tagged key name returned`(
@@ -147,6 +148,7 @@ class AwsKeyPairServiceTest {
         assertThatThrownBy { service.ensureMarkerTags("lab-key", ec2) }
             .isInstanceOf(ConfigurationException::class.java)
             .hasMessageContaining("lab-key")
+            .hasMessageContaining("/profiles/lab/settings.yaml")
             .hasCause(notFound)
     }
 
@@ -168,7 +170,7 @@ class AwsKeyPairServiceTest {
         val factory: AWSClientFactory = mock()
         val user = User("a@b.c", "us-west-2", keyName = "", awsProfile = "lab", awsAccessKey = "", awsSecret = "")
 
-        AwsKeyPairService(eventBus, factory, AwsErrorHandler()).ensureMarkerTags(user)
+        AwsKeyPairService(eventBus, factory, AwsErrorHandler(), settingsFile).ensureMarkerTags(user)
 
         verify(factory, never()).createEc2ClientWithProfile(any(), any())
     }
@@ -180,7 +182,7 @@ class AwsKeyPairServiceTest {
         existingKeyPair("easy_cass_lab" to "1")
         val user = User("a@b.c", "us-west-2", keyName = "lab-key", awsProfile = "lab", awsAccessKey = "", awsSecret = "")
 
-        AwsKeyPairService(eventBus, factory, AwsErrorHandler()).ensureMarkerTags(user)
+        AwsKeyPairService(eventBus, factory, AwsErrorHandler(), settingsFile).ensureMarkerTags(user)
 
         verify(ec2).createTags(any<CreateTagsRequest>())
         verify(ec2).close()
@@ -303,7 +305,7 @@ class AwsKeyPairServiceTest {
         whenever(ec2.createKeyPair(any<CreateKeyPairRequest>()))
             .thenReturn(CreateKeyPairResponse.builder().keyMaterial("K").build())
 
-        AwsKeyPairService(eventBus, factory, AwsErrorHandler()).generate(profileDir, "us-west-2", "lab", "", "")
+        AwsKeyPairService(eventBus, factory, AwsErrorHandler(), settingsFile).generate(profileDir, "us-west-2", "lab", "", "")
 
         verify(ec2).close()
     }
@@ -317,7 +319,7 @@ class AwsKeyPairServiceTest {
         whenever(ec2.createKeyPair(any<CreateKeyPairRequest>())).thenThrow(RuntimeException("boom"))
 
         assertThatThrownBy {
-            AwsKeyPairService(eventBus, factory, AwsErrorHandler()).generate(profileDir, "us-west-2", "", "key", "secret")
+            AwsKeyPairService(eventBus, factory, AwsErrorHandler(), settingsFile).generate(profileDir, "us-west-2", "", "key", "secret")
         }.hasMessage("boom")
 
         verify(ec2).close()

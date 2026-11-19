@@ -92,7 +92,7 @@ Add `-Dpyroscope.ingest.max.tries=-1` and `-Dpyroscope.push.queue.capacity=360` 
 
 ### 4a. Database-node JFR chunks
 
-`edl-profiling-reconcile` already keeps a chunk it could not send and retries it on the next pass, and it never deletes an unshipped chunk.  But it treated every 4xx as a chunk Pyroscope cannot parse and renamed it `.rejected`, never to be sent again, so a pass that hit Pyroscope's 422 window around a restart lost that chunk.  It now leaves a chunk answered 422 or 429 pending, as it does for a 5xx, and keeps `.rejected` for the other 4xx (a 400 for a truncated chunk).
+`edl-profiling-reconcile` already keeps a chunk it could not send and retries it on the next pass, and it never deletes an unshipped chunk.  But it treated every 4xx as a chunk Pyroscope cannot parse and renamed it `.rejected`, never to be sent again, so a pass that hit Pyroscope's 422 window around a restart lost that chunk.  Pyroscope also answers 422 to a body it cannot parse, so the status alone cannot tell the two apart; the shipper reads the response body.  It now leaves a chunk pending, as it does for a 5xx, on a 429 or on a 422 whose body says "service is unavailable" (shutdown) or "empty ring" (start race), and keeps `.rejected` for every other 4xx.  A truncated chunk is still rejected, so it cannot take an upload slot in every pass and stop newer chunks from shipping.
 
 ### 5. Coverage differs per signal
 

@@ -1170,19 +1170,22 @@ fi
 # --- ship --------------------------------------------------------------------
 
 upload_chunk() {
-  local path="$1" mtime="$2" status url name curl_exit curl_error stderr_file
+  local path="$1" mtime="$2" status url name curl_exit curl_error stderr_file body_file body status_class
   name="$(urlencode "cassandra{hostname=${HOSTNAME_LABEL},cluster=${CLUSTER_NAME}}")"
   url="${PYROSCOPE_URL}/ingest?name=${name}&format=jfr&from=$((mtime - LOOP_SECONDS))&until=${mtime}"
 
   # curl's stdout is the status code (--write-out) and its stderr is the only account of a failure
-  # that never reached HTTP at all, so the two are captured separately rather than discarded.
+  # that never reached HTTP at all, so the two are captured separately rather than discarded. The
+  # response body is kept too: it is the only thing that tells a 422 for a server that is shutting
+  # down or starting apart from a 422 for a chunk Pyroscope cannot parse.
   stderr_file="$(mktemp)"
+  body_file="$(mktemp)"
 
   # Raw bytes, not gzipped: JFR is already compressed. No protobuf labels either — ours are static
   # and travel in the series name.
   status="$(curl --silent --show-error \
     --max-time "$UPLOAD_TIMEOUT_SECONDS" \
-    --output /dev/null \
+    --output "$body_file" \
     --write-out '%{http_code}' \
     --request POST \
     --header 'Content-Type: application/octet-stream' \
@@ -1191,38 +1194,42 @@ upload_chunk() {
     "$url" 2>"$stderr_file")"
   curl_exit=$?
   curl_error="$(sanitize_error "$(cat "$stderr_file" 2>/dev/null)")"
-  rm -f "$stderr_file"
+  body="$(sanitize_error "$(head -c 2000 "$body_file" 2>/dev/null)" | tr '[:upper:]' '[:lower:]')"
+  rm -f "$stderr_file" "$body_file"
 
-  case "$status" in
+  # Transient, though a 4xx: Pyroscope answers 422 to every push from SIGTERM until it exits
+  # ("service is unavailable"), and in the instant a restarted server opens its port before it reads
+  # its ring tokens ("empty ring"); 429 is a rate limit. The chunk is fine, so it waits for the next
+  # pass with the 5xx below; renaming it .rejected would lose that interval's profile to a restart.
+  # Pyroscope also answers 422 to a body it cannot parse, so a 422 naming neither cause is a
+  # rejection, or a truncated chunk would stay pending forever and fill every pass's upload budget.
+  if [[ "$status" == "429" ]] ||
+    { [[ "$status" == "422" ]] && [[ "$body" == *"service is unavailable"* || "$body" == *"empty ring"* ]]; }; then
+    status_class=transient
+  else
+    status_class="$status"
+  fi
+
+  case "$status_class" in
     2??)
       mv -f "$path" "${path%.jfr}-shipped.jfr"
       LAST_SUCCESS="$NOW"
-      ;;
-    422 | 429)
-      # Transient, though a 4xx: Pyroscope answers 422 ("service is unavailable") to every push
-      # from SIGTERM until it exits, and in the instant a restarted server opens its port before it
-      # reads its ring tokens; 429 is a rate limit. The chunk is fine, so it waits for the next pass
-      # with the 5xx below. Renaming it .rejected would lose that interval's profile to a restart.
-      FAILURES=$((FAILURES + 1))
-      LAST_ERROR="http_${status}"
-      log error jfr_ship_failed \
-        "chunk=$(basename "$path") status=${status} curl_exit=${curl_exit} err=\"${curl_error}\""
       ;;
     4??)
       # Permanent: Pyroscope cannot parse this chunk, usually truncation after an unclean shutdown.
       # Never retry it — one malformed chunk must not wedge the queue behind it.
       mv -f "$path" "${path}.rejected"
       REJECTED=$((REJECTED + 1))
-      log error jfr_ship_rejected "chunk=$(basename "$path") status=${status} err=\"${curl_error}\""
+      log error jfr_ship_rejected "chunk=$(basename "$path") status=${status} err=\"${curl_error}\" body=\"${body}\""
       ;;
     *)
       # Transient: a server error or a network error. Leave it for the next pass. A status of 000
       # means no HTTP response happened at all, in which case curl's exit code and message are the
-      # only thing that says why.
+      # only thing that says why. A transient 422 or 429 (above) lands here too.
       FAILURES=$((FAILURES + 1))
       LAST_ERROR="http_${status}"
       log error jfr_ship_failed \
-        "chunk=$(basename "$path") status=${status} curl_exit=${curl_exit} err=\"${curl_error}\""
+        "chunk=$(basename "$path") status=${status} curl_exit=${curl_exit} err=\"${curl_error}\" body=\"${body}\""
       ;;
   esac
 }

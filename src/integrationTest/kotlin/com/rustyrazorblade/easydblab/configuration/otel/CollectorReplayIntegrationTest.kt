@@ -147,7 +147,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         ObservabilityBackends
             .startTempo(
                 ObservabilityBackends.tempoConfig(
-                    TempoManifestBuilder(templates()).buildConfigMap().data.getValue(TEMPO_CONFIG_FILE),
+                    TempoManifestBuilder(templates()).buildConfigMap().data.getValue(TempoManifestBuilder.CONFIG_FILE),
                 ),
                 volume,
                 bucket,
@@ -453,4 +453,3 @@ private const val HTTP_OK = 200
 private const val NANOS_PER_MILLI = 1_000_000L
 private const val SPAN_ID_LENGTH = 16
 private const val SPAN_NAME = "replay-span"
-private const val TEMPO_CONFIG_FILE = "tempo.yaml"

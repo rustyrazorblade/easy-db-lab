@@ -72,12 +72,15 @@ class SetupProfile : PicoBaseCommand() {
 
         val userConfig = loadExistingUser(existingConfig)
 
-        // Collect optional info, allowing updates
-        collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
-
-        // A profile made before the easy_db_lab marker has a bucket and key pair with only the legacy one
+        // A profile made before the easy_db_lab marker has a bucket and key pair with only the
+        // legacy one. This needs working credentials, and runs before the prompts so a failure
+        // (expired credentials, a key pair that no longer exists) stops setup before any change.
+        // A complete profile always names a bucket; the check only guards a User read without one.
         if (userConfig.s3Bucket.isNotBlank()) s3BucketService.ensureMarkerTags(userConfig.s3Bucket)
         keyPairService.ensureMarkerTags(userConfig)
+
+        // Collect optional info, allowing updates
+        collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
 
         eventBus.emit(Event.Setup.ConfigurationUpdated)
     }

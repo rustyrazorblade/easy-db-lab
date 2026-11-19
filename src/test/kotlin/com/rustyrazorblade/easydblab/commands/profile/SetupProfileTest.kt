@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
@@ -37,10 +38,12 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsResponse
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.KeyPairInfo
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
@@ -123,6 +126,46 @@ class SetupProfileTest : BaseKoinTest() {
 
     @Nested
     inner class WhenProfileAlreadySetUp {
+        @Test
+        fun `a key pair the complete profile names that is gone stops setup before any prompt`() {
+            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
+                mapOf(
+                    "email" to "test@example.com",
+                    "region" to "us-west-2",
+                    "awsProfile" to "my-profile",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "legacy-bucket",
+                ),
+            )
+            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(
+                User(
+                    email = "test@example.com",
+                    region = "us-west-2",
+                    keyName = "test-key",
+                    awsProfile = "my-profile",
+                    awsAccessKey = "",
+                    awsSecret = "",
+                    s3Bucket = "legacy-bucket",
+                ),
+            )
+            whenever(mockEc2.describeKeyPairs(any<DescribeKeyPairsRequest>())).thenThrow(
+                Ec2Exception
+                    .builder()
+                    .statusCode(400)
+                    .awsErrorDetails(AwsErrorDetails.builder().errorCode("InvalidKeyPair.NotFound").build())
+                    .build(),
+            )
+            testPrompter = TestPrompter()
+            setupTestModule()
+
+            assertThatThrownBy { SetupProfile().execute() }
+                .isInstanceOf(ConfigurationException::class.java)
+                .hasMessageContaining("test-key")
+
+            assertThat(testPrompter.getCallLog()).isEmpty()
+            verify(mockUserConfigProvider, never()).saveUserConfig(any())
+        }
+
         /** The profiles that need the backfill are complete ones from before the new marker. */
         @Test
         fun `a complete profile's legacy-only bucket and key pair gain the new marker`() {
@@ -229,7 +272,7 @@ class SetupProfileTest : BaseKoinTest() {
             assertThat(output).contains("Profile 'default' is already configured")
             assertThat(output).contains("Configuration updated!")
 
-            // Should not call any AWS operations
+            // Creates no AWS resources (the marker backfill is checked in its own test)
             verify(mockAwsResourceSetup, never()).ensureAWSResources(any())
         }
 

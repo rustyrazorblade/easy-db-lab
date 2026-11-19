@@ -178,6 +178,26 @@ object TestModules {
                 .thenReturn(DescribeKeyPairsResponse.builder().keyPairs(keyPair).build())
         }
 
+    /** An S3 client whose bucket exists: GetBucketTagging answers an empty set, as a fresh bucket does. */
+    private fun emptyTagSetS3Client(): S3Client =
+        mock<S3Client>().also { s3 ->
+            whenever(s3.getBucketTagging(any<GetBucketTaggingRequest>()))
+                .thenReturn(GetBucketTaggingResponse.builder().tagSet(emptyList<S3Tag>()).build())
+        }
+
+    /** An STS client that answers every GetCallerIdentity with the test account. */
+    private fun callerIdentityStsClient(): StsClient =
+        mock<StsClient>().also { mockSts ->
+            val response =
+                GetCallerIdentityResponse
+                    .builder()
+                    .account("123456789012")
+                    .arn("arn:aws:iam::123456789012:user/test")
+                    .userId("AIDATEST123")
+                    .build()
+            whenever(mockSts.getCallerIdentity(any<GetCallerIdentityRequest>())).thenReturn(response)
+        }
+
     /**
      * Creates a test AWS module with mock implementations. This ensures no real AWS API calls are
      * made during testing.
@@ -201,24 +221,8 @@ object TestModules {
             // Mock individual AWS SDK clients
             single { mock<IamClient>() }
             // A bucket that exists answers GetBucketTagging; an empty set is what a fresh one returns.
-            single {
-                mock<S3Client>().also { s3 ->
-                    whenever(s3.getBucketTagging(any<GetBucketTaggingRequest>()))
-                        .thenReturn(GetBucketTaggingResponse.builder().tagSet(emptyList<S3Tag>()).build())
-                }
-            }
-            single {
-                mock<StsClient>().also { mockSts ->
-                    val response =
-                        GetCallerIdentityResponse
-                            .builder()
-                            .account("123456789012")
-                            .arn("arn:aws:iam::123456789012:user/test")
-                            .userId("AIDATEST123")
-                            .build()
-                    whenever(mockSts.getCallerIdentity(any<GetCallerIdentityRequest>())).thenReturn(response)
-                }
-            }
+            single { emptyTagSetS3Client() }
+            single { callerIdentityStsClient() }
 
             // Account identity and IAM roles over the mocked STS and IAM clients: the real logic
             // runs while no AWS API call is made
@@ -273,7 +277,14 @@ object TestModules {
             // that has never run `cassandra build` actually looks like.
             single { mock<CassandraBuildCatalog>() }
 
-            factory { AwsKeyPairService(get(), get(), AwsErrorHandler(), File(get<Context>().profileDir, "settings.yaml")) }
+            factory {
+                AwsKeyPairService(
+                    get(),
+                    get(),
+                    AwsErrorHandler(),
+                    File(get<Context>().profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE),
+                )
+            }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

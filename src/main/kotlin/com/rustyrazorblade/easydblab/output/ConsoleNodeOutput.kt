@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.output
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.redact
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -17,7 +19,11 @@ import kotlin.concurrent.withLock
  * (`ssh/OffThreadOutputSink`), never from an SSH I/O thread, so a slow console or a held lock
  * delays printing but never a remote read.
  *
- * @param stdout prints a stdout or notice line; `println` by default
+ * Each tag is padded to the longest alias seen so far, so the text of many nodes lines up.  A tail
+ * entry is cut to [Constants.NodeOutput.TAIL_ENTRY_CHARS] and a stderr entry is marked; the console
+ * gets the whole line.  Each node's tail belongs to the instance its last [reset] named.
+ *
+ * @param stdout prints a stdout, mark or notice line; `println` by default
  * @param stderr prints a stderr line; standard error by default, as for error events
  * @param tailLines how many lines are kept per node
  */
@@ -27,24 +33,30 @@ class ConsoleNodeOutput(
     private val tailLines: Int = Constants.NodeOutput.TAIL_LINES,
 ) : NodeOutput {
     private val lock = ReentrantLock()
-    private val tails = HashMap<String, ArrayDeque<String>>()
-
-    @Volatile
-    private var quiet = false
+    private val tails = HashMap<String, Tail>()
+    private val quietDepth = AtomicInteger()
+    private var tagWidth = 0
 
     override fun line(
         node: String,
         stream: NodeStream,
         text: String,
+        instance: String,
     ) {
         val target = if (stream == NodeStream.Stderr) stderr else stdout
-        write(node, text, target, keep = true)
+        val prefix = if (stream == NodeStream.Stderr) Constants.NodeOutput.TAIL_STDERR_PREFIX else ""
+        write(node, text, target, Keep.Line(instance, prefix))
     }
 
     override fun notice(
         node: String,
         text: String,
-    ) = write(node, text, stdout, keep = true)
+    ) = write(node, text, stdout, Keep.Nothing)
+
+    override fun mark(
+        node: String,
+        text: String,
+    ) = write(node, text, stdout, Keep.Line("", ""))
 
     override fun passthrough(
         source: String,
@@ -53,22 +65,24 @@ class ConsoleNodeOutput(
         // A trailing newline ends the last line; it does not start an empty one.
         val lines = text.lines()
         val complete = if (lines.size > 1 && lines.last().isEmpty()) lines.dropLast(1) else lines
-        complete.forEach { write(source, it, stdout, keep = false) }
+        complete.forEach { write(source, it, stdout, Keep.Nothing) }
     }
 
-    override fun tail(node: String): List<String> = lock.withLock { tails[node]?.toList() ?: emptyList() }
+    override fun tail(node: String): List<String> = lock.withLock { tails[node]?.lines?.toList() ?: emptyList() }
 
-    override fun reset(node: String) {
-        lock.withLock { tails.remove(node) }
+    override fun reset(
+        node: String,
+        instance: String,
+    ) {
+        lock.withLock { tails[node] = Tail(instance) }
     }
 
     override fun <T> quietly(block: () -> T): T {
-        val previous = quiet
-        quiet = true
+        quietDepth.incrementAndGet()
         try {
             return block()
         } finally {
-            quiet = previous
+            quietDepth.decrementAndGet()
         }
     }
 
@@ -76,20 +90,56 @@ class ConsoleNodeOutput(
         node: String,
         text: String,
         target: (String) -> Unit,
-        keep: Boolean,
+        keep: Keep,
     ) {
+        val clean = redact(text)
         lock.withLock {
-            if (keep) record(node, text)
-            if (!quiet) target("[$node] $text")
+            if (keep is Keep.Line) record(node, clean, keep)
+            // Quiet hides every line, a stale instance's too: only the tail of the current one matters then.
+            if (quietDepth.get() == 0) target("${tag(node)} $clean")
         }
     }
 
+    /** Records [text] in [node]'s tail, unless it came from an instance other than the tail's. */
     private fun record(
         node: String,
         text: String,
+        keep: Keep.Line,
     ) {
-        val tail = tails.getOrPut(node) { ArrayDeque(tailLines) }
-        if (tail.size == tailLines) tail.removeFirst()
-        tail.addLast(text)
+        val tail = tails.getOrPut(node) { Tail("") }
+        if (keep.instance.isNotEmpty() && tail.instance.isNotEmpty() && keep.instance != tail.instance) return
+        if (tail.lines.size == tailLines) tail.lines.removeFirst()
+        tail.lines.addLast(entry(keep.prefix + text))
+    }
+
+    private fun entry(text: String): String =
+        if (text.length <= Constants.NodeOutput.TAIL_ENTRY_CHARS) {
+            text
+        } else {
+            text.take(Constants.NodeOutput.TAIL_ENTRY_CHARS) + Constants.NodeOutput.TAIL_ENTRY_ELLIPSIS
+        }
+
+    private fun tag(node: String): String {
+        tagWidth = maxOf(tagWidth, node.length)
+        return "[$node]".padEnd(tagWidth + 2)
+    }
+
+    /** One node's kept lines, and the instance they belong to (empty: any). */
+    private class Tail(
+        val instance: String,
+    ) {
+        val lines = ArrayDeque<String>()
+    }
+
+    /** Whether a written line is kept in its node's tail, and how. */
+    private sealed interface Keep {
+        /** Kept, when [instance] is the tail's (or either is empty), as [prefix] and the text. */
+        data class Line(
+            val instance: String,
+            val prefix: String,
+        ) : Keep
+
+        /** Printed only. */
+        data object Nothing : Keep
     }
 }

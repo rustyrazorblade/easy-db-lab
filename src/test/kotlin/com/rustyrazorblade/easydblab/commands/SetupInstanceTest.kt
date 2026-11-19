@@ -245,7 +245,40 @@ class SetupInstanceTest : BaseKoinTest() {
         assertThatThrownBy { SetupInstance().execute() }.isInstanceOf(CommandFailedException::class.java)
 
         assertThat(events.filterIsInstance<Event.Provision.InstanceSetupFailed>().single().outputTail)
-            .containsExactly("Checking block devices", "ERROR: no data disk found")
+            .containsExactly("Checking block devices", "stderr: ERROR: no data disk found")
+    }
+
+    /** Any remote command of a setup can fail, not just the script: it is reported the same way, by its summary. */
+    @Test
+    fun `a failed remote command other than the setup script is reported with its summary and the node's output`() {
+        val output = getKoin().get<RecordingNodeOutput>()
+        whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, argThat { contains("hostnamectl") }, any(), any()))
+            .thenAnswer {
+                output.line("db1", NodeStream.Stderr, "Failed to connect to bus")
+                throw RemoteCommandFailedException(
+                    "hostnamectl",
+                    "",
+                    "Failed to connect to bus\n".repeat(30),
+                    "db1: Remote command failed (1): hostnamectl",
+                )
+            }
+        val events = CopyOnWriteArrayList<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        assertThatThrownBy { SetupInstance().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        val failed = events.filterIsInstance<Event.Provision.InstanceSetupFailed>().single()
+        assertThat(failed.host).isEqualTo("db1")
+        assertThat(failed.reason).isEqualTo("db1: Remote command failed (1): hostnamectl")
+        assertThat(failed.outputTail).containsExactly("stderr: Failed to connect to bus")
     }
 
     @Test

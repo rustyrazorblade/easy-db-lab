@@ -316,7 +316,17 @@ class NodeBringUpTest {
         assertThat(h.fleet.calls).containsExactly("terminate i-db1", "verify db1", "launch db1")
         assertThat(h.eventsOf<Event.Provision.NodeReplaceFailed>().single().oldInstanceKept).isFalse()
         assertThat(h.eventsOf<Event.Provision.NodeFailed>().single())
-            .isEqualTo(Event.Provision.NodeFailed("db1", "setup", failed.reason, "i-db1", instanceKept = false))
+            .isEqualTo(
+                Event.Provision.NodeFailed(
+                    "db1",
+                    "setup",
+                    failed.reason,
+                    "i-db1",
+                    instanceKept = false,
+                    // The launch was refused, so the tail still belongs to the first instance: its retry mark.
+                    outputTail = listOf("setup attempt 2"),
+                ),
+            )
         assertThat(
             result
                 .failureEvent()
@@ -639,12 +649,27 @@ class NodeBringUpTest {
         assertThat(failed.instanceId).isEqualTo("i-db0-2")
         assertThat(failed.outputTail).containsExactly(
             "i-db0-2 attempt 1",
-            "i-db0-2 E: no disk",
+            "stderr: i-db0-2 E: no disk",
+            "setup attempt 2",
             "i-db0-2 attempt 2",
-            "i-db0-2 E: no disk",
+            "stderr: i-db0-2 E: no disk",
         )
-        // Every attempt's lines still reached the console, tagged with the node.
-        assertThat(h.nodeOutput.stdout.filter { it.startsWith("[db0] ") }).hasSize(6)
+        // Every instance's lines still reached the console, tagged with the node, each second attempt after its mark.
+        assertThat(
+            h.nodeOutput.stdout
+                .filter { it.startsWith("[db0]") }
+                .map { it.substringAfter("]").trim() },
+        ).containsExactly(
+            "i-db0 attempt 1",
+            "setup attempt 2",
+            "i-db0 attempt 2",
+            "i-db0-1 attempt 1",
+            "setup attempt 2",
+            "i-db0-1 attempt 2",
+            "i-db0-2 attempt 1",
+            "setup attempt 2",
+            "i-db0-2 attempt 2",
+        )
     }
 
     @Test
@@ -659,7 +684,7 @@ class NodeBringUpTest {
         assertThatThrownBy { h.run() }.isInstanceOf(ControlNodeFailedException::class.java)
 
         assertThat(h.eventsOf<Event.Provision.ControlNodeFailed>().single().outputTail)
-            .containsExactly("k3s: bad flag", "k3s: bad flag")
+            .containsExactly("stderr: k3s: bad flag", "control-plane attempt 2", "stderr: k3s: bad flag")
     }
 
     @Test

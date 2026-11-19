@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
@@ -39,6 +40,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 )
 class ExecRun : PicoBaseCommand() {
     private val hostOperationsService: HostOperationsService by inject()
+    private val nodeOutput: NodeOutput by inject()
 
     @Mixin
     var hosts = HostsMixin()
@@ -160,13 +162,18 @@ class ExecRun : PicoBaseCommand() {
         run.getOrThrow()
     }
 
-    /** Prints the unit's journal, each line tagged with the host, so parallel hosts never interleave inside a line. */
+    /**
+     * Prints the unit's journal, each line tagged with the host, so parallel hosts never interleave
+     * inside a line. An empty journal says so, so a host that printed nothing is not mistaken for one
+     * that was skipped.
+     */
     private fun printUnitOutput(
         host: Host,
         systemdUnit: String,
     ) {
         val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
-        remoteOps.executeRemotely(host, journalCmd, output = true, secret = false)
+        val journal = remoteOps.executeRemotely(host, journalCmd, output = true, secret = false)
+        if (journal.text.isBlank() && journal.stderr.isBlank()) nodeOutput.notice(host.alias, NO_OUTPUT_NOTICE)
     }
 
     internal fun deriveUnitName(commandString: String): String {
@@ -190,5 +197,9 @@ class ExecRun : PicoBaseCommand() {
         return "sudo systemd-run --unit=$unitName" +
             waitFlag +
             " -- bash -c ${commandString.shellQuote()}"
+    }
+
+    private companion object {
+        const val NO_OUTPUT_NOTICE = "no output"
     }
 }

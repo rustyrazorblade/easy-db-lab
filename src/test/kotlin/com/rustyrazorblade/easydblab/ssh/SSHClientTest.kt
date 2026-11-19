@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.apache.sshd.client.session.ClientSession
+import org.apache.sshd.common.SshException
 import org.apache.sshd.common.io.IoSession
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -222,6 +223,21 @@ class SSHClientTest :
         assertThatThrownBy { sshClient.executeRemoteCommand("setup", sink, secret = false) }
             .isInstanceOf(RemoteCommandFailedException::class.java)
         assertThat(sink.lines.map { it.second }).containsExactly("step 1", "ERROR: no")
+    }
+
+    /** A dropped connection is not a failed command: it propagates as itself, and what printed before it still shows. */
+    @Test
+    fun `a connection lost mid-command propagates, and the lines before it reach the sink`() {
+        whenever(mockSession.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->
+            invocation.getArgument<OutputStream>(1).write("partial".toByteArray())
+            throw SshException("Session is being closed")
+        }
+        val sink = CollectingSink()
+
+        assertThatThrownBy { sshClient.executeRemoteCommand("setup", sink, secret = false) }
+            .isInstanceOf(SshException::class.java)
+            .hasMessageContaining("Session is being closed")
+        assertThat(sink.lines).containsExactly(NodeStream.Stdout to "partial")
     }
 
     @Test

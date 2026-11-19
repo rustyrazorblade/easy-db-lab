@@ -176,18 +176,22 @@ slots in use against the limit. Each step's start and end is published to Redis 
 
 ### Node output
 
-Each line a node's scripts print is shown as it arrives, tagged with the node, so lines from
-many nodes running at once can be told apart:
+For a large cluster, run `up -q` (or `init --up -q`). At a few hundred nodes the node output
+scrolls faster than it can be read; `-q` hides it and still prints the progress lines, each node's
+Ready line and every failure. It hides the node pipelines only: once the last node is Ready or
+failed, the cluster-wide steps print as they do without it.
+
+Without `-q`, each line a node's scripts print is shown as it arrives, tagged with the node, so
+lines from many nodes running at once can be told apart. Tags are padded so the text lines up:
 
 ```
-[db12] Installing packages
-[db40] Mounting /dev/nvme1n1 on /mnt/db1
+[db12]  Installing packages
+[db140] Mounting /dev/nvme1n1 on /mnt/db1
 ```
 
-This output is plain text. It is not an event and is not published to Redis; subscribers see the
-node's step, Ready and failure events instead. At a few hundred nodes the output scrolls faster
-than it can be read. `up --quiet` (or `init --up --quiet`) hides it, and still prints the progress
-lines, each node's Ready line and every failure.
+A retried step prints `<step> attempt <N>` before its next attempt runs. This output is plain
+text. It is not an event and is not published to Redis; subscribers see the node's step, Ready and
+failure events instead.
 
 ### When a node fails
 
@@ -209,10 +213,12 @@ The failure line ends with the last 30 lines the node's last instance printed, a
 db7 failed at setup: setup failed (ERROR: no data disk)
 last output of db7:
     Checking block devices
-    ERROR: no data disk found: no unused non-root block device
+    stderr: ERROR: no data disk found: no unused non-root block device
 ```
 
-A replacement starts with an empty tail, so these lines are always from the instance that failed.
+Lines the node wrote to stderr start with `stderr: `, and a line longer than 512 characters is cut
+and ends with `…`. A replacement starts with an empty tail, so these lines are always from the
+instance that failed.
 
 A failed join's reason says what it was waiting for (for example, that the agent started but no
 node registered) and ends with the last lines of the node's K3s agent log.

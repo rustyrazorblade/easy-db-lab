@@ -250,6 +250,19 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `execute refuses --quiet without --up, before writing anything`() {
+            val command = Init()
+            command.clean = true
+            command.quiet = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("--quiet")
+                .hasMessageContaining("--up")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
         fun `execute fails with negative stress instances`() {
             val command = Init()
             command.clean = true

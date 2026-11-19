@@ -31,6 +31,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Tests for ClusterProvisioningService.
@@ -167,7 +168,7 @@ class ClusterProvisioningServiceTest {
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
-            val emittedEvents = mutableListOf<Event>()
+            val emittedEvents = CopyOnWriteArrayList<Event>()
             eventBus.addListener(
                 object : EventListener {
                     override fun onEvent(envelope: EventEnvelope) {

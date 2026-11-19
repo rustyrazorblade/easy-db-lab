@@ -5,7 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.ssh.hasRedactedCredentials
+import com.rustyrazorblade.easydblab.hasRedactedCredentials
 
 /** How the restore of one replaced db node ended. */
 sealed interface RestoreResult {

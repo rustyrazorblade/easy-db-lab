@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.ssh
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.output.NodeStream
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.Closeable
 import java.time.Duration
 import java.util.concurrent.LinkedBlockingQueue
 
@@ -13,8 +14,10 @@ import java.util.concurrent.LinkedBlockingQueue
  * SSH session in the process uses.  The real sink takes the console lock and prints, so calling
  * it there would let a slow terminal, or a lock held by another node's line, stall every session's
  * reads.  [line] only queues the line on an unbounded queue, which never blocks and never throws on
- * an interrupt; one virtual thread per command takes
- * the lines in the order they were written and calls [sink].
+ * an interrupt; one platform daemon thread per command takes the lines in the order they were
+ * written and calls [sink].  A platform thread, not a virtual one: the command's caller is often a
+ * virtual thread waiting in [close] for the drain, and on JDK 21 a caller that pins its carrier
+ * while it waits could leave no carrier for a virtual drain to run on, so every caller would hang.
  *
  * A failing sink cannot reach MINA: its exception is logged on the drain thread and the next line
  * is still delivered.  [close] waits until every queued line has been handed over, so a command's
@@ -25,9 +28,14 @@ class OffThreadOutputSink(
     private val interruptedWait: Duration = Constants.NodeOutput.INTERRUPTED_DRAIN_WAIT,
     private val sink: RemoteOutputSink,
 ) : RemoteOutputSink,
-    AutoCloseable {
+    Closeable {
     private val queue = LinkedBlockingQueue<Item>()
-    private val drain = Thread.ofVirtual().name("ssh-output").start(::deliver)
+    private val drain =
+        Thread
+            .ofPlatform()
+            .daemon()
+            .name(Constants.NodeOutput.DRAIN_THREAD_NAME)
+            .start(::deliver)
     private var closed = false
 
     override fun line(
@@ -69,7 +77,10 @@ class OffThreadOutputSink(
                 // Keep waiting until the deadline; the interrupt is restored below.
             }
         }
-        if (drain.isAlive) log.warn { "Stopped waiting for remote output to print after $interruptedWait" }
+        if (drain.isAlive) {
+            log.warn { "Stopped waiting for remote output to print after $interruptedWait" }
+            sink.stalled()
+        }
         Thread.currentThread().interrupt()
     }
 
@@ -92,11 +103,13 @@ class OffThreadOutputSink(
 
     /** One queued line, or the end of the command's output. */
     private sealed interface Item {
+        /** A line of [stream] to hand to the sink. */
         data class Line(
             val stream: NodeStream,
             val text: String,
         ) : Item
 
+        /** The command wrote its last line; the drain thread ends after the lines before it. */
         data object End : Item
     }
 

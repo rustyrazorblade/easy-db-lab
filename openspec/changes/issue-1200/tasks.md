@@ -58,7 +58,20 @@
 - [x] 7.5 `docs/reference/commands.md`: `--quiet` on `up`, `init`, `setup-instances`; tagged output of `exec run`, `cassandra nt` and `cassandra stress logs`
 - [x] 7.6 `docs/user-guide/large-clusters.md`: tagged output, quiet mode, the tail in "When a node fails"
 
-## 8. Verify
+## 8. Review fixes (five-lens review of PR 1210)
 
-- [x] 8.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (build-engineer, Sonnet)
-- [x] 8.2 Real cluster: `init --up` of 6 nodes; every node script line is tagged; Redis (a local `redis` subscriber) shows `NodeReady` and no output; `up --quiet` on the same cluster prints the Ready and progress lines only; `exec run --parallel` output is tagged and whole.  Tear down
+- [x] 8.1 No JDK 21 carrier deadlock: `ssh/PlatformThreadCall` runs every MINA call of a virtual caller on a platform daemon thread; the drain runs on a platform daemon thread; `SSHClient.operationLock` is a `ReentrantLock`.  `SSHClientStreamingIntegrationTest` saturation case: more virtual callers than processors against a briefly blocking sink, shown to time out first
+- [x] 8.2 Splitter: the `\r` segment-replace rule; pieces of at most `MAX_LINE_BYTES`, cut before a character that does not fit; a forced cut on a run of continuation bytes; a URL near a hard cut carried to the next piece.  `LineSplittingOutputStreamTest`
+- [x] 8.3 Redaction: `redact()` (root package `Redaction.kt`) adds `key=`-style values, `Authorization:` values and AWS access key ids; `ConsoleNodeOutput` redacts every line, `passthrough` too; no sink for a secret command in `DefaultRemoteOperationsService`
+- [x] 8.4 `NodeOutput`: `notice` is not kept; `mark` is kept (retry, attempt N); stderr entries prefixed `stderr: `; entries cut to `TAIL_ENTRY_CHARS`; tags padded to the longest alias; `reset(node, instance)` and lines from another instance not kept; `quietly` as an `AtomicInteger` depth.  `ConsoleNodeOutputTest`, `OutputModuleTest`
+- [x] 8.5 Uploads: `installFile` prints one notice with the final path and mode; `aws s3 cp --no-progress` in the registry scripts; a drain timeout gives the notice `output still printing; the tail may be incomplete`
+- [x] 8.6 `StepRunner`: a failed remote command's reason is its summary; an interrupted step waits once and only for a live attempt, then emits `Provision.AttemptAbandoned`; an ended instance does not wait; attempts after the first are marked.  `StepRunnerTest`
+- [x] 8.7 `BringUpReporting` holds the event bus and node output for `NodeBringUp` and `BringUpRun`; `InstanceRun` resets with the instance id
+- [x] 8.8 `up --quiet` covers the node pipelines only; `init --quiet` without `--up` is refused; `NodesFailed` prints one line per node.  `UpTest` quiet-failure case, `InitTest`, `BringUpEventsTest`
+- [x] 8.9 `setup-instances` reports any failed remote command of a setup as `InstanceSetupFailed`; `cassandra nt` fails with the summary; `exec run` prints `no output` for an empty journal; `logs query` prints its lines and `Logs.QueryResults` is removed
+- [x] 8.10 Test fixes: thread-safe event lists in `UpVpcCidrTest` and `ClusterProvisioningServiceTest`; `MockSSHClient` streams through the real splitter; `UpdateConfigTest` checks `patch-config` runs with its output; `SSHClientTest` lost-connection case
+
+## 9. Verify
+
+- [x] 9.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (build-engineer, Sonnet)
+- [x] 9.2 Real cluster: `init --up` of 6 nodes; every node script line is tagged; Redis (a local `redis` subscriber) shows `NodeReady` and no output; `up --quiet` on the same cluster prints the Ready and progress lines only; `exec run --parallel` output is tagged and whole.  Tear down

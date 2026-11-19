@@ -54,6 +54,7 @@ import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.LaunchGroup
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.missingOrdinals
+import com.rustyrazorblade.easydblab.services.bringup.BringUpReporting
 import com.rustyrazorblade.easydblab.services.bringup.BringUpResult
 import com.rustyrazorblade.easydblab.services.bringup.BringUpSettings
 import com.rustyrazorblade.easydblab.services.bringup.BringUpTiming
@@ -161,10 +162,6 @@ class Up(
     private var preflightTunnel: SocksProxyState? = null
 
     override fun execute() {
-        if (quiet) nodeOutput.quietly(::bringUpCluster) else bringUpCluster()
-    }
-
-    private fun bringUpCluster() {
         // Read before any nested command runs: the executor clears the record before each command.
         preflightTunnel = proxyPreflight.tunnelForCommand()
         workingState = clusterStateManager.load()
@@ -224,8 +221,9 @@ class Up(
                 instanceConfig.replacementLaunches(),
                 replacementPlan,
             )
-        val result =
-            NodeBringUp(ec2BringUpPorts.ports(request), bringUpSettings(initConfig), eventBus, nodeOutput).run { sink ->
+        val nodeBringUp = NodeBringUp(ec2BringUpPorts.ports(request), bringUpSettings(initConfig), BringUpReporting(eventBus, nodeOutput))
+        val runPipelines = {
+            nodeBringUp.run { sink ->
                 existingHosts.forEach { (serverType, hosts) -> sink.launched(serverType, hosts, LaunchSink.Origin.FOUND_RUNNING) }
                 try {
                     reportProvisioningFailures(executeProvisioning(instanceConfig, servicesConfig, existingHosts, sink, launched))
@@ -233,6 +231,9 @@ class Up(
                     launched.complete(Unit)
                 }
             }
+        }
+        // --quiet hides the pipelines' script output only; the post-steps print as they always do.
+        val result = if (quiet) nodeOutput.quietly(runPipelines) else runPipelines()
         printProvisioningSuccessMessage()
         eventBus.emit(Event.Provision.ClusterStateUpdated(writer.read { state -> state.hosts.values.sumOf { it.size } }))
         return result

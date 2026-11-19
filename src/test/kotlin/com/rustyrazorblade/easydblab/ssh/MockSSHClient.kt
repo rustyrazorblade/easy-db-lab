@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.ssh
 
+import com.rustyrazorblade.easydblab.output.LineSplittingOutputStream
 import com.rustyrazorblade.easydblab.output.NodeStream
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.sshd.client.session.ClientSession
@@ -49,17 +50,18 @@ class MockSSHClient : ISSHClient {
         executedCommands.add(command)
         val response = onCommand(command)
         if (sink != null && !secret) {
-            response.text
-                .lineSequence()
-                .filter { it.isNotEmpty() }
-                .forEach { sink.line(NodeStream.Stdout, it) }
-            response.stderr
-                .lineSequence()
-                .filter { it.isNotEmpty() }
-                .forEach { sink.line(NodeStream.Stderr, it) }
+            // Through the real splitter, so a test sees the lines the real client would stream.
+            stream(response.text, NodeStream.Stdout, sink)
+            stream(response.stderr, NodeStream.Stderr, sink)
         }
         return response
     }
+
+    private fun stream(
+        text: String,
+        stream: NodeStream,
+        sink: RemoteOutputSink,
+    ) = LineSplittingOutputStream { sink.line(stream, it) }.use { it.write(text.toByteArray()) }
 
     override fun uploadFile(
         local: Path,

@@ -96,36 +96,44 @@ internal class NodePipeline(
             it.step(PipelineStep.REGISTRY_TLS, run.timing.registryTls) { _ ->
                 run.ssh.withSession { run.ports.nodeSteps.configureRegistryTls(it.host) }
             }
-            val plane = it.await(PipelineStep.JOIN_WAIT, run.controlPlane)
-            val nodes = plane.connection.nodes
-            val watch = nodes.watch(alias, it.host.privateIp)
-            // Whether the last attempt's agent started, so a failed join says what it was waiting for.
-            val started = AtomicBoolean(false)
-            // Whether the last attempt reached the join script; an attempt that failed before it has no agent log to read.
-            val ran = AtomicBoolean(false)
-            val explain = { reason: String -> joinFailure(it.host, ran.get(), started.get(), reason) }
-            try {
-                run.joins.acquire().use { _ ->
-                    if (!cleaned.get()) {
-                        cleanUp(it, plane)
-                        cleaned.set(true)
-                    }
-                    it.step(PipelineStep.JOIN, run.timing.join, explain) { attempt ->
-                        started.set(false)
-                        ran.set(false)
-                        run.ssh.withSession {
-                            ran.set(true)
-                            run.ports.nodeSteps.join(it.host, serverType, plane.access, attempt)
-                        }
-                        started.set(true)
-                        watch.registered.get()
-                    }
-                }
-                it.step(PipelineStep.READINESS, run.timing.ready) { _ -> watch.ready.get() }
-            } finally {
-                nodes.unwatch(alias)
-            }
+            joinAndReady(it, it.await(PipelineStep.JOIN_WAIT, run.controlPlane), cleaned)
             ready(it.host, replacements)
+        }
+    }
+
+    /**
+     * Joins [instance] to [plane] in a join slot, first removing the alias's old objects unless
+     * [cleaned], then waits for its Node to be Ready.
+     */
+    private fun joinAndReady(
+        instance: InstanceRun,
+        plane: OpenControlPlane,
+        cleaned: AtomicBoolean,
+    ) {
+        val nodes = plane.connection.nodes
+        val watch = nodes.watch(alias, instance.host.privateIp)
+        // Whether the last attempt's agent started, so a failed join says what it was waiting for.
+        val started = AtomicBoolean(false)
+        // Whether the last attempt reached the join script; an attempt that failed before it has no agent log to read.
+        val ran = AtomicBoolean(false)
+        val explain = { reason: String -> joinFailure(instance.host, ran.get(), started.get(), reason) }
+        try {
+            run.joins.acquire().use { _ ->
+                if (!cleaned.get()) {
+                    cleanUp(instance, plane)
+                    cleaned.set(true)
+                }
+                instance.step(PipelineStep.JOIN, run.timing.join, explain) { attempt ->
+                    started.set(false)
+                    ran.set(false)
+                    join(instance.host, plane, attempt, ran)
+                    started.set(true)
+                    watch.registered.get()
+                }
+            }
+            instance.step(PipelineStep.READINESS, run.timing.ready) { _ -> watch.ready.get() }
+        } finally {
+            nodes.unwatch(alias)
         }
     }
 
@@ -143,6 +151,19 @@ internal class NodePipeline(
             run.timing.join.copy(replaceable = false),
             { reason -> "removing the old node $alias from the control plane failed: $reason" },
         ) { _ -> plane.connection.cleanup(alias) }
+    }
+
+    /** Runs one join attempt of [host] inside an SSH session slot, setting [ran] once the slot is held. */
+    private fun join(
+        host: ClusterHost,
+        plane: OpenControlPlane,
+        attempt: Int,
+        ran: AtomicBoolean,
+    ) {
+        run.ssh.withSession {
+            ran.set(true)
+            run.ports.nodeSteps.join(host, serverType, plane.access, attempt)
+        }
     }
 
     /** The node's setup, inside an SSH session slot. */

@@ -4,7 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
-import io.github.oshai.kotlinlogging.KotlinLogging
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import java.time.Duration
@@ -22,9 +22,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * The attempt runs on a thread of its own so a timeout or an ended instance can abandon it; the
  * attempt thread is interrupted and carries the caller's command name, so its events keep it.
  * An interrupt of the caller (the control node failed, or `up` is stopping) is never retried: it
- * interrupts the attempt, waits up to [abandonGrace] for it to stop, and is rethrown. An attempt
- * whose instance ended is stopped the same way. One still running after the grace is logged as a
- * warning and left behind: the step ends regardless.
+ * interrupts the attempt, waits once, up to [abandonGrace], for it to stop, and is rethrown; one
+ * still running after the grace is reported as `Provision.AttemptAbandoned` and left behind. An
+ * attempt whose instance ended is interrupted and not waited for: its instance is gone, and the
+ * step returns at once so the replacement can start.
  *
  * A timed-out attempt is interrupted, then waited for up to [abandonGrace], so the next attempt
  * never runs beside it on the same instance. One that does not stop in time fails the step with
@@ -32,12 +33,15 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * @param retryInterval the pause between attempts; tests pass zero
  * @param abandonGrace how long a timed-out attempt has to stop after its interrupt
+ * @param mark prints a line under a node that is kept in its output tail; it marks each attempt
+ *   after the first, so a failure report shows which attempt a line came from
  */
 class StepRunner(
     private val eventBus: EventBus,
     private val health: HealthLatch,
     private val retryInterval: Duration = Duration.ofSeconds(Constants.Scale.STEP_RETRY_INTERVAL_SECONDS),
     private val abandonGrace: Duration = Duration.ofSeconds(Constants.Scale.ATTEMPT_STOP_GRACE_SECONDS),
+    private val mark: (alias: String, text: String) -> Unit = { _, _ -> },
 ) {
     /**
      * Runs [action] for [alias]'s [step] until it succeeds, its attempts run out, or [instanceEnded]
@@ -101,6 +105,7 @@ class StepRunner(
         private tailrec fun forgivingRun(number: Int): AttemptResult<T> {
             val ended = instanceEnded.getNow(null)
             if (ended != null) return AttemptResult.Ended(ended)
+            if (number > 1) mark(alias, "${step.wireName} attempt $number")
             eventBus.emit(Event.Provision.NodeStepStarted(alias, step.wireName, number))
             val began = System.nanoTime()
             val periodsBefore = health.unhealthyPeriods
@@ -158,7 +163,7 @@ class StepRunner(
             } catch (_: ExecutionException) {
                 finished(outcome, worker)
             } catch (e: InterruptedException) {
-                stopOrWarn(worker)
+                stopInterrupted(worker, number)
                 throw e
             }
         }
@@ -170,11 +175,18 @@ class StepRunner(
         }
 
         /**
-         * Stops [worker] for a step that is ending regardless (interrupted, or its instance ended),
-         * and warns when the attempt is still running after the grace, since nothing waits on it.
+         * Stops attempt [number] of a step whose pipeline was interrupted, waiting one grace at most
+         * (the caller's interrupt flag is clear here, so the join is not cut short), and reports an
+         * attempt still running after it. The wait keeps a stopping pipeline's attempt from writing
+         * after `up` has failed.
          */
-        private fun stopOrWarn(worker: Thread) {
-            if (!stop(worker)) log.warn { "Attempt ${worker.name} did not stop within ${describe(abandonGrace)} and is still running" }
+        private fun stopInterrupted(
+            worker: Thread,
+            number: Int,
+        ) {
+            if (worker.isAlive && !stop(worker)) {
+                eventBus.emit(Event.Provision.AttemptAbandoned(alias, step.wireName, number, abandonGrace.toMillis()))
+            }
         }
 
         /** Interrupts a timed-out [worker] and waits up to the grace for it to stop. */
@@ -197,10 +209,12 @@ class StepRunner(
             return when {
                 outcome.isDone && !outcome.isCompletedExceptionally -> AttemptResult.Done(outcome.resultNow())
                 ended != null -> {
-                    stopOrWarn(worker)
+                    // No wait: the instance is gone and its replacement is a new host. A late line
+                    // from this attempt carries the old instance id, so it never enters the new tail.
+                    worker.interrupt()
                     AttemptResult.Ended(ended)
                 }
-                else -> outcome.exceptionNow().let { AttemptResult.Error(it.message ?: it::class.java.simpleName) }
+                else -> AttemptResult.Error(reasonOf(outcome.exceptionNow()))
             }
         }
     }
@@ -242,7 +256,17 @@ class StepRunner(
 
     private companion object {
         const val MILLIS_PER_SECOND = 1000L
-        private val log = KotlinLogging.logger {}
+
+        /**
+         * A failed attempt's reason. A failed remote command gives its one-line summary: the
+         * command's output was already printed tagged and is kept in the node's tail, so the
+         * reason (and every report that carries it) does not repeat it.
+         */
+        fun reasonOf(failure: Throwable): String =
+            when (failure) {
+                is RemoteCommandFailedException -> failure.summary
+                else -> failure.message ?: failure::class.java.simpleName
+            }
 
         fun describe(timeout: Duration): String =
             if (timeout.toMillis() < MILLIS_PER_SECOND) "${timeout.toMillis()}ms" else "${timeout.toSeconds()}s"

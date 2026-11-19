@@ -25,7 +25,7 @@ internal class InstanceRun(
     init {
         // The tail of a failure report is this instance's output only: after a replacement, the
         // instance kept for debugging is the last one, and the earlier ones are gone.
-        run.nodeOutput.reset(launched.alias)
+        run.nodeOutput.reset(launched.alias, launched.instanceId)
     }
 
     /** The instance as it is known now. */

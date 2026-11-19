@@ -4192,6 +4192,23 @@ sealed interface Event {
         }
 
         /**
+         * Attempt [attempt] of [alias]'s [step] was interrupted, because its pipeline is stopping, and
+         * was still running [graceMs] milliseconds later. The step ended without it: whatever the
+         * attempt still does on its instance (a command, a state write) runs with nothing waiting.
+         */
+        @Serializable
+        @SerialName("Provision.AttemptAbandoned")
+        data class AttemptAbandoned(
+            val alias: String,
+            val step: String,
+            val attempt: Int,
+            val graceMs: Long,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias: $step attempt $attempt did not stop within ${graceMs}ms of its interrupt and is still running"
+        }
+
+        /**
          * `up` is replacing [alias]: [oldInstanceId] failed [step] for [reason]. This is the node's
          * [replacement]th replacement of at most [limit].
          */
@@ -4311,9 +4328,13 @@ sealed interface Event {
             val instanceId: String,
             val instanceKept: Boolean,
         ) {
-            /** The node as one line of the failure list. */
+            /**
+             * The node as one line of the failure list: the first line of [reason] only, since the
+             * node's own [NodeFailed] already printed all of it, with its output.
+             */
             fun toDisplayLine(): String =
-                "  $alias ($instanceId, ${if (instanceKept) "kept for debugging" else "terminated, no instance left"}): $step: $reason"
+                "  $alias ($instanceId, ${if (instanceKept) "kept for debugging" else "terminated, no instance left"}): $step: " +
+                    reason.lineSequence().first()
         }
 
         /** The nodes that could not be brought up. `up` exits non-zero after the others finished. */
@@ -5423,14 +5444,6 @@ sealed interface Event {
         @SerialName("Logs.NoLogsFound")
         data object NoLogsFound : Logs {
             override fun toDisplayString(): String = "No logs found matching the query."
-        }
-
-        @Serializable
-        @SerialName("Logs.QueryResults")
-        data class QueryResults(
-            val logs: List<String>,
-        ) : Logs {
-            override fun toDisplayString(): String = logs.joinToString("\n") + "\n\nFound ${logs.size} log entries."
         }
     }
 

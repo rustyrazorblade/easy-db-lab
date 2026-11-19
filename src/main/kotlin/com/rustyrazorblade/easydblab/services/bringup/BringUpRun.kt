@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.output.NodeOutputTail
+import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Clock
@@ -18,19 +18,20 @@ internal data class OpenControlPlane(
  * What every pipeline of one bring-up shares: the ports, the step runner, the limiters, the
  * health latch, the progress counts, the replacer, and the latches the control pipeline releases
  * (the [workspace] files every setup installs from, the registry [certificate], and
- * [controlPlane] once the gate is open), and each node's recent [nodeOutput]. It also owns the
+ * [controlPlane] once the gate is open), and its [reporting]: the events, and each node's output and tail. It also owns the
  * background work (tickers, the connection) and closes it in [close].
  */
 internal class BringUpRun(
     val ports: BringUpPortSet,
     val settings: BringUpSettings,
-    val eventBus: EventBus,
-    val nodeOutput: NodeOutputTail,
+    val reporting: BringUpReporting,
     val clock: Clock,
 ) : AutoCloseable {
+    val eventBus: EventBus get() = reporting.eventBus
+    val nodeOutput: NodeOutput get() = reporting.nodeOutput
     val timing: BringUpTiming get() = settings.timing
     val health = HealthLatch()
-    val runner = StepRunner(eventBus, health, timing.retryInterval, timing.attemptStopGrace)
+    val runner = StepRunner(eventBus, health, timing.retryInterval, timing.attemptStopGrace, nodeOutput::mark)
     val joins = JoinLimiter(health, settings.joinLimit)
     val ssh = SshSessionLimiter(settings.sshSessions)
     val progress = BringUpProgress(settings.runCount, settings.joinLimit, clock)

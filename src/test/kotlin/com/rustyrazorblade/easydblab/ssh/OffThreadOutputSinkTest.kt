@@ -77,7 +77,17 @@ class OffThreadOutputSinkTest {
     @Test
     fun `an interrupted writer stops waiting for a sink that never returns`() {
         val stalled = CountDownLatch(1)
-        val sink = OffThreadOutputSink(java.time.Duration.ofMillis(SETTLE_MILLIS)) { _, _ -> stalled.await() }
+        val reported = CountDownLatch(1)
+        val stalling =
+            object : RemoteOutputSink {
+                override fun line(
+                    stream: NodeStream,
+                    text: String,
+                ) = stalled.await()
+
+                override fun stalled() = reported.countDown()
+            }
+        val sink = OffThreadOutputSink(java.time.Duration.ofMillis(SETTLE_MILLIS), stalling)
         var stillInterrupted = false
 
         val writer =
@@ -90,6 +100,8 @@ class OffThreadOutputSinkTest {
 
         assertThat(writer.join(java.time.Duration.ofSeconds(WAIT_SECONDS))).isTrue()
         assertThat(stillInterrupted).isTrue()
+        // The reader is told the output is still coming, so a short tail is not taken as the whole story.
+        assertThat(reported.count).isZero()
         stalled.countDown()
     }
 

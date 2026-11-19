@@ -13,4 +13,10 @@ fun interface RemoteOutputSink {
         stream: NodeStream,
         text: String,
     )
+
+    /**
+     * The command returned while some of its lines were still waiting to be handed over (an
+     * interrupted command stops waiting for a stalled console). They are delivered later.
+     */
+    fun stalled() = Unit
 }

@@ -150,7 +150,7 @@ determined fails at `init`, before any instance is created.
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--up` | Auto-provision after init | false |
-| `--quiet`, `-q` | With `--up`: run `up --quiet` | false |
+| `--quiet`, `-q` | With `--up`: run `up --quiet`. Refused without `--up` | false |
 | `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
 
 ### setup-instances
@@ -176,7 +176,7 @@ easy-db-lab up [options]
 | Option | Description |
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
-| `--quiet`, `-q` | Hide what each node's scripts print. Ready lines, progress lines and failures still print, and a failed node's error still shows its last output |
+| `--quiet`, `-q` | Hide what each node's scripts print while the nodes come up. Ready lines, progress lines and failures still print, and a failed node's error still shows its last output. The cluster-wide steps after the nodes print as usual |
 
 Each line a node's script prints is shown as it arrives, tagged with the node:
 
@@ -185,7 +185,7 @@ Each line a node's script prints is shown as it arrives, tagged with the node:
 [db3] E: Unable to locate package foo
 ```
 
-When a node fails, its error ends with `last output of <node>:` and the last 30 lines its last instance printed, indented, also with `--quiet`.
+When a node fails, its error ends with `last output of <node>:` and the last 30 lines its last instance printed, indented, also with `--quiet`. Lines it wrote to stderr start with `stderr: `.
 
 Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Deploys the [account compactor](../user-guide/compactor.md) pod with the observability stack.
 
@@ -826,7 +826,7 @@ Execute commands on remote hosts via `systemd-run`. Tool output is captured by t
 
 Run a command on remote hosts (foreground by default). The command runs through `bash -c`: pass a whole command line as one quoted argument, or pass words after `--`, which are quoted one by one. If the command fails on any host, `exec run` prints that host's output, reports the host, and exits non-zero.
 
-In the foreground, each line of the unit's output is printed tagged with its host, `[db0] ...`, so the output of a parallel run (`-p`) stays readable.
+In the foreground, each line of the unit's output is printed tagged with its host, `[db0] ...`, so the output of a parallel run (`-p`) stays readable. A host whose command printed nothing shows `[db0] no output`.
 
 ```bash
 # Foreground (blocks until complete, shows output)

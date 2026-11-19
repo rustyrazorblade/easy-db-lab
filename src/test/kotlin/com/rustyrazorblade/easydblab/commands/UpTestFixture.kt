@@ -324,7 +324,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             ): Response {
                 if (output) {
                     echoedCommands.add(command)
-                    nodeOutput.line(host.alias, NodeStream.Stdout, "ran $command")
+                    nodeOutput.line(host.alias, NodeStream.Stdout, "ran $command", host.instanceId)
                 }
                 return fakeRemoteResponse(host, command)
             }
@@ -333,6 +333,7 @@ abstract class UpTestFixture : BaseKoinTest() {
                 host: Host,
                 local: Path,
                 remote: String,
+                notice: String,
             ) {
                 // The setup script is uploaded from a relative path that tests do not create.
                 uploads += remote to

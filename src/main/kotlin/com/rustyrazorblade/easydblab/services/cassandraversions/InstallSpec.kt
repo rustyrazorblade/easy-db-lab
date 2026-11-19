@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services.cassandraversions
 
 import com.rustyrazorblade.easydblab.configuration.CassandraSource
 import com.rustyrazorblade.easydblab.configuration.InstalledVersion
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 
 /**
  * Everything a node needs to install one Cassandra version, resolved by the CLI before any node

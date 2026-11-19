@@ -2,8 +2,10 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.services.HostOperationsService
@@ -47,30 +49,40 @@ class SetupInstance : PicoBaseCommand() {
     private fun setupAll() {
         val context = NodeSetupContext.from(clusterState)
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, hosts.hostList, parallel = true) {
-            reported(it.alias) { nodeSetupService.setupApp(it.toHost(), context) }
+            reported(it) { nodeSetupService.setupApp(it.toHost(), context) }
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "", parallel = true) {
-            reported(it.alias) { nodeSetupService.setupDatabase(it.toHost(), context) }
+            reported(it) { nodeSetupService.setupDatabase(it.toHost(), context) }
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") {
-            reported(it.alias) { nodeSetupService.setupControl(it.toHost(), context) }
+            reported(it) { nodeSetupService.setupControl(it.toHost(), context) }
         }
     }
 
     /**
-     * Runs one host's [setup]; a failed setup script is reported as its own event, with the
-     * host's output from this setup only, then fails the command.
+     * Runs one host's [setup]; a failed setup script, or any other failed remote command of the
+     * setup, is reported as its own event, with the host's output from this setup only, then fails
+     * the command. Another command's reason is its one-line summary: its output is in the tail.
      */
     private fun reported(
-        alias: String,
+        host: ClusterHost,
         setup: () -> Unit,
     ) {
-        nodeOutput.reset(alias)
+        nodeOutput.reset(host.alias, host.instanceId)
         try {
             setup()
         } catch (e: InstanceSetupFailedException) {
-            eventBus.emit(Event.Provision.InstanceSetupFailed(host = e.alias, reason = e.reason, outputTail = nodeOutput.tail(e.alias)))
-            throw CommandFailedException(e.message ?: "Instance setup failed on ${e.alias}")
+            fail(e.alias, e.reason)
+        } catch (e: RemoteCommandFailedException) {
+            fail(host.alias, e.summary)
         }
+    }
+
+    private fun fail(
+        alias: String,
+        reason: String,
+    ): Nothing {
+        eventBus.emit(Event.Provision.InstanceSetupFailed(host = alias, reason = reason, outputTail = nodeOutput.tail(alias)))
+        throw CommandFailedException("Instance setup failed on $alias: $reason")
     }
 }

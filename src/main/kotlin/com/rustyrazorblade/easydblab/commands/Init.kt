@@ -407,6 +407,7 @@ class Init : PicoBaseCommand() {
     }
 
     private fun validateParameters() {
+        require(!quiet || start) { "--quiet hides the output of the nodes 'up' brings up, so it needs --up" }
         require(resolvedDbCount > 0) { "Number of database instances must be positive" }
         require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
         require(ebsSize > 0) { "EBS size must be positive" }

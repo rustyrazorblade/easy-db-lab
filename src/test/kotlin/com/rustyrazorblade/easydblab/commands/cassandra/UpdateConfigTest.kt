@@ -123,6 +123,14 @@ class UpdateConfigTest : BaseKoinTest() {
         assertThat(output).contains("Uploading cassandra.patch.yaml")
     }
 
+    /** patch-config's output is the only place its warnings show, so it runs with its output printed under the host. */
+    @Test
+    fun `patch-config runs with its output shown, not hidden`() {
+        UpdateConfig().execute()
+
+        verify(mockRemoteOps).executeRemotely(any<Host>(), argThat { contains("patch-config") }, eq(true), eq(false))
+    }
+
     /**
      * A host on a build that has no config directory in the workspace used to be patched first and
      * then fail with a bare "Local directory does not exist". It now fails before touching the

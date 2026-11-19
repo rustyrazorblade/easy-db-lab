@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -65,6 +66,26 @@ class StepRunnerTest {
             .containsExactlyElementsOf(List(succeedOn - 1) { true })
     }
 
+    /** A failure report's tail mixes the lines of every attempt; the mark says where each retry starts. */
+    @Test
+    fun `every attempt after the first is marked in the node's output, before it runs`() {
+        val written = CopyOnWriteArrayList<String>()
+        val marking = StepRunner(eventBus, health, retryInterval = Duration.ZERO, mark = { alias, text -> written += "$alias: $text" })
+
+        marking.run("db1", PipelineStep.SETUP, policy(3), neverEnds) { attempt ->
+            written += "db1: running $attempt"
+            check(attempt == 3) { "not yet" }
+        }
+
+        assertThat(written).containsExactly(
+            "db1: running 1",
+            "db1: setup attempt 2",
+            "db1: running 2",
+            "db1: setup attempt 3",
+            "db1: running 3",
+        )
+    }
+
     @Test
     fun `a step that fails every attempt fails with the last reason and says it will not retry`() {
         val outcome =
@@ -75,6 +96,23 @@ class StepRunnerTest {
             Event.Provision.NodeStepFailed("db1", "setup", 1, 2, "exit 1", willRetry = true),
             Event.Provision.NodeStepFailed("db1", "setup", 2, 2, "exit 2", willRetry = false),
         )
+    }
+
+    /** The node's output is already printed and kept in its tail; the reason must not repeat it. */
+    @Test
+    fun `a failed remote command's reason is its one-line summary, not its output`() {
+        val failure =
+            RemoteCommandFailedException(
+                command = "bash setup_instance.sh",
+                stdout = "Discarding blocks...Done.",
+                stderr = "ERROR: no data disk",
+                summary = "ubuntu@db1: Remote command failed (1): bash setup_instance.sh",
+            )
+
+        val outcome = runner.run("db1", PipelineStep.SETUP, policy(1), neverEnds) { throw failure }
+
+        assertThat(outcome).isEqualTo(StepOutcome.Failed(failure.summary, replaceable = true))
+        assertThat(events().filterIsInstance<Event.Provision.NodeStepFailed>().single().reason).isEqualTo(failure.summary)
     }
 
     @Test
@@ -262,27 +300,59 @@ class StepRunnerTest {
     }
 
     @Test
-    fun `a step whose instance ended returns only after its attempt has stopped`() {
+    fun `a step whose instance ended returns at once and interrupts its attempt`() {
         val ended = CompletableFuture<String>()
-        val attemptStopped = AtomicBoolean(false)
+        val interrupted = CountDownLatch(1)
         val running = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        // A grace far longer than the test: an ended step that waited for the attempt would fail it.
+        val patient = StepRunner(eventBus, health, retryInterval = Duration.ZERO, abandonGrace = Duration.ofSeconds(30))
 
         Thread.ofVirtual().start {
             running.await()
             ended.complete("terminated")
         }
+        val began = System.nanoTime()
         val outcome =
-            runner.run("db2", PipelineStep.SETUP, policy(2), ended) {
-                try {
-                    running.countDown()
-                    sleepThenCleanUp()
-                } finally {
-                    attemptStopped.set(true)
-                }
+            patient.run("db2", PipelineStep.SETUP, policy(2), ended) {
+                running.countDown()
+                // Notes the interrupt, then keeps going: the replacement is a new instance, so nothing waits for this one.
+                while (!awaitIgnoringInterrupt(release)) interrupted.countDown()
             }
+        val tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - began)
+        release.countDown()
 
         assertThat(outcome).isEqualTo(StepOutcome.InstanceEnded("terminated"))
-        assertThat(attemptStopped.get()).isTrue()
+        assertThat(tookMs).isLessThan(QUICK_RETURN_MS)
+        assertThat(interrupted.await(5, TimeUnit.SECONDS)).isTrue()
+    }
+
+    @Test
+    fun `an interrupted step whose attempt ignores the interrupt rethrows after one grace, and reports the attempt abandoned`() {
+        val stuckRunner = StepRunner(eventBus, health, retryInterval = Duration.ZERO, abandonGrace = Duration.ofMillis(50))
+        val running = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val failure = CompletableFuture<Throwable>()
+
+        val pipeline =
+            Thread.ofVirtual().start {
+                try {
+                    stuckRunner.run("db4", PipelineStep.SETUP, policy(3), neverEnds) {
+                        running.countDown()
+                        while (!awaitIgnoringInterrupt(release)) continue
+                    }
+                    failure.complete(null)
+                } catch (e: InterruptedException) {
+                    failure.complete(e)
+                }
+            }
+        running.await()
+        pipeline.interrupt()
+
+        assertThat(failure.get(1, TimeUnit.SECONDS)).isInstanceOf(InterruptedException::class.java)
+        release.countDown()
+        assertThat(events().filterIsInstance<Event.Provision.AttemptAbandoned>())
+            .containsExactly(Event.Provision.AttemptAbandoned("db4", "setup", 1, graceMs = 50))
     }
 
     /** resilience4j turns an interrupt of its pause into the last failure; the step must still stop as interrupted. */
@@ -342,5 +412,8 @@ class StepRunnerTest {
 
         /** How long the timed-out attempt keeps working after its interrupt; well past its 50 ms timeout. */
         const val CLEANUP_MS = 200L
+
+        /** Well under the 30 s grace: a step that returned this fast did not wait for its attempt. */
+        const val QUICK_RETURN_MS = 5_000L
     }
 }

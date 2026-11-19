@@ -1030,8 +1030,10 @@ class UpTest : UpTestFixture() {
         newUp().execute()
 
         val printed = getKoin().get<RecordingNodeOutput>().stdout.toList()
-        assertThat(printed).isNotEmpty()
-        assertThat(printed).allSatisfy { assertThat(it).matches("""\[(control0|db0|app0)] ran .+""") }
+        assertThat(printed).allSatisfy { assertThat(it).matches("""\[(control0|db0|app0)] +ran .+""") }
+        // Every db and app node ran its setup script, and each one's line is under its own tag.
+        val setupBy = printed.filter { "setup_instance.sh" in it }.map { it.substringBefore("]").removePrefix("[") }
+        assertThat(setupBy).containsAll(listOf("db0", "app0"))
     }
 
     @Test
@@ -1049,6 +1051,40 @@ class UpTest : UpTestFixture() {
         recorded.line("db0", NodeStream.Stdout, "after up")
 
         assertThat(recorded.stdout).containsExactly("[db0] after up")
+    }
+
+    /**
+     * Quiet hides a node's script while it runs; when the node fails for good its last output is
+     * still shown, under the failure, and quiet ends with the failed `up`.
+     */
+    @Test
+    fun `up --quiet still shows a failed node's last output under its failure, and ends quiet when up fails`() {
+        val events = captureEvents()
+        val recorded = getKoin().get<RecordingNodeOutput>()
+        remoteFault = { host, command ->
+            if (host.alias == "db0" && command == SETUP_COMMAND) {
+                recorded.line("db0", NodeStream.Stderr, "ERROR: no data disk", host.instanceId)
+                setupFailure()
+            } else {
+                null
+            }
+        }
+
+        assertThatThrownBy { newUp().apply { quiet = true }.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        // Quiet covers the pipelines only: no setup or K3s line and none of db0's lines printed. The
+        // environment re-push after db0's replacement is a post-step, so its lines print as usual.
+        assertThat(recorded.printed).noneMatch { "setup_instance.sh" in it || "k3s" in it || it.startsWith("[db0]") }
+        val failed = events.filterIsInstance<Event.Provision.NodeFailed>().single()
+        assertThat(failed.alias).isEqualTo("db0")
+        assertThat(failed.outputTail).contains("stderr: ERROR: no data disk")
+        assertThat(outputHandler.errors.joinToString("\n") { it.first })
+            .contains("last output of db0:\n", "    stderr: ERROR: no data disk")
+
+        recorded.line("db0", NodeStream.Stdout, "after up")
+
+        // Quiet has ended: the line prints, its tag padded to the longest alias printed so far.
+        assertThat(recorded.stdout.last()).matches("""\[db0] +after up""")
     }
 
     @Test

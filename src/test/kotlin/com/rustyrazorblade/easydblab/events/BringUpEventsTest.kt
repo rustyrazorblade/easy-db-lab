@@ -76,6 +76,30 @@ class BringUpEventsTest {
         )
     }
 
+    /** The node's own NodeFailed already printed the whole reason; at 80 nodes the list must stay one line each. */
+    @Test
+    fun `the failure list shows only the first line of a reason that has several`() {
+        val event =
+            Event.Provision.NodesFailed(
+                listOf(
+                    Event.Provision.FailedNode(
+                        "db3",
+                        "join",
+                        "no node db3 registered\nlast lines of the agent log:\nline 1\nline 2",
+                        "i-0abc",
+                        instanceKept = true,
+                    ),
+                ),
+            )
+
+        assertThat(event.toDisplayString()).isEqualTo(
+            """
+            1 node(s) could not be brought up:
+              db3 (i-0abc, kept for debugging): join: no node db3 registered
+            """.trimIndent(),
+        )
+    }
+
     @Test
     fun `the progress line names the control node's step first while its pipeline runs`() {
         val event =

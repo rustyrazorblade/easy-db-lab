@@ -81,7 +81,7 @@ class BringUpHarness(
                     Triple(serverType, hosts.filter { originOf(it) == origin }, origin)
                 }
             }
-        return NodeBringUp(ports, settings, eventBus, nodeOutput).run { sink ->
+        return NodeBringUp(ports, settings, BringUpReporting(eventBus, nodeOutput)).run { sink ->
             sink.launched(ServerType.Control, listOf(control), LaunchSink.Origin.LAUNCHED)
             handOvers
                 .filter { (_, hosts, _) -> hosts.isNotEmpty() }

@@ -239,8 +239,12 @@ Remote commands legitimately carry a URL with an embedded credential — a git c
 fork is the common case — and the remote side echoes the command straight back on failure.
 `ssh/SSHClient` therefore redacts at the single point every remote command passes through, covering
 all four sinks at once: the debug log, each line passed to the `RemoteOutputSink`, the returned
-`Response`, and the thrown `RemoteCommandFailedException`. The helper is
-`ssh/Redaction.kt`'s `redactUrlCredentials`.
+`Response`, and the thrown `RemoteCommandFailedException`. The helpers are in `Redaction.kt` in the
+root package: `redactUrlCredentials` (URL userinfo, used for the `Response`) and `redact`, which also
+hides `authkey=`, `token=`, `secret=`, `password=` and `key=` values, `Authorization:` header values
+and AWS access key ids (used for streamed lines, the log, the exception). `output/ConsoleNodeOutput`
+runs `redact` again on every line it prints or keeps, pod log lines too, so a transport other than
+SSH is covered as well.
 
 Rules that follow from this:
 
@@ -263,26 +267,11 @@ Rules that follow from this:
 
 ### Remote Output Streams To A Sink, Never To Events
 
-`ISSHClient.executeRemoteCommand(command, sink: RemoteOutputSink?, secret)` takes the sink that
-receives what the command prints, one whole line at a time, while it runs. `SSHClient` tees each
-MINA stream into its capture buffer (for the `Response` and the failure) and a
-`output/LineSplittingOutputStream` (UTF-8 safe across reads, `\r\n` and `\r`, lines capped at
-`Constants.NodeOutput.MAX_LINE_BYTES`, a long line cut after its last space or tab so a word or
-URL stays whole for redaction) that redacts each line and hands it to the sink with its
-`NodeStream` (`Stdout` or `Stderr`). The sink is wrapped in `ssh/OffThreadOutputSink`: MINA writes
-on its shared NIO threads, so the lines are queued and printed by one virtual thread per command,
-and a slow console never stalls other sessions. Both splitters, then the off-thread sink, are
-closed in `finally`, so a failed command still delivers its partial last line and all of its output
-prints before the call returns. `DefaultRemoteOperationsService` builds the sink from
-`host.alias` when `output = true`, writing to `output/NodeOutput`, and prints one `notice` per
-`upload` or `uploadDirectory` call. When the retry policy runs a command again, it prints a
-`notice` first ("retrying the command (attempt N)"), so the next run's lines are marked; a secret
-command streams nothing, so it gets no notice. `SSHClient` closes the splitters and the off-thread
-sink each in turn even if one throws. On an interrupted thread the sink waits at most
-`Constants.NodeOutput.INTERRUPTED_DRAIN_WAIT` and then restores the flag, so an abandoned worker
-neither leaks the drain thread, loses its own failure, nor hangs on a stalled console. Nothing in this layer emits an event: raw output is not a
-domain fact (see `events/CLAUDE.md`). A test double of `ISSHClient` feeds its configured output
-into the sink it is given (`MockSSHClient`).
+`ISSHClient.executeRemoteCommand(command, sink: RemoteOutputSink?, secret)` takes the sink that receives what the command prints, one whole line at a time, while it runs. `SSHClient` tees each MINA stream into its capture buffer (for the `Response` and the failure) and an `output/LineSplittingOutputStream`, which hands each redacted line to the sink with its `NodeStream` (`Stdout` or `Stderr`). The splitter is UTF-8 safe across reads. A `\r` without `\n` starts a segment that replaces the current one, and at `\n` or close the last non-empty segment is emitted once, so a progress bar prints its final value. A line is cut into pieces of at most `Constants.NodeOutput.MAX_LINE_BYTES`, before a character that does not fit, and a URL that starts within `Constants.NodeOutput.URL_CARRY_BYTES` of a cut moves whole to the next piece so its credentials are still redacted.
+
+MINA pins its caller's carrier: `AbstractClientChannel.open` blocks inside `synchronized`, and `waitFor` uses `Object.wait`. With bring-up running one virtual thread per node, enough pinned callers left no carrier for anything else, and `up` hung on JDK 21. So `ssh/PlatformThreadCall.run` runs every MINA call of a virtual caller (connect, `executeRemoteCommand`, SCP upload and download, `session.close`) on a cached pool of platform daemon threads, passing the caller's interrupt on; a platform caller runs the block itself. The sink is wrapped in `ssh/OffThreadOutputSink`, whose drain is a platform daemon thread (`Constants.NodeOutput.DRAIN_THREAD_NAME`), so MINA's NIO threads never wait for the console. `SSHClient.operationLock` is a `ReentrantLock`, never `synchronized`. Any new MINA call goes through `PlatformThreadCall` too.
+
+Both splitters, then the off-thread sink, are closed in `finally`, each in turn even if one throws, so a failed command still delivers its partial last line and all of its output prints before the call returns. On an interrupted thread the sink waits at most `Constants.NodeOutput.INTERRUPTED_DRAIN_WAIT` and then restores the flag. A drain that times out calls the sink's `stalled()`, and the node gets the notice `output still printing; the tail may be incomplete`. `DefaultRemoteOperationsService` builds the sink only when `output` is true and `secret` is false; it writes to `output/NodeOutput` under `host.alias` with `host.instanceId`. `upload` prints one `notice` (callers may pass their own: `installFile` prints `installing <path> (mode <mode>)` instead of the staging path), and `uploadDirectory` prints one. A notice is printed but never kept in the node's tail. When the retry policy runs a command again it prints a `mark` ("retrying the command (attempt N)"), which is kept, so a failure's tail shows which run a line came from. Nothing in this layer emits an event: raw output is not a domain fact (see `events/CLAUDE.md`). A test double of `ISSHClient` feeds its configured output through the real splitter into the sink it is given (`MockSSHClient`).
 
 ## Docker Provider
 

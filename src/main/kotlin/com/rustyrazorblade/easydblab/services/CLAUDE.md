@@ -210,12 +210,19 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
 - **Failure**: `StepRunner` retries only an `AttemptFailed`; a node step that still fails goes to
   `NodeReplacer` (budget in `ReplacementBudget`). Control steps are retried and never replaced:
   `ControlNodeFailedException`. `ClusterStateWriter` is the only writer of hosts to `state.json`
-  during bring-up.
-- **Output tail**: every node's script lines go to `output/NodeOutput` as `[alias] ...` (hidden by
-  `up --quiet`). `BringUpRun` holds the read side, `NodeOutputTail`. `InstanceRun` resets the
-  alias's tail when an instance starts its steps, so a replacement's tail holds only its own lines;
-  `NodePipeline.failed` and `NodeBringUp.controlFailed` put the tail on `NodeFailed` and
-  `ControlNodeFailed` as `outputTail`. The tail is kept in quiet mode too.
+  during bring-up. Each attempt after the first is marked in the node's output as
+  `<step> attempt <N>` before it runs. When the pipeline is interrupted, `StepRunner` interrupts
+  the attempt and waits once, up to `BringUpTiming.attemptStopGrace`, only if it is still running;
+  one still running after that is emitted as `Provision.AttemptAbandoned` and left behind. When the
+  instance ended, it interrupts the attempt and returns at once, so the replacement starts.
+- **Output tail**: every node's script lines go to `output/NodeOutput` as `[alias] ...`, each line
+  carrying the instance that printed it. `NodeBringUp` takes a `BringUpReporting` (the event bus and
+  the `NodeOutput`); `BringUpRun` exposes both. `InstanceRun` calls `reset(alias, instanceId)` when
+  an instance starts its steps, so a replacement's tail holds only its own lines, and a line from a
+  stale instance is printed but not kept. `NodePipeline.failed` and `NodeBringUp.controlFailed` put
+  the tail on `NodeFailed` and `ControlNodeFailed` as `outputTail`. `up --quiet` wraps only
+  `NodeBringUp.run` in `NodeOutput.quietly`: quiet ends when the last pipeline ends, and the
+  post-steps print as usual. The tail is kept in quiet mode too.
 - **Tests**: `src/test/.../services/bringup/BringUpFakes.kt` and `FakeInstanceFleet` drive every
   pipeline without SSH or AWS; `UpTestFixture` wires the real `K3sBringUpSteps` over a fake
   `RemoteOperationsService` with fake tracker, fleet and control plane.

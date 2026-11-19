@@ -110,6 +110,23 @@ class ExecRunOutputTest : BaseKoinTest() {
         assertThat(printed).noneMatch { it.startsWith("===") }
     }
 
+    /** A host whose unit printed nothing says so, so it is not mistaken for a host that was skipped. */
+    @Test
+    fun `a unit with an empty journal prints a no-output notice under its host`() {
+        clients.getValue("db1").onCommand = { command ->
+            if (command.contains("journalctl")) Response("") else Response("Running as unit: edl-exec-x.service")
+        }
+
+        ExecRun()
+            .apply {
+                command = listOf("true")
+                hosts.hostList = "db1"
+            }.execute()
+
+        val printed = getKoin().get<RecordingNodeOutput>().stdout
+        assertThat(printed).containsExactly("[db1] Running as unit: edl-exec-x.service", "[db1] no output")
+    }
+
     /** The unit's journal is the only place its output is, and it is why the run failed. */
     @Test
     fun `a failed unit still prints its journal, tagged with the host, and the command fails`() {

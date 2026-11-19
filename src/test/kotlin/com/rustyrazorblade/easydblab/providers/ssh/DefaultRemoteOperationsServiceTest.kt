@@ -287,7 +287,7 @@ class DefaultRemoteOperationsServiceTest :
 
         assertThat(nodeOutput.stdout).containsExactly("[$TEST_HOST_NAME] step one", "[$TEST_HOST_NAME] step two")
         assertThat(nodeOutput.stderr).containsExactly("[$TEST_HOST_NAME] warning: slow")
-        assertThat(nodeOutput.tail(TEST_HOST_NAME)).containsExactly("step one", "step two", "warning: slow")
+        assertThat(nodeOutput.tail(TEST_HOST_NAME)).containsExactly("step one", "step two", "stderr: warning: slow")
         assertThat(response.text).isEqualTo("step one\nstep two\n")
     }
 

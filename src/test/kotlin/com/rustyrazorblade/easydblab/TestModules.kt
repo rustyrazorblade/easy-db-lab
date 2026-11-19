@@ -326,6 +326,7 @@ object TestModules {
                         host: Host,
                         local: Path,
                         remote: String,
+                        notice: String,
                     ) {
                         // No-op for mock implementation
                     }

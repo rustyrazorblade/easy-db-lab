@@ -15,7 +15,7 @@ The cqlite analytical stack — an Arrow Flight SSTable reader, a Trino connecto
   - Ship `trino-loadtest/driver.py` only; **drop** `test_driver.py` (non-runtime test code, not referenced by any script).
 - Add a guard unit test asserting the two new kits' `kit.yaml` parse, that the trino source lists its real catalogs but NO cqlite catalog file (deferred — guarding the install-time UX against a spurious unresolved-variable warning), and that `cqlite-trino` no longer resolves as a standalone kit.
 - Plan migration:
-  - Update `test-plans/cqlite-flight-production-readiness.md` to drop the `kit source add` prelude step and reference the built-in kits.
+  - `test-plans/cqlite-flight-production-readiness.md` ships in PR #1211, not in this change, so the two do not conflict; it uses the built-in kits.
   - **Delete** the two version-pinned checkpoint plans (`cqlite-flight-milestone-snapshot-0.15.md`, `cqlite-flight-0.16.0-rc1-fixvalidation.md`) as superseded by the general plan.
 - Update user docs (`docs/development/kits.md` / per-kit docs) to reflect the three new built-in kits.
 
@@ -31,6 +31,6 @@ The cqlite analytical stack — an Arrow Flight SSTable reader, a Trino connecto
 
 - **New resources**: two kit directories under `src/main/resources/com/rustyrazorblade/easydblab/kits/{cqlite-flight,trino-loadtest}/`. The trino kit's `catalogs/cqlite.properties.template` is DEFERRED (not shipped until #2869); the existing trino kit is otherwise unchanged.
 - **New test**: extends `src/test/kotlin/com/rustyrazorblade/easydblab/services/InstallTemplateResolverTest.kt` (parse guards + trino-catalog listing + standalone-kit-absence guard).
-- **Docs**: `docs/development/kits.md`, `docs/user-guide/{kits,install-trino,cqlite-flight,trino-loadtest}.md`, `docs/SUMMARY.md`; the standalone `docs/user-guide/cqlite-trino.md` page is deleted; `test-plans/cqlite-flight-production-readiness.md` edited; two checkpoint plans deleted.
+- **Docs**: `docs/development/kits.md`, `docs/user-guide/{kits,install-trino,cqlite-flight,trino-loadtest}.md`, `docs/SUMMARY.md`; the standalone `docs/user-guide/cqlite-trino.md` page is deleted; two checkpoint plans deleted (`test-plans/cqlite-flight-production-readiness.md` ships in PR #1211).
 - **No code, DI, or build-config changes.** Additive-only blast radius (plus one new catalog file in the trino kit); the classpath resolver is untouched. Clusters are ephemeral — no backward-compat concern.
 - **External runtime dependencies**: published image `ghcr.io/pmcfadin/cqlite-flight:<tag>`; the `cqlite_flight` connector fat jar is **deferred, tracked in pmcfadin/cqlite#2869** (not yet published).

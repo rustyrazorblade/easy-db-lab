@@ -47,6 +47,9 @@ its pod. The pods run on the pod network. Clients reach the Flight gRPC port thr
 `cqlite-flight-nodeport` Service at `<db-node-private-ip>:30816`. That Service is node-local
 (`externalTrafficPolicy: Local`): a db node's IP always reaches that node's own pod, because
 that pod is the only one holding the node's SSTables.
+NodePort 30816 is unauthenticated and reachable on every db node's private IP, so anything in
+the cluster's VPC can read the served SSTables through it. Both containers run with no
+privilege escalation, all capabilities dropped and a read-only root filesystem.
 
 ```admonish warning title="Needs the database on the node itself"
 cqlite-flight reads the data directory from the db node's filesystem through a read-only

@@ -1,7 +1,7 @@
 # trino-loadtest
 
 A concurrent read-load driver against a running `trino` kit's `cqlite` catalog.
-Each `start` runs one timestamped, labelled pod (`python:3.12-slim` + a pinned
+Each `start` runs one timestamped, labelled pod (`python:3.12-slim`, pinned by digest in `bin/start.sh`, + a pinned
 `pip install trino` at pod start — no Java toolchain needed) that holds a pool of persistent
 Trino connections and issues queries for a fixed duration, printing periodic
 stats that `start.sh` scrapes and pushes, as OTLP gauges, to the OpenTelemetry

@@ -69,7 +69,7 @@ cqlite.read-mode=__READ_MODE__
 
 **Guard test.** A unit test (extending `InstallTemplateResolverTest.kt`, following the existing clickhouse-dashboard and presto-config patterns) asserts the `cqlite-flight` and `trino-loadtest` built-in kits' `loadInstallConfig` parses, that the trino source lists its real catalogs (e.g. `catalogs/cassandra.properties.template`) but NO cqlite catalog file (deferred — so the `kit install trino` render path collects no unresolvable cqlite placeholders and emits no unresolved-variable warning), and that `cqlite-trino` no longer resolves as a standalone kit. This guards against the deferred catalog file (or the standalone kit) sneaking back in and regressing the trino kit's install-time UX.
 
-**Plan migration.** Edit `test-plans/cqlite-flight-production-readiness.md` to remove the `kit source add` prelude and reference built-in kits. Delete `cqlite-flight-milestone-snapshot-0.15.md` and `cqlite-flight-0.16.0-rc1-fixvalidation.md` (version-pinned checkpoints, superseded).
+**Plan migration.** `test-plans/cqlite-flight-production-readiness.md`, which uses the built-in kits, ships in PR #1211 so the two PRs do not touch the same file. Delete `cqlite-flight-milestone-snapshot-0.15.md` and `cqlite-flight-0.16.0-rc1-fixvalidation.md` (version-pinned checkpoints, superseded).
 
 ## Risks / Trade-offs
 

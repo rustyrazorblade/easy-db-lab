@@ -12,7 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_DIR="$(dirname "${SCRIPT_DIR}")"
 . "${KIT_DIR}/lib/snapshot-check.sh"
 . "${KIT_DIR}/lib/catalog-check.sh"
-IMAGE="docker.io/library/python:3.12-slim"
+# The driver's base image, pinned by digest so every run of a comparison uses the same one.
+# docker.io/library/python:3.12-slim, multi-arch index digest as of 2026-11-19.
+IMAGE="docker.io/library/python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b"
 # The trino-python-client the driver uses, pinned so every run of a comparison uses the same one.
 TRINO_CLIENT_VERSION="0.340.0"
 ROLE="run"
@@ -30,12 +32,10 @@ TRINO_LOADTEST_PORT="${TRINO_LOADTEST_HOST_PORT##*:}"
   edl_fail "TARGET_HTTP_URL (${TARGET_HTTP_URL}) has no numeric port; the trino kit's http endpoint must be http://<host>:<port>."
 TRINO_LOADTEST_USER="${TARGET_JDBC_USER:-cqlite-loadtest}"
 
-# The kit runner passed an unset optional arg whose kit.yaml default is "" as the literal string
-# "null" (pmcfadin/cqlite#2132). Succeeds when $1 holds a real value.
-# TODO(pmcfadin/cqlite#2132): drop the "null" comparison. The kit runner now records an unset arg
-# as "" (KitArgOptions.UnsetArg.EMPTY), so only the -n check is still needed.
+# The kit runner records an optional arg the user did not give, with no default, as ""
+# (KitArgOptions.UnsetArg.EMPTY). Succeeds when $1 holds a value.
 is_set() {
-  [ -n "$1" ] && [ "$1" != "null" ]
+  [ -n "$1" ]
 }
 
 # The snapshot-leak check, checked before any pod runs. It runs here, after the driver, not in the

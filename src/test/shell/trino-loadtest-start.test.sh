@@ -57,16 +57,17 @@ EOF
     > "${STUB_STATE}/curl-out.1"
 }
 
-# Runs start.sh with the kit runner's environment; extra VAR=value pairs in "$@" override it.
+# Runs start.sh with the kit runner's environment, where an unset optional arg is "" (as
+# KitArgOptions records it); extra VAR=value pairs in "$@" override it.
 run_script() {
   (
     cd "${WORK}" &&
       env PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 KIT_NAME=tl1 \
         KUBECONFIG="${WORK}/kubeconfig" CONTROL_HOST_PRIVATE=10.0.0.5 \
         TARGET_HTTP_URL=http://10.0.0.9:8080 \
-        TRINO_LOADTEST_KEYSPACE=ks1 TRINO_LOADTEST_TABLE=t1 TRINO_LOADTEST_QUERIES_FILE=null \
+        TRINO_LOADTEST_KEYSPACE=ks1 TRINO_LOADTEST_TABLE=t1 TRINO_LOADTEST_QUERIES_FILE= \
         THREADS=4 DURATION=20 INTERVAL=10 TRACEPARENT=false \
-        TRINO_LOADTEST_SNAPSHOT_CHECK_CMD=null TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S=null \
+        TRINO_LOADTEST_SNAPSHOT_CHECK_CMD= TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S= \
         "$@" "${BASH}" "${WORK}/kit/bin/start.sh"
   ) > "${WORK}/out.txt" 2>&1
 }
@@ -130,7 +131,7 @@ test_driver_flags_are_passed_as_separate_arguments() {
 
 test_unset_optional_args_are_omitted() {
   start_test "unset args"
-  run_script TRINO_LOADTEST_KEYSPACE=null TRINO_LOADTEST_TABLE=null || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  run_script TRINO_LOADTEST_KEYSPACE= TRINO_LOADTEST_TABLE= || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
   if run_call | grep -Eq -- '--ks|--tbl|--snapshot-check|--queries-file|null'; then fail "passed an unset arg: $(run_call)"; fi
 }
 
@@ -181,6 +182,15 @@ test_the_trino_client_is_pinned() {
   start_test "pinned client"
   run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
   run_call | grep -Eq 'pip install --quiet trino==[0-9]+\.[0-9]+\.[0-9]+ ' || fail "trino is not pinned: $(run_call)"
+}
+
+# The driver's base image is pinned by digest, so a rebuilt python:3.12-slim cannot change a
+# comparison between two runs.
+test_the_driver_image_is_pinned_by_digest() {
+  start_test "pinned image"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  run_call | grep -Eq -- '--image=docker\.io/library/python@sha256:[0-9a-f]{64}( |$)' ||
+    fail "the image is not pinned by digest: $(run_call)"
 }
 
 test_an_interval_line_missing_a_field_pushes_no_gauges() {
@@ -343,6 +353,7 @@ test_no_target_runs_no_pod
 test_a_target_url_without_a_numeric_port_runs_no_pod
 test_start_leaves_the_configmap_for_stop
 test_the_trino_client_is_pinned
+test_the_driver_image_is_pinned_by_digest
 test_an_interval_line_missing_a_field_pushes_no_gauges
 test_the_snapshot_check_runs_on_the_operator_machine_not_in_the_pod
 test_a_leaked_snapshot_fails_the_run_and_names_it

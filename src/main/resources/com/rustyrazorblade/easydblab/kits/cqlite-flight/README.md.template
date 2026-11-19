@@ -21,6 +21,10 @@ namespace:
   the node-IP-addressing model the connector needs from Sidecar-based topology
   discovery. (With the default `Cluster` policy, kube-proxy would send a request to
   any node's pod and a read would silently return another node's data.)
+  The NodePort is unauthenticated and reachable on every db node's private IP.
+- **Least privilege** — both containers run with `allowPrivilegeEscalation: false`,
+  `capabilities: drop: [ALL]` and `readOnlyRootFilesystem: true`; `/tmp` is a
+  pod-local `emptyDir`.
 - **Read-only hostPath mount** of the Cassandra data directory (default
   `/mnt/db1/cassandra/data`, matching `cassandra.service`'s
   `data_file_directories`), mounted at `/data` in the container and passed to

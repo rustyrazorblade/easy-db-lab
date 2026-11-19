@@ -159,6 +159,22 @@ class CqliteFlightKitTest : BaseKoinTest() {
         ).containsAllEntriesOf(STOP_LABELS)
     }
 
+    @Test
+    fun `both containers run with no privilege escalation, no capabilities and a read-only root`() {
+        val pod = daemonSet().spec.template.spec
+
+        (pod.initContainers + pod.containers).forEach { container ->
+            val security = requireNotNull(container.securityContext) { "${container.name} has no securityContext" }
+            assertThat(security.allowPrivilegeEscalation).describedAs(container.name).isFalse()
+            assertThat(security.capabilities.drop).describedAs(container.name).containsExactly("ALL")
+            assertThat(security.capabilities.add.orEmpty()).describedAs(container.name).isEmpty()
+            assertThat(security.readOnlyRootFilesystem).describedAs(container.name).isTrue()
+            val tmp = container.volumeMounts.single { it.mountPath == "/tmp" }
+            assertThat(pod.volumes.single { it.name == tmp.name }.emptyDir).describedAs(container.name).isNotNull()
+            assertThat(tmp.readOnly == true).describedAs(container.name).isFalse()
+        }
+    }
+
     private companion object {
         const val MANIFEST = "daemonset.yaml.template"
         const val FLIGHT_NODE_PORT = 30816

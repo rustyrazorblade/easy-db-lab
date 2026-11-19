@@ -33,7 +33,7 @@
 
 ## 5. Plan migration
 
-- [x] 5.1 Edit `test-plans/cqlite-flight-production-readiness.md`: remove the P0.6 `kit source add` step and reference the built-in kits (`kit install cqlite-flight` / `trino-loadtest`); replace the `kit install cqlite-trino` step with the trino-kit `cqlite` catalog reality and mark the end-to-end query steps blocked-on-#2869
+- [x] 5.1 (moved to PR #1211, which carries the plan file) Edit `test-plans/cqlite-flight-production-readiness.md`: remove the P0.6 `kit source add` step and reference the built-in kits (`kit install cqlite-flight` / `trino-loadtest`); replace the `kit install cqlite-trino` step with the trino-kit `cqlite` catalog reality and mark the end-to-end query steps blocked-on-#2869
 - [x] 5.2 Delete `test-plans/cqlite-flight-milestone-snapshot-0.15.md` and `test-plans/cqlite-flight-0.16.0-rc1-fixvalidation.md` (superseded checkpoints)
 - [x] 5.3 Absorb the durable, non-version-specific setup guidance from `clusters/HANDOFF-cqlite-lab-testing.md` (tunnel/keepalive, Cassandra step ordering, digest discipline) into the general plan's prelude, so the plan stands alone in-tree after the checkpoints are deleted (no dangling out-of-tree runbook reference)
 - [x] 5.4 Grep-verify: zero matches for `kit source add` / `pmcfadin/cqlite/easy-db-lab-kits` across `test-plans/*cqlite*.md`

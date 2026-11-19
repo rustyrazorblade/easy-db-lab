@@ -60,6 +60,11 @@ spec:
           image: "ghcr.io/pmcfadin/cqlite-flight:__TAG__"
           imagePullPolicy: Always
           command: ["/bin/sh", "/detect/detect-multidisk.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: DETECT_SERVED
               value: "__CASSANDRA_DATA_DIR__"
@@ -81,6 +86,8 @@ spec:
             - name: detect-multidisk-script
               mountPath: /detect
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       containers:
         - name: cqlite-flight
           image: "ghcr.io/pmcfadin/cqlite-flight:__TAG__"
@@ -88,6 +95,13 @@ spec:
           # default (IfNotPresent for non-latest tags) would pin the first pull
           # of a reused tag forever and silently ignore rebuilt dev images.
           imagePullPolicy: Always
+          # Least privilege: the server only reads the data dir and serves gRPC on an unprivileged
+          # port. The root filesystem is read-only; /tmp is a pod-local emptyDir for any scratch file.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           args:
             - "--data-dir=/data"
             - "--listen=0.0.0.0:__FLIGHT_PORT__"
@@ -115,6 +129,8 @@ spec:
             - name: cassandra-data
               mountPath: /data
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             tcpSocket:
               port: __FLIGHT_PORT__
@@ -142,6 +158,9 @@ spec:
         - name: detect-multidisk-script
           configMap:
             name: cqlite-flight-detect-multidisk
+        # Writable scratch space for both containers, whose root filesystems are read-only.
+        - name: tmp
+          emptyDir: {}
 ---
 # The Flight endpoint. externalTrafficPolicy: Local keeps <db-node-ip>:30816 on that node's own
 # pod, which is the only pod holding that node's SSTables; with Cluster, kube-proxy would send it

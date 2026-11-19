@@ -107,7 +107,7 @@ sealed class AWSPolicy {
              * Loads all four required user IAM policies from JSON resource files.
              * Performs account ID substitution in policy templates.
              *
-             * @param accountId The AWS account ID to substitute for ACCOUNT_ID placeholder
+             * @param accountId The AWS account ID to substitute for the __ACCOUNT_ID__ placeholder
              * @return List of Policy objects with name and processed JSON content
              * @throws IllegalStateException if unable to load policy template files
              */
@@ -129,7 +129,7 @@ sealed class AWSPolicy {
 
                     val processedContent =
                         policyContent
-                            .replace(Constants.AWS.ACCOUNT_ID_PLACEHOLDER, accountId)
+                            .replace("__ACCOUNT_ID__", accountId)
                             .replace("__LEGACY_TAG_KEY__", Constants.Vpc.LEGACY_TAG_KEY)
                             .replace("__TAG_VALUE__", Constants.Vpc.TAG_VALUE)
 

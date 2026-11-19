@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -34,11 +35,19 @@ class GateFile(
         // A temporary file is created owner-only; the Loki and Tempo gates run as another user.
         val temporary = Files.createTempFile(dir, ".$VALID_UNTIL", ".tmp")
         // The loop retries a failed grant on every renewal, so a failure must not leave its file.
-        runCatching {
+        try {
             Files.writeString(temporary, "${validUntil.epochSeconds}\n")
             Files.setPosixFilePermissions(temporary, WORLD_READABLE)
             Files.move(temporary, dir.resolve(VALID_UNTIL), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        }.onFailure { Files.deleteIfExists(temporary) }.getOrThrow()
+        } catch (original: IOException) {
+            // The cleanup's own failure must not hide the error that made it necessary.
+            try {
+                Files.deleteIfExists(temporary)
+            } catch (cleanup: IOException) {
+                original.addSuppressed(cleanup)
+            }
+            throw original
+        }
     }
 
     override fun revoke() {

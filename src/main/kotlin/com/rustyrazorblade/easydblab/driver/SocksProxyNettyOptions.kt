@@ -54,7 +54,7 @@ class SocksProxyNettyOptions(
                     if (originalHandler is ChannelInitializer<*>) {
                         @Suppress("UNCHECKED_CAST")
                         val typedHandler = originalHandler as ChannelInitializer<Channel>
-                        runCatching {
+                        try {
                             // Use reflection to call the protected initChannel method
                             val initMethod =
                                 ChannelInitializer::class.java.getDeclaredMethod(
@@ -64,9 +64,10 @@ class SocksProxyNettyOptions(
                             initMethod.isAccessible = true
                             initMethod.invoke(typedHandler, ch)
                             log.debug { "Original handler initialized successfully" }
-                        }.onFailure { e ->
+                        } catch (e: ReflectiveOperationException) {
                             log.error(e) { "Failed to initialize original channel handler" }
-                        }.getOrThrow()
+                            throw e
+                        }
                     } else {
                         log.warn { "Original handler is not a ChannelInitializer: ${originalHandler?.javaClass?.name}" }
                     }

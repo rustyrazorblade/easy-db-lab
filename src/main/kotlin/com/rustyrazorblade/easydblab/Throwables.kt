@@ -53,3 +53,28 @@ inline fun <T> runCatchingInterruptibly(block: () -> T): Result<T> =
     runCatchingException(block).onFailure {
         if (it is InterruptedException) throw it
     }
+
+/**
+ * Runs [block]; when it throws, runs [cleanup] and then rethrows the original failure. A failure of
+ * [cleanup] is attached to the original with [Throwable.addSuppressed], so the error that started
+ * the cleanup is the one the caller sees. An [Error] from [cleanup] is not captured. Use it where
+ * a half-finished step must undo itself (a staging directory, a connection opened so far).
+ */
+inline fun <T> runCleaningUpOnFailure(
+    cleanup: () -> Unit,
+    block: () -> T,
+): T =
+    runCatching(block)
+        .onFailure { original ->
+            runCatchingException(cleanup).onFailure(original::addSuppressed)
+        }.getOrThrow()
+
+/**
+ * Runs [action] on the [Exception] a failed result holds. A failure that is not an [Exception]
+ * (an [Error]) is rethrown. [runCatchingException] never captures an [Error], so on its results
+ * the rethrow is not reached.
+ */
+inline fun <T> Result<T>.onException(action: (Exception) -> Unit): Result<T> =
+    onFailure {
+        if (it is Exception) action(it) else throw it
+    }

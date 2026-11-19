@@ -268,8 +268,12 @@ private class ChainedCommandFactory(
 ) : CommandLine.IFactory {
     override fun <K : Any> create(cls: Class<K>): K {
         for (factory in factories) {
-            // A factory that cannot create the class is skipped; the next one gets its turn.
-            runCatchingException { factory.create(cls) }.onSuccess { return it }
+            // A factory that cannot construct the class is skipped; the next one gets its turn.
+            try {
+                return factory.create(cls)
+            } catch (_: ReflectiveOperationException) {
+                continue
+            }
         }
         // Fall back to default factory
         return CommandLine.defaultFactory().create(cls)

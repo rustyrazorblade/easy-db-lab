@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.onException
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
@@ -301,7 +302,7 @@ class DefaultClusterProvisioningService(
                                 ctx.callbacks.onHostsCreated(spec.serverType, hosts)
                             }
                         }
-                    }.onFailure { ctx.record("${spec.serverType.name} instances", it) }
+                    }.onException { ctx.record("${spec.serverType.name} instances", it) }
                 }
             }
 
@@ -338,7 +339,7 @@ class DefaultClusterProvisioningService(
                     ctx.emrCluster = cluster
                     ctx.callbacks.onEmrCreated(cluster)
                 }
-            }.onFailure { ctx.record("EMR cluster", it) }
+            }.onException { ctx.record("EMR cluster", it) }
         }
     }
 
@@ -360,17 +361,17 @@ class DefaultClusterProvisioningService(
                     ctx.openSearchDomain = domain
                     ctx.callbacks.onOpenSearchCreated(domain)
                 }
-            }.onFailure { ctx.record("OpenSearch domain", it) }
+            }.onException { ctx.record("OpenSearch domain", it) }
         }
     }
 
     /** Logs [failure] and records it under [resource], for the report read after the threads join. */
     private fun ThreadContext.record(
         resource: String,
-        failure: Throwable,
+        failure: Exception,
     ) {
         log.error(failure) { "Failed to create $resource" }
-        threadErrors[resource] = failure as? Exception ?: IllegalStateException("Creating $resource failed", failure)
+        threadErrors[resource] = failure
     }
 
     /**

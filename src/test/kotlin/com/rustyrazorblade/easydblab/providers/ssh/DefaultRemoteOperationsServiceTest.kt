@@ -418,4 +418,23 @@ class DefaultRemoteOperationsServiceTest :
         verify(mockSSHClient).executeRemoteCommand(eq("sudo rm -rf $staging"), anyOrNull(), any())
         verify(mockSSHClient, never()).executeRemoteCommand(argThat { contains("mv ") }, anyOrNull(), any())
     }
+
+    @Test
+    fun `replaceDirectory reports the upload failure and keeps a failed cleanup as suppressed`(
+        @TempDir localDir: File,
+    ) {
+        val staging = stubStaging()
+        doAnswer { error("sftp failed") }.whenever(mockSSHClient).uploadDirectory(localDir, staging)
+        whenever(mockSSHClient.executeRemoteCommand(eq("sudo rm -rf $staging"), anyOrNull(), any()))
+            .thenThrow(IllegalStateException("rm failed"))
+        val service =
+            DefaultRemoteOperationsService(
+                mockSSHConnectionProvider,
+                RetryConfig.custom<Any>().maxAttempts(1).build(),
+            )
+
+        assertThatThrownBy { service.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472") }
+            .hasMessage("sftp failed")
+            .satisfies({ failure -> assertThat(failure.suppressed.map { it.message }).contains("rm failed") })
+    }
 }

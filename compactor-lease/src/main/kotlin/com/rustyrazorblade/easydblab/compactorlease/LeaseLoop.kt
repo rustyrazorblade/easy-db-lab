@@ -371,6 +371,9 @@ class LeaseLoop(
      * Runs [block] and answers any [Exception] it throws as a failure, except an
      * [InterruptedException], which propagates with the interrupt flag set. A JVM [Error] is not
      * caught.
+     *
+     * This copies the root module's `runCatchingInterruptibly` on purpose: this module cannot
+     * depend on the root module.
      */
     private inline fun <T> attempt(block: () -> T): Result<T> =
         runCatching(block).onFailure {

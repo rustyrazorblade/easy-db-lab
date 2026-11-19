@@ -16,6 +16,7 @@ import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DeleteSnapshotRequest
 import software.amazon.awssdk.services.ec2.model.DeregisterImageRequest
@@ -442,6 +443,16 @@ internal class AMIServiceTest {
             .isInstanceOf(AMIValidationException.AWSServiceError::class.java)
             .hasMessageContaining("Failed to query AMIs")
             .hasCause(denied)
+    }
+
+    @Test
+    fun `validateAMI reports a client-side AWS failure while querying AMIs as an AWSServiceError`() {
+        val unreachable = SdkClientException.create("unreachable")
+        whenever(mockAccountIdentity.getAccountId()).thenThrow(unreachable)
+
+        assertThatThrownBy { amiService.validateAMI("", Arch.AMD64, null) }
+            .isInstanceOf(AMIValidationException.AWSServiceError::class.java)
+            .hasCause(unreachable)
     }
 
     @Test

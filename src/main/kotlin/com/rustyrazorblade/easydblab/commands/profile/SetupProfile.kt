@@ -249,6 +249,8 @@ class SetupProfile : PicoBaseCommand() {
     ) {
         eventBus.emit(Event.Setup.ValidatingCredentials)
 
+        // The command layer cannot name the SDK's exception types (the package-boundary test forbids
+        // it), so this boundary takes any failure of the validation and reports it as one.
         runCatchingException {
             val identity = createAccountIdentity(credentials, region)
             identity.checkPermissions()

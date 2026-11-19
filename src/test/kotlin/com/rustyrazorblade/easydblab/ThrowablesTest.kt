@@ -105,4 +105,62 @@ class ThrowablesTest {
     fun `an error in the JVM is rethrown, not captured`(error: Error) {
         assertThatThrownBy { runCatchingException { throw error } }.isSameAs(error)
     }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("exceptions")
+    fun `interruptibly, an exception becomes a failed result and the interrupt flag stays clear`(exception: Exception) {
+        val result = runCatchingInterruptibly { throw exception }
+
+        assertThat(result.exceptionOrNull()).isSameAs(exception)
+        assertThat(Thread.currentThread().isInterrupted).isFalse()
+    }
+
+    @Test
+    fun `interruptibly, an interrupt is rethrown as the same instance and the flag is set`() {
+        val interrupt = InterruptedException("stop")
+
+        try {
+            assertThatThrownBy { runCatchingInterruptibly { throw interrupt } }.isSameAs(interrupt)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("errors")
+    fun `interruptibly, an error in the JVM is rethrown, not captured`(error: Error) {
+        assertThatThrownBy { runCatchingInterruptibly { throw error } }.isSameAs(error)
+    }
+
+    @Test
+    fun `cleaning up on failure runs the cleanup and rethrows the original failure`() {
+        var cleaned = false
+        val original = IllegalStateException("original")
+
+        assertThatThrownBy { runCleaningUpOnFailure(cleanup = { cleaned = true }) { throw original } }.isSameAs(original)
+
+        assertThat(cleaned).isTrue()
+    }
+
+    @Test
+    fun `cleaning up on failure attaches a failing cleanup to the original instead of replacing it`() {
+        val original = IllegalStateException("sftp failed")
+        val cleanupFailure = IllegalStateException("rm failed")
+
+        assertThatThrownBy { runCleaningUpOnFailure(cleanup = { throw cleanupFailure }) { throw original } }
+            .isSameAs(original)
+            .hasMessage("sftp failed")
+        assertThat(original.suppressed).containsExactly(cleanupFailure)
+    }
+
+    @Test
+    fun `cleaning up on failure does not run the cleanup after a success`() {
+        var cleaned = false
+
+        val value = runCleaningUpOnFailure(cleanup = { cleaned = true }) { 7 }
+
+        assertThat(value).isEqualTo(7)
+        assertThat(cleaned).isFalse()
+    }
 }

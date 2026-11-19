@@ -453,9 +453,11 @@ class ProcessSocksProxyServiceTest {
 
     @Test
     fun `an in-memory port that dies between calls is re-validated, not trusted, on the next call`() {
-        // Populate in-memory state via a genuine reuse (a working fake tunnel), then close the
-        // tunnel so the recorded port stops accepting while the recorded PID (a stand-in tunnel
-        // script) stays alive — the "process alive, tunnel dead" case the in-memory fast path must not trust.
+        // Populate in-memory state via a genuine reuse (a working fake tunnel), then kill the tunnel
+        // so it stops carrying traffic while the recorded PID (a stand-in tunnel script) stays
+        // alive: the "process alive, tunnel dead" case the in-memory fast path must not trust.
+        // The tunnel is killed, not closed: a closed port is free, and another test JVM's working
+        // tunnel can bind it and pass the probe.
         // Past the freshness window, so the second call probes instead of trusting the first call's probe.
         val svc = service(launcher = { _, _ -> deadProcess(exitCode = 255) }, clock = OutsideFreshnessClock())
         FakeSocksTunnel().use { tunnel ->
@@ -463,12 +465,14 @@ class ProcessSocksProxyServiceTest {
             writeStateFile(pid = recordedTunnelPid(port), port = port)
             val first = svc.ensureRunning(testHost)
             assertThat(first.localPort).isEqualTo(port)
-        }
 
-        // The socket is now closed. A second call on the SAME instance must not shortcut through the
-        // in-memory cache — it must re-validate, find nothing reusable, and attempt a fresh start
-        // (which fails fast via the fake launcher).
-        assertThatThrownBy { svc.ensureRunning(testHost) }
-            .isInstanceOf(IllegalStateException::class.java)
+            tunnel.die()
+
+            // A second call on the SAME instance must not shortcut through the in-memory cache: it
+            // must re-validate, find nothing reusable, and attempt a fresh start (which fails fast
+            // via the fake launcher).
+            assertThatThrownBy { svc.ensureRunning(testHost) }
+                .isInstanceOf(IllegalStateException::class.java)
+        }
     }
 }

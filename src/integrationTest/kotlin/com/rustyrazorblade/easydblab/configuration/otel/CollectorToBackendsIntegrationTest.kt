@@ -70,7 +70,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
     private val volumes = listOf("mimir-e2e", "loki-e2e").map { "$it-${UUID.randomUUID().toString().take(8)}" }
     private val containers = mutableListOf<GenericContainer<*>>()
     private val state =
-        ClusterState(name = "e2e-lab", versions = mutableMapOf(), s3Bucket = bucket, initConfig = InitConfig(tenant = TENANT))
+        ClusterState(name = "e2e-lab", s3Bucket = bucket, initConfig = InitConfig(tenant = TENANT))
 
     override fun additionalTestModules(): List<Module> =
         listOf(

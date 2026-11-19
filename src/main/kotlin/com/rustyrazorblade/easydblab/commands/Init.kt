@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.NodeCapabilityNames
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
 import com.rustyrazorblade.easydblab.commands.converters.PicoCniModeConverter
+import com.rustyrazorblade.easydblab.commands.converters.PicoPositionalClusterNameConverter
 import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
@@ -16,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
@@ -29,10 +31,15 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.LiveInfrastructureLookup
 import com.rustyrazorblade.easydblab.services.ObservabilityStage
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.DataDiskRequirement
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import io.fabric8.kubernetes.api.model.Quantity
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.koin.core.component.get
 import org.koin.core.component.inject
 import picocli.CommandLine
 import picocli.CommandLine.Command
@@ -89,6 +96,7 @@ class Init :
     private val userConfig: User by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
+    private val liveInfrastructure by lazy { LiveInfrastructureLookup(clusterStateManager) { get<AwsInfrastructureService>() } }
 
     // Only init --local resolves it: the nodes are containers, so they run the Docker daemon's architecture.
     private val dockerClientProvider: DockerClientProvider by inject()
@@ -182,7 +190,7 @@ class Init :
 
     @Option(
         names = ["--azs", "--az", "-z"],
-        description = ["Limit to specified availability zones"],
+        description = ["Limit to specified availability zones (at most 8)"],
         converter = [PicoAZConverter::class],
     )
     var azs: List<String> = listOf()
@@ -240,6 +248,15 @@ class Init :
         defaultValue = "test",
     )
     var name = "test"
+
+    /** Never holds a value: its converter throws, so `--name` fails at parse time naming the positional form. */
+    @Option(
+        names = ["--name"],
+        hidden = true,
+        converter = [PicoPositionalClusterNameConverter::class],
+        description = ["Not an option. The cluster name is positional: init <name>"],
+    )
+    var misplacedName: String? = null
 
     @Mixin
     var spark = SparkInitMixin()
@@ -307,7 +324,10 @@ class Init :
 
     @Option(
         names = ["--cidr"],
-        description = ["VPC CIDR block (e.g. 10.2.0.0/16). Must be /20 or larger. Omit to auto-select a non-conflicting block."],
+        description = [
+            "VPC CIDR block (e.g. 10.2.0.0/16). Must be /25 or larger; it is split into eight equal subnets. " +
+                "Omit to auto-select a non-conflicting block.",
+        ],
     )
     var cidr: String? = null
 
@@ -500,9 +520,10 @@ class Init :
         // architecture) leaves the directory as it was.
         val clusterState = buildClusterState(capabilities)
         if (clean) {
+            refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)
-            // Execute Clean immediately with full lifecycle
-            commandExecutor.execute { Clean() }
+            // Execute Clean immediately with full lifecycle; a failed clean fails init.
+            runNested(commandExecutor, Clean())
         }
         // After the cleanup, which removes a bin/ that holds only easy-db-lab's wrappers.
         refuseExistingBin()
@@ -521,6 +542,7 @@ class Init :
         if (vpc != null) {
             eventBus.emit(Event.Setup.ExistingVpc(vpc))
             clusterState.vpcId = vpc
+            clusterState.vpcSupplied = true
             clusterStateManager.save(clusterState)
         }
 
@@ -586,7 +608,17 @@ class Init :
         require(ebsSize > 0) { "EBS size must be positive" }
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
-        cidr?.let { CidrBlock(it) }
+        cidr?.let { CidrBlock(it) }?.let { block ->
+            require(!block.overlapsK3sRanges()) {
+                "CIDR $block overlaps K3s's pod range ${Constants.K3s.CLUSTER_CIDR} or service range " +
+                    "${Constants.K3s.SERVICE_CIDR}; node and pod addresses would collide. Pick another block."
+            }
+        }
+        require(azs.size <= Constants.Vpc.MAX_AVAILABILITY_ZONES) {
+            "A cluster can use at most ${Constants.Vpc.MAX_AVAILABILITY_ZONES} availability zones, " +
+                "because the VPC is split into ${Constants.Vpc.MAX_AVAILABILITY_ZONES} subnets; got ${azs.size}: " +
+                azs.joinToString(",")
+        }
         kitStorageSize?.let { requireKitStorageSize(it) }
         require(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(name)) {
             "Invalid cluster name '$name': a cluster name must match ${Constants.Observability.CLUSTER_NAME_PATTERN} " +
@@ -650,6 +682,19 @@ class Init :
     }
 
     /**
+     * `--clean` deletes `state.json`, the only local record of the cluster's VPC. Ask AWS first,
+     * and refuse while the cluster still has resources: they would keep running with no workspace
+     * pointing at them. Nothing has been deleted when this throws.
+     */
+    private fun refuseLiveInfrastructure() {
+        val live = liveInfrastructure.find() ?: return
+        eventBus.emit(
+            Event.Setup.CleanRefusedLiveInfrastructure(live.vpcId, live.instanceIds, live.nonInstanceResourceCount()),
+        )
+        throw CommandFailedException("The cluster in ${context.workingDirectory.absolutePath} still has infrastructure in ${live.vpcId}")
+    }
+
+    /**
      * Refuses a directory that already has a `bin/`, before anything is written. The workspace
      * `bin/` holds easy-db-lab's tool wrappers, and this is what keeps a source checkout or a
      * project directory from being used as a workspace.
@@ -679,14 +724,13 @@ class Init :
         val tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale
         return ClusterState(
             name = name,
-            versions = mutableMapOf(),
             initConfig =
                 InitConfig.fromInit(
                     init = this,
                     region = userConfig.region,
-                    dbArch = deriveArch(resolvedDbInstanceType),
-                    appArch = deriveArch(resolvedAppInstanceType),
-                    controlArch = deriveArch(DEFAULT_CONTROL_INSTANCE_TYPE),
+                    dbArch = nodeArch(ServerType.Cassandra, resolvedDbInstanceType),
+                    appArch = nodeArch(ServerType.Stress, resolvedAppInstanceType),
+                    controlArch = nodeArch(ServerType.Control, DEFAULT_CONTROL_INSTANCE_TYPE),
                 ),
             tailscaleActive = tailscaleActive,
             capabilities = capabilities.present().toSet(),
@@ -721,7 +765,6 @@ class Init :
     ): ClusterState =
         ClusterState(
             name = name,
-            versions = mutableMapOf(),
             initConfig = InitConfig.forLocal(init = this, hostArch = dockerArchitecture()),
             tailscaleActive = false,
             capabilities = capabilities.present().toSet(),
@@ -735,8 +778,21 @@ class Init :
      * Fails fast (before any provisioning) if the instance type is unknown in the region or its
      * architectures do not resolve to a single [Arch] — the architecture is never defaulted.
      */
-    private fun deriveArch(instanceType: String): Arch =
-        Arch.fromEc2(ec2InstanceService.describeInstanceType(instanceType).supportedArchitectures)
+    private fun deriveArch(capabilities: InstanceTypeCapabilities): Arch = Arch.fromEc2(capabilities.supportedArchitectures)
+
+    /**
+     * Reads [instanceType] once, checks that a [serverType] node of it has a data disk (see
+     * [DataDiskRequirement]), and returns its architecture. Every node type is checked, whatever
+     * the node count, as the instance-storage-validation spec requires.
+     */
+    private fun nodeArch(
+        serverType: ServerType,
+        instanceType: String,
+    ): Arch {
+        val capabilities = ec2InstanceService.describeInstanceType(instanceType)
+        DataDiskRequirement.check(serverType, instanceType, capabilities.hasInstanceStore, ebsConfigured = ebsType != "NONE")
+        return deriveArch(capabilities)
+    }
 
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)

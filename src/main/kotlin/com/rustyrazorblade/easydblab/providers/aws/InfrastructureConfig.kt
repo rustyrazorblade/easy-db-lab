@@ -32,7 +32,7 @@ data class VpcNetworkingConfig(
  * Configuration for a subnet to be created within a VPC.
  *
  * @property name Name tag for the subnet
- * @property cidr CIDR block for the subnet (e.g., "10.0.1.0/24")
+ * @property cidr CIDR block for the subnet (e.g., "10.0.32.0/19")
  * @property availabilityZone Optional availability zone for the subnet
  */
 data class SubnetConfig(
@@ -97,32 +97,6 @@ data class InfrastructureConfig(
         val PACKER_VPC_NAME = Constants.Vpc.PACKER_VPC_NAME
 
         /**
-         * Creates configuration for the account compactor's VPC: one public subnet, an internet
-         * gateway and a security group with no ingress. It is tagged like every easy-db-lab VPC
-         * but carries no `bucket` tag, so `down` never counts it as a cluster.
-         *
-         * @param availabilityZone the zone of the subnet; Fargate must run there.
-         */
-        fun forCompactor(availabilityZone: String): InfrastructureConfig =
-            InfrastructureConfig(
-                vpcName = Constants.Vpc.COMPACTOR_VPC_NAME,
-                vpcCidr = Constants.Vpc.DEFAULT_CIDR,
-                subnets =
-                    listOf(
-                        SubnetConfig(
-                            name = "${Constants.Vpc.COMPACTOR_VPC_NAME}-subnet",
-                            cidr = Constants.Vpc.subnetCidr(0),
-                            availabilityZone = availabilityZone,
-                        ),
-                    ),
-                securityGroupName = "${Constants.Vpc.COMPACTOR_VPC_NAME}-sg",
-                securityGroupDescription = "Account compactor: no ingress",
-                securityGroupRules = emptyList(),
-                internetGatewayName = "${Constants.Vpc.COMPACTOR_VPC_NAME}-igw",
-                tags = mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
-            )
-
-        /**
          * Creates configuration for Packer AMI build infrastructure.
          *
          * Packer needs:
@@ -144,7 +118,7 @@ data class InfrastructureConfig(
                     listOf(
                         SubnetConfig(
                             name = "easy-db-lab-packer-subnet",
-                            cidr = Constants.Vpc.subnetCidr(0),
+                            cidr = CidrBlock.DEFAULT.subnetCidr(0),
                         ),
                     ),
                 securityGroupName = "easy-db-lab-packer-sg",

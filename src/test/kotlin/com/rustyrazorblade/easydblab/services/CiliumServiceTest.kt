@@ -158,7 +158,7 @@ class CiliumServiceTest : BaseKoinTest() {
         assertThat(command).contains("routingMode=native")
         assertThat(command).contains("endpointRoutes.enabled=true")
         assertThat(command).contains("enableIPv4Masquerade=true")
-        assertThat(command).contains("egressMasqueradeInterfaces=ens+")
+        assertThat(command).contains("egressMasqueradeInterfaces=en+")
         assertThat(command).contains("kubeProxyReplacement=false")
         assertThat(command).contains("bpf.hostLegacyRouting=true")
         assertThat(command).contains("ipv4NativeRoutingCIDR=$vpcCidr")
@@ -199,7 +199,11 @@ class CiliumServiceTest : BaseKoinTest() {
      */
     @Test
     fun `start-k3s scripts link the K3s-bundled portmap plugin into the default CNI bin dir`() {
-        listOf("start-k3s-server.sh", "start-k3s-agent.sh").forEach { name ->
+        // Each script's line that starts its K3s service; the agent starts, or on a retry restarts, without blocking.
+        mapOf(
+            "start-k3s-server.sh" to "systemctl start k3s",
+            "start-k3s-agent.sh" to "systemctl \"\$MODE\" --no-block k3s-agent",
+        ).forEach { (name, start) ->
             val scriptPath = "/com/rustyrazorblade/easydblab/services/$name"
             val script =
                 javaClass.getResourceAsStream(scriptPath)?.bufferedReader()?.readText()
@@ -209,9 +213,11 @@ class CiliumServiceTest : BaseKoinTest() {
             assertThat(link)
                 .describedAs(name)
                 .isEqualTo("ln -sfn /var/lib/rancher/k3s/data/cni/portmap /opt/cni/bin/portmap")
-            assertThat(script.indexOf(link))
+            val startsAt = script.lines().indexOfFirst { it.trim() == start }
+            assertThat(startsAt).describedAs("$name starts K3s with: $start").isNotNegative()
+            assertThat(script.lines().indexOfFirst { it.trim() == link })
                 .describedAs("$name links portmap before starting K3s")
-                .isLessThan(script.indexOf("systemctl start"))
+                .isLessThan(startsAt)
         }
     }
 
@@ -334,6 +340,22 @@ class CiliumServiceTest : BaseKoinTest() {
         assertThat(flannel.single()).doesNotContain("--disable=")
     }
 
+    /**
+     * The pod and service ranges reach K3s on both CNI branches; without them K3s uses
+     * 10.42.0.0/16 with a /24 per node, which runs out at 256 nodes.
+     */
+    @Test
+    fun `start-k3s-server script passes the cluster and service CIDR to both CNI branches`() {
+        val scriptPath = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
+        val script =
+            javaClass.getResourceAsStream(scriptPath)?.bufferedReader()?.readText()
+                ?: error("start-k3s-server.sh not found on classpath at $scriptPath")
+
+        assertThat(script).contains("--cluster-cidr=*", "--service-cidr=*")
+        val execArgLines = script.lines().filter { it.trim().startsWith("K3S_EXEC_ARGS=") }
+        assertThat(execArgLines).hasSize(2).allMatch { it.contains("\$CIDR_ARGS") }
+    }
+
     @Test
     fun `installTailscaleMasquerade uploads the script to the control node and runs it with sudo`() {
         makeService().installTailscaleMasquerade(controlHost).getOrThrow()
@@ -377,7 +399,7 @@ class CiliumServiceTest : BaseKoinTest() {
                 ?: error("install-tailscale-masquerade.sh not found on classpath at $scriptPath")
 
         assertThat(script).contains("type nat hook postrouting priority 90; policy accept;")
-        assertThat(script).contains("meta mark & 0x00ff0000 == 0x00040000 oifname \"ens*\" masquerade")
+        assertThat(script).contains("meta mark & 0x00ff0000 == 0x00040000 oifname \"en*\" masquerade")
         // Declare + delete + recreate: re-running replaces the table instead of duplicating rules.
         assertThat(script).contains("table ip edl_tailscale\ndelete table ip edl_tailscale\ntable ip edl_tailscale {")
         assertThat(script).contains("systemctl enable edl-tailscale-masquerade.service")
@@ -412,6 +434,6 @@ class CiliumServiceTest : BaseKoinTest() {
 
         val commandCaptor = ciliumCommands()
 
-        assertThat(commandCaptor.chartCommand).contains("--set devices=ens+")
+        assertThat(commandCaptor.chartCommand).contains("--set devices=en+")
     }
 }

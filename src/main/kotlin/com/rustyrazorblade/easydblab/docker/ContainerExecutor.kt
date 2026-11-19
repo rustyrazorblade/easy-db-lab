@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
@@ -122,31 +123,31 @@ class ContainerExecutor(
      * Remove a container and its volumes.
      *
      * Retries transient Docker API failures. A container that is already gone (a 404) counts as
-     * removed: nothing is retried and no error is reported.
+     * removed: nothing is retried and no error is reported. Removal is best-effort cleanup that runs
+     * after the container has finished, so any other failure is reported as an event rather than
+     * thrown and costing the caller the container's result. A JVM [Error] still propagates.
      *
      * @param containerId The ID of the container to remove
      */
-    @Suppress("TooGenericExceptionCaught")
     fun removeContainer(containerId: String) {
         val retry = Retry.of("docker-remove-$containerId", retryConfig)
 
-        try {
-            Retry
-                .decorateCheckedRunnable(retry) {
-                    surfacingTransportIo { dockerClient.removeContainer(containerId, true) }
-                }.run()
-        } catch (e: NotFoundException) {
+        val failure =
+            runCatchingException {
+                Retry
+                    .decorateCheckedRunnable(retry) {
+                        surfacingTransportIo { dockerClient.removeContainer(containerId, true) }
+                    }.run()
+            }.exceptionOrNull()
+
+        when (failure) {
+            null -> Unit
             // Already gone: the removal has nothing left to do.
-            log.debug(e) { "Container $containerId was already removed" }
-        } catch (e: IOException) {
-            log.error(e) { "IO error while removing container $containerId" }
-            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
-        } catch (e: DockerException) {
-            log.error(e) { "Docker error while removing container $containerId" }
-            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
-        } catch (e: RuntimeException) {
-            log.error(e) { "Runtime error while removing container $containerId" }
-            eventBus.emit(Event.Docker.ContainerRemoveError(e.message.orEmpty()))
+            is NotFoundException -> log.debug(failure) { "Container $containerId was already removed" }
+            else -> {
+                log.error(failure) { "Failed to remove container $containerId" }
+                eventBus.emit(Event.Docker.ContainerRemoveError(failure.message.orEmpty()))
+            }
         }
     }
 }

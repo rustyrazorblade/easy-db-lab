@@ -12,9 +12,56 @@ import java.util.UUID
  */
 const val CLUSTER_STATE = "state.json"
 
+/**
+ * Where an installed Cassandra version came from. The resolver picks one per install, and
+ * `cassandra list` shows it, so a later reinstall or node replacement fetches the same build.
+ */
+enum class CassandraSource {
+    /** An Apache release from dlcdn, with the archive as fallback. */
+    ASF,
+
+    /** A branch build from the cassandra-builds `nightly` release. */
+    CASSANDRA_BUILDS,
+
+    /** A build uploaded by `cassandra build` to the account bucket's catalog. */
+    BUILD_CATALOG,
+
+    /** A named build declared in the profile's `cassandra_versions/` directory. */
+    PROFILE,
+
+    /** A tarball URL given with `--url`. */
+    URL,
+
+    /** A git repository built on the node, from `--url` with `--branch`. */
+    GIT,
+}
+
+/**
+ * The record of one Cassandra version installed on a node: everything needed to install it again
+ * without resolving the name a second time (node replacement, `--reinstall`).
+ *
+ * @property url the tarball or git URL, with any credentials redacted
+ * @property javaSupported the JDKs this version runs on; [java] is one of them
+ */
+data class InstalledVersion(
+    val version: String = "",
+    val java: String = "",
+    val javaSupported: List<String> = emptyList(),
+    val python: String = "",
+    val source: CassandraSource = CassandraSource.URL,
+    val url: String = "",
+    val branch: String? = null,
+    val antFlags: String? = null,
+)
+
+/**
+ * A db node's Cassandra state: the active [version] and its JDK, and every version installed on
+ * the node keyed by name. An empty [version] means no version is active yet.
+ */
 data class NodeState(
     var version: String = "",
     var javaVersion: String = "",
+    var installed: MutableMap<String, InstalledVersion> = mutableMapOf(),
 )
 
 /**
@@ -308,7 +355,6 @@ data class ClusterState(
     var default: NodeState = NodeState(),
     // we also have a per-node mapping that lets us override, per node
     var nodes: MutableMap<Alias, NodeState> = mutableMapOf(),
-    var versions: MutableMap<String, String>?,
     // Configuration from Init command
     var initConfig: InitConfig? = null,
     // Unique cluster identifier
@@ -322,6 +368,9 @@ data class ClusterState(
     var hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
     // VPC ID for the cluster - the core resource that contains all infrastructure
     var vpcId: String? = null,
+    // True when the VPC came from `init --vpc`: it belongs to the user, so `down` never deletes it
+    // and removes only the resources this cluster created in it.
+    var vpcSupplied: Boolean = false,
     // EMR cluster state for Spark jobs
     var emrCluster: EMRClusterState? = null,
     // OpenSearch domain state

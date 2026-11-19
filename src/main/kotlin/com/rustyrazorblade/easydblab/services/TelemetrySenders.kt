@@ -33,12 +33,15 @@ interface TelemetrySenders {
      * gone after an earlier `down`) is not deleted: [onAbsent] is called with its name instead. A
      * collector whose pods outlive the deadline fails the stop, naming it, and no later collector is
      * deleted. [onDeleting] is called with each collector's name just before its delete, so a
-     * caller knows which collectors a failed stop left untouched.
+     * caller knows which collectors a failed stop left untouched. [onDeleteAccepted] runs each time
+     * the API has answered a delete, before its wait, so a failure of the wait cannot be taken for a
+     * delete that never arrived.
      */
     fun stop(
         timeout: Duration,
         onAbsent: (String) -> Unit = {},
         onDeleting: (String) -> Unit = {},
+        onDeleteAccepted: () -> Unit = {},
     )
 }
 
@@ -61,6 +64,7 @@ class K8sTelemetrySenders(
         timeout: Duration,
         onAbsent: (String) -> Unit,
         onDeleting: (String) -> Unit,
+        onDeleteAccepted: () -> Unit,
     ) = clientProvider.createClient().use { client ->
         val started = Instant.now()
         val deadline = started.plus(timeout)
@@ -71,34 +75,44 @@ class K8sTelemetrySenders(
             } else {
                 onDeleting(name)
                 val began = Instant.now()
-                stopOne(client, name, deadline, timeout, waited)
+                stopOne(client, name, StopBudget(deadline, timeout, waited), onDeleteAccepted)
                 waited += "$name took ${Duration.between(began, Instant.now()).seconds}s"
             }
         }
     }
 
     /**
-     * Deletes [name]'s DaemonSet and waits, until [deadline], for its pods to go. A failure names
-     * [name] as the collector still running and, from [waited], how much of the budget each
-     * collector stopped before it used.
+     * Deletes [name]'s DaemonSet, calls [onDeleteAccepted] once the API answered the delete, and
+     * waits, until the [budget]'s deadline, for its pods to go. A failure names [name] as the
+     * collector still running and, from the budget, how much of it each collector stopped before used.
      */
     private fun stopOne(
         client: KubernetesClient,
         name: String,
-        deadline: Instant,
-        timeout: Duration,
-        waited: List<String>,
+        budget: StopBudget,
+        onDeleteAccepted: () -> Unit,
     ) {
         daemonSet(client, name).delete()
+        onDeleteAccepted()
         // The shared deadline, not an attempt count, bounds the poll: the add-on's wait uses part of it.
         val gone: (List<Pod>) -> Boolean = { it.isEmpty() }
-        val config = RetryUtil.createPollUntilRetryConfig(Int.MAX_VALUE, pollInterval, gone, deadline)
+        val config = RetryUtil.createPollUntilRetryConfig(Int.MAX_VALUE, pollInterval, gone, budget.deadline)
         val pods = Retry.decorateSupplier(Retry.of("await-$name-gone", config)) { pods(client, name) }.get()
         check(gone(pods)) {
-            val before = if (waited.isEmpty()) "" else " (${waited.joinToString()})"
-            "$name was still running: ${pods.size} pod(s) ${timeout.seconds}s after the collectors' stop began$before"
+            val before = if (budget.waited.isEmpty()) "" else " (${budget.waited.joinToString()})"
+            "$name was still running: ${pods.size} pod(s) ${budget.timeout.seconds}s after the collectors' stop began$before"
         }
     }
+
+    /**
+     * The time the collectors' stop shares: the [deadline] every wait ends by, the [timeout] it was
+     * computed from, and what each collector already stopped took ([waited]), for the failure message.
+     */
+    private class StopBudget(
+        val deadline: Instant,
+        val timeout: Duration,
+        val waited: List<String>,
+    )
 
     private fun daemonSet(
         client: KubernetesClient,

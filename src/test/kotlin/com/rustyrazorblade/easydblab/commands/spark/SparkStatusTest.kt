@@ -64,7 +64,6 @@ class SparkStatusTest : BaseKoinTest() {
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             emrCluster =
                 EMRClusterState(

@@ -50,7 +50,7 @@ class EnvironmentRequirementsTest {
     private fun record(
         environment: Environment,
         capabilities: Set<NodeCapability>? = null,
-    ) = states.save(ClusterState(name = "t", versions = mutableMapOf(), environment = environment, capabilities = capabilities))
+    ) = states.save(ClusterState(name = "t", environment = environment, capabilities = capabilities))
 
     @Test
     fun `an EC2 workspace still requires the profile`() {

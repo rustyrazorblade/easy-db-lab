@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.configuration.Host
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
@@ -41,6 +42,16 @@ internal class DeferredSshRouteTest {
         assertThat(route.tunnelVerifyAttempts).isEqualTo(selected.tunnelVerifyAttempts)
 
         assertThat(selections).isEqualTo(1)
+    }
+
+    @Test
+    fun `a profile that cannot be read fails at the use, not at the binding`() {
+        // `profile setup` builds the route before the profile it writes exists.
+        val unreadable = DeferredSshRoute { error("User configuration file not found") }
+
+        assertThatThrownBy { unreadable.endpoint(host) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("User configuration file not found")
     }
 
     @Test

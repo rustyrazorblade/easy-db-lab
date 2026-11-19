@@ -38,7 +38,6 @@ class StressInfoTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Control to listOf(testControlHost)),
         )
@@ -58,23 +57,6 @@ class StressInfoTest : BaseKoinTest() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
-    }
-
-    @Test
-    fun `execute fails when no control nodes`() {
-        val stateNoControl =
-            ClusterState(
-                name = "test",
-                versions = mutableMapOf(),
-                hosts = emptyMap(),
-            )
-        whenever(mockClusterStateManager.load()).thenReturn(stateNoControl)
-
-        val command = StressInfo()
-
-        assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No control nodes found")
     }
 
     @Test

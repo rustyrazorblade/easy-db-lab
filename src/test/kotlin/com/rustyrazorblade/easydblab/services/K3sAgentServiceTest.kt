@@ -7,10 +7,13 @@ import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.doNothing
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
@@ -80,17 +83,19 @@ class K3sAgentServiceTest : BaseKoinTest() {
             any(),
         )
         assertThat(commandCaptor.firstValue).contains("sudo mkdir -p /etc/rancher/k3s")
-        assertThat(commandCaptor.secondValue).contains("sudo mv /tmp/k3s-config.yaml /etc/rancher/k3s/config.yaml")
-        assertThat(commandCaptor.secondValue).contains("sudo chmod 600 /etc/rancher/k3s/config.yaml")
 
-        // Verify config file upload
-        val destPathCaptor = argumentCaptor<String>()
+        // Verify config file upload: staged, restricted to 0600, then moved into place
+        val stagedCaptor = argumentCaptor<String>()
         verify(mockRemoteOps).upload(
             eq(testHost),
             any(),
-            destPathCaptor.capture(),
+            stagedCaptor.capture(),
         )
-        assertThat(destPathCaptor.firstValue).isEqualTo("/tmp/k3s-config.yaml")
+        assertThat(commandCaptor.secondValue)
+            .isEqualTo(
+                "sudo chmod 0600 ${stagedCaptor.firstValue} && sudo mv ${stagedCaptor.firstValue} /etc/rancher/k3s/config.yaml " +
+                    "|| { rm -f ${stagedCaptor.firstValue}; exit 1; }",
+            )
     }
 
     @Test
@@ -111,11 +116,17 @@ class K3sAgentServiceTest : BaseKoinTest() {
         // Then
         assertThat(result.isSuccess).isTrue()
 
-        // Verify config file was uploaded
-        verify(mockRemoteOps).upload(
+        // Verify config file was uploaded and moved to the k3s config path
+        val stagedCaptor = argumentCaptor<String>()
+        verify(mockRemoteOps).upload(eq(testHost), any(), stagedCaptor.capture())
+        verify(mockRemoteOps).executeRemotely(
             eq(testHost),
+            eq(
+                "sudo chmod 0600 ${stagedCaptor.firstValue} && sudo mv ${stagedCaptor.firstValue} /etc/rancher/k3s/config.yaml " +
+                    "|| { rm -f ${stagedCaptor.firstValue}; exit 1; }",
+            ),
             any(),
-            eq("/tmp/k3s-config.yaml"),
+            any(),
         )
     }
 
@@ -161,118 +172,41 @@ class K3sAgentServiceTest : BaseKoinTest() {
 
     // ========== START OPERATION TESTS ==========
 
-    @Test
-    fun `start should execute k3s agent startup script successfully`() {
-        // Given
-        val serverUrl = "https://10.0.1.5:6443"
+    /**
+     * The script reads the server and the node token from the agent config itself, so the start
+     * command carries only the mode. A remote command line reaches failure messages and events.
+     * A first join starts; a retried join restarts.
+     */
+    @ParameterizedTest
+    @EnumSource(AgentStartMode::class)
+    fun `start runs the startup script with only the start mode, and no command carries the token`(mode: AgentStartMode) {
         val token = "K10abcdef1234567890::server:1234567890abcdef"
-        val configContent =
-            """
-            server: $serverUrl
-            token: $token
-            """.trimIndent()
-
-        val configCommand = "cat /etc/rancher/k3s/config.yaml"
-        val configResponse = Response(text = configContent, stderr = "")
-        val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh '$serverUrl' '$token'"
-        val scriptResponse = Response(text = "", stderr = "")
-        val successResponse = Response(text = "", stderr = "")
-
-        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
-            .thenReturn(configResponse)
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(scriptCommand), any(), any()))
-            .thenReturn(scriptResponse)
+            .thenReturn(Response(text = "", stderr = ""))
 
-        // When
-        val result = k3sAgentService.start(testHost)
+        val configured = k3sAgentService.configure(testHost, "https://10.0.1.5:6443", token, mapOf("role" to "db"))
+        val result = k3sAgentService.start(testHost, mode)
 
-        // Then
+        assertThat(configured.isSuccess).isTrue()
         assertThat(result.isSuccess).isTrue()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(configCommand), any(), any())
-        verify(mockRemoteOps).executeRemotely(eq(testHost), eq(scriptCommand), any(), any())
-    }
-
-    @Test
-    fun `start should return failure when config file is missing server URL`() {
-        // Given
-        val configContent = "token: K10abcdef1234567890::server:1234567890abcdef"
-        val successResponse = Response(text = "", stderr = "")
-
-        val configCommand = "cat /etc/rancher/k3s/config.yaml"
-        val configResponse = Response(text = configContent, stderr = "")
-
-        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
-            .thenReturn(configResponse)
-
-        // When
-        val result = k3sAgentService.start(testHost)
-
-        // Then
-        assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull())
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Failed to parse k3s config")
-    }
-
-    @Test
-    fun `start should return failure when config file is missing token`() {
-        // Given
-        val configContent = "server: https://10.0.1.5:6443"
-        val successResponse = Response(text = "", stderr = "")
-
-        val configCommand = "cat /etc/rancher/k3s/config.yaml"
-        val configResponse = Response(text = configContent, stderr = "")
-
-        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
-            .thenReturn(configResponse)
-
-        // When
-        val result = k3sAgentService.start(testHost)
-
-        // Then
-        assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull())
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Failed to parse k3s config")
+        val commands = argumentCaptor<String>()
+        verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(testHost), commands.capture(), any(), any())
+        assertThat(commands.allValues).contains("sudo /usr/local/bin/start-k3s-agent.sh ${mode.arg}")
+        assertThat(commands.allValues).noneMatch { it.contains(token) }
     }
 
     @Test
     fun `start should return failure when script execution fails`() {
-        // Given
-        val serverUrl = "https://10.0.1.5:6443"
-        val token = "K10abcdef1234567890::server:1234567890abcdef"
-        val configContent =
-            """
-            server: $serverUrl
-            token: $token
-            """.trimIndent()
-        val successResponse = Response(text = "", stderr = "")
-
-        val configCommand = "cat /etc/rancher/k3s/config.yaml"
-        val configResponse = Response(text = configContent, stderr = "")
-        val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh '$serverUrl' '$token'"
+        val scriptCommand = "sudo /usr/local/bin/start-k3s-agent.sh start"
 
         doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
-            .thenReturn(successResponse)
-        whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(configCommand), any(), any()))
-            .thenReturn(configResponse)
+            .thenReturn(Response(text = "", stderr = ""))
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(scriptCommand), any(), any()))
             .thenThrow(RuntimeException("Script execution failed"))
 
-        // When
         val result = k3sAgentService.start(testHost)
 
-        // Then
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull())
             .hasMessageContaining("Script execution failed")

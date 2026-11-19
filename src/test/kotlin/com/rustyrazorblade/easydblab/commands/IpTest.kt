@@ -60,7 +60,6 @@ class IpTest : BaseKoinTest() {
                             ClusterState(
                                 name = "test-cluster",
                                 clusterId = "test-123",
-                                versions = mutableMapOf(),
                                 hosts = testHosts,
                             )
                         whenever(it.load()).thenReturn(clusterState)

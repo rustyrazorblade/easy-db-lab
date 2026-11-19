@@ -1,0 +1,202 @@
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  labels:
+    app.kubernetes.io/name: "yace"
+  name: "yace-config"
+  namespace: "default"
+data:
+  yace-config.yaml: |
+    apiVersion: v1alpha1
+    discovery:
+      exportedTagsOnMetrics:
+        AWS/S3:
+          - BucketName
+        AWS/EBS:
+          - VolumeId
+        AWS/EC2:
+          - Name
+        AWS/ES:
+          - DomainName
+      # Every cluster runs its own YACE and labels what it finds with its own cluster, so the
+      # per-cluster jobs (EBS, EC2, OpenSearch) find only resources tagged with this cluster's
+      # ClusterId; `up` tags instances, their volumes and the OpenSearch domain with it. The S3 job
+      # stays on easy_cass_lab=1: the account bucket is shared and carries no ClusterId.
+      jobs:
+        - type: AWS/S3
+          regions:
+            - us-west-2
+          period: 60
+          length: 600
+          delay: 300
+          searchTags:
+            - key: easy_cass_lab
+              value: "1"
+          metrics:
+            - name: BucketSizeBytes
+              statistics: [Average]
+              period: 86400
+              length: 172800
+            - name: NumberOfObjects
+              statistics: [Average]
+              period: 86400
+              length: 172800
+            - name: BytesDownloaded
+              statistics: [Sum]
+            - name: BytesUploaded
+              statistics: [Sum]
+            - name: GetRequests
+              statistics: [Sum, Average]
+            - name: PutRequests
+              statistics: [Sum, Average]
+            - name: FirstByteLatency
+              statistics: [Average, p99]
+            - name: TotalRequestLatency
+              statistics: [Average, p99]
+        - type: AWS/EBS
+          regions:
+            - us-west-2
+          period: 60
+          length: 600
+          delay: 300
+          searchTags:
+            - key: easy_cass_lab
+              value: "1"
+            - key: ClusterId
+              value: "golden-cluster"
+          metrics:
+            - name: VolumeReadOps
+              statistics: [Sum]
+            - name: VolumeWriteOps
+              statistics: [Sum]
+            - name: VolumeReadBytes
+              statistics: [Sum]
+            - name: VolumeWriteBytes
+              statistics: [Sum]
+            - name: VolumeTotalReadTime
+              statistics: [Sum]
+            - name: VolumeTotalWriteTime
+              statistics: [Sum]
+            - name: VolumeQueueLength
+              statistics: [Average]
+            - name: BurstBalance
+              statistics: [Average]
+        - type: AWS/EC2
+          regions:
+            - us-west-2
+          period: 60
+          length: 600
+          delay: 300
+          searchTags:
+            - key: easy_cass_lab
+              value: "1"
+            - key: ClusterId
+              value: "golden-cluster"
+          metrics:
+            - name: CPUUtilization
+              statistics: [Average]
+            - name: NetworkIn
+              statistics: [Sum]
+            - name: NetworkOut
+              statistics: [Sum]
+            - name: DiskReadOps
+              statistics: [Sum]
+            - name: DiskWriteOps
+              statistics: [Sum]
+        - type: AWS/ES
+          regions:
+            - us-west-2
+          period: 60
+          length: 600
+          delay: 300
+          searchTags:
+            - key: easy_cass_lab
+              value: "1"
+            - key: ClusterId
+              value: "golden-cluster"
+          metrics:
+            - name: ClusterStatus.green
+              statistics: [Maximum]
+            - name: ClusterStatus.yellow
+              statistics: [Maximum]
+            - name: ClusterStatus.red
+              statistics: [Maximum]
+            - name: CPUUtilization
+              statistics: [Average]
+            - name: JVMMemoryPressure
+              statistics: [Maximum]
+            - name: FreeStorageSpace
+              statistics: [Minimum]
+            # The OpenSearch dashboard reads the p99 latencies and the per-minute sums of the rates.
+            - name: SearchLatency
+              statistics: [Average, p99]
+            - name: SearchRate
+              statistics: [Average, Sum]
+            - name: IndexingLatency
+              statistics: [Average, p99]
+            - name: IndexingRate
+              statistics: [Average, Sum]
+            - name: Nodes
+              statistics: [Average]
+            - name: ClusterUsedSpace
+              statistics: [Maximum]
+            # Requests by HTTP status class, for the dashboard's status-code panel.
+            - name: 2xx
+              statistics: [Sum]
+            - name: 3xx
+              statistics: [Sum]
+            - name: 4xx
+              statistics: [Sum]
+            - name: 5xx
+              statistics: [Sum]
+---
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  labels:
+    app.kubernetes.io/name: "yace"
+  name: "yace"
+  namespace: "default"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "yace"
+  strategy:
+    type: "Recreate"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "yace"
+    spec:
+      containers:
+      - command:
+        - "yace"
+        - "--config.file=/etc/yace/yace-config.yaml"
+        - "--listen-address=:5001"
+        image: "quay.io/prometheuscommunity/yet-another-cloudwatch-exporter:v0.63.0"
+        name: "yace"
+        ports:
+        - containerPort: 5001
+          hostPort: 5001
+          name: "metrics"
+          protocol: "TCP"
+        volumeMounts:
+        - mountPath: "/etc/yace/yace-config.yaml"
+          name: "config"
+          readOnly: true
+          subPath: "yace-config.yaml"
+      dnsPolicy: "ClusterFirstWithHostNet"
+      hostNetwork: true
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+      - effect: "NoSchedule"
+        key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+      volumes:
+      - configMap:
+          name: "yace-config"
+        name: "config"

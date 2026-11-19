@@ -7,12 +7,12 @@ import org.junit.jupiter.api.Test
 
 class ObservabilityStageTest {
     @Test
-    fun `local mode declares the in-cluster backends, and both modes the Pyroscope agent`() {
+    fun `local mode declares the in-cluster backends, and both modes the Pyroscope agent and the account compactor`() {
         val local = ObservabilityStage.declared(null).map { it.label }
         val redirect = ObservabilityStage.declared(TelemetryRedirect.fromBaseHost("10.0.0.9")).map { it.label }
 
         assertThat(local).contains("Mimir", "Loki", "Tempo", "Pyroscope", "Pyroscope Agent")
-        assertThat(redirect).contains("Pyroscope Agent").doesNotContain("Mimir", "Loki", "Tempo", "Pyroscope")
+        assertThat(redirect).contains("Pyroscope Agent", "Account compactor").doesNotContain("Mimir", "Loki", "Tempo", "Pyroscope")
     }
 
     @Test
@@ -29,6 +29,7 @@ class ObservabilityStageTest {
                 "YACE" to setOf(NodeCapability.CLOUDWATCH),
                 "Pyroscope Agent" to setOf(NodeCapability.PRIVILEGED),
                 "Pod logs" to setOf(NodeCapability.HOST_PATH),
+                "Account compactor" to setOf(NodeCapability.S3, NodeCapability.HOST_PATH, NodeCapability.NODE_SSH),
             ),
         )
     }

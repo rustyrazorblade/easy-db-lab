@@ -2,7 +2,8 @@ package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.StsAccountIdentity
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -21,7 +22,7 @@ class BaseKoinTestExample :
     BaseKoinTest(),
     KoinComponent {
     // Inject dependencies that should be available from core modules
-    private val aws: AWS by inject()
+    private val accountIdentity: AccountIdentity by inject()
     private val iamClient: IamClient by inject()
     private val user: User by inject()
     private val outputHandler: OutputHandler by inject()
@@ -29,7 +30,7 @@ class BaseKoinTestExample :
     @Test
     fun `test core modules are available`() {
         // Verify that all core dependencies are injected
-        assertThat(aws).isNotNull()
+        assertThat(accountIdentity).isNotNull()
         assertThat(iamClient).isNotNull()
         assertThat(user).isNotNull()
         assertThat(outputHandler).isNotNull()
@@ -41,10 +42,9 @@ class BaseKoinTestExample :
     }
 
     @Test
-    fun `test AWS service is properly mocked`() {
-        // The AWS service should be a real AWS instance with mocked IAM client
-        // This ensures the service logic is tested while preventing actual AWS API calls
-        assertThat(aws).isInstanceOf(AWS::class.java)
+    fun `test account identity is real over a mocked STS client`() {
+        // The service logic runs for real while the mocked STS client prevents actual AWS API calls
+        assertThat(accountIdentity).isInstanceOf(StsAccountIdentity::class.java)
     }
 }
 

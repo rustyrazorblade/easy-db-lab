@@ -70,7 +70,6 @@ class TemplateServiceTest : BaseKoinTest() {
             ClusterState(
                 name = clusterName,
                 clusterId = "test-id",
-                versions = mutableMapOf(),
                 hosts =
                     if (controlHost != null) {
                         mutableMapOf(ServerType.Control to listOf(controlHost))
@@ -96,7 +95,7 @@ class TemplateServiceTest : BaseKoinTest() {
     @Test
     fun `the store backend and AWS_REGION fall back to the profile's region when the cluster records none`() {
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "easy-db-lab-x"),
+            ClusterState(name = "lab", s3Bucket = "easy-db-lab-x"),
         )
         val service = TemplateService(mockClusterStateManager) { "ap-south-1" }
 

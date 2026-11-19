@@ -11,7 +11,7 @@ package com.rustyrazorblade.easydblab.kernel
  *
  * Lives in `kernel/` because commands throw it and the executor in `services/` handles it.
  */
-class CommandFailedException(
+open class CommandFailedException(
     message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)

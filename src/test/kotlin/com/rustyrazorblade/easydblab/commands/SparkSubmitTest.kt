@@ -64,7 +64,6 @@ class SparkSubmitTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = testBucket,
                 clusterId = "test-id",
             )
@@ -99,7 +98,7 @@ class SparkSubmitTest : BaseKoinTest() {
         // Given - set up cluster state
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        val state = ClusterState(name = "test-cluster", versions = mutableMapOf())
+        val state = ClusterState(name = "test-cluster")
         manager.save(state)
 
         val testClusterId = "j-TEST123"
@@ -171,7 +170,7 @@ class SparkSubmitTest : BaseKoinTest() {
     ) {
         // Given - set up cluster state and local JAR
         val state =
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test-12345678")
+            ClusterState(name = "test-cluster", s3Bucket = "easy-db-lab-test-12345678")
                 .also { it.dataBucket = "easy-db-lab-data-12345678" }
 
         val localJar = File(tempDir, "app.jar")

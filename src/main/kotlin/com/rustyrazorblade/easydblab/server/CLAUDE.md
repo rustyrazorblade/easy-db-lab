@@ -17,7 +17,9 @@ HTTP Client → Ktor/Netty (StatusServer) → /status, /stress/status, /swagger
 | File | Purpose |
 |------|---------|
 | `StatusServer.kt` | The Ktor/Netty server: the `/status` and `/stress/status` routes with their OpenAPI `describe {}` blocks, `swaggerUI("/swagger")`, and `CachedStatus`, the interface the routes read. `start(port, bind)` returns a `RunningStatusServer` (bound port, `close()`) |
-| `StatusCache.kt` | Background cluster status refresh (EC2, K3s, EMR, OpenSearch, security groups, Cassandra version over SSH); the `--auto-shutdown` VPC watchdog, which emits `Server.InfrastructureGone` |
+| `ClusterStatusCollector.kt` | The one place that fetches the status facts (cluster state, EC2, K3s, EMR, OpenSearch, security groups, S3 paths, kits, stress jobs, Cassandra version over SSH) and builds the typed `StatusResponse`. `StatusCache` and the `status` command both read what it builds, so the CLI and `/status` cannot disagree. The fetches (EC2, security group, stress jobs, EMR, OpenSearch, pods) run at the same time on virtual threads, one executor per `collect()` call, closed before it returns; the live version starts when EC2 returns, asks every running db host at once and collects every good answer, in host order, within `Constants.Cassandra.LIVE_VERSION_PROBE_TIMEOUT_SECONDS` in total (`CassandraVersionInfo.hosts`; `mixed` when they differ; `unanswered` names the hosts that gave none; `version` is the first answering host in cluster order). The probe threads are interrupted and not waited for, so a hung SSH connect cannot hold the report past the bound. Returns a `StatusReport`: the response plus the reasons behind a security group or stress job gap, which only the CLI shows |
+| `StatusCache.kt` | Schedules `ClusterStatusCollector` every refresh interval and caches the result; the `--auto-shutdown` VPC watchdog, which emits `Server.InfrastructureGone` |
+| (Koin) | `ClusterStatusCollector` is a `factory` in `ServicesModule`; `Status` and `StatusCache` get it by `inject()`, so a test registers it in its own module |
 | `StatusResponse.kt` | Status API data classes (serializable) |
 
 ## Endpoints
@@ -27,6 +29,8 @@ HTTP Client → Ktor/Netty (StatusServer) → /status, /stress/status, /swagger
 - `GET /swagger` — the API docs, generated from the routes.
 
 ## StatusCache
+
+- It only schedules and caches. The collector decides what each section holds: ClickHouse and Spark S3 paths are in the per-cluster data bucket (where `spark submit` uploads and ClickHouse stores), Cassandra and EMR logs are under the cluster prefix of the account bucket; the OpenSearch endpoint carries `https://`; a security group that cannot be described is present with null rules.
 
 - Default refresh: 30 seconds (`--refresh`).
 - Sections: `cluster`, `nodes`, `networking`, `securityGroup`, `spark`, `opensearch`, `s3`, `kubernetes`, `stressJobs`, `cassandraVersion`, `accessInfo`.

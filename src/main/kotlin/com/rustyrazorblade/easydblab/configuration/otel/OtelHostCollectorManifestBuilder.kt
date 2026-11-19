@@ -94,7 +94,10 @@ class OtelHostCollectorManifestBuilder(
             .endMetadata()
             .build()
 
-    /** Read access to pods, for the pod-discovery scrape of the Cilium operator. */
+    /**
+     * Read access to pods, for the pod-discovery scrape of the Cilium operator, and to nodes, for the
+     * node-discovery scrape of etcd.
+     */
     fun buildClusterRole() =
         ClusterRoleBuilder()
             .withNewMetadata()
@@ -103,7 +106,7 @@ class OtelHostCollectorManifestBuilder(
             .endMetadata()
             .addNewRule()
             .withApiGroups("")
-            .withResources("pods")
+            .withResources("pods", "nodes")
             .withVerbs("get", "watch", "list")
             .endRule()
             .build()
@@ -139,8 +142,46 @@ class OtelHostCollectorManifestBuilder(
                 CONFIG_DATA_KEY,
                 templateService
                     .fromResource(OtelHostCollectorManifestBuilder::class.java, CONFIG_DATA_KEY)
-                    .substitute(mapOf("CNI_SCRAPE_JOBS" to PrometheusScrapeJob.render(buildCniScrapeJobs(cni)))),
+                    .substitute(mapOf("HOST_SCRAPE_JOBS" to PrometheusScrapeJob.render(buildHostScrapeJobs(cni)))),
             ).build()
+
+    /**
+     * The add-on's scrape jobs built in Kotlin (their relabel rules name Prometheus meta labels,
+     * whose double-underscore form is the TemplateService placeholder syntax): the K3s embedded
+     * etcd on every cluster, and the CNI's own jobs.
+     */
+    fun buildHostScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> = listOf(buildEtcdScrapeJob()) + buildCniScrapeJobs(cni)
+
+    /**
+     * The K3s server's embedded etcd, whose plain-HTTP metrics listener is on `localhost:2381` of
+     * the control node (`etcd-expose-metrics` in the datastore drop-in). Only a host-network
+     * collector reaches it there, so it is the add-on's. The add-on is a DaemonSet, so a static
+     * `localhost` target would leave every other node's add-on reporting the job down for the life
+     * of the cluster. Node discovery keeps only the add-on's own node, and only when K3s labelled it
+     * an etcd node (`node-role.kubernetes.io/etcd=true`), so the control node's add-on alone scrapes
+     * it. `instance` carries the node name and the port, like the other node-local jobs.
+     */
+    private fun buildEtcdScrapeJob() =
+        PrometheusScrapeJob(
+            jobName = Constants.K3s.ETCD_JOB_NAME,
+            scrapeInterval = NodeScrapeJobs.SCRAPE_INTERVAL,
+            kubernetesSdConfigs = listOf(PrometheusKubernetesSdConfig(role = "node")),
+            metricsPath = "/metrics",
+            relabelConfigs =
+                listOf(
+                    NodeScrapeJobs.keep(NodeScrapeJobs.nodeLabelMetaKey(Constants.K3s.ETCD_NODE_ROLE_LABEL), "true"),
+                    NodeScrapeJobs.keep("__meta_kubernetes_node_name", NodeScrapeJobs.NODE_NAME),
+                    PrometheusRelabelConfig(
+                        targetLabel = "__address__",
+                        replacement = "localhost:${Constants.K3s.ETCD_METRICS_PORT}",
+                    ),
+                    PrometheusRelabelConfig(
+                        targetLabel = "instance",
+                        replacement = "${NodeScrapeJobs.NODE_NAME}:${Constants.K3s.ETCD_METRICS_PORT}",
+                    ),
+                    NodeScrapeJobs.clusterRelabel,
+                ),
+        )
 
     /**
      * The CNI's own scrape jobs. Flannel exposes no metrics, so it has none; rendering Cilium jobs

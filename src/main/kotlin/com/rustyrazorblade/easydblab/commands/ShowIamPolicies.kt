@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
+import com.rustyrazorblade.easydblab.providers.aws.isAwsFailure
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -24,22 +26,18 @@ class ShowIamPolicies : PicoBaseCommand() {
     private val awsResourceSetup: AWSResourceSetupService by inject()
 
     @Parameters(
-        description = ["Policy name filter (optional): ec2, iam, emr, opensearch, compactor"],
+        description = ["Policy name filter (optional): ec2, iam, emr, opensearch"],
         arity = "0..1",
         defaultValue = "",
     )
     var policyName: String = ""
 
-    @Suppress("TooGenericExceptionCaught")
     override fun execute() {
         // Get account ID - REQUIRED, will fail if not configured
         val accountId =
-            try {
-                awsResourceSetup.getAccountId()
-            } catch (e: Exception) {
-                eventBus.emit(Event.Command.IamPoliciesCredentialError)
-                throw e
-            }
+            runCatchingException { awsResourceSetup.getAccountId() }
+                .onFailure { if (it.isAwsFailure()) eventBus.emit(Event.Command.IamPoliciesCredentialError) }
+                .getOrThrow()
 
         val policies = AWSPolicy.UserIAM.loadAll(accountId)
 

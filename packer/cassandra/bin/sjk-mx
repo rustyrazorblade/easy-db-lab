@@ -1,3 +1,15 @@
 #!/bin/bash
+#
+# Read Cassandra's MBeans with sjk. sjk runs on the node's selected JDK, which is the one Cassandra
+# runs on, and neither connection works on every JDK:
+#   - attaching to the pid (-p) fails on JDK 8, where root cannot attach to a JVM the cassandra
+#     user owns ("Failed to access MBean server");
+#   - the local JMX port (-s) fails on JDK 9 and later, where sjk cannot reach the java.rmi
+#     internals it patches.
+# So the connection comes from `java -version` (JDK 8 prints "1.8..."), and sjk runs once: a
+# failed query is not run again on the other connection, and its error is shown.
 
-sudo java -jar /usr/local/lib/sjk.jar mx -p $(cassandra-pid) $@ 2>/dev/null
+if java -version 2>&1 | head -n 1 | grep -q '"1\.'; then
+  exec sudo java -jar /usr/local/lib/sjk.jar mx -s localhost:7199 "$@"
+fi
+exec sudo java -jar /usr/local/lib/sjk.jar mx -p "$(cassandra-pid)" "$@"

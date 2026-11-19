@@ -72,11 +72,12 @@ class EC2RegistryServiceTest : BaseKoinTest() {
         // When
         registryService.generateAndUploadCert(controlHost, testBucket)
 
-        // Then - verify script was uploaded
-        verify(mockRemoteOps).upload(
+        // Then - verify script was installed at its path
+        verify(mockRemoteOps).executeRemotely(
             eq(controlHost),
+            argThat { command: String -> command.contains(" /tmp/generate_registry_cert.sh || ") && command.contains("sudo chmod 0755 ") },
             any(),
-            eq("/tmp/generate_registry_cert.sh"),
+            any(),
         )
     }
 
@@ -136,11 +137,12 @@ class EC2RegistryServiceTest : BaseKoinTest() {
         // When
         registryService.configureTlsOnNode(workerHost, registryHost, testBucket)
 
-        // Then - verify script was uploaded
-        verify(mockRemoteOps).upload(
+        // Then - verify script was installed at its path
+        verify(mockRemoteOps).executeRemotely(
             eq(workerHost),
+            argThat { command: String -> command.contains(" /tmp/configure_registry_tls.sh || ") && command.contains("sudo chmod 0755 ") },
             any(),
-            eq("/tmp/configure_registry_tls.sh"),
+            any(),
         )
     }
 

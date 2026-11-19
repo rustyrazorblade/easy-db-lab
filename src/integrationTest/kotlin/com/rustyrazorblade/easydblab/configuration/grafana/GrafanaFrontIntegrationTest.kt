@@ -66,7 +66,7 @@ class GrafanaFrontIntegrationTest {
         whenever(
             stateManager.load(),
         ).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = BUCKET, initConfig = InitConfig(region = "eu-west-1")),
+            ClusterState(name = "test", s3Bucket = BUCKET, initConfig = InitConfig(region = "eu-west-1")),
         )
         val templateService = TemplateService(stateManager)
         val front = GrafanaFront(templateService)

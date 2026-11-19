@@ -15,7 +15,6 @@ import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
-import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -39,7 +38,6 @@ class DownLocalWorkspaceTest : BaseKoinTest() {
                 single<AwsInfrastructureService> { mock(defaultAnswer = { error("down must not tear down AWS") }) }
                 single<AwsS3BucketService> { mock(defaultAnswer = { error("down must not call S3") }) }
                 single<TeardownBackupService> { mock(defaultAnswer = { error("down must not save the tail") }) }
-                single<CompactorService> { mock(defaultAnswer = { error("down must not stop the compactor") }) }
                 // As in up, the guard comes before any tunnel: down neither starts nor stops one here.
                 single<SocksProxyService> { mock(defaultAnswer = { error("down must not touch the SOCKS tunnel") }) }
             },
@@ -50,7 +48,7 @@ class DownLocalWorkspaceTest : BaseKoinTest() {
         val manager = get<ClusterStateManager>()
         val stateFile = File(context.workingDirectory, "state.json")
         manager.save(
-            ClusterState(name = "local", versions = mutableMapOf(), environment = Environment.K3sDocker("/data")).apply {
+            ClusterState(name = "local", environment = Environment.K3sDocker("/data")).apply {
                 markInfrastructureUp()
             },
         )

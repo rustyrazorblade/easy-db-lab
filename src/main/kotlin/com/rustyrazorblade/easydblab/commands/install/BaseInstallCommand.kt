@@ -67,6 +67,11 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
             // all rather than an empty `STORAGE_SIZE=`.
             val storageArg = if (storageSize.isBlank()) emptyMap() else mapOf("STORAGE_SIZE" to storageSize)
             val resolvedArgs = extraVars + storageArg
+            // resolved-args.env holds one KEY=VALUE per line; a value with a line break would
+            // corrupt it and inject a second entry.
+            resolvedArgs.entries.firstOrNull { (_, v) -> '\n' in v || '\r' in v }?.let { (k, _) ->
+                throw IllegalArgumentException("Install arg value for $k contains a line break")
+            }
             File(tempDir, Constants.Kit.RESOLVED_ARGS_FILE).writeText(
                 resolvedArgs.entries.joinToString("\n") { (k, v) -> "$k=$v" } + "\n",
             )

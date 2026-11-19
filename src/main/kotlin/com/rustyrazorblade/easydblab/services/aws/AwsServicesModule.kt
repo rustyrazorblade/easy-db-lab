@@ -4,12 +4,14 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Clients
+import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
-import com.rustyrazorblade.easydblab.services.ImagePullSecretService
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
@@ -19,6 +21,7 @@ import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
 
 /**
  * Koin module for the bindings of every `services/aws` class, plus the cloud-neutral interfaces
@@ -29,6 +32,10 @@ import software.amazon.awssdk.services.s3.S3Client
  */
 val awsServicesModule =
     module {
+        // The account facts `up` checks before it launches anything, and the checks themselves
+        single<AccountCapacity> { Ec2AccountCapacity(get<Ec2Client>(), get<ServiceQuotasClient>()) }
+        single { LaunchCapacityPreflight(get(), get()) }
+
         // Provide EC2InstanceService as singleton
         single {
             EC2InstanceService(
@@ -43,7 +50,7 @@ val awsServicesModule =
             AMIService(
                 get<Ec2Client>(),
                 get<EventBus>(),
-                get<AWS>(),
+                get<AccountIdentity>(),
             )
         }
 
@@ -79,7 +86,8 @@ val awsServicesModule =
 
         single {
             AWSResourceSetupService(
-                get<AWS>(),
+                get<AccountIdentity>(),
+                get<IamRoles>(),
                 get<EventBus>(),
                 get<InstanceRolePolicies>(),
                 get<AwsErrorHandler>(),
@@ -118,13 +126,15 @@ val awsServicesModule =
         single {
             OpenSearchService(
                 get<OpenSearchClient>(),
-                get<AWS>(),
+                get<IamRoles>(),
+                get<AccountIdentity>(),
                 get<EventBus>(),
             )
         }
 
-        // Provide AwsS3BucketService as singleton
-        single { AwsS3BucketService(get<AWS>()) }
+        // The one S3 bucket adapter, also bound as its S3BucketAdmin contract
+        single { AwsS3BucketService(get<S3Client>(), get<AccountIdentity>()) }
+        single<S3BucketAdmin> { get<AwsS3BucketService>() }
 
         // Provide AMIResolver as singleton
         single<AMIResolver> {
@@ -134,16 +144,15 @@ val awsServicesModule =
         // Provide InstanceSpecFactory as singleton
         single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
 
-        // Turns the nodes' ECR IAM permission into registry credentials a pod can use
-        single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
-
         // Creates the EC2 key pair profile setup needs; takes the caller-built Ec2Client
         factory { AwsKeyPairService(get(), get(), get<AwsErrorHandler>()) }
 
-        single { CompactorIam(get()) }
-        single { CompactorNetwork(get(), get(), get(), get()) }
-        single { ClusterCensus(get(), get()) }
-        single<CompactorService> { DefaultCompactorService(get(), get(), get(), get(), get(), get()) }
         factory { BucketRegion(get()) }
-        factory { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
+        // The account compactor's lease, for `observability compactor status`, read in the bucket's region
+        factory {
+            val bucketRegion = get<BucketRegion>()
+            val clients = get<RegionalS3Clients>()
+            CompactorLeaseReader(regionOf = bucketRegion::of, leaseIn = CompactorLeaseReader.fromS3(clients::s3))
+        }
+        factory { AccountBucketSetup(get(), get(), get(), get(), get()) }
     }

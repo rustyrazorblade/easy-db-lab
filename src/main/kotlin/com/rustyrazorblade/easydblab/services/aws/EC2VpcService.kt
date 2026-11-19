@@ -1,9 +1,10 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.providers.aws.Cidr
+import com.rustyrazorblade.easydblab.providers.aws.ClusterVpcResources
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import com.rustyrazorblade.easydblab.providers.aws.InternetGatewayId
 import com.rustyrazorblade.easydblab.providers.aws.NatGatewayId
@@ -15,6 +16,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupOperations
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import com.rustyrazorblade.easydblab.providers.aws.withVpcTeardownRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -27,6 +29,7 @@ import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
 import software.amazon.awssdk.services.ec2.model.CreateVpcRequest
 import software.amazon.awssdk.services.ec2.model.DeleteInternetGatewayRequest
 import software.amazon.awssdk.services.ec2.model.DeleteNatGatewayRequest
+import software.amazon.awssdk.services.ec2.model.DeleteRouteRequest
 import software.amazon.awssdk.services.ec2.model.DeleteRouteTableRequest
 import software.amazon.awssdk.services.ec2.model.DeleteSubnetRequest
 import software.amazon.awssdk.services.ec2.model.DeleteVpcRequest
@@ -605,31 +608,161 @@ class EC2VpcService(
 
     override fun findActiveNetworkInterfacesInVpc(vpcId: VpcId): List<NetworkInterfaceId> {
         log.info { "Finding active network interfaces in VPC: $vpcId" }
+        return findActiveNetworkInterfaces(filterOf("vpc-id", vpcId)).also {
+            log.info { "Found ${it.size} active network interfaces in VPC: $vpcId" }
+        }
+    }
 
+    private fun findActiveNetworkInterfaces(scope: Filter): List<NetworkInterfaceId> {
         val describeRequest =
             DescribeNetworkInterfacesRequest
                 .builder()
-                .filters(
-                    Filter
-                        .builder()
-                        .name("vpc-id")
-                        .values(vpcId)
-                        .build(),
-                    Filter
-                        .builder()
-                        .name("status")
-                        .values("in-use", "attaching", "detaching")
-                        .build(),
-                ).build()
+                .filters(scope, filterOf("status", "in-use", "attaching", "detaching"))
+                .build()
 
-        val networkInterfaces =
-            withAwsRetry("find-active-enis") {
-                ec2Client.describeNetworkInterfaces(describeRequest).networkInterfaces()
+        return withAwsRetry("find-active-enis") {
+            ec2Client.describeNetworkInterfaces(describeRequest).networkInterfaces()
+        }.map { it.networkInterfaceId() }
+    }
+
+    private fun filterOf(
+        name: String,
+        vararg values: String,
+    ): Filter = filterOf(name, values.toList())
+
+    private fun filterOf(
+        name: String,
+        values: List<String>,
+    ): Filter =
+        Filter
+            .builder()
+            .name(name)
+            .values(values)
+            .build()
+
+    override fun findClusterResourcesInVpc(
+        vpcId: VpcId,
+        clusterId: String,
+    ): ClusterVpcResources {
+        log.info { "Finding resources of cluster $clusterId in VPC: $vpcId" }
+        return findOwnedResources(vpcId, listOf(filterOf("tag:${Constants.Vpc.CLUSTER_ID_TAG_KEY}", clusterId)))
+    }
+
+    override fun findEasyDbLabResourcesInVpc(vpcId: VpcId): ClusterVpcResources {
+        log.info { "Finding resources of any easy-db-lab cluster in VPC: $vpcId" }
+        return findOwnedResources(
+            vpcId,
+            listOf(
+                filterOf("tag-key", Constants.Vpc.CLUSTER_ID_TAG_KEY),
+                filterOf("tag:${Constants.Vpc.TAG_KEY}", Constants.Vpc.TAG_VALUE),
+            ),
+        )
+    }
+
+    /**
+     * What carries every one of the [owned] tag filters inside [vpcId]. The filters are ANDed by EC2.
+     */
+    private fun findOwnedResources(
+        vpcId: VpcId,
+        owned: List<Filter>,
+    ): ClusterVpcResources {
+        val inVpc = filterOf("vpc-id", vpcId)
+
+        val instances =
+            withAwsRetry("find-cluster-instances") {
+                ec2Client
+                    .describeInstances(
+                        DescribeInstancesRequest
+                            .builder()
+                            .filters(
+                                listOf(inVpc) + owned +
+                                    filterOf(
+                                        "instance-state-name",
+                                        InstanceStateName.PENDING.toString(),
+                                        InstanceStateName.RUNNING.toString(),
+                                        InstanceStateName.STOPPING.toString(),
+                                        InstanceStateName.STOPPED.toString(),
+                                    ),
+                            ).build(),
+                    ).reservations()
+            }.flatMap { it.instances() }.map { it.instanceId() }
+
+        val subnets =
+            withAwsRetry("find-cluster-subnets") {
+                ec2Client
+                    .describeSubnets(DescribeSubnetsRequest.builder().filters(listOf(inVpc) + owned).build())
+                    .subnets()
+            }.map { it.subnetId() }
+
+        val securityGroups =
+            withAwsRetry("find-cluster-security-groups") {
+                ec2Client
+                    .describeSecurityGroups(DescribeSecurityGroupsRequest.builder().filters(listOf(inVpc) + owned).build())
+                    .securityGroups()
+            }.filter { it.groupName() != "default" }.map { it.groupId() }
+
+        val internetGateway =
+            withAwsRetry("find-cluster-igw") {
+                ec2Client
+                    .describeInternetGateways(
+                        DescribeInternetGatewaysRequest
+                            .builder()
+                            .filters(listOf(filterOf("attachment.vpc-id", vpcId)) + owned)
+                            .build(),
+                    ).internetGateways()
+            }.firstOrNull()?.internetGatewayId()
+
+        // The main route table belongs to the VPC: `up` tags it and adds a route, but it is never deleted.
+        val routeTables =
+            withAwsRetry("find-cluster-route-tables") {
+                ec2Client
+                    .describeRouteTables(DescribeRouteTablesRequest.builder().filters(listOf(inVpc) + owned).build())
+                    .routeTables()
+            }.filter { rt -> rt.associations().none { it.main() } }.map { it.routeTableId() }
+
+        return ClusterVpcResources(instances, subnets, securityGroups, internetGateway, routeTables).also {
+            log.info { "Found $it in VPC: $vpcId" }
+        }
+    }
+
+    override fun waitForNetworkInterfacesClearedInSubnets(
+        subnetIds: List<SubnetId>,
+        timeoutMs: Long,
+    ) {
+        if (subnetIds.isEmpty()) return
+        val scope = filterOf("subnet-id", subnetIds)
+        awaitNetworkInterfacesCleared("subnets $subnetIds", timeoutMs) { findActiveNetworkInterfaces(scope) }
+    }
+
+    override fun deleteRoutesToInternetGateway(
+        vpcId: VpcId,
+        igwId: InternetGatewayId,
+    ) {
+        val routeTables =
+            withAwsRetry("find-routes-to-igw") {
+                ec2Client
+                    .describeRouteTables(
+                        DescribeRouteTablesRequest
+                            .builder()
+                            .filters(filterOf("vpc-id", vpcId), filterOf("route.gateway-id", igwId))
+                            .build(),
+                    ).routeTables()
             }
-        val eniIds = networkInterfaces.map { it.networkInterfaceId() }
-
-        log.info { "Found ${eniIds.size} active network interfaces in VPC: $vpcId" }
-        return eniIds
+        routeTables.forEach { rt ->
+            rt.routes().filter { it.gatewayId() == igwId }.forEach { route ->
+                val destination = route.destinationCidrBlock() ?: route.destinationIpv6CidrBlock()
+                log.info { "Deleting route $destination to $igwId from ${rt.routeTableId()}" }
+                val deleteRequest =
+                    DeleteRouteRequest
+                        .builder()
+                        .routeTableId(rt.routeTableId())
+                        // An IPv6 route has no IPv4 destination; the call needs the one it has.
+                        .destinationCidrBlock(route.destinationCidrBlock())
+                        .destinationIpv6CidrBlock(route.destinationIpv6CidrBlock())
+                        .build()
+                withAwsRetry("delete-route-to-igw") { ec2Client.deleteRoute(deleteRequest) }
+            }
+        }
     }
 
     override fun listAllVpcCidrs(): List<String> {
@@ -645,33 +778,36 @@ class EC2VpcService(
         vpcId: VpcId,
         timeoutMs: Long,
     ) {
-        val activeEnis = findActiveNetworkInterfacesInVpc(vpcId)
+        awaitNetworkInterfacesCleared("VPC $vpcId", timeoutMs) { findActiveNetworkInterfacesInVpc(vpcId) }
+    }
+
+    private fun awaitNetworkInterfacesCleared(
+        where: String,
+        timeoutMs: Long,
+        findActive: () -> List<NetworkInterfaceId>,
+    ) {
+        val activeEnis = findActive()
         if (activeEnis.isEmpty()) {
-            log.info { "No active network interfaces in VPC: $vpcId" }
+            log.info { "No active network interfaces in $where" }
             return
         }
 
-        log.info { "Waiting for ${activeEnis.size} network interfaces to clear in VPC: $vpcId" }
+        log.info { "Waiting for ${activeEnis.size} network interfaces to clear in $where" }
         eventBus.emit(Event.Infra.NetworkInterfacesClearing(activeEnis.size))
 
-        val startTime = System.currentTimeMillis()
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val remaining = findActiveNetworkInterfacesInVpc(vpcId)
-
-            if (remaining.isEmpty()) {
-                log.info { "All network interfaces cleared in VPC: $vpcId" }
-                eventBus.emit(Event.Infra.NetworkInterfacesCleared)
-                return
+        pollUntilOrTimeout(
+            what = "network interfaces to clear in $where",
+            timeout = Duration.ofMillis(timeoutMs),
+            interval = pollInterval,
+            done = { remaining -> remaining.isEmpty() },
+        ) {
+            findActive().also { remaining ->
+                log.debug { "Still waiting for ${remaining.size} network interfaces to clear..." }
             }
-
-            log.debug { "Still waiting for ${remaining.size} network interfaces to clear..." }
-            Thread.sleep(pollInterval.toMillis())
         }
 
-        throw AwsTimeoutException(
-            "Timeout waiting for network interfaces to clear in VPC $vpcId after ${timeoutMs}ms",
-        )
+        log.info { "All network interfaces cleared in $where" }
+        eventBus.emit(Event.Infra.NetworkInterfacesCleared)
     }
 
     // ==================== Deletion Methods Implementation ====================
@@ -706,36 +842,30 @@ class EC2VpcService(
         log.info { "Waiting for ${instanceIds.size} instances to terminate..." }
         eventBus.emit(Event.Ec2.InstancesTerminateWaiting)
 
-        val startTime = System.currentTimeMillis()
+        val describeRequest =
+            DescribeInstancesRequest
+                .builder()
+                .instanceIds(instanceIds)
+                .build()
 
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val describeRequest =
-                DescribeInstancesRequest
-                    .builder()
-                    .instanceIds(instanceIds)
-                    .build()
-
-            val reservations = ec2Client.describeInstances(describeRequest).reservations()
-            val instances = reservations.flatMap { it.instances() }
-
-            val allTerminated =
-                instances.all { instance ->
-                    instance.state().name() == InstanceStateName.TERMINATED
-                }
-
-            if (allTerminated) {
-                log.info { "All instances terminated successfully" }
-                eventBus.emit(Event.Ec2.InstancesTerminated)
-                return
-            }
-
-            val pending = instances.count { it.state().name() != InstanceStateName.TERMINATED }
-            log.debug { "Still waiting for $pending instances to terminate..." }
-
-            Thread.sleep(pollInterval.toMillis())
+        pollUntilOrTimeout(
+            what = "instances to terminate",
+            timeout = Duration.ofMillis(timeoutMs),
+            interval = pollInterval,
+            done = { states -> states.all { it == InstanceStateName.TERMINATED } },
+        ) {
+            val states =
+                ec2Client
+                    .describeInstances(describeRequest)
+                    .reservations()
+                    .flatMap { it.instances() }
+                    .map { it.state().name() }
+            log.debug { "Still waiting for ${states.count { it != InstanceStateName.TERMINATED }} instances to terminate..." }
+            states
         }
 
-        throw AwsTimeoutException("Timeout waiting for instances to terminate after ${timeoutMs}ms")
+        log.info { "All instances terminated successfully" }
+        eventBus.emit(Event.Ec2.InstancesTerminated)
     }
 
     override fun detachInternetGateway(
@@ -809,35 +939,25 @@ class EC2VpcService(
         log.info { "Waiting for ${natGatewayIds.size} NAT gateways to be deleted..." }
         eventBus.emit(Event.Infra.NatGatewaysWaiting)
 
-        val startTime = System.currentTimeMillis()
+        val describeRequest =
+            DescribeNatGatewaysRequest
+                .builder()
+                .natGatewayIds(natGatewayIds)
+                .build()
 
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val describeRequest =
-                DescribeNatGatewaysRequest
-                    .builder()
-                    .natGatewayIds(natGatewayIds)
-                    .build()
-
-            val natGateways = ec2Client.describeNatGateways(describeRequest).natGateways()
-
-            val allDeleted =
-                natGateways.all { natGateway ->
-                    natGateway.state() == NatGatewayState.DELETED
-                }
-
-            if (allDeleted) {
-                log.info { "All NAT gateways deleted successfully" }
-                eventBus.emit(Event.Infra.NatGatewaysDeleted)
-                return
-            }
-
-            val pending = natGateways.count { it.state() != NatGatewayState.DELETED }
-            log.debug { "Still waiting for $pending NAT gateways to be deleted..." }
-
-            Thread.sleep(pollInterval.toMillis())
+        pollUntilOrTimeout(
+            what = "NAT gateways to be deleted",
+            timeout = Duration.ofMillis(timeoutMs),
+            interval = pollInterval,
+            done = { states -> states.all { it == NatGatewayState.DELETED } },
+        ) {
+            val states = ec2Client.describeNatGateways(describeRequest).natGateways().map { it.state() }
+            log.debug { "Still waiting for ${states.count { it != NatGatewayState.DELETED }} NAT gateways to be deleted..." }
+            states
         }
 
-        throw AwsTimeoutException("Timeout waiting for NAT gateways to be deleted after ${timeoutMs}ms")
+        log.info { "All NAT gateways deleted successfully" }
+        eventBus.emit(Event.Infra.NatGatewaysDeleted)
     }
 
     override fun deleteRouteTable(routeTableId: RouteTableId) {

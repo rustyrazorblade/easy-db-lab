@@ -32,7 +32,6 @@ class CollectorResourcesTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test",
             hosts =
                 mapOf(

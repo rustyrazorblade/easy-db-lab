@@ -82,7 +82,6 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "tempo-it",
-            versions = mutableMapOf(),
             s3Bucket = bucket,
             initConfig = InitConfig(region = SharedLocalStack.region(), tenant = TENANT),
         )

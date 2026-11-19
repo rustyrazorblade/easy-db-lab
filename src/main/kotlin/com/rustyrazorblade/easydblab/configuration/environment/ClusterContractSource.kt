@@ -26,7 +26,7 @@ class StateClusterContractSource(
     private fun currentState(): ClusterState =
         when (clusterStateManager.exists()) {
             true -> clusterStateManager.load()
-            false -> ClusterState(name = NO_STATE_NAME, versions = mutableMapOf())
+            false -> ClusterState(name = NO_STATE_NAME)
         }
 
     private companion object {

@@ -10,7 +10,9 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -19,6 +21,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -44,7 +47,6 @@ class DownloadConfigTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(
@@ -57,6 +59,7 @@ class DownloadConfigTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 factory<RemoteOperationsService> { remoteOps }
+                single { HostOperationsService(mockClusterStateManager) }
             },
         )
 
@@ -86,5 +89,91 @@ class DownloadConfigTest : BaseKoinTest() {
 
         assertThat(outputHandler.messages.joinToString("\n")).contains("5.0 already exists", "skipping the download")
         verify(remoteOps, never()).downloadDirectory(any(), any(), any(), any(), any())
+    }
+
+    private val secondCassandraHost = testCassandraHost.copy(alias = "db1", privateIp = "10.0.1.2", instanceId = "i-db1")
+
+    /** `--hosts` used to parse and be ignored: the download always came from the first host. */
+    @Test
+    fun `--hosts downloads from the targeted host, not the first host`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, secondCassandraHost))),
+        )
+        whenever(remoteOps.getRemoteVersion(any(), eq("current"))).thenReturn(Version("/usr/local/cassandra/5.0"))
+        whenever(remoteOps.getRemoteVersion(eq(secondCassandraHost.toHost()), eq("current")))
+            .thenReturn(Version("/usr/local/cassandra/5.0.9-custom"))
+
+        DownloadConfig().apply { hosts.hostList = "db1" }.execute()
+
+        val localDir = File(context.workingDirectory, "5.0.9-custom")
+        verify(remoteOps, times(1)).downloadDirectory(any(), any(), any(), any(), any())
+        verify(remoteOps).downloadDirectory(
+            eq(secondCassandraHost.toHost()),
+            eq("/usr/local/cassandra/5.0.9-custom/conf"),
+            eq(localDir),
+            any(),
+            any(),
+        )
+    }
+
+    @Test
+    fun `--hosts naming no cassandra host fails instead of downloading from another one`() {
+        assertThatThrownBy { DownloadConfig().apply { hosts.hostList = "db9" }.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("db9")
+        verify(remoteOps, never()).downloadDirectory(any(), any(), any(), any(), any())
+    }
+
+    /**
+     * `cassandra use --hosts=db2 <build>` leaves db2 on a different version than db0. update-config
+     * then looks for a directory per version, so download-config must produce one per version.
+     */
+    @Test
+    fun `targeted hosts on different versions get a directory each`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, secondCassandraHost))),
+        )
+        whenever(remoteOps.getRemoteVersion(eq(testCassandraHost.toHost()), eq("current")))
+            .thenReturn(Version("/usr/local/cassandra/5.0"))
+        whenever(remoteOps.getRemoteVersion(eq(secondCassandraHost.toHost()), eq("current")))
+            .thenReturn(Version("/usr/local/cassandra/5.0.9-custom"))
+
+        DownloadConfig().execute()
+
+        verify(remoteOps).downloadDirectory(
+            eq(testCassandraHost.toHost()),
+            eq("/usr/local/cassandra/5.0/conf"),
+            eq(File(context.workingDirectory, "5.0")),
+            any(),
+            any(),
+        )
+        verify(remoteOps).downloadDirectory(
+            eq(secondCassandraHost.toHost()),
+            eq("/usr/local/cassandra/5.0.9-custom/conf"),
+            eq(File(context.workingDirectory, "5.0.9-custom")),
+            any(),
+            any(),
+        )
+    }
+
+    @Test
+    fun `hosts on the same version download it once`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            testClusterState.copy(hosts = mapOf(ServerType.Cassandra to listOf(testCassandraHost, secondCassandraHost))),
+        )
+
+        DownloadConfig().execute()
+
+        verify(remoteOps, times(1)).downloadDirectory(any(), any(), any(), any(), any())
+    }
+
+    /** A failed download must not leave an empty directory that the next run takes for a finished one. */
+    @Test
+    fun `a failed download leaves no directory behind`() {
+        whenever(remoteOps.downloadDirectory(any(), any(), any(), any(), any())).thenThrow(IllegalStateException("ssh dropped"))
+
+        assertThatThrownBy { DownloadConfig().execute() }.hasMessageContaining("ssh dropped")
+
+        assertThat(File(context.workingDirectory, "5.0")).doesNotExist()
     }
 }

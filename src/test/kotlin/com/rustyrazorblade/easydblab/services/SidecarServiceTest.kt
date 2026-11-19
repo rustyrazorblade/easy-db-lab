@@ -19,10 +19,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import software.amazon.awssdk.services.ecr.EcrClient
-import software.amazon.awssdk.services.ecr.model.AuthorizationData
-import software.amazon.awssdk.services.ecr.model.GetAuthorizationTokenResponse
-import java.util.Base64
 
 /**
  * Tests for DefaultSidecarService — K3s DaemonSet lifecycle operations.
@@ -30,13 +26,11 @@ import java.util.Base64
 class SidecarServiceTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockClusterStateManager: ClusterStateManager
-    private lateinit var mockEcrClient: EcrClient
     private lateinit var sidecarService: SidecarService
 
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = null,
             s3Bucket = "easy-db-lab-test",
             clusterId = "test-cluster-id",
         )
@@ -46,7 +40,6 @@ class SidecarServiceTest : BaseKoinTest() {
             module {
                 single { mockK8sService }
                 single { mockClusterStateManager }
-                single { mockEcrClient }
                 single { TemplateService(get(), get()) }
                 factoryOf(::SidecarManifestBuilder)
                 factoryOf(::DefaultSidecarService) bind SidecarService::class
@@ -57,7 +50,6 @@ class SidecarServiceTest : BaseKoinTest() {
     fun setupMocks() {
         mockK8sService = mock()
         mockClusterStateManager = mock()
-        mockEcrClient = mock()
         sidecarService = getKoin().get()
 
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
@@ -126,21 +118,6 @@ class SidecarServiceTest : BaseKoinTest() {
         assertThat(result.exceptionOrNull()).hasMessageContaining("Rollout failed")
     }
 
-    @Test
-    fun `deploy with ECR image creates pull secret before applying daemonset`() {
-        val authToken = Base64.getEncoder().encodeToString("AWS:test-ecr-password".toByteArray())
-        val authData = AuthorizationData.builder().authorizationToken(authToken).build()
-        val tokenResponse = GetAuthorizationTokenResponse.builder().authorizationData(authData).build()
-        whenever(mockEcrClient.getAuthorizationToken()).thenReturn(tokenResponse)
-
-        val ecrImage = "123456789012.dkr.ecr.us-west-2.amazonaws.com/my-repo/cassandra-sidecar:latest"
-        val result = sidecarService.deploy(ecrImage)
-
-        assertThat(result.isSuccess).isTrue()
-        // Secret + ConfigMap + DaemonSet = 3 resources
-        verify(mockK8sService, times(3)).applyResource(any())
-    }
-
     /**
      * The Pyroscope agent parses `k=v,k=v`; with `k:v` it drops every label, so the sidecar's
      * profiles had no cluster and no host. The cluster is `<name>-<id>`, as on every other signal.
@@ -178,5 +155,22 @@ class SidecarServiceTest : BaseKoinTest() {
                 .single { it.name == "OTEL_EXPORTER_OTLP_ENDPOINT" }
                 .value
         assertThat(endpoint).isEqualTo("http://otel-collector.default.svc:4317")
+    }
+
+    @Test
+    fun `deploy with an ECR image attaches no image pull secret`() {
+        val resources = argumentCaptor<HasMetadata>()
+        val ecrImage = "123456789012.dkr.ecr.us-west-2.amazonaws.com/cassandra-sidecar:latest"
+
+        sidecarService.deploy(ecrImage).getOrThrow()
+
+        verify(mockK8sService, times(2)).applyResource(resources.capture())
+        val podSpec =
+            resources.allValues
+                .filterIsInstance<DaemonSet>()
+                .single()
+                .spec.template.spec
+        assertThat(podSpec.containers.map { it.image }).contains(ecrImage)
+        assertThat(podSpec.imagePullSecrets).isNullOrEmpty()
     }
 }

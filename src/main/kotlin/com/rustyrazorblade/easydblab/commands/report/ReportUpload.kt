@@ -4,7 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ObjectStore
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
@@ -28,8 +28,8 @@ class ReportUpload : PicoBaseCommand() {
     @Parameters(arity = "1..*", paramLabel = "FILE", description = ["Markdown files (.md) named with letters, digits, '.', '_' and '-'"])
     var files: List<File> = emptyList()
 
-    private val documentService: TestDocumentService by inject()
     private val objectStore: ObjectStore by inject()
+    private val documentService: DocumentService by inject()
 
     override fun execute() {
         val uploaded = documentService.upload(clusterState, files)

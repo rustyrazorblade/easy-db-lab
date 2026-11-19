@@ -7,10 +7,17 @@ import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import com.rustyrazorblade.easydblab.services.access.baseUrl
 import com.rustyrazorblade.easydblab.services.access.forEndpoint
 import io.github.oshai.kotlinlogging.KotlinLogging
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import java.io.IOException
+import java.io.InterruptedIOException
 import java.time.Duration
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 
 /** A response from an observability Service: its status code and body. */
 data class ObservabilityResponse(
@@ -103,8 +110,49 @@ class DefaultObservabilityHttp(
                 .readTimeout(timeout)
                 .callTimeout(Duration.ZERO)
                 .build()
-        return client.newCall(request).execute().use { response ->
-            ObservabilityResponse(response.code, response.body.string())
-        }
+        return client.newCall(request).awaitInterruptibly()
+    }
+}
+
+/**
+ * Sends this call and waits for its answer, ending the call when the waiting thread is interrupted.
+ *
+ * A blocking `execute()` does not return when its thread is interrupted: the thread sits in a socket
+ * read until the read timeout, so a stop signal that interrupts the command thread (`metrics stream`)
+ * would wait that long for a stuck query.  The call runs on the client's dispatcher instead, and an
+ * interrupt of the waiting thread cancels it, which closes its socket.
+ *
+ * @throws InterruptedIOException when the waiting thread is interrupted; its interrupt flag stays set
+ * @throws IOException when the call fails
+ */
+private fun Call.awaitInterruptibly(): ObservabilityResponse {
+    val answer = CompletableFuture<ObservabilityResponse>()
+    enqueue(
+        object : Callback {
+            override fun onFailure(
+                call: Call,
+                e: IOException,
+            ) {
+                answer.completeExceptionally(e)
+            }
+
+            override fun onResponse(
+                call: Call,
+                response: Response,
+            ) {
+                runCatching { response.use { ObservabilityResponse(it.code, it.body.string()) } }
+                    .onSuccess { answer.complete(it) }
+                    .onFailure { answer.completeExceptionally(it) }
+            }
+        },
+    )
+    return try {
+        answer.get()
+    } catch (e: InterruptedException) {
+        cancel()
+        Thread.currentThread().interrupt()
+        throw InterruptedIOException("interrupted while waiting for ${request().url}").apply { initCause(e) }
+    } catch (e: ExecutionException) {
+        throw e.cause ?: e
     }
 }

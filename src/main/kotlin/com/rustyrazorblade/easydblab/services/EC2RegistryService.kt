@@ -5,8 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.nio.file.Files
 
 /**
  * AWS EC2 implementation of RegistryService for configuring TLS on container registries.
@@ -52,7 +52,7 @@ class EC2RegistryService(
         val s3Path = Constants.Registry.S3_CERT_PATH
 
         // Upload and execute the certificate generation script
-        val scriptPath = uploadScript(controlHost, GENERATE_CERT_SCRIPT)
+        val scriptPath = installScript(controlHost, GENERATE_CERT_SCRIPT)
         remoteOps.executeRemotely(
             controlHost,
             "bash $scriptPath '$registryIp' '$certDir' '$s3Bucket' '$s3Path'",
@@ -85,7 +85,7 @@ class EC2RegistryService(
         val s3Path = Constants.Registry.S3_CERT_PATH
 
         // Upload and execute the TLS configuration script
-        val scriptPath = uploadScript(host, CONFIGURE_TLS_SCRIPT)
+        val scriptPath = installScript(host, CONFIGURE_TLS_SCRIPT)
         remoteOps.executeRemotely(
             host,
             "bash $scriptPath '$registryHost' '$registryPort' '$s3Bucket' '$s3Path'",
@@ -95,34 +95,18 @@ class EC2RegistryService(
     }
 
     /**
-     * Uploads a script from resources to the remote host.
+     * Installs a script from resources on the remote host.
      *
-     * @param host The host to upload to
+     * @param host The host to install on
      * @param scriptName The name of the script in resources
-     * @return The remote path where the script was uploaded
+     * @return The remote path of the installed script
      */
-    private fun uploadScript(
+    private fun installScript(
         host: Host,
         scriptName: String,
     ): String {
-        val resourcePath = "/com/rustyrazorblade/easydblab/commands/$scriptName"
-        val scriptContent =
-            this::class.java.getResourceAsStream(resourcePath)
-                ?: error("Script not found: $resourcePath")
-
-        val tempFile = Files.createTempFile("registry-", "-$scriptName")
-        try {
-            scriptContent.use { input ->
-                Files.newOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-
-            val remotePath = "$REMOTE_SCRIPT_DIR/$scriptName"
-            remoteOps.upload(host, tempFile, remotePath)
-            return remotePath
-        } finally {
-            Files.deleteIfExists(tempFile)
-        }
+        val remotePath = "$REMOTE_SCRIPT_DIR/$scriptName"
+        remoteOps.installFile(host, "/com/rustyrazorblade/easydblab/commands/$scriptName", remotePath, "0755")
+        return remotePath
     }
 }

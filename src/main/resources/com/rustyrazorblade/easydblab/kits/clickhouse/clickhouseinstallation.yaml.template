@@ -6,10 +6,10 @@ metadata:
 spec:
   configuration:
     users:
-      # Allow connections from the VPC CIDR and the K3s pod CIDR (10.42.0.0/16).
-      # Uses 10.0.0.0/8 to cover both: the VPC CIDR (10.0.x.x, set via --cidr) and the
-      # K3s pod CIDR (10.42.0.0/16). Cilium SNATs NodePort traffic to the pod gateway IP
-      # (10.42.x.0), not the node VPC IP, so the VPC CIDR alone is insufficient.
+      # Allow connections from the VPC CIDR and the K3s pod CIDR (10.224.0.0/12).
+      # Uses 10.0.0.0/8 to cover both: the VPC CIDR (10.x.0.0/16, set via --cidr) and the
+      # K3s pod CIDR (10.224.0.0/12). NodePort traffic can arrive SNATed to a pod-range
+      # gateway IP, not the node VPC IP, so the VPC CIDR alone is insufficient.
       default/networks/ip: "10.0.0.0/8"
     zookeeper:
       # Reference the ClickHouseKeeperInstallation (CHK) by name. The operator discovers

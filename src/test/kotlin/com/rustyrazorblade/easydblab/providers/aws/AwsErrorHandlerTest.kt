@@ -12,10 +12,7 @@ import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.profiles.ProfileFile
-import software.amazon.awssdk.services.cloudwatchlogs.model.CloudWatchLogsException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
-import software.amazon.awssdk.services.ecr.model.EcrException
-import software.amazon.awssdk.services.ecs.model.EcsException
 import software.amazon.awssdk.services.emr.model.EmrException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.opensearch.model.OpenSearchException
@@ -242,14 +239,11 @@ class AwsErrorHandlerTest {
         val cases =
             listOf(
                 Ec2Exception.builder() to "EasyDBLabEC2",
-                EcrException.builder() to "EasyDBLabEC2",
                 SsmException.builder() to "EasyDBLabEC2",
                 IamException.builder() to "EasyDBLabIAM",
                 S3Exception.builder() to "EasyDBLabIAM",
                 EmrException.builder() to "EasyDBLabEMR",
                 OpenSearchException.builder() to "EasyDBLabOpenSearch",
-                EcsException.builder() to "EasyDBLabCompactor",
-                CloudWatchLogsException.builder() to "EasyDBLabCompactor",
             )
         for ((builder, policy) in cases) {
             val description = handler.describe(awsError(builder, "AccessDenied", 403))!!
@@ -274,20 +268,16 @@ class AwsErrorHandlerTest {
     }
 
     @Test
-    fun `the policy named for ECR and SSM failures really holds the ECR and SSM actions`() {
+    fun `the policy named for an SSM failure really holds the SSM actions`() {
         val policies =
             com.rustyrazorblade.easydblab.providers.aws.AWSPolicy.UserIAM
                 .loadAll("123456789012")
                 .associate { it.name to it.body }
-        val ecrHolders = policies.filterValues { "\"ecr:GetAuthorizationToken\"" in it }.keys
         val ssmHolders = policies.filterValues { "\"ssm:StartSession\"" in it }.keys
 
-        assertThat(ecrHolders).hasSize(1)
-        assertThat(ssmHolders).isEqualTo(ecrHolders)
-        for (builder in listOf(EcrException.builder(), SsmException.builder())) {
-            val remedy = handler.describe(awsError(builder, "AccessDenied", 403))!!.remedy
-            assertThat(remedy).contains("show-iam-policies ${ecrHolders.single()}")
-        }
+        assertThat(ssmHolders).hasSize(1)
+        val remedy = handler.describe(awsError(SsmException.builder(), "AccessDenied", 403))!!.remedy
+        assertThat(remedy).contains("show-iam-policies ${ssmHolders.single()}")
     }
 
     @Test

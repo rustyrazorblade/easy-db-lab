@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
+import com.rustyrazorblade.easydblab.commands.StandardHelpOptions
 import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.Up
 import com.rustyrazorblade.easydblab.commands.UploadAuthorizedKeys
@@ -46,6 +47,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.CommandFailureReporter
@@ -64,6 +66,8 @@ import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
+import java.io.File
+import java.io.IOException
 import kotlin.system.exitProcess
 
 /**
@@ -128,6 +132,15 @@ class EasyDBLabCommand : Runnable {
 }
 
 /**
+ * What `easy-db-lab --version` prints: the same build number as the `version` command, taken from
+ * the `easydblab.version` property the start script sets. Without a provider the mixin's
+ * `--version` has nothing to print and exits 0 in silence; [CommandLineParser] sets it on every command.
+ */
+class EasyDbLabVersionProvider : CommandLine.IVersionProvider {
+    override fun getVersion(): Array<String> = arrayOf(Context.buildVersion().toString())
+}
+
+/**
  * Command line parser using PicoCLI with Koin dependency injection.
  *
  * All commands are registered declaratively via @Command annotations.
@@ -179,6 +192,10 @@ class CommandLineParser : KoinComponent {
                             currentParseResult.commandSpec().commandLine().usage(System.out)
                             return@IExecutionStrategy 0
                         }
+                        if (currentParseResult.isVersionHelpRequested) {
+                            currentParseResult.commandSpec().commandLine().printVersionHelp(System.out)
+                            return@IExecutionStrategy 0
+                        }
                         val cmd = currentParseResult.commandSpec().userObject()
                         if (cmd is PicoCommand) {
                             // Route ALL commands to CommandExecutor
@@ -224,7 +241,10 @@ class CommandLineParser : KoinComponent {
     }
 
     private fun applyHelpOptionsToAll(cl: CommandLine) {
-        cl.commandSpec.mixinStandardHelpOptions(true)
+        StandardHelpOptions.apply(cl.commandSpec)
+        // The mixin's -V/--version prints what the command's own spec holds, which is nothing for
+        // a subcommand, so every command gets the root's version provider.
+        cl.commandSpec.versionProvider(EasyDbLabVersionProvider())
         cl.subcommands.values.forEach { applyHelpOptionsToAll(it) }
     }
 
@@ -266,15 +286,20 @@ class CommandLineParser : KoinComponent {
      * Cluster state is loaded to resolve `${VAR}` defaults; if state is unavailable the
      * raw `${VAR}` forms are kept as default text.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun registerDynamicInstallSubcommands() {
         val resolver = get<InstallTemplateResolver>()
         val templateVars =
             try {
                 val state = get<ClusterStateManager>().load()
                 TemplateVariables.from(state = state, kitName = "", storageSize = "").toMap()
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 log.debug(e) { "Cluster state unavailable during install subcommand registration; using raw defaults" }
+                emptyMap()
+            } catch (e: IllegalStateException) {
+                log.debug(e) { "Cluster state invalid during install subcommand registration; using raw defaults" }
+                emptyMap()
+            } catch (e: IllegalArgumentException) {
+                log.debug(e) { "Cluster state unreadable during install subcommand registration; using raw defaults" }
                 emptyMap()
             }
 
@@ -283,18 +308,60 @@ class CommandLineParser : KoinComponent {
         val installCL = kitCL.getSubcommands()["install"] ?: return
 
         for (name in resolver.listAvailableTemplates()) {
+            if (name in installCL.subcommands.keys) continue
             val source =
                 try {
                     resolver.resolve(name)
-                } catch (e: Exception) {
+                } catch (e: IllegalArgumentException) {
+                    log.debug(e) { "Kit template $name vanished before it could be resolved" }
                     continue
                 }
-            val config = resolver.loadInstallConfig(source) ?: continue
-            if (name !in installCL.subcommands.keys) {
-                installCL.addSubcommand(name, factory.build(config, source))
-            }
+            // One bad kit.yaml must not stop the CLI: every command, `kit source remove` included,
+            // builds this tree. Skip the kit and say which file failed.
+            val subcommand =
+                reportingKitLoadFailure(name, kitFileOf(source)) {
+                    resolver.loadInstallConfig(source)?.let { factory.build(it, source) }
+                } ?: continue
+            installCL.addSubcommand(name, subcommand)
         }
     }
+
+    /**
+     * Runs [load] for the kit [kitName] and returns its result, or null after emitting
+     * [Event.Kit.LoadFailed] naming [kitFile] when the kit cannot be loaded.
+     *
+     * Only the failures a broken kit produces are handled: an invalid `kit.yaml`, a picocli spec
+     * that cannot be built from it, a bad value inside it, and an unreadable file. Any other
+     * exception is a bug in the tool and propagates.
+     */
+    private fun <T : Any> reportingKitLoadFailure(
+        kitName: String,
+        kitFile: String,
+        load: () -> T?,
+    ): T? {
+        val failure =
+            try {
+                return load()
+            } catch (e: ConfigurationException) {
+                e
+            } catch (e: CommandLine.InitializationException) {
+                e
+            } catch (e: IllegalArgumentException) {
+                e
+            } catch (e: IllegalStateException) {
+                e
+            } catch (e: IOException) {
+                e
+            }
+        eventBus.emit(Event.Kit.LoadFailed(kitName, kitFile, failure.message ?: failure.javaClass.simpleName))
+        return null
+    }
+
+    private fun kitFileOf(source: InstallTemplateResolver.TemplateSource): String =
+        when (source) {
+            is InstallTemplateResolver.TemplateSource.Directory -> File(source.dir, Constants.Kit.CONFIG_FILE).path
+            is InstallTemplateResolver.TemplateSource.Builtin -> "built-in kit ${source.name}"
+        }
 
     /**
      * Registers a top-level PicoCLI subcommand for every installed kit directory found by
@@ -304,7 +371,6 @@ class CommandLineParser : KoinComponent {
      * For example, `<cwd>/clickhouse/kit.yaml` alongside `<cwd>/clickhouse/bin/start.sh` →
      * `easy-db-lab clickhouse start`.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun registerDynamicKitSubcommands() {
         val factory = KitRunnerCommandFactory()
 
@@ -319,15 +385,15 @@ class CommandLineParser : KoinComponent {
                     return@forEach
                 }
 
-                try {
-                    val kitGroup = factory.buildKitGroup(kitName, kitDir)
-                    kitCommandsByKit[kitName]?.forEach { scanned ->
-                        kitGroup.addSubcommand(scanned.name, CommandLine(scanned.cls, KoinCommandFactory()))
-                    }
-                    commandLine.addSubcommand(kitName, kitGroup)
-                } catch (e: Exception) {
-                    log.debug(e) { "Failed to register kit subcommand for $kitName" }
-                }
+                val kitGroup =
+                    reportingKitLoadFailure(kitName, File(kitDir, Constants.Kit.CONFIG_FILE).path) {
+                        factory.buildKitGroup(kitName, kitDir).also { group ->
+                            kitCommandsByKit[kitName]?.forEach { scanned ->
+                                group.addSubcommand(scanned.name, CommandLine(scanned.cls, KoinCommandFactory()))
+                            }
+                        }
+                    } ?: return@forEach
+                commandLine.addSubcommand(kitName, kitGroup)
             }
     }
 
@@ -340,36 +406,23 @@ class CommandLineParser : KoinComponent {
  * PicoCLI parameter exception handler that prints a targeted "not installed" hint when the
  * user types a top-level argument that matches an installable kit template name.
  *
- * Falls through to [delegate] for all other parse errors.
+ * Falls through to [delegate] for all other parse errors. Listing the templates cannot fail the
+ * parse error's report: [InstallTemplateResolver.listAvailableTemplates] only lists directories, and
+ * the kit sources file it reads falls back to an empty list when it cannot be read.
  */
 internal class UninstalledKitHintHandler(
     private val resolver: InstallTemplateResolver,
     private val delegate: CommandLine.IParameterExceptionHandler,
 ) : CommandLine.IParameterExceptionHandler {
-    @Suppress("TooGenericExceptionCaught")
     override fun handleParseException(
         ex: CommandLine.ParameterException,
         args: Array<String>,
     ): Int {
-        if (ex is CommandLine.UnmatchedArgumentException) {
-            val firstToken = ex.unmatched.firstOrNull()
-            if (firstToken != null) {
-                try {
-                    if (firstToken in resolver.listAvailableTemplates()) {
-                        ex.commandLine.err.println(
-                            "$firstToken is not installed. Run: easy-db-lab kit install $firstToken",
-                        )
-                        return 2
-                    }
-                } catch (e: Exception) {
-                    log.debug(e) { "Could not check available templates for unmatched argument hint" }
-                }
-            }
+        val firstToken = (ex as? CommandLine.UnmatchedArgumentException)?.unmatched?.firstOrNull()
+        if (firstToken != null && firstToken in resolver.listAvailableTemplates()) {
+            ex.commandLine.err.println("$firstToken is not installed. Run: easy-db-lab kit install $firstToken")
+            return 2
         }
         return delegate.handleParseException(ex, args)
-    }
-
-    companion object {
-        private val log = KotlinLogging.logger {}
     }
 }

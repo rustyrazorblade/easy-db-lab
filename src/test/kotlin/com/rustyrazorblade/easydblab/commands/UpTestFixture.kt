@@ -30,16 +30,21 @@ import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.DefaultCassandraProfilingService
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.ImdsRegion
 import com.rustyrazorblade.easydblab.services.K3sClusterService
-import com.rustyrazorblade.easydblab.services.K3sSetupResult
+import com.rustyrazorblade.easydblab.services.K3sServer
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitStorageResolver
 import com.rustyrazorblade.easydblab.services.LocalSsmTooling
 import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
+import com.rustyrazorblade.easydblab.services.NodeSetupService
+import com.rustyrazorblade.easydblab.services.NodeTuningFiles
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
+import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RecordingAnnotationMirror
@@ -48,19 +53,32 @@ import com.rustyrazorblade.easydblab.services.SsmToolFault
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
+import com.rustyrazorblade.easydblab.services.aws.AccountCapacity
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.FakeAccountCapacity
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
+import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.bringup.BringUpHarness
+import com.rustyrazorblade.easydblab.services.bringup.BringUpPortSet
+import com.rustyrazorblade.easydblab.services.bringup.FakeControlPlane
+import com.rustyrazorblade.easydblab.services.bringup.FakeInstanceFleet
+import com.rustyrazorblade.easydblab.services.bringup.FakeInstanceTracker
+import com.rustyrazorblade.easydblab.services.bringup.InstanceAddresses
+import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
+import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
+import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
+import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
@@ -69,6 +87,7 @@ import java.io.File
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
+import java.util.Collections
 
 /**
  * Shared fixture for the [Up] tests: the fully-wired "happy path" collaborators, the
@@ -86,6 +105,9 @@ abstract class UpTestFixture : BaseKoinTest() {
 
         /** Another local port, for a tunnel that replaced the one on [TUNNEL_PORT]. */
         const val OTHER_TUNNEL_PORT = 45678
+
+        /** The K3s server URL the mocked server start reports. */
+        const val K3S_URL = "https://10.0.0.1:6443"
     }
 
     protected lateinit var mockClusterStateManager: ClusterStateManager
@@ -102,7 +124,23 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected lateinit var mockK8sService: K8sService
     protected lateinit var mockCommandExecutor: CommandExecutor
     protected lateinit var mockObservabilityStackService: ObservabilityStackService
-    protected lateinit var mockDocumentService: TestDocumentService
+    protected lateinit var mockDocumentService: DocumentService
+    protected lateinit var mockRegistryService: RegistryService
+
+    /**
+     * The bring-up's provider and control plane: the instances run and pass their checks at once,
+     * every agent that joins registers and is Ready, and a replacement launches through [fleet].
+     * The K3s steps between them are the real ones, over the fake SSH and the mocked services.
+     */
+    protected val tracker = FakeInstanceTracker { id -> InstanceAddresses(publicIps[id] ?: "pub-$id", null) }
+
+    /** The public IP the fake provider reports for each instance ID; the fixture's hosts keep their own. */
+    protected val publicIps: MutableMap<String, String> = Collections.synchronizedMap(mutableMapOf())
+    protected val fleet = FakeInstanceFleet()
+    protected val plane = FakeControlPlane()
+
+    /** The account the pre-launch capacity checks see; roomy by default, a test narrows it. */
+    protected lateinit var accountCapacity: FakeAccountCapacity
     protected lateinit var outputHandler: BufferedOutputHandler
 
     /** exit code returned by the fake CommandExecutor for a nested command, keyed by simple class name */
@@ -134,14 +172,30 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected var sshFailureAlias: String? = null
     protected var sshFailureException: Exception? = null
     protected var sshFailuresRemaining = Int.MAX_VALUE
-    protected val sshCheckedAliases = mutableListOf<String>()
+    protected val sshCheckedAliases: MutableList<String> = Collections.synchronizedList(mutableListOf())
+
+    /**
+     * when it returns an exception for a host and command, remoteOps.executeRemotely throws it; a
+     * test fails one step of one instance this way, as a real node would
+     */
+    protected var remoteFault: (host: Host, command: String) -> Exception? = { _, _ -> null }
+
+    /** every remote command run, as "<alias> <command>", in order */
+    protected val remoteCommands: MutableList<String> = Collections.synchronizedList(mutableListOf())
+
+    /** every file uploaded, as (remote path, content), in order */
+    protected val uploads: MutableList<Pair<String, String>> = Collections.synchronizedList(mutableListOf())
+
+    /** The content of every upload whose remote path ends with [name], in order. */
+    protected fun uploadsNamed(name: String): List<String> =
+        synchronized(uploads) { uploads.toList() }.filter { it.first.endsWith(name) }.map { it.second }
 
     /** every remote command run with its output echoed to the console, in order */
-    protected val echoedCommands = mutableListOf<String>()
+    protected val echoedCommands: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
     /** Cilium node-fix paths the fake SSH reports missing, by host alias, and every alias asked */
     protected val missingCiliumFixes = mutableMapOf<String, List<String>>()
-    protected val ciliumFixCheckedAliases = mutableListOf<String>()
+    protected val ciliumFixCheckedAliases: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
     protected val testControlHost =
         ClusterHost(
@@ -191,18 +245,34 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
             single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
             single { CiliumNodeImageCheck(get()) }
-            single { AWSResourceSetupService(get(), get(), get(), AwsErrorHandler()) }
+            single { AWSResourceSetupService(get(), get(), get(), get(), AwsErrorHandler()) }
             single { ProvisioningPreflight(get(), get(), get(), lazy { get<User>() }) }
-            single { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
+            single<AccountCapacity> { FakeAccountCapacity().also { accountCapacity = it } }
+            single { LaunchCapacityPreflight(get(), get()) }
+            single { AccountBucketSetup(get(), get(), get(), get(), get()) }
         }
 
     /** The cluster side of `up`: K8s, the nested commands, the stack, Tailscale and SSH. */
     private fun clusterModule(): Module =
         module {
-            single<TestDocumentService> { mock<TestDocumentService>().also { mockDocumentService = it } }
+            single<DocumentService> { mock<DocumentService>().also { mockDocumentService = it } }
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             factory { KitStorageResolver(get(), get()) }
-            single<RegistryService> { mock<RegistryService>() }
+            single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
+            single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles(), get<Context>().workingDirectory) }
+            single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { _ -> plane })) }
+            single<Ec2BringUpPorts> {
+                val steps = get<K3sBringUpSteps>()
+                Ec2BringUpPorts { request ->
+                    BringUpPortSet(
+                        tracker = tracker,
+                        fleet = fleet,
+                        nodeSteps = steps.nodeSteps(request.state),
+                        controlSteps = steps.controlSteps(request.route, request.state, request.workspace),
+                        state = request.state,
+                    )
+                }
+            }
             // The real preflight the executor runs before `up`; a test calls ensureTunnel() to play the executor.
             single { ProxyPreflight(get(), get(), ProxyEnvFile(get<Context>().workingDirectory)) }
             single<SocksProxyService> {
@@ -256,7 +326,15 @@ abstract class UpTestFixture : BaseKoinTest() {
                 host: Host,
                 local: Path,
                 remote: String,
-            ) = Unit
+            ) {
+                // The setup script is uploaded from a relative path that tests do not create.
+                uploads += remote to
+                    local
+                        .toFile()
+                        .takeIf { it.isFile }
+                        ?.readText()
+                        .orEmpty()
+            }
 
             override fun uploadDirectory(
                 host: Host,
@@ -299,6 +377,8 @@ abstract class UpTestFixture : BaseKoinTest() {
         host: Host,
         command: String,
     ): Response {
+        remoteCommands.add("${host.alias} $command")
+        remoteFault(host, command)?.let { throw it }
         if (command == "echo 1") sshCheckedAliases.add(host.alias)
         val failure = sshFailureException?.takeIf { host.alias == sshFailureAlias }
         if (failure != null && sshFailuresRemaining > 0) {
@@ -309,6 +389,8 @@ abstract class UpTestFixture : BaseKoinTest() {
             ciliumFixCheckedAliases.add(host.alias)
             return Response(missingCiliumFixes[host.alias].orEmpty().joinToString(separator = "") { "$it\n" })
         }
+        // An app node's setup reads its region from instance metadata.
+        if (command == ImdsRegion.COMMAND) return Response("us-west-2")
         return Response("")
     }
 
@@ -327,8 +409,13 @@ abstract class UpTestFixture : BaseKoinTest() {
         sshFailuresRemaining = Int.MAX_VALUE
         sshCheckedAliases.clear()
         echoedCommands.clear()
+        remoteFault = { _, _ -> null }
+        remoteCommands.clear()
+        uploads.clear()
         missingCiliumFixes.clear()
         ciliumFixCheckedAliases.clear()
+        publicIps.clear()
+        happyHosts().values.flatten().forEach { publicIps[it.instanceId] = it.publicIp }
     }
 
     @BeforeEach
@@ -348,6 +435,8 @@ abstract class UpTestFixture : BaseKoinTest() {
         mockK8sService = getKoin().get()
         mockCommandExecutor = getKoin().get()
         mockObservabilityStackService = getKoin().get()
+        mockRegistryService = getKoin().get()
+        accountCapacity = getKoin().get<AccountCapacity>() as FakeAccountCapacity
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
         resetFakes()
 
@@ -372,14 +461,16 @@ abstract class UpTestFixture : BaseKoinTest() {
 
         whenever(mockAmiResolver.resolveAmiId(any(), any())).thenReturn(Result.success("ami-123"))
 
-        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenReturn(
-            ProvisioningResult(hosts = happyHosts(), errors = emptyMap()),
-        )
+        launching(happyHosts())
 
         whenever(mockClusterConfigurationService.writeAllConfigurationFiles(any(), any(), any()))
             .thenReturn(Result.success(Unit))
 
-        whenever(mockK3sClusterService.setupCluster(any())).thenReturn(K3sSetupResult(serverStarted = true))
+        whenever(mockK3sClusterService.startServer(any(), any(), anyOrNull(), any())).thenReturn(K3sServer(K3S_URL, "token"))
+        // A started agent registers with the control plane, as a real one does.
+        whenever(mockK3sClusterService.joinAgent(any(), any(), any(), any())).thenAnswer { invocation ->
+            plane.joined(invocation.getArgument<ClusterHost>(0).alias)
+        }
         stubCiliumSuccess()
 
         whenever(mockK8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
@@ -401,6 +492,19 @@ abstract class UpTestFixture : BaseKoinTest() {
     private fun stubCiliumSuccess() {
         whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockCiliumService.installTailscaleMasquerade(any())).thenReturn(Result.success(Unit))
+    }
+
+    /**
+     * The launch returns [hosts], reporting each server type's hosts as the real launch does when
+     * RunInstances returns them, then the end of the launch.
+     */
+    protected fun launching(hosts: Map<ServerType, List<ClusterHost>>) {
+        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenAnswer { invocation ->
+            val callbacks = invocation.getArgument<ProvisioningCallbacks>(3)
+            hosts.forEach { (serverType, launched) -> callbacks.onHostsCreated(serverType, launched) }
+            callbacks.onInstancesLaunched()
+            ProvisioningResult(hosts = hosts, errors = emptyMap())
+        }
     }
 
     protected fun happyHosts(): Map<ServerType, List<ClusterHost>> =
@@ -425,7 +529,6 @@ abstract class UpTestFixture : BaseKoinTest() {
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             tailscaleActive = true,
             initConfig =
                 InitConfig(
@@ -453,12 +556,11 @@ abstract class UpTestFixture : BaseKoinTest() {
         )
 
     /**
-     * Constructs an [Up] with a zero SSH startup delay, a zero tailnet retry interval and a 1ms
-     * SSH readiness retry interval so tests do not sit through the production pauses. All three
-     * only affect wall-clock timing, so shortening them does not change any behavior under test.
+     * Constructs an [Up] with a zero tailnet retry interval and the bring-up's short test timing
+     * ([BringUpHarness.FAST]), so tests do not sit through the production pauses. Both only affect
+     * wall-clock timing and attempt counts the tests name, not which decisions are made.
      */
-    protected fun newUp(): Up =
-        Up(sshStartupDelay = Duration.ZERO, tailnetRetryInterval = Duration.ZERO, sshRetryInterval = Duration.ofMillis(1))
+    protected fun newUp(): Up = Up(tailnetRetryInterval = Duration.ZERO, timing = BringUpHarness.FAST)
 
     protected fun overrideUser(user: User) {
         whenever(mockClusterStateManager.load()).thenReturn(happyState())

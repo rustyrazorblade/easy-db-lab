@@ -5,10 +5,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
 import com.rustyrazorblade.easydblab.providers.docker.dockerModule
@@ -25,11 +26,11 @@ import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.mock
 import software.amazon.awssdk.services.ec2.Ec2Client
-import software.amazon.awssdk.services.ecr.EcrClient
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
 import software.amazon.awssdk.services.sts.StsClient
 
 /**
@@ -76,8 +77,9 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
         assertThat(get<StsClient>()).isNotNull
         assertThat(get<EmrClient>()).isNotNull
         assertThat(get<OpenSearchClient>()).isNotNull
-        assertThat(get<EcrClient>()).isNotNull
-        assertThat(get<AWS>()).isNotNull
+        assertThat(get<ServiceQuotasClient>()).isNotNull
+        assertThat(get<AccountIdentity>()).isNotNull
+        assertThat(get<IamRoles>()).isNotNull
         assertThat(get<AWSClientFactory>()).isNotNull
         assertThat(get<AWSCredentialsManager>()).isNotSameAs(get<AWSCredentialsManager>())
     }

@@ -43,7 +43,7 @@ import java.util.UUID
  * are deleted.
  *
  * The VPC teardown itself is mocked at the [AwsInfrastructureService] boundary; the S3 calls go to
- * LocalStack through the real `AWS` and `AwsS3BucketService`.
+ * LocalStack through the real `AwsS3BucketService`.
  */
 class DownS3NoExpiryIntegrationTest : BaseKoinTest() {
     private val s3: S3Client = SharedLocalStack.s3Client()
@@ -57,7 +57,6 @@ class DownS3NoExpiryIntegrationTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "noexpiry",
-            versions = mutableMapOf(),
             clusterId = clusterId,
             s3Bucket = accountBucket,
             dataBucket = dataBucket,

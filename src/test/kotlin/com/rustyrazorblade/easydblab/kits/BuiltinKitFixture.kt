@@ -32,7 +32,6 @@ class BuiltinKitFixture(
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2", name = "test-cluster", kitStorageClass = kitStorageClass),
             hosts =
                 mapOf(
@@ -72,15 +71,11 @@ class BuiltinKitFixture(
     fun render(
         templateFile: String,
         args: Map<String, String> = emptyMap(),
-    ): List<HasMetadata> =
-        renderText(templateFile, args)
-            .split(DOCUMENT_SEPARATOR)
-            .filter { it.isNotBlank() }
-            .map { Serialization.unmarshal(it, HasMetadata::class.java) }
+    ): List<HasMetadata> = parseManifests(renderText(templateFile, args))
 
     /**
-     * Renders [templateFile] as [render] does and returns the YAML text, for a test that must parse
-     * it with plain YAML rules, as `kubectl apply` reads it, rather than into fabric8 objects.
+     * Renders [templateFile] to text as `kit install` writes it into the kit directory, failing on
+     * any placeholder left unresolved.
      */
     fun renderText(
         templateFile: String,
@@ -113,9 +108,17 @@ class BuiltinKitFixture(
     private companion object {
         const val RESOURCE_BASE = "com/rustyrazorblade/easydblab/kits"
         const val KIT_YAML = "kit.yaml"
-        val DOCUMENT_SEPARATOR = Regex("(?m)^---\\s*$")
     }
 }
+
+private val DOCUMENT_SEPARATOR = Regex("(?m)^---\\s*$")
+
+/** Parses every non-blank YAML document in [yaml] into a fabric8 object. */
+fun parseManifests(yaml: String): List<HasMetadata> =
+    yaml
+        .split(DOCUMENT_SEPARATOR)
+        .filter { doc -> doc.lines().any { it.isNotBlank() && !it.trimStart().startsWith("#") } }
+        .map { Serialization.unmarshal(it, HasMetadata::class.java) }
 
 /**
  * Parses a comma-separated `key=value` label selector, the form kits use for a scrape

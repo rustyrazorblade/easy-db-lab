@@ -247,7 +247,7 @@ Verify: response contains `.cluster`, `.nodes`, and `.s3.fullpath`.
 S3_FULLPATH=$(cat .s3-fullpath)
 
 # Check required backup files
-for f in config/kubeconfig config/cassandra_versions.yaml config/environment.sh config/setup_instance.sh; do
+for f in config/kubeconfig config/environment.sh config/setup_instance.sh; do
     aws s3 ls "s3://${S3_FULLPATH}/${f}" > /dev/null 2>&1 && echo "OK: $f" || echo "MISSING: $f"
 done
 ```

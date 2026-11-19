@@ -52,7 +52,6 @@ class ServicesModuleTest {
             single { EventBus() }
             single<User> { mock() }
             single<ProfileRegion> { ProfileRegion.NONE }
-            single<ImagePullSecretService> { mock() }
         }
 
     @Test

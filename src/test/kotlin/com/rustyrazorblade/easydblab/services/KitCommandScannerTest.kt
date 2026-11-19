@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.annotations.KitCommand
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import picocli.CommandLine.Command
 
 /**
  * Tests for [DefaultKitCommandScanner]. Verifies core scanner behaviour: unknown kit names
@@ -26,4 +28,37 @@ class KitCommandScannerTest {
         val second = scanner.findAll()
         assertThat(first).isSameAs(second)
     }
+
+    @Test
+    fun `a class annotated with KitCommand is found under its kit with the picocli description`() {
+        val commands = scanner.forKit("scanner-probe-kit")
+
+        assertThat(commands).singleElement().satisfies({ found ->
+            assertThat(found.name).isEqualTo("probe")
+            assertThat(found.description).isEqualTo("Probe description")
+            assertThat(found.cls).isEqualTo(ScannerProbeCommand::class.java)
+        })
+    }
+
+    @Test
+    fun `a class annotated with KitCommand but with no picocli description is found with an empty description`() {
+        val commands = scanner.forKit("scanner-undescribed-kit")
+
+        assertThat(commands).singleElement().satisfies({ found ->
+            assertThat(found.description).isEmpty()
+        })
+    }
+}
+
+/** A command the scanner is expected to discover on the test classpath. */
+@KitCommand(kit = "scanner-probe-kit", name = "probe")
+@Command(name = "probe", description = ["Probe description"])
+class ScannerProbeCommand : Runnable {
+    override fun run() = Unit
+}
+
+/** A command with no picocli annotation, whose description reads as empty. */
+@KitCommand(kit = "scanner-undescribed-kit", name = "bare")
+class ScannerUndescribedCommand : Runnable {
+    override fun run() = Unit
 }

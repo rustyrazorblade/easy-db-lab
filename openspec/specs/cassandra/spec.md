@@ -72,6 +72,45 @@ The system MUST support starting, stopping, and restarting Cassandra across clus
 - **THEN** no db node still runs the database
 - **AND** the sidecar DaemonSet is removed, the database is no longer recorded as a running workload, and the kit post-stop hooks run.
 
+### Requirement: Config Directory Per Version
+
+`cassandra download-config` MUST download one local config directory for each distinct version
+among the targeted hosts, from the first targeted host that runs it, and MUST honour `--hosts`
+(a value that matches no node is an error). It MUST NOT leave an empty directory behind when the
+download fails. `cassandra update-config` MUST check, before it changes any targeted host, that
+the local config directory of every targeted host's version exists, and MUST name
+`cassandra download-config --hosts <host>` for each one that does not.
+
+#### Scenario: `use` on one host of a mixed-version cluster
+
+- **GIVEN** `db0` and `db1` run `5.0` and `db2` is switched to `4.1`
+- **WHEN** the user runs `cassandra use --hosts=db2 4.1`
+- **THEN** the workspace gets a `4.1/` directory, `db2` is patched and updated from it, and the
+  command exits 0.
+
+#### Scenario: `update-config` without the version's directory
+
+- **GIVEN** `db2` runs a version whose directory is not in the workspace
+- **WHEN** the user runs `cassandra update-config --hosts=db2`
+- **THEN** no host is patched, the error names the version and `download-config --hosts db2`, and
+  the command exits non-zero.
+
+### Requirement: Use Side Effects
+
+`cassandra use` MUST tell the user, before it starts, which hosts it will re-apply
+`cassandra.patch.yaml` to as its last step (replacing per-host settings applied earlier with
+`update-config`), and that it switches the JDK (to `--java`, or the JDK the version declares). It
+MUST pass its `--hosts` filter to the config download as well as the update, MUST fail when no
+host matches the filter, and MUST exit non-zero, naming the failed step, when the config download
+or update fails after the version switch.
+
+#### Scenario: `use` reports a failed config update
+
+- **GIVEN** the version switch succeeded on the targeted hosts
+- **WHEN** the config update fails
+- **THEN** the command reports that the version is active but the configuration was not updated,
+  names `update-config --hosts` for the targeted hosts, and exits non-zero.
+
 ### Requirement: Mixed-Version Clusters
 
 The system MUST support running different Cassandra versions on different nodes for upgrade testing.
@@ -253,11 +292,26 @@ build runs under is `cassandra use --java`'s job.
 
 #### Scenario: `cassandra list` distinguishes declared-but-uninstalled versions
 
-- **GIVEN** a `cassandra_versions.yaml` entry with `lazy: true` that has not been installed on the
-  queried node
+- **GIVEN** a `cassandra_versions.yaml` entry with `lazy: true` that has not been installed on any
+  node
 - **WHEN** the user runs `cassandra list`
 - **THEN** that version is shown, marked distinguishably from versions actually installed on the
-  node.
+  nodes.
+
+#### Scenario: `cassandra list` asks every node
+
+- **GIVEN** a cluster in which `db0` and `db1` have version `5.0` and `db2` also has `5.0.9-custom`
+- **WHEN** the user runs `cassandra list`
+- **THEN** `5.0` is listed as installed, and `5.0.9-custom` is listed as installed on `db2` only,
+  naming the nodes it is missing from
+- **AND** the output never presents one node's directory listing as the cluster's.
+
+#### Scenario: `cassandra list` names a node it cannot list
+
+- **GIVEN** a node whose versions cannot be listed
+- **WHEN** the user runs `cassandra list`
+- **THEN** the output names that node and the error, lists what the other nodes reported, and the
+  command exits non-zero.
 
 #### Scenario: A stale cache object for a URL version is ignored
 

@@ -2,6 +2,10 @@
 
 This page documents the ports used by easy-db-lab and the services it provisions.
 
+Every node uses the ephemeral port range 1024-65535 and reserves the NodePort range and every
+fixed host listener port below it, so no outbound connection takes one. A new fixed host port must
+be added to the reserved list. See [Node OS Tuning](../user-guide/node-tuning.md#network-settings).
+
 ## Cassandra Ports
 
 | Port | Purpose |
@@ -48,6 +52,7 @@ The Service and pod ports:
 | 3200 | Tempo (trace storage) |
 | 5001 | YACE CloudWatch exporter (Prometheus) |
 | 8080 | kube-state-metrics (Prometheus; ClusterIP Service, pod network) |
+| 2381 | K3s embedded etcd metrics (Prometheus, plain HTTP, control node; localhost and the private IP) |
 
 ## Observability Ports (All Nodes — DaemonSets)
 
@@ -68,6 +73,24 @@ The Service and pod ports:
 | 9965 | Hubble metrics (Prometheus, every node) |
 | 31234 | Hubble UI (NodePort, any node's private IP) |
 
+## Stress Ports (App Nodes)
+
+| Port | Service |
+|------|---------|
+| 9500-9599 | Stress metrics (Prometheus). Each `cassandra stress start` takes the next port, wrapping after 100 runs, so a run cannot bind its port while the run 100 before it is still running on that node. Reserved by node tuning. |
+
+## Flannel
+
+| Port | Service |
+|------|---------|
+| 8472/udp | flannel VXLAN, on every node when the CNI is flannel (`init --cni=flannel`). Reserved by node tuning. |
+
+## Tailscale
+
+| Port | Service |
+|------|---------|
+| 41641/udp | tailscaled WireGuard (every node that joins the tailnet). Reserved by node tuning. |
+
 ## Kit Ports
 
 Kits publish client ports through NodePort Services, reachable on any node's private IP.
@@ -76,6 +99,13 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 |------|-----|---------|
 | 31211 | memcached | memcached client port (NodePort → 11211) |
 | 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
+| 30943 | ferrosa | CQL (NodePort → 9042, first pod) |
+| 30909 | ferrosa | console, `/metrics` and `/readyz` (NodePort → 9090, first pod; metrics are scraped by pod discovery) |
+| 30787 | ferrosa | Bolt (NodePort → 7687, first pod) |
+| 30747 | ferrosa | graph HTTP API (NodePort → 7474, first pod) |
+| 30880 | ferrosa | SPARQL (NodePort → 8080, first pod) |
+| 30532 | ferrosa | Postgres wire stub (NodePort → 5432, first pod) |
+| 30815 | ferrosa | Arrow Flight (NodePort → 8815, first pod) |
 | 30687 | neo4j | Bolt (NodePort → 7687) |
 | 30474 | neo4j | HTTP (NodePort → 7474) |
 | 30432 | postgres | PostgreSQL (NodePort → 5432) |

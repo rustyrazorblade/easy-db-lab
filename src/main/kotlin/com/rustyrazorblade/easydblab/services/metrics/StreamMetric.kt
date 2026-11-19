@@ -79,7 +79,7 @@ enum class StreamMetric(
 }
 
 private const val DISK_DEVICES = "device!~\"loop.*|.*p[0-9]+\""
-private const val NETWORK_DEVICES = "device=~\"ens.*|eth.*\""
+private const val NETWORK_DEVICES = "device=~\"en.*|eth.*\""
 
 private fun selector(
     metric: String,

@@ -54,7 +54,6 @@ internal class ClusterToolingSshCommandsTest {
         stateManager.save(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 hosts = mapOf(ServerType.Control to listOf(ClusterHost("54.1.2.3", "10.0.0.1", "control0", "us-west-2a"))),
             ),
         )

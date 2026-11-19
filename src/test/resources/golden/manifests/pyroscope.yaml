@@ -1,0 +1,383 @@
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  labels:
+    app.kubernetes.io/name: "pyroscope"
+  name: "pyroscope-config"
+  namespace: "default"
+data:
+  config.yaml: |
+    # Native multi-tenancy: every write and query carries the cluster's tenant in X-Scope-OrgID.
+    multitenancy_enabled: true
+
+    # Pure v2 storage. The default, v1-v2-dual, writes every profile twice.
+    architecture_storage: v2
+
+    # The account bucket, under the pyroscope root. Pyroscope v2 lays out its own directories
+    # (segments, blocks) under this prefix. Nothing is written to the cluster's data bucket.
+    storage:
+      # Filled by TemplateService at build time: Pyroscope runs without -config.expand-env.
+      backend: s3
+      prefix: pyroscope
+      s3:
+        bucket_name: acct
+        endpoint: s3.us-west-2.amazonaws.com
+        region: us-west-2
+
+    # The metastore holds the only index of the blocks this cluster wrote; v2 cannot rebuild it from
+    # S3. Its data and Raft state live on the control node's disk (/data is a hostPath), so a pod
+    # restart keeps every profile queryable.
+    #
+    # NEVER delete a profile by age: the index cleanup that drives v2 retention is off. v2 compaction
+    # stays on: it merges this cluster's segments into blocks and keeps their data.
+    metastore:
+      data_dir: /data/metastore/data
+      raft:
+        dir: /data/metastore/raft
+        snapshots_dir: /data/metastore/raft
+      index:
+        cleanup_interval: 0s
+
+    self_profiling:
+      disable_push: true
+
+    limits:
+      # 0 means data is never deleted (the v2.2+ default is 31 days).
+      retention_period: 0s
+      max_label_names_per_series: 30
+      # One eBPF profile holds one sample per distinct stack in its window, so its sample count is at
+      # most sample_rate (97 Hz) x collect_interval (15 s) x vCPUs, from config.alloy: 1,455 per vCPU.
+      # The default of 16,000 is 11 busy vCPUs; edbl-ab1172 (64 vCPUs) sent 18,995 and lost every
+      # data-node profile. 300,000 covers a 192-vCPU node with every tick on a distinct stack.
+      max_profile_stacktrace_samples: 300000
+      # The uncompressed size cap must let a profile at the sample limit through: 256 bytes a sample
+      # (a 60-frame pprof measures 226) gives 80 MiB. It stays under Pyroscope's 100 MiB gRPC message
+      # cap, because the distributor forwards each profile to the segment writer in one message.
+      # Measured on 2.3.1: one 300,000-sample push peaks at about 1.5 GiB of heap, freed after the push.
+      max_profile_size_bytes: 83886080
+      ingestion_rate_mb: 16
+      # The distributor's token bucket rejects any push larger than the burst, so the burst must hold
+      # the largest profile allowed above. The sustained rate stays at 16 MB/s.
+      ingestion_burst_size_mb: 128
+
+    server:
+      http_listen_port: 4040
+---
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  labels:
+    app.kubernetes.io/name: "pyroscope"
+  name: "pyroscope"
+  namespace: "default"
+spec:
+  ports:
+  - name: "http"
+    nodePort: 31040
+    port: 4040
+    protocol: "TCP"
+    targetPort: 4040
+  selector:
+    app.kubernetes.io/name: "pyroscope"
+  type: "NodePort"
+---
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  labels:
+    app.kubernetes.io/name: "pyroscope"
+  name: "pyroscope"
+  namespace: "default"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "pyroscope"
+  strategy:
+    type: "Recreate"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "pyroscope"
+    spec:
+      containers:
+      - args:
+        - "-config.file=/etc/pyroscope/config.yaml"
+        image: "grafana/pyroscope:2.3.1"
+        livenessProbe:
+          httpGet:
+            path: "/ready"
+            port: 4040
+          periodSeconds: 15
+        name: "pyroscope"
+        ports:
+        - containerPort: 4040
+          protocol: "TCP"
+        readinessProbe:
+          httpGet:
+            path: "/ready"
+            port: 4040
+          periodSeconds: 10
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: "/ready"
+            port: 4040
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: "/etc/pyroscope"
+          name: "config"
+        - mountPath: "/data"
+          name: "data"
+      dnsPolicy: "ClusterFirst"
+      hostNetwork: false
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      serviceAccountName: "default"
+      tolerations:
+      - effect: "NoSchedule"
+        key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+      volumes:
+      - configMap:
+          name: "pyroscope-config"
+        name: "config"
+      - hostPath:
+          path: "/mnt/db1/pyroscope"
+          type: "DirectoryOrCreate"
+        name: "data"
+---
+---
+apiVersion: "v1"
+kind: "ServiceAccount"
+metadata:
+  labels:
+    app.kubernetes.io/name: "pyroscope-ebpf"
+  name: "pyroscope-ebpf"
+  namespace: "default"
+---
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRole"
+metadata:
+  labels:
+    app.kubernetes.io/name: "pyroscope-ebpf"
+  name: "pyroscope-ebpf"
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - "pods"
+  verbs:
+  - "get"
+  - "watch"
+  - "list"
+---
+---
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRoleBinding"
+metadata:
+  labels:
+    app.kubernetes.io/name: "pyroscope-ebpf"
+  name: "pyroscope-ebpf"
+roleRef:
+  kind: "ClusterRole"
+  apiGroup: "rbac.authorization.k8s.io"
+  name: "pyroscope-ebpf"
+subjects:
+- kind: "ServiceAccount"
+  name: "pyroscope-ebpf"
+  namespace: "default"
+---
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  labels:
+    app.kubernetes.io/name: "pyroscope-ebpf"
+  name: "pyroscope-ebpf-config"
+  namespace: "default"
+data:
+  config.alloy: |
+    // Discover the Kubernetes pods scheduled on THIS node so their processes can be
+    // attributed. The node filter keeps each DaemonSet replica watching only its own
+    // node's pods, which minimizes load on the API server.
+    discovery.kubernetes "pods" {
+      role = "pod"
+
+      selectors {
+        role  = "pod"
+        field = "spec.nodeName=" + sys.env("HOSTNAME")
+      }
+    }
+
+    // Turn raw Kubernetes meta labels into the dimensions Pyroscope filters on.
+    // `__meta_kubernetes_pod_container_id` is intentionally left untouched — it is the
+    // key discovery.process joins on below to attach these labels to the right process.
+    discovery.relabel "kubernetes_pods" {
+      targets = discovery.kubernetes.pods.targets
+
+      // Drop terminated containers — they have no live process to profile.
+      rule {
+        action        = "drop"
+        source_labels = ["__meta_kubernetes_pod_phase"]
+        regex         = "Succeeded|Failed|Completed"
+      }
+      rule {
+        action        = "replace"
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+      rule {
+        action        = "replace"
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+      rule {
+        action        = "replace"
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+      // service_name is the primary filter dimension in the Pyroscope UI. Deriving it
+      // from namespace + container (e.g. "tidb-cluster/tikv") makes tikv/tidb/pd and
+      // every other kit component selectable instead of collapsing into "unspecified".
+      rule {
+        action        = "replace"
+        source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_container_name"]
+        separator     = "/"
+        regex         = "(.*)"
+        replacement   = "$1"
+        target_label  = "service_name"
+      }
+    }
+
+    // Discover every host process, then join the Kubernetes metadata above by matching
+    // container id. Processes that belong to a pod inherit namespace/pod/container/
+    // service_name labels; processes that don't (e.g. the host Cassandra systemd service)
+    // are still profiled, just without pod labels.
+    discovery.process "all" {
+      refresh_interval = "60s"
+      join             = discovery.relabel.kubernetes_pods.output
+    }
+
+    // Add the node-level hostname and cluster labels to every target.
+    discovery.relabel "ebpf_targets" {
+      targets = discovery.process.all.targets
+
+      rule {
+        target_label = "hostname"
+        replacement   = sys.env("HOSTNAME")
+      }
+      rule {
+        target_label = "cluster"
+        replacement   = sys.env("CLUSTER_NAME")
+      }
+    }
+
+    // eBPF CPU profiler — profiles Cassandra, ClickHouse, stress jobs, and all other processes
+    pyroscope.ebpf "instance" {
+      forward_to     = [pyroscope.write.endpoint.receiver]
+      targets        = discovery.relabel.ebpf_targets.output
+
+      collect_interval = "15s"
+      sample_rate      = 97
+      demangle         = "full"
+      python_enabled   = false
+    }
+
+    // Node-local profiles relay. Host processes on this node that cannot resolve cluster DNS (the
+    // db-node profiling reconciler) push JFR to http://127.0.0.1:4041/ingest; Alloy runs with host
+    // networking, so this loopback is the node's. Pushes are forwarded, series name and labels intact,
+    // to the same destination as the eBPF profiles below. Loopback only: nothing off the node reaches it.
+    // The port is Constants.K8s.ALLOY_RELAY_PORT; this file takes no template substitution (see below).
+    pyroscope.receive_http "relay" {
+      http {
+        listen_address = "127.0.0.1"
+        listen_port    = 4041
+      }
+      forward_to = [pyroscope.write.endpoint.receiver]
+    }
+
+    // Send profiles to the Pyroscope server. The write URL comes from the PYROSCOPE_WRITE_URL env var
+    // set on the DaemonSet: local mode resolves it to the Pyroscope Service; a redirect cluster resolves it
+    // to the external stack's Pyroscope ingest URL. The cluster's tenant (TENANT, from the cluster-config ConfigMap) rides on
+    // every write in X-Scope-OrgID, in both modes. Both are read from the environment rather than
+    // substituted into this file because Alloy's own `__meta_kubernetes_*` labels collide with the
+    // `__KEY__` template delimiters.
+    pyroscope.write "endpoint" {
+      endpoint {
+        url     = sys.env("PYROSCOPE_WRITE_URL")
+        headers = {
+          "X-Scope-OrgID" = sys.env("TENANT"),
+        }
+      }
+    }
+
+    // Logging
+    logging {
+      level = "warn"
+    }
+---
+---
+apiVersion: "apps/v1"
+kind: "DaemonSet"
+metadata:
+  labels:
+    app.kubernetes.io/name: "pyroscope-ebpf"
+  name: "pyroscope-ebpf"
+  namespace: "default"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "pyroscope-ebpf"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "pyroscope-ebpf"
+    spec:
+      containers:
+      - args:
+        - "run"
+        - "--server.http.listen-addr=0.0.0.0:12345"
+        - "/etc/alloy/config.alloy"
+        env:
+        - name: "HOSTNAME"
+          valueFrom:
+            fieldRef:
+              fieldPath: "spec.nodeName"
+        - name: "CLUSTER_NAME"
+          value: "test-golden-cluster"
+        - name: "PYROSCOPE_WRITE_URL"
+          value: "http://pyroscope.default.svc:4040"
+        - name: "TENANT"
+          valueFrom:
+            configMapKeyRef:
+              key: "tenant"
+              name: "cluster-config"
+        image: "grafana/alloy:v1.20.0"
+        name: "alloy"
+        securityContext:
+          privileged: true
+          runAsGroup: 0
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: "/etc/alloy"
+          name: "config"
+          readOnly: true
+        - mountPath: "/tmp/symb-cache"
+          name: "sym-cache"
+      dnsPolicy: "ClusterFirstWithHostNet"
+      hostNetwork: true
+      hostPID: true
+      serviceAccountName: "pyroscope-ebpf"
+      tolerations:
+      - operator: "Exists"
+      volumes:
+      - configMap:
+          name: "pyroscope-ebpf-config"
+        name: "config"
+      - emptyDir: {}
+        name: "sym-cache"

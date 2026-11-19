@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -70,7 +71,6 @@ class ConfigHashRolloutIntegrationTest {
     private val clusterState =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -93,8 +93,7 @@ class ConfigHashRolloutIntegrationTest {
         SharedK3s.createNamespace(NAMESPACE)
         SharedK3s.createNamespace(TEMPLATE_NAMESPACE)
         client = SharedK3s.client()
-        val clientProvider = mock<K8sClientProvider>()
-        whenever(clientProvider.createClient()).thenAnswer { SharedK3s.client() }
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         manifests = DefaultK8sManifestOperations(clientProvider, EventBus())
         namespaces = DefaultK8sNamespaceOperations(clientProvider, EventBus())
 

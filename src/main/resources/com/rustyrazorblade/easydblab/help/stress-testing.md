@@ -8,7 +8,7 @@ Run load against the db on the cluster's Kubernetes (application node group). Pr
 
 Steps:
 1. `easy-db-lab cassandra stress list` — workloads. `easy-db-lab cassandra stress info <workload>` — details/fields.
-2. `easy-db-lab cassandra stress start` — launch the job on K8s; returns once scheduled.
+2. `easy-db-lab cassandra stress start -- KeyValue -d 1h --threads 100` — launch the job on K8s; returns once scheduled. Everything after `--` goes to cassandra-easy-stress; easy-db-lab's own options (`--name`, `--tags`, `--image`) go before it.
 3. Watch: `easy-db-lab cassandra stress status`, `easy-db-lab cassandra stress logs`. Grafana shows throughput/latency (URLs from `easy-db-lab status`).
 4. `easy-db-lab cassandra stress stop` — stop and delete jobs.
 

@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit
  */
 class TeardownFlushServiceTest {
     private val control = ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a")
-    private val state = ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "acct")
+    private val state = ClusterState(name = "lab", s3Bucket = "acct")
     private val all = TailSignal.entries.toSet()
 
     /** Every step that ran, in the order it started or finished. */
@@ -71,6 +71,7 @@ class TeardownFlushServiceTest {
 
     private var mirrorFailure: Throwable? = null
     private var sendersFailure: Throwable? = null
+    private var sendersAnswered = false
 
     /** The collector whose stop fails after its delete, as one whose pods outlive the deadline. */
     private var collectorThatDoesNotDrain: String? = null
@@ -92,8 +93,15 @@ class TeardownFlushServiceTest {
                 timeout: Duration,
                 onAbsent: (String) -> Unit,
                 onDeleting: (String) -> Unit,
+                onDeleteAccepted: () -> Unit,
             ) {
                 order += "senders stop"
+                if (sendersAnswered) {
+                    // As K8sTelemetrySenders does: the first collector is announced, its delete
+                    // answered, and only then does its wait run (and here fail).
+                    onDeleting(TelemetrySenders.COLLECTORS.first())
+                    onDeleteAccepted()
+                }
                 sendersFailure?.let { throw it }
                 // As K8sTelemetrySenders does: each collector in order, announced as absent or just
                 // before its delete, and a collector that does not drain ends the stop there.
@@ -236,6 +244,89 @@ class TeardownFlushServiceTest {
         assertThat(outcome.failed.getValue(TailSignal.METRICS)).hasMessageContaining("forbidden")
         assertThat(outcome.failed.getValue(TailSignal.TRACES)).hasMessageContaining("Tempo's readiness check failed")
         assertThat(outcome.saved.keys).containsExactlyInAnyOrder(TailSignal.PROFILES, TailSignal.ANNOTATIONS)
+    }
+
+    /**
+     * A cluster whose K3s never started: every step fails before it reaches anything. A step marks its
+     * workload before the call, because a timeout may still have changed it; a failure that never
+     * reached the cluster takes that mark back, so nothing is reported as stopped or deleted.
+     */
+    @Test
+    fun `steps that never reach the cluster report their workloads as unreached, not stopped`() {
+        sendersFailure = java.io.FileNotFoundException("kubeconfig (No such file or directory)")
+        val outcome =
+            service(
+                loki = throwing("loki", SignalReport.Logs, socksFailure()),
+                mimir = throwing("mimir", SignalReport.Metrics, java.net.ConnectException("Connection refused")),
+            ).saveTail(control, state, setOf(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES))
+
+        assertThat(outcome.saved).isEmpty()
+        assertThat(outcome.failed.values).allMatch { it.unreached }
+        assertThat(outcome.backends)
+            .containsEntry("loki", BackendState.UNREACHED)
+            .containsEntry("mimir", BackendState.UNREACHED)
+            .containsEntry("otel-collector", BackendState.UNREACHED)
+        assertThat(outcome.failed.getValue(TailSignal.TRACES)).hasMessageContaining("kubeconfig (No such file or directory)")
+    }
+
+    /** A record step writes the local state file: a missing file there is not a cluster that could not be reached. */
+    @Test
+    fun `a failed record is never reported as unable to reach the cluster`() {
+        val outcome =
+            service().saveTail(control, state, setOf(TailSignal.METRICS)) { _, _ ->
+                throw java.nio.file.NoSuchFileException("/ws/state.json")
+            }
+
+        val failure = outcome.failed.getValue(TailSignal.METRICS)
+        assertThat(failure.step).isEqualTo(FlushStep.RECORD_METRICS)
+        assertThat(failure.unreached).isFalse()
+        assertThat(outcome.backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
+    }
+
+    /** A timeout means the request may have arrived, so the conservative state stays and the step is not "unreached". */
+    @Test
+    fun `a timeout keeps the state the step marked`() {
+        val outcome =
+            service(
+                mimir = throwing("mimir", SignalReport.Metrics, java.net.SocketTimeoutException("Read timed out")),
+            ).saveTail(control, state, setOf(TailSignal.METRICS))
+
+        assertThat(outcome.failed.getValue(TailSignal.METRICS).unreached).isFalse()
+        assertThat(outcome.backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
+    }
+
+    /**
+     * Once the cluster has answered a step's first call, a later call of the same step that fails to
+     * connect proves nothing: the change may have happened first. The mark stays.
+     */
+    @Test
+    fun `a later call that cannot connect keeps the mark once the first call was answered`() {
+        val loki =
+            SignalFlush { _, _, progress ->
+                progress.begin(FlushStep.LOKI_SHUTDOWN)
+                progress.mark("loki", BackendState.INGESTER_STOPPED)
+                progress.answered()
+                progress.begin(FlushStep.LOKI_SCALE_DOWN)
+                progress.mark("loki", BackendState.SCALED_TO_ZERO)
+                throw java.net.ConnectException("Connection refused")
+            }
+
+        val outcome = service(loki = loki).saveTail(control, state, setOf(TailSignal.LOGS))
+
+        assertThat(outcome.backends).containsEntry("loki", BackendState.SCALED_TO_ZERO)
+    }
+
+    @Test
+    fun `a collector stop whose delete was accepted keeps the collector deleted when the wait loses the tunnel`() {
+        sendersAnswered = true
+        sendersFailure = socksFailure()
+
+        val outcome = service().saveTail(control, state, setOf(TailSignal.TRACES))
+
+        // The first collector's delete was answered, so it stays deleted; the one after it was never touched.
+        assertThat(outcome.backends)
+            .containsEntry(TelemetrySenders.COLLECTORS.first(), BackendState.DELETED)
+            .containsEntry(TelemetrySenders.COLLECTORS.last(), BackendState.RUNNING)
     }
 
     /** A failure of any other type still fails only its signal: it never escapes and loses the others. */

@@ -6,10 +6,13 @@ import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
 
 /**
- * A kubeconfig that cannot be parsed fails every K8s call, so the failure must name the file and the
- * parse problem instead of surfacing an opaque YAML error.
+ * A kubeconfig that cannot be read or parsed fails every K8s call, so the failure must name the file
+ * instead of surfacing an opaque YAML error, and must never quote the file's text, which holds client
+ * keys and tokens.
  */
 class KubeconfigFileTest {
     @TempDir
@@ -31,7 +34,7 @@ class KubeconfigFileTest {
         }
 
     @Test
-    fun `a truncated kubeconfig fails naming the path and the parse cause`() {
+    fun `a truncated kubeconfig fails naming the path and the kind of failure, never quoting its text`() {
         val file = truncatedKubeconfig()
 
         val thrown = catchThrowable { currentContextOf(file.toPath()) }
@@ -39,15 +42,18 @@ class KubeconfigFileTest {
         assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining(file.absolutePath)
-        val cause = thrown.cause
-        assertThat(cause).isNotNull()
-        assertThat(thrown.message).contains(
-            cause
-                ?.message
-                .orEmpty()
-                .lines()
-                .first(),
-        )
+            .hasMessageNotContaining("https://10.0")
+            .hasNoCause()
+    }
+
+    @Test
+    fun `a missing kubeconfig fails as an IOException naming the path, with a file-not-found cause`() {
+        val missing = File(tempDir, "no-such-dir/kubeconfig")
+
+        assertThatThrownBy { currentContextOf(missing.toPath()) }
+            .isInstanceOf(IOException::class.java)
+            .hasMessageContaining(missing.absolutePath)
+            .hasCauseInstanceOf(FileNotFoundException::class.java)
     }
 
     @Test

@@ -15,6 +15,6 @@ fun fixedContract(
 ): ClusterContractSource =
     ClusterContractSource {
         ClusterContract
-            .of(ClusterState(name = "test", versions = mutableMapOf()))
+            .of(ClusterState(name = "test"))
             .copy(nodeCapabilities = capabilities(), hosting = hosting())
     }

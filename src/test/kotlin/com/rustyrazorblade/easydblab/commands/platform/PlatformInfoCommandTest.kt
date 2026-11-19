@@ -54,7 +54,6 @@ class PlatformInfoCommandTest : BaseKoinTest() {
     private fun state(kitStorageClass: String? = null) =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             initConfig = InitConfig(kitStorageClass = kitStorageClass),
             hosts =
                 mapOf(

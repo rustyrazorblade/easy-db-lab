@@ -35,7 +35,6 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
     private val clusterState =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             clusterId = "c0ffee",
             s3Bucket = bucket,
             initConfig = InitConfig(region = "us-west-2", tenant = "acme"),

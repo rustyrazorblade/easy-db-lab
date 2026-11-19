@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.commands.grafana
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
@@ -39,10 +38,6 @@ class GrafanaInstall : PicoBaseCommand() {
     override fun execute() {
         val file = File(dashboardPath)
         require(file.exists()) { "Dashboard file not found: $dashboardPath" }
-
-        val controlHost =
-            clusterState.hosts[ServerType.Control]?.firstOrNull()
-                ?: error("No control node found in cluster state.")
 
         val dashboard =
             DashboardDefaults.apply(

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import java.time.Duration
 
@@ -28,7 +27,7 @@ sealed interface WorkloadPresence {
  * `start` right after would be refused.
  */
 class KitWorkloadProbe(
-    private val kubeService: KubernetesService,
+    private val kubeService: K8sReadOperations,
     private val helmService: HelmService,
     private val pollInterval: Duration = Constants.Kit.STOP_WAIT_POLL_INTERVAL,
     private val maxPolls: Int = Constants.Kit.STOP_WAIT_MAX_POLLS,

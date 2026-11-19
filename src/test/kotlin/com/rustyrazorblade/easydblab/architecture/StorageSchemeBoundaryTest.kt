@@ -24,6 +24,14 @@ class StorageSchemeBoundaryTest {
             "configuration/store/StoreBackend.kt" to "endpoint: String = \"s3.\$region.amazonaws.com\",",
             // Help text naming the form `spark submit` accepts; S3Uri parses it.
             "commands/spark/SparkSubmit.kt" to "description = [\"Path to JAR file (local path or s3://bucket/key)\"],",
+            // Help text naming the tarball forms `cassandra install` accepts; it does not address the store.
+            "commands/cassandra/CassandraInstall.kt" to
+                "description = [\"Tarball URL (.tar.gz or s3://) or git repository URL (with --branch)\"],",
+            // A profile build error naming the url forms an entry may hold; it does not address the store.
+            "services/cassandraversions/ProfileBuildSource.kt" to
+                "\"(a tarball, an s3:// URI or a git URL); an Apache release needs no entry.\"",
+            // The public IP-echo service `up` asks for the operator's address; not an object-store host.
+            "Constants.kt" to "const val EXTERNAL_IP_URL = \"https://checkip.amazonaws.com/\"",
         )
 
     @Test

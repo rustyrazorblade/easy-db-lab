@@ -4,14 +4,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
-import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
-import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.io.File
+import java.nio.file.Path
 
 /**
  * Unified service for backup and restore operations.
@@ -95,15 +94,18 @@ data class VpcRestoreResult(
  * Default implementation of BackupRestoreService.
  *
  * Coordinates VpcService and ClusterBackupService to provide
- * unified backup/restore operations. A VPC restore also writes the tool wrappers and the
- * Tailscale flag, so the restored workspace works without `up`.
+ * unified backup/restore operations. A VPC restore also regenerates `sshConfig` and `env.sh` for
+ * this machine, the tool wrappers and the Tailscale flag, so the restored workspace works without
+ * `up`. `sshConfig` is never backed up: it names the SSH key and the SSH transport of the machine
+ * that wrote it, which are the profile's of the machine that restores.
  */
 class DefaultBackupRestoreService(
     private val vpcService: VpcService,
     private val clusterBackupService: ClusterBackupService,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
-    private val workspaceShellTools: WorkspaceShellTools = WorkspaceShellTools(ToolWrapperInstaller()),
+    private val clusterConfigurationService: ClusterConfigurationService,
+    private val user: User,
 ) : BackupRestoreService {
     override fun restoreFromVpc(
         vpcId: VpcId,
@@ -125,7 +127,7 @@ class DefaultBackupRestoreService(
 
             val vpcTags = vpcService.getVpcTags(vpcId)
             val clusterId =
-                vpcTags[CLUSTER_ID_TAG_KEY]
+                vpcTags[Constants.Vpc.CLUSTER_ID_TAG_KEY]
                     ?: error("VPC $vpcId is missing the ClusterId tag. This VPC was not created by easy-db-lab.")
             val clusterName = vpcTags["Name"] ?: "recovered-cluster"
             val s3Bucket =
@@ -142,7 +144,6 @@ class DefaultBackupRestoreService(
                     vpcId = vpcId,
                     s3Bucket = s3Bucket,
                     infrastructureStatus = InfrastructureStatus.UP,
-                    versions = null,
                 )
 
             // Step 3: Download all files from S3 (including state.json)
@@ -177,9 +178,9 @@ class DefaultBackupRestoreService(
                     bootstrapState
                 }
 
-            // A restored workspace is used as it is, without `up`, so it needs the tool wrappers
-            // and the Tailscale flag that `up` would have written.
-            workspaceShellTools.prepare(File(workingDirectory), restoredState)
+            // A restored workspace is used as it is, without `up`, so it needs the sshConfig, env.sh,
+            // tool wrappers and Tailscale flag that `up` would have written.
+            clusterConfigurationService.writeSshAndEnvironmentFiles(Path.of(workingDirectory), restoredState, user)
 
             VpcRestoreResult(restoredState, result)
         }
@@ -201,6 +202,5 @@ class DefaultBackupRestoreService(
 
     companion object {
         private val log = KotlinLogging.logger {}
-        private const val CLUSTER_ID_TAG_KEY = "ClusterId"
     }
 }

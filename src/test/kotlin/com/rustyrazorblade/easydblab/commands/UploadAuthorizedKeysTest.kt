@@ -50,7 +50,6 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             hosts = mapOf(ServerType.Cassandra to listOf(ClusterHost("1.1.1.1", "10.0.0.1", "db0", "us-west-2a", "i-1"))),
         )
 

@@ -6,10 +6,7 @@ import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.core.exception.SdkClientException
-import software.amazon.awssdk.services.cloudwatchlogs.model.CloudWatchLogsException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
-import software.amazon.awssdk.services.ecr.model.EcrException
-import software.amazon.awssdk.services.ecs.model.EcsException
 import software.amazon.awssdk.services.emr.model.EmrException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.opensearch.model.OpenSearchException
@@ -117,11 +114,10 @@ class AwsErrorHandler : ProviderErrorHandler {
 
     private fun policyFor(error: Throwable): String? =
         when (error) {
-            is Ec2Exception, is EcrException, is SsmException -> AWSPolicy.UserIAM.EC2_POLICY
+            is Ec2Exception, is SsmException -> AWSPolicy.UserIAM.EC2_POLICY
             is IamException, is S3Exception -> AWSPolicy.UserIAM.IAM_POLICY
             is EmrException -> AWSPolicy.UserIAM.EMR_POLICY
             is OpenSearchException -> AWSPolicy.UserIAM.OPENSEARCH_POLICY
-            is EcsException, is CloudWatchLogsException -> AWSPolicy.UserIAM.COMPACTOR_POLICY
             else -> null
         }
 

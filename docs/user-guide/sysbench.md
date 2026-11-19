@@ -109,6 +109,16 @@ Kills any running benchmark pod and runs sysbench cleanup, dropping the test tab
 the target database. If the target database is already stopped, `stop` still finishes and
 removes its pods; it prints why the cleanup did not finish (the cleanup pod's log, or its events if it never started) and says the test tables were left.
 
+### uninstall
+
+```bash
+easy-db-lab kit uninstall sysbench-tidb
+```
+
+Deletes every pod the instance created, by the `easydblab/kit` label: the prepare pod (a failed
+`prepare` leaves one in `Error`), finished run pods and cleanup pods. It does not drop the test
+tables; run `stop` first for that.
+
 ## Rate limiting and overload testing
 
 By default (`--rate=0`) sysbench is thread-bound: each of the `--threads` worker threads

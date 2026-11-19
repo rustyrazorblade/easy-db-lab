@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
+import com.rustyrazorblade.easydblab.services.bringup.BringUpHarness
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -45,7 +46,7 @@ class UpVpcCidrTest : UpTestFixture() {
         )
     }
 
-    private fun newUp(seed: Int): Up = Up(sshStartupDelay = Duration.ZERO, tailnetRetryInterval = Duration.ZERO, random = Random(seed))
+    private fun newUp(seed: Int): Up = Up(tailnetRetryInterval = Duration.ZERO, random = Random(seed), timing = BringUpHarness.FAST)
 
     private fun vpcCreateFailure(): Ec2Exception = Ec2Exception.builder().message("VPC create failed").build() as Ec2Exception
 
@@ -129,6 +130,31 @@ class UpVpcCidrTest : UpTestFixture() {
         assertThat(networking.firstValue.vpcCidr).isEqualTo("10.42.0.0/16")
         verify(mockVpcService, never()).createVpc(any(), any(), any())
         assertThat(emitted.filterIsInstance<Event.Setup.AutoSelectedCidr>()).isEmpty()
+    }
+
+    @Test
+    fun `a VPC supplied with --vpc keeps its tags, while the cluster's own VPC gets the bucket tag backfilled`() {
+        val bucket = "acct-bucket"
+        listOf(true to false, false to true).forEach { (supplied, expectBackfill) ->
+            resetMocksForRun()
+            val state =
+                happyState(cidr = "10.42.0.0/16").apply {
+                    vpcId = "vpc-existing"
+                    vpcSupplied = supplied
+                    s3Bucket = bucket
+                }
+            whenever(mockClusterStateManager.load()).thenReturn(state)
+            whenever(mockVpcService.getVpcName("vpc-existing")).thenReturn("a-vpc")
+            whenever(mockVpcService.getVpcTags("vpc-existing")).thenReturn(emptyMap())
+
+            newUp(seed = 7).execute()
+
+            if (expectBackfill) {
+                verify(mockVpcService).addTagsToVpc("vpc-existing", mapOf(Constants.Vpc.BUCKET_TAG_KEY to state.s3Bucket.orEmpty()))
+            } else {
+                verify(mockVpcService, never()).addTagsToVpc(any(), any())
+            }
+        }
     }
 
     @Test

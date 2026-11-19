@@ -114,6 +114,84 @@ assert_axonops 4.1 "$JDK17" "4.1-agent"
 assert_axonops 5.0 "$JDK11" "5.0-agent-jdk11"
 assert_axonops 5.0 "$JDK17" "5.0-agent-jdk17"
 
+# --- the agents AxonOps ships -------------------------------------------------
+# The refusal message names these, and the list must come from the same mapping as the selection,
+# so an agent added to one cannot be missing from the other.
+expected_agents="3.0-agent 3.11-agent 4.0-agent-jdk8 4.0-agent 4.1-agent-jdk8 4.1-agent 5.0-agent-jdk11 5.0-agent-jdk17"
+actual_agents="$(edl_axonops_agents | tr '\n' ' ')"
+actual_agents="${actual_agents% }"
+if [[ "$actual_agents" == "$expected_agents" ]]; then
+  pass "edl_axonops_agents lists the eight agents AxonOps ships, each once"
+else
+  fail "edl_axonops_agents should list [${expected_agents}], got [${actual_agents}]"
+fi
+
+for agent in $(edl_axonops_agents); do
+  found=""
+  for v in 3.0 3.11 4.0 4.1 5.0; do
+    for j in "$JDK8" "$JDK11" "$JDK17"; do
+      if [[ "$(edl_axonops_agent_for "$v" "$j")" == "$agent" ]]; then found=1; fi
+    done
+  done
+  if [[ -n "$found" ]]; then
+    pass "listed agent ${agent} is one the selection picks"
+  else
+    fail "listed agent ${agent} is never picked by edl_axonops_agent_for"
+  fi
+done
+
+# --- the AxonOps -javaagent option for the agent the CLI chose ---------------
+# cassandra.in.sh no longer selects an agent: `cassandra start` writes EDL_AXONOPS_AGENT into the
+# systemd drop-in, and this turns it into the option. Empty means no agent, on purpose.
+AXON_SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$AXON_SANDBOX"' EXIT
+mkdir -p "${AXON_SANDBOX}/5.0-agent-jdk17/lib" "${AXON_SANDBOX}/4.1-agent/lib"
+# The jar inside is named for the release, never for the directory (no jdk suffix).
+touch "${AXON_SANDBOX}/5.0-agent-jdk17/lib/axon-cassandra5.0-agent.jar"
+
+if out="$(edl_axonops_javaagent "" "$AXON_SANDBOX")" && [[ -z "$out" ]]; then
+  pass "an empty EDL_AXONOPS_AGENT gives no -javaagent option"
+else
+  fail "an empty agent should succeed with no output, got '${out}'"
+fi
+
+if out="$(edl_axonops_javaagent 5.0-agent-jdk17 "$AXON_SANDBOX")" \
+   && [[ "$out" == "-javaagent:${AXON_SANDBOX}/5.0-agent-jdk17/lib/axon-cassandra5.0-agent.jar=/etc/axonops/axon-agent.yml" ]]; then
+  pass "a set EDL_AXONOPS_AGENT loads that agent's jar, found by glob"
+else
+  fail "expected the 5.0-agent-jdk17 jar option, got '${out}'"
+fi
+
+if out="$(edl_axonops_javaagent 4.1-agent "$AXON_SANDBOX")"; then
+  fail "an agent with no jar should fail, got '${out}'"
+elif [[ -n "$out" ]]; then
+  fail "an agent with no jar failed but printed '${out}'"
+else
+  pass "an agent with no jar fails, printing nothing, so the start can refuse"
+fi
+
+if sh_out="$("$(command -v dash || command -v sh)" -c '. "$1"; edl_axonops_javaagent 5.0-agent-jdk17 "$2"' _ "${SCRIPT_DIR}/edl-cassandra-agents.sh" "$AXON_SANDBOX" 2>&1)" \
+   && [[ "$sh_out" == "-javaagent:"*"axon-cassandra5.0-agent.jar="* ]]; then
+  pass "the -javaagent option works under /bin/sh"
+else
+  fail "the -javaagent option must work under /bin/sh, got: ${sh_out}"
+fi
+
+# cassandra.in.sh must load only the agent the CLI chose: no selection, no NOTE path.
+in_sh="$(grep -v '^[[:space:]]*#' "${SCRIPT_DIR}/../cassandra.in.sh")"
+for gone in edl_axonops_agent_for "NOTE: no AxonOps"; do
+  if [[ "$in_sh" == *"$gone"* ]]; then
+    fail "cassandra.in.sh still has ${gone}"
+  else
+    pass "cassandra.in.sh has no ${gone}"
+  fi
+done
+if [[ "$in_sh" == *'edl_axonops_javaagent "${EDL_AXONOPS_AGENT:-}"'* ]]; then
+  pass "cassandra.in.sh loads the agent named by EDL_AXONOPS_AGENT"
+else
+  fail "cassandra.in.sh should call edl_axonops_javaagent with EDL_AXONOPS_AGENT"
+fi
+
 for combo in "5.0 21" "5.1 17" "6.0 21" "7.0 21"; do
   # shellcheck disable=SC2086
   set -- $combo
@@ -198,6 +276,13 @@ if sh_out="$("$POSIX_SH" -c '. "$1"; edl_axonops_agent_for 4.0 "$(edl_java_major
   pass "agent selection works under ${POSIX_SH}"
 else
   fail "agent selection must work under ${POSIX_SH}, got: ${sh_out}"
+fi
+
+if sh_out="$("$POSIX_SH" -c '. "$1"; edl_axonops_agents' _ "${SCRIPT_DIR}/edl-cassandra-agents.sh" 2>&1)" \
+   && [[ "$(printf '%s\n' "$sh_out" | tr '\n' ' ')" == "${expected_agents} " ]]; then
+  pass "the shipped agent list works under ${POSIX_SH}"
+else
+  fail "the shipped agent list must work under ${POSIX_SH}, got: ${sh_out}"
 fi
 
 if sh_out="$("$POSIX_SH" -c '. "$1"; edl_java_major_version "openjdk version \"25\" 2025-09-16"' _ "${SCRIPT_DIR}/edl-cassandra-agents.sh" 2>&1)" \

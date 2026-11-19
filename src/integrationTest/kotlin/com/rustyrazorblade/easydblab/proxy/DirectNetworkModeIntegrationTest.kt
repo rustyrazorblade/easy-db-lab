@@ -50,7 +50,7 @@ class DirectNetworkModeIntegrationTest {
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
         kubeconfig.writeText(SharedK3s.kubeConfigYaml())
         stateManager.save(
-            ClusterState(name = "local", versions = mutableMapOf(), environment = Environment.K3sDocker(File(workspace, "data").path))
+            ClusterState(name = "local", environment = Environment.K3sDocker(File(workspace, "data").path))
                 .apply { markInfrastructureUp() },
         )
         koin =

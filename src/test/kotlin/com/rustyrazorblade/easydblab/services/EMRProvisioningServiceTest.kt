@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.YamlTestSupport
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -26,14 +27,17 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.emr.model.InstanceGroupType
+import java.io.IOException
+import java.nio.file.Path
 
 /**
  * Tests for EMRProvisioningService verifying correct EMR cluster creation.
  */
 internal class EMRProvisioningServiceTest {
     private lateinit var mockEmrService: EMRService
-    private lateinit var objectStore: InMemoryObjectStore
+    private lateinit var objectStore: DownloadFailingStore
     private lateinit var eventBus: EventBus
     private lateinit var capturedEvents: MutableList<Event>
     private lateinit var service: DefaultEMRProvisioningService
@@ -52,7 +56,7 @@ internal class EMRProvisioningServiceTest {
     @BeforeEach
     fun setUp() {
         mockEmrService = mock()
-        objectStore = InMemoryObjectStore()
+        objectStore = DownloadFailingStore()
         capturedEvents = mutableListOf()
         eventBus = EventBus()
         eventBus.addListener(
@@ -68,7 +72,6 @@ internal class EMRProvisioningServiceTest {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             ),
@@ -88,7 +91,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
@@ -316,7 +318,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
@@ -362,7 +363,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             )
@@ -393,7 +393,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -412,7 +411,7 @@ internal class EMRProvisioningServiceTest {
             .thenThrow(IllegalStateException("Cluster failed: TERMINATED_WITH_ERRORS"))
         // listInstances throws to trigger the fallback path
         whenever(mockEmrService.listInstances(eq("j-FAIL"), any()))
-            .thenThrow(RuntimeException("Cluster already terminated"))
+            .thenThrow(SdkClientException.create("Cluster already terminated"))
 
         assertThatThrownBy {
             service.provisionEmrCluster(
@@ -441,11 +440,106 @@ internal class EMRProvisioningServiceTest {
     }
 
     @Test
+    fun `provisionEmrCluster lets a diagnostics failure that is not an AWS or I-O failure propagate`() {
+        val clusterState =
+            ClusterState(
+                name = "test-cluster",
+                s3Bucket = "easy-db-lab-test-bucket",
+                clusterId = "test-id",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+            )
+
+        val createResult =
+            EMRClusterResult(
+                clusterId = "j-FAIL",
+                clusterName = "test-spark",
+                masterPublicDns = null,
+                state = "STARTING",
+            )
+
+        whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
+        whenever(mockEmrService.waitForClusterReady("j-FAIL"))
+            .thenThrow(IllegalStateException("Cluster failed: TERMINATED_WITH_ERRORS"))
+        // listInstances throws to trigger the fallback path
+        whenever(mockEmrService.listInstances(eq("j-FAIL"), any()))
+            .thenThrow(IllegalArgumentException("bug in diagnostics"))
+
+        assertThatThrownBy {
+            service.provisionEmrCluster(
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.xlarge",
+                    workerInstanceType = "m5.xlarge",
+                    workerCount = 3,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = emptyMap(),
+                ),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("bug in diagnostics")
+
+        assertThat(capturedEvents).noneMatch { it is Event.Emr.BootstrapFailureLogUnavailable }
+    }
+
+    @Test
+    fun `provisionEmrCluster reports an unreadable bootstrap log as unavailable when the log download fails with an I-O error`() {
+        val clusterState =
+            ClusterState(
+                name = "test-cluster",
+                s3Bucket = "easy-db-lab-test-bucket",
+                clusterId = "test-id",
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+            )
+
+        val createResult =
+            EMRClusterResult(
+                clusterId = "j-FAIL",
+                clusterName = "test-spark",
+                masterPublicDns = null,
+                state = "STARTING",
+            )
+
+        whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
+        whenever(mockEmrService.waitForClusterReady("j-FAIL"))
+            .thenThrow(IllegalStateException("Cluster failed: TERMINATED_WITH_ERRORS"))
+        // the stderr download fails with an I-O error, which triggers the fallback path
+        whenever(mockEmrService.listInstances(eq("j-FAIL"), any())).thenReturn(listOf("i-master"))
+        objectStore.failDownloadsWith = IOException("Connection reset")
+
+        assertThatThrownBy {
+            service.provisionEmrCluster(
+                EmrClusterProvisioningConfig(
+                    clusterName = "test",
+                    masterInstanceType = "m5.xlarge",
+                    workerInstanceType = "m5.xlarge",
+                    workerCount = 3,
+                    subnetId = "subnet-123",
+                    securityGroupId = "sg-456",
+                    keyName = "my-key",
+                    clusterState = clusterState,
+                    tags = emptyMap(),
+                ),
+            )
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("TERMINATED_WITH_ERRORS")
+
+        // Verify diagnostics were attempted
+        assertThat(objectStore.downloadAttempts).isEqualTo(1)
+
+        // Verify diagnostic events were emitted
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureDiagnosing }
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureLogUnavailable }
+        assertThat(capturedEvents).anyMatch { it is Event.Emr.BootstrapFailureDebugInstructions }
+    }
+
+    @Test
     fun `diagnostics should emit unavailable when no master instances found`() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -494,7 +588,6 @@ internal class EMRProvisioningServiceTest {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test-bucket",
                 clusterId = "test-id",
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -546,7 +639,6 @@ internal class EMRProvisioningServiceTest {
         clusterId: String = "",
     ) = ClusterState(
         name = name,
-        versions = mutableMapOf(),
         s3Bucket = "easy-db-lab-test-bucket",
         clusterId = clusterId,
         hosts = mapOf(ServerType.Control to listOf(testControlHost)),
@@ -577,5 +669,27 @@ internal class EMRProvisioningServiceTest {
             whenever(mockEmrService.createCluster(any())).thenReturn(createResult)
         }
         whenever(mockEmrService.waitForClusterReady(clusterId)).thenReturn(readyResult)
+    }
+}
+
+/**
+ * The real in-memory store, whose downloads can be made to fail with an I-O error, as an S3 read
+ * of a bootstrap log does when the connection resets. It counts every download it is asked for.
+ */
+private class DownloadFailingStore(
+    private val store: InMemoryObjectStore = InMemoryObjectStore(),
+) : ObjectStore by store {
+    var failDownloadsWith: IOException? = null
+    var downloadAttempts = 0
+        private set
+
+    override fun downloadFile(
+        remotePath: ClusterStoragePath,
+        localPath: Path,
+        showProgress: Boolean,
+    ): ObjectStore.DownloadResult {
+        downloadAttempts++
+        failDownloadsWith?.let { throw it }
+        return store.downloadFile(remotePath, localPath, showProgress)
     }
 }

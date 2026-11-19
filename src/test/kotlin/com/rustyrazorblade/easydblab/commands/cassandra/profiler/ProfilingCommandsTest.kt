@@ -93,7 +93,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
                             ClusterState(
                                 name = "test-cluster",
                                 clusterId = "abc123",
-                                versions = mutableMapOf(),
                                 hosts = hosts,
                             ),
                         )
@@ -129,7 +128,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "abc123",
-                versions = mutableMapOf(),
                 hosts = hosts,
                 initConfig = InitConfig(telemetryRedirect = redirect),
             ),
@@ -145,7 +143,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "abc123",
-                versions = mutableMapOf(),
                 hosts = hosts,
                 initConfig = InitConfig(tenant = "acme"),
             ),
@@ -380,7 +377,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "abc123",
-                versions = mutableMapOf(),
                 hosts = hosts - ServerType.Control,
             ),
         )

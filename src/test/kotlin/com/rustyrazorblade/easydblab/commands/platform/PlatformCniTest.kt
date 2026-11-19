@@ -75,7 +75,6 @@ class PlatformCniTest : BaseKoinTest() {
         hosts: Map<ServerType, List<ClusterHost>> = mapOf(ServerType.Control to listOf(controlHost)),
     ) = ClusterState(
         name = "test",
-        versions = mutableMapOf(),
         hosts = hosts,
         initConfig = InitConfig(region = "us-west-2", cni = cni),
     )
@@ -129,7 +128,7 @@ class PlatformCniTest : BaseKoinTest() {
                         routingMode = "native",
                         ipamMode = "eni",
                         kubeProxyReplacement = "false",
-                        masqueradeInterfaces = "ens+",
+                        masqueradeInterfaces = "en+",
                         nativeRoutingCidr = "10.0.0.0/16",
                         ipv4Masquerade = "true",
                     ),
@@ -138,7 +137,7 @@ class PlatformCniTest : BaseKoinTest() {
                         CiliumNodeSummary(
                             name = "ip-10-0-1-10",
                             eniCount = 2,
-                            subnetCidrs = listOf("10.0.1.0/24", "10.0.2.0/24"),
+                            subnetCidrs = listOf("10.0.0.0/19", "10.0.32.0/19"),
                             ipsAllocated = 8,
                             ipsUsed = 3,
                         ),
@@ -152,13 +151,13 @@ class PlatformCniTest : BaseKoinTest() {
         assertThat(report).contains("Routing mode:            native")
         assertThat(report).contains("IPAM mode:               eni")
         assertThat(report).contains("kube-proxy replacement:  false")
-        assertThat(report).contains("Masquerade interfaces:   ens+")
+        assertThat(report).contains("Masquerade interfaces:   en+")
         assertThat(report).contains("Native routing CIDR:     10.0.0.0/16")
         assertThat(report).contains("http://10.0.0.1:${Constants.Cilium.HUBBLE_UI_NODE_PORT}")
         assertThat(report).contains("Nodes (2):")
         assertThat(report).contains("ip-10-0-1-10")
         assertThat(report).contains("ENIs:           2")
-        assertThat(report).contains("Subnet CIDRs:   10.0.1.0/24, 10.0.2.0/24")
+        assertThat(report).contains("Subnet CIDRs:   10.0.0.0/19, 10.0.32.0/19")
         assertThat(report).contains("IPs allocated:  8")
         assertThat(report).contains("IPs used:       3")
         assertThat(report).contains("IPs available:  5")
@@ -169,7 +168,7 @@ class PlatformCniTest : BaseKoinTest() {
     fun `buildReport says so when the operator has produced no CiliumNode objects yet`() {
         val inspection =
             CiliumInspection(
-                config = CiliumConfigSummary("native", "eni", "false", "ens+", "10.0.0.0/16", "true"),
+                config = CiliumConfigSummary("native", "eni", "false", "en+", "10.0.0.0/16", "true"),
                 nodes = emptyList(),
             )
 

@@ -13,6 +13,8 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * The check runs over SSH on each node, so [RemoteOperationsService] is stubbed at that boundary:
@@ -63,9 +65,11 @@ class CiliumNodeImageCheckTest {
         val command = argumentCaptor<String>()
         verify(remoteOps).executeRemotely(eq(control.toHost()), command.capture(), any(), anyOrNull())
         assertThat(CiliumNodeImageCheck.REQUIRED_FILES).containsExactlyInAnyOrder(
-            "/etc/systemd/network/05-cilium-eni-primary.network",
+            "/etc/systemd/system/edl-primary-eni-network.service",
+            "/usr/local/sbin/edl-primary-eni-network",
             "/etc/systemd/network/06-cilium-eni-unmanaged.network",
             "/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg",
+            "/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg",
         )
         assertThat(command.firstValue).contains(*CiliumNodeImageCheck.REQUIRED_FILES.toTypedArray())
     }
@@ -83,5 +87,22 @@ class CiliumNodeImageCheckTest {
         whenever(remoteOps.executeRemotely(any(), any(), any(), anyOrNull())).thenThrow(IllegalStateException("ssh: connection refused"))
 
         assertThatThrownBy { check.nodesMissingFixes(listOf(db0)) }.hasMessageContaining("connection refused")
+    }
+
+    /** At 1,000 nodes a serial check is 1,000 SSH round trips; the latch opens only if two overlap. */
+    @Test
+    fun `nodes are checked in parallel and reported in input order`() {
+        val bothInside = CountDownLatch(2)
+        whenever(remoteOps.executeRemotely(any(), any(), any(), anyOrNull())).thenAnswer {
+            bothInside.countDown()
+            check(bothInside.await(OVERLAP_WAIT_SECONDS, TimeUnit.SECONDS)) { "checked one node at a time" }
+            Response(CiliumNodeImageCheck.REQUIRED_FILES.first() + "\n")
+        }
+
+        assertThat(check.nodesMissingFixes(listOf(db0, db1)).map { it.node }).containsExactly("db0", "db1")
+    }
+
+    private companion object {
+        const val OVERLAP_WAIT_SECONDS = 5L
     }
 }

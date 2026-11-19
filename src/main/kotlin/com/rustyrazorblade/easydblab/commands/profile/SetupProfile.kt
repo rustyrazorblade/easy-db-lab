@@ -11,9 +11,9 @@ import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidationException
@@ -21,6 +21,7 @@ import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 
@@ -42,6 +43,7 @@ class SetupProfile : PicoBaseCommand() {
     private val userConfigProvider: UserConfigProvider by inject()
     private val awsResourceSetup: AWSResourceSetupService by inject()
     private val awsInfra: AwsInfrastructureService by inject()
+    private val s3BucketService: AwsS3BucketService by inject()
     private val amiValidator: AMIValidator by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val prompter: Prompter by inject()
@@ -52,7 +54,7 @@ class SetupProfile : PicoBaseCommand() {
     override fun execute() {
         val existingConfig = userConfigProvider.loadExistingConfig()
 
-        if (isProfileAlreadySetUp(existingConfig)) {
+        if (isFullySetUp(existingConfig)) {
             handleExistingProfile(existingConfig)
             return
         }
@@ -115,20 +117,6 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * Checks if the profile already has all required fields configured.
-     * Accepts either profile-based auth (awsProfile set) or static credentials.
-     */
-    private fun isProfileAlreadySetUp(existingConfig: Map<String, Any>): Boolean {
-        val hasEmailAndRegion = existingConfig.containsKey("email") && existingConfig.containsKey("region")
-        if (!hasEmailAndRegion) return false
-
-        val hasProfile = (existingConfig["awsProfile"] as? String)?.isNotEmpty() == true
-        val hasCredentials = existingConfig.containsKey("awsAccessKey") && existingConfig.containsKey("awsSecret")
-
-        return hasProfile || hasCredentials
-    }
-
-    /**
      * Collects credentials and validates them, retrying on failure.
      * Returns validated credentials and region.
      * @throws SetupProfileException if credentials fail validation after max retries
@@ -137,7 +125,9 @@ class SetupProfile : PicoBaseCommand() {
         var attempt = 0
         while (attempt < MAX_CREDENTIAL_RETRIES) {
             attempt++
-            val credentials = collectCoreCredentials(existingConfig)
+            // A saved AWS profile is used on the first attempt only. When it failed validation, the
+            // retry asks for the profile again instead of trying the same one.
+            val credentials = collectCoreCredentials(if (attempt == 1) existingConfig else existingConfig - "awsProfile")
             AWSClientFactory.requireValidRegion(credentials.region)
             val regionObj = credentials.region
 
@@ -162,6 +152,24 @@ class SetupProfile : PicoBaseCommand() {
 
         /** The profile file's key for [User.sshTransport]. */
         private const val SSH_TRANSPORT_KEY = "sshTransport"
+
+        /**
+         * Whether [existingConfig] describes a profile with nothing left to create: an email and
+         * region, a way to authenticate (a named AWS profile or static credentials), and the key
+         * pair and bucket every cluster needs. A profile missing any of these takes the full setup
+         * path, which keeps the values it has and creates the rest; the update path only
+         * re-prompts optional fields and would leave it incomplete.
+         */
+        internal fun isFullySetUp(existingConfig: Map<String, Any>): Boolean {
+            val hasEmailAndRegion = existingConfig.containsKey("email") && existingConfig.containsKey("region")
+            val hasProfile = existingConfig.isNotBlank("awsProfile")
+            val hasCredentials = existingConfig.containsKey("awsAccessKey") && existingConfig.containsKey("awsSecret")
+            val hasResources = existingConfig.isNotBlank("keyName") && existingConfig.isNotBlank("s3Bucket")
+
+            return hasEmailAndRegion && (hasProfile || hasCredentials) && hasResources
+        }
+
+        private fun Map<String, Any>.isNotBlank(key: String): Boolean = (this[key] as? String)?.isNotBlank() == true
     }
 
     /**
@@ -173,12 +181,14 @@ class SetupProfile : PicoBaseCommand() {
         val email = promptIfMissing(existingConfig, "email", "What's your email?", "")
         val region = promptIfMissing(existingConfig, "region", "What AWS region do you use?", "us-west-2")
 
-        // Ask for AWS profile first (empty = manual credentials)
+        // A profile that already names its AWS profile is not asked again. Otherwise ask first
+        // (empty = manual credentials).
         val awsProfile =
-            prompter.prompt(
-                "AWS Profile name (or press Enter to enter credentials manually)",
-                "",
-            )
+            (existingConfig["awsProfile"] as? String)?.takeIf { it.isNotBlank() }
+                ?: prompter.prompt(
+                    "AWS Profile name (or press Enter to enter credentials manually)",
+                    "",
+                )
 
         val (awsAccessKey, awsSecret) =
             if (awsProfile.isNotEmpty()) {
@@ -210,12 +220,12 @@ class SetupProfile : PicoBaseCommand() {
         eventBus.emit(Event.Setup.ValidatingCredentials)
 
         try {
-            val tempAWS = createAwsClient(credentials, regionObj)
-            tempAWS.checkPermissions()
+            val identity = createAccountIdentity(credentials, regionObj)
+            identity.checkPermissions()
 
             eventBus.emit(Event.Setup.CredentialsValidSuccess)
 
-            offerIamPolicyDisplay(tempAWS)
+            offerIamPolicyDisplay(identity)
         } catch (e: Exception) {
             eventBus.emit(Event.Setup.CredentialsValidFailed)
             throw SetupProfileException("AWS credentials are invalid", e)
@@ -223,22 +233,22 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * Creates an AWS client using either profile or static credentials.
+     * Creates an account identity using either profile or static credentials.
      */
-    private fun createAwsClient(
+    private fun createAccountIdentity(
         credentials: CoreCredentials,
         regionObj: String,
-    ): AWS =
+    ): AccountIdentity =
         if (credentials.awsProfile.isNotEmpty()) {
-            awsClientFactory.createAWSClientWithProfile(credentials.awsProfile, regionObj)
+            awsClientFactory.createAccountIdentityWithProfile(credentials.awsProfile, regionObj)
         } else {
-            awsClientFactory.createAWSClient(credentials.awsAccessKey, credentials.awsSecret, regionObj)
+            awsClientFactory.createAccountIdentity(credentials.awsAccessKey, credentials.awsSecret, regionObj)
         }
 
     /**
      * Offers to display IAM policies with the user's account ID.
      */
-    private fun offerIamPolicyDisplay(aws: AWS) {
+    private fun offerIamPolicyDisplay(identity: AccountIdentity) {
         val showPolicies =
             prompter.prompt(
                 "Print the IAM policies easy-db-lab needs (to request access from an AWS admin)? " +
@@ -246,7 +256,7 @@ class SetupProfile : PicoBaseCommand() {
                 "N",
             )
         if (showPolicies.equals("y", true)) {
-            val accountId = aws.getAccountId()
+            val accountId = identity.getAccountId()
             displayIAMPolicies(accountId)
         }
     }
@@ -422,7 +432,7 @@ class SetupProfile : PicoBaseCommand() {
     ) {
         ensureKeyPair(userConfig, credentials, regionObj)
         ensureIamRoles(userConfig)
-        ensureS3Bucket(userConfig, credentials, regionObj)
+        ensureS3Bucket(userConfig)
         ensurePackerVpc()
         ensureAmi(userConfig)
     }
@@ -463,31 +473,8 @@ class SetupProfile : PicoBaseCommand() {
     /**
      * Creates an S3 bucket for shared resources if one doesn't exist.
      */
-    private fun ensureS3Bucket(
-        userConfig: User,
-        credentials: CoreCredentials,
-        regionObj: String,
-    ) {
-        if (userConfig.s3Bucket.isBlank()) {
-            eventBus.emit(Event.Setup.S3BucketCreating)
-            val bucketName = "easy-db-lab-${java.util.UUID.randomUUID()}"
-
-            val awsClient = createAwsClient(credentials, regionObj)
-            awsClient.createS3Bucket(bucketName)
-            awsClient.putS3BucketPolicy(bucketName)
-            awsClient.tagS3Bucket(
-                bucketName,
-                mapOf(
-                    "Profile" to context.profile,
-                    "Owner" to credentials.email,
-                    "easy_cass_lab" to "1",
-                ),
-            )
-
-            userConfig.s3Bucket = bucketName
-            userConfigProvider.saveUserConfig(userConfig)
-            eventBus.emit(Event.Setup.S3BucketCreated(bucketName))
-        }
+    private fun ensureS3Bucket(userConfig: User) {
+        s3BucketService.ensureAccountBucket(userConfig)
     }
 
     /**
@@ -543,14 +530,20 @@ class SetupProfile : PicoBaseCommand() {
         try {
             eventBus.emit(Event.Setup.AmiBuildStarting(archType.type))
 
-            commandExecutor.execute {
-                BuildImage().apply {
-                    buildArgs.arch = archType
-                    buildArgs.region = userConfig.region
+            val exitCode =
+                commandExecutor.execute {
+                    BuildImage().apply {
+                        buildArgs.arch = archType
+                        buildArgs.region = userConfig.region
+                    }
                 }
-            }
 
-            eventBus.emit(Event.Setup.AmiBuildSuccess)
+            // The executor reports a failed build by its exit code, not by throwing.
+            if (exitCode == 0) {
+                eventBus.emit(Event.Setup.AmiBuildSuccess)
+            } else {
+                eventBus.emit(Event.Setup.AmiBuildFailed("build-image exited with code $exitCode", archType.type, userConfig.region))
+            }
         } catch (buildError: Exception) {
             eventBus.emit(Event.Setup.AmiBuildFailed(buildError.message ?: "unknown error", archType.type, userConfig.region))
         }

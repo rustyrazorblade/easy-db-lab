@@ -22,9 +22,7 @@ import com.rustyrazorblade.easydblab.commands.cassandra.CassandraInstall
 import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
 import com.rustyrazorblade.easydblab.commands.ingress.IngressAllow
 import com.rustyrazorblade.easydblab.commands.ingress.IngressRevoke
-import com.rustyrazorblade.easydblab.commands.observability.CompactorStart
 import com.rustyrazorblade.easydblab.commands.observability.CompactorStatus
-import com.rustyrazorblade.easydblab.commands.observability.CompactorStop
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStop
@@ -173,7 +171,7 @@ class CommandExecutorTest : BaseKoinTest() {
     private fun recordEnvironment(environment: Environment) {
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load())
-            .thenReturn(ClusterState(name = "test", versions = mutableMapOf(), environment = environment))
+            .thenReturn(ClusterState(name = "test", environment = environment))
     }
 
     // ========== ENVIRONMENT REQUIREMENTS ==========
@@ -291,8 +289,6 @@ class CommandExecutorTest : BaseKoinTest() {
             ::Region,
             ::S3Bucket,
             ::Vpcs,
-            ::CompactorStart,
-            ::CompactorStop,
             ::CompactorStatus,
             ::ConfigureAWS,
             { CassandraBuild().apply { javaVersion = "21" } },
@@ -500,6 +496,14 @@ class CommandExecutorTest : BaseKoinTest() {
         assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
     }
 
+    @Test
+    fun `an error in the JVM is not swallowed as a command failure`() {
+        assertThatThrownBy { commandExecutor.execute { OutOfMemoryCommand() } }
+            .isInstanceOf(OutOfMemoryError::class.java)
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
     // ========== SCHEDULE DEFERRED TESTS ==========
 
     @Test
@@ -610,7 +614,7 @@ class CommandExecutorTest : BaseKoinTest() {
     @Test
     fun `execute should trigger backup for command with TriggerBackup annotation`() {
         // Given
-        val state = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket")
+        val state = ClusterState(name = "test", s3Bucket = "test-bucket")
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
         whenever(mockBackupRestoreService.backupChanged(any(), any()))
@@ -665,7 +669,7 @@ class CommandExecutorTest : BaseKoinTest() {
     @Test
     fun `scheduled commands with TriggerBackup should trigger backup after execution`() {
         // Given
-        val state = ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "test-bucket")
+        val state = ClusterState(name = "test", s3Bucket = "test-bucket")
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
         whenever(mockBackupRestoreService.backupChanged(any(), any()))
@@ -712,7 +716,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -753,7 +756,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -774,7 +776,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = true,
             )
@@ -815,7 +816,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -852,7 +852,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -886,7 +885,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -921,7 +919,6 @@ class CommandExecutorTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 infrastructureStatus = InfrastructureStatus.UP,
                 tailscaleActive = false,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -1051,6 +1048,12 @@ class CommandExecutorTest : BaseKoinTest() {
         override fun execute() {
             ClusterStateManager(stateFile).load()
         }
+    }
+
+    /** Test command that dies of a JVM error, which no handler may turn into an exit code */
+    @Command(name = "out-of-memory-command")
+    inner class OutOfMemoryCommand : PicoBaseCommand() {
+        override fun execute(): Unit = throw OutOfMemoryError("heap exhausted")
     }
 
     /** Test command that reports its own failure, then signals it through the exit code only */

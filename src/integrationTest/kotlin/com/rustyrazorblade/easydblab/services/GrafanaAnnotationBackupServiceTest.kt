@@ -43,7 +43,6 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
     private fun clusterState(bucket: String?) =
         ClusterState(
             name = "perf-test",
-            versions = mutableMapOf(),
             clusterId = "c0ffee",
             s3Bucket = bucket,
             initConfig = InitConfig(region = "us-west-2", tenant = "acme"),

@@ -35,7 +35,7 @@ class TempoManifestBuilderTest : BaseKoinTest() {
                     mock<ClusterStateManager>().also {
                         whenever(
                             it.load(),
-                        ).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
+                        ).thenReturn(ClusterState(name = "test", s3Bucket = "easy-db-lab-test"))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -59,9 +59,10 @@ class TempoManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config(), "overrides", "defaults", "compaction", "compaction_disabled")).isEqualTo("true")
     }
 
+    /** The second guard: if the compaction override is lost, the backend worker still deletes nothing by age. */
     @Test
-    fun `no block retention is configured anywhere`() {
-        assertThat(config()).doesNotContain("block_retention")
+    fun `the backend worker keeps every block for a century`() {
+        assertThat(scalarAt(config(), "backend_worker", "compaction", "block_retention")).isEqualTo("876000h")
     }
 
     @Test

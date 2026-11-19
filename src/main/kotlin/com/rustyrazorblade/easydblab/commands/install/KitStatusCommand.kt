@@ -3,8 +3,8 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.services.HelmService
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitRuntime
@@ -34,7 +34,7 @@ class KitStatusCommand(
     private val installConfig: KitConfig,
 ) : PicoBaseCommand() {
     private val helmService: HelmService by inject()
-    private val kubeService: KubernetesService by inject()
+    private val kubeService: K8sService by inject()
 
     override fun execute() {
         if (clusterState.getControlHost() == null) {
@@ -65,7 +65,7 @@ class KitStatusCommand(
 
     private fun checkRuntimeState(
         runtime: KitRuntime,
-        kubeService: KubernetesService,
+        kubeService: K8sService,
     ): KitRunningState {
         val namespace = runtime.namespace
         return when (runtime.type) {
@@ -86,7 +86,7 @@ class KitStatusCommand(
         }
     }
 
-    private fun checkFallbackState(kubeService: KubernetesService): KitRunningState =
+    private fun checkFallbackState(kubeService: K8sService): KitRunningState =
         stateOfPods(kubeService, podSelector(kitName, runtime = null), "default", ::runningOrStopped)
 
     /**
@@ -95,7 +95,7 @@ class KitStatusCommand(
      * report a kit we could not see as stopped.
      */
     private fun stateOfPods(
-        kubeService: KubernetesService,
+        kubeService: K8sService,
         selector: String,
         namespace: String,
         fromPods: (List<KubernetesPod>) -> KitRunningState,

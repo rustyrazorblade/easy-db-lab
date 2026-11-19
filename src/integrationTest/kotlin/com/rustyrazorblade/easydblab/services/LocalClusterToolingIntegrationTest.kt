@@ -274,7 +274,7 @@ class LocalClusterToolingIntegrationTest {
             try {
                 // The production binding picks the local form from the recorded environment.
                 app.koin.get<ClusterStateManager>().save(
-                    ClusterState(name = "local", versions = mutableMapOf(), environment = Environment.K3sDocker(workspace.absolutePath)),
+                    ClusterState(name = "local", environment = Environment.K3sDocker(workspace.absolutePath)),
                 )
                 assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(LocalClusterTooling::class.java)
                 val events = recordEvents(app.koin.get())
@@ -316,7 +316,7 @@ class LocalClusterToolingIntegrationTest {
         val context =
             StepExecutionContext(
                 kitName = "typed-steps",
-                clusterState = ClusterState(name = "typed-steps", versions = mutableMapOf()),
+                clusterState = ClusterState(name = "typed-steps"),
                 variables = variables,
                 kitDir = kitDir,
                 workspaceDir = workspace,

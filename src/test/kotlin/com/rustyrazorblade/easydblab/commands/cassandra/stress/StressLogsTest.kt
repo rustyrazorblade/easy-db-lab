@@ -62,27 +62,6 @@ class StressLogsTest : BaseKoinTest() {
         mockClusterStateManager = getKoin().get()
     }
 
-    @Test
-    fun `execute should fail when no control nodes exist`() {
-        // Given - cluster state with no control nodes
-        val emptyState =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts = mutableMapOf(),
-            )
-
-        whenever(mockClusterStateManager.load()).thenReturn(emptyState)
-
-        val command = StressLogs()
-        command.jobName = "stress-test-1234567890"
-
-        // When/Then
-        assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No control nodes found")
-    }
-
     // Note: Test for "job name not provided" is not needed because jobName is a
     // required parameter (lateinit) - picocli will handle the validation
 
@@ -92,7 +71,6 @@ class StressLogsTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -146,7 +124,6 @@ class StressLogsTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -191,7 +168,6 @@ class StressLogsTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -217,7 +193,6 @@ class StressLogsTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),

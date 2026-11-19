@@ -10,12 +10,24 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.asResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
+import okio.ForwardingSource
+import okio.Source
+import okio.buffer
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
 import java.time.Duration
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 
 /**
  * The HTTP client stands in at the network boundary: an interceptor records each request and answers
@@ -100,6 +112,87 @@ class ObservabilityHttpTest {
         assertThat(readTimeouts.single()).isEqualTo(600_000)
     }
 
+    /** An [ObservabilityHttp] over [access] whose network answers every call with [handler]. */
+    private fun answering(handler: (Interceptor.Chain) -> Response): ObservabilityHttp {
+        val answeringClient = OkHttpClient.Builder().addInterceptor(Interceptor { handler(it) }).build()
+        val answeringFactory =
+            object : HttpClientFactory {
+                override fun createClient(): OkHttpClient = answeringClient
+
+                override fun close() = Unit
+            }
+        return DefaultObservabilityHttp(access, { "acme" }, answeringFactory)
+    }
+
+    @Test
+    fun `an interrupt of the waiting thread cancels the call and keeps the interrupt flag`() {
+        val inFlight = CountDownLatch(1)
+        val interceptorDone = CountDownLatch(1)
+        val sawCancel = AtomicBoolean(false)
+        val blocked =
+            answering { chain ->
+                inFlight.countDown()
+                val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+                while (!chain.call().isCanceled() && System.nanoTime() < deadline) Thread.sleep(10)
+                sawCancel.set(chain.call().isCanceled())
+                interceptorDone.countDown()
+                throw IOException("canceled")
+            }
+        val failure = AtomicReference<Throwable>()
+        val flagAfter = AtomicBoolean(false)
+        val worker =
+            thread {
+                try {
+                    blocked.get(ClusterServices.MIMIR, "/q")
+                } catch (e: IOException) {
+                    failure.set(e)
+                }
+                flagAfter.set(Thread.currentThread().isInterrupted)
+            }
+
+        assertThat(inFlight.await(10, TimeUnit.SECONDS)).isTrue()
+        worker.interrupt()
+        worker.join(Duration.ofSeconds(5).toMillis())
+
+        assertThat(worker.isAlive).describedAs("the waiting thread did not return after the interrupt").isFalse()
+        assertThat(failure.get()).isInstanceOf(InterruptedIOException::class.java).hasCauseInstanceOf(InterruptedException::class.java)
+        assertThat(flagAfter.get()).describedAs("interrupt flag").isTrue()
+        // The waiting thread returns as soon as the call is cancelled; the interceptor notices a moment later.
+        assertThat(interceptorDone.await(5, TimeUnit.SECONDS)).describedAs("the interceptor saw the call end").isTrue()
+        assertThat(sawCancel.get()).describedAs("the in-flight call was cancelled").isTrue()
+    }
+
+    @Test
+    fun `a failed call throws the IOException the network raised, not a wrapper`() {
+        val failing = answering { throw SocketTimeoutException("read timed out") }
+
+        assertThatThrownBy { failing.get(ClusterServices.MIMIR, "/q") }
+            .isExactlyInstanceOf(SocketTimeoutException::class.java)
+            .hasMessage("read timed out")
+    }
+
+    @Test
+    fun `the answer's body is read and closed inside the call`() {
+        val closed = AtomicBoolean(false)
+        val body = ClosingSource(Buffer().writeUtf8("result"), closed).buffer().asResponseBody(null, -1)
+        val answered =
+            answering { chain ->
+                Response
+                    .Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(body)
+                    .build()
+            }
+
+        val response = answered.get(ClusterServices.MIMIR, "/q")
+
+        assertThat(response).isEqualTo(ObservabilityResponse(200, "result"))
+        assertThat(closed.get()).describedAs("response body closed").isTrue()
+    }
+
     @Test
     fun `a Service the seam cannot open fails before any request is sent`() {
         val unreachable =
@@ -113,5 +206,16 @@ class ObservabilityHttpTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("control node")
         assertThat(requests).isEmpty()
+    }
+}
+
+/** A source over [delegate] that sets [closed] when it is closed, to show a response body was closed. */
+private class ClosingSource(
+    delegate: Source,
+    private val closed: AtomicBoolean,
+) : ForwardingSource(delegate) {
+    override fun close() {
+        closed.set(true)
+        super.close()
     }
 }

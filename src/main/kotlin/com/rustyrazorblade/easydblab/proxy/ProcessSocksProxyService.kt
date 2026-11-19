@@ -99,8 +99,9 @@ private fun utcSeconds(instant: Instant): String = DateTimeFormatter.ISO_INSTANT
  * The process is killed at cluster teardown by the `Down` command via `cleanupSocks5Proxy()`.
  *
  * @param eventBus where the replacement of a recorded tunnel is reported
- * @param verifyAttempts how many times a fresh tunnel is probed before it counts as failed; the
- *   SSH route supplies it when a tunnel starts, because a tunnel over SSM Session Manager takes far longer to come up
+ * @param verifyAttempts how many times a fresh tunnel is probed before it counts as failed, read when
+ *   a tunnel is verified, not when the service is built (the route reads the profile); the
+ *   SSH route supplies it, because a tunnel over SSM Session Manager takes far longer to come up
  * @param connectFailureHint the SSH route's sentence on why ssh may never connect, added to the
  *   failure of a fresh tunnel whose ssh was still connecting when the verify window ended; it is
  *   asked for when that failure is built, so it reflects the cluster state at that time

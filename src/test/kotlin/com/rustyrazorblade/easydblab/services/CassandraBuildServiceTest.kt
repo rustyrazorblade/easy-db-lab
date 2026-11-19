@@ -1,15 +1,42 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.cassandraversions.ReleaseLines
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import java.nio.file.Path
 import kotlin.io.path.createDirectory
 import kotlin.io.path.writeText
 
 class CassandraBuildServiceTest {
+    /**
+     * The JDKs a build records (design D8): the tree's `java.supported`, else the release-line
+     * table for its base version, else only the JDK it was built with.
+     */
+    @ParameterizedTest(name = "{0} base={1} built on {2} -> {3}")
+    @CsvSource(
+        delimiter = '|',
+        value = [
+            "<property name=\"java.supported\" value=\"11,17,21\"/> | 5.1 | 17 | 11,17,21",
+            "<property name=\"java.supported\" value=\"11,17\"/>    | 4.1 | 11 | 11,17",
+            "<project/>                                             | 4.1 | 11 | 8,11",
+            "<project/>                                             | 9.9 | 17 | 17",
+        ],
+    )
+    fun `the supported JDKs come from build xml, else the release-line table, else the build JDK`(
+        buildXml: String,
+        baseVersion: String,
+        java: String,
+        expected: String,
+    ) {
+        assertThat(CassandraBuildService.supportedJdks(buildXml, baseVersion, java, ReleaseLines.load()))
+            .containsExactlyElementsOf(expected.split(","))
+    }
+
     @Test
     fun `base version is read from the build xml property`() {
         val buildXml =

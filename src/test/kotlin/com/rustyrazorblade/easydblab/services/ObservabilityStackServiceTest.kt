@@ -18,6 +18,8 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
@@ -42,6 +44,8 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.CompactorAgentInstaller
+import com.rustyrazorblade.easydblab.ssh.Response
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -64,6 +68,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
@@ -74,6 +79,7 @@ import org.mockito.kotlin.reset
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.nio.file.Files
 
 /**
  * Tests the two modes of [DefaultObservabilityStackService].
@@ -154,7 +160,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 // A data bucket distinct from the account bucket, so a mix-up between the two shows.
@@ -173,6 +178,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
         whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
 
+        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
+
         service = serviceWith(fixedContract({ capabilities }, { hosting(mockClusterStateManager.load()) }))
     }
 
@@ -183,7 +190,16 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             mockRemoteOps,
             getKoin().get(),
             ObservabilityDeployInputs(mockClusterStateManager, contractSource, getKoin().get<ProfileRegion>()),
-            realStageManifests(getKoin(), mockK8sClientProvider),
+            realStageManifests(
+                getKoin(),
+                mockK8sClientProvider,
+                CompactorStage(
+                    CompactorManifestBuilder(getKoin().get()),
+                    CompactorAgentInstaller(mockRemoteOps, getKoin().get()),
+                    bucketRegion = { bucket -> "eu-west-1".also { bucketRegionAsked += bucket } },
+                    agentJar = { agentJar },
+                ),
+            ),
             GrafanaStage(mockDashboardService, DashboardInstallContextFactory(sharedStoreTenants())),
             ConfigChangeReport(mockK8sService, getKoin().get()),
         )
@@ -213,7 +229,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val local =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 environment = Environment.K3sDocker("/data"),
@@ -266,6 +281,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.S3),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.NODE_SSH),
                 Event.Grafana.StageSkipped("YACE", NodeCapability.CLOUDWATCH),
                 Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
             )
@@ -291,6 +309,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.NODE_SSH),
             )
     }
 
@@ -331,6 +351,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 Event.Grafana.StageSkipped("OTel Host Collector", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Pyroscope Agent", NodeCapability.PRIVILEGED),
                 Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.S3),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.NODE_SSH),
                 Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3),
             )
     }
@@ -405,7 +428,11 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         service.deploy().getOrThrow()
 
         assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
-            .containsExactly(Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH))
+            .containsExactlyInAnyOrder(
+                Event.Grafana.StageSkipped("Pod logs", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.HOST_PATH),
+                Event.Grafana.StageSkipped("Account compactor", NodeCapability.NODE_SSH),
+            )
         assertThat(appliedOtelConfig()).doesNotContain("file_log")
         assertThat(appliedKindNames()).contains("DaemonSet/otel-collector")
     }
@@ -457,6 +484,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         verify(mockK8sService, never()).waitForPodsReady(any<Int>())
     }
 
+    private val bucketRegionAsked = mutableListOf<String>()
+
+    private val agentJar by lazy { CompactorAgentJarFile(Files.writeString(tempDir.toPath().resolve("compactor-lease.jar"), "agent")) }
+
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */
     private fun sharedStoreTenants(): TenantDirectory {
         val objectStore = InMemoryObjectStore()
@@ -469,7 +500,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     private fun stateWithCni(cni: CniMode) =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts = controlHosts,
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(region = "us-west-2", cni = cni),
@@ -479,7 +509,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     private fun redirectState() =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts = controlHosts,
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(region = "us-west-2", telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
@@ -619,7 +648,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         service.deploy().getOrThrow()
 
-        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
+        // Only the account compactor's own scratch directories and agent jar are prepared on a node.
+        verify(mockRemoteOps, never()).executeRemotely(any(), argThat { !contains("/mnt/db1/compactor") }, any(), any())
         assertThat(appliedKindNames()).contains("PersistentVolumeClaim/mimir-data", "PersistentVolumeClaim/pyroscope-data")
     }
 
@@ -630,6 +660,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
      */
     @Test
     fun `on claims the stack deploys with no control node and publishes no node IP`() {
+        // A brought cluster has no node access, so the account compactor, which needs it, is skipped.
+        capabilities = NodeCapabilities(NodeCapabilities.AWS.present().toSet() - NodeCapability.NODE_SSH - NodeCapability.AWS_ACCOUNT)
         hosting =
             {
                 ObservabilityHosting(
@@ -694,9 +726,9 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         // No Grafana in redirect mode, so no dashboards uploaded.
         verify(mockDashboardService, never()).deploy(anyOrNull(), any(), any(), any())
 
-        // Neither on-node directory (Pyroscope server data, Grafana data) is prepared: the server
-        // and Grafana do not exist here, so redirect makes no SSH calls at all.
-        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
+        // No backend or Grafana directory is prepared: they do not exist here. The only SSH work
+        // is the account compactor's, which runs on every cluster.
+        assertThat(remoteCommands()).allMatch { it.contains("/mnt/db1/compactor") || it.startsWith("test -f /mnt/db1/compactor") }
 
         // Readiness is still gated on the applied collectors coming up.
         verify(mockK8sService).waitForPodsReady(any())
@@ -720,7 +752,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", nodeLabels = labels),
@@ -748,7 +779,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", nodeLabels = mapOf("pool" to "observability")),
@@ -778,7 +808,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", nodeLabels = mapOf("pool" to "observability")),
@@ -797,6 +826,73 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the account compactor is deployed in both local and redirect mode, for the jar it uploaded and the bucket's region`() {
+        service.deploy().getOrThrow()
+        assertThat(appliedKindNames()).contains("ConfigMap/account-compactor-config", "Deployment/account-compactor")
+        val podSpec = compactorDeployment().spec.template.spec
+        assertThat(
+            podSpec.volumes
+                .single { it.name == "agent-jar" }
+                .hostPath.path,
+        ).isEqualTo(agentJar.remote.hostPath)
+        // The account bucket's own region, not the cluster's (us-west-2), is what every container signs for.
+        val leaseEnv = podSpec.containers.first().env
+        assertThat(leaseEnv.single { it.name == "AWS_REGION" }.value).isEqualTo("eu-west-1")
+        assertThat(leaseEnv.single { it.name == "STORE_REGION" }.value).isEqualTo("eu-west-1")
+        assertThat(leaseEnv.single { it.name == "STORE_ENDPOINT" }.value).isEqualTo("s3.eu-west-1.amazonaws.com")
+        assertThat(bucketRegionAsked).containsExactly("easy-db-lab-test")
+
+        reset(mockK8sService)
+        stubK8sSuccess()
+        whenever(mockClusterStateManager.load()).thenReturn(redirectState())
+        service.deploy().getOrThrow()
+        assertThat(appliedKindNames()).contains("Deployment/account-compactor")
+        assertThat(remoteCommands()).anyMatch { it.contains("sudo mkdir -p /mnt/db1/compactor/mimir") }
+    }
+
+    @Test
+    fun `the compactor's control node is prepared before its Deployment is applied`() {
+        service.deploy().getOrThrow()
+
+        val order = inOrder(mockRemoteOps, mockK8sService)
+        order
+            .verify(mockRemoteOps)
+            .executeRemotely(any(), argThat { contains("/mnt/db1/compactor/mimir") }, any(), any())
+        order.verify(mockK8sService).applyResource(argThat<HasMetadata> { metadata.name == "account-compactor" })
+    }
+
+    @Test
+    fun `the compactor's pod template carries the hash of its ConfigMap and cluster-config`() {
+        service.deploy().getOrThrow()
+
+        assertThat(
+            compactorDeployment()
+                .spec.template.metadata.annotations,
+        ).containsKey(Constants.K8s.CONFIG_HASH_ANNOTATION)
+    }
+
+    /**
+     * Preparing the compactor runs SSH on the control node, so an environment without node SSH, an
+     * object store or hostPath volumes must skip it before anything is built, not fail the deploy.
+     */
+    @Test
+    fun `an environment without node SSH skips the account compactor and runs no SSH for it`() {
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+        val emitted = collectEvents()
+
+        service.deploy().getOrThrow()
+
+        assertThat(appliedKindNames()).doesNotContain("ConfigMap/account-compactor-config", "Deployment/account-compactor")
+        verify(mockRemoteOps, never()).executeRemotely(any(), argThat { contains("/mnt/db1/compactor") }, any(), any())
+        assertThat(bucketRegionAsked).isEmpty()
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().filter { it.stage == "Account compactor" }.map { it.capability })
+            .containsExactlyInAnyOrder(NodeCapability.S3, NodeCapability.NODE_SSH)
+    }
+
+    private fun compactorDeployment(): Deployment =
+        appliedResources().filterIsInstance<Deployment>().last { it.metadata.name == "account-compactor" }
+
+    @Test
     fun `the host add-on config carries the Cilium scrape jobs only when the cluster state says Cilium`() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Cilium))
         service.deploy().getOrThrow()
@@ -808,6 +904,38 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithCni(CniMode.Flannel))
         service.deploy().getOrThrow()
         assertThat(appliedHostConfig()).doesNotContain("cilium-agent").doesNotContain("cilium-operator")
+    }
+
+    /**
+     * The collector and node agents are DaemonSets that roll one pod per node, so a fixed deadline
+     * that fits 4 nodes times out at 1,000. Both waits get the base plus a per-node allowance.
+     */
+    @Test
+    fun `the rollout and readiness deadlines grow with the number of nodes`() {
+        val nodes =
+            (0 until 500).map {
+                ClusterHost(publicIp = "", privateIp = "10.0.$it.1", alias = "db$it", availabilityZone = "us-west-2a")
+            }
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                s3Bucket = "easy-db-lab-test",
+                hosts = mapOf(ServerType.Control to listOf(controlNode), ServerType.Cassandra to nodes),
+            ),
+        )
+
+        service.deploy().getOrThrow()
+
+        val expected =
+            Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS + Constants.Scale.ROLLOUT_PER_NODE_SECONDS.toInt() * 501
+        val rolloutTimeout = argumentCaptor<Int>()
+        val readyTimeout = argumentCaptor<Int>()
+        // The host add-on first waits for the core collector on the fixed deadline; the stack-wide
+        // wait, last, is the one that grows with the cluster.
+        verify(mockK8sService, atLeastOnce()).waitForRollouts(any(), any(), rolloutTimeout.capture())
+        verify(mockK8sService).waitForPodsReady(readyTimeout.capture())
+        assertThat(rolloutTimeout.lastValue).isEqualTo(expected)
+        assertThat(readyTimeout.firstValue).isEqualTo(expected)
     }
 
     @Test
@@ -1036,7 +1164,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = controlHosts,
                 s3Bucket = "easy-db-lab-test",
                 initConfig = InitConfig(region = "us-west-2", cni = cni, telemetryRedirect = redirect),

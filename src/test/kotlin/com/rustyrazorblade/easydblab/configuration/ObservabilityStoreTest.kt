@@ -9,7 +9,6 @@ class ObservabilityStoreTest {
     private val state =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             clusterId = "0f1e2d3c-aaaa-bbbb-cccc-123456789abc",
             s3Bucket = "acct-bucket",
             initConfig = InitConfig(tenant = "acme"),

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.network.Ipv4Cidr
 import java.net.URI
 import java.net.URL
 
@@ -22,21 +23,66 @@ interface ExternalIpService {
 }
 
 /**
- * Default [ExternalIpService] that resolves the public IP via api.ipify.org.
+ * Default [ExternalIpService] that asks a list of plain-text public IP services in order.
  *
- * Both the connect and the read are bounded, so a service that accepts the connection and then
- * sends nothing fails detection with a [java.net.SocketTimeoutException] instead of waiting
- * without end.  [url] and the timeouts are parameters so a test can point them at a local server.
+ * The default order is checkip.amazonaws.com, then api.ipify.org.  A service that fails, or that
+ * answers with anything other than a bare IPv4 address once whitespace is trimmed (checkip ends
+ * its answer with a newline), is skipped for the next one.  When every service fails, the last
+ * failure is thrown with the earlier ones attached as suppressed exceptions; a thrown fetch error
+ * (for example a [java.net.SocketTimeoutException]) is rethrown as is.
+ *
+ * Both the connect and the read of the default fetch are bounded, so a service that accepts the
+ * connection and then sends nothing fails instead of waiting without end.  [fetch] is a parameter
+ * so a test can decide each answer without the network.
  */
 class DefaultExternalIpService(
-    private val url: URL = URI(Constants.Network.EXTERNAL_IP_URL).toURL(),
+    private val urls: List<URL> = DEFAULT_URLS,
     private val connectTimeoutMs: Int = Constants.Network.EXTERNAL_IP_CONNECT_TIMEOUT_MS,
     private val readTimeoutMs: Int = Constants.Network.EXTERNAL_IP_READ_TIMEOUT_MS,
+    private val fetch: (URL) -> String = { url -> readBounded(url, connectTimeoutMs, readTimeoutMs) },
 ) : ExternalIpService {
+    init {
+        require(urls.isNotEmpty()) { "At least one public IP service URL is required" }
+    }
+
     override fun getExternalIpAddress(): String {
-        val connection = url.openConnection()
-        connection.connectTimeout = connectTimeoutMs
-        connection.readTimeout = readTimeoutMs
-        return connection.getInputStream().bufferedReader().use { it.readText() }
+        val failures = mutableListOf<Throwable>()
+        for (url in urls) {
+            ask(url)
+                .onSuccess { return it }
+                .onFailure { failure ->
+                    if (failure is InterruptedException) throw failure
+                    failures.add(failure)
+                }
+        }
+        val last = failures.last()
+        failures.dropLast(1).forEach { last.addSuppressed(it) }
+        throw last
+    }
+
+    private fun ask(url: URL): Result<String> =
+        runCatching { fetch(url) }.mapCatching { answer ->
+            val address = answer.trim()
+            check(isBareIpv4(address)) { "Public IP service $url answered '$address', which is not an IPv4 address" }
+            address
+        }
+
+    private companion object {
+        val DEFAULT_URLS =
+            listOf(Constants.Network.EXTERNAL_IP_URL, Constants.Network.EXTERNAL_IP_FALLBACK_URL)
+                .map { URI(it).toURL() }
+
+        fun isBareIpv4(value: String): Boolean = '/' !in value && Ipv4Cidr.parse(value).isSuccess
+
+        fun readBounded(
+            url: URL,
+            connectTimeoutMs: Int,
+            readTimeoutMs: Int,
+        ): String {
+            val connection = url.openConnection()
+            connection.connectTimeout = connectTimeoutMs
+            connection.readTimeout = readTimeoutMs
+            return connection.getInputStream().bufferedReader().use { it.readText() }
+        }
     }
 }

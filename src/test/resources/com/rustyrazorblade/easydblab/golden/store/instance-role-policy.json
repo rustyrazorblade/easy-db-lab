@@ -44,14 +44,8 @@
                 "s3:DeleteObjectVersion"
             ],
             "Resource": [
-                "arn:aws:s3:::easy-db-lab-*/mimir/*",
-                "arn:aws:s3:::easy-db-lab-*/loki/*",
-                "arn:aws:s3:::easy-db-lab-*/tempo/*",
                 "arn:aws:s3:::easy-db-lab-*/grafana/*",
                 "arn:aws:s3:::easy-db-lab-*/reports/*",
-                "arn:aws:s3:::easy-db-lab-*/*/mimir/*",
-                "arn:aws:s3:::easy-db-lab-*/*/loki/*",
-                "arn:aws:s3:::easy-db-lab-*/*/tempo/*",
                 "arn:aws:s3:::easy-db-lab-*/*/grafana/*",
                 "arn:aws:s3:::easy-db-lab-*/*/reports/*"
             ]

@@ -43,7 +43,7 @@ class PromQlCompatibilityIntegrationTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "promql", versions = mutableMapOf(), s3Bucket = bucket))
+                        whenever(it.load()).thenReturn(ClusterState(name = "promql", s3Bucket = bucket))
                     }
                 }
                 single { TemplateService(get(), get()) }

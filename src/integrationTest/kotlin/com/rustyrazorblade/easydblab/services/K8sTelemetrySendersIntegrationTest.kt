@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
@@ -75,7 +76,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
                     mock<ClusterStateManager>().also {
                         whenever(
                             it.load(),
-                        ).thenReturn(ClusterState(name = "senders-it", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
+                        ).thenReturn(ClusterState(name = "senders-it", s3Bucket = "easy-db-lab-test"))
                     }
                 }
                 single { TemplateService(get(), get()) }
@@ -86,9 +87,8 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
     fun setup() {
         SharedK3s.createNamespace(namespace)
         client = SharedK3s.client()
-        val clientProvider = mock<K8sClientProvider>()
         // Each stop closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient()).thenAnswer { SharedK3s.client() }
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         senders = K8sTelemetrySenders(clientProvider, namespace, pollInterval = Duration.ofMillis(POLL_MILLIS))
     }
 
@@ -292,7 +292,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         val deleting = CopyOnWriteArrayList<String>()
 
         val started = System.nanoTime()
-        assertThatThrownBy { senders.stop(SHORT_TIMEOUT) { deleting += it } }
+        assertThatThrownBy { senders.stop(SHORT_TIMEOUT, onDeleting = { deleting += it }) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageStartingWith("${Constants.OtelCollector.HOST_COLLECTOR_NAME} was still running")
             .hasMessageNotContaining("${Constants.K8s.OTEL_COLLECTOR_APP_LABEL} was still")

@@ -37,7 +37,7 @@ easy-db-lab init [OPTIONS] [CLUSTER_NAME]
 | `--instance, -i` | r3.2xlarge | EC2 instance type for db nodes |
 | `--stress-instance, -si` | c7i.2xlarge | EC2 instance type for app nodes |
 | `--clean` | false | Wipe existing local config before init |
-| `--cidr` | 10.0.0.0/16 | VPC CIDR (must be /20 or larger) |
+| `--cidr` | 10.0.0.0/16 | VPC CIDR (must be /25 or larger; must not overlap 10.224.0.0/12 or 10.240.0.0/16) |
 | `--tag key=value` | — | Tag EC2 instances |
 | `--ebs.type` | NONE | EBS volume type (NONE, gp2, gp3, io1, io2) |
 | `--ebs.size` | 256 | EBS volume size in GB |
@@ -236,7 +236,6 @@ repository root: `init` refuses a directory that already has a `bin/`.
 | `state.json` | Cluster state (VPC, hosts, buckets) |
 | `kubeconfig` | K3s kubeconfig (also at `~/.kube/config` after `source env.sh`) |
 | `env.sh` | Shell env: SSH aliases (`ssh db0`, `ssh app0`), KUBECONFIG export |
-| `cassandra_versions.yaml` | Available Cassandra versions on the nodes |
 | `cassandra.patch.yaml` | Config patches applied before `cassandra update-config` |
 
 ---
@@ -248,5 +247,7 @@ repository root: `init` refuses a directory that already has a `bin/`.
 | "Cassandra 4" | `easy-db-lab cassandra use 4.0` |
 | "Cassandra 4.1" | `easy-db-lab cassandra use 4.1` |
 | "Cassandra 5" / "Cassandra five" | `easy-db-lab cassandra use 5.0` |
+
+Any ASF release (`4.1.7`), release line (`5.0`), nightly (`5.0-HEAD`, `trunk`, `5.0-rustyrazorblade-HEAD`) or profile build works; `use` installs it on demand. `easy-db-lab cassandra list` shows them, with or without a cluster.
 
 After `cassandra use <version>`, always run `cassandra update-config` then `cassandra start`.

@@ -12,8 +12,7 @@ import java.io.File
 class NodeCapabilitiesTest {
     private val jackson = ObjectMapper()
 
-    private fun state(capabilities: Set<NodeCapability>?) =
-        ClusterState(name = "lab", versions = mutableMapOf(), capabilities = capabilities)
+    private fun state(capabilities: Set<NodeCapability>?) = ClusterState(name = "lab", capabilities = capabilities)
 
     @Test
     fun `AWS declares the pod-security and node SSH capabilities`() {

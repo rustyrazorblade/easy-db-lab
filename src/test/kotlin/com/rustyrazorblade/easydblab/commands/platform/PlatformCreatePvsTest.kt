@@ -17,6 +17,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -25,6 +27,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 
 class PlatformCreatePvsTest : BaseKoinTest() {
@@ -100,7 +103,6 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mapOf(
                         ServerType.Control to listOf(controlHost),
@@ -223,25 +225,19 @@ class PlatformCreatePvsTest : BaseKoinTest() {
             .hasMessageContaining("Invalid node-type")
     }
 
-    @Test
-    fun `fails when no control node is found`() {
-        val stateWithoutControl =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts = mapOf(ServerType.Cassandra to dbHosts),
-            )
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithoutControl)
-
+    @ParameterizedTest
+    @ValueSource(strings = ["../escape", "a/b", "-lead", "has space", ""])
+    fun `rejects a kit name that is not a plain identifier before touching the cluster`(name: String) {
         val command =
             PlatformCreatePvs().apply {
-                kit = "mydb"
+                kit = name
                 size = "50Gi"
                 nodeType = "db"
             }
 
         assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No control node found")
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("--kit")
+        verifyNoInteractions(mockK8sService)
     }
 }

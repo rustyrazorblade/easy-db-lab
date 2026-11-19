@@ -11,7 +11,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
@@ -39,7 +39,7 @@ class ClusterProvisioningServiceTest {
     private lateinit var ec2InstanceService: EC2InstanceService
     private lateinit var emrProvisioningService: EMRProvisioningService
     private lateinit var openSearchService: OpenSearchService
-    private lateinit var aws: AWS
+    private lateinit var accountIdentity: AccountIdentity
     private lateinit var user: User
     private lateinit var eventBus: EventBus
     private lateinit var service: ClusterProvisioningService
@@ -49,17 +49,17 @@ class ClusterProvisioningServiceTest {
         ec2InstanceService = mock()
         emrProvisioningService = mock()
         openSearchService = mock()
-        aws = mock()
+        accountIdentity = mock()
         user = mock()
         eventBus = EventBus()
-        whenever(aws.getAccountId()).thenReturn("123456789012")
+        whenever(accountIdentity.getAccountId()).thenReturn("123456789012")
         whenever(user.region).thenReturn("us-west-2")
         service =
             DefaultClusterProvisioningService(
                 ec2InstanceService = ec2InstanceService,
                 emrProvisioningService = emrProvisioningService,
                 openSearchService = openSearchService,
-                aws = aws,
+                accountIdentity = accountIdentity,
                 user = user,
                 eventBus = eventBus,
             )
@@ -74,6 +74,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Cassandra,
                     configuredCount = 3,
                     existingCount = 0,
+                    missingIndexes = listOf(0, 1, 2),
                     instanceType = "m5.large",
                     ebsConfig = null,
                     amiId = "ami-12345",
@@ -84,13 +85,42 @@ class ClusterProvisioningServiceTest {
 
             var createdHosts: List<ClusterHost>? = null
             val result =
-                service.provisionInstances(config, emptyMap()) { _, hosts ->
+                provisionInstances(config, emptyMap()) { _, hosts ->
                     createdHosts = hosts
                 }
 
             assertThat(result.errors).isEmpty()
             assertThat(result.hosts[ServerType.Cassandra]).hasSize(3)
             assertThat(createdHosts).hasSize(3)
+        }
+
+        /**
+         * Each node's pipeline waits for its own instance (`bringup/InstanceTracker`), so the launch
+         * reports every host the moment RunInstances returns it and waits for none of them: a slow
+         * instance must not hold the rest of its server type back.
+         */
+        @Test
+        fun `launched hosts reach the callback as RunInstances returns them, with no wait for running or status checks`() {
+            val spec =
+                InstanceSpec(
+                    serverType = ServerType.Cassandra,
+                    configuredCount = 2,
+                    existingCount = 0,
+                    missingIndexes = listOf(0, 1),
+                    instanceType = "m5.large",
+                    ebsConfig = null,
+                    amiId = "ami-12345",
+                )
+            setupMockInstanceCreation()
+
+            val reported = mutableListOf<ClusterHost>()
+            val result = provisionInstances(createInstanceConfig(specs = listOf(spec)), emptyMap()) { _, hosts -> reported += hosts }
+
+            assertThat(result.errors).isEmpty()
+            assertThat(reported.map { it.instanceId to it.publicIp })
+                .containsExactly("i-cassandra0" to "", "i-cassandra1" to "")
+            verify(ec2InstanceService, never()).waitForInstancesRunning(any(), any())
+            verify(ec2InstanceService, never()).waitForInstanceStatusOk(any(), any())
         }
 
         @Test
@@ -100,6 +130,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Cassandra,
                     configuredCount = 2,
                     existingCount = 3,
+                    missingIndexes = emptyList(),
                     instanceType = "m5.large",
                     ebsConfig = null,
                     amiId = "ami-12345",
@@ -116,9 +147,9 @@ class ClusterProvisioningServiceTest {
                         ),
                 )
 
-            val result = service.provisionInstances(config, existingHosts) { _, _ -> }
+            val result = provisionInstances(config, existingHosts) { _, _ -> }
 
-            verify(ec2InstanceService, never()).createInstances(any())
+            verify(ec2InstanceService, never()).createInstances(any(), any())
             assertThat(result.hosts[ServerType.Cassandra]).hasSize(3)
         }
 
@@ -129,6 +160,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Cassandra,
                     configuredCount = 3,
                     existingCount = 3,
+                    missingIndexes = emptyList(),
                     instanceType = "m5.large",
                     ebsConfig = null,
                     amiId = "ami-12345",
@@ -146,7 +178,7 @@ class ClusterProvisioningServiceTest {
                 },
             )
 
-            service.provisionInstances(config, emptyMap()) { _, _ -> }
+            provisionInstances(config, emptyMap()) { _, _ -> }
 
             assertThat(emittedEvents).anyMatch { event ->
                 event is Event.Ec2.ExistingInstancesFound &&
@@ -162,16 +194,17 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Cassandra,
                     configuredCount = 3,
                     existingCount = 0,
+                    missingIndexes = listOf(0, 1, 2),
                     instanceType = "m5.large",
                     ebsConfig = null,
                     amiId = "ami-12345",
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
-            whenever(ec2InstanceService.createInstances(any()))
+            whenever(ec2InstanceService.createInstances(any(), any()))
                 .thenThrow(RuntimeException("Instance creation failed"))
 
-            val result = service.provisionInstances(config, emptyMap()) { _, _ -> }
+            val result = provisionInstances(config, emptyMap()) { _, _ -> }
 
             assertThat(result.errors).containsKey("Cassandra instances")
             assertThat(result.errors["Cassandra instances"]?.message).isEqualTo("Instance creation failed")
@@ -184,6 +217,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Cassandra,
                     configuredCount = 3,
                     existingCount = 0,
+                    missingIndexes = listOf(0, 1, 2),
                     instanceType = "m5.large",
                     ebsConfig = null,
                     amiId = "ami-12345",
@@ -193,6 +227,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Stress,
                     configuredCount = 2,
                     existingCount = 0,
+                    missingIndexes = listOf(0, 1),
                     instanceType = "c5.large",
                     ebsConfig = null,
                     amiId = "ami-12345",
@@ -202,7 +237,7 @@ class ClusterProvisioningServiceTest {
             setupMockInstanceCreation()
             setupMockInstanceCreation()
 
-            val result = service.provisionInstances(config, emptyMap()) { _, _ -> }
+            val result = provisionInstances(config, emptyMap()) { _, _ -> }
 
             assertThat(result.errors).isEmpty()
             assertThat(result.hosts[ServerType.Cassandra]).hasSize(3)
@@ -219,6 +254,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Cassandra,
                     configuredCount = 1,
                     existingCount = 0,
+                    missingIndexes = listOf(0),
                     instanceType = "m5.large",
                     ebsConfig = null,
                     amiId = "ami-aaaa",
@@ -228,6 +264,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Stress,
                     configuredCount = 1,
                     existingCount = 0,
+                    missingIndexes = listOf(0),
                     instanceType = "m6g.large",
                     ebsConfig = null,
                     amiId = "ami-bbbb",
@@ -236,10 +273,10 @@ class ClusterProvisioningServiceTest {
 
             setupMockInstanceCreation()
 
-            service.provisionInstances(config, emptyMap()) { _, _ -> }
+            provisionInstances(config, emptyMap()) { _, _ -> }
 
             val captor = argumentCaptor<InstanceCreationConfig>()
-            verify(ec2InstanceService, times(2)).createInstances(captor.capture())
+            verify(ec2InstanceService, times(2)).createInstances(captor.capture(), any())
             val amiIdByType = captor.allValues.associate { it.serverType to it.amiId }
             assertThat(amiIdByType[ServerType.Cassandra]).isEqualTo("ami-aaaa")
             assertThat(amiIdByType[ServerType.Stress]).isEqualTo("ami-bbbb")
@@ -252,6 +289,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Cassandra,
                     configuredCount = 3,
                     existingCount = 1,
+                    missingIndexes = listOf(1, 2),
                     instanceType = "m5.large",
                     ebsConfig = null,
                     amiId = "ami-12345",
@@ -265,7 +303,7 @@ class ClusterProvisioningServiceTest {
 
             setupMockInstanceCreation()
 
-            val result = service.provisionInstances(config, existingHosts) { _, _ -> }
+            val result = provisionInstances(config, existingHosts) { _, _ -> }
 
             assertThat(result.hosts[ServerType.Cassandra]).hasSize(3)
         }
@@ -281,6 +319,7 @@ class ClusterProvisioningServiceTest {
                         serverType = ServerType.Cassandra,
                         configuredCount = 1,
                         existingCount = 0,
+                        missingIndexes = listOf(0),
                         instanceType = "m5.large",
                         ebsConfig = null,
                         amiId = "ami-12345",
@@ -320,6 +359,7 @@ class ClusterProvisioningServiceTest {
                         serverType = ServerType.Cassandra,
                         configuredCount = 1,
                         existingCount = 0,
+                        missingIndexes = listOf(0),
                         instanceType = "m5.large",
                         ebsConfig = null,
                         amiId = "ami-12345",
@@ -359,6 +399,7 @@ class ClusterProvisioningServiceTest {
                         serverType = ServerType.Cassandra,
                         configuredCount = 1,
                         existingCount = 0,
+                        missingIndexes = listOf(0),
                         instanceType = "m5.large",
                         ebsConfig = null,
                         amiId = "ami-12345",
@@ -399,6 +440,7 @@ class ClusterProvisioningServiceTest {
                     serverType = ServerType.Control,
                     configuredCount = 1,
                     existingCount = 0,
+                    missingIndexes = listOf(0),
                     instanceType = "m5.large",
                     ebsConfig = null,
                     amiId = "ami-12345",
@@ -441,6 +483,7 @@ class ClusterProvisioningServiceTest {
                         serverType = ServerType.Cassandra,
                         configuredCount = 1,
                         existingCount = 0,
+                        missingIndexes = listOf(0),
                         instanceType = "m5.large",
                         ebsConfig = null,
                         amiId = "ami-12345",
@@ -474,15 +517,27 @@ class ClusterProvisioningServiceTest {
 
     // Helper methods
 
+    /** The instance side of [ClusterProvisioningService.provisionAll], with no EMR or OpenSearch. */
+    private fun provisionInstances(
+        config: InstanceProvisioningConfig,
+        existingHosts: Map<ServerType, List<ClusterHost>>,
+        onHostsCreated: (ServerType, List<ClusterHost>) -> Unit,
+    ): ProvisioningResult =
+        service.provisionAll(
+            config,
+            createServicesConfig(createInitConfig()),
+            existingHosts,
+            ProvisioningCallbacks(onHostsCreated = onHostsCreated, onEmrCreated = { }, onOpenSearchCreated = { }),
+        )
+
     private fun setupMockInstanceCreation() {
-        whenever(ec2InstanceService.createInstances(any())).thenAnswer { invocation ->
+        whenever(ec2InstanceService.createInstances(any(), any())).thenAnswer { invocation ->
             val config = invocation.getArgument<InstanceCreationConfig>(0)
-            createInstances(config.serverType, config.count)
-        }
-        whenever(ec2InstanceService.waitForInstancesRunning(any(), any())).thenReturn(emptyList())
-        whenever(ec2InstanceService.waitForInstanceStatusOk(any(), any())).then { }
-        whenever(ec2InstanceService.updateInstanceIps(any<List<CreatedInstance>>())).thenAnswer { invocation ->
-            invocation.getArgument<List<CreatedInstance>>(0)
+            val onLaunched = invocation.getArgument<(List<CreatedInstance>) -> Unit>(1)
+            // As RunInstances returns them: no public IP yet.
+            createInstances(config.serverType, config.count).also { launched ->
+                onLaunched(launched.map { it.copy(publicIp = "") })
+            }
         }
     }
 
@@ -602,7 +657,6 @@ class ClusterProvisioningServiceTest {
         ClusterState(
             clusterId = "cluster-123",
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket-12345",
         )
 

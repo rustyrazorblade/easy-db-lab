@@ -15,4 +15,10 @@ private val URL_CREDENTIALS = Regex("([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\\s]+(:[^/@
  * private fork), and that command — along with whatever the remote side echoes back — ends up in log
  * lines, exception messages, and serialized events that reach Redis subscribers.
  */
-fun redactUrlCredentials(text: String): String = URL_CREDENTIALS.replace(text, "$1***@")
+fun redactUrlCredentials(text: String): String = URL_CREDENTIALS.replace(text, "$1$REDACTED_USERINFO")
+
+/** The userinfo [redactUrlCredentials] writes in place of a credential. */
+private const val REDACTED_USERINFO = "***@"
+
+/** Whether [url] is the output of [redactUrlCredentials] for a URL that carried a credential. */
+fun hasRedactedCredentials(url: String): Boolean = "://$REDACTED_USERINFO" in url

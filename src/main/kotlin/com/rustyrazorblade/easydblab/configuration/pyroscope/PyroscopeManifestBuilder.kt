@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -381,9 +382,8 @@ class PyroscopeManifestBuilder(
             .endMetadata()
             .withNewSpec()
             .withServiceAccountName(EBPF_SERVICE_ACCOUNT_NAME)
-            .withHostNetwork(true)
+            .hostNetworked()
             .withHostPID(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()

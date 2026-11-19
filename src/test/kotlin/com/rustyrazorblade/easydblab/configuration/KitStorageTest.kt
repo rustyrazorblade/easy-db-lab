@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
  * cluster state: owned nodes get per-kit local volumes, any other cluster a recorded dynamic class.
  */
 class KitStorageTest {
-    private fun stateWith(initConfig: InitConfig?) = ClusterState(name = "test", versions = mutableMapOf(), initConfig = initConfig)
+    private fun stateWith(initConfig: InitConfig?) = ClusterState(name = "test", initConfig = initConfig)
 
     @Test
     fun `a cluster with no recorded kit class keeps its kits on local volumes of 10Ti`() {

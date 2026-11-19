@@ -91,5 +91,5 @@ class ClusterToolingBindingTest {
         }
     }
 
-    private fun stateIn(environment: Environment) = ClusterState(name = "test", versions = mutableMapOf(), environment = environment)
+    private fun stateIn(environment: Environment) = ClusterState(name = "test", environment = environment)
 }

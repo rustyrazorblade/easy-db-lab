@@ -41,6 +41,14 @@ enum class ObservabilityStage(
     PYROSCOPE("Pyroscope"),
     PYROSCOPE_AGENT("Pyroscope Agent", setOf(NodeCapability.PRIVILEGED)),
 
+    // The account's compactors under a store lease, on every cluster and in both telemetry modes.
+    // It reads the object store, keeps its scratch in hostPath directories, and its preparation
+    // creates them and uploads the lease agent jar to the control node over SSH.
+    ACCOUNT_COMPACTOR(
+        "Account compactor",
+        setOf(NodeCapability.S3, NodeCapability.HOST_PATH, NodeCapability.NODE_SSH),
+    ),
+
     // Not a stage of its own: the core collector runs without its pod-log receiver where hostPath
     // volumes are not admitted. Declared so `up` and `init` name it like any skipped stage.
     POD_LOGS("Pod logs", setOf(NodeCapability.HOST_PATH)),
@@ -57,13 +65,14 @@ enum class ObservabilityStage(
          * collector. The host add-on comes first, as it waits for the core's rollout. The local
          * backends exist only in local mode. The Pyroscope eBPF agent runs in both modes, pointed at
          * the external stack under a redirect, and is its own stage so an environment without
-         * privileged pods still runs the Pyroscope server. [POD_LOGS] is last and applies nothing.
+         * privileged pods still runs the Pyroscope server. The account compactor runs in both modes,
+         * after everything else that applies resources. [POD_LOGS] is last and applies nothing.
          */
         fun declared(telemetryRedirect: TelemetryRedirect?): List<ObservabilityStage> {
             val agents =
                 listOf(OTEL_HOST_COLLECTOR, KUBE_STATE_METRICS, FLUENT_BIT_JOURNALD, EBPF_EXPORTER, REGISTRY, S3_MANAGER, BEYLA, YACE)
             val backends = if (telemetryRedirect == null) LOCAL_BACKENDS else emptyList()
-            return agents + backends + PYROSCOPE_AGENT + POD_LOGS
+            return agents + backends + PYROSCOPE_AGENT + ACCOUNT_COMPACTOR + POD_LOGS
         }
     }
 }

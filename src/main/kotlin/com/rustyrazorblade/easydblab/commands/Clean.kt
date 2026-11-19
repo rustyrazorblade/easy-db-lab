@@ -37,7 +37,6 @@ class Clean :
                 DefaultClusterConfigurationService.STRESS_ENV_FILE,
                 Constants.SETUP_INSTANCE_SCRIPT,
                 "state.json",
-                Constants.Packer.CASSANDRA_VERSIONS_FILE,
                 "axonops-workbench.json",
                 ".socks5-proxy-state",
                 Constants.Proxy.ENV_FILE,

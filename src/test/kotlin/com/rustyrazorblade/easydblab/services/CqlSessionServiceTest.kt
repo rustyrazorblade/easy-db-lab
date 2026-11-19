@@ -46,7 +46,6 @@ class CqlSessionServiceTest : BaseKoinTest() {
     private fun stateWith(tailscaleActive: Boolean) =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             tailscaleActive = tailscaleActive,
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Cassandra to listOf(testHost)),

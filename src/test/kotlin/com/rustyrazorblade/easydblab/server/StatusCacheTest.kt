@@ -16,11 +16,11 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
@@ -52,7 +52,7 @@ class StatusCacheTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockEc2InstanceService: EC2InstanceService
     private lateinit var mockVpcService: VpcService
-    private lateinit var mockKubernetesService: KubernetesService
+    private lateinit var mockK8sService: K8sService
     private lateinit var mockEmrService: EMRService
     private lateinit var mockOpenSearchService: OpenSearchService
     private lateinit var mockStressJobService: StressJobService
@@ -65,7 +65,6 @@ class StatusCacheTest : BaseKoinTest() {
             createdAt = Instant.parse("2025-01-15T10:30:00Z"),
             infrastructureStatus = InfrastructureStatus.UP,
             default = NodeState(version = "5.0"),
-            versions = null,
             hosts =
                 mapOf(
                     ServerType.Cassandra to
@@ -108,12 +107,13 @@ class StatusCacheTest : BaseKoinTest() {
                 single { mockClusterStateManager }
                 single { mockEc2InstanceService }
                 single<VpcService> { mockVpcService }
-                factory<KubernetesService> { mockKubernetesService }
+                factory<K8sService> { mockK8sService }
                 single { mockEmrService }
                 single { mockOpenSearchService }
                 single<StressJobService> { mockStressJobService }
                 single { WorkspaceKitScanner(get()) }
                 single<ObjectStore> { S3ObjectStore(get(), get()) }
+                factory { ClusterStatusCollector() }
             },
         )
 
@@ -122,7 +122,7 @@ class StatusCacheTest : BaseKoinTest() {
         mockClusterStateManager = mock()
         mockEc2InstanceService = mock()
         mockVpcService = mock()
-        mockKubernetesService = mock()
+        mockK8sService = mock()
         mockEmrService = mock()
         mockOpenSearchService = mock()
         mockStressJobService = mock()
@@ -451,7 +451,7 @@ class StatusCacheTest : BaseKoinTest() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
         whenever(mockClusterStateManager.load())
             .thenReturn(testClusterState.copy(hosts = testClusterState.hosts - ServerType.Control))
-        whenever(mockKubernetesService.listPods(null)).thenReturn(
+        whenever(mockK8sService.listPods()).thenReturn(
             Result.success(
                 listOf(
                     KubernetesPod(
@@ -484,7 +484,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo observability names every backend on the control node`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
 
@@ -504,7 +504,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo has an S3 Manager only where the environment has S3`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
 
         fun accessInfo(capabilities: NodeCapabilities): JsonObject {
             whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(capabilities = capabilities.present().toSet()))
@@ -520,7 +520,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo lists a running kit's declared NodePort endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
@@ -535,7 +535,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `a stopped kit prints no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         installPackagedKit("clickhouse")
         statusCache = StatusCache(refreshIntervalSeconds = 3600)
         statusCache.forceRefresh()
@@ -548,7 +548,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `accessInfo says why a running kit with an unreadable kit descriptor has no endpoints`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("broken", "clickhouse")))
         installPackagedKit("clickhouse")
         File(context.workingDirectory, "broken").mkdirs()
@@ -572,7 +572,7 @@ class StatusCacheTest : BaseKoinTest() {
     @Test
     fun `on a port-forward cluster accessInfo gives Service DNS names and the commands that forward them`() {
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        whenever(mockKubernetesService.listPods(null)).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.listPods()).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load())
             .thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")).apply { exposure = Exposure.PortForward })
         installPackagedKit("clickhouse")

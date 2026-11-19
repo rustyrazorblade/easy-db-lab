@@ -89,11 +89,12 @@ class DefaultCiliumService(
             // internet. Native routing (VPC-routable ENI pod IPs, no encapsulation) is the
             // actual performance win here and is unchanged.
             //
-            // egressMasqueradeInterfaces=ens+ : ENI mode requires a NAMED egress masquerade
+            // egressMasqueradeInterfaces=en+ : ENI mode requires a NAMED egress masquerade
             // interface — with it empty the agent panics ("Egress masquerading interfaces
-            // cannot be empty..."). The wildcard ens+ matches the Nitro primary NIC (ens5)
-            // plus ENI secondaries; masquerading is done via iptables (not BPF). Do not
-            // hardcode eth0 — that is wrong on Nitro instances.
+            // cannot be empty..."). The wildcard en+ matches the Nitro primary NIC under
+            // whatever slot-derived name its family gives it, plus ENI secondaries;
+            // masquerading is done via iptables (not BPF). Do not hardcode eth0 or one ens
+            // name — the primary's name differs per instance family.
             //
             // kubeProxyReplacement=false : explicitly OFF so K3s keeps its own kube-proxy.
             // Enabling it turns on BPF masquerade / BPF host routing on the primary NIC,
@@ -124,14 +125,14 @@ class DefaultCiliumService(
                     set("endpointRoutes.enabled=true")
                     set("enableIPv4Masquerade=true")
                     // ENI mode requires a named egress masquerade interface or the agent
-                    // panics. ens+ wildcard covers the Nitro primary NIC (ens5) + ENI
+                    // panics. The en+ wildcard covers the Nitro primary NIC under any name + ENI
                     // secondaries; masquerading via iptables. '+' is not a shell metachar,
                     // so it renders unquoted safely over the SSH command.
-                    set("egressMasqueradeInterfaces=ens+")
+                    set("egressMasqueradeInterfaces=en+")
                     // Pin Cilium's devices to the ENA interfaces. Auto-detection also picks up
                     // tailscale0 (MTU 1280) and Cilium's MTU updater then lowers every device,
-                    // ens5/ens6 included, to the minimum — 1280 instead of the 9001 AWS offers.
-                    set("devices=ens+")
+                    // the ENA interfaces included, to the minimum — 1280 instead of the 9001 AWS offers.
+                    set("devices=en+")
                     // Explicitly off: keep K3s kube-proxy and avoid Cilium's BPF host
                     // routing, which blackholes node SSH:22 / apiserver:6443 (cilium#46010).
                     set("kubeProxyReplacement=false")

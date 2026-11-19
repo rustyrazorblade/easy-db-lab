@@ -38,7 +38,7 @@ class RegionTest : BaseKoinTest() {
     @Test
     fun `execute outputs region from cluster state`() {
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), initConfig = InitConfig(region = "us-east-1")),
+            ClusterState(name = "test-cluster", initConfig = InitConfig(region = "us-east-1")),
         )
         Region().execute()
         assertThat(stdout.toString().trim()).isEqualTo("us-east-1")
@@ -47,7 +47,7 @@ class RegionTest : BaseKoinTest() {
     @Test
     fun `execute errors when no region configured`() {
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test-cluster", versions = mutableMapOf(), initConfig = null),
+            ClusterState(name = "test-cluster", initConfig = null),
         )
         assertThatThrownBy { Region().execute() }
             .isInstanceOf(IllegalStateException::class.java)

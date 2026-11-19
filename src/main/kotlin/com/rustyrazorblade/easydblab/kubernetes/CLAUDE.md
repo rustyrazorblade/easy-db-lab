@@ -6,8 +6,10 @@ This package provides Kubernetes client operations using the Fabric8 Kubernetes 
 
 ```
 Command → SocksProxyService.ensureRunning(controlHost)
+        → K8sService (services/) → K8sClientProvider.createClient()
+        → WorkspaceKubeApiLocator.locate(): WorkspaceKubeconfig.require(workspace) + the pinned context
         → KubernetesClientFactory.createClient(KubeApi(kubeconfig, context))
-        → KubernetesService.listPods() / ManifestApplier.applyManifest()
+        → client operations / ManifestApplier.applyManifest()
         ↕
   SSH tunnel (SOCKS5) → K3s API (10.0.x.x:6443)
 ```
@@ -16,8 +18,7 @@ Command → SocksProxyService.ensureRunning(controlHost)
 
 | File | Purpose |
 |------|---------|
-| `KubernetesService.kt` | Interface for high-level K8s operations |
-| `DefaultKubernetesService.kt` | Fabric8 implementation; builds and closes a client per operation |
+| `WorkspaceKubeconfig.kt` | The one place that resolves the workspace kubeconfig path |
 | `ManifestApplier.kt` | Server-side apply for typed K8s resources |
 | `KubeApi.kt` | The cluster address: kubeconfig path + context; `KubeApi.loadConfig()` |
 | `KubeApiLocator.kt` | Seam that finds the `KubeApi`; `currentContextOf(path)` helper |
@@ -26,24 +27,20 @@ Command → SocksProxyService.ensureRunning(controlHost)
 | `KubernetesModule.kt` | Koin DI registration |
 | `KubernetesTypes.kt` | Data classes (KubernetesJob, KubernetesPod, KubernetesNode) |
 
-## KubernetesService Interface
+## Workspace binding
 
-```kotlin
-interface KubernetesService {
-    fun listJobs(namespace: String? = null): Result<List<KubernetesJob>>
-    fun listPods(namespace: String? = null): Result<List<KubernetesPod>>
-    fun getNodes(): Result<List<KubernetesNode>>
-    fun isReachable(): Result<Boolean>
-}
-```
-
-All methods return `Result<T>`. Namespace `null` means all namespaces.
+The K8s module is bound to the cluster workspace. `K8sService` (in `services/`) takes no host: every
+operation opens a client through `K8sClientProvider.createClient()`, which reads the kubeconfig that
+`WorkspaceKubeconfig` resolves against `Context.workingDirectory`. Nothing else builds the kubeconfig
+path; call `WorkspaceKubeconfig.file`, `exists` or `require`. The read queries (`listJobs`, `listPods`,
+`listPodsByLabel`, `getNodes`, `isReachable`) are `K8sReadOperations`, part of `K8sService`; they return
+`Result<T>`, and a `null` namespace means all namespaces.
 
 ## Loading the client: `KubeApi`, by path with an explicit context
 
 Every client is built from a `KubeApi(kubeconfig: Path, context: String)` through `KubeApi.loadConfig()`, the one place a Fabric8 `Config` is loaded: it checks that the kubeconfig holds the context (failing fast with the context, the path and the contexts it does hold) and loads it with `Config.fromKubeconfig(api.context, file)`. That keeps the file location on the config, so a relative certificate or exec-plugin path resolves against the kubeconfig's directory, and it never reads `Config.KUBERNETES_KUBECONFIG_FILE` or the `KUBECONFIG` env var. **`Config.autoConfigure` is forbidden.**
 
-No K8s service takes a `ClusterHost`. `services/K8sClientProvider.createClient()` asks its `KubeApiLocator` for the address: `services/WorkspaceKubeApiLocator` reads `<workspace>/kubeconfig` and the context pinned in `ClusterState.kubeContext`, falling back to the kubeconfig's `current-context`. `DefaultKubernetesService` takes the same `KubeApiLocator` and asks it for the address on every operation, building a client and closing it afterwards, so `kit status`, the kit workload probe and the server's pod listing target the pinned context too, and the long-running `server` status cache picks up a rewritten kubeconfig, a newly pinned context or a new SOCKS port on its next refresh. The `metrics stream` stress-job lister (`services/metrics/Fabric8StressJobLister`) builds its per-route client from the same `KubeApiLocator` and `loadConfig()`. No other main code calls `currentContextOf`, and none calls `Config.fromKubeconfig` with kubeconfig text.
+No K8s service takes a `ClusterHost`. `services/K8sClientProvider.createClient()` asks its `KubeApiLocator` for the address: `services/WorkspaceKubeApiLocator` reads `<workspace>/kubeconfig` and the context pinned in `ClusterState.kubeContext`, falling back to the kubeconfig's `current-context`. `K8sClientProvider` asks it for the address on every operation, and `DefaultK8sService` builds a client and closes it afterwards, so `kit status`, the kit workload probe and the server's pod listing target the pinned context too, and the long-running `server` status cache picks up a rewritten kubeconfig, a newly pinned context or a new SOCKS port on its next refresh. The `metrics stream` stress-job lister (`services/metrics/Fabric8StressJobLister`) builds its per-route client from the same `KubeApiLocator` and `loadConfig()`. No other main code calls `currentContextOf`, and none calls `Config.fromKubeconfig` with kubeconfig text.
 
 `up` records the context: `K3sService.downloadAndConfigureKubeconfig` returns the written kubeconfig's `current-context` (failing when it names none), `K3sClusterService` passes it back as `K3sSetupResult.kubeContext`, and `Up` sets it on its own `workingState` and saves that. The service never loads and saves `state.json` itself, so a later save of `up`'s in-memory state cannot erase the context.
 
@@ -102,6 +99,8 @@ Service port behind it (clickhouse: `svc/clickhouse-nodeport 30123:8123`, addres
 `...svc.cluster.local:8123`), else a Helm kit's release at an unknown port. `status` prints an
 endpoint with no known Service or port without a forward command; `<kit> sql` on a port-forward
 cluster fails naming the `service:` field. `KitEndpointServiceTest` resolves every packaged kit.
+
+`createClient` names the kubeconfig path in every failure. An unreadable file throws an `IOException` with the cause kept (a missing file is still a cluster never reached, see `ClusterReach`). A file that does not parse throws an `IllegalStateException` with the path and the parser's exception class only: the parser's message quotes the start of the file, which holds client keys and tokens, so neither it nor the cause is kept. Print a failure with `Throwable.reason()`, which shows the cause behind the client's generic "An error has occurred." wrapper.
 ## ManifestApplier
 
 Applies K8s manifests using Fabric8's typed server-side apply (not generic resources).
@@ -129,12 +128,10 @@ val kubernetesModule = module {
         val contracts = get<ClusterContractSource>()
         ProxiedKubernetesClientFactory { contracts.current().networkMode }
     }
-    // The KubeApiLocator (services/WorkspaceKubeApiLocator) is bound in ServicesModule.
-    factory<KubernetesService> { DefaultKubernetesService(clientFactory = get(), locator = get()) }
 }
 ```
 
-Both registered as **factory** scope. `DefaultKubernetesService` holds no client: each operation resolves the `KubeApi` and reads the proxy port afresh, so even a service kept for a process's lifetime never uses a stale kubeconfig, context or proxy port.
+The factory is registered with **factory** scope. `K8sClientProvider` (a singleton, over the `WorkspaceKubeApiLocator` bound in `ServicesModule`) creates a new client per operation and the caller closes it: each operation resolves the `KubeApi` and reads the proxy port afresh, so even a provider kept for a process's lifetime never uses a stale kubeconfig, context or proxy port.
 
 ## K8s Resource Location
 

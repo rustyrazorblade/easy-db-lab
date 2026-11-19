@@ -57,7 +57,7 @@ class LocalWorkspaceNeedsNoProfileTest {
             .koin
             .let { check(it.getOrNull<Context>()?.workingDirectory == workspace) }
         ClusterStateManager(File(workspace, CLUSTER_STATE))
-            .save(ClusterState(name = "local", versions = mutableMapOf(), environment = environment))
+            .save(ClusterState(name = "local", environment = environment))
         installKit()
     }
 

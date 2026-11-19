@@ -3,24 +3,6 @@
 ## Purpose
 TBD - created by archiving change issue-970. Update Purpose after archive.
 ## Requirements
-### Requirement: One compactor service runs per account
-
-The system SHALL run at most one compactor service per AWS account: the ECS Fargate service `easy-db-lab-compactor` in the ECS cluster `easy-db-lab`, in the region of the account bucket, in the account VPC `easy-db-lab-compactor`.  The service SHALL run 1 task, with `desiredCount` 1, `maximumPercent` 100 and `minimumHealthyPercent` 0, so ECS never runs a second task.  The task SHALL run Mimir's compactor (`-target=compactor`), Loki's compactor (`-target=compactor`), and Tempo's backend-scheduler and backend-worker, against the account bucket and every tenant in it.  Pyroscope's compaction SHALL stay in each cluster.  Mimir's compactor SHALL rewrite every tenant's bucket index every minute (`-compactor.cleanup-interval=1m`).  Loki's compactor SHALL compact every table, today's included.  The task SHALL send its logs to the CloudWatch Logs group `/easy-db-lab/compactor`, which SHALL have no retention policy.
-
-#### Scenario: The service runs one task
-- **WHEN** the compactor service is started
-- **THEN** it runs exactly 1 task, and its deployment settings are `maximumPercent` 100 and `minimumHealthyPercent` 0
-
-#### Scenario: The service follows the bucket's region
-- **WHEN** the compactor service is started from a profile whose region differs from the account bucket's region
-- **THEN** the service runs in the account bucket's region
-
-#### Scenario: The task runs every compactor
-- **WHEN** the compactor task definition is built
-- **THEN** it holds a Mimir container with `-target=compactor` and `-compactor.cleanup-interval=1m`, a Loki container with `-target=compactor`, and a Tempo backend-scheduler and a Tempo backend-worker container
-- **AND** its `config` container writes `tempo-backend.yaml`, with the account store's block, to `/config` beside the Mimir and Loki configuration, and both Tempo containers run with `-config.file=/config/tempo-backend.yaml`
-- **AND** no container runs Pyroscope
-
 ### Requirement: The compactor compacts and never deletes data by retention
 
 The compactor SHALL compact, and SHALL run with retention and every other deletion path off.  It MAY remove source objects only after it has written a merged copy that holds their data.
@@ -29,65 +11,145 @@ The compactor SHALL compact, and SHALL run with retention and every other deleti
 - Loki's compactor SHALL run with retention disabled and deletion mode `disabled`.
 - Tempo's backend-worker SHALL run with `block_retention` of `876000h`, `max_bytes_per_trace` of 0, and `empty_tenant_deletion_enabled` false, and with no per-tenant retention override.
 
+These settings SHALL be locked by tests on the compactor Deployment that the manifest builder produces.
+
 #### Scenario: Retention is off in every tool
-- **WHEN** the compactor task definition and its configuration files are built
+- **WHEN** the compactor Deployment and its configuration files are built
 - **THEN** Mimir's blocks retention period and partial block deletion delay are 0, Loki's retention is disabled with deletion mode `disabled`, and Tempo's block retention is `876000h` with no per-tenant override
 - **AND** Tempo's `max_bytes_per_trace` is 0 and `empty_tenant_deletion_enabled` is false
 
 #### Scenario: Compaction keeps every sample, log line and trace
 - **WHEN** the compactor has compacted a tenant's metrics, logs and traces
 - **THEN** every sample, log line and trace written before is still returned by queries
+- **AND** no object is removed unless its data is in the merged output
 
-### Requirement: Only the compactor's task role can delete observability objects
+### Requirement: The object store offers conditional writes
 
-The compactor's task role `EasyDBLabCompactorTaskRole` SHALL be allowed to list the account bucket and to get, put and delete objects under `mimir/`, `loki/` and `tempo/`, and SHALL have no access to `grafana/` or `pyroscope/`.  When the store prefix is not empty, the same access SHALL also apply under `<prefix>/mimir/`, `<prefix>/loki/` and `<prefix>/tempo/`, and to no other path.  With an empty store prefix, the task role's policy SHALL be byte-identical to the document in use before the store prefix existed.  The task SHALL use the execution role `EasyDBLabCompactorExecutionRole`.  The user IAM policies SHALL grant what `up`, `down` and the compactor commands need to manage the service, its roles, its log group and its network.
+The `ConditionalObjects` port in the `compactor-lease` module SHALL be the only conditional-write port.  The lease agent and `CompactorLeaseReader` SHALL use it directly; the `ObjectStore` interface SHALL NOT offer conditional operations.  The port SHALL offer three operations, each with a version token:
 
-#### Scenario: The task role may delete under the compacted roots
-- **WHEN** the compactor task deletes a source object under `mimir/`, `loki/` or `tempo/` after merging it
-- **THEN** S3 accepts the delete
+- `read` SHALL return the object's content and its version, or nothing when the object does not exist.
+- `createIfAbsent` SHALL write the object only when no object exists at that key.  It SHALL return `Created` with the new version, or `AlreadyExists`.
+- `replaceIfVersionMatches` SHALL write the object only when its current version equals the expected version.  It SHALL return `Replaced` with the new version, or `VersionMismatch`.  A missing object SHALL count as `VersionMismatch`.
 
-#### Scenario: The task role cannot touch other roots
-- **WHEN** the compactor task tries to delete an object under `grafana/` or `pyroscope/`
-- **THEN** S3 refuses the delete
+The S3 adapter, `S3ConditionalObjects`, SHALL implement them with conditional PUT: `If-None-Match: *` for create and `If-Match: <ETag>` for replace, and the version token SHALL be the ETag.  S3 status 412 (precondition failed) and 409 (conditional request conflict) SHALL map to `AlreadyExists` or `VersionMismatch`, and a 404 with error code `NoSuchKey` on a replace SHALL map to `VersionMismatch`.  Any other failure, a 404 for a missing bucket included, SHALL throw.  The conditional operations SHALL NOT be retried, because a retry of a write that landed returns 412 and only makes the caller think it lost.  An in-memory adapter, `InMemoryConditionalObjects`, SHALL implement the port, and one contract test suite SHALL run against both adapters.
 
-#### Scenario: The task role policy is unchanged with an empty prefix
-- **WHEN** the task role's policy is built with an empty store prefix
-- **THEN** it is byte-identical to its golden file captured before the change
+#### Scenario: Two writers create the same key
+- **WHEN** two writers call `createIfAbsent` for the same key
+- **THEN** exactly one gets `Created`, and the other gets `AlreadyExists`
+- **AND** this holds on the in-memory adapter and on the S3 adapter
 
-#### Scenario: The task role reaches the compacted roots under a prefix
-- **WHEN** the task role's policy is built with the store prefix `team-a`
-- **THEN** it allows get, put and delete under `team-a/mimir/`, `team-a/loki/` and `team-a/tempo/` as well as the unprefixed roots
-- **AND** it allows nothing under `grafana/`, `pyroscope/`, `team-a/grafana/` or `team-a/pyroscope/`
+#### Scenario: A stale version cannot replace an object
+- **WHEN** `replaceIfVersionMatches` runs with a version that is not the object's current version
+- **THEN** it returns `VersionMismatch`
+- **AND** the object's content and version do not change
 
-### Requirement: The compactor is controlled by hand
+#### Scenario: A matching version replaces an object
+- **WHEN** `replaceIfVersionMatches` runs with the object's current version
+- **THEN** it returns `Replaced` with a new version, and `read` returns the new content with that version
 
-The CLI SHALL provide `observability compactor start`, `observability compactor stop` and `observability compactor status`.  They SHALL work outside a cluster workspace.
+### Requirement: Every cluster runs a standby compactor on its control node
 
-- `start` SHALL start the service as `up` does.
-- `stop` SHALL set the service's desired count to 0.
-- `status` SHALL print whether the service runs, its desired and running task counts, the current or last task with its state, and the last lines of that task's logs.  It SHALL change nothing.
+`up` and `grafana update-config` SHALL deploy one `account-compactor` Deployment on the control node of every cluster, clusters that redirect their telemetry included.  The Deployment SHALL be built with fabric8 and SHALL run 1 replica with the `Recreate` strategy.  Its pod SHALL use the pod network, not the host network, so the compactor ports never collide with the cluster's own backends.  It SHALL hold:
 
-#### Scenario: Start by hand
-- **WHEN** a user runs `observability compactor start` and the service is not running
-- **THEN** the service runs 1 task
+- a `lease` container that runs the lease agent jar from the distribution with a stock JRE image;
+- a Mimir container with `-target=compactor` and `-compactor.cleanup-interval=1m`, a Loki container with `-target=compactor`, and a Tempo backend-scheduler and a Tempo backend-worker container, each wrapped by the gate;
+- no Pyroscope container, because Pyroscope compaction stays in each cluster.
 
-#### Scenario: Stop by hand
-- **WHEN** a user runs `observability compactor stop`
-- **THEN** the service's desired count is 0 and its task stops
+The compactors SHALL compact every tenant in the account bucket, and Loki SHALL compact every table, today's included.  The compactor containers SHALL use the node's instance role for S3 and the account bucket's region.  No container SHALL have a CPU or memory limit, and no memory limiter SHALL be added to any compactor or OTel component.  The scratch directories SHALL be host paths on the data mount (`/mnt/db1/compactor/...`), created and owned by the user each container runs as, in every mode.  The lease agent jar SHALL be uploaded to the control node at a path named by its SHA-256, so a new jar changes the pod template and rolls the pod.  `up` SHALL NOT create any ECS service, task definition, compactor VPC or compactor IAM role.
 
-#### Scenario: Status shows state, task and logs
-- **WHEN** a user runs `observability compactor status`
-- **THEN** the output shows whether the service runs, its task and that task's state, and its recent log lines
+The compactor's `mimir.yaml` and `loki.yaml` SHALL be the cluster's own configs, and `tempo-backend.yaml` SHALL carry the same object-store block. Each SHALL have its object-store block placed by the same `StoreBlockRenderer` the backends use, so no `__OBJECT_STORE_BLOCK__` placeholder survives in the ConfigMap. The compactor containers SHALL take the bucket from `cluster-config`'s `store_bucket` (never `s3_bucket`) as `STORE_BUCKET` and as the lease agent's bucket, the store's region and endpoint as `STORE_REGION` and `STORE_ENDPOINT`, and each backend's prefix from `metrics_store_prefix`, `logs_store_prefix` and `traces_store_prefix`, so the compactors follow the store prefix exactly as the cluster's backends do.
+
+#### Scenario: The compactor reads the store as the cluster writes it
+- **WHEN** the compactor ConfigMap and Deployment are built for a store with a non-empty prefix
+- **THEN** `mimir.yaml` and `loki.yaml` equal the cluster's rendered configs, the object-store block is placed, and no `__OBJECT_STORE_BLOCK__` remains
+- **AND** the containers read `store_bucket` and the `*_store_prefix` keys from `cluster-config`, and none reads `s3_bucket`
+
+#### Scenario: up deploys the compactor on every cluster
+- **WHEN** `up` runs on a cluster, with or without a telemetry redirect
+- **THEN** the control node runs one `account-compactor` pod with the lease container and the four gated compactor containers
+- **AND** no container runs Pyroscope
+
+#### Scenario: up creates no Fargate resources
+- **WHEN** `up` runs on AWS
+- **THEN** no ECS service, task definition, compactor VPC or compactor IAM role is created
+
+#### Scenario: The compactor has no limits
+- **WHEN** the compactor Deployment is built
+- **THEN** no container has a CPU or memory limit, and no memory limiter is configured
+
+#### Scenario: A new agent jar rolls the pod
+- **WHEN** the lease agent jar changes and `up` or `grafana update-config` runs
+- **THEN** the new jar is uploaded to a new SHA-256 path and the pod is replaced
+
+### Requirement: Exactly one compactor per store holds the lease
+
+The lease SHALL be the object `leases/compactor.json` in the account bucket, outside every backend's root.  Its body SHALL hold the holder, a sequence number, the TTL in seconds, and the renewal time.  The sequence SHALL go up on every write, so every renewal gets a new version.  The lease SHALL be written only with `createIfAbsent` and `replaceIfVersionMatches`; a plain PUT or a DELETE SHALL never be used on it.  Each process SHALL use only its own monotonic clock; no decision SHALL compare two nodes' clocks or read the renewal time.
+
+- A compactor with no lease object SHALL create it.
+- The holder SHALL renew every renew interval with `replaceIfVersionMatches` on its last version.
+- A standby SHALL poll the lease and SHALL take it over only after it has seen the same version for at least the TTL on its own clock, with `replaceIfVersionMatches` on that version.
+- A pod that restarts SHALL NOT take back its own earlier lease; it waits like any standby.
+- A holder SHALL wipe its scratch directories when it acquires the lease, before any compactor starts.
+
+The timing SHALL be held in `Constants`: TTL 120 seconds, renew interval 15 seconds, renew deadline 60 seconds, standby poll 15 seconds, gate poll 1 second, gate grace 20 seconds.  The timing SHALL satisfy `renewDeadline + gatePoll + gateGrace < TTL`, and building a timing that breaks it SHALL fail.
+
+#### Scenario: Two clusters share one store
+- **WHEN** two clusters run their compactors against one account bucket
+- **THEN** exactly one compactor holds the lease and compacts, and the other stays idle
+
+#### Scenario: A standby takes over after expiry
+- **WHEN** the holder stops renewing, tested with the in-memory object store and a fake clock
+- **THEN** the standby does not take the lease before the TTL has passed on its own clock
+- **AND** the standby acquires the lease once the TTL has passed
+
+#### Scenario: Timing that breaks the safety margin is refused
+- **WHEN** a lease timing is built whose renew deadline plus gate poll plus gate grace is not less than the TTL
+- **THEN** building it fails
+
+### Requirement: A holder that cannot renew stops work
+
+The lease agent SHALL write the time until which its lease is valid to a file shared with the compactor containers, by writing a temporary file and renaming it.  The valid-until time SHALL be the send time of the last successful renewal plus the renew deadline.  When a renewal throws or returns `VersionMismatch`, the agent SHALL read the lease back once before it decides.  When the lease holds exactly the record the agent tried to write, the agent SHALL keep the lease at the version it read; that write SHALL NOT reopen a gate that is closed or past the renew deadline.  Otherwise, when a renewal returns `VersionMismatch`, or the lease is missing, the agent SHALL remove the file and become a standby.  An interrupt SHALL remove the file and end the agent.
+
+Each compactor container SHALL run its binary under a gate script, run by a static busybox (`busybox:1.37.0-musl`) copied in by an init container, with every applet called explicitly.  The gate SHALL:
+
+- start the binary only while the valid-until time is in the future;
+- check the file every gate poll interval, and when the time has passed or the file is gone, send SIGTERM to the binary, wait the gate grace, send SIGKILL, and go back to waiting;
+- start the binary again if it exits while the lease is still valid;
+- trap SIGTERM and pass it to the binary, so a pod shutdown stops the binary cleanly.
+
+The gate SHALL stop the binary on its own when the agent dies, because the valid-until time stops moving.  The pod's termination grace period SHALL be longer than the gate poll plus the gate grace.  The gated containers SHALL have no readiness probe, so a standby is Ready; the lease container's readiness SHALL show that it can read the lease.
+
+#### Scenario: A holder that loses the lease stops compacting
+- **WHEN** the holder's renewal fails and the valid-until time passes
+- **THEN** every compactor binary in its pod is stopped within the gate poll plus the gate grace
+
+#### Scenario: A renewal that landed but answered otherwise keeps the lease
+- **WHEN** the holder's renewal times out, or answers 409, after the store committed it
+- **THEN** the holder reads the lease back, finds its own write, and keeps the lease and its gate
+
+#### Scenario: A dead agent fences its own compactors
+- **WHEN** the lease container stops while it holds the lease
+- **THEN** the gates stop every compactor binary after the valid-until time passes
+
+#### Scenario: A standby runs no compactor
+- **WHEN** a compactor pod does not hold the lease
+- **THEN** no Mimir, Loki or Tempo compactor process runs in it, and the pod is Ready
+
+### Requirement: Compactor status reads the lease
+
+The CLI SHALL provide `observability compactor status`.  It SHALL work outside a cluster workspace.  It SHALL print the lease's holder, sequence, renewal time and age, read with the account bucket's region, or that no lease exists.  When the lease object exists but does not hold a valid lease, it SHALL say that the lease object cannot be read, show its content, and say that deleting `leases/compactor.json` lets a pod create a fresh lease.  It SHALL change nothing.  The CLI SHALL NOT provide `observability compactor start` or `observability compactor stop`.
+
+#### Scenario: Status shows the holder
+- **WHEN** a user runs `observability compactor status` and a lease exists
+- **THEN** the output shows the holder, the sequence, the renewal time and the age of the lease
 - **AND** nothing is started, stopped or changed
 
-### Requirement: The compactor's network stays out of cluster teardown
+#### Scenario: Status with no lease
+- **WHEN** a user runs `observability compactor status` and no lease exists
+- **THEN** the output says that no compactor holds the lease
 
-The account VPC `easy-db-lab-compactor` SHALL carry the `easy_cass_lab=1` tag and SHALL NOT carry a `bucket` tag.  It SHALL be a public subnet with an internet gateway and a security group with no ingress.  `down --all` SHALL leave it in place, as it leaves the packer VPC.
+#### Scenario: Status with a lease it cannot read
+- **WHEN** a user runs `observability compactor status` and `leases/compactor.json` does not hold a valid lease
+- **THEN** the output says that the lease object cannot be read, shows its content, and says that deleting `leases/compactor.json` lets a pod create a fresh lease
+- **AND** nothing is changed
 
-#### Scenario: Teardown of all clusters keeps the compactor VPC
-- **WHEN** a user tears down all tagged clusters
-- **THEN** the `easy-db-lab-compactor` VPC and the compactor service are not deleted
-
-#### Scenario: The compactor VPC is not counted as a cluster
-- **WHEN** `down` counts the clusters that name the account bucket
-- **THEN** the `easy-db-lab-compactor` VPC is not counted

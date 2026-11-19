@@ -15,6 +15,7 @@ internal class AMITest {
                 creationDate = Instant.parse("2024-01-01T00:00:00Z"),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = listOf("snap-111"),
             )
 
@@ -26,6 +27,7 @@ internal class AMITest {
                 creationDate = Instant.parse("2024-01-02T00:00:00Z"),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = listOf("snap-222"),
             )
 
@@ -46,6 +48,7 @@ internal class AMITest {
                 creationDate = Instant.now(),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = emptyList(),
             )
 
@@ -57,6 +60,7 @@ internal class AMITest {
                 creationDate = Instant.now(),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = emptyList(),
             )
 
@@ -74,6 +78,7 @@ internal class AMITest {
                 creationDate = Instant.now(),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = emptyList(),
             )
 
@@ -85,6 +90,7 @@ internal class AMITest {
                 creationDate = Instant.now(),
                 ownerId = "123456789012",
                 isPublic = true,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = emptyList(),
             )
 
@@ -102,6 +108,7 @@ internal class AMITest {
                 creationDate = Instant.parse("2024-01-01T00:00:00Z"),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = emptyList(),
             )
 
@@ -113,6 +120,7 @@ internal class AMITest {
                 creationDate = Instant.parse("2024-01-02T00:00:00Z"),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = emptyList(),
             )
 
@@ -124,6 +132,7 @@ internal class AMITest {
                 creationDate = Instant.parse("2024-01-01T00:00:00Z"),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = emptyList(),
             )
 
@@ -135,6 +144,7 @@ internal class AMITest {
                 creationDate = Instant.parse("2024-01-01T00:00:00Z"),
                 ownerId = "123456789012",
                 isPublic = false,
+                state = AMI.AVAILABLE_STATE,
                 snapshotIds = emptyList(),
             )
 

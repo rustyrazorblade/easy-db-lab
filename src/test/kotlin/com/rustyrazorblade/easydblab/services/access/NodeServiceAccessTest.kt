@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test
 class NodeServiceAccessTest {
     private val control = ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a")
     private val state =
-        ClusterState(name = "lab", versions = mutableMapOf(), hosts = mapOf(ServerType.Control to listOf(control)))
-    private val empty = ClusterState(name = "lab", versions = mutableMapOf())
+        ClusterState(name = "lab", hosts = mapOf(ServerType.Control to listOf(control)))
+    private val empty = ClusterState(name = "lab")
 
     @Test
     fun `socks access dials the node's private address through the tunnel's current port`() {

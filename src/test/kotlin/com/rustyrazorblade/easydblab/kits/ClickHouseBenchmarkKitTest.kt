@@ -82,7 +82,7 @@ class ClickHouseBenchmarkKitTest : BaseKoinTest() {
     }
 
     @Test
-    fun `only prepare, start and stop become commands`() {
+    fun `only prepare, start, stop and uninstall become commands`() {
         val kitDir = File(tempDir, "clickhouse-benchmark-clickhouse").apply { mkdirs() }
         val entries =
             InstallTemplateResolver(context, KitSourcesProvider(context))
@@ -99,6 +99,6 @@ class ClickHouseBenchmarkKitTest : BaseKoinTest() {
         val group = KitRunnerCommandFactory().buildKitGroup("clickhouse-benchmark-clickhouse", kitDir)
 
         assertThat(entries.map { it.name }).contains("lib/args.sh", "pod/run-benchmark.sh", "pod/prepare-load.sh")
-        assertThat(group.subcommands.keys).containsExactlyInAnyOrder("prepare", "start", "stop", "status")
+        assertThat(group.subcommands.keys).containsExactlyInAnyOrder("prepare", "start", "stop", "uninstall", "status")
     }
 }

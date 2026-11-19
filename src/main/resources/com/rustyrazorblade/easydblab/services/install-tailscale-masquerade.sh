@@ -2,18 +2,20 @@
 # Masquerade Tailscale-forwarded traffic ahead of Cilium's NAT chain, on the control node.
 #
 # WHY: the control node is the Tailscale subnet router for the VPC CIDR. Cilium's
-# CILIUM_POST_nat chain carries "-o ens+ -m set --match-set cilium_node_set_v4 dst -j ACCEPT"
+# CILIUM_POST_nat chain carries "-o en+ -m set --match-set cilium_node_set_v4 dst -j ACCEPT"
 # (exclude traffic to cluster nodes from masquerade), and iptables POSTROUTING jumps to it
 # BEFORE ts-postrouting. A packet forwarded from tailscale0 to a db node therefore hits ACCEPT
-# and is never MASQUERADEd: it leaves ens5 with the operator's 100.x source, and the reply has
-# no route back. From the operator's machine control0 works but every db node times out.
+# and is never MASQUERADEd: it leaves the primary ENI with the operator's 100.x source, and the
+# reply has no route back. From the operator's machine control0 works but every db node times out.
 # Cilium re-inserts its feeder rule at position 1 on every restart, so ordering inside iptables
 # cannot fix it.
 #
 # HOW: an nftables NAT chain at priority 90, ahead of iptables' POSTROUTING (srcnat = 100),
 # masquerades packets carrying Tailscale's forward mark (0x40000 in the 0xff0000 field, set by
-# ts-forward on packets entering from tailscale0). nf_nat performs NAT in the first chain that
-# sets up a mapping, so Cilium's later ACCEPT no longer matters.
+# ts-forward on packets entering from tailscale0). The rule matches any en* interface, so it
+# covers the primary ENI under whatever name its instance family gives it (ens5, ens52, enp39s0).
+# nf_nat performs NAT in the first chain that sets up a mapping, so Cilium's later ACCEPT no
+# longer matters.
 #
 # IDEMPOTENT: the .nft file declares, deletes, and recreates the table, so re-running replaces
 # the rules in place. BOOT-PERSISTENT: a oneshot unit loads the file at every boot; the AMI's
@@ -36,7 +38,7 @@ delete table ip edl_tailscale
 table ip edl_tailscale {
     chain postrouting {
         type nat hook postrouting priority 90; policy accept;
-        meta mark & 0x00ff0000 == 0x00040000 oifname "ens*" masquerade
+        meta mark & 0x00ff0000 == 0x00040000 oifname "en*" masquerade
     }
 }
 EOF

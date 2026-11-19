@@ -92,7 +92,7 @@ class SparkInit : PicoBaseCommand() {
         val tags =
             mapOf(
                 "easy_cass_lab" to "1",
-                "ClusterId" to state.clusterId,
+                Constants.Vpc.CLUSTER_ID_TAG_KEY to state.clusterId,
             )
 
         val initConfig =

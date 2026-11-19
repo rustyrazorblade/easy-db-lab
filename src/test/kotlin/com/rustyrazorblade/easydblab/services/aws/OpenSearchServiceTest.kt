@@ -4,7 +4,9 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -36,7 +38,8 @@ import software.amazon.awssdk.services.opensearch.model.VolumeType
  */
 internal class OpenSearchServiceTest {
     private lateinit var mockOpenSearchClient: OpenSearchClient
-    private lateinit var mockAws: AWS
+    private lateinit var mockIamRoles: IamRoles
+    private lateinit var mockAccountIdentity: AccountIdentity
     private lateinit var eventBus: EventBus
     private val capturedEvents = mutableListOf<EventEnvelope>()
     private lateinit var openSearchService: OpenSearchService
@@ -44,7 +47,8 @@ internal class OpenSearchServiceTest {
     @BeforeEach
     fun setUp() {
         mockOpenSearchClient = mock()
-        mockAws = mock()
+        mockIamRoles = mock()
+        mockAccountIdentity = mock()
         capturedEvents.clear()
         eventBus = EventBus()
         eventBus.addListener(
@@ -56,7 +60,7 @@ internal class OpenSearchServiceTest {
                 override fun close() = Unit
             },
         )
-        openSearchService = OpenSearchService(mockOpenSearchClient, mockAws, eventBus)
+        openSearchService = OpenSearchService(mockOpenSearchClient, mockIamRoles, mockAccountIdentity, eventBus)
     }
 
     @Test
@@ -275,7 +279,7 @@ internal class OpenSearchServiceTest {
 
         assertThatThrownBy {
             openSearchService.waitForDomainActive("test-domain", timeoutMs = 50, pollIntervalMs = 10)
-        }.isInstanceOf(IllegalStateException::class.java)
+        }.isInstanceOf(AwsTimeoutException::class.java)
             .hasMessageContaining("Timeout waiting for OpenSearch domain")
     }
 
@@ -387,7 +391,7 @@ internal class OpenSearchServiceTest {
 
         assertThatThrownBy {
             openSearchService.waitForDomainDeleted("test-domain", timeoutMs = 50, pollIntervalMs = 10)
-        }.isInstanceOf(IllegalStateException::class.java)
+        }.isInstanceOf(AwsTimeoutException::class.java)
             .hasMessageContaining("Timeout waiting for OpenSearch domain test-domain to be deleted")
     }
 

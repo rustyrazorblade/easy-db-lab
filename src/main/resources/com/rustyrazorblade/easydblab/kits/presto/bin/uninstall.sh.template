@@ -2,9 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
 export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 
 echo "Uninstalling Presto..."
-helm uninstall presto --namespace default --ignore-not-found
+edl_helm_uninstall presto
 
 echo "Presto uninstalled."

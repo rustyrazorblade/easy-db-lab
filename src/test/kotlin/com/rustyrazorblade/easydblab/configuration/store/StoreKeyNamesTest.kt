@@ -29,8 +29,6 @@ class StoreKeyNamesTest {
         setOf(
             // This test names the old names to find them.
             "$testSources/configuration/store/StoreKeyNamesTest.kt",
-            // The golden captured before the rename; StoreGoldenTest maps the new names back to these.
-            "src/test/resources/com/rustyrazorblade/easydblab/golden/store/compactor-task-definition.json",
         )
 
     /** File path to the trimmed text of the lines it may hold. */
@@ -47,18 +45,6 @@ class StoreKeyNamesTest {
                 setOf("assertThat(data.firstValue).doesNotContainKey(\"cluster_s3_prefix\")"),
             "$testSources/services/TemplateServiceTest.kt" to
                 setOf("assertThat(variables).doesNotContainKeys(\"PYROSCOPE_STORAGE_PREFIX\", \"PROFILES_S3_PREFIX\")"),
-            "$testSources/services/aws/CompactorTaskDefinitionTest.kt" to
-                setOf(
-                    ".doesNotContainKeys(\"S3_BUCKET\", \"AWS_REGION\", \"METRICS_S3_PREFIX\", \"LOGS_S3_PREFIX\", \"TRACES_S3_PREFIX\")",
-                ),
-            // The D5 rename, mapped back to compare with the golden captured before it.
-            "$testSources/configuration/store/StoreGoldenTest.kt" to
-                setOf(
-                    "\"STORE_BUCKET\" to \"S3_BUCKET\",",
-                    "\"METRICS_STORE_PREFIX\" to \"METRICS_S3_PREFIX\",",
-                    "\"LOGS_STORE_PREFIX\" to \"LOGS_S3_PREFIX\",",
-                    "\"TRACES_STORE_PREFIX\" to \"TRACES_S3_PREFIX\",",
-                ),
         )
 
     @Test

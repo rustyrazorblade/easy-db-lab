@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
@@ -13,8 +14,6 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -46,9 +45,8 @@ class K8sBackendWorkloadsIntegrationTest {
     fun setup() {
         SharedK3s.createNamespace(NAMESPACE)
         client = SharedK3s.client()
-        val clientProvider = mock<K8sClientProvider>()
+        val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         // Each action closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient()).thenAnswer { SharedK3s.client() }
         workloads = K8sBackendWorkloads(clientProvider, NAMESPACE, pollInterval = Duration.ofMillis(250))
     }
 

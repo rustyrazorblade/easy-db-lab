@@ -29,16 +29,16 @@ same setting, **the namespaced option wins**, regardless of order.
 | `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
 | `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
 | `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
-| `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all available |
+| `--azs`, `-z` | Availability zones (e.g., `a,b,c`), at most 8 | `a,b,c` |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
 | `--ebs.iops` | EBS IOPS (gp3 only) | 0 |
 | `--ebs.throughput` | EBS throughput (gp3 only) | 0 |
 | `--until` | When instances can be deleted | tomorrow |
 | `--tag` | Custom tags (key=value, repeatable) | - |
-| `--vpc` | Use existing VPC ID | - |
+| `--vpc` | Use an existing VPC ID. The VPC is yours: `down` removes only the instances, subnets, security group, internet gateway and default route this cluster created in it (found by the cluster's `ClusterId` tag), and never deletes the VPC or anything else in it | - |
 | `--up` | Auto-provision after init | false |
-| `--clean` | Remove existing config first | false |
+| `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
 
 ### Examples
 
@@ -76,12 +76,16 @@ easy-db-lab init my-cluster --up
 
 ### Storage Requirements
 
-Database instances need a data disk separate from the root volume. This can come from either:
+Every node needs a data disk separate from the 20 GB root volume. Each node mounts it at `/mnt/db1` and keeps its data there: databases and kit volumes on db nodes, the observability backends on the control node, and on every node the K3s data directory (pulled images) and pod logs.
+
+A db node's data disk can come from either:
 
 - **Instance store (local NVMe)** — Instance types with a `d` suffix (e.g., `i3.xlarge`, `m5d.xlarge`, `c5d.2xlarge`) include local NVMe storage and require no extra configuration.
 - **EBS volumes** — Attach an EBS volume using `--ebs.type` for any other instance type.
 
-If the selected instance type has no instance store and `--ebs.type` is not specified, `up` will fail. For example:
+`--ebs.type` adds a volume to db nodes only, so the control and app instance types must have instance store. The defaults (`m5d.xlarge` control, `c6id.2xlarge` app) do.
+
+`init` fails, naming the node type and the instance type, when a db instance type has no instance store and `--ebs.type` is not specified, or when the control or app instance type has no instance store. `up` also fails, naming the host, if a node's setup finds no data disk or cannot mount it at `/mnt/db1`. For example, a db instance type with no instance store needs an EBS volume:
 
 ```bash
 easy-db-lab init my-cluster --db.instance-type c5.2xlarge --ebs.type gp3 --ebs.size 200
@@ -99,7 +103,7 @@ This command creates:
 
 - **S3 Storage**: Cluster data stored under a dedicated prefix in the account S3 bucket
 - **VPC**: With subnets and security groups
-- **EC2 Instances**: Cassandra nodes, stress nodes, and a control node (an `m5d.xlarge`; K3s data is stored on its NVMe drive to avoid filling the root volume)
+- **EC2 Instances**: Cassandra nodes, stress nodes, and a control node (an `m5d.xlarge`; K3s data, including the etcd datastore, is stored on its NVMe drive to avoid filling the root volume)
 - **K3s Cluster**: Lightweight Kubernetes across all nodes
 
 ### What Happens During `up`
@@ -157,12 +161,14 @@ easy-db-lab cassandra use 5.0
 
 This command:
 
-- Sets the active Cassandra version on all nodes
+- Installs the latest 5.0 release on every node (the AMI has no Cassandra version installed)
+- Sets the active Cassandra version on all nodes, on JDK 17
 - Downloads configuration files to your local directory
 - Applies any existing patch configuration
 
-`cassandra use` accepts any installed version. Run `easy-db-lab cassandra list` to see them.
-This includes a build published by `cassandra build`. See [Custom Builds](installing-cassandra.md#custom-builds),
+`cassandra use` accepts any ASF release (`4.1.7`), release line (`5.0`), nightly build
+(`5.0-HEAD`, `trunk`), named build in your profile, or build published by `cassandra build`. Run
+`easy-db-lab cassandra list` to see them. See [Custom Builds](installing-cassandra.md#custom-builds),
 or run `easy-db-lab help cassandra-builds`.
 
 ### Step 2: Customize Configuration (Optional)

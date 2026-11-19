@@ -13,10 +13,13 @@ import com.rustyrazorblade.easydblab.profiling.pyroscopeNodePortUrl
 import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
+import com.rustyrazorblade.easydblab.providers.aws.isAwsFailure
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStreamReader
 import java.util.zip.GZIPInputStream
 import kotlin.io.path.createTempFile
@@ -125,19 +128,20 @@ class DefaultEMRProvisioningService(
      * Fetches and emits bootstrap action stderr logs when an EMR cluster fails to start.
      * Falls back to emitting manual debug instructions if logs cannot be retrieved.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun emitBootstrapFailureDiagnostics(
         clusterId: String,
         s3Path: ClusterStoragePath,
     ) {
         eventBus.emit(Event.Emr.BootstrapFailureDiagnosing)
 
-        try {
+        // A diagnostic: an AWS or I/O failure to fetch the log falls back to the manual debug
+        // instructions; any other failure propagates.
+        runCatchingException {
             val masterInstances = emrService.listInstances(clusterId)
             if (masterInstances.isEmpty()) {
                 eventBus.emit(Event.Emr.BootstrapFailureLogUnavailable("No master instance found"))
                 emitDebugInstructions(clusterId, s3Path)
-                return
+                return@runCatchingException
             }
 
             val instanceId = masterInstances.first()
@@ -156,15 +160,20 @@ class DefaultEMRProvisioningService(
                 }
 
             eventBus.emit(Event.Emr.BootstrapFailureLog(content))
-        } catch (e: Exception) {
-            log.debug(e) { "Failed to retrieve bootstrap logs for cluster $clusterId" }
-            eventBus.emit(
-                Event.Emr.BootstrapFailureLogUnavailable(
-                    e.message ?: "Unknown error",
-                ),
-            )
-            emitDebugInstructions(clusterId, s3Path)
+        }.onFailure { e ->
+            if (!e.isAwsFailure() && e !is IOException) throw e
+            emitBootstrapLogUnavailable(clusterId, s3Path, e)
         }
+    }
+
+    private fun emitBootstrapLogUnavailable(
+        clusterId: String,
+        s3Path: ClusterStoragePath,
+        cause: Throwable,
+    ) {
+        log.debug(cause) { "Failed to retrieve bootstrap logs for cluster $clusterId" }
+        eventBus.emit(Event.Emr.BootstrapFailureLogUnavailable(cause.message ?: "Unknown error"))
+        emitDebugInstructions(clusterId, s3Path)
     }
 
     private fun emitDebugInstructions(

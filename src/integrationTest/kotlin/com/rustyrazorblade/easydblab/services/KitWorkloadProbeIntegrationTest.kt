@@ -4,10 +4,8 @@ import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
-import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
-import com.rustyrazorblade.easydblab.kubernetes.KubeApi
-import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
-import com.rustyrazorblade.easydblab.kubernetes.currentContextOf
+import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
@@ -28,7 +26,6 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
-import java.nio.file.Files
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -51,9 +48,9 @@ class KitWorkloadProbeIntegrationTest {
         private const val OTHER_NAMESPACE = "elsewhere"
         private const val WAIT_SECONDS = 60L
         private const val IMPATIENT_POLLS = 3
+        private const val HOLD_SECONDS = "3600"
         private const val NAMESPACE = "default"
         private const val POD_IMAGE = "registry.k8s.io/pause:3.9"
-        private val FINISHED_PHASES = setOf("Succeeded", "Failed")
 
         @Container
         @JvmStatic
@@ -66,21 +63,18 @@ class KitWorkloadProbeIntegrationTest {
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
                 }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
                 .withEnv("K3S_SNAPSHOTTER", "native")
-                .let { (it as K3sContainer).withPreloadedImages(POD_IMAGE) }
+                .let { (it as K3sContainer).withPreloadedImages(POD_IMAGE, SharedK3s.BUSYBOX_IMAGE) }
     }
 
     private lateinit var client: KubernetesClient
     private lateinit var probe: KitWorkloadProbe
-    private lateinit var kubeService: DefaultKubernetesService
+    private lateinit var kubeService: K8sService
 
     @BeforeAll
     fun setup() {
         client = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
-        val kubeconfig = Files.createTempFile("kit-workload-probe", ".kubeconfig")
-        Files.writeString(kubeconfig, k3s.kubeConfigYaml)
         // The helm branch runs helm on the control node over SSH; no runtime here is helm-backed.
-        kubeService =
-            DefaultKubernetesService(ProxiedKubernetesClientFactory()) { KubeApi(kubeconfig, requireNotNull(currentContextOf(kubeconfig))) }
+        kubeService = DefaultK8sService(WorkspaceK8s.provider(k3s.kubeConfigYaml), EventBus())
         probe = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ofSeconds(1), maxPolls = WAIT_SECONDS.toInt())
 
         client
@@ -102,6 +96,7 @@ class KitWorkloadProbeIntegrationTest {
         labels: Map<String, String>,
         namespace: String = "default",
         finalizers: List<String> = emptyList(),
+        runsWhileTerminating: Boolean = false,
     ): Pod =
         client
             .resource(
@@ -115,13 +110,31 @@ class KitWorkloadProbeIntegrationTest {
                     .withNewSpec()
                     .addNewContainer()
                     .withName("pause")
-                    .withImage(POD_IMAGE)
+                    .withImage(if (runsWhileTerminating) SharedK3s.BUSYBOX_IMAGE else POD_IMAGE)
                     // Preloaded into K3s; never pulling makes a missing preload fail fast, not flake.
                     .withImagePullPolicy("Never")
-                    .endContainer()
+                    .apply {
+                        // PID 1 ignores SIGTERM unless it handles it, so this container outlives the pod's delete.
+                        if (runsWhileTerminating) withCommand("sleep", HOLD_SECONDS)
+                    }.endContainer()
+                    .withTerminationGracePeriodSeconds(if (runsWhileTerminating) HOLD_SECONDS.toLong() else null)
                     .endSpec()
                     .build(),
             ).create()
+
+    /**
+     * Waits until [name] runs. The kubelet stops the containers of a pod being deleted, and a pod whose
+     * containers have all exited reaches a terminal phase, which the probe does not count. The tests that
+     * delete a pod to see it counted while it terminates therefore keep its container running, and wait
+     * for it to run before they delete it.
+     */
+    private fun awaitRunning(name: String) {
+        client
+            .pods()
+            .inNamespace(NAMESPACE)
+            .withName(name)
+            .waitUntilCondition({ it?.status?.phase == "Running" }, WAIT_SECONDS, TimeUnit.SECONDS)
+    }
 
     @Test
     fun `finds nothing when no pod carries the runtime selector`() {
@@ -150,7 +163,13 @@ class KitWorkloadProbeIntegrationTest {
     @Test
     fun `counts pods that are still being deleted`() {
         // A finalizer holds the deleted pod in Terminating, as a slow manual `kubectl delete` would.
-        createPod("stopping-0", mapOf("easydblab/kit" to "stopping"), finalizers = listOf("easydblab.test/hold"))
+        createPod(
+            "stopping-0",
+            mapOf("easydblab/kit" to "stopping"),
+            finalizers = listOf("easydblab.test/hold"),
+            runsWhileTerminating = true,
+        )
+        awaitRunning("stopping-0")
         client
             .pods()
             .inNamespace("default")
@@ -202,15 +221,14 @@ class KitWorkloadProbeIntegrationTest {
      */
     @Test
     fun `waiting for a stopped kit counts a pod still terminating, and ends once it is gone`() {
-        createPod("draining-0", mapOf("easydblab/kit" to "draining"), finalizers = listOf("easydblab.test/hold"))
-        val draining =
-            client
-                .pods()
-                .inNamespace("default")
-                .withName("draining-0")
-        draining.waitUntilCondition({ it?.status?.phase == "Running" }, WAIT_SECONDS, TimeUnit.SECONDS)
+        createPod(
+            "draining-0",
+            mapOf("easydblab/kit" to "draining"),
+            finalizers = listOf("easydblab.test/hold"),
+            runsWhileTerminating = true,
+        )
+        awaitRunning("draining-0")
         deletePod("draining-0")
-        draining.waitUntilCondition({ it?.status?.phase in FINISHED_PHASES }, WAIT_SECONDS, TimeUnit.SECONDS)
         val impatient = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ZERO, maxPolls = IMPATIENT_POLLS)
 
         assertThat(impatient.awaitGone("draining", podsRuntime("draining")).getOrThrow())
@@ -223,6 +241,13 @@ class KitWorkloadProbeIntegrationTest {
             // A JSON patch, not edit(): the kubelet updates the terminating pod's status, and edit()
             // sends the resourceVersion it read, so it fails with 409 Conflict when that races.
             .patch(PatchContext.of(PatchType.JSON), """[{"op": "remove", "path": "/metadata/finalizers"}]""")
+        // The container ignores SIGTERM, so the pod would stay for its whole grace period: end it now.
+        client
+            .pods()
+            .inNamespace("default")
+            .withName("draining-0")
+            .withGracePeriod(0)
+            .delete()
 
         awaitGone("draining")
     }

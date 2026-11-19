@@ -53,7 +53,6 @@ class KitStorageProvisionerTest {
     private val state =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             clusterId = "cid-1",
             hosts =
                 mapOf(

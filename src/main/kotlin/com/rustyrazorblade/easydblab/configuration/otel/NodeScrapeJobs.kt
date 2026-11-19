@@ -103,6 +103,12 @@ object NodeScrapeJobs {
         return "__meta_kubernetes_pod_label_$sanitized"
     }
 
+    /** As [podLabelMetaKey], for a node label under node discovery (`__meta_kubernetes_node_label_*`). */
+    fun nodeLabelMetaKey(key: String): String {
+        val sanitized = key.map { if (it.isLetterOrDigit()) it else '_' }.joinToString("")
+        return "__meta_kubernetes_node_label_$sanitized"
+    }
+
     /** `instance` is the pod name unless the job names a fixed value, such as `<node>:<port>`. */
     private fun instanceRelabel(instance: String?) =
         when (instance) {

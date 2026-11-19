@@ -22,8 +22,8 @@ variable "release_version" {
    default = ""
 }
 
-# Declared because the build harness passes -var s3_bucket to every build. The cassandra image
-# builds on top of the base AMI (which already has the JDKs), so it is currently unused here.
+# The account S3 bucket for the download and apt cache. The first provisioner writes it to
+# /etc/edl-cache.env, which the cache library baked into the base AMI reads.
 variable "s3_bucket" {
   type    = string
   default = ""
@@ -176,25 +176,12 @@ build {
     script = "install/install_cassandra_easy_stress.sh"
   }
 
-  # the cassandra_versions.yaml file is used to define all the version of cassandra we want
-  # and it's matching java version.  The use command will set the symlink of /usr/local/cassandra
-  # to point to the version of cassandra we want to use, and set the java version using update-java-alternatives
-
-  provisioner "file" {
-    source = "cassandra_versions.yaml"
-    destination = "cassandra_versions.yaml"
-  }
+  # No Cassandra version is baked: the CLI installs the version a cluster asks for at runtime.
 
   provisioner "shell" {
     inline = [
       "sudo mkdir -p /mnt/db1/cassandra/import",
       "sudo chown ubuntu:ubuntu /mnt/db1/cassandra/import"
-    ]
-  }
-
-  provisioner "shell" {
-    inline = [
-        "sudo mv cassandra_versions.yaml /etc/cassandra_versions.yaml"
     ]
   }
 
@@ -242,18 +229,6 @@ build {
     ]
   }
 
-  provisioner "file" {
-    source = "patch-jvm-options.py"
-    destination = "patch-jvm-options.py"
-  }
-
-  provisioner "shell" {
-    inline = [
-       "sudo mv patch-jvm-options.py /usr/local/bin/patch-jvm-options.py",
-       "sudo chmod +x /usr/local/bin/patch-jvm-options.py"
-    ]
-  }
-
   provisioner "shell" {
     inline = [
       "mkdir -p /home/ubuntu/.config/htop/"
@@ -291,7 +266,7 @@ build {
       "sudo rm -rf /tmp/* /var/tmp/*",
       "sudo find /var/log -type f -exec truncate -s 0 {} +",
       # Home-dir build leftovers (surgical; tolerate absence)
-      "rm -rf /home/ubuntu/cassandra /home/ubuntu/bin-cassandra /home/ubuntu/cassandra_versions.yaml /home/ubuntu/services /home/ubuntu/aliases.sh",
+      "rm -rf /home/ubuntu/cassandra /home/ubuntu/bin-cassandra /home/ubuntu/services /home/ubuntu/aliases.sh",
       "rm -rf /home/ubuntu/.cache /home/ubuntu/.wget-hsts /home/ubuntu/.bash_history /home/ubuntu/.m2 /home/ubuntu/.sudo_as_admin_successful /home/ubuntu/.lesshst",
       # Discard the now-freed blocks so EBS excludes them from the snapshot (this is what
       # actually shrinks the snapshot and cuts AMI-creation time). -av prints bytes trimmed

@@ -1,10 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import org.koin.core.component.KoinComponent
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Outcome of running a per-host action against a single host.
@@ -29,9 +29,13 @@ data class HostResult<T>(
  *     remoteOperationsService.executeRemotely(host.toHost(), "nodetool status")
  * }
  * ```
+ *
+ * A parallel run uses at most [maxConcurrency] threads, so a 1,000-node cluster never opens one
+ * SSH session per node at once.
  */
 class HostOperationsService(
     private val clusterStateManager: ClusterStateManager,
+    private val maxConcurrency: Int = Constants.Scale.HOST_CONCURRENCY,
 ) : KoinComponent {
     /**
      * Executes an action on filtered hosts of a specific server type.
@@ -69,22 +73,30 @@ class HostOperationsService(
         hostFilter: String = "",
         parallel: Boolean = false,
         action: (ClusterHost) -> Unit,
+    ) = withHosts(filteredHosts(hosts, serverType, hostFilter), parallel, action)
+
+    /**
+     * Executes an action on every host in [hosts], whatever its server type, in list order when
+     * serial. A parallel run runs every host, then rethrows the first failure with the rest
+     * attached as suppressed, so an operator fixing a multi-node problem sees all of it at once.
+     *
+     * @param hosts The hosts to act on
+     * @param parallel If true, execute operations in parallel
+     * @param action The action to perform on each host
+     */
+    fun withHosts(
+        hosts: List<ClusterHost>,
+        parallel: Boolean = false,
+        action: (ClusterHost) -> Unit,
     ) {
-        val filteredHosts = filteredHosts(hosts, serverType, hostFilter)
-
-        if (parallel && filteredHosts.size > 1) {
-            val failures =
-                collectFromHosts(hosts, serverType, hostFilter, parallel = true, action = action)
-                    .mapNotNull { it.result.exceptionOrNull() }
-
-            // Every host ran. Rethrow the first failure with the rest attached, so an operator
-            // fixing a multi-node problem sees all of it at once instead of one host per run.
-            failures.firstOrNull()?.let { first ->
-                failures.drop(1).filter { it !== first }.forEach { first.addSuppressed(it) }
-                throw first
-            }
-        } else {
-            filteredHosts.forEach(action)
+        if (!parallel) {
+            hosts.forEach(action)
+            return
+        }
+        val failures = collectFromHosts(hosts, parallel = true, action = action).mapNotNull { it.result.exceptionOrNull() }
+        failures.firstOrNull()?.let { first ->
+            failures.drop(1).filter { it !== first }.forEach { first.addSuppressed(it) }
+            throw first
         }
     }
 
@@ -109,30 +121,28 @@ class HostOperationsService(
         hostFilter: String = "",
         parallel: Boolean = false,
         action: (ClusterHost) -> T,
+    ): List<HostResult<T>> = collectFromHosts(filteredHosts(hosts, serverType, hostFilter), parallel, action)
+
+    /**
+     * Runs an action on every host in [hosts], whatever its server type, and returns each host's
+     * outcome in list order. Every host runs regardless of any other host's failure.
+     *
+     * @param hosts The hosts to act on
+     * @param parallel If true, execute operations in parallel, at most [maxConcurrency] at once
+     * @param action The action to perform on each host
+     * @return One [HostResult] per host, in list order
+     */
+    fun <T> collectFromHosts(
+        hosts: List<ClusterHost>,
+        parallel: Boolean = false,
+        action: (ClusterHost) -> T,
     ): List<HostResult<T>> {
-        val filteredHosts = filteredHosts(hosts, serverType, hostFilter)
-
-        if (!parallel || filteredHosts.size <= 1) {
-            return filteredHosts.map { HostResult(it, runCatching { action(it) }) }
-        }
-
-        // Keyed by position, not alias: two hosts sharing an alias would silently overwrite
-        // each other's outcome and misattribute a failure.
-        val results = ConcurrentHashMap<Int, Result<T>>()
-        filteredHosts
-            .mapIndexed { index, host ->
-                kotlin.concurrent.thread(start = true, isDaemon = false) {
-                    results[index] = runCatching { action(host) }
-                }
-            }.forEach { it.join() }
-
-        return filteredHosts.mapIndexed { index, host ->
-            HostResult(
-                host,
-                results[index]
-                    ?: Result.failure(IllegalStateException("No result recorded for host ${host.alias}")),
-            )
-        }
+        if (!parallel) return hosts.map { HostResult(it, runCatching { action(it) }) }
+        // Results come back by position, not alias: two hosts sharing an alias would otherwise
+        // overwrite each other's outcome and misattribute a failure.
+        return BoundedParallel(maxConcurrency)
+            .map(hosts, action)
+            .zip(hosts) { result, host -> HostResult(host, result) }
     }
 
     /**

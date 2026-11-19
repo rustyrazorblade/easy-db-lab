@@ -36,7 +36,6 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
                         whenever(it.load()).thenReturn(
                             ClusterState(
                                 name = "test",
-                                versions = mutableMapOf(),
                                 s3Bucket = "easy-db-lab-test",
                                 initConfig = InitConfig(tenant = "acme"),
                             ),

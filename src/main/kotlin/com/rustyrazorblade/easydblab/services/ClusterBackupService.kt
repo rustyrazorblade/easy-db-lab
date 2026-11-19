@@ -16,11 +16,10 @@ import java.security.MessageDigest
  * to S3, allowing users to restore their cluster when using the --vpc-id flag
  * to reconnect to an existing cluster.
  *
- * Backed up files (8 total):
+ * Backed up files (7 total):
  * - kubeconfig: s3://{bucket}/k3s/kubeconfig
  * - k8s manifests: s3://{bucket}/k8s/
  * - cassandra.patch.yaml: s3://{bucket}/config/cassandra.patch.yaml
- * - cassandra_versions.yaml: s3://{bucket}/config/cassandra_versions.yaml
  * - env.sh: s3://{bucket}/config/env.sh
  * - environment.sh: s3://{bucket}/config/environment.sh
  * - setup_instance.sh: s3://{bucket}/config/setup_instance.sh
@@ -61,90 +60,6 @@ interface ClusterBackupService {
         localPath: Path,
         clusterState: ClusterState,
     ): Result<Unit>
-
-    /**
-     * Restores the kubeconfig file from S3.
-     *
-     * @param localPath Path where the kubeconfig should be written
-     * @param clusterState The cluster state containing S3 bucket configuration
-     * @return Result indicating success or failure
-     */
-    fun restoreKubeconfig(
-        localPath: Path,
-        clusterState: ClusterState,
-    ): Result<Unit>
-
-    /**
-     * Backs up the k8s manifests directory to S3.
-     *
-     * @param localDir Path to the local k8s directory
-     * @param clusterState The cluster state containing S3 bucket configuration
-     * @return Result indicating success or failure
-     */
-    fun backupK8sManifests(
-        localDir: Path,
-        clusterState: ClusterState,
-    ): Result<Unit>
-
-    /**
-     * Restores the k8s manifests directory from S3.
-     *
-     * @param localDir Path where the k8s manifests should be restored
-     * @param clusterState The cluster state containing S3 bucket configuration
-     * @return Result indicating success or failure
-     */
-    fun restoreK8sManifests(
-        localDir: Path,
-        clusterState: ClusterState,
-    ): Result<Unit>
-
-    /**
-     * Checks if kubeconfig exists in S3 for this cluster.
-     *
-     * @param clusterState The cluster state containing S3 bucket configuration
-     * @return true if kubeconfig exists in S3, false otherwise
-     */
-    fun kubeconfigExistsInS3(clusterState: ClusterState): Boolean
-
-    /**
-     * Checks if k8s manifests exist in S3 for this cluster.
-     *
-     * @param clusterState The cluster state containing S3 bucket configuration
-     * @return true if k8s manifests exist in S3, false otherwise
-     */
-    fun k8sManifestsExistInS3(clusterState: ClusterState): Boolean
-
-    /**
-     * Backs up the cassandra.patch.yaml file to S3.
-     *
-     * @param localPath Path to the local cassandra.patch.yaml file
-     * @param clusterState The cluster state containing S3 bucket configuration
-     * @return Result indicating success or failure
-     */
-    fun backupCassandraPatch(
-        localPath: Path,
-        clusterState: ClusterState,
-    ): Result<Unit>
-
-    /**
-     * Restores the cassandra.patch.yaml file from S3.
-     *
-     * @param localPath Path where cassandra.patch.yaml should be written
-     * @param clusterState The cluster state containing S3 bucket configuration
-     * @return Result indicating success or failure
-     */
-    fun restoreCassandraPatch(
-        localPath: Path,
-        clusterState: ClusterState,
-    ): Result<Unit>
-
-    /**
-     * Checks if cassandra.patch.yaml exists in S3 for this cluster.
-     *
-     * @param clusterState The cluster state containing S3 bucket configuration
-     * @return true if cassandra.patch.yaml exists in S3, false otherwise
-     */
-    fun cassandraPatchExistsInS3(clusterState: ClusterState): Boolean
 
     /**
      * Performs incremental backup - only uploads files whose hashes have changed.
@@ -213,7 +128,6 @@ enum class BackupTarget(
     KUBECONFIG("kubeconfig", false, { it.kubeconfig() }, "Kubeconfig"),
     K8S_MANIFESTS("k8s", true, { it.k8s() }, "K8s manifests"),
     CASSANDRA_PATCH("cassandra.patch.yaml", false, { it.cassandraPatch() }, "Cassandra patch"),
-    CASSANDRA_VERSIONS("cassandra_versions.yaml", false, { it.cassandraVersions() }, "Cassandra versions"),
     ENV_SCRIPT("env.sh", false, { it.envScript() }, "Env script"),
     ENVIRONMENT_SCRIPT("environment.sh", false, { it.environmentScript() }, "Environment script"),
     SETUP_INSTANCE_SCRIPT("setup_instance.sh", false, { it.setupInstanceScript() }, "Setup instance script"),
@@ -341,133 +255,6 @@ class DefaultClusterBackupService(
 
             eventBus.emit(Event.Backup.KubeconfigBackedUp(objectStore.uriOf(s3Path)))
         }
-
-    override fun restoreKubeconfig(
-        localPath: Path,
-        clusterState: ClusterState,
-    ): Result<Unit> =
-        runCatching {
-            validateS3Bucket(clusterState)
-
-            val s3Path = ClusterStoragePath.from(clusterState).kubeconfig()
-
-            require(objectStore.fileExists(s3Path)) {
-                "Kubeconfig does not exist in S3 at: ${objectStore.uriOf(s3Path)}"
-            }
-
-            log.info { "Restoring kubeconfig from S3: ${objectStore.uriOf(s3Path)}" }
-            objectStore.downloadFile(s3Path, localPath, showProgress = true)
-
-            eventBus.emit(Event.Backup.KubeconfigRestored(objectStore.uriOf(s3Path)))
-        }
-
-    override fun backupK8sManifests(
-        localDir: Path,
-        clusterState: ClusterState,
-    ): Result<Unit> =
-        runCatching {
-            validateS3Bucket(clusterState)
-
-            val localDirFile = localDir.toFile()
-            require(localDirFile.exists() && localDirFile.isDirectory) {
-                "K8s manifests directory does not exist at: $localDir"
-            }
-
-            val s3Path = ClusterStoragePath.from(clusterState).k8s()
-
-            log.info { "Backing up k8s manifests to S3: ${objectStore.uriOf(s3Path)}" }
-            objectStore.uploadDirectory(localDir, s3Path, showProgress = true)
-
-            eventBus.emit(Event.Backup.K8sManifestsBackedUp(objectStore.uriOf(s3Path)))
-        }
-
-    override fun restoreK8sManifests(
-        localDir: Path,
-        clusterState: ClusterState,
-    ): Result<Unit> =
-        runCatching {
-            validateS3Bucket(clusterState)
-
-            val s3Path = ClusterStoragePath.from(clusterState).k8s()
-
-            require(objectStore.directoryExists(s3Path)) {
-                "K8s manifests do not exist in S3 at: ${objectStore.uriOf(s3Path)}"
-            }
-
-            log.info { "Restoring k8s manifests from S3: ${objectStore.uriOf(s3Path)}" }
-            objectStore.downloadDirectory(s3Path, localDir, showProgress = true)
-
-            eventBus.emit(Event.Backup.K8sManifestsRestored(objectStore.uriOf(s3Path)))
-        }
-
-    override fun kubeconfigExistsInS3(clusterState: ClusterState): Boolean {
-        if (clusterState.s3Bucket == null) {
-            log.debug { "S3 bucket not configured, kubeconfig cannot exist in S3" }
-            return false
-        }
-
-        val s3Path = ClusterStoragePath.from(clusterState).kubeconfig()
-        return objectStore.fileExists(s3Path)
-    }
-
-    override fun k8sManifestsExistInS3(clusterState: ClusterState): Boolean {
-        if (clusterState.s3Bucket == null) {
-            log.debug { "S3 bucket not configured, k8s manifests cannot exist in S3" }
-            return false
-        }
-
-        val s3Path = ClusterStoragePath.from(clusterState).k8s()
-        return objectStore.directoryExists(s3Path)
-    }
-
-    override fun backupCassandraPatch(
-        localPath: Path,
-        clusterState: ClusterState,
-    ): Result<Unit> =
-        runCatching {
-            validateS3Bucket(clusterState)
-
-            val localFile = localPath.toFile()
-            require(localFile.exists()) {
-                "Cassandra patch file does not exist at: $localPath"
-            }
-
-            val s3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
-
-            log.info { "Backing up cassandra.patch.yaml to S3: ${objectStore.uriOf(s3Path)}" }
-            objectStore.uploadFile(localFile, s3Path, showProgress = true)
-
-            eventBus.emit(Event.Backup.CassandraPatchBackedUp(objectStore.uriOf(s3Path)))
-        }
-
-    override fun restoreCassandraPatch(
-        localPath: Path,
-        clusterState: ClusterState,
-    ): Result<Unit> =
-        runCatching {
-            validateS3Bucket(clusterState)
-
-            val s3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
-
-            require(objectStore.fileExists(s3Path)) {
-                "Cassandra patch does not exist in S3 at: ${objectStore.uriOf(s3Path)}"
-            }
-
-            log.info { "Restoring cassandra.patch.yaml from S3: ${objectStore.uriOf(s3Path)}" }
-            objectStore.downloadFile(s3Path, localPath, showProgress = true)
-
-            eventBus.emit(Event.Backup.CassandraPatchRestored(objectStore.uriOf(s3Path)))
-        }
-
-    override fun cassandraPatchExistsInS3(clusterState: ClusterState): Boolean {
-        if (clusterState.s3Bucket == null) {
-            log.debug { "S3 bucket not configured, cassandra patch cannot exist in S3" }
-            return false
-        }
-
-        val s3Path = ClusterStoragePath.from(clusterState).cassandraPatch()
-        return objectStore.fileExists(s3Path)
-    }
 
     private fun validateS3Bucket(clusterState: ClusterState) {
         requireNotNull(clusterState.s3Bucket) {

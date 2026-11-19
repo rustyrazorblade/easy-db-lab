@@ -8,20 +8,21 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.GrafanaAnnotationRequest
 import com.rustyrazorblade.easydblab.services.GrafanaAnnotationResponse
-import com.rustyrazorblade.easydblab.services.K3sClusterConfig
-import com.rustyrazorblade.easydblab.services.K3sClusterService
-import com.rustyrazorblade.easydblab.services.K3sSetupResult
+import com.rustyrazorblade.easydblab.services.bringup.ControlNodeFailedException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.inOrder
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -34,27 +35,13 @@ import org.mockito.kotlin.whenever
  */
 class UpCiliumTest : UpTestFixture() {
     // =========================================================================
-    // Group 8: Cilium CNI installation on the server-ready hook
+    // Group 8: Cilium CNI installation in the control node's CNI step
     // =========================================================================
-
-    /**
-     * Stubs [K3sClusterService.setupCluster] to invoke the config's `onServerReady` hook, as the
-     * real implementation does once the K3s server is up. Without this, the mock would swallow the
-     * callback and the Cilium install side effect would never fire — masking the branch under test.
-     */
-    private fun setupClusterInvokingServerReadyHook() {
-        whenever(mockK3sClusterService.setupCluster(any())).thenAnswer { invocation ->
-            val config = invocation.arguments[0] as K3sClusterConfig
-            config.onServerReady?.invoke()
-            K3sSetupResult(serverStarted = true)
-        }
-    }
 
     @Test
     fun `up installs Cilium with the control host and resolved VPC CIDR when cni is Cilium`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
         whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
-        setupClusterInvokingServerReadyHook()
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
@@ -70,21 +57,16 @@ class UpCiliumTest : UpTestFixture() {
     fun `up wires the K3s cluster for a custom CNI only when cni is Cilium`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
         whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
-        setupClusterInvokingServerReadyHook()
 
         newUp().execute()
 
-        val configCaptor = argumentCaptor<K3sClusterConfig>()
-        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
-        assertThat(configCaptor.firstValue.useCustomCni).isTrue()
-        assertThat(configCaptor.firstValue.onServerReady != null).isTrue()
+        verify(mockK3sClusterService).startServer(any(), any(), anyOrNull(), eq(true))
     }
 
     @Test
     fun `up installs the Tailscale masquerade chain after Cilium when Tailscale is enabled`() {
         // happyState marks Tailscale active, so the control node is the subnet router.
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
-        setupClusterInvokingServerReadyHook()
 
         newUp().execute()
 
@@ -98,7 +80,6 @@ class UpCiliumTest : UpTestFixture() {
     @Test
     fun `up skips the Tailscale masquerade chain on a Cilium cluster without Tailscale`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium).copy(tailscaleActive = false))
-        setupClusterInvokingServerReadyHook()
 
         newUp().execute()
 
@@ -111,9 +92,11 @@ class UpCiliumTest : UpTestFixture() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
         whenever(mockCiliumService.installTailscaleMasquerade(any()))
             .thenReturn(Result.failure(RuntimeException("nft: command not found")))
-        setupClusterInvokingServerReadyHook()
 
-        assertThatThrownBy { newUp().execute() }.hasMessageContaining("nft")
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(ControlNodeFailedException::class.java)
+            .hasMessageContaining("control0 failed at cni")
+            .hasMessageContaining("nft")
     }
 
     @Test
@@ -122,10 +105,7 @@ class UpCiliumTest : UpTestFixture() {
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
         verify(mockCiliumService, never()).install(any(), any())
-        val configCaptor = argumentCaptor<K3sClusterConfig>()
-        verify(mockK3sClusterService).setupCluster(configCaptor.capture())
-        assertThat(configCaptor.firstValue.useCustomCni).isFalse()
-        assertThat(configCaptor.firstValue.onServerReady == null).isTrue()
+        verify(mockK3sClusterService).startServer(any(), any(), anyOrNull(), eq(false))
     }
 
     @Test
@@ -136,7 +116,6 @@ class UpCiliumTest : UpTestFixture() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium, cidr = null))
         whenever(mockVpcService.listAllVpcCidrs()).thenReturn(emptyList())
         whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
-        setupClusterInvokingServerReadyHook()
 
         newUp().execute()
 
@@ -164,28 +143,37 @@ class UpCiliumTest : UpTestFixture() {
     }
 
     @Test
-    fun `up fails before K3s starts when a node's AMI lacks the Cilium node fixes, naming the node and the fix`() {
+    fun `a node whose AMI lacks the Cilium node fixes fails, named with its missing files, and is not replaced`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
         val lacking = listOf(Constants.Cilium.NODE_FIX_FILES.last())
         missingCiliumFixes["db0"] = lacking
-        setupClusterInvokingServerReadyHook()
         val emitted = captureEvents()
 
-        assertThatThrownBy { newUp().execute() }.hasMessageContaining("db0").hasMessageContaining("build-image")
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining("1 node(s)")
 
         val failure = emitted.filterIsInstance<Event.Cilium.NodeImageMissingFixes>().single()
         assertThat(failure.nodes).containsExactly("db0")
         assertThat(failure.missingFiles).isEqualTo(lacking)
         assertThat(failure.isError()).isTrue()
         assertThat(failure.toDisplayString()).contains("build-image", "--cni=flannel")
-        verify(mockK3sClusterService, never()).setupCluster(any())
-        verify(mockCiliumService, never()).install(any(), any())
+        val failed =
+            emitted
+                .filterIsInstance<Event.Provision.NodesFailed>()
+                .single()
+                .nodes
+                .single()
+        assertThat(failed.alias).isEqualTo("db0")
+        assertThat(failed.step).isEqualTo("image-check")
+        // A new instance launches from the same AMI, so it would lack the same files.
+        assertThat(fleet.calls).isEmpty()
+        verify(mockK3sClusterService, never()).joinAgent(eq(testDbHost), any(), any(), any())
     }
 
     @Test
     fun `up checks every node's AMI and installs Cilium when all carry the fixes`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
-        setupClusterInvokingServerReadyHook()
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
@@ -224,7 +212,6 @@ class UpCiliumTest : UpTestFixture() {
     fun `up posts the Cilium install annotations to Grafana only after the observability stack is up`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
         ciliumInstallRecordsAnnotations()
-        setupClusterInvokingServerReadyHook()
         var stackDeployed = false
         var annotationsPostedBeforeStack = false
         whenever(mockObservabilityStackService.deploy()).thenAnswer {
@@ -255,7 +242,6 @@ class UpCiliumTest : UpTestFixture() {
             state.copy(initConfig = state.initConfig?.copy(telemetryRedirect = TelemetryRedirect.fromBaseHost("10.9.9.9"))),
         )
         ciliumInstallRecordsAnnotations()
-        setupClusterInvokingServerReadyHook()
 
         newUp().execute()
 
@@ -273,7 +259,6 @@ class UpCiliumTest : UpTestFixture() {
     fun `a failed annotation post is reported and does not fail up`() {
         whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
         ciliumInstallRecordsAnnotations()
-        setupClusterInvokingServerReadyHook()
         whenever(mockGrafanaClient.createAnnotation(any()))
             .thenThrow(IllegalStateException("Grafana annotation API at http://10.0.0.1:3000/api/annotations returned 502"))
 

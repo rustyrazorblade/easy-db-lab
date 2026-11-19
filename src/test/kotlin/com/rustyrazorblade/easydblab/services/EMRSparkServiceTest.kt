@@ -18,8 +18,11 @@ import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.Mockito.mockingDetails
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
@@ -122,7 +125,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
     private val defaultClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             hosts =
                 mutableMapOf(
@@ -148,7 +150,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 emrCluster = validEmrClusterState,
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -168,7 +169,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 emrCluster = runningEmrClusterState,
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -188,7 +188,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 emrCluster = null,
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -210,7 +209,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 emrCluster = terminatingEmrClusterState,
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -533,7 +531,6 @@ class EMRSparkServiceTest : BaseKoinTest() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "test-bucket",
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
@@ -747,14 +744,16 @@ class EMRSparkServiceTest : BaseKoinTest() {
 
     private val stepEnd = Instant.parse("2026-09-28T14:08:52Z")
 
-    private fun stderrPath() =
+    private fun stderrPath() = stepLog("stderr.gz")
+
+    private fun stepLog(name: String) =
         ClusterStoragePath
             .from(defaultClusterState)
             .emrLogs()
             .resolve(testClusterId)
             .resolve("steps")
             .resolve(testStepId)
-            .resolve("stderr.gz")
+            .resolve(name)
 
     private val beforeStepEnd = Instant.parse("2026-09-28T14:08:45Z")
     private val afterStepEnd = Instant.parse("2026-09-28T14:13:48Z")
@@ -791,6 +790,10 @@ class EMRSparkServiceTest : BaseKoinTest() {
             val gz = File(tempDir, "upload-${at.epochSecond}.gz")
             GZIPOutputStream(gz.outputStream()).use { it.write(content.toByteArray()) }
             store.uploadFile(gz, stderrPath(), showProgress = false)
+            // EMR uploads the step's stdout beside its stderr.
+            val stdout = File(tempDir, "upload-stdout-${at.epochSecond}.gz")
+            GZIPOutputStream(stdout.outputStream()).use { it.write(ByteArray(0)) }
+            store.uploadFile(stdout, stepLog("stdout.gz"), showProgress = false)
         }
 
         fun uploadStderrOnLook(
@@ -890,5 +893,59 @@ class EMRSparkServiceTest : BaseKoinTest() {
         assertThat(downloadedStderr()).isNull()
         assertThat(events.filterIsInstance<Event.Emr.StepStderrNotFinal>().single().s3Uri)
             .isEqualTo(S3Uri.uri(stderrPath()))
+    }
+
+    /**
+     * Makes the first cluster-state read after the failed step's details were fetched throw
+     * [failure]; that read is the Loki query's.  Every other read returns the state.
+     */
+    private fun failStateReadAfterStepDetailsFetched(failure: Exception) {
+        var thrown = false
+        whenever(mockClusterStateManager.load()).thenAnswer {
+            val stepDetailsFetched = mockingDetails(mockEmrClient).invocations.count { it.method.name == "describeStep" } >= 2
+            if (stepDetailsFetched && !thrown) {
+                thrown = true
+                throw failure
+            }
+            defaultClusterState
+        }
+    }
+
+    /**
+     * After a failed step the Loki query reads the cluster state again.  A state file that
+     * cannot be read or is invalid must not hide the step's own failure; any other exception is a
+     * defect and must surface.
+     */
+    @ParameterizedTest
+    @MethodSource("unreadableStateFailures")
+    fun `a cluster state that cannot be read for the Loki query still reports the failed job`(failure: Exception) {
+        failStepEndingAt(stepEnd)
+        emr.uploadStderr("Exception in thread main", at = afterStepEnd)
+        failStateReadAfterStepDetailsFetched(failure)
+        val events = recordEvents()
+
+        val result = sparkService.waitForJobCompletion(testClusterId, testStepId)
+
+        assertThat(result.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("Job failed")
+        assertThat(events).contains(Event.Emr.SparkLogQueryFailed)
+    }
+
+    @Test
+    fun `an unrelated exception while reading the cluster state for the Loki query is not swallowed`() {
+        failStepEndingAt(stepEnd)
+        failStateReadAfterStepDetailsFetched(IllegalArgumentException("a defect"))
+
+        val result = sparkService.waitForJobCompletion(testClusterId, testStepId)
+
+        assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    companion object {
+        @JvmStatic
+        fun unreadableStateFailures(): List<Exception> =
+            listOf(
+                java.io.FileNotFoundException("state.json"),
+                IllegalStateException("Invalid cluster name"),
+            )
     }
 }

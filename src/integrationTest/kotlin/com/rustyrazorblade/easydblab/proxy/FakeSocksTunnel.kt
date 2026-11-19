@@ -13,11 +13,18 @@ import kotlin.concurrent.thread
  * [SocksTunnelReachabilityProbe]. Each connection is served on its own thread, so one that never
  * answers does not hold up the next.
  *
- * @param behaviour how the tunnel's far end answers
+ * The port stays bound until [close]. A test that needs a tunnel to stop working while ssh keeps
+ * running calls [die] instead of closing: a closed port is free for any other listener, and the
+ * test JVMs run in parallel, so another JVM's working tunnel can bind it and pass the probe.
+ *
+ * @param initialBehaviour how the tunnel's far end answers
  */
 internal class FakeSocksTunnel(
-    private val behaviour: Behaviour = Behaviour.WORKING,
+    initialBehaviour: Behaviour = Behaviour.WORKING,
 ) : AutoCloseable {
+    @Volatile
+    private var behaviour: Behaviour = initialBehaviour
+
     /** How the far end of the tunnel answers a client. */
     enum class Behaviour {
         /** Answers the SOCKS5 CONNECT and sends an `sshd` banner, as a working tunnel does. */
@@ -96,6 +103,14 @@ internal class FakeSocksTunnel(
             }
             Behaviour.SILENT -> Unit
         }
+    }
+
+    /**
+     * Turns this tunnel into one whose SSH connection died while ssh kept running: it still accepts
+     * connections on [port], but drops every CONNECT ([Behaviour.DROPS_CONNECT]).
+     */
+    fun die() {
+        behaviour = Behaviour.DROPS_CONNECT
     }
 
     /**

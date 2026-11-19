@@ -97,7 +97,27 @@ The settings deliberately leave a few keys alone:
 - kube-proxy sizes connection tracking (`nf_conntrack_*`).
 - The kubelet sets `vm.overcommit_memory` and the `kernel.panic*` keys.
 
-Most `net.*` values are per network namespace. They apply to Cassandra, the stress server and every host-network pod, which is the whole observability stack. They do not reach a kit database in the pod network, which starts at kernel defaults. Tuning pod network namespaces is follow-up [#1202](https://github.com/rustyrazorblade/easy-db-lab/issues/1202). The global keys (`netdev_max_backlog`, `rmem_max`, `wmem_max`, `rps_sock_flow_entries`) and the packet steering below do reach pods, because pod traffic arrives on the node's physical interfaces.
+Most `net.*` values are per network namespace. They apply to Cassandra, the stress server and every host-network pod, which is the whole observability stack, because those share the host's namespace.
+
+Every pod in the pod network, which is every kit database and operator, gets the per-namespace values too. `up` applies one cluster-wide admission policy, `easydblab-pod-network-sysctls`, before it starts any other pod. The policy adds these keys to each new pod's `securityContext.sysctls`, with the values from `60-easydblab.conf`:
+
+- `net.core.somaxconn`
+- `net.ipv4.tcp_max_syn_backlog`
+- `net.ipv4.tcp_rmem` and `net.ipv4.tcp_wmem`
+- `net.ipv4.tcp_keepalive_time`, `tcp_keepalive_intvl` and `tcp_keepalive_probes`
+- `net.ipv4.tcp_slow_start_after_idle`
+- `net.ipv4.tcp_tw_reuse`
+
+A pod that sets one of these keys itself keeps its own value. A host-network pod is left alone. Pods keep the kernel defaults for `ip_local_port_range` (`32768 60999`) and `ip_local_reserved_ports` (none). The host's reserved list names host ports, not a pod's own listeners, so the host's wide range would let a database's outbound connection take its own listener port; the default range sits above every kit's listener port. `up` fails, naming the missing keys, when a new pod does not get every value within 30 seconds.
+
+To read the values in a running pod:
+
+```bash
+kubectl exec <pod> -- cat /proc/sys/net/core/somaxconn /proc/sys/net/ipv4/tcp_keepalive_time
+kubectl get pod <pod> -o jsonpath='{.spec.securityContext.sysctls}'
+```
+
+The global keys (`netdev_max_backlog`, `rmem_max`, `wmem_max`, `rps_sock_flow_entries`) and the packet steering below do reach pods, because pod traffic arrives on the node's physical interfaces.
 
 ## Packet steering and interrupts
 

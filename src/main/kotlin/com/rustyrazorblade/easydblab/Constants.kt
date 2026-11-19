@@ -651,6 +651,62 @@ object Constants {
         /** The variable node setup passes `setup_instance.sh` the node's instance type in. */
         const val INSTANCE_TYPE_VARIABLE = "EDL_INSTANCE_TYPE"
 
+        /**
+         * The network keys of [SYSCTL_FILE] that are per network namespace and that every pod in
+         * the pod network gets (pod-network-tuning). Their values are read from [SYSCTL_FILE] by
+         * `PodNetworkSysctls`, never repeated here. Every `net.*` key of the file is in exactly one
+         * of this list and [HOST_ONLY_NETWORK_SYSCTLS]; PodNetworkSysctlsTest checks it.
+         */
+        val POD_NETWORK_SYSCTLS =
+            listOf(
+                "net.core.somaxconn",
+                "net.ipv4.tcp_max_syn_backlog",
+                "net.ipv4.tcp_rmem",
+                "net.ipv4.tcp_wmem",
+                "net.ipv4.tcp_keepalive_time",
+                "net.ipv4.tcp_keepalive_intvl",
+                "net.ipv4.tcp_keepalive_probes",
+                "net.ipv4.tcp_slow_start_after_idle",
+                "net.ipv4.tcp_tw_reuse",
+            )
+
+        /**
+         * The network keys of [SYSCTL_FILE] pods do not get. The `net.core` ones are host-wide, so
+         * they reach pods already and have no entry in a pod's `/proc/sys/net`. Pods keep the
+         * kernel's port range and reserved list: the host's reserved list names host ports, not a
+         * pod's own listeners (owner decision R1 of #1202).
+         */
+        val HOST_ONLY_NETWORK_SYSCTLS =
+            listOf(
+                "net.core.netdev_max_backlog",
+                "net.core.rmem_max",
+                "net.core.wmem_max",
+                "net.core.rps_sock_flow_entries",
+                "net.ipv4.ip_local_port_range",
+                "net.ipv4.ip_local_reserved_ports",
+            )
+
+        /** The name of the cluster-wide admission policy that adds [POD_NETWORK_SYSCTLS] to every pod-network pod, and of its binding. */
+        const val POD_SYSCTL_POLICY_NAME = "easydblab-pod-network-sysctls"
+
+        /** How long `up` waits for the API server to put the policy in effect. */
+        const val POD_SYSCTL_POLICY_READY_SECONDS = 30L
+
+        /** How often `up` checks whether the policy is in effect. */
+        const val POD_SYSCTL_POLICY_POLL_SECONDS = 2L
+
+        /** The namespace of the dry-run pod `up` checks the policy with; it is never created, so any namespace that exists does. */
+        const val POD_SYSCTL_PROBE_NAMESPACE = "default"
+
+        /** The dry-run pod's name. */
+        const val POD_SYSCTL_PROBE_NAME = "easydblab-pod-sysctl-probe"
+
+        /** The dry-run pod's image; a dry run never pulls it. */
+        const val POD_SYSCTL_PROBE_IMAGE = Compactor.GATE_IMAGE
+
+        /** The K3s config drop-in that lets every kubelet admit [POD_NETWORK_SYSCTLS]. */
+        const val KUBELET_SYSCTLS_DROP_IN = "/etc/rancher/k3s/config.yaml.d/25-kubelet-sysctls.yaml"
+
         // Host listeners no manifest builder names, read from `ss -tlnp` and `ss -ulnp` on a
         // running cluster's nodes. Each one is in the packaged ip_local_reserved_ports.
 

@@ -6236,6 +6236,46 @@ sealed interface Event {
         ) : Platform {
             override fun toDisplayString(): String = "Created $count PVs for '$kit'"
         }
+
+        /** The admission policy [policy] is in effect: a new pod-network pod carries every one of [sysctls]. */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyReady")
+        data class PodSysctlPolicyReady(
+            val policy: String,
+            val sysctls: Map<String, String>,
+        ) : Platform {
+            override fun toDisplayString(): String = "Pod network sysctls in effect for new pods (${sysctls.size} keys, policy $policy)"
+        }
+
+        /** The API server refused the admission policy [policy] or its binding; [reason] is its answer. */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyNotApplied")
+        data class PodSysctlPolicyNotApplied(
+            val policy: String,
+            val reason: String,
+        ) : Platform {
+            override fun toDisplayString(): String = "Error: the pod network sysctl policy $policy could not be applied: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * After [timeoutSeconds], a dry-run pod still lacked [missingKeys]; [refusal] is the API
+         * server's message when it refused the pod outright.
+         */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyNotInEffect")
+        data class PodSysctlPolicyNotInEffect(
+            val missingKeys: List<String>,
+            val timeoutSeconds: Long,
+            val refusal: String? = null,
+        ) : Platform {
+            override fun toDisplayString(): String =
+                "Error: after ${timeoutSeconds}s a new pod still lacks the pod network sysctls ${missingKeys.joinToString(", ")}" +
+                    (refusal?.let { "; the API server refused the pod: $it" } ?: "")
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================

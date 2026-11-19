@@ -30,6 +30,11 @@ object SharedK3s {
      * The K3s image every K3s integration test starts. It must match `K3S_VERSION` in
      * `packer/base/install/install_k3s.sh`, so the tests run the Kubernetes release the clusters
      * run; the Docker tag writes K3s's `+` as `-`.
+     *
+     * On 1.35 the MutatingAdmissionPolicy API is beta and off. The shared cluster leaves it off;
+     * `PodNetworkTuningIntegrationTest` starts its own K3s with the API server drop-in that
+     * `start-k3s-server.sh` writes. When this image reaches 1.36 the API is on by default, the
+     * drop-in goes, and `PodNetworkSysctlPolicyBuilder` moves to `admissionregistration.k8s.io/v1`.
      */
     const val K3S_IMAGE = "rancher/k3s:v1.35.1-k3s1"
 
@@ -42,16 +47,39 @@ object SharedK3s {
     private const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
     private const val LOG_TAIL_CHARS = 6000
 
+    private const val SERVER_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
+
     private val container: K3sContainer by lazy {
+        newContainer(BUSYBOX_IMAGE, WEB_SERVER_IMAGE).apply { start() }
+    }
+
+    /**
+     * A new, unstarted K3s container configured to run in Docker (privileged, the host cgroup
+     * namespace, the native snapshotter) with [images] preloaded. For a test that needs a cluster of
+     * its own, for instance one with config drop-ins in place before K3s first starts.
+     */
+    fun newContainer(vararg images: String): K3sContainer =
         K3sContainer(DockerImageName.parse(K3S_IMAGE))
             .withPrivilegedMode(true)
             .withCreateContainerCmdModifier { cmd ->
-                cmd.hostConfig!!
+                checkNotNull(cmd.hostConfig) { "the create command has no host config" }
                     .withCgroupnsMode("host")
                     .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
             }.withEnv("K3S_SNAPSHOTTER", "native")
-            .let { (it as K3sContainer).withPreloadedImages(BUSYBOX_IMAGE, WEB_SERVER_IMAGE) }
-            .apply { start() }
+            .let { (it as K3sContainer).withPreloadedImages(*images) }
+
+    /**
+     * The body of the quoted heredoc `start-k3s-server.sh` writes to [path], so a test runs K3s with
+     * exactly the drop-in a cluster gets and fails when the script stops writing it.
+     */
+    fun serverScriptDropIn(path: String): String {
+        val script =
+            checkNotNull(SharedK3s::class.java.getResourceAsStream(SERVER_SCRIPT_RESOURCE)) {
+                "$SERVER_SCRIPT_RESOURCE is not packaged"
+            }.use { it.readBytes().decodeToString() }
+        val start = script.indexOf("cat > $path <<'EOF'\n")
+        check(start >= 0) { "start-k3s-server.sh does not write $path" }
+        return script.substring(start).substringAfter("<<'EOF'\n").substringBefore("\nEOF\n") + "\n"
     }
 
     /** The cluster's kubeconfig, pointing at the container's API server port on the host. */

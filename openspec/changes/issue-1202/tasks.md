@@ -7,35 +7,35 @@
 
 ## 2. Shared values
 
-- [ ] 2.1 `Constants.NodeTuning`: `POD_NETWORK_SYSCTLS`, `HOST_ONLY_NETWORK_SYSCTLS`, `POD_SYSCTL_POLICY_NAME`, `POD_SYSCTL_POLICY_READY_SECONDS`.
-- [ ] 2.2 `PodNetworkSysctls`: reads the packaged `60-easydblab.conf` from the classpath and returns the injected keys with their values; fails naming a missing key.
-- [ ] 2.3 Unit tests: every `net.*` key in the file is in exactly one list; the reader returns the file's values; a missing key fails with its name.
+- [x] 2.1 `Constants.NodeTuning`: `POD_NETWORK_SYSCTLS`, `HOST_ONLY_NETWORK_SYSCTLS`, `POD_SYSCTL_POLICY_NAME`, `POD_SYSCTL_POLICY_READY_SECONDS`.
+- [x] 2.2 `PodNetworkSysctls`: reads the packaged `60-easydblab.conf` from the classpath and returns the injected keys with their values; fails naming a missing key.
+- [x] 2.3 Unit tests: every `net.*` key in the file is in exactly one list; the reader returns the file's values; a missing key fails with its name.
 
 ## 3. K3s seam
 
-- [ ] 3.1 Kubelet drop-in data class (`kubelet-arg+`) serialized with kotlinx.serialization; `DefaultK3sService.startServer` and `DefaultK3sAgentService.start` install `25-kubelet-sysctls.yaml` before the start script.
-- [ ] 3.2 `start-k3s-server.sh`: write `30-admission-policy.yaml` (feature gate and runtime-config) on every run, with a comment saying it goes when the AMI reaches K3s 1.36.
-- [ ] 3.3 Unit tests: the drop-in lists every injected key; it is installed before the start script on server and agent (argument captor on `RemoteOperationsService`).
-- [ ] 3.4 Update `StartK3sScriptsIntegrationTest` for the new server drop-in; update the `SharedK3s.K3S_IMAGE` KDoc and K3s TestContainers flags so the integration cluster enables the same API.
+- [x] 3.1 Kubelet drop-in data class (`kubelet-arg+`) serialized with kotlinx.serialization; `DefaultK3sService.startServer` and `DefaultK3sAgentService.start` install `25-kubelet-sysctls.yaml` before the start script.
+- [x] 3.2 `start-k3s-server.sh`: write `30-admission-policy.yaml` (feature gate and runtime-config) on every run, with a comment saying it goes when the AMI reaches K3s 1.36.
+- [x] 3.3 Unit tests: the drop-in lists every injected key; it is installed before the start script on server and agent (argument captor on `RemoteOperationsService`).
+- [x] 3.4 Update `StartK3sScriptsIntegrationTest` for the new server drop-in; update the `SharedK3s.K3S_IMAGE` KDoc and K3s TestContainers flags so the integration cluster enables the same API.
 
 ## 4. Admission policy
 
-- [ ] 4.1 `PodNetworkSysctlPolicyBuilder` (fabric8 `v1beta1` `MutatingAdmissionPolicy` + binding): match pod `CREATE`, skip host-network pods, JSONPatch that adds missing `securityContext`, missing `sysctls`, and each missing key; `failurePolicy: Fail`.
-- [ ] 4.2 `UpPostSteps.run`: apply it first; dry-run pod check with a resilience4j retry up to 30 s; typed event and failure naming missing keys.
-- [ ] 4.3 Integration test (K3s TestContainers, API flags on): a plain pod gets every value; a pod with `tcp_keepalive_time=300` keeps it; a host-network pod gets none; a pod with an existing `securityContext` keeps its other fields.
-- [ ] 4.4 Unit test for the `up` check: a dry-run result missing a key fails naming it.
+- [x] 4.1 `PodNetworkSysctlPolicyBuilder` (fabric8 `v1beta1` `MutatingAdmissionPolicy` + binding): match pod `CREATE`, skip host-network pods, JSONPatch that adds missing `securityContext`, missing `sysctls`, and each missing key; `failurePolicy: Fail`.
+- [x] 4.2 `UpPostSteps.run`: apply it first; dry-run pod check with a resilience4j retry up to 30 s; typed event and failure naming missing keys.
+- [x] 4.3 Integration test (K3s TestContainers, API flags on): a plain pod gets every value; a pod with `tcp_keepalive_time=300` keeps it; a host-network pod gets none; a pod with an existing `securityContext` keeps its other fields.
+- [x] 4.4 Unit test for the `up` check: a dry-run result missing a key fails naming it.
 
 ## 5. Docs
 
-- [ ] 5.1 `docs/development/kits.md`: "Pod network tuning" section.
-- [ ] 5.2 `src/main/resources/com/rustyrazorblade/easydblab/kits/CLAUDE.md`: the rule bullet.
-- [ ] 5.3 `docs/user-guide/node-tuning.md`: replace the #1202 follow-up note; how to read the values in a pod.
-- [ ] 5.4 `docs/user-guide/platform-substrate.md`: the policy as substrate.
-- [ ] 5.5 `configuration/CLAUDE.md`, `services/CLAUDE.md`: the builder, the reader, the drop-ins.
+- [x] 5.1 `docs/development/kits.md`: "Pod network tuning" section.
+- [x] 5.2 `src/main/resources/com/rustyrazorblade/easydblab/kits/CLAUDE.md`: the rule bullet.
+- [x] 5.3 `docs/user-guide/node-tuning.md`: replace the #1202 follow-up note; how to read the values in a pod.
+- [x] 5.4 `docs/user-guide/platform-substrate.md`: the policy as substrate.
+- [x] 5.5 `configuration/CLAUDE.md`, `services/CLAUDE.md`: the builder, the reader, the drop-ins.
 
 ## 6. Gates
 
-- [ ] 6.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (via a Sonnet build-engineer).
+- [x] 6.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (via a Sonnet build-engineer).
 
 ## 7. Real-cluster verification (design table)
 

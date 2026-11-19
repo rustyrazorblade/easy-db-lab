@@ -250,3 +250,22 @@ agree. The script is run as `sudo EDL_INSTANCE_TYPE=<type> bash setup_instance.s
 node's instance type from `NodeSetupContext.instanceTypes` (the cluster state), so nothing on the
 node asks the cloud provider. The values and why are in `docs/user-guide/node-tuning.md`; the decisions are in
 `openspec/changes/issue-1199/design.md` until it is archived.
+
+## Pod Network Sysctls
+
+The per-namespace `net.*` keys of the tuning file also reach every non-hostNetwork pod
+(`openspec/changes/issue-1202/` until it is archived):
+
+- `PodNetworkSysctls` reads the packaged `60-easydblab.conf` and returns the keys of
+  `Constants.NodeTuning.POD_NETWORK_SYSCTLS` with the file's values. It is the only source of the
+  numbers; `PodNetworkSysctlsTest` fails when a `net.*` key of the file is in neither
+  `POD_NETWORK_SYSCTLS` nor `HOST_ONLY_NETWORK_SYSCTLS`, or in both.
+- `PodNetworkTuning` is the first of `UpPostSteps`: it applies `configuration/PodNetworkSysctlPolicyBuilder`
+  through `K8sManifestOperations`, then polls `PodSysctlProbe` (a `dryRun=All` pod,
+  `Fabric8PodSysctlProbe`) until the pod carries every value, up to
+  `POD_SYSCTL_POLICY_READY_SECONDS`. It emits `Platform.PodSysctlPolicyReady`, or
+  `PodSysctlPolicyNotApplied` / `PodSysctlPolicyNotInEffect` and throws `CommandFailedException`.
+- K3s only: `KubeletSysctlsDropIn` installs `25-kubelet-sysctls.yaml` (`kubelet-arg+:
+  allowed-unsafe-sysctls=...`) before the start script on the server (`DefaultK3sService.startServer`)
+  and every agent (`DefaultK3sAgentService.start`). `start-k3s-server.sh` writes
+  `30-admission-policy.yaml`, the API server feature gate and runtime-config the beta API needs.

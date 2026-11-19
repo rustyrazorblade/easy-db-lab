@@ -41,6 +41,7 @@ import com.rustyrazorblade.easydblab.services.K8sStorageOperations
 import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
+import com.rustyrazorblade.easydblab.services.PodNetworkTuning
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -119,6 +120,7 @@ class Up(
     private val ciliumInstallAnnotator: CiliumInstallAnnotator by inject()
     private val k8sStorage: K8sStorageOperations by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
+    private val podNetworkTuning: PodNetworkTuning by inject()
     private val nodeSetupService: NodeSetupService by inject()
     private val hostOperationsService: HostOperationsService by inject()
     private val socksProxyService: SocksProxyService by inject()
@@ -297,7 +299,7 @@ class Up(
                     state.hosts.mapValues { (_, hosts) -> hosts.filterNot { it.alias in failed } }
             }
         if (result.wasReplaced(FIRST_DATABASE_NODE)) EnvironmentRepush(nodeSetupService, hostOperationsService).push(reachable)
-        UpPostSteps(k8sStorage, observabilityStackService, ciliumInstallAnnotator, eventBus)
+        UpPostSteps(podNetworkTuning, k8sStorage, observabilityStackService, ciliumInstallAnnotator, eventBus)
             .run(control, localTelemetry = workingState.initConfig?.telemetryRedirect == null)
         if (userConfig.isAxonOpsEnabled()) configureAxonOps(result)
     }

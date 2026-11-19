@@ -35,6 +35,8 @@ object SharedK3s {
      */
     const val K3S_IMAGE = "rancher/k3s:v1.35.1-k3s1"
 
+    private const val LOG_TAIL_CHARS = 6000
+
     /** Pod image preloaded into the cluster, so a test's pods never pull from a registry. */
     const val BUSYBOX_IMAGE = "busybox:1.36"
 
@@ -58,6 +60,9 @@ object SharedK3s {
 
     /** A new client for the shared cluster. The caller owns it and closes it. */
     fun client(): KubernetesClient = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(kubeConfigYaml())).build()
+
+    /** The last part of the K3s container's log, for a failure report. */
+    fun logTail(chars: Int = LOG_TAIL_CHARS): String = container.logs.takeLast(chars)
 
     /**
      * Creates [name] and makes it ready to admit pods, through [ensurePodAdmission].

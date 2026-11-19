@@ -36,7 +36,6 @@ object ManifestApplier {
      * Apply a manifest file to the cluster using server-side apply.
      * Supports multi-document YAML files (documents separated by ---).
      */
-    @Suppress("TooGenericExceptionCaught")
     fun applyManifest(
         client: KubernetesClient,
         file: File,
@@ -49,13 +48,10 @@ object ManifestApplier {
             val resourceName = header.metadata.name
             log.info { "Applying document ${index + 1}/${documents.size}: $kind '$resourceName' from ${file.name}" }
             log.debug { "YAML content:\n$docYaml" }
-            try {
-                applySingleDocument(client, docYaml, kind)
-                log.info { "Successfully applied $kind '$resourceName'" }
-            } catch (e: Exception) {
-                log.error(e) { "Failed to apply $kind '$resourceName': ${e.message}" }
-                throw e
-            }
+            runCatching { applySingleDocument(client, docYaml, kind) }
+                .onFailure { e -> log.error(e) { "Failed to apply $kind '$resourceName': ${e.message}" } }
+                .getOrThrow()
+            log.info { "Successfully applied $kind '$resourceName'" }
         }
     }
 

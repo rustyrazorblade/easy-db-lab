@@ -35,7 +35,7 @@ class LokiManifestBuilderTest : BaseKoinTest() {
                     mock<ClusterStateManager>().also {
                         whenever(
                             it.load(),
-                        ).thenReturn(ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "easy-db-lab-test"))
+                        ).thenReturn(ClusterState(name = "test", s3Bucket = "easy-db-lab-test"))
                     }
                 }
                 single { TemplateService(get(), get()) }

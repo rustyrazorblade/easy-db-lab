@@ -27,7 +27,9 @@ import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -68,7 +70,6 @@ class KitInstallCommandTest : BaseKoinTest() {
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
             hosts =
@@ -350,6 +351,20 @@ class KitInstallCommandTest : BaseKoinTest() {
 
         assertThat(resolvedArgs("store")).containsEntry("STORAGE_SIZE", "100Gi")
     }
+
+    @TestFactory
+    fun `an install arg value with a line break is rejected and writes no kit directory`(): List<DynamicTest> =
+        listOf("a\nINJECTED=1", "a\rINJECTED=1", "a\r\nINJECTED=1").map { value ->
+            DynamicTest.dynamicTest(value.replace("\r", "CR").replace("\n", "LF")) {
+                val config =
+                    KitConfig(name = "br", type = null, args = listOf(KitArgSpec(flag = "--note", variable = "NOTE")))
+
+                assertThatThrownBy { parseAndRun(config, "--note", value) }
+                    .hasMessageContaining("NOTE")
+                    .hasMessageContaining("line break")
+                assertThat(File(workingDir, "br")).doesNotExist()
+            }
+        }
 
     /** Parses [args] as the user would type them, then runs the install. */
     private fun parseAndRun(

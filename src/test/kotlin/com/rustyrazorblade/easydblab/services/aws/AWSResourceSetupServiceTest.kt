@@ -8,9 +8,11 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
+import com.rustyrazorblade.easydblab.providers.aws.AwsIamRoles
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import com.rustyrazorblade.easydblab.providers.aws.StsAccountIdentity
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -63,7 +65,8 @@ internal class AWSResourceSetupServiceTest :
     private val mockIamClient: IamClient = mock()
     private val mockS3Client: S3Client = mock()
     private val mockStsClient: StsClient = mock()
-    private lateinit var aws: AWS
+    private lateinit var accountIdentity: StsAccountIdentity
+    private lateinit var iamRoles: IamRoles
 
     private lateinit var eventBus: EventBus
     private val capturedEvents = mutableListOf<EventEnvelope>()
@@ -83,7 +86,8 @@ internal class AWSResourceSetupServiceTest :
         )
 
         // Use real AWS with mocked clients so extension functions work correctly
-        aws = AWS(mockIamClient, mockS3Client, mockStsClient)
+        accountIdentity = StsAccountIdentity(mockStsClient)
+        iamRoles = AwsIamRoles(mockIamClient, accountIdentity)
 
         // Mock STS for checkPermissions
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
@@ -98,9 +102,10 @@ internal class AWSResourceSetupServiceTest :
 
         service =
             AWSResourceSetupService(
-                aws,
+                accountIdentity,
+                iamRoles,
                 eventBus,
-                InstanceRolePolicies(aws),
+                InstanceRolePolicies(iamRoles),
                 AwsErrorHandler(),
             )
     }

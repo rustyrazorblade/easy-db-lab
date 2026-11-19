@@ -8,6 +8,8 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
@@ -20,6 +22,8 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
+import com.rustyrazorblade.easydblab.services.CompactorAgentInstaller
+import com.rustyrazorblade.easydblab.services.CompactorStage
 import com.rustyrazorblade.easydblab.services.ConfigChangeReport
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
@@ -53,6 +57,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.nio.file.Files
 
 /**
  * Test suite for GrafanaUpdateConfig command.
@@ -111,7 +116,20 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                         get(),
                         get(),
                         ObservabilityDeployInputs(get(), get(), get()),
-                        realStageManifests(getKoin(), get()),
+                        realStageManifests(
+                            getKoin(),
+                            get(),
+                            CompactorStage(
+                                CompactorManifestBuilder(get()),
+                                CompactorAgentInstaller(get(), get()),
+                                bucketRegion = { "us-west-2" },
+                                agentJar = {
+                                    CompactorAgentJarFile(
+                                        Files.writeString(tempDir.toPath().resolve("compactor-lease.jar"), "agent"),
+                                    )
+                                },
+                            ),
+                        ),
                         GrafanaStage(get(), DashboardInstallContextFactory(TenantDirectory(InMemoryObjectStore()))),
                         get(),
                     )
@@ -155,7 +173,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val emptyState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = mutableMapOf(),
                 s3Bucket = "acct-bucket",
             )
@@ -175,7 +192,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
@@ -210,7 +226,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
@@ -244,7 +259,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
@@ -268,7 +282,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(
@@ -295,7 +308,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         val redirectState =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts =
                     mutableMapOf(

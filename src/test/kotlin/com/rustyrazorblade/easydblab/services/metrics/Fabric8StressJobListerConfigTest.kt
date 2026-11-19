@@ -24,7 +24,7 @@ class Fabric8StressJobListerConfigTest {
     fun `the lister targets the recorded context, not the kubeconfig's current-context`() {
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText(TWO_CONTEXT_KUBECONFIG)
         val manager = ClusterStateManager(File(workspace, "state.json"))
-        manager.save(ClusterState(name = "test", versions = mutableMapOf()).apply { kubeContext = "pinned-context" })
+        manager.save(ClusterState(name = "test").apply { kubeContext = "pinned-context" })
 
         val config = Fabric8StressJobLister(WorkspaceKubeApiLocator(manager, workspace)).baseConfig()
 

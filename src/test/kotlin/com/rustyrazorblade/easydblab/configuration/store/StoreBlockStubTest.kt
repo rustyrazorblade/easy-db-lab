@@ -7,12 +7,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
-import com.rustyrazorblade.easydblab.services.aws.CompactorTaskDefinition
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -43,7 +43,6 @@ class StoreBlockStubTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             clusterId = "stub",
             s3Bucket = "easy-db-lab-test",
             initConfig = InitConfig(tenant = "acme", region = "us-west-2"),
@@ -76,7 +75,7 @@ class StoreBlockStubTest : BaseKoinTest() {
             "loki" -> LokiManifestBuilder(templates(), stub).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
             "tempo" -> TempoManifestBuilder(templates(), stub).buildConfigMap().data.getValue("tempo.yaml")
             "pyroscope" -> PyroscopeManifestBuilder(templates(), stub).buildServerConfigMap().data.getValue("config.yaml")
-            "compactor tempo-backend" -> CompactorTaskDefinition.configFiles(stub).getValue(CompactorTaskDefinition.TEMPO_BACKEND_FILE)
+            "compactor tempo-backend" -> compactorConfigs().getValue(CompactorManifestBuilder.TEMPO_BACKEND_FILE)
             else -> error("unknown config $name")
         }
 
@@ -105,13 +104,21 @@ class StoreBlockStubTest : BaseKoinTest() {
         assertThat(config).doesNotContainPattern("""endpoint:\s*s3\.""")
     }
 
-    @Test
-    fun `the compactor writes the same rendered configs it is given`() {
-        val files = CompactorTaskDefinition.configFiles(stub)
+    /** The compactor ConfigMap's files, rendered with the stub. */
+    private fun compactorConfigs(): Map<String, String> = CompactorManifestBuilder(templates(), stub).buildConfigMap().data
 
-        assertThat(
-            files.keys,
-        ).containsExactly(MimirManifestBuilder.CONFIG_FILE, LokiManifestBuilder.CONFIG_FILE, CompactorTaskDefinition.TEMPO_BACKEND_FILE)
-        assertThat(files.values).allSatisfy { assertThat(it).contains("stub-block") }
+    @Test
+    fun `the compactor reads the cluster's mimir and loki configs with the store block placed`() {
+        val configs =
+            compactorConfigs().filterKeys {
+                it in setOf(MimirManifestBuilder.CONFIG_FILE, LokiManifestBuilder.CONFIG_FILE, CompactorManifestBuilder.TEMPO_BACKEND_FILE)
+            }
+
+        assertThat(configs).hasSize(3)
+        assertThat(configs.values).allSatisfy {
+            assertThat(it).contains("stub-block").doesNotContain(StoreBlockRenderer.PLACEHOLDER)
+        }
+        assertThat(configs[MimirManifestBuilder.CONFIG_FILE]).isEqualTo(render("mimir"))
+        assertThat(configs[LokiManifestBuilder.CONFIG_FILE]).isEqualTo(render("loki"))
     }
 }

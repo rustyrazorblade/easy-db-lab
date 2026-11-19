@@ -17,6 +17,7 @@
 - [Kits](user-guide/kits.md)
   - [ClickHouse](user-guide/clickhouse.md)
   - [Kafka](user-guide/kafka.md)
+  - [FerrosaDB](user-guide/ferrosa.md)
   - [Apache Ignite 3](user-guide/ignite3.md)
   - [Cassandra Pods](user-guide/cassandra-pods.md)
   - [Neo4j](user-guide/neo4j.md)
@@ -35,6 +36,8 @@
 - [Kubernetes](user-guide/kubernetes.md)
 - [Pod Networking (CNI)](user-guide/networking.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
+- [Large Clusters](user-guide/large-clusters.md)
+- [Node OS Tuning](user-guide/node-tuning.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 
 # Integrations

@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
@@ -97,7 +98,7 @@ class WorkloadStepExecutor(
                                     phase = phase,
                                     stepType = stepType,
                                     stepIndex = index,
-                                    error = error.message ?: error.toString(),
+                                    error = error.messageOrString(),
                                 )
                         },
                     )

@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.store.StorePrefix
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.toJson
 
 /**
@@ -79,34 +78,17 @@ sealed class AWSPolicy {
                         ),
                 ).toJson()
         }
-
-        /**
-         * Trust policy allowing ECS tasks to assume the role.
-         * Used by: EasyDBLabCompactorTaskRole, EasyDBLabCompactorExecutionRole
-         */
-        data object ECSTasks : Trust() {
-            override fun toJson() =
-                IamPolicyDocument(
-                    statement =
-                        listOf(
-                            IamPolicyStatement(
-                                effect = "Allow",
-                                principal = IamPolicyPrincipal.service("ecs-tasks.amazonaws.com"),
-                                action = IamPolicyAction.single("sts:AssumeRole"),
-                            ),
-                        ),
-                ).toJson()
-        }
     }
 
     /**
      * User IAM policies that users must attach to their AWS account to use easy-db-lab.
      * These policies are loaded from JSON resource files with account ID substitution.
      *
-     * Three policies are required:
+     * Four policies are required:
      * 1. EasyDBLabEC2 - EC2 operations and PassRole
      * 2. EasyDBLabIAM - IAM and S3 management
      * 3. EasyDBLabEMR - EMR cluster operations
+     * 4. EasyDBLabOpenSearch - OpenSearch domain operations
      */
     sealed class UserIAM : AWSPolicy() {
         override fun toJson(): String =
@@ -117,13 +99,12 @@ sealed class AWSPolicy {
             const val IAM_POLICY = "EasyDBLabIAM"
             const val EMR_POLICY = "EasyDBLabEMR"
             const val OPENSEARCH_POLICY = "EasyDBLabOpenSearch"
-            const val COMPACTOR_POLICY = "EasyDBLabCompactor"
 
             /** Every lab user policy name, in the order [loadAll] returns them. */
-            val ALL_NAMES = listOf(EC2_POLICY, IAM_POLICY, EMR_POLICY, OPENSEARCH_POLICY, COMPACTOR_POLICY)
+            val ALL_NAMES = listOf(EC2_POLICY, IAM_POLICY, EMR_POLICY, OPENSEARCH_POLICY)
 
             /**
-             * Loads all three required user IAM policies from JSON resource files.
+             * Loads all four required user IAM policies from JSON resource files.
              * Performs account ID substitution in policy templates.
              *
              * @param accountId The AWS account ID to substitute for ACCOUNT_ID placeholder
@@ -137,7 +118,6 @@ sealed class AWSPolicy {
                         "iam-policy-iam-s3.json" to IAM_POLICY,
                         "iam-policy-emr.json" to EMR_POLICY,
                         "iam-policy-opensearch.json" to OPENSEARCH_POLICY,
-                        "iam-policy-compactor.json" to COMPACTOR_POLICY,
                     )
 
                 return policyData.map { (fileName, policyName) ->
@@ -228,11 +208,12 @@ sealed class AWSPolicy {
                 ).toJson()
 
             /**
-             * No code path on a cluster may delete observability data or test documents. An
-             * explicit deny beats the s3:* above; the owner's own deletes from a workstation are
-             * not affected, so `report upload` still replaces a document. pyroscope/ is left out:
-             * Pyroscope v2 compaction writes a merged block and then removes the segments it
-             * merged. Compaction is not deletion.
+             * No code path on a cluster may delete dashboards or test documents. An explicit deny
+             * beats the s3:* above; the owner's own deletes from a workstation are not affected, so
+             * `report upload` still replaces a document. The compacted roots and pyroscope/ are
+             * left out: the lease-holding account compactor runs on the cluster with this role, and
+             * it and Pyroscope v2 compaction write a merged copy and then remove the sources they
+             * merged. Compaction is not deletion. The cluster's own backends have no deletion path.
              */
             private fun denyDataDeletes() =
                 IamPolicyStatement(
@@ -280,42 +261,12 @@ sealed class AWSPolicy {
         }
 
         /**
-         * The account compactor's task role policy: list the easy-db-lab buckets, and get, put and
-         * delete objects under the roots it compacts. It has no access to `grafana/` or
-         * `pyroscope/`. The compactor removes a source object only after it wrote a merged copy.
-         *
-         * @param storePrefix The store prefix; a non-empty one adds the compacted roots under it.
-         */
-        data class CompactorTaskAccess(
-            val storePrefix: String,
-        ) : Inline() {
-            override fun toJson() =
-                IamPolicyDocument(
-                    statement =
-                        listOf(
-                            IamPolicyStatement(
-                                effect = "Allow",
-                                action = IamPolicyAction.multiple(listOf("s3:ListBucket", "s3:GetBucketLocation")),
-                                resource = IamPolicyResource.single("arn:aws:s3:::easy-db-lab-*"),
-                            ),
-                            IamPolicyStatement(
-                                effect = "Allow",
-                                action = IamPolicyAction.multiple(listOf("s3:GetObject", "s3:PutObject", "s3:DeleteObject")),
-                                resource =
-                                    IamPolicyResource.multiple(
-                                        storeRoots(storePrefix, COMPACTED_ROOTS).map { "arn:aws:s3:::easy-db-lab-*/$it/*" },
-                                    ),
-                            ),
-                        ),
-                ).toJson()
-        }
-
-        /**
          * S3 bucket policy granting access to all three easy-db-lab IAM roles.
          * Applied to the S3 bucket to allow all roles (EC2, EMR Service, EMR EC2) to access it.
-         * It denies those roles every delete under the roots the account compactor compacts, so only
-         * the compactor's task role deletes there. It names the cluster principals rather than
-         * "everyone but the compactor", so the owner's own deletes from a workstation still work.
+         * It denies the EMR roles every delete under the roots the account compactor compacts. The
+         * instance role is not denied: the account compactor runs with it. The deny names the
+         * principals rather than "everyone but the compactor", so the owner's own deletes from a
+         * workstation still work.
          *
          * @param accountId The AWS account ID for constructing role ARNs
          * @param bucketName The S3 bucket name to apply the policy to
@@ -345,7 +296,7 @@ sealed class AWSPolicy {
                             ),
                             IamPolicyStatement(
                                 effect = "Deny",
-                                principal = IamPolicyPrincipal.aws(clusterRoles()),
+                                principal = IamPolicyPrincipal.aws(emrRoles()),
                                 action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
                                 resource =
                                     IamPolicyResource.multiple(
@@ -355,16 +306,15 @@ sealed class AWSPolicy {
                         ),
                 ).toJson()
 
-            private fun clusterRoles() =
-                listOf(
-                    Constants.AWS.Roles.EC2_INSTANCE_ROLE,
-                    Constants.AWS.Roles.EMR_SERVICE_ROLE,
-                    Constants.AWS.Roles.EMR_EC2_ROLE,
-                ).map { "arn:aws:iam::$accountId:role/$it" }
+            private fun clusterRoles() = listOf(roleArn(Constants.AWS.Roles.EC2_INSTANCE_ROLE)) + emrRoles()
+
+            private fun emrRoles() = listOf(Constants.AWS.Roles.EMR_SERVICE_ROLE, Constants.AWS.Roles.EMR_EC2_ROLE).map(::roleArn)
+
+            private fun roleArn(role: String) = "arn:aws:iam::$accountId:role/$role"
         }
 
         companion object {
-            /** The observability roots the account compactor compacts, and only it may delete under. */
+            /** The observability roots the account compactor compacts; the EMR roles may not delete under them. */
             val COMPACTED_ROOTS =
                 listOf(
                     Constants.Observability.METRICS_ROOT,
@@ -372,9 +322,13 @@ sealed class AWSPolicy {
                     Constants.Observability.TRACES_ROOT,
                 )
 
-            /** Every root no cluster role may delete under: the compacted roots, Grafana's and the documents'. */
+            /**
+             * Every root the instance role may not delete under: Grafana's and the documents'. The
+             * compacted roots are left out, because the lease-holding account compactor runs on the
+             * cluster with the instance role; [S3BucketPolicy] still denies them to the EMR roles.
+             */
             val DELETE_DENIED_ROOTS =
-                COMPACTED_ROOTS + listOf(Constants.Observability.GRAFANA_ROOT, Constants.Observability.REPORTS_ROOT)
+                listOf(Constants.Observability.GRAFANA_ROOT, Constants.Observability.REPORTS_ROOT)
 
             /**
              * The [roots] a deny covers: each root at the top of the bucket, then each root under
@@ -389,22 +343,6 @@ sealed class AWSPolicy {
 
             /** An IAM wildcard standing for any store prefix in front of a root. */
             private const val ANY_PREFIX = "*"
-
-            /**
-             * The [roots] an allow covers under the store prefix [storePrefix]: the unprefixed
-             * roots, followed by the same roots under the prefix when it is not empty. Only the
-             * compactor's allow uses it. It names one prefix, so it never grants a root under a
-             * prefix other than the caller's. Denies use [underAnyPrefix] instead, because a deny
-             * must not depend on who put it last. The prefix is checked first ([StorePrefix]), so no
-             * wildcard, `..` or root segment can widen the allow.
-             */
-            fun storeRoots(
-                storePrefix: String,
-                roots: List<String>,
-            ): List<String> {
-                val prefix = StorePrefix.requireValid(storePrefix)
-                return if (prefix.isEmpty()) roots else roots + roots.map { "$prefix/$it" }
-            }
         }
     }
 
@@ -428,10 +366,6 @@ sealed class AWSPolicy {
          */
         data object EMRForEC2 :
             Managed("arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role")
-
-        /** AWS managed policy the account compactor's execution role uses to pull images and ship logs. */
-        data object ECSTaskExecution :
-            Managed("arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy")
 
         override fun toJson(): String =
             throw UnsupportedOperationException(

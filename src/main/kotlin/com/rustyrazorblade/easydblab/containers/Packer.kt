@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.Docker
 import com.rustyrazorblade.easydblab.VolumeMapping
 import com.rustyrazorblade.easydblab.commands.mixins.BuildArgsMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
-import com.rustyrazorblade.easydblab.configuration.CassandraVersion
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
@@ -23,7 +22,6 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
 import java.io.File
-import java.nio.file.Path
 import java.time.Duration
 import kotlin.io.path.createTempDirectory
 import kotlin.system.exitProcess
@@ -47,7 +45,6 @@ class Packer(
 
     private val containerWorkingDir = Constants.Paths.LOCAL_MOUNT
     private val logger = KotlinLogging.logger {}
-    private var release = false
 
     companion object {
         private const val PACKER_TIMEOUT_MINUTES = 60L
@@ -120,7 +117,6 @@ class Packer(
         }
 
         // A release build uses the release version as the image version and makes the AMI public.
-        release = isRelease
         val command =
             buildCommand(
                 name = name,
@@ -240,18 +236,6 @@ class Packer(
         val tempDir = createTempDirectory().toFile()
         FileUtils.copyDirectory(File(localPackerPath), tempDir)
         logger.info { "Copied packer files from $localPackerPath to $tempDir" }
-
-        if (!release && directory == Constants.Servers.DATABASE) {
-            // if we're doing a C* image, we
-            val initial = Path.of(localPackerPath, Constants.Packer.CASSANDRA_VERSIONS_FILE)
-            val extras = context.cassandraVersionsExtra.toPath()
-            logger.info { "Loading files in $extras" }
-
-            val versions = CassandraVersion.loadFromMainAndExtras(initial, extras)
-            val outputFile = File(tempDir, Constants.Packer.CASSANDRA_VERSIONS_FILE)
-            CassandraVersion.write(versions, outputFile)
-            logger.info { "Written updated versions to $outputFile" }
-        }
 
         logger.info { "Mounting $tempDir to $containerWorkingDir, starting with $args" }
 

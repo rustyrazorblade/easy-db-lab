@@ -3,24 +3,19 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.Exposure
-import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.NodeState
-import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
-import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
-import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
-import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -29,6 +24,7 @@ import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.server.ClusterStatusCollector
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
@@ -85,57 +81,6 @@ class StatusTest : BaseKoinTest() {
 
     private fun capturedOutput() = stdout.toString()
 
-    private val testHosts =
-        mapOf(
-            ServerType.Cassandra to
-                listOf(
-                    ClusterHost(
-                        publicIp = "54.1.2.3",
-                        privateIp = "10.0.1.100",
-                        alias = "db0",
-                        availabilityZone = "us-west-2a",
-                        instanceId = "i-db0",
-                    ),
-                    ClusterHost(
-                        publicIp = "54.1.2.4",
-                        privateIp = "10.0.1.101",
-                        alias = "db1",
-                        availabilityZone = "us-west-2b",
-                        instanceId = "i-db1",
-                    ),
-                ),
-            ServerType.Stress to
-                listOf(
-                    ClusterHost(
-                        publicIp = "54.2.3.4",
-                        privateIp = "10.0.2.100",
-                        alias = "app0",
-                        availabilityZone = "us-west-2a",
-                        instanceId = "i-app0",
-                    ),
-                ),
-            ServerType.Control to
-                listOf(
-                    ClusterHost(
-                        publicIp = "54.3.4.5",
-                        privateIp = "10.0.3.100",
-                        alias = "control0",
-                        availabilityZone = "us-west-2a",
-                        instanceId = "i-control0",
-                    ),
-                ),
-        )
-
-    private val testInfrastructure =
-        InfrastructureState(
-            vpcId = "vpc-12345",
-            region = "us-west-2",
-            internetGatewayId = "igw-12345",
-            subnetIds = listOf("subnet-a", "subnet-b", "subnet-c"),
-            routeTableId = "rtb-12345",
-            securityGroupId = "sg-12345",
-        )
-
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
@@ -152,6 +97,7 @@ class StatusTest : BaseKoinTest() {
                 // Real instance: the scanner only reads the filesystem, so faking it would
                 // hide the very rule these tests exercise.
                 single { WorkspaceKitScanner(get()) }
+                factory { ClusterStatusCollector() }
             },
         )
 
@@ -217,8 +163,7 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
-                hosts = testHosts,
+                hosts = StatusTestFixtures.testHosts,
                 infrastructure = null,
                 infrastructureStatus = InfrastructureStatus.UP,
                 default = NodeState(version = "5.0"),
@@ -236,9 +181,8 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = emptyMap(),
-                infrastructure = testInfrastructure,
+                infrastructure = StatusTestFixtures.testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
                 default = NodeState(version = "5.0"),
             )
@@ -254,9 +198,8 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
-                hosts = testHosts,
-                infrastructure = testInfrastructure,
+                hosts = StatusTestFixtures.testHosts,
+                infrastructure = StatusTestFixtures.testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
                 default = NodeState(version = "5.0.2"),
             )
@@ -624,14 +567,56 @@ class StatusTest : BaseKoinTest() {
         assertThat(exitCode).isNotEqualTo(0)
     }
 
+    // ========== PARTIAL FAILURES ==========
+
+    @Test
+    fun `execute says why a security group could not be fetched`() {
+        setupBasicClusterState()
+        whenever(mockVpcService.describeSecurityGroup("sg-12345")).thenThrow(RuntimeException("UnauthorizedOperation"))
+
+        Status().execute()
+
+        assertThat(outputHandler.messages.joinToString("\n"))
+            .contains("Security Group: sg-12345 (unable to fetch details: UnauthorizedOperation)")
+    }
+
+    @Test
+    fun `execute shows an OpenSearch endpoint with https`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                clusterId = "test-123",
+                hosts = StatusTestFixtures.testHosts,
+                infrastructure = StatusTestFixtures.testInfrastructure,
+                default = NodeState(version = "5.0"),
+                openSearchDomain = OpenSearchClusterState("dom", "id-1", endpoint = "search.example.com", state = "Creating"),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+
+        Status().execute()
+
+        assertThat(capturedOutput()).contains("Domain:     dom (id-1)", "Endpoint:   https://search.example.com")
+    }
+
+    @Test
+    fun `execute reports stress jobs that cannot be listed with the reason`() {
+        setupBasicClusterState()
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockStressJobService.listJobs()).thenReturn(Result.failure(IllegalStateException("api down")))
+
+        Status().execute()
+
+        assertThat(outputHandler.messages.joinToString("\n")).contains("(unable to list stress jobs: api down)")
+    }
+
     private fun setupBasicClusterStateWithEmr() {
         val clusterState =
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
-                hosts = testHosts,
-                infrastructure = testInfrastructure,
+                hosts = StatusTestFixtures.testHosts,
+                infrastructure = StatusTestFixtures.testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
                 createdAt = Instant.parse("2024-01-15T10:00:00Z"),
                 default = NodeState(version = "5.0"),
@@ -655,9 +640,8 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
-                hosts = testHosts,
-                infrastructure = testInfrastructure,
+                hosts = StatusTestFixtures.testHosts,
+                infrastructure = StatusTestFixtures.testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
                 createdAt = Instant.parse("2024-01-15T10:00:00Z"),
                 default = NodeState(version = "5.0"),
@@ -680,9 +664,8 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
-                hosts = testHosts,
-                infrastructure = testInfrastructure,
+                hosts = StatusTestFixtures.testHosts,
+                infrastructure = StatusTestFixtures.testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
                 createdAt = Instant.parse("2024-01-15T10:00:00Z"),
                 default = NodeState(version = "5.0"),
@@ -693,63 +676,10 @@ class StatusTest : BaseKoinTest() {
     }
 
     private fun setupInstanceStates() {
-        val instanceDetails =
-            listOf(
-                InstanceDetails(
-                    instanceId = "i-db0",
-                    state = "running",
-                    publicIp = "54.1.2.3",
-                    privateIp = "10.0.1.100",
-                    availabilityZone = "us-west-2a",
-                    instanceType = "r3.2xlarge",
-                ),
-                InstanceDetails(
-                    instanceId = "i-db1",
-                    state = "running",
-                    publicIp = "54.1.2.4",
-                    privateIp = "10.0.1.101",
-                    availabilityZone = "us-west-2b",
-                    instanceType = "r3.2xlarge",
-                ),
-                InstanceDetails(
-                    instanceId = "i-app0",
-                    state = "running",
-                    publicIp = "54.2.3.4",
-                    privateIp = "10.0.2.100",
-                    availabilityZone = "us-west-2a",
-                    instanceType = "m5.xlarge",
-                ),
-                InstanceDetails(
-                    instanceId = "i-control0",
-                    state = "running",
-                    publicIp = "54.3.4.5",
-                    privateIp = "10.0.3.100",
-                    availabilityZone = "us-west-2a",
-                    instanceType = "t3.medium",
-                ),
-            )
-        whenever(mockEc2InstanceService.describeInstances(any())).thenReturn(instanceDetails)
+        whenever(mockEc2InstanceService.describeInstances(any())).thenReturn(StatusTestFixtures.instanceDetails)
     }
 
     private fun setupSecurityGroup() {
-        val sgDetails =
-            SecurityGroupDetails(
-                securityGroupId = "sg-12345",
-                name = "easy-db-lab-sg",
-                description = "easy-db-lab security group",
-                vpcId = "vpc-12345",
-                inboundRules =
-                    listOf(
-                        SecurityGroupRuleInfo(
-                            protocol = "tcp",
-                            fromPort = 22,
-                            toPort = 22,
-                            cidrBlocks = listOf("0.0.0.0/0"),
-                            description = "SSH access",
-                        ),
-                    ),
-                outboundRules = emptyList(),
-            )
-        whenever(mockVpcService.describeSecurityGroup("sg-12345")).thenReturn(sgDetails)
+        whenever(mockVpcService.describeSecurityGroup("sg-12345")).thenReturn(StatusTestFixtures.securityGroupDetails)
     }
 }

@@ -17,6 +17,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KITS="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits"
+KIT_LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
 LABEL="lab1-0f3c2a1e-1111-2222-3333-444455556666"
 
 tests_run=0
@@ -55,7 +56,7 @@ EOF
 run_script() {
   (
     cd "${WORK}" &&
-      PATH="${WORK}/stubs:${PATH}" CLUSTER_NAME=lab1 PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default \
+      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${KIT_LIB}" CLUSTER_NAME=lab1 PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default \
         bash "${WORK}/kit/bin/start.sh"
   ) > "${WORK}/out.txt" 2>&1
 }

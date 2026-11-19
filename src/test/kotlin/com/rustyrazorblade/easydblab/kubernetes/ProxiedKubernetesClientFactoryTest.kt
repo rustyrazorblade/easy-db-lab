@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.ResourceLock
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
 
 /**
  * The factory loads the kubeconfig by path with an explicit context, and sets the SOCKS proxy on the
@@ -75,6 +77,27 @@ class ProxiedKubernetesClientFactoryTest {
         factory.createClient(KubeApi(writeKubeconfig(), "first-context")).use { client ->
             assertThat(client.configuration.httpsProxy).isNull()
         }
+    }
+
+    @Test
+    fun `a missing kubeconfig fails naming its path, with the cause kept`() {
+        val missing = File(tempDir, "no-such-dir/kubeconfig").toPath()
+
+        assertThatThrownBy { ProxiedKubernetesClientFactory().createClient(KubeApi(missing, "first-context")) }
+            .isInstanceOf(IOException::class.java)
+            .hasMessageContaining(missing.toString())
+            .hasCauseInstanceOf(FileNotFoundException::class.java)
+    }
+
+    @Test
+    fun `a kubeconfig that cannot be parsed fails naming its path, and never quotes its text`() {
+        val garbage = File(tempDir, "kubeconfig").apply { writeText("token: SECRET-TOKEN-123\nclusters: [unclosed") }.toPath()
+
+        assertThatThrownBy { ProxiedKubernetesClientFactory().createClient(KubeApi(garbage, "first-context")) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(garbage.toString())
+            .hasMessageNotContaining("SECRET-TOKEN-123")
+            .hasNoCause()
     }
 
     @Test

@@ -16,7 +16,7 @@ Commands should NOT:
 - Execute SSH commands directly (use `RemoteOperationsService` or domain services)
 - Run helm or kubectl directly (use `HelmService` / `KubectlService`, which go through `ClusterTooling`)
 - Make K8s API calls directly (use `K8sService` or `StressJobService`)
-- Call AWS/cloud provider APIs directly (use `AWS`, `EC2Service`, etc.)
+- Call AWS/cloud provider APIs directly (use `AccountIdentity`, `IamRoles`, `S3BucketAdmin`, `EC2Service`, etc.)
 - Contain business logic (belongs in services)
 
 ### Example: Good vs Bad
@@ -73,7 +73,7 @@ commands/
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
 ├── logs/                  # logs query — reads the cluster's logs from Loki
 ├── metrics/               # metrics stream — publishes chosen metrics from Mimir to Redis every 5s until stopped (@RequireProfileSetup, @RequiresProxy; the work is services/metrics/MetricsStreamService); metrics list — prints the 14 accepted names with println
-├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println
+├── observability/         # observability compactor status — prints the account compactor's lease; no cluster workspace needed (bucket from the profile), read-only println
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
 ├── profile/               # Profile inspection and setup (profile show, profile setup)
@@ -147,6 +147,7 @@ hand-code Kotlin classes for these:
 `registerDynamicInstallSubcommands()` scans all available `kit.yaml` files (classpath + profile
 dir) and registers a `kit install <kit>` subcommand for each via `KitInstallCommandFactory`.
 Flags, defaults, and collision detection are declared in `kit.yaml` — no Kotlin needed.
+A kit whose `kit.yaml` cannot be loaded (invalid YAML, a duplicate option) is skipped with an `Event.Kit.LoadFailed` warning that names the kit and the file, so one bad kit source never stops the CLI; `kit source list` and `kit source remove` keep working and can remove it.
 
 To add a new installable kit: create `src/main/resources/.../kits/<name>/kit.yaml` and
 template files (including `bin/start.sh.template`, `bin/stop.sh.template`). No code changes needed.
@@ -163,13 +164,13 @@ virtualenvs have one too. Each qualifying directory becomes a top-level subcomma
 `WorkspaceKitScanner` is the single source of truth for that rule, and the `=== KITS ===` section
 of `status` reads the same service, so both apply one discovery rule. Registration drops a
 discovered kit after the scan when its name collides with a core command, or when
-`buildKitGroup` throws, so `status` may list a kit that has no subcommand.
+`buildKitGroup` throws, so `status` may list a kit that has no subcommand. A `kit.yaml` that does not parse or fails validation makes `buildKitGroup` throw a `ConfigurationException` naming the kit, the file and the problem; registration then emits `Event.Kit.LoadFailed` (kit, file, reason) and every other command still runs. The same holds for an installable kit (profile, kit source or built-in): `InstallTemplateResolver.loadInstallConfig` throws the `ConfigurationException`, `registerDynamicInstallSubcommands` emits `Kit.LoadFailed` and registers no `kit install <kit>`, and `kit list` shows the kit as `invalid:` with the file and the cause.
 
 Scripts are run by `KitRunnerCommand` with cluster state variables injected as environment
 variables. Dashboard JSON files in `<kit>/dashboards/` are installed into Grafana
 automatically after a successful `start`.
 
-If the tenant listing or a dashboard file cannot be read, `start` does not fail.  It emits `Event.Grafana.KitDashboardsSkipped`, which names the kit, its dashboards and the reason, and the kit keeps running.
+If a kit dashboard does not reach Grafana, `start` fails (exits non-zero) for every kit, and the kit's pods keep running. A missing declared dashboard file, or a dashboard Grafana rejects, emits `Event.Grafana.KitDashboardInstallFailed` (kit, dashboard, reason). A tenant listing or dashboard files that cannot be read or rendered emit `Event.Grafana.KitDashboardsSkipped` (kit, dashboards, reason). A failed metrics registration likewise emits `Event.Kit.MetricsRegistrationFailed` and fails `start`.
 
 ## Annotations
 
@@ -248,7 +249,7 @@ Commands should delegate to these services:
 |---------|---------|
 | `CassandraService` | Cassandra lifecycle (start, stop, restart) |
 | `SidecarService` | Cassandra sidecar management |
-| `K8sService` | Kubernetes operations |
+| `K8sService` | Kubernetes operations on the workspace cluster (no host argument; includes the read queries `listJobs`, `listPods`, `listPodsByLabel`, `getNodes`, `isReachable`). Each sub-interface (`K8sManifestOperations`, `K8sJobOperations`, `K8sNamespaceOperations`, `K8sStorageOperations`, `K8sPodOperations`, `K8sReadOperations`) is also registered in Koin; a service that uses only one injects that one |
 | `K3sService` | K3s cluster management |
 | `StressJobService` | Stress testing jobs on K8s |
 | `HostOperationsService` | Parallel operations across hosts (see below) |
@@ -260,14 +261,15 @@ Commands should delegate to these services:
 | `SshIngressService` | SSH ingress rules on the workspace cluster's security group (`services.aws`), for `ingress allow` / `ingress revoke`: validates every `--cidr` with `network/Ipv4Cidr` before any AWS call (or uses the detected public IP), changes one exact tcp/22 rule per CIDR, and returns a sealed `IngressResult`; it emits no events |
 | `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
 | `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
-| `TestDocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
+| `DocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
 | `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki; its endpoint comes from the service-access seam (`services/access/ServiceAccess`: SOCKS, direct or port-forward, by the recorded `exposure`) |
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |
-| `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, the instance role's inline policies (`S3Access` + `SessionManagerInstance`, via `AWSResourceSetupService` and `InstanceRolePolicies`) and the bucket policy, then `CompactorService.ensureRunning` |
+| `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, the instance role's inline policies (`S3Access` + `SessionManagerInstance`, via `AWSResourceSetupService` and `InstanceRolePolicies`) and the bucket policy |
+| `LaunchCapacityPreflight` (`services/aws/`) | The checks `up` runs right after discovery and before its first RunInstances, for the instances still to launch only: zone count, zone offerings, the On-Demand standard vCPU quota, the network interface quota and free subnet addresses (`verifyCapacity`), and once the subnets and security group exist a RunInstances dry run per server type (`verifyLaunchPermitted`). Facts come from `AccountCapacity` (`Ec2AccountCapacity`: EC2 and Service Quotas) |
 | `ProvisioningPreflight` | The checks `up` runs before provisioning: a control node, a well-formed telemetry redirect, a connected local Tailscale client on a Tailscale cluster, and the AWS CLI plus Session Manager plugin (`LocalSsmTooling`) when the profile's SSH transport is `ssm` |
-| `CompactorService` | The account compactor (`services.aws`): `ensureRunning` on `up`, `stopIfLastCluster` after a successful `down`, `stop` and `status` for `observability compactor` |
+| `CompactorLeaseReader` | The account compactor's lease (`services.aws`), for `observability compactor status`: holder, sequence, renewal time and age, read in the bucket's region, or that the lease object cannot be read |
 | `TeardownBackupService` | The pre-teardown save `down` runs once, never retried (`TeardownFlushService`: Phase A mirror and collector stop, Phase B flushes, Tempo drain, profiles report and annotations backup in parallel; each flush only flushes and waits, no verify checks); records logs and metrics in `ClusterState.tailFlush` the moment each succeeds, through one writer, and a save of every signal as complete (`saveCompletedAt`), which a re-run of `down` skips whole; `unsavedSignals(state)` is what `down --force` lists before the prompt |
 | `TailscaleService` | Tailscale VPN setup on cluster nodes |
 | `RegistryService` | Container registry management |
@@ -289,18 +291,44 @@ to report, not by convenience:
   all of them in one run. Use this when a partial result is not a meaningful outcome.
 - **`collectFromHosts`** — returns a `HostResult` per host (`host` + `Result`) and throws nothing.
   Use this when the command reports per-host outcomes, or when hosts can legitimately end in
-  *different* states — installed here, already present there. `CassandraInstall` is the reference
-  implementation: it emits one event per host, then throws once at the end if anything went wrong.
+  *different* states — installed here, already present there. `services/cassandraversions/CassandraInstaller`
+  is the reference implementation: it emits one event per host, and `cassandra install` / `cassandra use`
+  throw once at the end if anything went wrong.
 
 Results are keyed by position, never by alias — two hosts sharing an alias would otherwise
 misattribute each other's failure.
 
+Both take either a hosts map with a server type and alias filter, or a plain `List<ClusterHost>`
+for hosts of mixed types (`up` passes every node when it pushes the environment files again
+after db0 was replaced). Never pack a mixed list under one server type.
+
+With `parallel = true` both run on at most `Constants.Scale.HOST_CONCURRENCY` (50) hosts at once,
+through `services/BoundedParallel`; at 1,000 nodes one thread per host would open 1,000 SSH
+sessions from the operator's machine. `up` does not fan out this way for node bring-up: each
+node runs its own pipeline (`services/bringup/`), whose SSH steps share one session limit,
+`Constants.Scale.HOST_CONCURRENCY`. AxonOps on the ready db nodes still uses `withHosts`.
+
 ## Invoking AMI-Baked Scripts At Runtime
 
-Some scripts under `packer/` are not bake-time-only. The AMI build installs `packer/cassandra/bin/install-cassandra-version`
-and `use-cassandra` onto the node's `PATH`. At runtime, `CassandraInstall` (`cassandra install`) runs
-`install-cassandra-version` over SSH, and `UseCassandra` (`cassandra use`) runs `use-cassandra`. This is deliberate: one install code path
-serves both the bake and a running cluster, instead of two that have to be kept in sync by hand.
+Some scripts under `packer/` are not bake-time-only. The AMI build installs everything in
+`packer/cassandra/bin/` onto the node's `PATH`, and the CLI runs three of them over SSH. The bake
+installs no Cassandra version and no per-release AxonOps agent; every one arrives at runtime.
+
+The CLI resolves everything (`services/cassandraversions/`: `CassandraVersionResolver` picks the
+source, URL, JDK and Python; the cluster state holds the record) and passes it as arguments, so no
+script reads a version file:
+
+- `install-cassandra-version <name> --url URL [--fallback-url URL] [--cache-uri URI] [--verify-checksum] [--reinstall]`,
+  or `--url GIT --branch B --java N [--ant-flags F]` for a git build. `--verify-checksum` (an ASF
+  release only) checks the tarball against the strongest checksum ASF publishes beside it. Run by `CassandraInstaller` for
+  `cassandra install`, `cassandra use` and `CassandraNodeRestorer` (a replaced db node; nothing calls
+  the restorer yet, issue 1158 wires it into `up`).
+- `use-cassandra <version> --java N --python X.Y.Z`. Both flags are required; the script checks every
+  argument before it changes anything.
+- `install-axonops-agent <X.Y|name> <java> --cache-prefix URI` (a name with no X.Y, such as
+  `cep-45`, takes its release from the install's `apache-cassandra` jar), run by `cassandra start` through
+  `AxonOpsAgents` before Cassandra starts anywhere. Exit 0 prints the agent name last; exit 3 means
+  AxonOps ships no agent for the release and JDK and prints the ones it ships.
 
 Consequences when editing those scripts:
 
@@ -320,4 +348,6 @@ When the command has already told the user what went wrong through its own typed
 error, a per-host failure), throw `kernel/CommandFailedException` after emitting it. The executor
 returns the error exit code and does not print the failure a second time. Any other exception is
 reported through `services/CommandFailureReporter`: when a registered provider error handler recognises it anywhere in the cause chain (AWS credentials or permissions), the user sees `Command.ProviderError` with a remedy; otherwise `Command.ExecutionError` with the cause chain. The same reporter serves the lifecycle, the top-level dispatch and Picocli's handler, so `Main` holds no error handling.
+
+A command that runs another command through `CommandExecutor.execute` gets an exit code back, not an exception: the executor has already printed the nested failure. Never ignore that exit code. Use `PicoBaseCommand.runNested(executor, command)`, which emits `Event.Command.NestedCommandFailed` and throws `CommandFailedException` on a non-zero exit. `build-image` checks each phase the same way and emits `Event.Ami.BuildPhaseFailed`.
 See [`events/CLAUDE.md`](../events/CLAUDE.md) for the event hierarchy and how to add new events.

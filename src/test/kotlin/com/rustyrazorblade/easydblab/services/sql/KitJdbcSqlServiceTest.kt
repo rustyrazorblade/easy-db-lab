@@ -83,7 +83,6 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
     private fun stateWithAppNode(): ClusterState =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             hosts =
                 mapOf(
                     ServerType.Stress to listOf(appHost),
@@ -94,7 +93,6 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
     private fun stateWithDbNode(): ClusterState =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             hosts =
                 mapOf(
                     ServerType.Cassandra to listOf(dbHost),
@@ -232,7 +230,6 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
             ),
         )

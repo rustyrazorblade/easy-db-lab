@@ -58,7 +58,7 @@ kubectl -n kube-system get cm cilium-config -o json | jq -r '.data | {"routing-m
 for h in control0 db0 db1; do echo "== $h"; $SSH $h 'ip -d link | grep -c vxlan || true'; done
 ```
 
-Pass: `Routing: Network: Native`, `KubeProxyReplacement: False`, `Masquerading: IPTables [ens+]`; `routing-mode` is `native`, `ipam` is `eni`; vxlan count is `0` on all three hosts.
+Pass: `Routing: Network: Native`, `KubeProxyReplacement: False`, `Masquerading: IPTables [en+]`; `routing-mode` is `native`, `ipam` is `eni`; vxlan count is `0` on all three hosts.
 
 ### 5. ciliumnode shows ENIs with allocated IPs per node
 
@@ -74,7 +74,7 @@ Pass: each of the 3 nodes has `enis >= 1` and `used >= 1`.  Record each node's s
 $EDB platform cni
 ```
 
-Pass: prints CNI `cilium`, routing mode `native`, IPAM `eni`, kube-proxy replacement `false`, masquerade interfaces `ens+`, and per-node ENI/IP counts equal to step 5.  Fail: any value differs from steps 4 or 5, or the command errors.
+Pass: prints CNI `cilium`, routing mode `native`, IPAM `eni`, kube-proxy replacement `false`, masquerade interfaces `en+`, and per-node ENI/IP counts equal to step 5.  Fail: any value differs from steps 4 or 5, or the command errors.
 
 ### 7. Start one server pod on each db node
 
@@ -206,13 +206,13 @@ Pass: hop limit `2` on both db nodes; operator pod `Running` on `$DB1_NODE` with
 
 ### 17. OS leaves the secondary ENI unmanaged, host stays single-homed
 
-Run after step 16, which attached `ens6` on db0.
+Run after step 16, which attached a secondary ENI on db0.  The interface names depend on the instance family, so the primary is the link that holds the default route, and the secondary is the other ENA link.
 
 ```bash
-for h in db0 db1; do echo "== $h"; $SSH $h 'networkctl list; ls /etc/systemd/network/; ip route show default'; done
+for h in db0 db1; do echo "== $h"; $SSH $h 'networkctl list; ls /run/systemd/network/ /etc/systemd/network/; ip route show default; P=$(ip -o route show default | awk "{for (i = 1; i < NF; i++) if (\$i == \"dev\") print \$(i + 1)}"); networkctl status "$P" | grep "Network File"'; done
 ```
 
-Pass: on db0, `ens5` is `configured`/managed and `ens6` is `unmanaged`; both drop-ins `05-cilium-eni-primary.network` and `06-cilium-eni-unmanaged.network` are present on both hosts; exactly one default route per host.  SSH itself succeeding here is the host-reachability check.
+Pass: on db0, the primary (the default-route link) is `configured`/managed and its `Network File` is `/run/systemd/network/05-cilium-eni-primary.network`, and the other ENA link is `unmanaged`; on both hosts, `05-cilium-eni-primary.network` is under `/run/systemd/network/` and not under `/etc/systemd/network/`, and `06-cilium-eni-unmanaged.network` is under `/etc/systemd/network/`; exactly one default route per host.  SSH itself succeeding here is the host-reachability check.
 
 ### 17b. Cassandra smoke test on the Cilium cluster
 

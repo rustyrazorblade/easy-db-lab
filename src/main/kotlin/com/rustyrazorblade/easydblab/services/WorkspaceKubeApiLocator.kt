@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubeApiLocator
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.kubernetes.currentContextOf
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -28,10 +28,7 @@ class WorkspaceKubeApiLocator(
     private val loggedFallbacks: MutableSet<Pair<String, String>> = ConcurrentHashMap.newKeySet()
 
     override fun locate(): KubeApi {
-        val kubeconfigFile = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
-        check(kubeconfigFile.exists()) {
-            "No kubeconfig at ${kubeconfigFile.absolutePath}. Run the command from the cluster's workspace."
-        }
+        val kubeconfigFile = WorkspaceKubeconfig.require(workspace)
         val kubeconfigPath = kubeconfigFile.toPath()
         val context = clusterStateManager.load().kubeContext ?: fallbackContext(kubeconfigFile)
         return KubeApi(kubeconfigPath, context)

@@ -29,7 +29,6 @@ class ClusterContractTest {
         nodeLabels: Map<String, String> = emptyMap(),
     ) = ClusterState(
         name = "test",
-        versions = mutableMapOf(),
         environment = environment,
         capabilities = capabilities,
         initConfig = InitConfig(region = "us-east-1", nodeLabels = nodeLabels),
@@ -57,7 +56,7 @@ class ClusterContractTest {
 
     @Test
     fun `an AWS state with no recorded capabilities still yields the AWS set`() {
-        val state = ClusterState(name = "test", versions = mutableMapOf())
+        val state = ClusterState(name = "test")
 
         assertThat(ClusterContract.of(state).nodeCapabilities).isEqualTo(NodeCapabilities.AWS)
         assertThat(NodeCapabilities.from(state)).isEqualTo(NodeCapabilities.AWS)
@@ -99,7 +98,7 @@ class ClusterContractTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("environmentsWithoutAws")
     fun `a cluster with no AWS account never asks the profile for its region or datacenter`(environment: Environment) {
-        val state = ClusterState(name = "test", versions = mutableMapOf(), environment = environment)
+        val state = ClusterState(name = "test", environment = environment)
         val noProfile = ProfileRegion { error("a ${environment.displayName} workspace must not load the AWS profile") }
 
         assertThat(state.region(noProfile)).isEmpty()
@@ -108,14 +107,14 @@ class ClusterContractTest {
 
     @Test
     fun `an EC2 state with no initConfig takes its region from the profile`() {
-        val state = ClusterState(name = "test", versions = mutableMapOf())
+        val state = ClusterState(name = "test")
 
         assertThat(state.region { "eu-west-1" }).isEqualTo("eu-west-1")
     }
 
     @Test
     fun `an EC2 state with no initConfig is a contract whose datacenter is the profile's region`() {
-        val state = ClusterState(name = "test", versions = mutableMapOf())
+        val state = ClusterState(name = "test")
 
         assertThat(state.initConfig).isNull()
         assertThat(ClusterContract.of(state).datacenter { "eu-west-1" }).isEqualTo("eu-west-1")
@@ -123,21 +122,21 @@ class ClusterContractTest {
 
     @Test
     fun `an EC2 state that records a blank region takes its datacenter from the profile's region`() {
-        val state = ClusterState(name = "test", versions = mutableMapOf(), initConfig = InitConfig(region = " "))
+        val state = ClusterState(name = "test", initConfig = InitConfig(region = " "))
 
         assertThat(ClusterContract.of(state).datacenter { "eu-west-1" }).isEqualTo("eu-west-1")
     }
 
     @Test
     fun `an EC2 state that records no region takes its datacenter from the profile's region`() {
-        val contract = ClusterContract.of(ClusterState(name = "test", versions = mutableMapOf()))
+        val contract = ClusterContract.of(ClusterState(name = "test"))
 
         assertThat(contract.datacenter { "eu-west-1" }).isEqualTo("eu-west-1")
     }
 
     @Test
     fun `an EC2 state that records no region, with no profile to ask, fails instead of naming a blank datacenter`() {
-        val contract = ClusterContract.of(ClusterState(name = "test", versions = mutableMapOf()))
+        val contract = ClusterContract.of(ClusterState(name = "test"))
 
         assertThatThrownBy { contract.datacenter(ProfileRegion.NONE) }
             .isInstanceOf(IllegalStateException::class.java)

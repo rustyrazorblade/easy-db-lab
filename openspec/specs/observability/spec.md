@@ -537,3 +537,11 @@ The Grafana Alloy DaemonSet SHALL listen for Pyroscope pushes on `127.0.0.1:<ALL
 - **WHEN** a JFR chunk is posted to the relay's `/ingest` with `format=jfr`, a series name and labels, and the tenant header
 - **THEN** Pyroscope returns the profile under that tenant with the same series name and labels
 
+### Requirement: K3s embedded etcd metrics are scraped into Mimir
+The system SHALL expose the K3s server's embedded etcd metrics (`etcd-expose-metrics: true` in the K3s datastore drop-in) and the OTel collector SHALL scrape them as job `k3s-etcd` on `localhost:2381` of the control node, on every cluster regardless of CNI. The job SHALL use Kubernetes node discovery that keeps only the collector's own node and only a node labelled `node-role.kubernetes.io/etcd=true`, so exactly one collector scrapes it and no other node's collector reports the job down. The series SHALL carry the cluster label and land in the cluster's tenant like every other scrape. The Infrastructure folder SHALL hold a "K3s Control Plane" dashboard showing etcd backend commit latency, WAL fsync latency, the database size against the 8 GiB backend quota, leader changes and failed proposals.
+
+#### Scenario: etcd series reach Mimir from the control node only
+- **GIVEN** a cluster that is up
+- **THEN** `up{job="k3s-etcd"}` is 1 for exactly one instance, the control node
+- **AND** `etcd_disk_backend_commit_duration_seconds_bucket`, `etcd_disk_wal_fsync_duration_seconds_bucket`, `etcd_mvcc_db_total_size_in_bytes`, `etcd_server_quota_backend_bytes`, `etcd_server_leader_changes_seen_total` and `etcd_server_proposals_failed_total` are queryable with the cluster label
+

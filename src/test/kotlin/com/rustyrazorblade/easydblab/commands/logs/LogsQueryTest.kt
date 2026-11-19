@@ -48,7 +48,7 @@ class LogsQueryTest : BaseKoinTest() {
 
         // Local-mode cluster by default: the redirect guard passes, so query building runs.
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test-cluster", clusterId = "c1", versions = mutableMapOf(), initConfig = InitConfig(region = "us-west-2")),
+            ClusterState(name = "test-cluster", clusterId = "c1", initConfig = InitConfig(region = "us-west-2")),
         )
     }
 
@@ -57,7 +57,6 @@ class LogsQueryTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2", telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")),
             ),
         )

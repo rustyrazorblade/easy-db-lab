@@ -74,6 +74,56 @@ class ConsoleEventListenerTest {
     }
 
     @Test
+    fun `an event that stays off the console prints nothing to either stream`() {
+        val originalOut = System.out
+        val originalErr = System.err
+        val captured = ByteArrayOutputStream()
+        System.setOut(PrintStream(captured))
+        System.setErr(PrintStream(captured))
+        try {
+            listOf(
+                Event.Provision.NodeStepStarted(alias = "db0", step = "setup", attempt = 1),
+                Event.Provision.NodeStepCompleted(alias = "db0", step = "setup", attempt = 1, durationMs = 1200),
+            ).forEach { event ->
+                listener.onEvent(EventEnvelope(event = event, timestamp = "2026-02-23T10:15:30.123Z", commandName = "up"))
+            }
+
+            assertThat(captured.toString()).isEmpty()
+        } finally {
+            System.setOut(originalOut)
+            System.setErr(originalErr)
+        }
+    }
+
+    @Test
+    fun `a failed node step is printed to stderr`() {
+        val originalErr = System.err
+        val capturedErr = ByteArrayOutputStream()
+        System.setErr(PrintStream(capturedErr))
+        try {
+            listener.onEvent(
+                EventEnvelope(
+                    event =
+                        Event.Provision.NodeStepFailed(
+                            alias = "db1",
+                            step = "setup",
+                            attempt = 1,
+                            maxAttempts = 2,
+                            reason = "exit 1",
+                            willRetry = true,
+                        ),
+                    timestamp = "2026-02-23T10:15:30.123Z",
+                    commandName = "up",
+                ),
+            )
+
+            assertThat(capturedErr.toString().trim()).isEqualTo("db1: setup failed (attempt 1 of 2): exit 1; retrying")
+        } finally {
+            System.setErr(originalErr)
+        }
+    }
+
+    @Test
     fun `normal event is not written to stderr`() {
         val originalErr = System.err
         val capturedErr = ByteArrayOutputStream()

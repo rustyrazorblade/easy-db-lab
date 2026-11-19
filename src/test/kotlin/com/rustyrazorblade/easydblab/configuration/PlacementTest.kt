@@ -13,7 +13,7 @@ class PlacementTest {
 
     @Test
     fun `an AWS cluster places on the control node with its toleration`() {
-        val placement = Placement.from(ClusterState(name = "test", versions = mutableMapOf()))
+        val placement = Placement.from(ClusterState(name = "test"))
 
         assertThat(placement.nodeSelector).containsExactlyEntriesOf(mapOf(controlPlaneLabel to "true"))
         assertThat(placement.tolerations).singleElement().satisfies({
@@ -34,7 +34,6 @@ class PlacementTest {
         val state =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(nodeLabels = mapOf("pool" to "observability")),
             )
 

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
+import com.rustyrazorblade.easydblab.reason
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
@@ -59,9 +60,13 @@ class ProxiedKubernetesClientFactory(
         log.debug { "Kubernetes client in network mode $mode, proxy ${config.httpsProxy ?: "none"}" }
         config.applyClusterClientTimeouts()
 
-        return KubernetesClientBuilder()
-            .withConfig(config)
-            .build()
+        return try {
+            KubernetesClientBuilder()
+                .withConfig(config)
+                .build()
+        } catch (e: RuntimeException) {
+            throw IllegalStateException("A Kubernetes client could not be built from the kubeconfig at ${api.kubeconfig}: ${e.reason()}", e)
+        }
     }
 }
 

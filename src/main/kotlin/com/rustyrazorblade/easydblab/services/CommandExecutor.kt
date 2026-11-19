@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -195,26 +196,23 @@ class DefaultCommandExecutor(
      * 2. Execute command (includes @PreExecute, execute(), @PostExecute via PicoCommand.call())
      * 3. Handle post-success actions
      *
-     * Requirement checks and command execution share one try/catch so that a failure raised
+     * Requirement checks and command execution share one failure boundary so that a failure raised
      * while checking requirements (e.g. [RequiresProxy] failing to establish the tunnel) is
      * reported and converted to a non-zero exit code exactly like a failure inside the command
      * itself, rather than escaping uncaught.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun executeWithLifecycle(
         command: PicoCommand,
         commandName: String? = null,
     ): Int {
         val exitCode =
-            try {
+            runCatchingException {
                 checkRequirements(command, commandName)
                 command.call()
-            } catch (e: InterruptedException) {
+            }.getOrElse { failure ->
                 // Ctrl-C or SIGTERM in REPL or server mode: cancellation is not a command failure.
-                Thread.currentThread().interrupt()
-                throw e
-            } catch (e: Exception) {
-                failureReporter.report(e)
+                if (failure is InterruptedException) throw failure
+                failureReporter.report(failure)
                 Constants.ExitCodes.ERROR
             }
 
@@ -362,17 +360,12 @@ class DefaultCommandExecutor(
             }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun checkDockerAvailability(): Boolean =
-        try {
+        runCatchingException {
             val dockerClient = requirementCheckDeps.dockerClientProvider.getDockerClient()
             // Try to list images as a simple health check
             dockerClient.listImages("", "")
-            true
-        } catch (e: Exception) {
-            log.error(e) { "Docker availability check failed" }
-            false
-        }
+        }.onFailure { e -> log.error(e) { "Docker availability check failed" } }.isSuccess
 
     private fun checkSSHKeyAvailability(): Boolean = File(requirementCheckDeps.userConfigProvider.sshKeyPath).exists()
 

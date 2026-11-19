@@ -277,7 +277,6 @@ class KitStorageIntegrationTest {
     private fun clusterState() =
         ClusterState(
             name = "kit-storage-it",
-            versions = mutableMapOf(),
             clusterId = "kit-storage-it",
             hosts = mapOf(ServerType.Cassandra to listOf(ClusterHost("", "10.0.0.1", "db0", "us-west-2a"))),
         )

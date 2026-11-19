@@ -27,6 +27,20 @@ spec:
   instances: __INSTANCES__
   postgresUID: __POSTGRES_UID__
   postgresGID: __POSTGRES_GID__
+  # Postgres processes signal each other (the postmaster stops and starts backends and workers). The
+  # node's default AppArmor profile (containerd's, stacked with the host's) refuses every signal a
+  # container sends, so without this the instance sits in "the database system is in recovery mode"
+  # and never becomes Ready. This replaces the operator's default pod security context, so the
+  # defaults are stated again beside the profile.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: __POSTGRES_UID__
+    runAsGroup: __POSTGRES_GID__
+    fsGroup: __POSTGRES_GID__
+    seccompProfile:
+      type: RuntimeDefault
+    appArmorProfile:
+      type: Unconfined
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io
     kind: ImageCatalog

@@ -1,11 +1,15 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kubernetes.KubeApi
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
+import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer
 import org.assertj.core.api.Assertions.assertThat
@@ -15,22 +19,25 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
 
 @EnableKubernetesMockClient(crud = true)
 class DefaultK8sStorageOperationsTest {
     private lateinit var storageOps: DefaultK8sStorageOperations
     private lateinit var mockEventBus: EventBus
-    private lateinit var mockClientProvider: K8sClientProvider
+    private lateinit var clientProvider: K8sClientProvider
 
     lateinit var server: KubernetesMockServer
 
     @BeforeEach
     fun setup() {
         mockEventBus = mock()
-        mockClientProvider = mock()
-        whenever(mockClientProvider.createClient()).thenAnswer { server.createClient() }
-        storageOps = DefaultK8sStorageOperations(mockClientProvider, mockEventBus)
+        // The workspace kubeconfig is a placeholder: the mock API server is not reached through one.
+        val mockServerFactory =
+            object : KubernetesClientFactory {
+                override fun createClient(api: KubeApi): KubernetesClient = server.createClient()
+            }
+        clientProvider = WorkspaceK8s.provider("placeholder", mockServerFactory)
+        storageOps = DefaultK8sStorageOperations(clientProvider, mockEventBus)
     }
 
     /** Every event emitted so far, in order. */

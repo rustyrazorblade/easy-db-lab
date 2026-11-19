@@ -1,0 +1,294 @@
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  labels:
+    app.kubernetes.io/name: "grafana"
+  name: "grafana-dashboards-config"
+  namespace: "default"
+data:
+  dashboards.yaml: |-
+    apiVersion: 1
+    providers:
+    - name: "dashboards"
+      orgId: 1
+      type: "file"
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: "/var/lib/grafana/dashboards"
+        foldersFromFilesStructure: true
+---
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  labels:
+    app.kubernetes.io/name: "grafana"
+  name: "grafana-front"
+  namespace: "default"
+data:
+  nginx.conf: |
+    # The nginx in front of Grafana, in the Grafana pod. It holds Grafana's client port, the one port the
+    # grafana Service targets and, on AWS, the control node publishes. So the browser reaches Grafana and
+    # a test's documents over one connection, a 127.0.0.1 port-forward or the SOCKS path, and the
+    # dashboards' documents iframe is a relative, same-origin /reports/ URL.
+    #
+    # /reports/: only GET and HEAD go on, to the signing proxy on loopback, which reads the account
+    # bucket with the default credential chain. nginx decodes and normalizes the path first, so
+    # /reports/../mimir/ is /mimir/ and goes to Grafana, never to the proxy. A decoded path must then hold
+    # only the document name characters, so an encoded line break cannot split the request and an
+    # encoded "?" cannot add a query. proxy_pass names a fixed URI with no variables, so nginx re-encodes
+    # the path itself, and the query string is cleared, so a request cannot name another bucket or an S3
+    # sub-resource.
+    #
+    # Everything else goes to Grafana on its loopback port, with the Host header kept (Grafana Live
+    # checks a websocket's Origin against it) and no request body limit (dashboard and annotation
+    # imports). Only /api/live/ passes the websocket upgrade through and waits an hour on an idle
+    # connection; every other request uses a kept-alive upstream connection and nginx's default timeouts.
+    worker_processes 1;
+    pid /tmp/nginx.pid;
+    error_log /dev/stderr warn;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        access_log /dev/stdout;
+        server_tokens off;
+        client_body_temp_path /tmp/client_temp;
+        proxy_temp_path /tmp/proxy_temp;
+        fastcgi_temp_path /tmp/fastcgi_temp;
+        uwsgi_temp_path /tmp/uwsgi_temp;
+        scgi_temp_path /tmp/scgi_temp;
+
+        map $http_upgrade $connection_upgrade {
+            default upgrade;
+            "" close;
+        }
+
+        # Both upstreams are on loopback in this pod; idle connections to them are kept and reused.
+        upstream documents_proxy {
+            server 127.0.0.1:3081;
+            keepalive 8;
+        }
+
+        upstream grafana {
+            server 127.0.0.1:3001;
+            keepalive 16;
+        }
+
+        server {
+            listen 3000;
+            client_max_body_size 0;
+
+            location /reports/ {
+                if ($request_method !~ "^(GET|HEAD)$") {
+                    return 405;
+                }
+                if ($uri !~ "^/reports/[A-Za-z0-9._/-]+$") {
+                    return 400;
+                }
+                set $args "";
+                proxy_http_version 1.1;
+                proxy_set_header Connection "";
+                proxy_pass http://documents_proxy/acct/reports/;
+            }
+
+            # Grafana Live: the only websocket, and the only connection that sits idle for long.
+            location /api/live/ {
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection $connection_upgrade;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_read_timeout 3600s;
+                proxy_send_timeout 3600s;
+                proxy_pass http://grafana;
+            }
+
+            location / {
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header Connection "";
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_pass http://grafana;
+            }
+        }
+    }
+---
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  labels:
+    app.kubernetes.io/name: "grafana"
+  name: "grafana"
+  namespace: "default"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "grafana"
+  strategy:
+    type: "Recreate"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "grafana"
+    spec:
+      containers:
+      - env:
+        - name: "GF_INSTALL_PLUGINS"
+          value: "grafana-clickhouse-datasource,grafana-polystat-panel"
+        - name: "GF_SECURITY_ADMIN_USER"
+          value: "admin"
+        - name: "GF_SECURITY_ADMIN_PASSWORD"
+          value: "admin"
+        - name: "GF_USERS_ALLOW_SIGN_UP"
+          value: "false"
+        - name: "GF_AUTH_ANONYMOUS_ENABLED"
+          value: "true"
+        - name: "GF_USERS_DEFAULT_ORG_NAME"
+          value: "Main Org."
+        - name: "GF_AUTH_ANONYMOUS_ORG_NAME"
+          value: "Main Org."
+        - name: "GF_AUTH_ANONYMOUS_ORG_ROLE"
+          value: "Admin"
+        - name: "GF_AUTH_DISABLE_LOGIN_FORM"
+          value: "false"
+        - name: "GF_AUTH_BASIC_ENABLED"
+          value: "true"
+        - name: "GF_BRANDING_APP_TITLE"
+          value: "test-golden-cluster"
+        - name: "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH"
+          value: "/var/lib/grafana/dashboards/infrastructure/system-overview.json"
+        - name: "GF_RENDERING_SERVER_URL"
+          value: "http://localhost:8081/render"
+        - name: "GF_RENDERING_CALLBACK_URL"
+          value: "http://127.0.0.1:3001/"
+        - name: "GF_SERVER_HTTP_ADDR"
+          value: "127.0.0.1"
+        - name: "GF_SERVER_HTTP_PORT"
+          value: "3001"
+        - name: "GF_RENDERING_RENDERER_TOKEN"
+          value: "easydblab-renderer"
+        - name: "GF_PANELS_DISABLE_SANITIZE_HTML"
+          value: "true"
+        image: "grafana/grafana:13.2.2"
+        livenessProbe:
+          exec:
+            command:
+            - "wget"
+            - "-q"
+            - "-O"
+            - "/dev/null"
+            - "http://127.0.0.1:3001/api/health"
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        name: "grafana"
+        readinessProbe:
+          exec:
+            command:
+            - "wget"
+            - "-q"
+            - "-O"
+            - "/dev/null"
+            - "http://127.0.0.1:3001/api/health"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: "/etc/grafana/provisioning/datasources"
+          name: "datasources"
+          readOnly: true
+        - mountPath: "/etc/grafana/provisioning/dashboards"
+          name: "dashboards-config"
+          readOnly: true
+        - mountPath: "/var/lib/grafana"
+          name: "data"
+      - env:
+        - name: "AUTH_TOKEN"
+          value: "easydblab-renderer"
+        image: "grafana/grafana-image-renderer:v5.12.4"
+        name: "grafana-image-renderer"
+        ports:
+        - containerPort: 8081
+          protocol: "TCP"
+      - args:
+        - "--name"
+        - "s3"
+        - "--region"
+        - "us-west-2"
+        - "--host"
+        - "s3.us-west-2.amazonaws.com"
+        - "--port"
+        - "127.0.0.1:3081"
+        image: "public.ecr.aws/aws-observability/aws-sigv4-proxy:1.13"
+        name: "documents-sigv4-proxy"
+        ports:
+        - containerPort: 3081
+          protocol: "TCP"
+      - image: "nginxinc/nginx-unprivileged:1.30.5-alpine"
+        name: "grafana-front"
+        ports:
+        - containerPort: 3000
+          name: "http"
+          protocol: "TCP"
+        readinessProbe:
+          httpGet:
+            path: "/api/health"
+            port: 3000
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: "/etc/nginx/nginx.conf"
+          name: "grafana-front-config"
+          readOnly: true
+          subPath: "nginx.conf"
+      dnsPolicy: "ClusterFirst"
+      hostNetwork: false
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      securityContext:
+        fsGroup: 472
+        runAsUser: 472
+      tolerations:
+      - effect: "NoSchedule"
+        key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+      volumes:
+      - configMap:
+          name: "grafana-datasources"
+        name: "datasources"
+      - configMap:
+          name: "grafana-dashboards-config"
+        name: "dashboards-config"
+      - hostPath:
+          path: "/mnt/db1/grafana"
+          type: "DirectoryOrCreate"
+        name: "data"
+      - configMap:
+          name: "grafana-front"
+        name: "grafana-front-config"
+---
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  labels:
+    app.kubernetes.io/name: "grafana"
+  name: "grafana"
+  namespace: "default"
+spec:
+  ports:
+  - name: "http"
+    nodePort: 31300
+    port: 3000
+    protocol: "TCP"
+    targetPort: 3000
+  selector:
+    app.kubernetes.io/name: "grafana"
+  type: "NodePort"

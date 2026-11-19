@@ -154,6 +154,11 @@ easy-db-lab clickhouse-benchmark-clickhouse stop
 `stop` deletes this instance's benchmark and prepare pods and their ConfigMaps. It leaves `hits` in
 place and does not touch other kits' pods.
 
+### uninstall
+
+`kit uninstall` deletes every pod and ConfigMap the instance created, by the `easydblab/kit` label,
+so a failed `prepare` or a finished run leaves nothing behind.
+
 ## Results
 
 When a run ends, `start` writes `last-run.txt` into the kit's workspace directory (for example

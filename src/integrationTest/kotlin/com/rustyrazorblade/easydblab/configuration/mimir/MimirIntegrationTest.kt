@@ -76,7 +76,7 @@ class MimirIntegrationTest : BaseKoinTest() {
             module {
                 single {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "mimir-it", versions = mutableMapOf(), s3Bucket = bucket))
+                        whenever(it.load()).thenReturn(ClusterState(name = "mimir-it", s3Bucket = bucket))
                     }
                 }
                 single { TemplateService(get(), get()) }

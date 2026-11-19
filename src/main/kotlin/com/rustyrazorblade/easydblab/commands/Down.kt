@@ -4,26 +4,29 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
+import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.services.BackendState
+import com.rustyrazorblade.easydblab.services.DataBucketTeardown
+import com.rustyrazorblade.easydblab.services.DeviceRemoval
+import com.rustyrazorblade.easydblab.services.PlanReview
 import com.rustyrazorblade.easydblab.services.TailFlushFailed
 import com.rustyrazorblade.easydblab.services.TailSignal
-import com.rustyrazorblade.easydblab.services.TailscaleApiException
-import com.rustyrazorblade.easydblab.services.TailscaleService
+import com.rustyrazorblade.easydblab.services.TailnetCleanup
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
+import com.rustyrazorblade.easydblab.services.TeardownOptions
+import com.rustyrazorblade.easydblab.services.TeardownPlanner
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
-import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine
-import java.util.Scanner
+import java.io.IOException
 
 /**
  * Shut down AWS infrastructure using direct AWS API calls.
@@ -86,12 +89,11 @@ class Down : PicoBaseCommand() {
     var force = false
 
     private val teardownService: AwsInfrastructureService by inject()
-    private val s3BucketService: AwsS3BucketService by inject()
-    private val tailscaleService: TailscaleService by inject()
-    private val user: User by inject()
+    private val dataBucketTeardown: DataBucketTeardown by inject()
+    private val tailnetCleanup: TailnetCleanup by inject()
+    private val planner: TeardownPlanner by inject()
     private val teardownBackupService: TeardownBackupService by inject()
     private val socksProxyService: SocksProxyService by inject()
-    private val compactorService: CompactorService by inject()
     private val log = KotlinLogging.logger {}
 
     private companion object {
@@ -103,6 +105,21 @@ class Down : PicoBaseCommand() {
 
         /** The name `down` reports itself by. */
         const val COMMAND_NAME = "down"
+    }
+
+    /**
+     * How much of a VPC a teardown may remove: all of it ([Whole], the cluster state says easy-db-lab
+     * created it), only what its tags mark as easy-db-lab's ([ByTags], no state to ask), or one
+     * cluster's own resources in a VPC the user supplied ([SuppliedCluster]).
+     */
+    private sealed interface VpcScope {
+        data object Whole : VpcScope
+
+        data object ByTags : VpcScope
+
+        data class SuppliedCluster(
+            val clusterId: String,
+        ) : VpcScope
     }
 
     /**
@@ -118,8 +135,9 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * How a teardown ended: it ran (successfully or not, or it had nothing to do), or the
-     * pre-teardown flush failed and aborted it with no infrastructure removed.
+     * How a teardown ended: it ran (successfully or not, or it had nothing to do), the
+     * pre-teardown flush failed and aborted it with no infrastructure removed, or it was a dry run
+     * that only previewed what would be removed.
      */
     private sealed interface TeardownOutcome {
         data class Finished(
@@ -127,11 +145,33 @@ class Down : PicoBaseCommand() {
         ) : TeardownOutcome
 
         data object FlushAborted : TeardownOutcome
+
+        /**
+         * `--dry-run`: the preview was reported and nothing changed, locally or remotely. The
+         * tunnel, the tailnet device and the cluster state are left exactly as they were.
+         *
+         * [failure] is set when there was nothing to preview (no cluster state, or no VPC and no
+         * tailnet device recorded): the dry run fails as the teardown would, and still changes
+         * nothing.
+         */
+        data class DryRun(
+            val failure: TeardownResult? = null,
+        ) : TeardownOutcome
     }
+
+    private val options: TeardownOptions
+        get() =
+            TeardownOptions(
+                vpcId = vpcId,
+                all = teardownAll,
+                packer = teardownPacker,
+                dryRun = dryRun,
+                autoApprove = autoApprove,
+            )
 
     override fun execute() {
         ProvisionerGuard.require(COMMAND_NAME, clusterStateManager.takeIf { it.exists() }?.load(), eventBus)
-        val mode = determineTeardownMode()
+        val mode = planner.modeFor(options)
 
         eventBus.emit(Event.Teardown.Starting)
 
@@ -141,15 +181,15 @@ class Down : PicoBaseCommand() {
                     exitCode = Constants.ExitCodes.ERROR
                     return
                 }
+                is TeardownOutcome.DryRun -> {
+                    outcome.failure?.let(::reportResult)
+                    return
+                }
                 is TeardownOutcome.Finished -> outcome.result
             }
 
         // Kill the proxy process and remove its state file after AWS operations complete.
         cleanupSocks5Proxy()
-
-        if (result.success && !dryRun && mode != TeardownMode.PackerInfrastructure) {
-            stopCompactorIfLastCluster(mode, result)
-        }
 
         // Only clear cluster state on successful teardown to preserve VPC ID for retries
         if (result.success && (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc)) {
@@ -268,13 +308,14 @@ class Down : PicoBaseCommand() {
                             Event.Teardown.BackupFailedAbort.SignalFailure(
                                 signal = it.signal.description,
                                 step = it.step.description,
-                                reason = it.cause?.message ?: it.message.orEmpty(),
+                                reason = it.cause?.reason() ?: it.message.orEmpty(),
+                                unreached = it.unreached,
                             )
                         },
                     backends = failure.backends.mapValues { it.value.description },
                     stoppedWorkloads =
                         failure.backends
-                            .filterValues { it != BackendState.RUNNING && it != BackendState.ABSENT }
+                            .filterValues { it != BackendState.RUNNING && it != BackendState.ABSENT && it != BackendState.UNREACHED }
                             .keys
                             .toList(),
                 )
@@ -295,39 +336,10 @@ class Down : PicoBaseCommand() {
                 Event.Teardown.BackupFailedAbort.SignalFailure(
                     signal = it.description,
                     step = step,
-                    reason = failure.message ?: failure.toString(),
+                    reason = failure.reason(),
                 )
             },
     )
-
-    /**
-     * Stops the account compactor once the infrastructure teardown succeeded, when no other cluster
-     * VPC in any region still names the account bucket. The VPCs this `down` tore down are left
-     * out of the count. With no account bucket there is no compactor.
-     */
-    private fun stopCompactorIfLastCluster(
-        mode: TeardownMode,
-        result: TeardownResult,
-    ) {
-        val bucket =
-            when (mode) {
-                TeardownMode.CurrentCluster -> clusterStateManager.load().s3Bucket
-                else -> user.s3Bucket
-            }
-        if (bucket.isNullOrBlank()) return
-        compactorService.stopIfLastCluster(bucket, result.resourcesDeleted.map { it.vpcId }.toSet())
-    }
-
-    /**
-     * Determines the teardown mode based on command line options.
-     */
-    private fun determineTeardownMode(): TeardownMode =
-        when {
-            vpcId != null -> TeardownMode.SpecificVpc(requireNotNull(vpcId))
-            teardownAll -> TeardownMode.AllTagged
-            teardownPacker -> TeardownMode.PackerInfrastructure
-            else -> TeardownMode.CurrentCluster
-        }
 
     /**
      * Executes the teardown based on the specified mode.
@@ -335,10 +347,29 @@ class Down : PicoBaseCommand() {
     private fun executeTeardown(mode: TeardownMode): TeardownOutcome =
         when (mode) {
             is TeardownMode.CurrentCluster -> teardownCurrentCluster()
-            is TeardownMode.SpecificVpc -> teardownSpecificVpc(mode.vpcId, saveTail = false)
-            is TeardownMode.AllTagged -> TeardownOutcome.Finished(teardownAllTagged())
-            is TeardownMode.PackerInfrastructure -> TeardownOutcome.Finished(teardownPackerInfrastructure())
+            is TeardownMode.SpecificVpc ->
+                teardownSpecificVpc(mode.vpcId, saveTail = false, scope = scopeForNamedVpc(mode.vpcId))
+            is TeardownMode.AllTagged -> teardownAllTagged()
+            is TeardownMode.PackerInfrastructure -> teardownPackerInfrastructure()
         }
+
+    /**
+     * The scope of `down <vpc-id>`: the supplied-VPC cluster when the workspace state says so,
+     * otherwise the VPC's own tags decide, because no state can say who created it.
+     */
+    private fun scopeForNamedVpc(vpcId: String): VpcScope = suppliedVpcClusterFor(vpcId)?.let(VpcScope::SuppliedCluster) ?: VpcScope.ByTags
+
+    /**
+     * The workspace cluster's ID when [vpcId] is the VPC that cluster was given with `init --vpc`,
+     * otherwise null. `down <vpc-id>` for that VPC removes only that cluster's resources: the VPC
+     * is the user's, whichever way it is named.
+     */
+    private fun suppliedVpcClusterFor(vpcId: String): String? =
+        clusterStateManager
+            .takeIf { it.exists() }
+            ?.load()
+            ?.takeIf { it.vpcSupplied && it.vpcId == vpcId }
+            ?.clusterId
 
     /**
      * Unpublishes the SOCKS proxy port just before infrastructure is removed. The control node (and
@@ -352,29 +383,44 @@ class Down : PicoBaseCommand() {
      *
      * A cluster whose VPC is already gone but whose tailnet device is still recorded is a previous
      * `down` that removed the infrastructure and failed only the device removal. There is no VPC
-     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry.
+     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry;
+     * under `--dry-run` it only reports that the device would be removed.
      */
     private fun teardownCurrentCluster(): TeardownOutcome {
         // Get the VPC ID from cluster state
         if (!clusterStateManager.exists()) {
             eventBus.emit(Event.Teardown.NoClusterState)
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("No cluster state found"))
+            return nothingToTearDown(TeardownResult.Companion.failure("No cluster state found"))
         }
 
         val clusterState = clusterStateManager.load()
         val currentVpcId = clusterState.vpcId
 
-        if (currentVpcId == null && !clusterState.tailscaleDeviceId.isNullOrBlank()) {
+        val deviceId = clusterState.tailscaleDeviceId
+        if (currentVpcId == null && !deviceId.isNullOrBlank()) {
+            if (dryRun) {
+                eventBus.emit(Event.Teardown.DryRunDeviceRemovalPreview(deviceId))
+                return TeardownOutcome.DryRun()
+            }
             return TeardownOutcome.Finished(TeardownResult.success(emptyList()))
         }
 
         if (currentVpcId == null) {
             eventBus.emit(Event.Teardown.NoVpcId(clusterState.name))
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("No VPC ID in cluster state"))
+            return nothingToTearDown(TeardownResult.Companion.failure("No VPC ID in cluster state"))
         }
 
-        return teardownSpecificVpc(currentVpcId, saveTail = true)
+        // A VPC from `init --vpc` is the user's: remove only this cluster's own tagged resources, never the VPC.
+        val scope = if (clusterState.vpcSupplied) VpcScope.SuppliedCluster(clusterState.clusterId) else VpcScope.Whole
+        return teardownSpecificVpc(currentVpcId, saveTail = true, scope = scope)
     }
+
+    /**
+     * The outcome when the cluster state names nothing to tear down: [failure] either way, but a
+     * dry run reports it as a [TeardownOutcome.DryRun], so nothing, the tunnel included, is touched.
+     */
+    private fun nothingToTearDown(failure: TeardownResult): TeardownOutcome =
+        if (dryRun) TeardownOutcome.DryRun(failure) else TeardownOutcome.Finished(failure)
 
     /**
      * Tears down a specific VPC by ID.
@@ -387,137 +433,100 @@ class Down : PicoBaseCommand() {
     private fun teardownSpecificVpc(
         targetVpcId: String,
         saveTail: Boolean,
+        scope: VpcScope,
     ): TeardownOutcome {
         eventBus.emit(Event.Teardown.PreparingVpc(targetVpcId))
 
-        // Preview to discover resources
-        val previewResult = teardownService.teardownVpc(targetVpcId, dryRun = true)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoResourcesFound)
-            return TeardownOutcome.Finished(previewResult)
-        }
-
-        val summary = previewResult.resourcesDeleted.first().summary()
-        if (saveTail && force) reportForceSkipsTail()
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return TeardownOutcome.Finished(previewResult)
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardown(targetVpcId, scope, dryRun = true),
+                noneFound = Event.Teardown.NoResourcesFound,
+                summarize = { it.first().summary() },
+                beforeDryRunCheck = { if (saveTail && force) reportForceSkipsTail() },
+            )
+        if (stop != null) return stop
 
         if (saveTail && !force && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
 
         beforeRemovingInfrastructure()
-        return TeardownOutcome.Finished(teardownService.teardownVpc(targetVpcId, dryRun = false))
+        return TeardownOutcome.Finished(teardown(targetVpcId, scope, dryRun = false))
     }
+
+    /**
+     * Tears down [vpcId] as [scope] says: the whole VPC, only what its tags mark as easy-db-lab's,
+     * or only one cluster's own resources inside a user-supplied VPC.
+     */
+    private fun teardown(
+        vpcId: String,
+        scope: VpcScope,
+        dryRun: Boolean,
+    ): TeardownResult =
+        when (scope) {
+            VpcScope.Whole -> teardownService.teardownVpc(vpcId, dryRun)
+            VpcScope.ByTags -> teardownService.teardownVpcByTags(vpcId, dryRun)
+            is VpcScope.SuppliedCluster -> teardownService.teardownClusterInSuppliedVpc(vpcId, scope.clusterId, dryRun)
+        }
 
     /**
      * Tears down all VPCs tagged with easy_cass_lab.
      */
-    private fun teardownAllTagged(): TeardownResult {
+    private fun teardownAllTagged(): TeardownOutcome {
         eventBus.emit(Event.Teardown.FindingTaggedVpcs)
 
-        // Preview first
-        val previewResult = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoTaggedVpcsFound)
-            return previewResult
-        }
-
-        // Build summary from discovered resources
-        val summary = buildResourcesSummary(previewResult.resourcesDeleted)
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return previewResult
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownResult.Companion.failure("Teardown cancelled by user")
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker),
+                noneFound = Event.Teardown.NoTaggedVpcsFound,
+                summarize = planner::summarizeAll,
+            )
+        if (stop != null) return stop
 
         beforeRemovingInfrastructure()
         val result = teardownService.teardownAllTagged(dryRun = false, includePackerVpc = teardownPacker)
 
         // Also handle all data buckets when tearing down all resources
         if (result.success) {
-            teardownAllDataBuckets()
+            dataBucketTeardown.deleteEmptyBuckets()
         }
 
-        return result
+        return TeardownOutcome.Finished(result)
     }
 
     /**
      * Tears down the packer infrastructure VPC.
      */
-    private fun teardownPackerInfrastructure(): TeardownResult {
+    private fun teardownPackerInfrastructure(): TeardownOutcome {
         eventBus.emit(Event.Teardown.FindingPackerVpc)
 
-        // Preview first
-        val previewResult = teardownService.teardownPackerInfrastructure(dryRun = true)
-
-        if (previewResult.resourcesDeleted.isEmpty()) {
-            eventBus.emit(Event.Teardown.NoPackerVpcFound)
-            return previewResult
-        }
-
-        val summary = previewResult.resourcesDeleted.first().summary()
-
-        if (dryRun) {
-            eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return previewResult
-        }
-
-        // Confirm if not auto-approved
-        if (!autoApprove && !confirmTeardown(summary)) {
-            eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownResult.Companion.failure("Teardown cancelled by user")
-        }
+        val stop =
+            previewAndConfirm(
+                preview = teardownService.teardownPackerInfrastructure(dryRun = true),
+                noneFound = Event.Teardown.NoPackerVpcFound,
+                summarize = { it.first().summary() },
+            )
+        if (stop != null) return stop
 
         beforeRemovingInfrastructure()
-        return teardownService.teardownPackerInfrastructure(dryRun = false)
+        return TeardownOutcome.Finished(teardownService.teardownPackerInfrastructure(dryRun = false))
     }
 
     /**
-     * Builds a summary string from multiple discovered resources.
+     * Takes [preview] through the planner's preview, dry-run and confirmation steps.
      *
-     * @param resources List of discovered resources to summarize
-     * @return Combined summary string
+     * @return the outcome to stop with, or null when the teardown goes ahead
      */
-    private fun buildResourcesSummary(resources: List<DiscoveredResources>): String =
-        buildString {
-            resources.forEachIndexed { index, resource ->
-                append(resource.summary())
-                if (index < resources.size - 1) {
-                    appendLine()
-                }
-            }
+    private fun previewAndConfirm(
+        preview: TeardownResult,
+        noneFound: Event.Teardown,
+        summarize: (List<DiscoveredResources>) -> String,
+        beforeDryRunCheck: () -> Unit = {},
+    ): TeardownOutcome? =
+        when (val review = planner.review(options, preview, noneFound, summarize, beforeDryRunCheck)) {
+            PlanReview.Proceed -> null
+            is PlanReview.NothingFound -> TeardownOutcome.Finished(review.preview)
+            PlanReview.DryRunReported -> TeardownOutcome.DryRun()
+            PlanReview.Declined -> TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
         }
-
-    /**
-     * Prompts the user to confirm the teardown operation.
-     *
-     * @param summary Summary of resources to be deleted
-     * @return True if user confirms, false otherwise
-     */
-    private fun confirmTeardown(summary: String): Boolean {
-        eventBus.emit(Event.Teardown.ConfirmationPrompt(summary))
-
-        return Scanner(System.`in`).use { scanner ->
-            val response = scanner.nextLine().trim().lowercase()
-            response == "yes" || response == "y"
-        }
-    }
 
     /**
      * Reports the result of the teardown operation and sets the exit code from it, so a teardown
@@ -561,18 +570,17 @@ class Down : PicoBaseCommand() {
     /**
      * Mark infrastructure as DOWN and clear resource data in cluster state.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun updateClusterState() {
         try {
             if (clusterStateManager.exists()) {
                 val clusterState = clusterStateManager.load()
 
                 // Delete Tailscale auth key if it exists
-                deleteTailscaleAuthKey(clusterState)
+                tailnetCleanup.deleteAuthKey(clusterState.tailscaleAuthKeyId)
 
                 // Stop the data bucket's request metrics. The bucket and its objects are the
                 // owner's data and are never expired or deleted here.
-                teardownDataBucketIfNeeded(clusterState)
+                dataBucketTeardown.stopMetrics(clusterState)
 
                 clusterState.markInfrastructureDown()
                 clusterState.updateHosts(emptyMap())
@@ -583,16 +591,21 @@ class Down : PicoBaseCommand() {
                 clusterStateManager.save(clusterState)
                 eventBus.emit(Event.Teardown.ClusterStateMarkedDown)
             }
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to update cluster state, continuing anyway" }
+        } catch (e: IOException) {
+            // The state loaded successfully earlier in this run, so only reading it again or
+            // saving it can fail here, and both fail with an IOException.
+            reportClusterStateFailure(e)
         }
+    }
+
+    private fun reportClusterStateFailure(e: Exception) {
+        log.warn(e) { "Failed to update cluster state, continuing anyway" }
+        eventBus.emit(Event.Teardown.ClusterStateUpdateFailed(e.messageOrString()))
     }
 
     /**
      * Removes this cluster's control node from the tailnet, by the device ID `tailscale start`
-     * recorded. The instance is gone, but its tailnet device outlives it, and every cluster's
-     * control node registers under the same hostname, so the recorded ID is the only precise
-     * handle on it.
+     * recorded.
      *
      * Unlike the auth key, a device left behind is visible clutter that keeps advertising this
      * cluster's subnet route, so a failure here fails `down` (non-zero exit, the reason listed
@@ -606,114 +619,14 @@ class Down : PicoBaseCommand() {
     private fun removeTailscaleDevice(result: TeardownResult): TeardownResult {
         if (!clusterStateManager.exists()) return result
         val clusterState = clusterStateManager.load()
-        val deviceId = clusterState.tailscaleDeviceId
-        if (deviceId.isNullOrBlank()) return result
-
-        val clientId = user.tailscaleClientId
-        val clientSecret = user.tailscaleClientSecret
-        val failure =
-            if (clientId.isBlank() || clientSecret.isBlank()) {
-                "Tailscale device $deviceId (the control node) was not removed from the tailnet: " +
-                    "no Tailscale OAuth credentials are configured. Configure them with " +
-                    "'easy-db-lab profile setup' and run 'easy-db-lab down' again, or remove the device at " +
-                    "https://login.tailscale.com/admin/machines."
-            } else {
-                try {
-                    tailscaleService.deleteDevice(clientId, clientSecret, deviceId)
-                    null
-                } catch (e: TailscaleApiException) {
-                    "Tailscale device $deviceId (the control node) was not removed from the tailnet: ${e.message}"
-                }
+        return when (val removal = tailnetCleanup.removeDevice(clusterState.tailscaleDeviceId)) {
+            DeviceRemoval.NoneRecorded -> result
+            is DeviceRemoval.Failed -> result.copy(success = false, errors = result.errors + removal.reason)
+            is DeviceRemoval.Removed -> {
+                clusterState.tailscaleDeviceId = null
+                clusterStateManager.save(clusterState)
+                result
             }
-
-        if (failure != null) {
-            return result.copy(success = false, errors = result.errors + failure)
-        }
-        eventBus.emit(Event.Tailscale.DeviceDeleted(deviceId))
-        clusterState.tailscaleDeviceId = null
-        clusterStateManager.save(clusterState)
-        return result
-    }
-
-    /**
-     * Deletes the Tailscale auth key if one is stored in cluster state.
-     * Non-fatal — failure to delete the key should not block teardown.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun deleteTailscaleAuthKey(clusterState: ClusterState) {
-        val keyId = clusterState.tailscaleAuthKeyId
-        if (keyId.isNullOrBlank()) {
-            log.debug { "No Tailscale auth key to delete" }
-            return
-        }
-
-        val clientId = user.tailscaleClientId
-        val clientSecret = user.tailscaleClientSecret
-        if (clientId.isBlank() || clientSecret.isBlank()) {
-            log.warn { "Tailscale OAuth credentials not configured, cannot delete auth key $keyId" }
-            return
-        }
-
-        try {
-            tailscaleService.deleteAuthKey(clientId, clientSecret, keyId)
-            eventBus.emit(Event.Tailscale.AuthKeyDeleted(keyId))
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
-        }
-    }
-
-    /**
-     * Disables request metrics on the per-cluster data bucket. Sets no expiry: the bucket's objects
-     * are the owner's data.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun teardownDataBucketIfNeeded(clusterState: ClusterState) {
-        val dataBucket = clusterState.dataBucket
-        if (dataBucket.isBlank()) {
-            log.debug { "No data bucket configured, skipping teardown" }
-            return
-        }
-
-        try {
-            s3BucketService.teardownDataBucket(dataBucket, clusterState.metricsConfigId())
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to tear down data bucket: $dataBucket" }
-        }
-    }
-
-    /**
-     * Finds all data buckets and deletes each one that is empty. A bucket that still holds objects
-     * is kept as it is, with no expiry rule. Called during --all teardown.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun teardownAllDataBuckets() {
-        try {
-            val dataBuckets = s3BucketService.findDataBuckets()
-            if (dataBuckets.isEmpty()) {
-                log.debug { "No data buckets found" }
-                return
-            }
-
-            for (bucket in dataBuckets) {
-                teardownSingleDataBucket(bucket)
-            }
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to discover data buckets" }
-        }
-    }
-
-    @Suppress("TooGenericExceptionCaught")
-    private fun teardownSingleDataBucket(bucket: String) {
-        try {
-            eventBus.emit(Event.S3.DataBucketDeleting(bucket))
-            s3BucketService
-                .deleteEmptyBucket(bucket)
-                .onSuccess { eventBus.emit(Event.S3.DataBucketDeleted(bucket)) }
-                .onFailure { exception ->
-                    eventBus.emit(Event.S3.DataBucketKept(bucket, exception.message ?: exception.toString()))
-                }
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to handle data bucket: $bucket" }
         }
     }
 }

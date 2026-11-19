@@ -16,7 +16,6 @@ class StatusAddressesTest {
     private fun state(exposure: Exposure) =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             hosts =
                 mapOf(
                     ServerType.Control to listOf(ClusterHost("54.0.0.1", "10.0.1.200", "control0", "us-west-2a", "i-c")),

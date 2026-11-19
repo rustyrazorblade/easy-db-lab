@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -98,7 +99,6 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = mutableMapOf(ServerType.Control to listOf(testControlHost), ServerType.Cassandra to listOf(testCassandraHost)),
             ),
         )
@@ -115,32 +115,11 @@ class StressStartTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute should fail when no control nodes exist`() {
-        // Given - cluster state with no control nodes
-        val emptyState =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts = mutableMapOf(),
-            )
-
-        whenever(mockClusterStateManager.load()).thenReturn(emptyState)
-
-        val command = StressStart()
-
-        // When/Then
-        assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No control nodes found")
-    }
-
-    @Test
     fun `execute should fail when no Cassandra nodes exist`() {
         // Given - cluster state with control node but no Cassandra nodes
         val stateWithControlOnly =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -163,7 +142,6 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -188,7 +166,6 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -227,7 +204,6 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -325,7 +301,6 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -365,7 +340,6 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -394,7 +368,6 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -422,7 +395,6 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -456,6 +428,16 @@ class StressStartTest : BaseKoinTest() {
     fun `extractWorkloadName should return lowercased workload from explicit run`() {
         val command = StressStart()
         assertThat(command.extractWorkloadName(listOf("run", "BasicTimeSeries"))).isEqualTo("basictimeseries")
+    }
+
+    @Test
+    fun `the metrics port stays inside the reserved stress window as the job counter grows`() {
+        val first = Constants.Stress.PROMETHEUS_PORT
+        val window = first until first + Constants.Stress.PROMETHEUS_PORT_COUNT
+        assertThat(StressStart.promPortFor(1)).isEqualTo(first + 1)
+        assertThat(StressStart.promPortFor(Constants.Stress.PROMETHEUS_PORT_COUNT)).isEqualTo(first)
+        assertThat(StressStart.promPortFor(Constants.Stress.PROMETHEUS_PORT_COUNT + 2)).isEqualTo(first + 2)
+        assertThat((1..1000).map { StressStart.promPortFor(it) }).allMatch { it in window }
     }
 
     @Test

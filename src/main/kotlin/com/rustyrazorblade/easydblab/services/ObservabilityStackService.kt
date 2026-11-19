@@ -4,15 +4,14 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
-import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -74,27 +73,27 @@ class DefaultObservabilityStackService(
     }
 
     /**
-     * One deploy stage: a human label and the resources it applies. A stage is applied only where
-     * the environment provides every capability in [requires]; a stage that needs more than one
-     * (e.g. journald needs a systemd journal *and* a privileged pod to read it) is skipped if any is
-     * absent. Every workload in [rolledOutFirst] has finished rolling out before the stage is applied.
+     * One deploy stage: a human label and the resources it applies. Every workload in
+     * [rolledOutFirst] has finished rolling out before the stage is applied.
      */
     private data class Stage(
         val label: String,
         val resources: List<HasMetadata>,
-        val requires: Set<NodeCapability> = emptySet(),
         val rolledOutFirst: List<WorkloadRef> = emptyList(),
     )
 
     /**
-     * The stages the environment can run. Not a pure filter: a stage it cannot run is reported as
+     * The stages the environment can run. A stage is run only where the environment provides
+     * every capability it requires; a stage that needs more than one (e.g. journald needs a systemd
+     * journal *and* a privileged pod to read it) is skipped if any is absent. Not a pure filter: a
+     * stage it cannot run is reported as
      * skipped with one [Event.Grafana.StageSkipped] per capability it is missing, so the operator
      * sees every reason the stage was left out. Call it once, before anything is applied.
      */
     private fun applyCapabilityGate(
-        stages: List<Stage>,
+        stages: List<ObservabilityStage>,
         capabilities: NodeCapabilities,
-    ): List<Stage> =
+    ): List<ObservabilityStage> =
         stages.filter { stage ->
             val missing = stage.requires.filter { it !in capabilities }
             missing.forEach { eventBus.emit(Event.Grafana.StageSkipped(stage.label, it)) }
@@ -123,29 +122,27 @@ class DefaultObservabilityStackService(
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
             reportPlacement(hosting)
-            val stages =
-                applyCapabilityGate(
-                    buildStages(telemetryRedirect, clusterState.initConfig?.cni ?: CniMode.Flannel, hosting),
-                    contract.nodeCapabilities,
-                )
+            // Gated before any resource is built: building the account compactor's prepares the
+            // control node over SSH, which an environment without it must never attempt.
+            val runnable = applyCapabilityGate(ObservabilityStage.declared(telemetryRedirect), contract.nodeCapabilities)
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
-            // not, so prepare them only in local mode, and only where state lives on the node.
+            // not, so prepare them only in local mode, and only where state lives on the node. The
+            // node is resolved before any stage is built, so a state with no control node fails
+            // naming the host directories before the compactor's preparation reaches a node.
             val onNodeState = telemetryRedirect == null && hosting.storage == BackendStorage.HostPath
-            if (onNodeState) {
-                stateDirectories.prepareBackends(stateNode(clusterState))
-            }
+            val backendNode = if (onNodeState) stateNode(clusterState) else null
+            val stages = buildStages(runnable, clusterState, hosting)
+            backendNode?.let { stateDirectories.prepareBackends(it) }
 
             val appliedResources = applyHashed(collector, stages, clusterConfig)
 
-            if (onNodeState) {
-                stateDirectories.prepareGrafana(stateNode(clusterState))
-            }
+            backendNode?.let { stateDirectories.prepareGrafana(it) }
             if (telemetryRedirect == null) {
                 grafana.deploy(clusterState, hosting)
             }
 
-            awaitStack(appliedWorkloads(appliedResources) + grafanaWorkloads(telemetryRedirect))
+            awaitStack(appliedWorkloads(appliedResources) + grafanaWorkloads(telemetryRedirect), readyTimeoutSeconds(clusterState))
         }
 
     /** Waits for [workloads] to finish rolling out, failing the deploy if they do not. */
@@ -153,7 +150,7 @@ class DefaultObservabilityStackService(
         if (workloads.isEmpty()) return
         k8sService
             .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
-            .getOrElse { exception -> error("$workloads did not finish rolling out: ${exception.message}") }
+            .getOrElse { exception -> error("$workloads did not finish rolling out: ${exception.messageOrString()}") }
     }
 
     /**
@@ -226,18 +223,30 @@ class DefaultObservabilityStackService(
      * broken or still coming up. Pods that ran to completion (a kit's Job pods share this namespace)
      * are not awaited.
      */
-    private fun awaitStack(workloads: List<WorkloadRef>) {
+    private fun awaitStack(
+        workloads: List<WorkloadRef>,
+        timeoutSeconds: Int,
+    ) {
         k8sService
-            .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+            .waitForRollouts(workloads, DEFAULT_NAMESPACE, timeoutSeconds)
             .getOrElse { exception ->
-                error("Observability stack did not finish rolling out: ${exception.message}")
+                error("Observability stack did not finish rolling out: ${exception.messageOrString()}")
             }
         k8sService
-            .waitForPodsReady(Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+            .waitForPodsReady(timeoutSeconds)
             .getOrElse { exception ->
-                error("Observability stack did not become ready: ${exception.message}")
+                error("Observability stack did not become ready: ${exception.messageOrString()}")
             }
     }
+
+    /**
+     * How long the rollout and readiness waits may take: the base for the stack itself plus
+     * [Constants.Scale.ROLLOUT_PER_NODE_SECONDS] for every node, because the collector and node
+     * agents are DaemonSets that roll one pod per node.
+     */
+    private fun readyTimeoutSeconds(clusterState: ClusterState): Int =
+        Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS +
+            Constants.Scale.ROLLOUT_PER_NODE_SECONDS.toInt() * clusterState.hosts.values.sumOf { it.size }
 
     /**
      * The stages to apply after the collector. Collectors and supporting infra deploy in both modes;
@@ -246,15 +255,15 @@ class DefaultObservabilityStackService(
      * The host add-on comes first and waits for the core's rollout: on an in-place update the old
      * core pods held hostPorts 4317 and 4318, which the add-on binds on the host. The Pyroscope eBPF
      * agent is privileged and is its own stage, so an environment without privileged pods still
-     * runs, and waits on, the Pyroscope server.
+     * runs, and waits on, the Pyroscope server. The account compactor runs in both modes.
      */
     private fun buildStages(
-        telemetryRedirect: TelemetryRedirect?,
-        cni: CniMode,
+        stages: List<ObservabilityStage>,
+        clusterState: ClusterState,
         hosting: ObservabilityHosting,
     ): List<Stage> =
-        ObservabilityStage.declared(telemetryRedirect).map { stage ->
-            Stage(stage.label, manifests.resourcesOf(stage, telemetryRedirect, cni, hosting), stage.requires, rolledOutFirstFor(stage))
+        stages.map { stage ->
+            Stage(stage.label, manifests.resourcesOf(stage, clusterState, hosting), rolledOutFirstFor(stage))
         }
 
     private fun rolledOutFirstFor(stage: ObservabilityStage): List<WorkloadRef> =
@@ -267,7 +276,7 @@ class DefaultObservabilityStackService(
         eventBus.emit(Event.Grafana.LabelResourcesApplying(stage.label))
         for (resource in stage.resources) {
             k8sService.applyResource(resource).getOrElse { exception ->
-                error("Failed to apply ${stage.label} ${resource.kind}/${resource.metadata?.name}: ${exception.message}")
+                error("Failed to apply ${stage.label} ${resource.kind}/${resource.metadata?.name}: ${exception.messageOrString()}")
             }
         }
         eventBus.emit(Event.Grafana.LabelResourcesApplied(stage.label))
@@ -306,8 +315,8 @@ class DefaultObservabilityStackService(
                 // ships with (origin identity). If it is missing, metrics/logs/traces/profiles
                 // ship unlabeled and two DCs become indistinguishable on one Grafana — so fail
                 // fast rather than report a successful `up` over a broken identity mechanism.
-                eventBus.emit(Event.Provision.ClusterConfigMapFailed(exception.message ?: exception.toString()))
-                error("Failed to create cluster-config ConfigMap: ${exception.message}")
+                eventBus.emit(Event.Provision.ClusterConfigMapFailed(exception.messageOrString()))
+                error("Failed to create cluster-config ConfigMap: ${exception.messageOrString()}")
             }
         return configData
     }

@@ -60,6 +60,12 @@ STUB
   cat > "$TMP/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 echo "curl $*" >> "$CALLS"
+# CURL_FAIL_URLS: space-separated URLs this stub answers with a failure, as curl -f does on a 404.
+for a in "$@"; do
+  for bad in ${CURL_FAIL_URLS:-}; do
+    [ "$a" = "$bad" ] && exit 22
+  done
+done
 for a in "$@"; do
   [ "$prev" = "-o" ] 2>/dev/null && echo "fetched" > "$a"
   prev="$a"
@@ -149,6 +155,85 @@ if calls_contain "curl -fsSL --retry 3 https://example.com/x.tar.gz"; then
   pass "with no bucket configured the origin is still fetched"
 else
   fail "expected an origin fetch; calls were: $(cat "$CALLS")"
+fi
+teardown
+
+setup
+EDL_S3_BUCKET="" cached_fetch "s3://my-bucket/cassandra-builds/build/x-bin.tar.gz" "cassandra-dist/build/x-bin.tar.gz" "$TMP/out.tar.gz" >/dev/null 2>&1
+if calls_contain "aws s3 cp s3://my-bucket/cassandra-builds/build/x-bin.tar.gz $TMP/out.tar.gz"; then
+  pass "with no bucket configured an s3:// url is still fetched with aws s3 cp"
+else
+  fail "expected an aws s3 cp of the s3:// url; calls were: $(cat "$CALLS")"
+fi
+if grep -q "^curl" "$CALLS"; then
+  fail "with no bucket configured an s3:// url must never reach curl"
+else
+  pass "with no bucket configured an s3:// url never reaches curl"
+fi
+if grep -q "download-cache" "$CALLS"; then
+  fail "with no bucket configured the download cache must not be touched; calls were: $(cat "$CALLS")"
+else
+  pass "with no bucket configured an s3:// url does not touch the download cache"
+fi
+teardown
+
+# --- cached_fetch_uri: the runtime cache, named by a URI the CLI computed ------------------------
+
+CACHE_URI="s3://acct-bucket/download-cache/cassandra-dist/5.0.6/apache-cassandra-5.0.6-bin.tar.gz"
+PRIMARY="https://dlcdn.example/5.0.6/apache-cassandra-5.0.6-bin.tar.gz"
+FALLBACK="https://archive.example/5.0.6/apache-cassandra-5.0.6-bin.tar.gz"
+
+setup
+EDL_S3_BUCKET="" cached_fetch_uri "$CACHE_URI" "$TMP/out.tar.gz" "$PRIMARY" "$FALLBACK" >/dev/null 2>&1
+if calls_contain "aws s3 cp $CACHE_URI $TMP/out.tar.gz" && ! grep -q "^curl" "$CALLS" && [ -s "$TMP/out.tar.gz" ]; then
+  pass "cached_fetch_uri: a hit reads the cache URI, fetches no origin, and needs no configured bucket"
+else
+  fail "cached_fetch_uri: expected a cache read only; calls were: $(cat "$CALLS")"
+fi
+teardown
+
+setup
+AWS_CACHE_MISS=1 cached_fetch_uri "$CACHE_URI" "$TMP/out.tar.gz" "$PRIMARY" "$FALLBACK" >/dev/null 2>&1
+status=$?
+if [ "$status" -eq 0 ] && calls_contain "curl -fsSL --retry 3 $PRIMARY" && calls_contain "aws s3 cp $TMP/out.tar.gz $CACHE_URI" && ! calls_contain "$FALLBACK"; then
+  pass "cached_fetch_uri: a miss downloads the primary URL and writes it back to the cache URI"
+else
+  fail "cached_fetch_uri: expected primary fetch and write-back (status $status); calls were: $(cat "$CALLS")"
+fi
+teardown
+
+setup
+AWS_CACHE_MISS=1 CURL_FAIL_URLS="$PRIMARY" cached_fetch_uri "$CACHE_URI" "$TMP/out.tar.gz" "$PRIMARY" "$FALLBACK" >/dev/null 2>&1
+status=$?
+if [ "$status" -eq 0 ] && calls_contain "curl -fsSL --retry 3 $FALLBACK" && calls_contain "aws s3 cp $TMP/out.tar.gz $CACHE_URI"; then
+  pass "cached_fetch_uri: when the primary fails, the fallback is downloaded and cached"
+else
+  fail "cached_fetch_uri: expected the fallback (status $status); calls were: $(cat "$CALLS")"
+fi
+teardown
+
+setup
+out="$(AWS_CACHE_MISS=1 CURL_FAIL_URLS="$PRIMARY $FALLBACK" cached_fetch_uri "$CACHE_URI" "$TMP/out.tar.gz" "$PRIMARY" "$FALLBACK" 2>&1)"
+status=$?
+if [ "$status" -ne 0 ] && printf '%s' "$out" | grep -qF "$PRIMARY" && printf '%s' "$out" | grep -qF "$FALLBACK"; then
+  pass "cached_fetch_uri: when both URLs fail it fails and prints both"
+else
+  fail "cached_fetch_uri: expected a failure naming both URLs (status $status): $out"
+fi
+if grep -q "aws s3 cp $TMP/out.tar.gz" "$CALLS"; then
+  fail "cached_fetch_uri: a failed download must not be written to the cache"
+else
+  pass "cached_fetch_uri: a failed download is not written to the cache"
+fi
+teardown
+
+setup
+out="$(cached_fetch_uri "gs://bucket/download-cache/x.tar.gz" "$TMP/out.tar.gz" "$PRIMARY" 2>&1)"
+status=$?
+if [ "$status" -ne 0 ] && printf '%s' "$out" | grep -qF "gs://" && [ ! -s "$CALLS" ]; then
+  pass "cached_fetch_uri: an unknown scheme fails, names it, and fetches nothing"
+else
+  fail "cached_fetch_uri: expected an unknown-scheme failure (status $status): $out; calls: $(cat "$CALLS")"
 fi
 teardown
 

@@ -36,13 +36,11 @@ interface SidecarService {
  * @property k8sService Service for K8s operations
  * @property manifestBuilder Builder for sidecar K8s resources
  * @property clusterStateManager Provides cluster name for Pyroscope labels
- * @property ecrPullSecrets Grants the DaemonSet permission to pull a custom image from ECR
  */
 class DefaultSidecarService(
     private val k8sService: K8sService,
     private val manifestBuilder: SidecarManifestBuilder,
     private val clusterStateManager: ClusterStateManager,
-    private val ecrPullSecrets: ImagePullSecretService,
 ) : SidecarService {
     private val log = KotlinLogging.logger {}
 
@@ -56,15 +54,12 @@ class DefaultSidecarService(
             // The cluster label every signal carries, <name>-<id>, not the bare name.
             val clusterName = state.clusterLabelName()
 
-            val pullSecretName = ecrPullSecrets.ensureFor(image, Constants.K8s.NAMESPACE)
-
             log.info { "Deploying sidecar DaemonSet image=$image to K3s" }
             val resources =
                 manifestBuilder.buildAllResources(
                     image = image,
                     clusterName = clusterName,
                     tenant = state.tenant(),
-                    imagePullSecretName = pullSecretName,
                     telemetryRedirect = state.initConfig?.telemetryRedirect,
                 )
             for (resource in resources) {

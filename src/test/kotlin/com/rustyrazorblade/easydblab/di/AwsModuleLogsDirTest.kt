@@ -33,7 +33,7 @@ internal class AwsModuleLogsDirTest : BaseKoinTest() {
                 single<ClusterStateManager> {
                     mock<ClusterStateManager>().also {
                         whenever(it.load()).thenReturn(
-                            ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "bucket"),
+                            ClusterState(name = "lab", s3Bucket = "bucket"),
                         )
                     }
                 }

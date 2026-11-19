@@ -145,7 +145,6 @@ internal class ProxyPreflightTest {
     private fun clusterState(tailscale: Boolean) =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts = mapOf(ServerType.Control to listOf(CONTROL)),
             tailscaleActive = tailscale,
         ).apply { markInfrastructureUp() }

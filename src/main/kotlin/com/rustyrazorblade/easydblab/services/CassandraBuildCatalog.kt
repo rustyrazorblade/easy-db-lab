@@ -1,8 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CassandraBuildManifest
-import com.rustyrazorblade.easydblab.configuration.CassandraVersion
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
@@ -59,23 +57,11 @@ class CassandraBuildCatalog(
     }
 
     /**
-     * The build expressed as an installable version.
-     *
-     * The url is an `s3://` URI, not a presigned https one: nodes reach the account bucket with
-     * their instance profile, and a presigned URL's query string would stop
+     * The build's tarball as an `s3://` URI, not a presigned https one: nodes reach the account
+     * bucket with their instance profile, and a presigned URL's query string would stop
      * `install-cassandra-version` recognising the tarball at all — it selects that mode on the URL
      * ending in `.tar.gz`.
      */
-    fun asVersion(manifest: CassandraBuildManifest): CassandraVersion =
-        CassandraVersion(
-            version = manifest.name,
-            java = manifest.javaVersion,
-            python = Constants.Cassandra.DEFAULT_PYTHON_VERSION,
-            jvmOptions = null,
-            antFlags = null,
-            url = tarballUri(manifest),
-        )
-
     fun tarballUri(manifest: CassandraBuildManifest): String = uriOf(buildDir(manifest.name).resolve(manifest.tarball))
 
     /** [path] as the store spells it: the form nodes install a build from, and the one shown to the user. */

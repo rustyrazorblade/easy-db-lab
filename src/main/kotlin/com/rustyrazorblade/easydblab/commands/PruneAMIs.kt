@@ -4,7 +4,10 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
+import com.rustyrazorblade.easydblab.providers.aws.requireAwsFailure
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -96,7 +99,6 @@ class PruneAMIs : PicoBaseCommand() {
         )
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteWithConfirmation(preview: AMIService.PruneResult) {
         eventBus.emit(Event.Ami.DeletionStarting(preview.deleted.size))
 
@@ -114,7 +116,6 @@ class PruneAMIs : PicoBaseCommand() {
         eventBus.emit(Event.Ami.PruningSummary(actuallyDeleted.size, skipped.size, preview.kept.size))
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun confirmAndDeleteAmi(ami: AMI): Boolean {
         displayAMIDetails(ami)
         print("Delete this AMI? [y/N]: ")
@@ -124,17 +125,16 @@ class PruneAMIs : PicoBaseCommand() {
             println("  - Skipped")
             return false
         }
-        try {
+        // One AMI that AWS will not delete is reported and skipped; the rest of the prune goes on.
+        // Any other failure propagates.
+        return runCatchingException {
             service.deregisterAMI(ami.id)
             for (snapshotId in ami.snapshotIds) {
                 service.deleteSnapshot(snapshotId)
             }
             println("  ✓ Deleted")
-            return true
-        } catch (e: Exception) {
-            eventBus.emit(Event.Ami.DeleteFailed(e.message ?: "unknown error"))
-            return false
-        }
+        }.onFailure { e -> eventBus.emit(Event.Ami.DeleteFailed(e.requireAwsFailure().messageOrString())) }
+            .isSuccess
     }
 
     private fun displayAMIDetails(ami: AMI) {

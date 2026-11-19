@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.sidecar
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Constants.Cassandra
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -11,7 +12,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.LocalObjectReferenceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
@@ -64,12 +64,11 @@ class SidecarManifestBuilder(
         image: String = DEFAULT_IMAGE,
         clusterName: String,
         tenant: String,
-        imagePullSecretName: String = "",
         telemetryRedirect: TelemetryRedirect? = null,
     ): List<HasMetadata> =
         listOf(
             buildConfigMap(),
-            buildDaemonSet(image, clusterName, tenant, imagePullSecretName, telemetryRedirect),
+            buildDaemonSet(image, clusterName, tenant, telemetryRedirect),
         )
 
     /**
@@ -104,7 +103,6 @@ class SidecarManifestBuilder(
         image: String,
         clusterName: String,
         tenant: String,
-        imagePullSecretName: String = "",
         telemetryRedirect: TelemetryRedirect? = null,
     ) = DaemonSetBuilder()
         .withNewMetadata()
@@ -122,13 +120,7 @@ class SidecarManifestBuilder(
         .endMetadata()
         .withNewSpec()
         .addToNodeSelector("type", "db")
-        .withHostNetwork(true)
-        .withDnsPolicy("ClusterFirstWithHostNet")
-        .apply {
-            if (imagePullSecretName.isNotEmpty()) {
-                addToImagePullSecrets(LocalObjectReferenceBuilder().withName(imagePullSecretName).build())
-            }
-        }
+        .hostNetworked()
         // Init container: substitute __HOST_IP__ with the node's actual IP
         .addNewInitContainer()
         .withName("config-init")

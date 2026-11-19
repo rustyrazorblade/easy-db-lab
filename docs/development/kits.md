@@ -29,6 +29,8 @@ Everything for a kit lives in `src/main/resources/com/rustyrazorblade/easydblab/
 
 ## kit.yaml Reference
 
+If a kit's `kit.yaml` does not parse or fails validation, the kit has no commands: an installed kit gets no `<kit>` commands, and a kit in your profile or a kit source gets no `kit install <kit>`. Every command prints an error that names the kit, the file and the problem, and the other commands still run. `kit list` shows the kit as `invalid:` with the file and the cause.
+
 ```yaml
 name: myworkload
 type: db                 # db | app: the node pool the kit needs; install fails if it has no nodes
@@ -84,7 +86,7 @@ restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
 | Phase | Trigger | What happens after success |
 |-------|---------|----------------------------|
 | `install` | `easy-db-lab kit install <name>` | Kit directory written to working dir |
-| `start` | `easy-db-lab <name> start` | Metrics registered, dashboards installed, hooks fired |
+| `start` | `easy-db-lab <name> start` | Metrics registered, dashboards installed, hooks fired. A failed metrics registration or dashboard install fails `start` |
 | `stop` | `easy-db-lab <name> stop` | Waits for the runtime's pods to go, metrics deregistered, kit dropped from `runningKits`, hooks fired |
 | `uninstall` | `easy-db-lab <name> uninstall` or `kit uninstall <name>` | Kit directory deleted from working dir. A kit still running has its `stop` phase run first, stop wait included; if that fails, the uninstall fails without running its steps. After the uninstall steps the kit is released as `stop` releases it (metrics deregistered, dropped from `runningKits`, hooks fired) |
 | `backup` | `easy-db-lab <name> backup <name>` | `BACKUP_NAME` env var set to first argument |
@@ -370,6 +372,48 @@ the same name that the operator's shell exports; test it with `[ -n "${WORKERS}"
 arg takes an optional value: a bare `--flag` means `true`, and `--flag false` or `--flag=false`
 turns off a flag whose default is `true` (`--help` shows `--flag[=<value>]`).
 
+### Command args
+
+Install args (`args:`) are given once, at `kit install`, and stored in `resolved-args.env`. A kit
+can also declare options for one command, including a lifecycle phase such as `start`, under
+`commands:`. A command arg applies to that run only, so it can change between runs without a
+reinstall, and it wins over an install arg with the same variable.
+
+```yaml
+commands:
+  start:
+    description: "Start the workload"
+    args:
+      - flag: --log-level
+        variable: LOG_LEVEL
+        type: string
+        default: "info"
+      - flag: --heap-profile
+        variable: HEAP_PROFILE
+        type: boolean
+      - flag: --env
+        variable: EXTRA_ENV
+        type: string
+        repeatable: true
+```
+
+Install args and command args are parsed the same way:
+
+- An optional arg that is not given and has no default is set to an empty string, never the
+  string `null`, and it replaces a variable of the same name that the operator's shell exports.
+- A boolean arg is `false` when its flag is not given and `true` when it is given bare.
+- `--help` shows an arg's declared default after its description, as `(default: <value>)`. A
+  boolean flag's implicit `false` is not shown.
+- A string command arg can set `repeatable: true`. The flag can then be given any number of
+  times, and the variable holds every value in order, one per line. Read it with
+  `while IFS= read -r line; do ...; done <<< "${EXTRA_ENV}"`. A repeatable arg that is not given
+  is an empty string. `repeatable` is refused on a non-string arg, and on an install arg, because
+  `resolved-args.env` stores one `KEY=VALUE` per line; the kit then fails to load with an error
+  that names the arg.
+
+`kit info <kit>` lists the install args and then each command's args under the command name,
+with the flag, variable, description, default, and a `[repeatable]` marker.
+
 ### Addressing per-node services (e.g. the Cassandra Sidecar)
 
 Some cluster services run as a **`hostNetwork` DaemonSet — one instance per db node**, addressable
@@ -445,6 +489,9 @@ genuinely absent.
 **Never mount an `emptyDir` over a directory the image already populates** — it hides what the
 image staged there. (We hit a crash copying the Flink reporter jar from an assumed path that
 did not exist, while the `emptyDir` overlay masked the real pre-staged plugin dir.)
+
+If writing the ConfigMaps fails, `start` emits `Kit.MetricsRegistrationFailed`, naming the kit
+and the failure, and exits non-zero. The kit's pods still run.
 
 Registration creates one K8s ConfigMap per scrape entry, named `easydblab-metrics-<kit>-<job>` and
 labelled `easydblab.com/workload-metrics=true`. `OtelSyncService` reads these ConfigMaps and
@@ -615,6 +662,12 @@ After a successful `start`, easy-db-lab installs dashboards into Grafana via the
 
 **Auto-discovery** (default): any `.json` files in `dashboards/` are installed automatically.
 Files are installed in alphabetical order into a Grafana folder named after the kit.
+
+If a dashboard does not reach Grafana, `start` exits non-zero, for every kit. A declared
+dashboard file that is missing, or one that Grafana rejects, emits
+`Grafana.KitDashboardInstallFailed`, naming the kit, the dashboard and the reason. Dashboards or
+a tenant listing that cannot be read or rendered emit `Grafana.KitDashboardsSkipped`, naming the
+kit, its dashboards and the reason. The kit's pods still run.
 
 **Explicit list** (optional): declare dashboard paths in `kit.yaml` to control selection or
 order:
@@ -792,6 +845,12 @@ the environment. A function that fails prints why to stderr and exits the script
 | `edl_follow_pod_logs <pod> <handler>` | Streams the pod's log, calling the handler function with each line, and resumes a cut stream while the pod runs |
 | `edl_wait_for_pod_exit <pod>` | Waits, with no limit, for the pod to end and prints its exit code |
 | `edl_push_gauges <service> <name> <value>...` | Pushes OTLP gauges labelled `kit=${KIT_NAME}` to the collector; a non-numeric value is sent as 0; a failed push never fails the script and prints one warning per script |
+| `edl_collect_catalogs <product> <catalogs-dir> <workload-root> [<infra-db>...]` | Collects the catalogs for a coordinator-and-workers helm kit into `EDL_CATALOG_CONTENT`: each infrastructure database whose properties file names its endpoint, each running kit that has a catalog file, and each custom `--from` workload with a `<product>-catalog.properties` |
+| `edl_helm_upgrade_with_catalogs <release> <chart> <version> <values-file> <catalog-key>` | `helm upgrade --install` at the pinned version, with the collected catalogs under the chart value `<catalog-key>`; it does not wait for the rollout |
+| `edl_replace_hostport_pod <label-selector> <deployment>` | Deletes the coordinator pod and waits for the rollout: a rolling update deadlocks on a single app node, because the new pod cannot bind the old pod's hostPort |
+| `edl_cluster_label` | Prints the cluster label (`<name>-<id>`) from the `cluster-config` ConfigMap; fails when it is empty |
+| `edl_patch_pyroscope <deployment> <container> <app> <cluster-label> <component> [<port>...]` | Patches a deployment to load the Pyroscope agent with the cluster and component profile labels, and gives each listed container port a hostPort of the same number |
+| `edl_scale_to_zero <deployment>...` and `edl_helm_uninstall <release>` | The `stop` and `uninstall` steps of a helm kit |
 
 Every wait fails with `pod <name> was deleted` when the pod is gone, for example after a `stop` in
 another terminal. A typical run:

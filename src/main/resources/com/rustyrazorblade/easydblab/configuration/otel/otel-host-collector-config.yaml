@@ -88,10 +88,10 @@ receivers:
               replacement: '${env:K8S_NODE_NAME}:8888'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
-        # The Cilium agent, Hubble and operator jobs (Cilium clusters only), built by
+        # The K3s etcd job, and the Cilium agent, Hubble and operator jobs (Cilium clusters only), built by
         # OtelHostCollectorManifestBuilder: their relabel rules name Prometheus meta labels, whose
         # double-underscore form is the TemplateService placeholder syntax.
-__CNI_SCRAPE_JOBS__
+__HOST_SCRAPE_JOBS__
   file_log/system:
     include:
       - /var/log/**/*.log

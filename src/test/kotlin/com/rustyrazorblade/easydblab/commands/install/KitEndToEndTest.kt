@@ -70,7 +70,6 @@ class KitEndToEndTest : BaseKoinTest() {
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "account-bucket",
             initConfig = InitConfig(region = "us-east-1", name = "test-cluster"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)),

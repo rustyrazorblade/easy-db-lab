@@ -3,7 +3,11 @@ package com.rustyrazorblade.easydblab.services
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import java.io.ByteArrayInputStream
+import java.util.stream.Stream
 
 /**
  * Tests for [FrontmatterMarkdownLoader], the shared frontmatter-markdown parser.
@@ -50,6 +54,22 @@ class FrontmatterMarkdownLoaderTest {
             .hasMessageContaining("Missing required 'name' field")
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("badFrontmatter")
+    fun `frontmatter that is not a usable map is rejected as an invalid argument`(
+        label: String,
+        frontmatter: String,
+        expectedMessage: String,
+    ) {
+        val content = "---\n$frontmatter\n---\nBody."
+
+        assertThatThrownBy {
+            FrontmatterMarkdownLoader().parseFromStream(ByteArrayInputStream(content.toByteArray()), "bad.md")
+        }.describedAs(label)
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining(expectedMessage)
+    }
+
     @Test
     fun `throws when there is no frontmatter header`() {
         val content = "Just regular markdown without a header."
@@ -81,5 +101,17 @@ class FrontmatterMarkdownLoaderTest {
         val documents = FrontmatterMarkdownLoader().loadAll("com.nonexistent.package")
 
         assertThat(documents).isEmpty()
+    }
+
+    companion object {
+        @JvmStatic
+        fun badFrontmatter(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of("text that is not YAML", "name: [unclosed", "Failed to parse YAML frontmatter in bad.md"),
+                Arguments.of("a YAML list", "- one\n- two", "Frontmatter is not a valid YAML map"),
+                Arguments.of("a bare scalar", "just words", "Frontmatter is not a valid YAML map"),
+                Arguments.of("an empty header", "", "Frontmatter is not a valid YAML map"),
+                Arguments.of("a key with no value", "name:\ndescription: d", "Missing required 'name' field"),
+            )
     }
 }

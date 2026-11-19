@@ -1,0 +1,826 @@
+package com.rustyrazorblade.easydblab.services.cassandraversions
+
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CassandraSource
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
+import com.rustyrazorblade.easydblab.configuration.InstalledVersion
+import com.rustyrazorblade.easydblab.configuration.NodeState
+import com.rustyrazorblade.easydblab.services.aws.S3Uri
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
+import java.io.File
+import java.time.Instant
+
+/**
+ * The resolution rules of design D1 (source order), D2 (JDK and Python) and D13 (profile builds),
+ * against a fake source set that counts the calls each source gets.
+ */
+class CassandraVersionResolverTest {
+    /** Fixed source lists, with a call count per source so a test proves a source was not read. */
+    private class FakeSources(
+        val profile: List<ProfileBuild> = emptyList(),
+        var asf: List<String> = listOf("4.1.6", "4.1.7", "5.0.5", "5.0.6", "5.0-rc1"),
+        var asfOnRefresh: List<String>? = null,
+        val asfRefreshFails: Boolean = false,
+        val nightly: List<CassandraBuild> =
+            listOf(CassandraBuild("5.0-HEAD", "https://gh/5.0-HEAD.tgz"), CassandraBuild("trunk", "https://gh/trunk.tgz")),
+        val manifests: Map<String, CassandraBuildsManifest> = emptyMap(),
+        val catalog: Map<String, CatalogBuild> = emptyMap(),
+    ) : VersionSources {
+        val calls = mutableListOf<String>()
+
+        override val profileBuildDir = File("/profile/cassandra_versions")
+
+        override fun profileBuild(name: String): ProfileBuild? = profile.firstOrNull { it.version == name }.also { calls += "profile" }
+
+        override fun profileBuilds(): List<ProfileBuild> = profile
+
+        override fun asfReleases(refresh: Boolean): Cached<AsfReleases> {
+            calls += if (refresh) "asf-refresh" else "asf"
+            if (refresh) asfOnRefresh?.let { asf = it }
+            return Cached(AsfReleases(asf), Instant.EPOCH, stale = refresh && asfRefreshFails)
+        }
+
+        override fun cassandraBuilds(refresh: Boolean): Cached<List<CassandraBuild>> {
+            calls += "cassandra-builds"
+            return Cached(nightly, Instant.EPOCH, stale = false)
+        }
+
+        override fun cassandraBuildsManifest(build: CassandraBuild): CassandraBuildsManifest? = manifests[build.ref]
+
+        override fun catalogBuild(name: String): CatalogBuild? = catalog[name].also { calls += "catalog" }
+
+        override fun catalogBuildNames(): List<String> = catalog.keys.toList()
+
+        override fun downloadCacheRoot(): ClusterStoragePath {
+            calls += "bucket"
+            return ClusterStoragePath.downloadCacheRoot("acct-bucket")
+        }
+
+        override fun uriOf(path: ClusterStoragePath): String = S3Uri.uri(path)
+    }
+
+    private fun state(vararg nodes: Pair<String, NodeState>) = ClusterState(name = "c", nodes = mutableMapOf(*nodes))
+
+    private fun node(vararg records: InstalledVersion) = NodeState(installed = records.associateBy { it.version }.toMutableMap())
+
+    private fun resolve(
+        sources: FakeSources,
+        request: VersionRequest,
+        state: ClusterState = state(),
+    ): InstallSpec = CassandraVersionResolver(sources).resolve(request, state)
+
+    private val customBuild =
+        ProfileBuild(
+            version = "my-build",
+            url = "https://example.test/my-build.tgz",
+            javaSupported = listOf("11", "17"),
+            java = "11",
+            python = "3.10.4",
+        )
+
+    @Nested
+    inner class SourceOrder {
+        @Test
+        fun `a record in the state wins over a profile build of the same name, and reads no other source`() {
+            val record = InstalledVersion("my-build", "17", listOf("11", "17"), "3.11.9", CassandraSource.URL, "https://old.test/x.tgz")
+            val sources = FakeSources(profile = listOf(customBuild))
+
+            val spec = resolve(sources, VersionRequest("my-build"), state("db0" to node(record)))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.URL)
+            assertThat(spec.url).isEqualTo("https://old.test/x.tgz")
+            assertThat(sources.calls).isEmpty()
+        }
+
+        @Test
+        fun `a record on any node is used for a node that has none, so all nodes get the same release`() {
+            val record = InstalledVersion("5.0", "17", listOf("11", "17"), "3.11.9", CassandraSource.ASF, AsfReleases.downloadUrl("5.0.5"))
+            val sources = FakeSources()
+
+            val spec = resolve(sources, VersionRequest("5.0"), state("db0" to node(record), "db1" to NodeState()))
+
+            assertThat(spec.url).isEqualTo(AsfReleases.downloadUrl("5.0.5"))
+            assertThat(spec.fallbackUrl).isEqualTo(AsfReleases.archiveUrl("5.0.5"))
+            assertThat(spec.cacheUri).isEqualTo("s3://acct-bucket/download-cache/cassandra-dist/5.0.5/apache-cassandra-5.0.5-bin.tar.gz")
+            assertThat(sources.calls).doesNotContain("asf")
+        }
+
+        @Test
+        fun `a profile build wins over --url, ASF, cassandra-builds and the catalog, and reads none of them`() {
+            val sources =
+                FakeSources(
+                    profile = listOf(customBuild.copy(version = "5.0")),
+                    catalog =
+                        mapOf(
+                            "5.0" to CatalogBuild("s3://b/x", listOf("17")),
+                        ),
+                )
+
+            val spec = resolve(sources, VersionRequest("5.0"))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.PROFILE)
+            assertThat(spec.url).isEqualTo(customBuild.url)
+            assertThat(sources.calls).containsExactly("profile")
+        }
+
+        @Test
+        fun `--url with a profile name replaces the entry's URL, field by field`() {
+            val spec = resolve(FakeSources(profile = listOf(customBuild)), VersionRequest("my-build", url = "https://other.test/y.tgz"))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.PROFILE)
+            assertThat(spec.url).isEqualTo("https://other.test/y.tgz")
+            assertThat(spec.python).isEqualTo("3.10.4")
+        }
+
+        @Test
+        fun `--url wins over ASF, and reads no public source`() {
+            val sources = FakeSources()
+
+            val spec = resolve(sources, VersionRequest("5.0", url = "https://example.test/c.tgz"))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.URL)
+            assertThat(spec.url).isEqualTo("https://example.test/c.tgz")
+            assertThat(spec.isGitBuild).isFalse()
+            assertThat(sources.calls).containsExactly("profile")
+        }
+
+        @Test
+        fun `--url with --branch is a git build, with the table's ant flags for the JDK`() {
+            val spec =
+                resolve(FakeSources(), VersionRequest("4.1-mine", url = "https://github.com/me/cassandra.git", branch = "cassandra-4.1"))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.GIT)
+            assertThat(spec.branch).isEqualTo("cassandra-4.1")
+            assertThat(spec.java).isEqualTo("11")
+            assertThat(spec.antFlags).isEqualTo("-Duse.jdk11=true")
+        }
+
+        @Test
+        fun `--ant-flags replaces the table's flags`() {
+            val spec =
+                resolve(FakeSources(), VersionRequest("4.1-mine", url = "https://github.com/me/c.git", branch = "b", antFlags = "-Dx=1"))
+
+            assertThat(spec.antFlags).isEqualTo("-Dx=1")
+        }
+
+        @ParameterizedTest(name = "{0} installs Apache {1}")
+        @CsvSource("5.0, 5.0.6", "4.1, 4.1.7", "4.1.6, 4.1.6", "5.0-rc1, 5.0-rc1")
+        fun `an ASF line installs its newest GA release, and an exact release installs itself`(
+            name: String,
+            release: String,
+        ) {
+            val spec = resolve(FakeSources(), VersionRequest(name))
+
+            assertThat(spec.name).isEqualTo(name)
+            assertThat(spec.source).isEqualTo(CassandraSource.ASF)
+            assertThat(spec.url).isEqualTo("${Constants.Cassandra.ASF_DLCDN_BASE}/$release/apache-cassandra-$release-bin.tar.gz")
+            assertThat(spec.fallbackUrl).isEqualTo("${Constants.Cassandra.ASF_ARCHIVE_BASE}/$release/apache-cassandra-$release-bin.tar.gz")
+            assertThat(
+                spec.cacheUri,
+            ).isEqualTo("s3://acct-bucket/download-cache/cassandra-dist/$release/apache-cassandra-$release-bin.tar.gz")
+        }
+
+        @Test
+        fun `a cassandra-builds ref installs its asset, from its origin`() {
+            val sources = FakeSources()
+
+            val spec = resolve(sources, VersionRequest("5.0-HEAD"))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.CASSANDRA_BUILDS)
+            assertThat(spec.url).isEqualTo("https://gh/5.0-HEAD.tgz")
+            assertThat(spec.fallbackUrl).isNull()
+            assertThat(spec.cacheUri).isNull()
+            assertThat(sources.calls).doesNotContain("catalog")
+        }
+
+        @Test
+        fun `the catalog is read last, only when no other source has the name`() {
+            val sources =
+                FakeSources(
+                    catalog =
+                        mapOf(
+                            "5.1-20260905-a1b2c3d-jdk17" to CatalogBuild("s3://b/builds/x.tgz", listOf("17", "21")),
+                        ),
+                )
+
+            val spec = resolve(sources, VersionRequest("5.1-20260905-a1b2c3d-jdk17"))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.BUILD_CATALOG)
+            assertThat(spec.url).isEqualTo("s3://b/builds/x.tgz")
+            assertThat(spec.cacheUri).isNull()
+            assertThat(sources.calls).containsExactly("profile", "asf", "cassandra-builds", "catalog")
+        }
+
+        @Test
+        fun `a catalog build runs on the JDK it was built with, not the highest it supports`() {
+            val sources =
+                FakeSources(
+                    catalog = mapOf("5.1-20260905-a1b2c3d-jdk17" to CatalogBuild("s3://b/builds/x.tgz", listOf("17", "21"), "17")),
+                )
+
+            val spec = resolve(sources, VersionRequest("5.1-20260905-a1b2c3d-jdk17"))
+
+            assertThat(spec.java).isEqualTo("17")
+            assertThat(spec.javaSupported).containsExactly("17", "21")
+        }
+
+        @Test
+        fun `an unknown name fails before any install, naming every source it checked`() {
+            assertThatThrownBy { resolve(FakeSources(), VersionRequest("9.9-nope")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContainingAll(
+                    "9.9-nope",
+                    "cluster state",
+                    "/profile/cassandra_versions",
+                    "Apache",
+                    "cassandra-builds",
+                    "build catalog",
+                    "--url",
+                    "cassandra list --refresh",
+                )
+        }
+    }
+
+    /**
+     * The name becomes a directory under /usr/local/cassandra that the node scripts move and delete
+     * as root, so only one path segment that cannot read as an option is accepted.
+     */
+    @Nested
+    inner class Names {
+        @ParameterizedTest(name = "[{0}] is refused")
+        @CsvSource(
+            "'../../../opt'",
+            "'feature/CASSANDRA-123'",
+            "'..'",
+            "'.'",
+            "'--reinstall'",
+            "'-x'",
+            "'5.0 HEAD'",
+            "'5.0;id'",
+            "''",
+        )
+        fun `a name that is not one safe path segment fails before any source is read`(name: String) {
+            val sources = FakeSources()
+
+            assertThatThrownBy { resolve(sources, VersionRequest(name, url = "https://example.test/x.tgz", java = "11")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContaining("letters, digits")
+            assertThat(sources.calls).isEmpty()
+        }
+
+        @ParameterizedTest(name = "[{0}] is accepted")
+        @CsvSource("5.0", "5.0-rustyrazorblade-HEAD", "5.0.10-impl-20261117-9e36ade-jdk17", "my_build+2", "4.1.7")
+        fun `release, branch-build and catalog names are accepted`(name: String) {
+            val spec = resolve(FakeSources(), VersionRequest(name, url = "https://example.test/x.tgz", java = "11"))
+
+            assertThat(spec.name).isEqualTo(name)
+        }
+    }
+
+    @Nested
+    inner class AsfRefetch {
+        @Test
+        fun `an X_Y_Z name missing from the cached list fetches the list once more`() {
+            val sources = FakeSources(asfOnRefresh = listOf("5.0.6", "5.0.7"))
+
+            val spec = resolve(sources, VersionRequest("5.0.7"))
+
+            assertThat(spec.url).isEqualTo(AsfReleases.downloadUrl("5.0.7"))
+            assertThat(sources.calls.filter { it.startsWith("asf") }).containsExactly("asf", "asf-refresh")
+        }
+
+        @Test
+        fun `a name that is not an X_Y_Z release causes no refetch`() {
+            val sources = FakeSources()
+
+            resolve(sources, VersionRequest("trunk"))
+
+            assertThat(sources.calls).doesNotContain("asf-refresh")
+        }
+
+        @Test
+        fun `an X_Y_Z name missing after the refetch goes on to the other sources and then fails`() {
+            val sources = FakeSources()
+
+            assertThatThrownBy { resolve(sources, VersionRequest("5.0.99")) }.isInstanceOf(VersionResolutionException::class.java)
+            assertThat(sources.calls).containsSubsequence("asf", "asf-refresh", "cassandra-builds", "catalog")
+        }
+
+        @Test
+        fun `an unknown X_Y_Z name says the ASF list could not be fetched again and the cached copy is stale`() {
+            val sources = FakeSources(asfRefreshFails = true)
+
+            assertThatThrownBy { resolve(sources, VersionRequest("5.0.99")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContaining("Unknown Cassandra version")
+                .hasMessageContaining("The ASF list could not be fetched; the cached copy from ${Instant.EPOCH} was used (stale).")
+        }
+
+        @Test
+        fun `an unknown name says nothing about staleness when the refetch worked`() {
+            assertThatThrownBy { resolve(FakeSources(), VersionRequest("5.0.99")) }.message().doesNotContain("stale")
+        }
+    }
+
+    @Nested
+    inner class Jdk {
+        @ParameterizedTest(name = "{0} defaults to JDK {1}")
+        @CsvSource("5.0, 17", "4.1, 11", "trunk, 21", "5.0-HEAD, 17", "4.1.6, 11")
+        fun `with no --java the highest JDK of the table entry is picked`(
+            name: String,
+            java: String,
+        ) {
+            assertThat(resolve(FakeSources(), VersionRequest(name)).java).isEqualTo(java)
+        }
+
+        @Test
+        fun `--java inside the list is used`() {
+            val spec = resolve(FakeSources(), VersionRequest("5.0", java = "11"))
+
+            assertThat(spec.java).isEqualTo("11")
+            assertThat(spec.javaSupported).containsExactly("11", "17")
+        }
+
+        @Test
+        fun `--java outside the list fails, listing the supported JDKs`() {
+            assertThatThrownBy { resolve(FakeSources(), VersionRequest("5.0", java = "21")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContainingAll("21", "5.0", "11, 17")
+        }
+
+        @Test
+        fun `no list and no --java fails, saying to pass --java`() {
+            assertThatThrownBy { resolve(FakeSources(), VersionRequest("mine", url = "https://example.test/m.tgz")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContaining("--java")
+        }
+
+        @Test
+        fun `no list and --java makes the list that JDK alone`() {
+            val spec = resolve(FakeSources(), VersionRequest("mine", url = "https://example.test/m.tgz", java = "25"))
+
+            assertThat(spec.javaSupported).containsExactly("25")
+            assertThat(spec.java).isEqualTo("25")
+        }
+
+        /**
+         * A cassandra-builds nightly is compiled on its line's build JDK, and dies on a lower one with
+         * `UnsupportedClassVersionError`, so with no manifest its list starts at that JDK. An ASF
+         * release of the same line keeps the whole list.
+         */
+        @ParameterizedTest(name = "{0} -> {1}")
+        @CsvSource(
+            "5.0-HEAD, 17",
+            "5.0-rustyrazorblade-HEAD, '17,21'",
+            "6.0-HEAD, 21",
+            "6.0-rustyrazorblade-HEAD, 21",
+            "trunk, 21",
+        )
+        fun `a nightly with no manifest runs only on its build JDK and newer`(
+            ref: String,
+            expected: String,
+        ) {
+            val sources = FakeSources(nightly = listOf(CassandraBuild(ref, "https://gh/$ref.tgz")))
+
+            assertThat(resolve(sources, VersionRequest(ref)).javaSupported).containsExactlyElementsOf(expected.split(","))
+        }
+
+        @Test
+        fun `--java below a nightly's build JDK fails before any node is touched`() {
+            assertThatThrownBy { resolve(FakeSources(), VersionRequest("5.0-HEAD", java = "11")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContaining("11")
+                .hasMessageContaining("17")
+        }
+
+        @Test
+        fun `the cassandra-builds manifest beats the table`() {
+            val sources = FakeSources(manifests = mapOf("5.0-HEAD" to CassandraBuildsManifest(listOf("11", "17", "21"), "11")))
+
+            val spec = resolve(sources, VersionRequest("5.0-HEAD"))
+
+            assertThat(spec.javaSupported).containsExactly("11", "17", "21")
+            assertThat(spec.java).isEqualTo("21")
+        }
+
+        @Test
+        fun `the catalog manifest's JDK list is used`() {
+            val sources = FakeSources(catalog = mapOf("b1" to CatalogBuild("s3://b/b1.tgz", listOf("17", "21"))))
+
+            assertThat(resolve(sources, VersionRequest("b1")).java).isEqualTo("21")
+        }
+
+        @Test
+        fun `the JDK and Python a node records are kept with no --java`() {
+            val record = InstalledVersion("5.0", "11", listOf("11", "17"), "3.10.4", CassandraSource.ASF, AsfReleases.downloadUrl("5.0.6"))
+            val cluster = state("db0" to node(record))
+            val resolver = CassandraVersionResolver(FakeSources())
+            val request = VersionRequest("5.0")
+
+            val spec = resolver.forNode(resolver.resolve(request, cluster), request, cluster.nodes["db0"])
+
+            assertThat(spec.java).isEqualTo("11")
+            assertThat(spec.python).isEqualTo("3.10.4")
+        }
+
+        @Test
+        fun `a node with no record of its own gets the highest JDK, not another node's choice`() {
+            val record = InstalledVersion("5.0", "11", listOf("11", "17"), "3.11.9", CassandraSource.ASF, AsfReleases.downloadUrl("5.0.6"))
+
+            assertThat(resolve(FakeSources(), VersionRequest("5.0"), state("db0" to node(record))).java).isEqualTo("17")
+        }
+
+        @Test
+        fun `--java overrides the JDK a record holds`() {
+            val record = InstalledVersion("5.0", "11", listOf("11", "17"), "3.11.9", CassandraSource.ASF, AsfReleases.downloadUrl("5.0.6"))
+
+            val cluster = state("db0" to node(record))
+            val resolver = CassandraVersionResolver(FakeSources())
+            val request = VersionRequest("5.0", java = "17")
+
+            assertThat(resolver.forNode(resolver.resolve(request, cluster), request, cluster.nodes["db0"]).java).isEqualTo("17")
+        }
+
+        /**
+         * One row per git build record: its JDK and ant flags. The rebuild of exactly that record (a
+         * replaced node) builds on the recorded JDK with the recorded flags, never with the flags
+         * of another JDK.
+         */
+        @ParameterizedTest(name = "recorded on JDK {0} with flags [{1}] -> [{2}]")
+        @CsvSource(
+            "8,  ,                  ",
+            "11, -Duse.jdk11=true,  -Duse.jdk11=true",
+            "8,  -Dcustom=1,        -Dcustom=1",
+        )
+        fun `a rebuild of a git record builds on its JDK with its own ant flags`(
+            java: String,
+            recordedFlags: String?,
+            expectedFlags: String?,
+        ) {
+            val record =
+                InstalledVersion(
+                    "4.0-x",
+                    java,
+                    listOf("8", "11"),
+                    "3.11.9",
+                    CassandraSource.GIT,
+                    "https://github.com/me/c.git",
+                    branch = "b",
+                    antFlags = recordedFlags,
+                )
+
+            val spec = CassandraVersionResolver(FakeSources()).forRecord(record)
+
+            assertThat(spec.java).isEqualTo(java)
+            assertThat(spec.antFlags).isEqualTo(expectedFlags)
+        }
+
+        @Test
+        fun `forNode keeps each node's own recorded JDK`() {
+            val on11 = InstalledVersion("5.0", "11", listOf("11", "17"), "3.11.9", CassandraSource.ASF, AsfReleases.downloadUrl("5.0.6"))
+            val on17 = on11.copy(java = "17")
+            val cluster = state("db0" to node(on11), "db1" to node(on17), "db2" to NodeState())
+            val resolver = CassandraVersionResolver(FakeSources())
+            val request = VersionRequest("5.0")
+            val spec = resolver.resolve(request, cluster)
+
+            assertThat(listOf("db0", "db1", "db2").map { resolver.forNode(spec, request, cluster.nodes[it]).java })
+                .containsExactly("11", "17", spec.java)
+        }
+    }
+
+    @Nested
+    inner class ProfileBuilds {
+        @Test
+        fun `the entry's JDKs and Python replace the manifest and the table, and its java is the default`() {
+            val spec = resolve(FakeSources(profile = listOf(customBuild.copy(version = "5.0-HEAD"))), VersionRequest("5.0-HEAD"))
+
+            assertThat(spec.javaSupported).containsExactly("11", "17")
+            assertThat(spec.java).isEqualTo("11")
+            assertThat(spec.python).isEqualTo("3.10.4")
+        }
+
+        @Test
+        fun `--java and --python override the entry`() {
+            val spec = resolve(FakeSources(profile = listOf(customBuild)), VersionRequest("my-build", java = "17", python = "3.12.1"))
+
+            assertThat(spec.java).isEqualTo("17")
+            assertThat(spec.python).isEqualTo("3.12.1")
+        }
+
+        @Test
+        fun `--java outside the entry's list fails`() {
+            assertThatThrownBy { resolve(FakeSources(profile = listOf(customBuild)), VersionRequest("my-build", java = "21")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContaining("11, 17")
+        }
+
+        @Test
+        fun `an entry with only java runs on that JDK`() {
+            val build = ProfileBuild(version = "solo", url = "https://example.test/s.tgz", java = "17")
+
+            val spec = resolve(FakeSources(profile = listOf(build)), VersionRequest("solo"))
+
+            assertThat(spec.javaSupported).containsExactly("17")
+        }
+
+        @Test
+        fun `an entry with no JDK and no --java fails, saying to pass --java or set java in the entry`() {
+            val build = ProfileBuild(version = "5.0-mine", url = "https://example.test/s.tgz")
+
+            assertThatThrownBy { resolve(FakeSources(profile = listOf(build)), VersionRequest("5.0-mine")) }
+                .isInstanceOf(VersionResolutionException::class.java)
+                .hasMessageContainingAll("--java", "java", "/profile/cassandra_versions")
+        }
+
+        /**
+         * `--branch` with no `--url` needs a git repository from somewhere else: a profile entry's
+         * git URL, or (on a reinstall) a recorded git build. A release name has none.
+         */
+        @ParameterizedTest(name = "{0} --branch other (reinstall={1}) -> {2}")
+        @CsvSource(
+            "git-entry,   false, other",
+            "git-record,  true,  other",
+            "5.0,         false, refused",
+            "tgz-entry,   false, refused",
+        )
+        fun `--branch without --url builds the branch only where a source gives a git repository`(
+            name: String,
+            reinstall: Boolean,
+            expected: String,
+        ) {
+            val sources =
+                FakeSources(
+                    profile =
+                        listOf(
+                            customBuild.copy(version = "git-entry", url = "https://github.com/me/c.git", branch = "b"),
+                            customBuild.copy(version = "tgz-entry"),
+                        ),
+                )
+            val record =
+                InstalledVersion(
+                    "git-record",
+                    "11",
+                    listOf("11"),
+                    "3.11.9",
+                    CassandraSource.GIT,
+                    "https://github.com/me/c.git",
+                    branch = "b",
+                )
+            val request = VersionRequest(name, branch = "other", reinstall = reinstall)
+
+            val actual =
+                runCatching { resolve(sources, request, state("db0" to node(record))).branch }
+                    .getOrElse {
+                        assertThat(it).isInstanceOf(VersionResolutionException::class.java).hasMessageContaining("--url")
+                        "refused"
+                    }
+            assertThat(actual).isEqualTo(expected)
+        }
+
+        @Test
+        fun `an entry with a branch is a git build, with its ant flags`() {
+            val build = customBuild.copy(url = "https://github.com/me/c.git", branch = "trunk-x", antFlags = "-Dfoo=1")
+
+            val spec = resolve(FakeSources(profile = listOf(build)), VersionRequest("my-build"))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.PROFILE)
+            assertThat(spec.isGitBuild).isTrue()
+            assertThat(spec.branch).isEqualTo("trunk-x")
+            assertThat(spec.antFlags).isEqualTo("-Dfoo=1")
+        }
+
+        @Test
+        fun `a recorded profile build downloads from the profile entry, which holds the credential the record redacts`() {
+            val build = customBuild.copy(url = "https://tok3n@github.test/me/c.git", branch = "b")
+            val record =
+                InstalledVersion(
+                    "my-build",
+                    "11",
+                    listOf("11", "17"),
+                    "3.10.4",
+                    CassandraSource.PROFILE,
+                    "https://***@github.test/me/c.git",
+                )
+
+            val spec = resolve(FakeSources(profile = listOf(build)), VersionRequest("my-build"), state("db0" to node(record)))
+
+            assertThat(spec.url).isEqualTo("https://tok3n@github.test/me/c.git")
+        }
+
+        @Test
+        fun `a profile build gets no cache location, and the bucket is not read`() {
+            val sources = FakeSources(profile = listOf(customBuild))
+
+            val spec = resolve(sources, VersionRequest("my-build"))
+
+            assertThat(spec.cacheUri).isNull()
+            assertThat(spec.fallbackUrl).isNull()
+            assertThat(sources.calls).doesNotContain("bucket")
+        }
+    }
+
+    @Nested
+    inner class PythonAndRecords {
+        @Test
+        fun `Python is the default with no --python, and --python replaces it`() {
+            assertThat(resolve(FakeSources(), VersionRequest("5.0")).python).isEqualTo(Constants.Cassandra.DEFAULT_PYTHON_VERSION)
+            assertThat(resolve(FakeSources(), VersionRequest("5.0", python = "3.12.1")).python).isEqualTo("3.12.1")
+        }
+
+        @Test
+        fun `the cache location is set for an ASF release only`() {
+            val sources = FakeSources(catalog = mapOf("b1" to CatalogBuild("s3://b/b1.tgz", listOf("17"))))
+            val cacheUris =
+                listOf(
+                    VersionRequest("5.0"),
+                    VersionRequest("trunk"),
+                    VersionRequest("b1"),
+                    VersionRequest("u", url = "https://example.test/u.tgz", java = "17"),
+                ).associate { it.name to resolve(sources, it).cacheUri }
+
+            assertThat(cacheUris.filterValues { it != null }.keys).containsExactly("5.0")
+        }
+
+        @Test
+        fun `a credential in the URL is passed to the node but redacted in the record`() {
+            val url = "https://ghp_secret123@github.com/me/private.git"
+
+            val spec = resolve(FakeSources(), VersionRequest("5.0-mine", url = url, branch = "b"))
+
+            assertThat(spec.url).isEqualTo(url)
+            assertThat(spec.toRecord().url).doesNotContain("ghp_secret123").contains("github.com/me/private.git")
+            assertThat(spec.toString()).doesNotContain("ghp_secret123")
+        }
+
+        @Test
+        fun `a reinstall takes --url, --python and --ant-flags over the record`() {
+            val record =
+                InstalledVersion(
+                    "g",
+                    "11",
+                    listOf("11"),
+                    "3.11.9",
+                    CassandraSource.GIT,
+                    "https://github.com/me/c.git",
+                    branch = "b",
+                    antFlags = "-Dold=1",
+                )
+
+            val spec =
+                resolve(
+                    FakeSources(),
+                    VersionRequest("g", url = "https://github.com/me/d.git", python = "3.12.1", antFlags = "-Dnew=1", reinstall = true),
+                    state("db0" to node(record)),
+                )
+
+            assertThat(spec.url).isEqualTo("https://github.com/me/d.git")
+            assertThat(spec.branch).isEqualTo("b")
+            assertThat(spec.python).isEqualTo("3.12.1")
+            assertThat(spec.antFlags).isEqualTo("-Dnew=1")
+        }
+
+        /** The recorded branch stays unless a reinstall names another; a plain install never moves it. */
+        @ParameterizedTest(name = "--branch {0}, reinstall={1} -> {2}")
+        @CsvSource(
+            "c, true, c",
+            ", true, b",
+            "c, false, b",
+        )
+        fun `only a reinstall builds another branch of a recorded git build`(
+            branch: String?,
+            reinstall: Boolean,
+            expected: String,
+        ) {
+            val record =
+                InstalledVersion("g", "11", listOf("11"), "3.11.9", CassandraSource.GIT, "https://github.com/me/c.git", branch = "b")
+
+            val spec = resolve(FakeSources(), VersionRequest("g", branch = branch, reinstall = reinstall), state("db0" to node(record)))
+
+            assertThat(spec.branch).isEqualTo(expected)
+        }
+
+        @Test
+        fun `a reinstall of an ASF record from another URL is a plain URL install, so the download cache is never used`() {
+            val record = InstalledVersion("5.0", "17", listOf("11", "17"), "3.11.9", CassandraSource.ASF, AsfReleases.downloadUrl("5.0.6"))
+            val patched = "https://myhost.test/5.0.6/apache-cassandra-5.0.6-bin.tar.gz"
+            val sources = FakeSources()
+
+            val spec = resolve(sources, VersionRequest("5.0", url = patched, reinstall = true), state("db0" to node(record)))
+
+            assertThat(spec.source).isEqualTo(CassandraSource.URL)
+            assertThat(spec.url).isEqualTo(patched)
+            assertThat(spec.cacheUri).isNull()
+            assertThat(spec.fallbackUrl).isNull()
+            assertThat(sources.calls).doesNotContain("bucket")
+        }
+
+        @Test
+        fun `a reinstall of a git build on another JDK takes that JDK's ant flags from the table`() {
+            val record =
+                InstalledVersion(
+                    "4.1-x",
+                    "8",
+                    listOf("8", "11"),
+                    "3.11.9",
+                    CassandraSource.GIT,
+                    "https://github.com/me/c.git",
+                    branch = "b",
+                )
+
+            val spec = resolve(FakeSources(), VersionRequest("4.1-x", java = "11", reinstall = true), state("db0" to node(record)))
+
+            assertThat(spec.java).isEqualTo("11")
+            assertThat(spec.antFlags).isEqualTo("-Duse.jdk11=true")
+        }
+
+        @Test
+        fun `a record whose URL credential was redacted takes the full URL from --url when it is the same URL`() {
+            val record =
+                InstalledVersion("g", "11", listOf("11"), "3.11.9", CassandraSource.GIT, "https://***@github.test/me/c.git", branch = "b")
+
+            val spec =
+                resolve(FakeSources(), VersionRequest("g", url = "https://tok3n@github.test/me/c.git"), state("db0" to node(record)))
+
+            assertThat(spec.url).isEqualTo("https://tok3n@github.test/me/c.git")
+        }
+
+        @Test
+        fun `without --reinstall a record keeps its URL and ant flags`() {
+            val record =
+                InstalledVersion(
+                    "g",
+                    "11",
+                    listOf("11"),
+                    "3.11.9",
+                    CassandraSource.GIT,
+                    "https://github.com/me/c.git",
+                    branch = "b",
+                    antFlags = "-Dold=1",
+                )
+
+            val spec =
+                resolve(
+                    FakeSources(),
+                    VersionRequest("g", url = "https://github.com/me/d.git", antFlags = "-Dnew=1"),
+                    state(
+                        "db0" to node(record),
+                    ),
+                )
+
+            assertThat(spec.url).isEqualTo("https://github.com/me/c.git")
+            assertThat(spec.antFlags).isEqualTo("-Dold=1")
+        }
+
+        /**
+         * A tarball record has no build parameters for the installer to compare, so a `--url` that is
+         * not the recorded one fails in the resolver and names `--reinstall`; the same URL, with or
+         * without its credential, is no conflict.
+         */
+        @ParameterizedTest(name = "--url {0} -> refused={1}")
+        @CsvSource(
+            "https://mirror.test/apache-cassandra-5.0.6-bin.tar.gz, true",
+            "https://tok3n@dl.test/c.tgz, false",
+            "https://dl.test/c.tgz, false",
+        )
+        fun `a plain install of a recorded tarball from another URL is refused and names --reinstall`(
+            url: String,
+            refused: Boolean,
+        ) {
+            val record = InstalledVersion("c", "17", listOf("17"), "3.11.9", CassandraSource.URL, "https://***@dl.test/c.tgz")
+            val withUrl = record.copy(url = if (url.contains("tok3n")) record.url else "https://dl.test/c.tgz")
+            val run = { resolve(FakeSources(), VersionRequest("c", url = url), state("db0" to node(withUrl))) }
+
+            when (refused) {
+                true ->
+                    assertThatThrownBy { run() }
+                        .isInstanceOf(VersionResolutionException::class.java)
+                        .hasMessageContaining(withUrl.url)
+                        .hasMessageContaining("--reinstall")
+                false -> assertThat(run().url).isEqualTo(url)
+            }
+        }
+
+        @Test
+        fun `a reinstall of a tarball record with --url and --branch builds that branch from git`() {
+            val record = InstalledVersion("c", "17", listOf("17"), "3.11.9", CassandraSource.URL, "https://dl.test/c.tgz")
+
+            val spec =
+                resolve(
+                    FakeSources(),
+                    VersionRequest("c", url = "https://github.com/me/c.git", branch = "b", reinstall = true),
+                    state("db0" to node(record)),
+                )
+
+            assertThat(spec.source).isEqualTo(CassandraSource.GIT)
+            assertThat(spec.url).isEqualTo("https://github.com/me/c.git")
+            assertThat(spec.branch).isEqualTo("b")
+        }
+    }
+}

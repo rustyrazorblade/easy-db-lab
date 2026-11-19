@@ -1,8 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
-import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
@@ -68,36 +69,60 @@ class CoreCollectorManifests(
 
 /**
  * Every manifest the observability stack applies: the core collector first, then each
- * [ObservabilityStage]. The one place a stage is mapped to the builder that renders it.
+ * [ObservabilityStage], the account compactor ([CompactorStage]) included. The one place a stage
+ * is mapped to the builder that renders it.
  */
 class ObservabilityStageManifests(
     val coreCollector: CoreCollectorManifests,
     private val collectors: CollectorAgentManifests,
     private val backends: BackendManifests,
+    private val compactor: CompactorStage,
 ) {
-    /** The resources [stage] applies for a cluster with [telemetryRedirect], [cni] and [hosting]. */
+    /**
+     * The resources [stage] applies for [clusterState] with [hosting]. Call it only for a stage the
+     * environment can run: the account compactor's prepares the control node over SSH first.
+     */
     fun resourcesOf(
         stage: ObservabilityStage,
-        telemetryRedirect: TelemetryRedirect?,
-        cni: CniMode,
+        clusterState: ClusterState,
         hosting: ObservabilityHosting,
-    ): List<HasMetadata> =
-        when (stage) {
+    ): List<HasMetadata> {
+        val cni = clusterState.initConfig?.cni ?: CniMode.Flannel
+        return when (stage) {
             ObservabilityStage.OTEL_HOST_COLLECTOR -> collectors.otelHostCollector.buildAllResources(cni)
             ObservabilityStage.KUBE_STATE_METRICS -> collectors.kubeStateMetrics.buildAllResources(hosting.placement)
             ObservabilityStage.FLUENT_BIT_JOURNALD -> collectors.journaldOtel.buildAllResources()
             ObservabilityStage.EBPF_EXPORTER -> collectors.ebpfExporter.buildAllResources()
-            ObservabilityStage.REGISTRY -> backends.registry.buildAllResources()
-            ObservabilityStage.S3_MANAGER -> backends.s3Manager.buildAllResources()
             ObservabilityStage.BEYLA -> collectors.beyla.buildAllResources()
             ObservabilityStage.YACE -> collectors.yace.buildAllResources()
+            ObservabilityStage.ACCOUNT_COMPACTOR -> compactor.prepare(compactorNode(clusterState), clusterState)
+            // The core collector already left its pod-log receiver out (CollectorResources).
+            ObservabilityStage.POD_LOGS -> emptyList()
+            else -> backendResourcesOf(stage, clusterState, hosting)
+        }
+    }
+
+    /** The resources of a backend [stage]: storage, serving and the registry and S3 manager. */
+    private fun backendResourcesOf(
+        stage: ObservabilityStage,
+        clusterState: ClusterState,
+        hosting: ObservabilityHosting,
+    ): List<HasMetadata> =
+        when (stage) {
+            ObservabilityStage.REGISTRY -> backends.registry.buildAllResources()
+            ObservabilityStage.S3_MANAGER -> backends.s3Manager.buildAllResources()
             ObservabilityStage.MIMIR -> backends.mimir.buildAllResources(hosting)
             ObservabilityStage.LOKI -> backends.loki.buildAllResources(hosting)
             ObservabilityStage.TEMPO -> backends.tempo.buildAllResources(hosting)
             ObservabilityStage.PYROSCOPE -> backends.pyroscope.buildServerResources(hosting)
             // Every node, in both modes; under a redirect it points at the external Pyroscope.
-            ObservabilityStage.PYROSCOPE_AGENT -> backends.pyroscope.buildAgentResources(telemetryRedirect)
-            // The core collector already left its pod-log receiver out (CollectorResources).
-            ObservabilityStage.POD_LOGS -> emptyList()
+            ObservabilityStage.PYROSCOPE_AGENT ->
+                backends.pyroscope.buildAgentResources(clusterState.initConfig?.telemetryRedirect)
+            else -> error("$stage is not a backend stage")
+        }
+
+    private fun compactorNode(clusterState: ClusterState): ClusterHost =
+        checkNotNull(clusterState.getControlHost()) {
+            "The account compactor is prepared on the control node, but the cluster state has no control node."
         }
 }

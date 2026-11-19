@@ -12,12 +12,12 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultKitEndpointResolver
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
+import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
@@ -49,7 +49,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     protected val mockWorkloadStepExecutor: WorkloadStepExecutor = mock()
     protected val mockMetricsRegistryService: MetricsRegistryService = mock()
     protected val mockKitHookExecutor: KitHookExecutor = mock()
-    protected val mockKubeService: KubernetesService = mock()
+    protected val mockKubeService: K8sService = mock()
 
     /** The tenant listing reads this store; a test that drives a store failure replaces it before running the command. */
     protected var objectStore: ObjectStore = InMemoryObjectStore()
@@ -77,7 +77,6 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     protected val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
             hosts =

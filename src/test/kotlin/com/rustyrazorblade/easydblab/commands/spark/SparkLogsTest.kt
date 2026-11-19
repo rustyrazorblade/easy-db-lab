@@ -47,7 +47,7 @@ class SparkLogsTest : BaseKoinTest() {
                 single<SparkService> { mockSparkService }
                 single<ClusterStateManager> {
                     mock<ClusterStateManager>().also {
-                        whenever(it.load()).thenReturn(ClusterState(name = "test-cluster", clusterId = "c1", versions = mutableMapOf()))
+                        whenever(it.load()).thenReturn(ClusterState(name = "test-cluster", clusterId = "c1"))
                     }
                 }
                 single<LokiQueryService> { mockLokiQueryService }

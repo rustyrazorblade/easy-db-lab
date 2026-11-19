@@ -9,25 +9,38 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.NodeSetupService
+import com.rustyrazorblade.easydblab.services.NodeTuningFiles
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
-import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Tests for [SetupInstance]'s profiling seeding.
@@ -38,10 +51,7 @@ import java.nio.file.Path
  */
 class SetupInstanceTest : BaseKoinTest() {
     private lateinit var profilingService: CassandraProfilingService
-    private val remoteOperations: RemoteOperationsService =
-        mock {
-            on { executeRemotely(any(), any(), any(), any()) } doReturn Response("")
-        }
+    private val remoteOps: RemoteOperationsService = mock()
 
     private val hosts =
         mapOf(
@@ -80,7 +90,6 @@ class SetupInstanceTest : BaseKoinTest() {
                             ClusterState(
                                 name = "test-cluster",
                                 clusterId = "abc123",
-                                versions = mutableMapOf(),
                                 hosts = hosts,
                                 // Not the default tenant, which is also ProfilingConfig's
                                 // fallback: only a non-default tenant shows it was written.
@@ -91,7 +100,8 @@ class SetupInstanceTest : BaseKoinTest() {
                     }
                 }
                 single { HostOperationsService(get()) }
-                single<RemoteOperationsService> { remoteOperations }
+                single { NodeSetupService(get(), get(), NodeTuningFiles(), get<Context>().workingDirectory) }
+                single<RemoteOperationsService> { remoteOps }
                 single<CassandraProfilingService> { mock<CassandraProfilingService>().also { profilingService = it } }
             },
         )
@@ -99,6 +109,7 @@ class SetupInstanceTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         profilingService = getKoin().get()
+        whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
     }
 
     @Test
@@ -109,7 +120,7 @@ class SetupInstanceTest : BaseKoinTest() {
         val configs = argumentCaptor<ProfilingConfig>()
         verify(profilingService, times(2)).writeDesiredState(targets.capture(), configs.capture())
 
-        assertThat(targets.allValues.map { it.alias }).containsExactly("db0", "db1")
+        assertThat(targets.allValues.map { it.alias }).containsExactlyInAnyOrder("db0", "db1")
         val config = configs.firstValue
         assertThat(config.enabled).isTrue()
         assertThat(config.asprofArgs).isEqualTo(Constants.Profiling.DEFAULT_ASPROF_ARGS)
@@ -121,15 +132,117 @@ class SetupInstanceTest : BaseKoinTest() {
     @Test
     fun `every local file it uploads is read from the workspace`() {
         val workspace = getKoin().get<Context>().workingDirectory.toPath()
+        // `up` writes it before setup; a cluster with no db node has none, and setup then skips it.
+        Files.writeString(workspace.resolve("environment.sh"), "export DB0=10.0.1.10\n")
 
         SetupInstance().execute()
 
         val locals = argumentCaptor<Path>()
-        verify(remoteOperations, atLeastOnce()).upload(any(), locals.capture(), any())
+        verify(remoteOps, atLeastOnce()).upload(any(), locals.capture(), any())
         assertThat(locals.allValues.filterNot { it.fileName.toString().endsWith(".env") })
             .isNotEmpty
             .allSatisfy { assertThat(it.isAbsolute && it.startsWith(workspace)).describedAs("$it").isTrue() }
         assertThat(locals.allValues.map { it.fileName.toString() })
             .contains("environment.sh", Constants.Cassandra.JMX_RULES_FILE, Constants.SETUP_INSTANCE_SCRIPT)
+    }
+
+    /**
+     * At 1,000 db nodes one-at-a-time setup takes hours. The latch opens only once both db nodes
+     * are inside setup together, so a serial setup times out on it.
+     */
+    @Test
+    fun `sets up db nodes in parallel`() {
+        val bothInside = CountDownLatch(2)
+        var overlapped = true
+        whenever(profilingService.writeDesiredState(any(), any())).thenAnswer {
+            bothInside.countDown()
+            if (!bothInside.await(OVERLAP_WAIT_SECONDS, TimeUnit.SECONDS)) overlapped = false
+            Unit
+        }
+
+        SetupInstance().execute()
+
+        assertThat(overlapped).isTrue()
+    }
+
+    /** Fails `setup_instance.sh` on db1 with [failure], runs the command, and returns the event it emitted. */
+    private fun setupFailureOnDb1(failure: RemoteCommandFailedException): Event.Provision.InstanceSetupFailed {
+        whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, eq(DB_SETUP_COMMAND), any(), any()))
+            .thenAnswer { throw failure }
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        assertThatThrownBy { SetupInstance().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        return events.filterIsInstance<Event.Provision.InstanceSetupFailed>().single()
+    }
+
+    private fun setupScriptFailure(
+        stdout: String,
+        stderr: String,
+    ) = RemoteCommandFailedException(
+        command = DB_SETUP_COMMAND,
+        stdout = stdout,
+        stderr = stderr,
+        summary = "10.0.1.101: exit status 1",
+    )
+
+    /**
+     * instance-storage-validation: "Data disk mounted at up time". A node whose setup exits
+     * non-zero (no data disk, a failed mount) fails the command, naming the host and the reason
+     * the script printed, so `up` stops before K3s starts.
+     */
+    @Test
+    fun `a node whose setup script fails names the host and the reason and fails the command`() {
+        val failed =
+            setupFailureOnDb1(
+                setupScriptFailure(
+                    stdout = "Checking block devices\n",
+                    stderr = "ERROR: no data disk found: no unused non-root block device\n",
+                ),
+            )
+
+        assertThat(failed.host).isEqualTo("db1")
+        assertThat(failed.reason).isEqualTo("no data disk found: no unused non-root block device")
+        assertThat(failed.isError()).isTrue()
+        assertThat(failed.toDisplayString()).contains("db1", "no data disk found")
+    }
+
+    @Test
+    fun `every ERROR line the script printed is in the reason, in order`() {
+        val failed =
+            setupFailureOnDb1(
+                setupScriptFailure(
+                    stdout = "ERROR: /mnt/db1 is on the root device\n",
+                    stderr = "ERROR: mount of /dev/nvme1n1 failed\nmount: wrong fs type\n",
+                ),
+            )
+
+        assertThat(failed.reason).isEqualTo("mount of /dev/nvme1n1 failed; /mnt/db1 is on the root device")
+    }
+
+    @Test
+    fun `a failure with no ERROR line reports the remote failure itself`() {
+        val failure = setupScriptFailure(stdout = "Checking block devices\n", stderr = "bash: line 3: lsblk: command not found\n")
+
+        val failed = setupFailureOnDb1(failure)
+
+        assertThat(failed.reason).isNotBlank().isEqualTo(failure.message)
+        assertThat(failed.reason).contains("exit status 1", "lsblk: command not found")
+    }
+
+    private companion object {
+        const val OVERLAP_WAIT_SECONDS = 5L
+
+        /** A db node's setup, with the database instance type the state's init config defaults to. */
+        const val DB_SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i4i.xlarge bash setup_instance.sh"
     }
 }

@@ -66,6 +66,22 @@ class StreamMetricTest : BaseKoinTest() {
     }
 
     @Test
+    fun `network IO matches the primary ENI under every slot name and no virtual interface`() {
+        listOf(StreamMetric.NODE_NETWORK_RECEIVE, StreamMetric.NODE_NETWORK_TRANSMIT).forEach { metric ->
+            val deviceRegex =
+                Regex("""device=~"([^"]*)"""").find(metric.promql("lab-x"))?.groupValues?.get(1)
+                    ?: error("${metric.metricName} has no device=~ matcher")
+            // PromQL anchors a =~ matcher at both ends, so this is a full match.
+            val matches = Regex(deviceRegex)::matches
+
+            assertThat(listOf("ens5", "ens52", "enp39s0", "eth0")).describedAs(metric.metricName).allMatch(matches)
+            assertThat(listOf("lo", "lxc1a2b", "cilium_host", "tailscale0", "flannel.1", "cni0"))
+                .describedAs(metric.metricName)
+                .noneMatch(matches)
+        }
+    }
+
+    @Test
     fun `rates use the 1-minute window`() {
         StreamMetric.entries
             .map { it.promql("lab-x") }

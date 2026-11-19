@@ -48,7 +48,6 @@ class GrafanaInstallTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)),

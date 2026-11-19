@@ -31,6 +31,7 @@ services:
     user: ubuntu
     environment:
       - DEBIAN_FRONTEND=noninteractive
+      - EDL_CACHE_LIB=/packer/base/install/edl-cache-lib.sh
     command: >
       bash -c "
       echo 'Running base provisioning scripts...' &&
@@ -41,7 +42,8 @@ services:
       bash /packer/base/install/install_helm.sh &&
       bash /packer/base/install/install_kubectl.sh &&
       bash /packer/base/install/install_cilium_cli.sh &&
-      bash /packer/base/install/configure_cilium_eni_networkd.sh &&
+      bash /packer/base/install/install_ecr_credential_provider.sh &&
+      EDL_PRIMARY_ENI_SCRIPT_SOURCE=/packer/base/install/edl-primary-eni-network bash /packer/base/install/configure_cilium_eni_networkd.sh &&
       bash /packer/base/install/install_otel_agent.sh &&
       echo 'Base provisioning complete!'
       "
@@ -59,6 +61,7 @@ services:
     user: ubuntu
     environment:
       - DEBIAN_FRONTEND=noninteractive
+      - EDL_CACHE_LIB=/packer/base/install/edl-cache-lib.sh
     command: >
       bash -c "
       echo 'Running cassandra provisioning scripts...' &&

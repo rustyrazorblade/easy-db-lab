@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -41,7 +42,6 @@ class TailscaleStopTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(
@@ -71,7 +71,6 @@ class TailscaleStopTest : BaseKoinTest() {
         val stateNoControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = emptyMap(),
             )
         whenever(mockClusterStateManager.load()).thenReturn(stateNoControl)
@@ -112,7 +111,6 @@ class TailscaleStopTest : BaseKoinTest() {
         val stateWithKey =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(region = "us-west-2"),
                 hosts =
                     mapOf(
@@ -144,6 +142,46 @@ class TailscaleStopTest : BaseKoinTest() {
         verify(mockTailscaleService).deleteAuthKey(eq("ts-client-id"), eq("ts-client-secret"), eq("key-to-delete"))
         verify(mockClusterStateManager).save(stateWithKey)
         assertThat(stateWithKey.tailscaleAuthKeyId).isNull()
+    }
+
+    @Test
+    fun `a failed auth key delete is reported, exits zero and clears the recorded key`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                initConfig = InitConfig(region = "us-west-2"),
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+                tailscaleAuthKeyId = "key-to-delete",
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        declareTailscaleUser()
+        stubRunningAndStops()
+        whenever(mockTailscaleService.deleteAuthKey(any(), any(), any())).thenThrow(TailscaleApiException("auth key not found"))
+
+        val exitCode = TailscaleStop().call()
+
+        assertThat(exitCode).isZero()
+        assertThat(state.tailscaleAuthKeyId).isNull()
+        val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
+        assertThat(errorOutput).contains("key-to-delete").contains("auth key not found")
+    }
+
+    @Test
+    fun `an auth key delete that fails for a reason other than the Tailscale API propagates`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                initConfig = InitConfig(region = "us-west-2"),
+                hosts = mapOf(ServerType.Control to listOf(testControlHost)),
+                tailscaleAuthKeyId = "key-to-delete",
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        declareTailscaleUser()
+        stubRunningAndStops()
+        whenever(mockTailscaleService.deleteAuthKey(any(), any(), any())).thenThrow(IllegalStateException("bug"))
+
+        assertThatThrownBy { TailscaleStop().call() }.isInstanceOf(IllegalStateException::class.java)
+        assertThat(state.tailscaleAuthKeyId).isEqualTo("key-to-delete")
     }
 
     @Test
@@ -188,7 +226,6 @@ class TailscaleStopTest : BaseKoinTest() {
     private fun stateWithDevice(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             tailscaleDeviceId = "node-abc123",

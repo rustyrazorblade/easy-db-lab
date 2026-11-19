@@ -356,3 +356,138 @@ edl_push_end() {
   eval "${EDL_PUSH_SAVED_TRAPS:-}"
   unset EDL_PUSH_PROXY_PID EDL_PUSH_BANNER EDL_PUSH_SAVED_TRAPS EDL_PUSH_SIGNAL
 }
+
+# ---------------------------------------------------------------------------------------------
+# Helm-chart kits with a coordinator and workers (presto, trino).
+#
+# These functions need `helm` and `kubectl`, and work in the `default` namespace.
+# ---------------------------------------------------------------------------------------------
+
+# The catalogs the next edl_helm_upgrade_with_catalogs adds, as YAML map entries. Set by
+# edl_collect_catalogs.
+EDL_CATALOG_CONTENT=""
+
+# Appends the catalog entry $1 to EDL_CATALOG_CONTENT from the properties file $2.
+edl_add_catalog() {
+  local line
+  EDL_CATALOG_CONTENT="${EDL_CATALOG_CONTENT}  $1: |"$'\n'
+  while IFS= read -r line; do
+    EDL_CATALOG_CONTENT="${EDL_CATALOG_CONTENT}    ${line}"$'\n'
+  done < "$2"
+}
+
+# Collects the catalogs of the product $1 into EDL_CATALOG_CONTENT. Usage:
+#   edl_collect_catalogs <product> <catalogs-dir> <workload-root> [<infrastructure-db>...]
+# In order, it adds:
+# - each <infrastructure-db> whose <catalogs-dir>/<db>.properties exists and names its endpoint
+#   (a `<db>.host=` line with a value); an infrastructure database is not a kit;
+# - the kits in the comma-separated RUNNING_KITS that have a <catalogs-dir>/<kit>.properties;
+# - each sibling directory of <workload-root> that has a <product>-catalog.properties (a custom
+#   --from workload).
+edl_collect_catalogs() {
+  local product="$1" catalogs_dir="$2" workload_root="$3" props workload workloads
+  shift 3
+  EDL_CATALOG_CONTENT=""
+  while [ "$#" -ge 1 ]; do
+    props="${catalogs_dir}/$1.properties"
+    if [ -f "${props}" ] && grep -qE "$1.host=.+" "${props}"; then
+      echo "Adding catalog for infrastructure db: $1"
+      edl_add_catalog "$1" "${props}"
+    fi
+    shift
+  done
+  if [ -n "${RUNNING_KITS:-}" ]; then
+    IFS=',' read -ra workloads <<< "${RUNNING_KITS}"
+    for workload in "${workloads[@]}"; do
+      props="${catalogs_dir}/${workload}.properties"
+      if [ -f "${props}" ]; then
+        echo "Adding catalog for running workload: ${workload}"
+        edl_add_catalog "${workload}" "${props}"
+      fi
+    done
+  fi
+  for props in "${workload_root}"/*/"${product}-catalog.properties"; do
+    [ -f "${props}" ] || continue
+    workload="$(basename "$(dirname "${props}")")"
+    echo "Adding catalog from custom workload: ${workload}"
+    edl_add_catalog "${workload}" "${props}"
+  done
+}
+
+# Installs or upgrades the helm release $1 of chart $2 at version $3, with the values file $4 and,
+# when edl_collect_catalogs found any catalog, a second values file <dir of $4>/.catalogs-override.yaml
+# that sets the chart value $5 to them. It does not wait for the rollout: see edl_replace_hostport_pod.
+edl_helm_upgrade_with_catalogs() {
+  local release="$1" chart="$2" version="$3" values="$4" key="$5"
+  local override extra=()
+  override="$(dirname "${values}")/.catalogs-override.yaml"
+  if [ -n "${EDL_CATALOG_CONTENT}" ]; then
+    printf '%s:\n%s' "${key}" "${EDL_CATALOG_CONTENT}" > "${override}"
+    extra=(--values "${override}")
+  fi
+  helm upgrade --install "${release}" "${chart}" \
+    --version "${version}" \
+    --namespace default \
+    --create-namespace \
+    --values "${values}" \
+    ${extra[@]+"${extra[@]}"}
+}
+
+# Replaces the pod of deployment $2, found by label selector $1, and waits for its rollout.
+# The coordinator uses hostPort, so on a single app node a rolling update deadlocks: the new pod
+# cannot bind the port while the old pod holds it. Deleting the pod lets the controller replace it.
+edl_replace_hostport_pod() {
+  kubectl delete pod -n default -l "$1" --ignore-not-found
+  kubectl rollout status "deployment/$2" --namespace default --timeout=180s
+}
+
+# Prints the cluster label (<name>-<id>) from the cluster-config ConfigMap, which every other
+# signal carries, so the profiling dashboards' cluster filter finds a kit's profiles. CLUSTER_NAME
+# is the bare name. Fails when `grafana update-config` has not run.
+edl_cluster_label() {
+  local label
+  label="$(kubectl get configmap cluster-config -n default -o jsonpath='{.data.cluster_name}')"
+  [ -n "${label}" ] || edl_fail "ERROR: cluster-config has no cluster_name; run 'easy-db-lab grafana update-config' first."
+  printf '%s\n' "${label}"
+}
+
+# Prints the JAVA_TOOL_OPTIONS that load the Pyroscope agent for application $1. Needs
+# PYROSCOPE_URL and TENANT, which the kit runner sets.
+edl_pyroscope_opts() {
+  printf '%s' "-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=$1 -Dpyroscope.server.address=${PYROSCOPE_URL} -Dpyroscope.tenant.id=${TENANT} -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms"
+}
+
+# Patches the container $2 of deployment $1 to load the Pyroscope agent for application $3, with
+# the profile labels cluster=$4 and component=$5. Any further arguments are container ports that
+# get a hostPort of the same number; a strategic merge patch matches a port by its containerPort.
+edl_patch_pyroscope() {
+  local deployment="$1" container="$2" app="$3" cluster_label="$4" component="$5" ports="" sep="" opts patch
+  shift 5
+  while [ "$#" -ge 1 ]; do
+    case "$1" in
+      *[!0-9]* | "") edl_fail "edl_patch_pyroscope: '$1' is not a port number" ;;
+    esac
+    ports="${ports}${sep}{\"containerPort\":$1,\"hostPort\":$1}"
+    sep=","
+    shift
+  done
+  [ -z "${ports}" ] || ports=",\"ports\":[${ports}]"
+  opts="$(edl_pyroscope_opts "${app}") -Dpyroscope.labels=cluster=${cluster_label},component=${component}"
+  opts="${opts//\\/\\\\}"
+  opts="${opts//\"/\\\"}"
+  patch="{\"spec\":{\"template\":{\"spec\":{\"volumes\":[{\"name\":\"pyroscope-agent\",\"hostPath\":{\"path\":\"/usr/local/pyroscope\"}}],\"containers\":[{\"name\":\"${container}\"${ports},\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"${opts}\"}],\"volumeMounts\":[{\"name\":\"pyroscope-agent\",\"mountPath\":\"/usr/local/pyroscope\",\"readOnly\":true}]}]}}}}"
+  kubectl patch deployment "${deployment}" \
+    --namespace default \
+    --type=strategic \
+    -p="${patch}"
+}
+
+# Scales the deployments $@ to zero replicas.
+edl_scale_to_zero() {
+  kubectl scale deployment "$@" --replicas=0 --namespace default
+}
+
+# Uninstalls the helm release $1; a release that is already gone is not an error.
+edl_helm_uninstall() {
+  helm uninstall "$1" --namespace default --ignore-not-found
+}

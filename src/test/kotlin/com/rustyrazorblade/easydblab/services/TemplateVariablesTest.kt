@@ -74,7 +74,6 @@ class TemplateVariablesTest : BaseKoinTest() {
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = bucketName,
             initConfig = InitConfig(region = region, name = "test-cluster", cidr = cidr),
             hosts =
@@ -419,7 +418,8 @@ class TemplateVariablesTest : BaseKoinTest() {
     /**
      * The Trino and Presto start scripts attach the Pyroscope agent to their JVMs. They take the
      * profile endpoint and the tenant from the kit variables, so they follow telemetry redirect and
-     * write to the cluster's tenant, instead of hard-coding the control node.
+     * write to the cluster's tenant, instead of hard-coding the control node. The agent options are
+     * built by `edl_pyroscope_opts` in the shared kit library, which both scripts call.
      */
     @ParameterizedTest
     @ValueSource(strings = ["trino", "presto"])
@@ -428,9 +428,22 @@ class TemplateVariablesTest : BaseKoinTest() {
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$kit/bin/start.sh.template")) {
                 "no start script for $kit"
             }.readText()
+        val library =
+            checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh")) {
+                "no shared kit library"
+            }.readText()
 
-        assertThat(script).contains("-Dpyroscope.server.address=\${PYROSCOPE_URL}")
-        assertThat(script).contains("-Dpyroscope.tenant.id=\${TENANT}")
+        assertThat(script).contains("edl_patch_pyroscope")
+        assertThat(library).contains("-Dpyroscope.server.address=\${PYROSCOPE_URL}")
+        assertThat(library).contains("-Dpyroscope.tenant.id=\${TENANT}")
         assertThat(script).doesNotContain(":4040")
+        assertThat(library).doesNotContain(":4040")
+    }
+
+    @Test
+    fun `the reserved names are exactly the variables a kit receives from the cluster, plus BACKUP_NAME`() {
+        val defined = TemplateVariables.from(state = stateWith(), kitName = "trino", storageSize = "1Gi").toMap().keys
+
+        assertThat(TemplateVariables.RESERVED_NAMES).isEqualTo(defined + "BACKUP_NAME")
     }
 }

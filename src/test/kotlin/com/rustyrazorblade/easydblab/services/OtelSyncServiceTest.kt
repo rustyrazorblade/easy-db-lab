@@ -60,7 +60,6 @@ class OtelSyncServiceTest : BaseKoinTest() {
     private val withControlHost =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-test",
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
         )
@@ -286,7 +285,6 @@ class OtelSyncServiceTest : BaseKoinTest() {
         val ciliumState =
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
                 hosts = withControlHost.hosts,
                 initConfig = InitConfig(region = "us-west-2", cni = CniMode.Cilium),

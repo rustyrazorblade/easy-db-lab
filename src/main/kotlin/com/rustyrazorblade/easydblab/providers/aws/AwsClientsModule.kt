@@ -18,11 +18,11 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
-import software.amazon.awssdk.services.ecr.EcrClient
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
 import software.amazon.awssdk.services.ssm.SsmClient
 import software.amazon.awssdk.services.sts.StsClient
 import java.time.Duration
@@ -36,7 +36,7 @@ private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOv
 /**
  * Koin module for the AWS adapter's SDK-facing bindings.
  *
- * Provides the region, the credentials provider, the SDK clients, the low-level [AWS] wrapper,
+ * Provides the region, the credentials provider, the SDK clients, [AccountIdentity] and [IamRoles],
  * [AWSClientFactory], [AWSCredentialsManager] (a factory), the [AwsErrorHandler] registered as a
  * [ProviderErrorHandler], and the SSM Session Manager transport bindings. Its only edges outside
  * `providers/aws` are `configuration`, `events` and `Context`; the bindings of `services/aws`
@@ -127,7 +127,7 @@ val awsClientsModule =
 
         single {
             val overrideConfig = createClientOverrideConfig()
-            EcrClient
+            ServiceQuotasClient
                 .builder()
                 .region(get<Region>())
                 .credentialsProvider(get<AwsCredentialsProvider>())
@@ -135,8 +135,12 @@ val awsClientsModule =
                 .build()
         }
 
-        // Low-level IAM, S3 and STS operations
-        single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
+        // The account identity (STS) and IAM role operations, each a small interface
+        single<AccountIdentity> { StsAccountIdentity(get<StsClient>()) }
+        single<IamRoles> { AwsIamRoles(get<IamClient>(), get<AccountIdentity>()) }
+
+        // S3 clients for the account bucket's own region, which can differ from the profile's
+        single<RegionalS3Clients> { DefaultRegionalS3Clients(get()) }
 
         // Provide AWSClientFactory for creating AWS clients with custom credentials
         single<AWSClientFactory> { DefaultAWSClientFactory() }
@@ -145,9 +149,6 @@ val awsClientsModule =
         // single: its credentials file is lazy, and a single would keep stale SSO credentials across
         // builds in REPL or Server mode.
         factory { AWSCredentialsManager(get<Context>().profileDir, get<AwsCredentialsProvider>()) }
-
-        // The account compactor: clients for the account bucket's region and every enabled region.
-        single<RegionalClients> { DefaultRegionalClients(get()) }
 
         // Role policy set for the EC2 instance role
         single { InstanceRolePolicies(get()) }

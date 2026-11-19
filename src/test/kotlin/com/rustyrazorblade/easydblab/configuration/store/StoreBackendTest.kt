@@ -10,7 +10,6 @@ class StoreBackendTest {
     private val state =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             s3Bucket = "easy-db-lab-x",
             initConfig = InitConfig(region = "us-west-2"),
         )

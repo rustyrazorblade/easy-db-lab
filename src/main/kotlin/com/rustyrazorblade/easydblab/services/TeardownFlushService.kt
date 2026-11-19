@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.reason
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.util.concurrent.Callable
@@ -55,6 +57,9 @@ enum class FlushStep(
     ;
 
     companion object {
+        /** The steps that write the local state file; they never touch the cluster. */
+        val RECORD_STEPS: Set<FlushStep> = setOf(RECORD_LOGS, RECORD_METRICS)
+
         /** The step that records [signal] in the cluster state once its flush succeeded. */
         fun recordOf(signal: TailSignal): FlushStep =
             when (signal) {
@@ -80,6 +85,9 @@ enum class BackendState(
 
     /** Not on the cluster when the save ran (an add-on never deployed); the save did not touch it. */
     ABSENT("not deployed"),
+
+    /** The step never reached the cluster, so the save observed nothing about this workload. */
+    UNREACHED("not reached (the step could not reach the cluster, so this workload's state is unknown)"),
 }
 
 /**
@@ -105,18 +113,45 @@ class FlushProgress(
     /** Each owned workload's state, or nothing when this step owns no workload. */
     val backends: Map<String, BackendState> get() = owns.associateWith { states.getValue(it) }
 
+    @Volatile
+    private var answered = false
+
     /** Starts [step]. */
     fun begin(step: FlushStep) {
         this.step = step
     }
 
-    /** Records that [workload], one this step owns, is now in [state]. */
+    /**
+     * Records that [workload], one this step owns, is now in [state]. Marked before the call,
+     * because a call that times out may still have changed the workload.
+     */
     fun mark(
         workload: String,
         state: BackendState,
     ) {
         require(workload in owns) { "this step owns ${owns.ifEmpty { setOf("no workload") }}, not $workload" }
         states[workload] = state
+    }
+
+    /**
+     * Records that the cluster answered the step's first call, whatever the answer. From then on a
+     * failure of a later call (a poll that follows the request) proves nothing about what the first
+     * call did, so [neverReached] keeps the mark.
+     */
+    fun answered() {
+        answered = true
+    }
+
+    /**
+     * Takes back the marks of the failing step: its first call never reached the cluster, so the
+     * save observed nothing about its workloads. A workload the step found [BackendState.ABSENT]
+     * keeps that mark, since only an answer from the cluster can say so. Once the cluster has
+     * answered ([answered]) every mark stays, because the change may have happened before a later
+     * call failed.
+     */
+    fun neverReached() {
+        if (answered) return
+        owns.filter { states[it] != BackendState.ABSENT }.forEach { states[it] = BackendState.UNREACHED }
     }
 }
 
@@ -147,12 +182,14 @@ sealed interface SignalReport {
  *
  * @property step the step that failed or timed out.
  * @property backends the state of the workload the step owns, when it stopped.
+ * @property unreached true when the failure proves the step never reached the cluster ([ClusterReach]).
  */
 class FlushStepFailed(
     val step: FlushStep,
     val backends: Map<String, BackendState>,
     cause: Throwable,
-) : RuntimeException("${step.description} failed: ${cause.message ?: cause}", cause) {
+    val unreached: Boolean = false,
+) : RuntimeException("${step.description} failed: ${cause.reason()}", cause) {
     /** The signal that is not saved. */
     val signal: TailSignal get() = step.signal
 }
@@ -326,7 +363,7 @@ class DefaultTeardownFlushService private constructor(
                 SaveTask(TailSignal.ANNOTATIONS, FlushProgress(FlushStep.ANNOTATIONS_BACKUP)) {
                     val backup =
                         annotationBackupService.backup(clusterState).getOrElse { failure ->
-                            throw IllegalStateException(failure.message ?: failure.toString(), failure)
+                            throw IllegalStateException(failure.messageOrString(), failure)
                         }
                     SignalReport.Annotations(backup.s3Path.getKey())
                 }
@@ -349,7 +386,7 @@ class DefaultTeardownFlushService private constructor(
         val mirrored =
             annotationMirror.syncAll().getOrElse { failure ->
                 throw IllegalStateException(
-                    "${failure.message ?: failure}; the Loki flush was not run, and Loki keeps running",
+                    "${failure.messageOrString()}; the Loki flush was not run, and Loki keeps running",
                     failure,
                 )
             }
@@ -364,6 +401,7 @@ class DefaultTeardownFlushService private constructor(
             timeouts.sendersStop,
             onAbsent = { progress.mark(it, BackendState.ABSENT) },
             onDeleting = { progress.mark(it, BackendState.DELETED) },
+            onDeleteAccepted = progress::answered,
         )
         eventBus.emit(Event.Teardown.TelemetrySendersStopped)
     }
@@ -424,7 +462,11 @@ class DefaultTeardownFlushService private constructor(
         } catch (failure: ExecutionException) {
             val cause = failure.cause ?: failure
             if (cause is Error) throw cause
-            Result.failure(FlushStepFailed(progress.step, progress.backends, cause))
+            // A record step writes the local state file, never the cluster: a missing file there is not
+            // a cluster that could not be reached.
+            val unreached = progress.step !in FlushStep.RECORD_STEPS && ClusterReach.neverReached(cause)
+            if (unreached) progress.neverReached()
+            Result.failure(FlushStepFailed(progress.step, progress.backends, cause, unreached))
         }
     }
 }

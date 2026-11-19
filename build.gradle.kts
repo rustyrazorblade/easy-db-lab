@@ -8,7 +8,6 @@ buildscript {
 }
 
 plugins {
-    java
     idea
     application
     alias(libs.plugins.kotlin.jvm)
@@ -38,6 +37,15 @@ val copyOtelAgent =
 dependencies {
     otelAgentConfig("io.opentelemetry.javaagent:opentelemetry-javaagent:${libs.versions.opentelemetry.agent.get()}")
 }
+
+// The account compactor's lease agent, a shadow jar built by `:compactor-lease`. It ships next to
+// the OTel agent in the Jib image (`/agents`); in the distribution it is the only file in
+// `agents/`. `CompactorAgentInstaller` uploads it to each cluster's control node.
+val copyCompactorLeaseAgent =
+    tasks.register<Copy>("copyCompactorLeaseAgent") {
+        from(project(":compactor-lease").tasks.named("shadowJar"))
+        into(layout.buildDirectory.dir("compactor-lease-agent"))
+    }
 
 group = "com.rustyrazorblade"
 
@@ -108,7 +116,7 @@ tasks.named<CreateStartScripts>("startScripts") {
         // both the apphome system property and the OTel java agent path are injected here.
         val agentOpts =
             "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
-                "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+                "-javaagent:\$APP_HOME/lib/opentelemetry-javaagent.jar\""
 
         // The agent's exporters default to OTLP on localhost:4318. With no collector there, every
         // export fails and the agent prints a stack trace to stderr on every run — the normal case
@@ -182,9 +190,6 @@ dependencies {
     // Logging
     implementation(libs.bundles.logging)
 
-    // Kotlin
-    implementation(libs.kotlin.stdlib)
-
     // CLI and UI
     implementation(libs.picocli)
     implementation(libs.picocli.shell.jline3)
@@ -209,6 +214,7 @@ dependencies {
 
     // Project dependencies
     implementation(project(":core"))
+    implementation(project(":compactor-lease"))
 
     // Jackson
     implementation(libs.bundles.jackson)
@@ -254,6 +260,8 @@ dependencies {
     testImplementation(libs.bundles.testing)
     testImplementation(libs.bundles.koin.test)
     testImplementation(libs.kotlinx.coroutines.test)
+    // The conditional-write contract and its in-memory adapter, shared by both tiers.
+    testImplementation(testFixtures(project(":compactor-lease")))
 
     // Integration-tier-only dependencies. Deliberately scoped to `integrationTest` and NOT
     // to `testImplementation` so that a container / mock-server test can no longer COMPILE
@@ -314,6 +322,33 @@ tasks.named<ProcessResources>("processResources") {
 kotlin.target.compilations.named("integrationTest") {
     associateWith(kotlin.target.compilations.getByName("main"))
     associateWith(kotlin.target.compilations.getByName("test"))
+}
+
+// Every Kotlin subproject builds with any JDK >= 21 but emits Java 21 bytecode, enforces the
+// JDK-21 API surface with `release`, and treats warnings as errors, as the root module does above.
+// detekt 1.23.8 cannot run under a JDK newer than 22 (see the gate at the end of this file), so a
+// subproject's detekt tasks are disabled there too; CI runs `check` on JDK 21.
+subprojects {
+    plugins.withId("org.jetbrains.kotlin.jvm") {
+        extensions.configure<JavaPluginExtension> {
+            sourceCompatibility = JavaVersion.VERSION_21
+            targetCompatibility = JavaVersion.VERSION_21
+        }
+        tasks.withType<JavaCompile>().configureEach {
+            options.release.set(21)
+        }
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
+            compilerOptions {
+                jvmTarget.set(JvmTarget.JVM_21)
+                allWarningsAsErrors.set(true)
+            }
+        }
+        if (JavaVersion.current() > JavaVersion.VERSION_22) {
+            tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+                enabled = false
+            }
+        }
+    }
 }
 
 // Apply consistent test logging to every test task in every subproject.
@@ -417,6 +452,14 @@ tasks.named<Test>("test") {
     )
 }
 
+// The account compactor's integration test runs the real lease agent jar in containers.
+tasks.named<Test>("integrationTest") {
+    dependsOn(copyCompactorLeaseAgent)
+    val leaseJar = layout.buildDirectory.file("compactor-lease-agent/compactor-lease.jar")
+    inputs.file(leaseJar).withPropertyName("compactorLeaseJar").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("easydblab.test.compactorLeaseJar", leaseJar.get().asFile.absolutePath)
+}
+
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
@@ -447,9 +490,35 @@ tasks.register("testScripts") {
         "testSysbenchPrepareScript",
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
+        "testPrestoTrinoScripts",
         "testBaseJdkInstall",
         "testBaseChronyPoll",
+        "testBasePrimaryEniNetwork",
+        "testCompactorGate",
+        "testSetupInstanceDataDisk",
+        "testSetupInstanceTuning",
+        "testEdlNodeTuning",
     )
+}
+
+// Unit-test the account compactor's gate: no start while the lease is not valid, SIGTERM then
+// SIGKILL when it lapses, a new start after an exit, SIGTERM passed on. A fake compactor and the
+// real clock; every applet the gate needs is stubbed and PATH points nowhere, as in the distroless
+// images. Runs under every POSIX shell found.
+tasks.register<Exec>("testCompactorGate") {
+    group = "Verification"
+    description = "Unit-test the account compactor's gate script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/compactor-gate.test.sh")
+}
+
+// The same gate cases under the static busybox:1.37.0-musl sh the pod runs the gate with. Needs
+// Docker, so, like the other Docker-backed script tests, it is not part of testScripts.
+tasks.register<Exec>("testCompactorGateBusybox") {
+    group = "Verification"
+    description = "Run the account compactor's gate cases under busybox sh in Docker"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/compactor-gate-busybox.test.sh")
 }
 
 // Unit-test the base AMI's chrony change: every Amazon Time Sync source polls every 8 s, other
@@ -459,6 +528,45 @@ tasks.register<Exec>("testBaseChronyPoll") {
     description = "Unit-test the base AMI chrony poll script"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/base/install/configure_chrony_poll.test.sh")
+}
+
+// Unit-test the base AMI's primary ENI boot script: the 05 networkd file matches the IMDS primary
+// MAC from cloud-init's instance data, and every bad input fails with one line and no 05 file.
+tasks.register<Exec>("testBasePrimaryEniNetwork") {
+    group = "Verification"
+    description = "Unit-test the base AMI primary ENI networkd boot script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/edl-primary-eni-network.test.sh")
+}
+
+// Unit-test setup_instance.sh's data disk handling: an unused non-root disk under any device name
+// is mounted at /mnt/db1, and no disk, a failed mount or a mount on the root volume fails setup.
+// The disk and mount tools are stubbed; yq is the real one.
+tasks.register<Exec>("testSetupInstanceDataDisk") {
+    group = "Verification"
+    description = "Unit-test the data disk handling of setup_instance.sh"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/setup-instance-data-disk.test.sh")
+}
+
+// Unit-test the OS tuning step of setup_instance.sh: every packaged node-tuning file installed
+// where the system reads it, the old files removed, swap kept off, and a failure when the files
+// are missing or a setting did not take. The system tools are stubbed.
+tasks.register<Exec>("testSetupInstanceTuning") {
+    group = "Verification"
+    description = "Unit-test the OS tuning step of setup_instance.sh"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/setup-instance-tuning.test.sh")
+}
+
+// Unit-test edl-node-tuning, under dash as on the nodes: the RPS mask and flow counts, the CPU
+// governor and idle states or a logged skip, and verify naming each setting that does not match.
+// Runs against a fake /sys and /proc.
+tasks.register<Exec>("testEdlNodeTuning") {
+    group = "Verification"
+    description = "Unit-test the edl-node-tuning node script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/edl-node-tuning.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug
@@ -477,6 +585,16 @@ tasks.register<Exec>("testPyroscopeKitLabels") {
     description = "Unit-test the Pyroscope labels of the presto and trino kit start scripts"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/pyroscope-kit-labels.test.sh")
+}
+
+// Unit-test the presto and trino kit scripts, which share their steps through edl-kit-lib.sh: the
+// pinned chart version, the catalogs, the coordinator pod replacement, the hostPort patch, stop and
+// uninstall. helm and kubectl are stubbed.
+tasks.register<Exec>("testPrestoTrinoScripts") {
+    group = "Verification"
+    description = "Unit-test the presto and trino kit scripts"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/presto-trino-scripts.test.sh")
 }
 
 // Unit-test the shared kit shell library (configuration/edl-kit-lib.sh): app-node check, pod
@@ -675,11 +793,11 @@ tasks.register<Exec>("testCassandraInstallScript") {
     commandLine = listOf("bash", "packer/cassandra/bin/install-cassandra-version.test.sh")
 }
 
-// Unit-test the bake-time loop's version resolution (yq-driven flags, lazy skip). Sources
-// install_cassandra.sh without INSTALL_CASSANDRA, so none of its effects run.
+// Unit-test the bake-time db-node setup in install_cassandra.sh, with sudo and the tools stubbed:
+// it runs the one-time setup and installs no Cassandra version.
 tasks.register<Exec>("testCassandraInstallLoop") {
     group = "Verification"
-    description = "Unit-test the bake-time Cassandra version install loop"
+    description = "Unit-test the bake-time db-node setup (no version is installed)"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/cassandra/install/install_cassandra.test.sh")
 }
@@ -701,10 +819,29 @@ tasks.register<Exec>("testCassandraWaitScript") {
     commandLine = listOf("bash", "packer/cassandra/bin/wait-for-up-normal.test.sh")
 }
 
-// Unit-test the agent selection cassandra.in.sh runs on every Cassandra start: deriving X.Y from
-// the release jar name (every shape, including the unparseable one) and mapping it to the AxonOps
-// agent. Also parses cassandra.in.sh under dash, which is the shell Cassandra actually sources it
-// with. Pure functions; no Docker, no network, no node.
+// Unit-test sjk-gc: it picks the JMX connection from the JDK and runs sjk once, so a stream ended
+// with Ctrl-C does not start a second session.
+tasks.register<Exec>("testCassandraSjkGc") {
+    group = "Verification"
+    description = "Unit-test the sjk-gc script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/sjk-gc.test.sh")
+}
+
+// Unit-test install-axonops-agent, which `cassandra start` runs on each node to install the AxonOps
+// agent for its release and JDK: the exit-3 refusal with the shipped list, the no-op when
+// installed, and the download cache keyed by the package version. apt, aws and dpkg-deb are stubbed.
+tasks.register<Exec>("testCassandraAxonOpsAgentScript") {
+    group = "Verification"
+    description = "Unit-test the install-axonops-agent script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/install-axonops-agent.test.sh")
+}
+
+// Unit-test the agent library cassandra.in.sh sources on every Cassandra start: deriving X.Y from
+// the release jar name, mapping a release and JDK to the AxonOps agent, the shipped agent list,
+// and the -javaagent option for the agent the CLI chose. Also parses cassandra.in.sh under dash,
+// which is the shell Cassandra actually sources it with. Pure functions; no Docker, no network.
 tasks.register<Exec>("testCassandraAgentSelection") {
     group = "Verification"
     description = "Unit-test Cassandra version derivation and agent selection"
@@ -731,7 +868,9 @@ tasks.register("testCassandraScripts") {
         "testCassandraInstallLoop",
         "testCassandraUseScript",
         "testCassandraWaitScript",
+        "testCassandraSjkGc",
         "testCassandraAgentSelection",
+        "testCassandraAxonOpsAgentScript",
         "testCacheLib",
     )
 }
@@ -813,8 +952,14 @@ distributions {
             from("packer") {
                 into("packer")
             }
-            // Include the OTel agent in the distribution
+            // The OTel agent goes in lib/ beside the application jars, so an install that keeps
+            // only bin/ and lib/ still has the jar the start script loads with -javaagent. The
+            // start script names each classpath jar, so the agent is not on the classpath.
             from(copyOtelAgent) {
+                into("lib")
+            }
+            // The account compactor's lease agent, which `up` uploads to the control node.
+            from(copyCompactorLeaseAgent) {
                 into("agents")
             }
         }
@@ -826,10 +971,10 @@ tasks.distTar {
     archiveExtension.set("tar.gz")
 }
 
-// The OTel agent reaches install/easy-db-lab/agents through the `main` distribution's contents
-// above (`from(copyOtelAgent) { into("agents") }`), which installDist syncs.
+// The OTel agent reaches install/easy-db-lab/lib through the `main` distribution's contents
+// above (`from(copyOtelAgent) { into("lib") }`), which installDist syncs.
 tasks.named("installDist") {
-    dependsOn(tasks.named("shadowJar"), copyOtelAgent)
+    dependsOn(tasks.named("shadowJar"), copyOtelAgent, copyCompactorLeaseAgent)
 }
 
 tasks.assemble {
@@ -950,6 +1095,8 @@ jib {
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",
                 "-Deasydblab.apphome=/app",
+                // The agents are under /agents in the image, not under the app home.
+                "-Deasydblab.agentsdir=/agents",
                 "-Xmx2048M",
             )
         environment =
@@ -964,6 +1111,10 @@ jib {
                 }
                 path {
                     setFrom("${project.layout.buildDirectory.get()}/otel-agent")
+                    into = "/agents"
+                }
+                path {
+                    setFrom("${project.layout.buildDirectory.get()}/compactor-lease-agent")
                     into = "/agents"
                 }
             }
@@ -985,12 +1136,12 @@ jib {
 
 // Jib doesn't fully support configuration cache yet
 tasks.named("jib") {
-    dependsOn(copyOtelAgent)
+    dependsOn(copyOtelAgent, copyCompactorLeaseAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }
 
 tasks.named("jibDockerBuild") {
-    dependsOn(copyOtelAgent)
+    dependsOn(copyOtelAgent, copyCompactorLeaseAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }
 

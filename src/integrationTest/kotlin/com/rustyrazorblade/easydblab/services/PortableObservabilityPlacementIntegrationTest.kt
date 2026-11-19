@@ -186,7 +186,6 @@ class PortableObservabilityPlacementIntegrationTest {
     private val state =
         ClusterState(
             name = "portable",
-            versions = mutableMapOf(),
             s3Bucket = bucket,
             // A cluster the operator brought: no control node in its state.
             initConfig = InitConfig(region = SharedLocalStack.region(), tenant = TENANT),

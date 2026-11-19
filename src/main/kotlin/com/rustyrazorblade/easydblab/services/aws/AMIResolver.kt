@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 
 /**
@@ -73,7 +72,8 @@ class DefaultAMIResolver(
 
         // Auto-resolve based on architecture
         val arch = architecture.lowercase()
-        val amis = findAmisForArchitecture(arch)
+        // An image still being created (`pending`) cannot launch instances, so it is never chosen.
+        val amis = findAmisForArchitecture(arch).filter { it.isAvailable }
 
         if (amis.isEmpty()) {
             return Result.failure(

@@ -2,15 +2,12 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
-import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmForwardNotReadyException
+import com.rustyrazorblade.easydblab.providers.ssh.isSshNotReady
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
-import org.apache.sshd.common.SshException
 import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
-import software.amazon.awssdk.services.ecs.model.ClientException
-import software.amazon.awssdk.services.ecs.model.InvalidParameterException
 import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.s3.model.S3Exception
@@ -82,24 +79,6 @@ object RetryUtil {
             }.build()
 
     /**
-     * Creates retry configuration for an ECS call that passes a role IAM has just created: with the
-     * attempts and backoff of [createIAMRetryConfig], it retries ECS's `InvalidParameterException`
-     * and `ClientException`, the codes ECS answers while it cannot yet assume a new task role or its
-     * new service-linked role.
-     */
-    fun createEcsRoleRetryConfig(): RetryConfig =
-        RetryConfig
-            .custom<Any>()
-            .maxAttempts(Constants.Retry.MAX_INSTANCE_PROFILE_RETRIES)
-            .intervalFunction { attemptCount ->
-                Constants.Retry.EXPONENTIAL_BACKOFF_BASE_MS * (1L shl (attemptCount - 1))
-            }.retryOnException { throwable ->
-                (throwable is InvalidParameterException || throwable is ClientException).also { retry ->
-                    if (retry) log.warn { "ECS cannot use a new role yet (${throwable.message}) - will retry" }
-                }
-            }.build()
-
-    /**
      * Creates retry configuration for EC2 instance operations.
      *
      * EC2 instance operations require special handling due to AWS eventual consistency:
@@ -137,6 +116,55 @@ object RetryUtil {
                     else -> false
                 }
             }.build()
+
+    /**
+     * Creates retry configuration for the EC2 calls `up` makes per batch of new instances
+     * (RunInstances, CreateTags) at 1,000-node scale.
+     *
+     * - Retries `RequestLimitExceeded`: EC2 throttles a burst of launch and tag calls, and a
+     *   1,000-node `up` makes hundreds. The SDK's own few retries are not enough for that
+     * - Retries `InvalidInstanceID.NotFound`: a tag on an instance RunInstances just returned can
+     *   fail until EC2 sees it
+     * - Retries 5xx server errors
+     * - Nothing else: a capacity, quota or permission error does not clear by waiting
+     *
+     * A retried RunInstances is safe only because its request carries a client token: EC2
+     * answers a repeat with the instances the first call launched instead of launching more.
+     *
+     * Exponential backoff from [backoffBase], capped at [Constants.Scale.THROTTLE_BACKOFF_MAX_MS],
+     * up to [Constants.Scale.THROTTLE_MAX_ATTEMPTS] attempts
+     *
+     * @param backoffBase the first wait; tests pass a short one
+     * @return RetryConfig for EC2 calls that AWS throttles at scale
+     */
+    fun <T> createEc2ThrottleRetryConfig(
+        backoffBase: Duration = Duration.ofMillis(Constants.Scale.THROTTLE_BACKOFF_BASE_MS),
+    ): RetryConfig =
+        RetryConfig
+            .custom<T>()
+            .maxAttempts(Constants.Scale.THROTTLE_MAX_ATTEMPTS)
+            .intervalFunction { attemptCount ->
+                minOf(backoffBase.toMillis() * (1L shl (attemptCount - 1)), Constants.Scale.THROTTLE_BACKOFF_MAX_MS)
+            }.retryOnException { throwable ->
+                val code = (throwable as? AwsServiceException)?.awsErrorDetails()?.errorCode()
+                when {
+                    throwable !is AwsServiceException -> false
+                    // AWS sends this as a 500, but waiting does not create capacity: fail fast.
+                    code == Constants.AWS.EC2_INSUFFICIENT_CAPACITY -> false
+                    code == EC2_THROTTLED || code == Constants.AWS.EC2_INSTANCE_NOT_FOUND -> {
+                        log.warn { "EC2 $code - will retry" }
+                        true
+                    }
+                    throwable.statusCode() >= Constants.HttpStatus.SERVER_ERROR_MIN -> {
+                        log.warn { "AWS service error ${throwable.statusCode()} - will retry" }
+                        true
+                    }
+                    else -> false
+                }
+            }.build()
+
+    /** EC2's error code for a throttled request. */
+    private const val EC2_THROTTLED = "RequestLimitExceeded"
 
     /**
      * Creates retry configuration for standard AWS operations (S3, EC2, EMR, etc.).
@@ -262,19 +290,8 @@ object RetryUtil {
             .custom<Unit>()
             .maxAttempts(Constants.Retry.MAX_SSH_CONNECTION_RETRIES)
             .intervalFunction { _ -> interval.toMillis() }
-            .retryOnException { throwable ->
-                when (throwable) {
-                    is SsmForwardNotReadyException -> {
-                        log.debug { "SSM port forward not ready - will retry: ${throwable.message}" }
-                        true
-                    }
-                    is SshException -> {
-                        log.debug { "SSH not ready - will retry: ${throwable.message}" }
-                        true
-                    }
-                    else -> false
-                }
-            }.build()
+            .retryOnException(::isSshNotReady)
+            .build()
 
     /**
      * Creates retry configuration for polling a check that returns a boolean until it is `true`.
@@ -481,6 +498,8 @@ object RetryUtil {
      * @param interval how long to wait between looks
      * @param done whether a look's result ends the poll
      * @param deadline when set, the instant after which no further look is made
+     * @param isTransient which exceptions are retried; any other
+     *   exception fails the poll at once (default: every exception is transient)
      * @return RetryConfig configured for a fixed-interval poll
      */
     fun <T> createPollUntilRetryConfig(
@@ -488,6 +507,7 @@ object RetryUtil {
         interval: Duration,
         done: (T) -> Boolean,
         deadline: Instant? = null,
+        isTransient: (Throwable) -> Boolean = { true },
     ): RetryConfig {
         fun beforeDeadline() = deadline == null || Instant.now().isBefore(deadline)
         return RetryConfig
@@ -495,7 +515,7 @@ object RetryUtil {
             .maxAttempts(maxAttempts)
             .intervalFunction { _ -> interval.toMillis() }
             .retryOnResult { result -> !done(result) && beforeDeadline() }
-            .retryOnException { it !is InterruptedException && beforeDeadline() }
+            .retryOnException { it !is InterruptedException && isTransient(it) && beforeDeadline() }
             .build()
     }
 }

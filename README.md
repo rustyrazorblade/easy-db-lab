@@ -42,7 +42,7 @@ We use packer to create a single AMI with the following:
 * [async-profiler](https://github.com/async-profiler/async-profiler), [learn about it here](https://rustyrazorblade.com/post/2023/2023-11-07-async-profiler/)
 * [cassandra-easy-stress](https://github.com/apache/cassandra-easy-stress) (Apache project, formerly easy-cass-stress)
 * [AxonOps agent](https://axonops.com/) (free monitoring up to six nodes)
-* K3s distribution of Kubernetes
+* K3s distribution of Kubernetes (embedded etcd datastore)
 
 ## Pre-requisites
 
@@ -62,16 +62,16 @@ This tool provisions and destroys AWS infrastructure! Using a dedicated account 
 
 ### Setting Up Your Profile
 
-You need an IAM identity with the easy-db-lab policies attached. easy-db-lab needs five customer-managed policies: `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR`, `EasyDBLabOpenSearch` and `EasyDBLabCompactor`. Attach all five to one IAM user, group, or role.
+You need an IAM identity with the easy-db-lab policies attached. easy-db-lab needs four customer-managed policies: `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR` and `EasyDBLabOpenSearch`. Attach all four to one IAM user, group, or role.
 
 To see the policies with your account ID populated:
 
 ```shell
 easy-db-lab show-iam-policies
-easy-db-lab show-iam-policies ec2   # Show one policy: ec2, iam, emr, opensearch or compactor
+easy-db-lab show-iam-policies ec2   # Show one policy: ec2, iam, emr or opensearch
 ```
 
-If you have a source checkout, `bin/set-policies` creates the five policies and attaches them for you. If you installed with Homebrew, create them with the AWS CLI. See [Applying the Policies](https://rustyrazorblade.github.io/easy-db-lab/getting-started/setup.html#applying-the-policies) and [Creating a Dedicated IAM User](https://rustyrazorblade.github.io/easy-db-lab/getting-started/setup.html#creating-a-dedicated-iam-user) for the full procedure.
+If you have a source checkout, `bin/set-policies` creates the four policies and attaches them for you. If you installed with Homebrew, create them with the AWS CLI. See [Applying the Policies](https://rustyrazorblade.github.io/easy-db-lab/getting-started/setup.html#applying-the-policies) and [Creating a Dedicated IAM User](https://rustyrazorblade.github.io/easy-db-lab/getting-started/setup.html#creating-a-dedicated-iam-user) for the full procedure.
 
 ### Interactive Setup
 
@@ -300,7 +300,7 @@ To see what versions are supported, you can do the following:
 easy-db-lab list
 ````
 
-You'll see 3.0, 3.11, 4.0, 4.1, and others.
+You'll see the ASF release lines (3.0 through 5.0), the nightly builds (`5.0-HEAD`, `trunk`, ...) and any builds of your own.  None is preinstalled: `use` installs the version on demand.
 
 Choose your cassandra version.
 
@@ -322,7 +322,7 @@ You can override the java version by passing the `-j` flag:
 easy-db-lab use 5.0 -j 17
 ```
 
-Doing this will update each nodes local copy of `/etc/cassandra_versions.yaml`.
+The JDK you pick is recorded in the cluster state and kept for later `use` and `start` runs.
 
 You can switch just one host:
 

@@ -70,7 +70,7 @@ class ServiceAccessModuleTest {
         kubeconfig.writeText(TWO_CONTEXT_KUBECONFIG)
         val stateManager = ClusterStateManager(File(workspace, "state.json"))
         stateManager.save(
-            ClusterState(name = "test", versions = mutableMapOf()).apply {
+            ClusterState(name = "test").apply {
                 exposure = Exposure.PortForward
                 kubeContext = "pinned-context"
             },

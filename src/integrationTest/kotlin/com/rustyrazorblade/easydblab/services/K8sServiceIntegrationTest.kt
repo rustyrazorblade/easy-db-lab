@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -15,6 +16,9 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJar
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.Scratch
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -27,6 +31,7 @@ import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -114,7 +119,6 @@ class K8sServiceIntegrationTest {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 s3Bucket = "test-bucket",
                 initConfig = InitConfig(region = "us-west-2"),
             ),
@@ -131,7 +135,6 @@ class K8sServiceIntegrationTest {
                     ClusterConfigData.of(
                         ClusterState(
                             name = "test",
-                            versions = mutableMapOf(),
                             s3Bucket = "test-bucket",
                             initConfig = InitConfig(region = "us-west-2"),
                             hosts =
@@ -367,6 +370,42 @@ class K8sServiceIntegrationTest {
         applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS))
         assertDeploymentExists("grafana")
         assertServiceExists("grafana")
+    }
+
+    @Test
+    @Order(22)
+    fun `should apply the account compactor resources`() {
+        val jar = "0".repeat(64)
+        // The pod mounts its scratch host paths with type Directory and the agent jar with type File.
+        Scratch.entries.forEach { k3s.execInContainer("mkdir", "-p", it.hostPath) }
+        k3s.execInContainer("sh", "-c", "mkdir -p ${CompactorAgentJar.AGENT_DIR} && touch ${CompactorAgentJar(jar).hostPath}")
+
+        applyAndVerify(CompactorManifestBuilder(templateService).buildAllResources(CompactorAgentJar(jar), templateService.storeBackend()))
+
+        assertConfigMapExists(CompactorManifestBuilder.CONFIGMAP_NAME, CompactorManifestBuilder.GATE_SCRIPT)
+        assertDeploymentExists(CompactorManifestBuilder.NAME)
+    }
+
+    /**
+     * Every image the account compactor's pod runs can be pulled by K3s's containerd, as the control
+     * node pulls it: the JRE the lease agent runs on, the static busybox the gate runs with, and the
+     * Grafana images whose binaries the gate starts. A wrong name or a removed tag fails here, not
+     * as an ImagePullBackOff during `up`.
+     */
+    @Test
+    @Order(22)
+    fun `every account compactor image can be pulled`() {
+        val pod =
+            CompactorManifestBuilder(templateService)
+                .buildDeployment(CompactorAgentJar("0".repeat(64)), S3Backend(bucket = "easy-db-lab-test", region = "us-west-2"))
+                .spec.template.spec
+        val images = (pod.initContainers + pod.containers).map { it.image }.distinct()
+
+        assertThat(images).contains(Constants.Compactor.AGENT_IMAGE, Constants.Compactor.GATE_IMAGE)
+        assertThat(images).allSatisfy { image ->
+            val result = k3s.execInContainer("crictl", "pull", image)
+            assertThat(result.exitCode).describedAs("crictl pull $image: ${result.stderr}").isZero()
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -673,10 +712,7 @@ class K8sServiceIntegrationTest {
                 .withName(nodeName)
                 .get()
                 .metadata.labels
-        val clientProvider = mock<K8sClientProvider>()
-        whenever(clientProvider.createClient()).thenAnswer {
-            KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
-        }
+        val clientProvider = WorkspaceK8s.provider(k3s.kubeConfigYaml)
         val key = "easydblab.test/label-merge"
         try {
             DefaultK8sManifestOperations(clientProvider, EventBus()).labelNode(nodeName, mapOf(key to "yes")).getOrThrow()
@@ -854,6 +890,7 @@ class K8sServiceIntegrationTest {
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
             KubeStateMetricsManifestBuilder().buildAllResources() +
+            CompactorManifestBuilder(templateService).buildAllResources(CompactorAgentJar("0".repeat(64)), templateService.storeBackend()) +
             GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS)
 
     private fun waitForPvcBound(
@@ -1004,14 +1041,9 @@ class K8sServiceIntegrationTest {
     }
 
     private fun createStorageOperations(): DefaultK8sStorageOperations {
-        val mockClientProvider = mock<K8sClientProvider>()
-        whenever(mockClientProvider.createClient()).thenAnswer {
-            KubernetesClientBuilder()
-                .withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml))
-                .build()
-        }
+        val clientProvider = WorkspaceK8s.provider(k3s.kubeConfigYaml)
         return DefaultK8sStorageOperations(
-            mockClientProvider,
+            clientProvider,
             EventBus(),
         )
     }

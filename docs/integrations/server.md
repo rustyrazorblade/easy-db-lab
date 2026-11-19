@@ -37,6 +37,8 @@ API docs:       http://127.0.0.1:53211/swagger
 
 The sections are `cluster`, `nodes`, `networking`, `securityGroup`, `spark`, `opensearch`, `s3`, `kubernetes`, `stressJobs`, `cassandraVersion` and `accessInfo`.  An unknown section answers 400.  Until the first refresh completes, `/status` answers 503.
 
+The `cassandraVersion` section reports `version` (the first db host's answer, in cluster order), `source` (`live` or `cached`), `hosts` (every db host's answer), `mixed` (`true` when the hosts differ) and `unanswered` (the db hosts that gave no answer within the 15 second probe bound). `status` prints `MIXED` and each host's version for a mixed cluster. A probe stuck in an SSH connect is left behind when the bound ends; it does not delay the report.
+
 The `accessInfo.observability` object holds the URLs of Grafana, Mimir, Loki, Tempo and Pyroscope on the control node.
 
 ## Auto-Shutdown on Infrastructure Removal

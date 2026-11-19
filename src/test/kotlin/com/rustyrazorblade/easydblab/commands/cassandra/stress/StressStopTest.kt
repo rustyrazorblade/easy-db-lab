@@ -64,33 +64,11 @@ class StressStopTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute should fail when no control nodes exist`() {
-        // Given - cluster state with no control nodes
-        val emptyState =
-            ClusterState(
-                name = "test-cluster",
-                versions = mutableMapOf(),
-                hosts = mutableMapOf(),
-            )
-
-        whenever(mockClusterStateManager.load()).thenReturn(emptyState)
-
-        val command = StressStop()
-        command.deleteAll = true
-
-        // When/Then
-        assertThatThrownBy { command.execute() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No control nodes found")
-    }
-
-    @Test
     fun `execute should fail when neither job name nor deleteAll is provided`() {
         // Given - cluster state with control node
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -114,7 +92,6 @@ class StressStopTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -142,7 +119,6 @@ class StressStopTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -188,7 +164,6 @@ class StressStopTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -214,7 +189,6 @@ class StressStopTest : BaseKoinTest() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),

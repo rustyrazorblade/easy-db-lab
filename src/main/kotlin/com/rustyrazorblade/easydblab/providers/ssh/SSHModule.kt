@@ -22,7 +22,8 @@ val sshModule =
         // SSH connection provider - singleton because it manages a connection pool
         single<SSHConnectionProvider> { DefaultSSHConnectionProvider(get(), get()) }
 
-        // Deferred: choosing the route loads the profile, which a local workspace does not have.
+        // Deferred: choosing the route loads the profile, which a local workspace does not have, and
+        // which `profile setup` has not written yet when Koin builds this route for the SOCKS proxy.
         single<SshRoute> {
             DeferredSshRoute {
                 val sshPort = get<SSHConfiguration>().sshPort

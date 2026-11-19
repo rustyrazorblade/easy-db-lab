@@ -477,16 +477,52 @@ test_a_push_leaves_the_callers_traps_as_they_were() {
   [ -z "${out}" ] || fail "left a trap set: ${out}"
 }
 
+test_pyroscope_patch_rejects_a_port_that_is_not_a_number() {
+  start_test "pyroscope patch with a bad port"
+  local bad
+  for bad in 8080x "" -1; do
+    : > "${STUB_STATE}/kubectl.calls"
+    run_lib "edl_patch_pyroscope presto-coordinator coordinator presto lab-1 coordinator 8080 \"${bad}\""
+    [ "${rc}" -ne 0 ] || fail "port '${bad}' exited 0"
+    [ "${err}" = "edl_patch_pyroscope: '${bad}' is not a port number" ] || fail "message for '${bad}': ${err}"
+    grep -q "patch" <<< "$(calls)" && fail "patched with port '${bad}': $(calls)"
+  done
+}
+
+test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options() {
+  start_test "pyroscope patch body"
+  run_lib "PYROSCOPE_URL=http://10.0.0.5:4040 TENANT='a\"b' edl_patch_pyroscope trino-coordinator trino-coordinator trino lab-1 coordinator 8080 9090"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  local patch
+  patch="$(sed -n "s/^patch deployment trino-coordinator --namespace default --type=strategic -p=//p" "${STUB_STATE}/kubectl.calls")"
+  [ -n "${patch}" ] || { fail "no patch call: $(calls)"; return; }
+  [ "$(jq -c "[.spec.template.spec.containers[0].ports[] | [.containerPort, .hostPort]]" <<< "${patch}")" = "[[8080,8080],[9090,9090]]" ] ||
+    fail "ports: $(jq -c "..containers[0].ports" <<< "${patch}")"
+  jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-Dpyroscope.tenant.id=a\"b " ||
+    fail "the tenant was not carried through escaping: ${patch}"
+  jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-Dpyroscope.labels=cluster=lab-1,component=coordinator" ||
+    fail "labels: ${patch}"
+}
+
+test_the_cluster_label_fails_when_cluster_config_has_none() {
+  start_test "cluster label"
+  run_lib "edl_cluster_label"
+  [ "${rc}" -ne 0 ] || fail "exited 0 with no cluster_name"
+  case "${err}" in *"cluster-config has no cluster_name"*) ;; *) fail "message: ${err}" ;; esac
+}
+
 test_sourcing_changes_no_option_and_defines_only_edl_names() {
   start_test "sourcing is side-effect free"
   (
     PATH="${WORK}/stubs:${PATH}" "${BASH}" -c '
       set -euo pipefail
-      before_opts="$(set -o)"; before_vars="$(compgen -v | sort)"; before_fns="$( (compgen -A function || true) | sort)"; dir="$PWD"
+      # A signal the parent ignores (nohup, a background Gradle run) shows in trap -p before
+      # sourcing, so the lib is checked against the traps it started with, not against none.
+      before_opts="$(set -o)"; before_traps="$(trap -p)"; before_vars="$(compgen -v | sort)"; before_fns="$( (compgen -A function || true) | sort)"; dir="$PWD"
       . "$1"
       [ "$(set -o)" = "${before_opts}" ] || { echo "set -o changed"; exit 1; }
       [ "$PWD" = "${dir}" ] || { echo "working directory changed"; exit 1; }
-      [ -z "$(trap -p)" ] || { echo "a trap was set"; exit 1; }
+      [ "$(trap -p)" = "${before_traps}" ] || { echo "a trap was set: $(trap -p)"; exit 1; }
       new_vars="$(comm -13 <(echo "${before_vars}") <(compgen -v | sort) | grep -v -e "^EDL_" -e "^before_" -e "^dir$" || true)"
       [ -z "${new_vars}" ] || { echo "non-EDL_ variables: ${new_vars}"; exit 1; }
       new_fns="$(comm -13 <(echo "${before_fns}") <(compgen -A function | sort) | grep -v "^edl_" || true)"
@@ -539,6 +575,9 @@ test_a_push_with_only_a_terminating_core_pod_warns_without_curl
 test_a_push_leaves_the_callers_traps_as_they_were
 test_sourcing_changes_no_option_and_defines_only_edl_names
 test_a_script_run_outside_easy_db_lab_says_so
+test_pyroscope_patch_rejects_a_port_that_is_not_a_number
+test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options
+test_the_cluster_label_fails_when_cluster_config_has_none
 
 echo "kit-lib (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

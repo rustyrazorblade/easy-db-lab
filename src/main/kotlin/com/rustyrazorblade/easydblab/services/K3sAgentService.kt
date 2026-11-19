@@ -5,14 +5,13 @@ import com.charleskorn.kaml.YamlConfiguration
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.io.File
-import java.nio.file.Files
 
 /**
  * Service for managing K3s agent (worker node) lifecycle operations.
@@ -46,6 +45,24 @@ interface K3sAgentService : SystemDServiceManager {
         token: String,
         labels: Map<String, String> = emptyMap(),
     ): Result<Unit>
+
+    /**
+     * Starts the configured agent with [mode], without waiting for systemd: the script queues the
+     * start and returns, and the caller reads the node's registration from the K8s API. A first
+     * join uses [AgentStartMode.START]; a retried join uses [AgentStartMode.RESTART].
+     */
+    fun start(
+        host: Host,
+        mode: AgentStartMode,
+    ): Result<Unit>
+}
+
+/** How `start-k3s-agent.sh` starts the agent unit; [arg] is the script's third argument. */
+enum class AgentStartMode(
+    val arg: String,
+) {
+    START("start"),
+    RESTART("restart"),
 }
 
 /**
@@ -71,7 +88,6 @@ class DefaultK3sAgentService(
 
     private companion object {
         const val CONFIG_FILE_PATH = "/etc/rancher/k3s/config.yaml"
-        const val CONFIG_TEMP_PATH = "/tmp/k3s-config.yaml"
         const val CONFIG_DIR_PATH = "/etc/rancher/k3s"
         const val AGENT_SCRIPT_PATH = "/usr/local/bin/start-k3s-agent.sh"
         const val AGENT_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-agent.sh"
@@ -88,65 +104,31 @@ class DefaultK3sAgentService(
      * The start-k3s-agent.sh script handles:
      * - Checking if k3s-agent.service already exists
      * - Running airgap installation if needed
-     * - Starting the k3s-agent.service
+     * - Queueing the k3s-agent.service start (`systemctl start --no-block`)
      *
      * The agent must be configured via configure() before calling start().
      *
      * @param host The worker node where the K3s agent should run
      * @return Result indicating success or failure
      */
-    override fun start(host: Host): Result<Unit> =
+    override fun start(host: Host): Result<Unit> = start(host, AgentStartMode.START)
+
+    override fun start(
+        host: Host,
+        mode: AgentStartMode,
+    ): Result<Unit> =
         runCatching {
-            log.debug { "Starting K3s agent on ${host.alias}" }
+            log.debug { "Starting K3s agent on ${host.alias} (${mode.arg})" }
 
             // Upload the startup script from classpath resources
-            uploadScript(host, AGENT_SCRIPT_RESOURCE, AGENT_SCRIPT_PATH)
+            remoteOps.installFile(host, AGENT_SCRIPT_RESOURCE, AGENT_SCRIPT_PATH, "0755")
 
-            // Read and parse config to get server URL and token
-            val configResult =
-                remoteOps.executeRemotely(
-                    host,
-                    "cat $CONFIG_FILE_PATH",
-                    output = false,
-                )
-
-            val (serverUrl, token) = parseAgentConfig(configResult.text, host.alias)
-
-            // Call the uploaded script with server URL and token
-            remoteOps.executeRemotely(
-                host,
-                "sudo $AGENT_SCRIPT_PATH '$serverUrl' '$token'",
-                output = true,
-            )
+            // The script reads the server URL and token from the config configure() wrote. They stay
+            // off the command line, which reaches failure messages and events.
+            remoteOps.executeRemotely(host, "sudo $AGENT_SCRIPT_PATH ${mode.arg}", output = true)
 
             log.info { "Successfully started K3s agent on ${host.alias}" }
         }
-
-    /**
-     * Parses K3s agent configuration YAML to extract server URL and token.
-     *
-     * @param configText The YAML configuration file content
-     * @param hostAlias The host alias for error messages
-     * @return Pair of (serverUrl, token)
-     * @throws IllegalStateException if parsing fails or required fields are missing
-     */
-    private fun parseAgentConfig(
-        configText: String,
-        hostAlias: String,
-    ): Pair<String, String> {
-        val config =
-            try {
-                yaml.decodeFromString<K3sAgentConfig>(configText)
-            } catch (e: Exception) {
-                throw IllegalStateException(
-                    "Failed to parse k3s config on $hostAlias. " +
-                        "Ensure configure() was called before start().",
-                    e,
-                )
-            }
-
-        return config.server to config.token
-    }
 
     override fun configure(
         host: Host,
@@ -174,55 +156,14 @@ class DefaultK3sAgentService(
                     output = false,
                 )
 
-                // Upload config file
-                remoteOps.upload(
-                    host,
-                    tempFile.toPath(),
-                    CONFIG_TEMP_PATH,
-                )
-
-                // Move to final location with proper permissions
-                val moveCommand =
-                    "sudo mv $CONFIG_TEMP_PATH $CONFIG_FILE_PATH && " +
-                        "sudo chmod 600 $CONFIG_FILE_PATH"
-                remoteOps.executeRemotely(
-                    host,
-                    moveCommand,
-                    output = false,
-                )
+                // Upload, move into place and restrict to the owner (mode 0600): the file holds the cluster token
+                remoteOps.installFile(host, tempFile.toPath(), CONFIG_FILE_PATH, "0600")
 
                 log.info { "Successfully configured K3s agent on ${host.alias}" }
             } finally {
                 tempFile.delete()
             }
         }
-
-    /**
-     * Uploads a script from classpath resources to a remote host.
-     */
-    private fun uploadScript(
-        host: Host,
-        resourcePath: String,
-        remotePath: String,
-    ) {
-        val scriptContent =
-            this::class.java.getResourceAsStream(resourcePath)
-                ?: error("Script not found: $resourcePath")
-
-        val remoteFilename = remotePath.substringAfterLast("/")
-        val tempFile = Files.createTempFile("k3s-", "-script.sh")
-        try {
-            scriptContent.use { input ->
-                Files.newOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            remoteOps.upload(host, tempFile, remoteFilename)
-            remoteOps.executeRemotely(host, "sudo mv $remoteFilename $remotePath && sudo chmod +x $remotePath", output = false)
-        } finally {
-            Files.deleteIfExists(tempFile)
-        }
-    }
 
     /**
      * Builds K3s agent configuration YAML content with server URL, token, and optional node labels.

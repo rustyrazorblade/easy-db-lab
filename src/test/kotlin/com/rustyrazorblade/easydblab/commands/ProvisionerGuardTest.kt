@@ -30,7 +30,7 @@ class ProvisionerGuardTest {
             )
         }
 
-    private fun stateIn(environment: Environment) = ClusterState(name = "test", versions = mutableMapOf(), environment = environment)
+    private fun stateIn(environment: Environment) = ClusterState(name = "test", environment = environment)
 
     @Test
     fun `EC2 plus K3s has a provisioner, so the command goes ahead and nothing is reported`() {

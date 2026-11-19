@@ -230,7 +230,8 @@ interface K8sService :
     K8sJobOperations,
     K8sNamespaceOperations,
     K8sStorageOperations,
-    K8sPodOperations
+    K8sPodOperations,
+    K8sReadOperations
 
 /**
  * Default implementation of K8sService that delegates to focused operation classes.
@@ -262,4 +263,5 @@ class DefaultK8sService(
         clientProvider,
         eventBus,
     ),
-    K8sPodOperations by DefaultK8sPodOperations(clientProvider)
+    K8sPodOperations by DefaultK8sPodOperations(clientProvider),
+    K8sReadOperations by DefaultK8sReadOperations(clientProvider)

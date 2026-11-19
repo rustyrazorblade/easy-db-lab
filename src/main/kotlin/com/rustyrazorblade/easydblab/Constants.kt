@@ -117,6 +117,187 @@ object Constants {
     /** The workspace script `init` extracts and `setup-instances` uploads to every node. */
     const val SETUP_INSTANCE_SCRIPT = "setup_instance.sh"
 
+    /**
+     * Limits for clusters of 1,000+ nodes: how much per-node work runs at once, how EC2 calls are
+     * batched so no request exceeds what the API accepts, and how long the waits that grow with
+     * node count may take.
+     */
+    object Scale {
+        /**
+         * The most hosts a parallel per-host operation works on at once, and the most SSH sessions
+         * the per-node bring-up pipelines hold together. One thread per host at 1,000 nodes
+         * is 1,000 SSH sessions from the operator's machine.
+         */
+        const val HOST_CONCURRENCY = 50
+
+        /**
+         * How many hosts, nodes or instances a scale failure names before it counts the rest
+         * ("a, b, and 5 more"), so a 1,000-node failure stays readable.
+         */
+        const val MAX_NAMED_IN_ERROR = 20
+
+        /** The most instance IDs `DescribeInstanceStatus` accepts in one request. */
+        const val DESCRIBE_INSTANCE_STATUS_BATCH = 100
+
+        /** The most instance IDs one `DescribeInstances` request names. */
+        const val DESCRIBE_INSTANCES_BATCH = 100
+
+        /** The most instances one `RunInstances` call asks for; larger groups are split into chunks. */
+        const val RUN_INSTANCES_CHUNK = 100
+
+        /** Attempts for an EC2 call that AWS throttles (`RequestLimitExceeded`). */
+        const val THROTTLE_MAX_ATTEMPTS = 8
+
+        /** The first backoff after a throttled EC2 call; it doubles each attempt. */
+        const val THROTTLE_BACKOFF_BASE_MS = 1000L
+
+        /** The longest single backoff after a throttled EC2 call. */
+        const val THROTTLE_BACKOFF_MAX_MS = 30_000L
+
+        /** How long `up` waits for SSH on every node, however many there are. */
+        const val SSH_READY_TIMEOUT_SECONDS = 600L
+
+        /** Extra observability rollout wait per cluster node; DaemonSets roll one pod per node. */
+        const val ROLLOUT_PER_NODE_SECONDS = 2L
+
+        /**
+         * Launch tag: the ordinal of the instance with launch index 0 in its RunInstances call.
+         * With [ORDINAL_STRIDE_TAG] it names an instance whose `Name` tag never landed.
+         */
+        const val FIRST_ORDINAL_TAG = "easydblab/first-ordinal"
+
+        /** Launch tag: how far apart the ordinals of one RunInstances call's instances are. */
+        const val ORDINAL_STRIDE_TAG = "easydblab/ordinal-stride"
+
+        /**
+         * The most nodes in their join step at once: from the agent configuration until the Node
+         * registers. The registration burst (Node, lease, node-password secret, CiliumNode) is
+         * what saturated the datastore at 79 nodes (#1134); 16 joins 1,000 nodes in about 16 minutes.
+         */
+        const val JOIN_CONCURRENCY = 16
+
+        /** Replacements one node may take, so one alias uses at most 3 instances (owner decision). */
+        const val MAX_NODE_REPLACEMENTS = 2
+
+        /** The cluster-wide replacement limit is at least this, however small the cluster. */
+        const val MIN_CLUSTER_REPLACEMENTS = 3
+
+        /**
+         * The share of the nodes the cluster may replace, rounded up, when that is above
+         * [MIN_CLUSTER_REPLACEMENTS]. It stops a fault every node has from replacing the whole cluster.
+         */
+        const val CLUSTER_REPLACEMENT_FRACTION = 0.05
+
+        /** The pause between two attempts of one bring-up step. */
+        const val STEP_RETRY_INTERVAL_SECONDS = 10L
+
+        /**
+         * How long a timed-out step attempt has to stop after its interrupt. The next attempt
+         * starts only once it has, so two attempts never run together on one instance; one that
+         * does not stop fails the step, and the node is replaced.
+         */
+        const val ATTEMPT_STOP_GRACE_SECONDS = 30L
+
+        /** How long removing a stale Node and its node password waits for each to be gone. */
+        const val NODE_CLEANUP_DELETE_WAIT_SECONDS = 60L
+
+        /** How long the control-plane gate waits for the API server, the control node and Cilium. */
+        const val GATE_TIMEOUT_SECONDS = 600L
+
+        /** How often the control-plane gate reads its conditions. */
+        const val GATE_POLL_INTERVAL_SECONDS = 5L
+
+        /** One attempt of a node's setup step; `setup_instance.sh` installs packages and formats disks. */
+        const val NODE_SETUP_TIMEOUT_SECONDS = 900L
+
+        /** One attempt of a node's join step, from the agent configuration until its Node registers. */
+        const val NODE_REGISTRATION_TIMEOUT_SECONDS = 300L
+
+        /** How long a launched instance has to run with a public IP. */
+        const val INSTANCE_RUNNING_TIMEOUT_SECONDS = 600L
+
+        /** How long a running instance has to pass the provider's own health checks. */
+        const val INSTANCE_STATUS_TIMEOUT_SECONDS = 600L
+
+        /** How often a node's SSH readiness is probed while it boots. */
+        const val SSH_PROBE_INTERVAL_SECONDS = 5L
+
+        /** Lines of the K3s agent log a failed join's reason carries. */
+        const val JOIN_LOG_LINES = 20
+
+        /** One attempt of a node's image check. */
+        const val IMAGE_CHECK_TIMEOUT_SECONDS = 120L
+
+        /** Attempts of a node's image check that could not run, before the node is replaced. */
+        const val IMAGE_CHECK_ATTEMPTS = 2
+
+        /** One attempt of a control node step: the tunnel, the registry certificate, the K3s server, the CNI. */
+        const val CONTROL_STEP_TIMEOUT_SECONDS = 900L
+
+        /** Attempts of a control node step; the control node is never replaced. */
+        const val CONTROL_STEP_ATTEMPTS = 2
+
+        /** How long a registered node has to become Ready: its Cilium agent and image pulls. */
+        const val NODE_READY_TIMEOUT_SECONDS = 600L
+
+        /** How long a replacement waits for EC2 to report the old instance out of pending and running. */
+        const val REPLACEMENT_TERMINATE_TIMEOUT_SECONDS = 600L
+
+        /** One attempt of a node's registry TLS step. */
+        const val REGISTRY_TLS_TIMEOUT_SECONDS = 120L
+
+        /** How often the control-plane health monitor samples the API server. */
+        const val HEALTH_SAMPLE_INTERVAL_SECONDS = 5L
+
+        /**
+         * A minimal `get nodes` slower than this marks the control plane unhealthy. The SOCKS tunnel
+         * or Tailscale adds tens of milliseconds, so the limit sits well above that.
+         */
+        const val HEALTH_LATENCY_LIMIT_MS = 2000L
+
+        /** More new APF rejections than this in one sample marks the control plane unhealthy. */
+        const val HEALTH_REJECTION_LIMIT = 25L
+
+        /** Healthy samples in a row that end an unhealthy period, so one good sample is not trusted. */
+        const val HEALTH_RECOVERY_SAMPLES = 3
+
+        /** An unhealthy control plane for this long fails `up`; `up` does not restart K3s itself. */
+        const val HEALTH_UNHEALTHY_TIMEOUT_SECONDS = 900L
+
+        /** How often `up` prints where every node is, so a long bring-up is never silent. */
+        const val PROGRESS_INTERVAL_SECONDS = 15L
+    }
+
+    /**
+     * The quotas and estimates `up` checks before it launches anything
+     * (`services/aws/LaunchCapacityPreflight`).
+     */
+    object Capacity {
+        /** Service Quotas service code for EC2. */
+        const val EC2_SERVICE_CODE = "ec2"
+
+        /** Service Quotas service code for VPC. */
+        const val VPC_SERVICE_CODE = "vpc"
+
+        /** "Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances", in vCPUs. */
+        const val STANDARD_VCPU_QUOTA_CODE = "L-1216C47A"
+
+        /** "Network interfaces per Region". */
+        const val NETWORK_INTERFACE_QUOTA_CODE = "L-DF5E4CA3"
+
+        /** Addresses AWS reserves in every subnet: the first four and the last. */
+        const val AWS_RESERVED_SUBNET_ADDRESSES = 5
+
+        /**
+         * The pod addresses one node is expected to take under Cilium's ENI IPAM, which gives pods
+         * VPC addresses from the node's subnet. Cilium keeps 8 spare addresses allocated per node
+         * (its `pre-allocate` default), and each node runs about 8 DaemonSet and system pods
+         * (Cilium, the collectors, Beyla, Alloy, ebpf_exporter, Fluent Bit, kube-proxy); a kit's
+         * pods come on top. Flannel pods take no VPC address.
+         */
+        const val POD_ADDRESSES_PER_NODE = 16
+    }
+
     // Exit codes
     object ExitCodes {
         const val ERROR = 1
@@ -147,8 +328,17 @@ object Constants {
         /** EC2 port value meaning "all ICMP types/codes" when used as both fromPort and toPort. */
         const val ALL_ICMP_TYPES = -1
 
-        /** The service that answers with the caller's public IPv4 address as plain text. */
-        const val EXTERNAL_IP_URL = "https://api.ipify.org/"
+        /**
+         * The first service asked for the caller's public IPv4 address; it answers in plain text
+         * with a trailing newline.
+         */
+        const val EXTERNAL_IP_URL = "https://checkip.amazonaws.com/"
+
+        /**
+         * The service asked when [EXTERNAL_IP_URL] fails or answers with something that is not an
+         * IPv4 address.
+         */
+        const val EXTERNAL_IP_FALLBACK_URL = "https://api.ipify.org/"
 
         /** How long public IP detection waits to connect before it fails. */
         const val EXTERNAL_IP_CONNECT_TIMEOUT_MS = 5000
@@ -172,6 +362,7 @@ object Constants {
 
         /** What Pod Security admission and Pod validation reject a Pod with. */
         const val UNPROCESSABLE_ENTITY = 422
+        const val TOO_MANY_REQUESTS = 429
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599
         const val CLIENT_ERROR_THRESHOLD = 500 // Errors >= 500 are server errors
@@ -184,8 +375,6 @@ object Constants {
 
     // Packer configuration
     object Packer {
-        const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
-
         // Packer's communicator interface for reaching the builder over SSM Session Manager
         const val SESSION_MANAGER_INTERFACE = "session_manager"
 
@@ -289,6 +478,10 @@ object Constants {
             const val SDK_EXCEPTION_PACKAGE = "software.amazon.awssdk.core.exception."
         }
 
+        // EC2 error code for a launch AWS has no capacity for. AWS answers it with HTTP 500, so
+        // the retry policy must name it: it is a shortage, not a transient server error.
+        const val EC2_INSUFFICIENT_CAPACITY = "InsufficientInstanceCapacity"
+
         // IAM Role Names
         object Roles {
             const val EC2_INSTANCE_ROLE = "EasyDBLabEC2Role"
@@ -304,47 +497,43 @@ object Constants {
     }
 
     /**
-     * The account compactor: one ECS Fargate service per AWS account, in the account bucket's
-     * region, that compacts the shared observability store.
+     * The account compactor: an `account-compactor` pod on every cluster's control node that
+     * compacts the shared observability store only while it holds the store lease.
      */
     object Compactor {
-        const val ECS_CLUSTER = "easy-db-lab"
-        const val SERVICE = "easy-db-lab-compactor"
-        const val TASK_FAMILY = "easy-db-lab-compactor"
-        const val LOG_GROUP = "/easy-db-lab/compactor"
-        const val TASK_ROLE = "EasyDBLabCompactorTaskRole"
-        const val EXECUTION_ROLE = "EasyDBLabCompactorExecutionRole"
+        /**
+         * The static busybox the init container copies into the pod, to run the gate in the
+         * distroless compactor images. It must be statically linked: musl, not the glibc build.
+         */
+        const val GATE_IMAGE = "busybox:1.37.0-musl"
 
-        /** The ECS task-definition tag holding the hash of the configuration it was built from. */
-        const val CONFIG_HASH_TAG = "easydblab.com/config-hash"
+        /** The stock multi-arch JRE image the lease container runs the agent jar with. */
+        const val AGENT_IMAGE = "eclipse-temurin:21-jre"
 
-        /** Fargate task size: 2 vCPU, 8 GiB, 100 GiB of ephemeral storage. */
-        const val CPU_UNITS = "2048"
-        const val MEMORY_MIB = "8192"
-        const val EPHEMERAL_STORAGE_GIB = 100
-        const val STOP_TIMEOUT_SECONDS = 120
+        /** The compactor's directory on the control node's data mount: its scratch and the agent jar. */
+        const val HOST_ROOT = "/mnt/db1/compactor"
 
-        /** How many of the newest log lines `observability compactor status` prints. */
-        const val STATUS_LOG_LINES = 20
+        /** The agent jar in the distribution's `agents` directory, and in the image's `/agents`. */
+        const val AGENT_JAR = "compactor-lease.jar"
 
-        /** How many of the service's newest events `observability compactor status` prints. */
-        const val STATUS_SERVICE_EVENTS = 5
+        /**
+         * The store lease's timing. A holder stops its compactors at most
+         * `RENEW_DEADLINE + GATE_POLL + GATE_GRACE` (81 s) after the send of its last successful
+         * renewal, and a standby takes over only after seeing one version for `TTL` (120 s) on its
+         * own clock, so the two never compact at once. `LeaseTiming` refuses values that break this.
+         * They reach the agent and the gate as environment variables.
+         */
+        object Lease {
+            const val TTL_SECONDS = 120L
+            const val RENEW_INTERVAL_SECONDS = 15L
+            const val RENEW_DEADLINE_SECONDS = 60L
+            const val STANDBY_POLL_SECONDS = 15L
+            const val GATE_POLL_SECONDS = 1L
+            const val GATE_GRACE_SECONDS = 20L
 
-        /** Availability zone IDs where Fargate does not run; the compactor's subnet is never placed in one. */
-        val NON_FARGATE_ZONE_IDS = setOf("use1-az3")
-
-        /** The busybox image of the init container that writes the configuration files. */
-        const val CONFIG_IMAGE = "busybox:1.37.0"
-
-        /** The operator's IAM policy that grants the compactor's ECS, IAM and Logs actions. */
-        const val OPERATOR_POLICY = "EasyDBLabCompactor"
-
-        /** The error code ECS answers with when the caller's IAM does not allow the action. */
-        const val ECS_ACCESS_DENIED = "AccessDeniedException"
-
-        /** What the idle Tempo backend worker logs on every poll that finds no job: its normal state. */
-        const val TEMPO_WORKER_IDLE_LOG =
-            "msg=\"error calling scheduler\" err=\"rpc error: code = NotFound desc = no jobs found\""
+            /** The pod's termination grace: longer than the gate poll plus the gate grace. */
+            const val TERMINATION_GRACE_SECONDS = 60L
+        }
     }
 
     // S3 configuration
@@ -420,6 +609,188 @@ object Constants {
         const val BYTES_PER_MIB = 1024L * 1024
     }
 
+    /**
+     * The OS tuning every node runs with (node-os-tuning): files packaged under [RESOURCE_DIR],
+     * uploaded by node setup into [REMOTE_DIR] beside `setup_instance.sh`, which installs them.
+     */
+    object NodeTuning {
+        /** The classpath directory that holds the tuning files. */
+        const val RESOURCE_DIR = "/com/rustyrazorblade/easydblab/commands/node-tuning"
+
+        /** Where node setup uploads them, relative to the login directory `setup_instance.sh` runs from. */
+        const val REMOTE_DIR = "node-tuning"
+
+        /** The sysctl file, which also holds the reserved ports. */
+        const val SYSCTL_FILE = "60-easydblab.conf"
+
+        /** Every file in [RESOURCE_DIR]; `setup_instance.sh` installs each one. */
+        val FILES =
+            listOf(
+                SYSCTL_FILE,
+                "90-easydblab.rules",
+                "easydblab-limits.conf",
+                "edl-node-tuning",
+                "edl-node-tuning.service",
+                "limits.conf",
+                "system.conf",
+            )
+
+        /** The first port of the Kubernetes NodePort range. */
+        const val NODE_PORT_MIN = 30000
+
+        /** The last port of the Kubernetes NodePort range. */
+        const val NODE_PORT_MAX = 32767
+
+        /** The variable node setup passes `setup_instance.sh` the node's instance type in. */
+        const val INSTANCE_TYPE_VARIABLE = "EDL_INSTANCE_TYPE"
+
+        // Host listeners no manifest builder names, read from `ss -tlnp` and `ss -ulnp` on a
+        // running cluster's nodes. Each one is in the packaged ip_local_reserved_ports.
+
+        /** The K3s API server. */
+        const val K3S_API_PORT = 6443
+
+        /** The K3s supervisor's API proxy. */
+        const val K3S_SUPERVISOR_PORT = 6444
+
+        /** Embedded etcd's client port. */
+        const val ETCD_CLIENT_PORT = 2379
+
+        /** Embedded etcd's peer port. */
+        const val ETCD_PEER_PORT = 2380
+
+        /** Embedded etcd's loopback client port. */
+        const val ETCD_LOOPBACK_CLIENT_PORT = 2382
+
+        /** containerd's CRI stream server. */
+        const val CONTAINERD_STREAM_PORT = 10010
+
+        /** Pyroscope's metastore Raft listener, its built-in default, which its config file does not name. */
+        const val PYROSCOPE_RAFT_PORT = 9099
+
+        /** kubelet health. */
+        const val KUBELET_HEALTH_PORT = 10248
+
+        /** kube-proxy metrics. */
+        const val KUBE_PROXY_METRICS_PORT = 10249
+
+        /** The kubelet API. */
+        const val KUBELET_API_PORT = 10250
+
+        /** The legacy scheduler port. */
+        const val SCHEDULER_LEGACY_PORT = 10251
+
+        /** The legacy controller manager port. */
+        const val CONTROLLER_MANAGER_LEGACY_PORT = 10252
+
+        /** The kubelet read-only API. */
+        const val KUBELET_READ_ONLY_PORT = 10255
+
+        /** kube-proxy health. */
+        const val KUBE_PROXY_HEALTH_PORT = 10256
+
+        /** The controller manager. */
+        const val CONTROLLER_MANAGER_PORT = 10257
+
+        /** The scheduler. */
+        const val SCHEDULER_PORT = 10259
+
+        /** Cilium's health endpoint. */
+        const val CILIUM_HEALTH_PORT = 4240
+
+        /** The Hubble server. */
+        const val HUBBLE_SERVER_PORT = 4244
+
+        /** Hubble relay. */
+        const val HUBBLE_RELAY_PORT = 4245
+
+        /** The Cilium operator's health endpoint. */
+        const val CILIUM_OPERATOR_HEALTH_PORT = 9234
+
+        /** The Cilium agent's health endpoint. */
+        const val CILIUM_AGENT_HEALTH_PORT = 9878
+
+        /** The Cilium agent's local Envoy health endpoint. */
+        const val CILIUM_ENVOY_HEALTH_PORT = 9879
+
+        /** The Cilium agent's pprof endpoint. */
+        const val CILIUM_AGENT_PPROF_PORT = 9890
+
+        /** The Cilium operator's pprof endpoint. */
+        const val CILIUM_OPERATOR_PPROF_PORT = 9891
+
+        /** Cassandra's internode storage port. */
+        const val CASSANDRA_STORAGE_PORT = 7000
+
+        /** Cassandra's TLS internode storage port. */
+        const val CASSANDRA_TLS_STORAGE_PORT = 7001
+
+        /** Cassandra's JMX port. */
+        const val CASSANDRA_JMX_PORT = 7199
+
+        /** Cassandra's native protocol port. */
+        const val CASSANDRA_NATIVE_PORT = 9042
+
+        /** Cassandra's TLS native protocol port. */
+        const val CASSANDRA_TLS_NATIVE_PORT = 9142
+
+        /**
+         * The UDP port flannel's VXLAN backend binds when it creates flannel.1, on every node of a
+         * cluster whose CNI is flannel (`init --cni=flannel`).
+         */
+        const val FLANNEL_VXLAN_PORT = 8472
+
+        /** tailscaled's WireGuard UDP port, on every node that joins the tailnet. */
+        const val TAILSCALE_WIREGUARD_PORT = 41641
+
+        /**
+         * Every host listener no manifest builder names: K3s, its embedded etcd and containerd, the
+         * kubelet and kube-proxy, the Cilium agent and Hubble, Pyroscope's built-in Raft default,
+         * the database on db nodes, the stress metrics endpoint, flannel's VXLAN socket, and
+         * Tailscale. Each is reserved in
+         * [SYSCTL_FILE]; NodeTuningReservedPortsTest checks it.
+         */
+        val HOST_SERVICE_PORTS =
+            setOf(
+                K3S_API_PORT,
+                K3S_SUPERVISOR_PORT,
+                ETCD_CLIENT_PORT,
+                ETCD_PEER_PORT,
+                K3s.ETCD_METRICS_PORT,
+                ETCD_LOOPBACK_CLIENT_PORT,
+                CONTAINERD_STREAM_PORT,
+                PYROSCOPE_RAFT_PORT,
+                KUBELET_HEALTH_PORT,
+                KUBE_PROXY_METRICS_PORT,
+                KUBELET_API_PORT,
+                SCHEDULER_LEGACY_PORT,
+                CONTROLLER_MANAGER_LEGACY_PORT,
+                KUBELET_READ_ONLY_PORT,
+                KUBE_PROXY_HEALTH_PORT,
+                CONTROLLER_MANAGER_PORT,
+                SCHEDULER_PORT,
+                CILIUM_HEALTH_PORT,
+                HUBBLE_SERVER_PORT,
+                HUBBLE_RELAY_PORT,
+                CILIUM_OPERATOR_HEALTH_PORT,
+                CILIUM_AGENT_HEALTH_PORT,
+                CILIUM_ENVOY_HEALTH_PORT,
+                CILIUM_AGENT_PPROF_PORT,
+                CILIUM_OPERATOR_PPROF_PORT,
+                Cilium.AGENT_METRICS_PORT,
+                Cilium.OPERATOR_METRICS_PORT,
+                Cilium.HUBBLE_METRICS_PORT,
+                CASSANDRA_STORAGE_PORT,
+                CASSANDRA_TLS_STORAGE_PORT,
+                CASSANDRA_JMX_PORT,
+                CASSANDRA_NATIVE_PORT,
+                CASSANDRA_TLS_NATIVE_PORT,
+                Stress.PROMETHEUS_PORT,
+                FLANNEL_VXLAN_PORT,
+                TAILSCALE_WIREGUARD_PORT,
+            )
+    }
+
     // Configuration file paths
     object ConfigPaths {
         // Local config files
@@ -435,6 +806,29 @@ object Constants {
         const val LOCAL_KUBECONFIG = "kubeconfig"
         const val NODE_TOKEN_PATH = "/var/lib/rancher/k3s/server/node-token"
         const val DEFAULT_SERVER_URL = "https://127.0.0.1:6443"
+
+        /** The embedded etcd's plain-HTTP metrics port on the control node, and its scrape job name. */
+        const val ETCD_METRICS_PORT = 2381
+        const val ETCD_JOB_NAME = "k3s-etcd"
+
+        /** The node label K3s sets on a node that runs an etcd member. */
+        const val ETCD_NODE_ROLE_LABEL = "node-role.kubernetes.io/etcd"
+
+        /**
+         * The pod range K3s hands node CIDRs out of (`--cluster-cidr`). K3s's default,
+         * 10.42.0.0/16 with a /24 per node, runs out at 256 nodes: under Flannel a node with no
+         * pod CIDR never gets pod networking, and under Cilium ENI IPAM (which ignores node CIDRs)
+         * the node IPAM controller reports `CIDRNotAvailable` for every node past it. A /12 holds
+         * 4,096 /24s. It and [SERVICE_CIDR] are kept out of every VPC block `up` picks or
+         * `init --cidr` accepts, so they never overlap a cluster's 10.X.0.0/16 VPC.
+         */
+        const val CLUSTER_CIDR = "10.224.0.0/12"
+
+        /** The ClusterIP range (`--service-cidr`); cluster DNS takes its tenth address. */
+        const val SERVICE_CIDR = "10.240.0.0/16"
+
+        /** The node CIDR size the controller manager carves out of [CLUSTER_CIDR], one per node. */
+        const val NODE_CIDR_MASK_SIZE = 24
     }
 
     // The helm and kubectl seam (services/ClusterTooling.kt)
@@ -493,6 +887,15 @@ object Constants {
          */
         const val PORT_FORWARD_BIND_ATTEMPTS = 2
 
+        /** The label every workload carries to name itself; its Deployment selector matches on it. */
+        const val APP_NAME_LABEL = "app.kubernetes.io/name"
+
+        /** The node label (and toleration key) that marks the control node. */
+        const val CONTROL_PLANE_LABEL = "node-role.kubernetes.io/control-plane"
+
+        /** The DNS policy a pod on the host network needs to keep resolving cluster service names. */
+        const val HOST_NETWORK_DNS_POLICY = "ClusterFirstWithHostNet"
+
         const val MANIFEST_DIR = "k8s"
 
         /** Prefix of the per-kit local StorageClass, `edl-local-<kit>`, on nodes easy-db-lab owns. */
@@ -540,6 +943,9 @@ object Constants {
         const val TEMPO_NODE_PORT = 31200
         const val TEMPO_OTLP_GRPC_NODE_PORT = 31320
         const val PYROSCOPE_NODE_PORT = 31040
+
+        /** Container waiting reasons that mean the kubelet cannot pull the image; retrying does not fix them. */
+        val IMAGE_PULL_FAILURE_REASONS = setOf("ErrImagePull", "ImagePullBackOff", "InvalidImageName")
 
         /** Tempo's `app.kubernetes.io/name` label; the collector finds the Tempo pod by it. */
         const val TEMPO_APP_LABEL = "tempo"
@@ -607,6 +1013,65 @@ object Constants {
 
         /** Pod-template annotation carrying a hash of the ConfigMaps a workload reads; see ConfigHashAnnotator. */
         const val CONFIG_HASH_ANNOTATION = "easydblab.com/config-hash"
+
+        /** The Node condition the kubelet keeps True while the node can run pods. */
+        const val NODE_READY_CONDITION = "Ready"
+
+        /** The status of a Kubernetes condition that holds. */
+        const val CONDITION_TRUE = "True"
+
+        /** The label the DaemonSet controller puts on each pod: the DaemonSet generation it was made from. */
+        const val POD_TEMPLATE_GENERATION_LABEL = "pod-template-generation"
+
+        /**
+         * The DaemonSet annotation holding the generation of its current pod template; the controller
+         * copies it into [POD_TEMPLATE_GENERATION_LABEL]. Unlike `metadata.generation` it does not move
+         * on a spec change outside the template, such as the update strategy.
+         */
+        const val DAEMONSET_TEMPLATE_GENERATION_ANNOTATION = "deprecated.daemonset.template.generation"
+
+        /**
+         * At most this many nodes are read for each pending DaemonSet on each rollout look, for its pods
+         * that are not Ready, so a fresh rollout on a large cluster does not read every node on every
+         * poll. Each look reads on, by node name, from where the last one stopped. A node is read once per
+         * look however many DaemonSets ask for it.
+         */
+        const val ROLLOUT_NODE_CHECKS_PER_LOOK = 20
+
+        /**
+         * How long a node's Ready condition must have been False or Unknown before a DaemonSet pod on it
+         * blocks a rollout. A node that is still joining, or misses one heartbeat, recovers within it.
+         */
+        const val ROLLOUT_NODE_NOT_READY_GRACE_SECONDS = 60L
+
+        /**
+         * How many restarts a container in CrashLoopBackOff must have before it blocks a rollout. The
+         * kubelet reports CrashLoopBackOff after the first crash, and a pod may crash once or twice while
+         * a dependency (a backend Service, a lease) comes up; three crashes is a loop. Every other
+         * terminal reason, such as an image pull failure, blocks at once.
+         *
+         * `restartCount` counts over the life of the pod, not of one wait. A pod that crashed three
+         * times under an earlier rollout and is still current blocks at its next CrashLoopBackOff, even
+         * if a dependency it needed has since come up. That is deliberate: no per-wait baseline is
+         * kept, because one would stop a pod that is already crash-looping from a previous bad rollout,
+         * the main case, from failing the wait fast.
+         */
+        const val ROLLOUT_CRASH_LOOP_MIN_RESTARTS = 3
+
+        /** The waiting reason the kubelet gives a container it is restarting after crashes. */
+        const val CRASH_LOOP_BACK_OFF = "CrashLoopBackOff"
+
+        /**
+         * The label the DaemonSet controller puts on each pod and on each of its ControllerRevisions:
+         * the hash of the template the pod was made from.
+         */
+        const val CONTROLLER_REVISION_HASH_LABEL = "controller-revision-hash"
+
+        /** At most this many of a workload's unready pods are listed when a rollout wait times out. */
+        const val ROLLOUT_UNREADY_PODS_LISTED_PER_WORKLOAD = 5
+
+        /** The annotation the Deployment controller keeps on a Deployment and its ReplicaSets: the revision. */
+        const val DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
     }
 
     // OpenSearch configuration
@@ -656,6 +1121,9 @@ object Constants {
         const val STOP_WAIT_MAX_POLLS = 150
 
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
+
+        /** A kit name is a directory name under the workspace: letters, digits, `-` and `_`, never leading with a dash. */
+        val NAME_PATTERN = Regex("^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
         /** The `cassandra-pods` kit: the CQL NodePort and the agent-carrying image. The UN wait bound lives in `lib/wait-un.sh`. */
         object CassandraPods {
@@ -734,6 +1202,29 @@ object Constants {
         const val VERSION = "1.19.4"
         const val NAMESPACE = "kube-system"
 
+        /** The operator Deployment the control-plane gate waits on. */
+        const val OPERATOR_DEPLOYMENT = "cilium-operator"
+
+        /**
+         * The CRDs the Cilium agent waits for before it starts, at [VERSION] with the flags
+         * `CiliumService` installs: `agentCRDResourceNames()` in `pkg/k8s/synced/crd.go`. The
+         * control-plane gate lets no agent join until each one is Established. A [VERSION] bump
+         * MUST re-read that function and update this list; a stale entry makes the gate time out
+         * naming it, never let an agent through early.
+         */
+        val REQUIRED_CRDS =
+            listOf(
+                "ciliumidentities.cilium.io",
+                "ciliumpodippools.cilium.io",
+                "ciliumendpoints.cilium.io",
+                "ciliumnodes.cilium.io",
+                "ciliumnetworkpolicies.cilium.io",
+                "ciliumclusterwidenetworkpolicies.cilium.io",
+                "ciliumcidrgroups.cilium.io",
+                "ciliumloadbalancerippools.cilium.io",
+                "ciliuml2announcementpolicies.cilium.io",
+            )
+
         // The agent and the operator both run hostNetwork, so their metrics ports are node ports.
         // The agent is a DaemonSet: every collector scrapes its own node's agent at localhost.
         // The operator runs on exactly one node, so it is discovered through pod SD instead.
@@ -757,13 +1248,20 @@ object Constants {
         const val ANNOTATION_TAG = "cilium"
 
         // The node fixes packer/base/install/configure_cilium_eni_networkd.sh bakes into the base
-        // AMI. A node launched from an older AMI lacks them, and Cilium's runtime-attached ENIs
-        // then take the node off the network. `up` checks for them before installing Cilium.
+        // AMI: the boot unit and script that write the primary ENI's networkd file under /run (it
+        // matches the IMDS primary MAC, so it is never baked), the unmanaged rule for every other ENA
+        // link, the cloud-init no-hotplug setting, and the cloud-init setting that stops the Ec2
+        // datasource from running DHCP on every non-primary NIC at boot. A node launched from an older
+        // AMI lacks them, and its primary ENI or Cilium's runtime-attached ENIs then take the node off
+        // the network.
+        // `up` checks for them before installing Cilium.
         val NODE_FIX_FILES =
             listOf(
-                "/etc/systemd/network/05-cilium-eni-primary.network",
+                "/etc/systemd/system/edl-primary-eni-network.service",
+                "/usr/local/sbin/edl-primary-eni-network",
                 "/etc/systemd/network/06-cilium-eni-unmanaged.network",
                 "/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg",
+                "/etc/cloud/cloud.cfg.d/91-easydblab-ec2-primary-nic-only.cfg",
             )
     }
 
@@ -990,11 +1488,33 @@ object Constants {
         /** UID of the cassandra OS user — must match the cassandra-sidecar container image */
         const val USER_ID = 999L
 
-        /** Python version cqlsh runs under when a version declares none — matches every shipped entry */
+        /** Python version cqlsh runs under when a version declares none */
         const val DEFAULT_PYTHON_VERSION = "3.11.9"
+
+        /** Where Apache releases are downloaded first: the CDN, which carries only current releases. */
+        const val ASF_DLCDN_BASE = "https://dlcdn.apache.org/cassandra"
+
+        /** Every Apache release ever made; its index page is the release list, and the fallback download. */
+        const val ASF_ARCHIVE_BASE = "https://archive.apache.org/dist/cassandra"
+
+        /** The GitHub release of cassandra-builds that holds the nightly branch builds. */
+        const val CASSANDRA_BUILDS_RELEASE_API =
+            "https://api.github.com/repos/rustyrazorblade/cassandra-builds/releases/tags/nightly"
+
+        /** Connect timeout for the public version sources (ASF, GitHub). */
+        const val SOURCE_CONNECT_TIMEOUT_SECONDS = 10L
+
+        /** Read timeout for the public version sources; the ASF index page is about 30 KB. */
+        const val SOURCE_READ_TIMEOUT_SECONDS = 30L
+
+        /** Profile subdirectory that caches the ASF and cassandra-builds lists. */
+        const val SOURCE_CACHE_DIR = "cassandra-sources"
 
         /** Node-side directory easy-db-lab writes its own configuration into. */
         const val NODE_CONFIG_DIR = "/etc/easy-db-lab"
+
+        /** Where a db node holds its installed versions, one directory each, plus the `current` link. */
+        const val INSTALL_DIR = "/usr/local/cassandra"
 
         /**
          * JMX Metric Insight rules the OTel Java agent reads on each Cassandra node.
@@ -1010,6 +1530,13 @@ object Constants {
 
         /** Where [JMX_RULES_FILE] lands on a Cassandra node. */
         const val JMX_RULES_PATH = "$NODE_CONFIG_DIR/$JMX_RULES_FILE"
+
+        /**
+         * How long `status` waits for any db host to report the live Cassandra version over SSH.
+         * A host that does not answer cannot delay the report past this; the report then shows the
+         * cached version.
+         */
+        const val LIVE_VERSION_PROBE_TIMEOUT_SECONDS = 15L
     }
 
     // Cassandra stress testing configuration
@@ -1029,6 +1556,13 @@ object Constants {
         const val ROLE_COMMAND = "stress-command"
         const val DEFAULT_CASSANDRA_PORT = 9042
         const val PROMETHEUS_PORT = 9500
+
+        /**
+         * The width of the stress metrics port window, starting at [PROMETHEUS_PORT]. Each run takes
+         * the next port in it, wrapping, so every run binds a port node tuning reserves. Run N and
+         * run N+100 on one node therefore share a port, and so the same `instance` label in metrics.
+         */
+        const val PROMETHEUS_PORT_COUNT = 100
 
         /**
          * The share of stress requests the OpenTelemetry agent traces. At 100% a stress job sent
@@ -1408,6 +1942,12 @@ object Constants {
 
     // OpenSSH options the generated sshConfig sets for every SSH transport
     object Ssh {
+        /** Name prefix of a file staged in the login directory by `installFile` before it is moved into place. */
+        const val INSTALL_STAGING_PREFIX = "edl-staged-"
+
+        /** The file modes `installFile` accepts: octal digits as `chmod` takes them (`0644`, `755`). */
+        const val FILE_MODE_PATTERN = "[0-7]{3,4}"
+
         /**
          * ssh keepalive interval for every host, direct or over SSM: well inside Session Manager's
          * 20-minute idle timeout, and short enough that a tunnel whose connection died is noticed.
@@ -1567,11 +2107,11 @@ object Constants {
         /** Tag value used to identify easy-db-lab resources */
         const val TAG_VALUE = "1"
 
+        /** Tag key naming the cluster that created a resource, set on every VPC and resource `up` creates */
+        const val CLUSTER_ID_TAG_KEY = "ClusterId"
+
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"
-
-        /** VPC name of the account compactor; tagged [TAG_KEY] but never [BUCKET_TAG_KEY]. */
-        const val COMPACTOR_VPC_NAME = "easy-db-lab-compactor"
 
         /** VPC tag key for the S3 bucket name */
         const val BUCKET_TAG_KEY = "bucket"
@@ -1586,9 +2126,9 @@ object Constants {
         const val SOCKS5_PROXY_STATE_FILE = ".socks5-proxy-state"
 
         /**
-         * Generates a subnet CIDR block for a given index within the VPC.
-         * Uses the pattern 10.0.{index+1}.0/24
+         * The most availability zones a cluster can span.  The VPC is split into this many equal
+         * subnets (VPC prefix + 3), one per zone; see `network/CidrBlock`.
          */
-        fun subnetCidr(index: Int): String = "10.0.${index + 1}.0/24"
+        const val MAX_AVAILABILITY_ZONES = 8
     }
 }

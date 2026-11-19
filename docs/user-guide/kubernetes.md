@@ -128,6 +128,39 @@ spec:
     image: control0:5000/my-app:latest
 ```
 
+## Pulling Images from Amazon ECR
+
+Every node's kubelet can pull private images from the account's Amazon ECR with **no
+`imagePullSecrets`**. The nodes' instance role already carries ECR read permission, and each
+node runs the `ecr-credential-provider` kubelet plugin (baked into the AMI), which hands kubelet
+a fresh token from that role whenever it pulls an image whose registry matches
+`*.dkr.ecr.*.amazonaws.com` (also the `.com.cn` and `ecr-fips` variants). kubelet refreshes the
+token on its own, so long-running and rescheduled pods keep pulling after the 12-hour token
+lifetime.
+
+Reference an ECR image directly — on any node type, in any namespace, including namespaces
+easy-db-lab did not create:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+  - name: my-app
+    image: <account-id>.dkr.ecr.<region>.amazonaws.com/my-repo/my-app:latest
+```
+
+```bash
+# Works with no pull secret, in a brand-new namespace
+kubectl create namespace demo
+kubectl -n demo run my-app --image=<account-id>.dkr.ecr.<region>.amazonaws.com/my-repo/my-app:latest
+```
+
+This also covers `cassandra stress --image <ECR image>` and custom sidecar images: both pull
+straight from ECR without any secret.
+
 ## Node Labels
 
 Nodes are automatically labeled for workload scheduling:
@@ -184,6 +217,25 @@ kubectl port-forward svc/my-service 8080:80
 - K3s server runs on the control node
 - All nodes communicate over the private VPC network
 - External access is via SOCKS5 proxy through the control node
+
+### Datastore
+
+The K3s server keeps cluster state in one-member embedded etcd (not kine/sqlite). It is still a
+single server, not high availability.
+
+- etcd data is on the control node's data disk, at `/mnt/db1/k3s/server/db/etcd`. `up` fails, naming `/mnt/db1`, when the control node has no data disk.
+- The etcd backend quota is 8 GiB, so a large cluster does not hit etcd's `NOSPACE` alarm.
+- K3s takes a scheduled snapshot at 00:00 and 12:00 into `/mnt/db1/k3s/server/db/snapshots` and keeps the five newest, removing older ones. These are K3s's own recovery files for the control plane, not your data: test results, metrics, logs, traces and backups are never stored in etcd or in that directory.
+- The datastore settings are in `/etc/rancher/k3s/config.yaml.d/20-datastore.yaml` on the control node.
+
+To check the datastore from the workspace:
+
+```bash
+kubectl get --raw '/readyz?verbose' | grep etcd     # [+]etcd ok
+kubectl get nodes -l node-role.kubernetes.io/etcd=true
+```
+
+On the control node, `/mnt/db1/k3s/server/db/etcd/member` exists and `/mnt/db1/k3s/server/db/state.db` does not.
 
 ### Storage
 

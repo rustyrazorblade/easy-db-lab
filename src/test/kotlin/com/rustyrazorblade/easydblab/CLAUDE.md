@@ -23,7 +23,7 @@ All tests that need dependency injection should extend `BaseKoinTest`. It provid
 
 | Service | Mock Type |
 |---------|-----------|
-| `AWS` | Real class with mocked clients |
+| `AccountIdentity`, `IamRoles`, `AwsS3BucketService` | Real adapters over mocked STS, IAM and S3 clients |
 | `IamClient`, `S3Client`, `StsClient` | Mockito mocks |
 | `AWSClientFactory`, `AMIValidator` | Mockito mocks |
 | `User` | Test user (region: "us-west-2", email: "test@example.com") |
@@ -122,7 +122,7 @@ val testControlHost = ClusterHost(
     alias = "control0", availabilityZone = "us-west-2a", instanceId = "i-test123",
 )
 val testState = ClusterState(
-    name = "test-cluster", versions = mutableMapOf(),
+    name = "test-cluster",
     hosts = mapOf(ServerType.Control to listOf(testControlHost)),
 )
 whenever(mockClusterStateManager.load()).thenReturn(testState)
@@ -193,4 +193,5 @@ If K3s logs `too many open files` and then loops on `Waiting for containerd star
 - Aim to mock as minimally as possible.  I want to hit real code in tests as much as possible.
 - Prefer using LocalStack over mocking AWS services.  The more code that hits all the code paths the better.
 - Test the K8 configurations with TestContainers, not mocking.
+- **K8s integration tests build the real `K8sClientProvider` from the K3s container's kubeconfig** with `WorkspaceK8s.provider(kubeConfigYaml)` (`src/integrationTest/.../WorkspaceK8s.kt`): it writes the kubeconfig into a temp workspace and binds the provider to it through `Context`, as a command gets it. Never `mock<K8sClientProvider>()`.
 - **All K8s manifest builders MUST be tested in `K8sServiceIntegrationTest`** with K3s TestContainers. See `configuration/CLAUDE.md` for the full testing requirements (apply test, image pull test, no-resource-limits test).

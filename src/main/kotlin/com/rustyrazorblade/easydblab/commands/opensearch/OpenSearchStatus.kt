@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.providers.aws.requireAwsFailure
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -32,7 +34,6 @@ class OpenSearchStatus : PicoBaseCommand() {
     @Option(names = ["--endpoint"], description = ["Output only the endpoint URL (for scripting)"])
     var endpointOnly: Boolean = false
 
-    @Suppress("TooGenericExceptionCaught")
     override fun execute() {
         val domainState = clusterState.openSearchDomain
         if (domainState == null) {
@@ -45,7 +46,10 @@ class OpenSearchStatus : PicoBaseCommand() {
 
         log.info { "Checking OpenSearch domain status: ${domainState.domainName}" }
 
-        try {
+        // A failure to reach the service is reported with the cached state rather than failing the
+        // command; any other failure propagates. runCatchingException with requireAwsFailure keeps
+        // the SDK type out of the command.
+        runCatchingException {
             val result = openSearchService.describeDomainOrNull(domainState.domainName)
             if (result == null) {
                 handleDomainNotFound(domainState)
@@ -61,9 +65,7 @@ class OpenSearchStatus : PicoBaseCommand() {
 
             displayDomainStatus(result)
             updateLocalStateIfChanged(domainState, result)
-        } catch (e: Exception) {
-            handleStatusError(domainState, e)
-        }
+        }.onFailure { e -> handleStatusError(domainState, e.requireAwsFailure()) }
     }
 
     private fun displayDomainStatus(result: OpenSearchDomainResult) {
@@ -114,7 +116,7 @@ class OpenSearchStatus : PicoBaseCommand() {
 
     private fun handleStatusError(
         domainState: OpenSearchClusterState,
-        e: Exception,
+        e: Throwable,
     ) {
         log.warn { "Failed to get domain status: ${e.message}" }
         if (!endpointOnly) {

@@ -23,10 +23,6 @@ import kotlinx.serialization.Serializable
  *
  * The type discriminator for serialization is derived from the class name.
  */
-private const val BACKUP_TABLE_SEPARATOR_LENGTH = 104
-private const val BACKUP_TABLE_HEADER_FORMAT = "%-17s  %-55s  %10s  %15s"
-private const val BACKUP_TABLE_ROW_FORMAT = "%-17s  %-55s  %10d  %15s"
-
 @Serializable
 sealed interface Event {
     /**
@@ -40,6 +36,13 @@ sealed interface Event {
      * Error events are written to stderr by ConsoleEventListener.
      */
     fun isError(): Boolean = false
+
+    /**
+     * Whether the console prints this event. An event that comes in high volume and exists for
+     * subscribers (a node step's start and completion) returns false; every other listener still
+     * receives it. [ConsoleEventListener] prints an error event whatever this returns.
+     */
+    fun showOnConsole(): Boolean = true
 
     /** A simple message event for use in tests and as a transitional type during migration. */
     @Serializable
@@ -182,6 +185,73 @@ sealed interface Event {
             override fun toDisplayString(): String = "Starting axon-agent on Cassandra nodes..."
         }
 
+        /**
+         * AxonOps ships no agent for [release] on [java], so `cassandra start` starts nothing;
+         * [shipped] lists the agents it ships.
+         */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsAgentNotShipped")
+        data class AxonOpsAgentNotShipped(
+            val host: String,
+            val release: String,
+            val java: String,
+            val shipped: List<String>,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: AxonOps ships no agent for Cassandra $release on JDK $java. " +
+                    "The agents it ships: ${shipped.joinToString(", ")}. " +
+                    "Cassandra was started on no node. To start without AxonOps: easy-db-lab cassandra start --skip-axonops"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The AxonOps agent could not be installed on [host], so `cassandra start` starts nothing. */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsAgentInstallFailed")
+        data class AxonOpsAgentInstallFailed(
+            val host: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: failed to install the AxonOps agent: $reason. Cassandra was started on no node. " +
+                    "To start without AxonOps: easy-db-lab cassandra start --skip-axonops"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `cassandra use` could not read the AxonOps drop-in of [host], so it cannot tell whether the
+         * node's next restart would load the agent of the version it ran before.
+         */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsDropInUnreadable")
+        data class AxonOpsDropInUnreadable(
+            val host: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: could not read the AxonOps drop-in: $reason. The node runs the new version, but its " +
+                    "next restart may load the old version's agent; start it with: easy-db-lab cassandra start --hosts $host"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `cassandra use` could not write a switched node's AxonOps drop-in, so its next restart may load the old agent. */
+        @Serializable
+        @SerialName("Cassandra.AxonOpsDropInNotWritten")
+        data class AxonOpsDropInNotWritten(
+            val host: String,
+            val agent: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $host: could not write the AxonOps drop-in for agent $agent: $reason. The node runs the new " +
+                    "version, but its next restart may load the old version's agent; start it with: " +
+                    "easy-db-lab cassandra start --hosts $host"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Cassandra.AxonOpsWorkbenchInfo")
         data class AxonOpsWorkbenchInfo(
@@ -231,9 +301,80 @@ sealed interface Event {
             val version: String,
             val hostCount: Int,
             val hostsFilter: String,
+            val source: String,
+            val url: String,
+            val java: String,
         ) : Cassandra {
             override fun toDisplayString(): String =
-                "Using version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}"
+                "Using version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}\n" +
+                    resolvedFrom(source, url, java)
+        }
+
+        /**
+         * Before `cassandra use` changes any node: [downloadHosts] download [version] first, and
+         * the version runs on [javaVersions] (one JDK unless nodes record different ones;
+         * [javaOverride] when `--java` chose it). As its last step, `use` re-applies [patchFile] to
+         * [hosts], which replaces any per-host settings applied with `update-config` since.
+         */
+        @Serializable
+        @SerialName("Cassandra.UseSideEffects")
+        data class UseSideEffects(
+            val version: String,
+            val patchFile: String,
+            val hosts: List<String>,
+            val downloadHosts: List<String>,
+            val javaVersions: List<String>,
+            val javaOverride: Boolean,
+        ) : Cassandra {
+            override fun toDisplayString(): String {
+                val download =
+                    if (downloadHosts.isEmpty()) {
+                        "Every targeted host has $version; nothing is downloaded."
+                    } else {
+                        "${downloadHosts.joinToString(", ")} download $version first."
+                    }
+                val jdk = "JDK " + javaVersions.joinToString(", ") + if (javaOverride) " (--java)" else ""
+                return "$download $version runs on $jdk. " +
+                    "Warning: as its last step, use re-applies $patchFile to ${hosts.joinToString(", ")}. " +
+                    "That replaces per-host cassandra.yaml settings applied with update-config earlier; " +
+                    "run update-config --hosts after use, not before."
+            }
+        }
+
+        /**
+         * `cassandra use` changed no node because the install of [version] failed or was refused
+         * on [failedHosts]; the reason of each was reported before.
+         */
+        @Serializable
+        @SerialName("Cassandra.UseNotActivated")
+        data class UseNotActivated(
+            val version: String,
+            val failedHosts: List<String>,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $version was activated on no host, because it could not be installed on " +
+                    "${failedHosts.joinToString(", ")}. Hosts that installed it keep it, unused."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `cassandra use` switched [version] on [hosts], then [step] failed, so their configuration
+         * is not updated. The switch is not undone.
+         */
+        @Serializable
+        @SerialName("Cassandra.UseConfigNotApplied")
+        data class UseConfigNotApplied(
+            val version: String,
+            val step: String,
+            val hosts: List<String>,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "Error: $version is now the active version on ${hosts.joinToString(", ")}, but $step failed, " +
+                    "so their configuration was not updated. Fix the cause above, then run: " +
+                    "easy-db-lab cassandra update-config --hosts ${hosts.joinToString(",")}"
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -367,21 +508,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Cassandra.VersionList")
-        data class VersionList(
-            val versions: List<String>,
-            val declaredNotInstalled: List<String> = emptyList(),
-            val builds: List<String> = emptyList(),
-        ) : Cassandra {
-            override fun toDisplayString(): String =
-                (
-                    versions +
-                        declaredNotInstalled.map { "$it (declared, not installed - run: cassandra install $it)" } +
-                        builds.map { "$it (build, not installed - run: cassandra install $it)" }
-                ).joinToString("\n")
-        }
-
-        @Serializable
         @SerialName("Cassandra.BuildStarting")
         data class BuildStarting(
             val name: String,
@@ -439,8 +565,26 @@ sealed interface Event {
             val version: String,
             val hostCount: Int,
             val hostsFilter: String,
+            val source: String,
+            val url: String,
+            val java: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "Installing version $version on $hostCount hosts, filter: $hostsFilter"
+            override fun toDisplayString(): String =
+                "Installing version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}\n" +
+                    resolvedFrom(source, url, java)
+        }
+
+        /** `use-cassandra` failed on [host], so [host] does not run [version]; [reason] is why. */
+        @Serializable
+        @SerialName("Cassandra.VersionActivationFailed")
+        data class VersionActivationFailed(
+            val host: String,
+            val version: String,
+            val reason: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "$host: failed to activate $version: $reason"
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -461,29 +605,76 @@ sealed interface Event {
             override fun toDisplayString(): String = "$host: $version is already installed, nothing to do"
         }
 
+        /**
+         * [version] is a git build on [host], built with the parameters the cluster state records,
+         * and the install asked for others. Nothing on the node changed.
+         *
+         * @property differences one per field, e.g. `java: recorded 11, requested 17`
+         */
         @Serializable
-        @SerialName("Cassandra.VersionDeclarationMismatch")
-        data class VersionDeclarationMismatch(
+        @SerialName("Cassandra.VersionRecordMismatch")
+        data class VersionRecordMismatch(
             val host: String,
             val version: String,
             val differences: List<String>,
         ) : Cassandra {
             override fun toDisplayString(): String =
-                "$host: $version is already installed, built with the parameters this node declares — " +
+                "$host: $version is already installed, built with the parameters the cluster state records: " +
                     "${differences.joinToString("; ")}. Nothing was changed. " +
-                    "To change the java version in use, run: cassandra use $version --java <version>"
+                    "To run it on another JDK: cassandra use $version --java <N>. To build it again: add --reinstall."
 
             override fun isError(): Boolean = true
         }
 
+        /** `cassandra install --reinstall` refused [host]: Cassandra runs [version] there. Nothing changed. */
+        @Serializable
+        @SerialName("Cassandra.ReinstallRefusedRunning")
+        data class ReinstallRefusedRunning(
+            val host: String,
+            val version: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "$host: Cassandra runs $version, so it was not reinstalled. Run 'easy-db-lab cassandra stop --hosts $host' first."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * [host] did not install [version]. [urls] are the URLs the node may have tried, with
+         * credentials redacted; empty when the node failed before any download.
+         */
         @Serializable
         @SerialName("Cassandra.VersionInstallFailed")
         data class VersionInstallFailed(
             val host: String,
             val version: String,
+            val urls: List<String>,
             val reason: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "$host: failed to install $version: $reason"
+            override fun toDisplayString(): String =
+                "$host: failed to install $version" +
+                    (if (urls.isEmpty()) "" else " (tried ${urls.joinToString(", ")})") +
+                    ": $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A replaced [host] could not get [version] back: its record holds the URL with the
+         * credential redacted, so the build must be installed again with the full URL.
+         */
+        @Serializable
+        @SerialName("Cassandra.RestoreNeedsCredential")
+        data class RestoreNeedsCredential(
+            val host: String,
+            val version: String,
+            val url: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "$host: $version was not installed on the new instance: the cluster state records its URL " +
+                    "without the credential ($url). Install it again with: " +
+                    "easy-db-lab cassandra install $version --reinstall --url <url with credential> --hosts $host, " +
+                    "then easy-db-lab cassandra use $version --hosts $host"
 
             override fun isError(): Boolean = true
         }
@@ -777,12 +968,6 @@ sealed interface Event {
     @Serializable
     sealed interface K3s : Event {
         @Serializable
-        @SerialName("K3s.ClusterStarting")
-        data object ClusterStarting : K3s {
-            override fun toDisplayString(): String = "Starting K3s cluster..."
-        }
-
-        @Serializable
         @SerialName("K3s.ServerStarting")
         data class ServerStarting(
             val controlHost: String,
@@ -832,12 +1017,6 @@ sealed interface Event {
         @SerialName("K3s.KubeconfigInstruction")
         data object KubeconfigInstruction : K3s {
             override fun toDisplayString(): String = "Use 'source env.sh' to configure kubectl for cluster access"
-        }
-
-        @Serializable
-        @SerialName("K3s.ClusterStarted")
-        data object ClusterStarted : K3s {
-            override fun toDisplayString(): String = "K3s cluster started successfully"
         }
 
         @Serializable
@@ -915,7 +1094,7 @@ sealed interface Event {
 
         /**
          * `up` found nodes launched from an AMI that predates the Cilium node fixes (the
-         * systemd-networkd ENI drop-ins and the cloud-init no-hotplug setting), before installing
+         * boot unit, the systemd-networkd ENI drop-in and the cloud-init settings), before installing
          * Cilium. [nodes] names them; [missingFiles] is every fix any of them lacks.
          */
         @Serializable
@@ -1013,7 +1192,60 @@ sealed interface Event {
         data class RolloutsWaiting(
             val workloads: List<String>,
         ) : K8s {
-            override fun toDisplayString(): String = "Waiting for ${workloads.size} workloads to finish rolling out..."
+            override fun toDisplayString(): String =
+                "Waiting for ${workloads.size} workloads to finish rolling out: ${workloads.joinToString(", ")}"
+        }
+
+        /**
+         * Which workloads a rollout wait still waits on, [elapsedSeconds] into it: emitted when that set
+         * changes, or every `Constants.Scale.PROGRESS_INTERVAL_SECONDS` while it does not.
+         */
+        @Serializable
+        @SerialName("K8s.RolloutsProgress")
+        data class RolloutsProgress(
+            val elapsedSeconds: Long,
+            val pending: List<String>,
+        ) : K8s {
+            override fun toDisplayString(): String = "[${elapsedSeconds}s] still rolling out: ${pending.joinToString(", ")}"
+        }
+
+        /** A rollout wait ended early: [block] names the workload, pod and node that cannot finish, and why. */
+        @Serializable
+        @SerialName("K8s.RolloutBlocked")
+        data class RolloutBlocked(
+            val block: RolloutBlock,
+        ) : K8s {
+            override fun toDisplayString(): String = "Rollout cannot complete: ${block.describe()}"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A rollout wait gave up after [timeoutSeconds] with workloads still [pending], each with what it
+         * waits on ([reasons]), and the pods they wait on ([unreadyPods], capped per workload by
+         * `Constants.K8s.ROLLOUT_UNREADY_PODS_LISTED_PER_WORKLOAD`, with [unreadyOmitted] more).
+         */
+        @Serializable
+        @SerialName("K8s.RolloutsTimedOut")
+        data class RolloutsTimedOut(
+            val timeoutSeconds: Int,
+            val pending: List<String>,
+            val reasons: List<String>,
+            val unreadyPods: List<UnreadyPod>,
+            val unreadyOmitted: Int,
+        ) : K8s {
+            override fun toDisplayString(): String {
+                val pods =
+                    when {
+                        unreadyPods.isEmpty() -> ""
+                        else ->
+                            ". Waiting on " + unreadyPods.joinToString("; ") { it.describe() } +
+                                (if (unreadyOmitted > 0) " (and $unreadyOmitted more pods)" else "")
+                    }
+                return "Timed out after ${timeoutSeconds}s waiting for rollouts to complete: " + reasons.joinToString("; ") + pods
+            }
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -1385,20 +1617,21 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Infra.VpcKept")
+        data class VpcKept(
+            val vpcId: String,
+        ) : Infra {
+            override fun toDisplayString(): String =
+                "VPC $vpcId is not tagged as created by easy-db-lab, so it is kept; " +
+                    "only the resources tagged with an easy-db-lab ClusterId are removed"
+        }
+
+        @Serializable
         @SerialName("Infra.PackerVpcSkipping")
         data class PackerVpcSkipping(
             val vpcId: String,
         ) : Infra {
             override fun toDisplayString(): String = "Skipping packer VPC: $vpcId (use --packer to include)"
-        }
-
-        /** `down --all` keeps the account compactor's VPC: the compactor outlives every cluster. */
-        @Serializable
-        @SerialName("Infra.CompactorVpcSkipping")
-        data class CompactorVpcSkipping(
-            val vpcId: String,
-        ) : Infra {
-            override fun toDisplayString(): String = "Skipping the account compactor's VPC: $vpcId"
         }
 
         @Serializable
@@ -2600,6 +2833,24 @@ sealed interface Event {
             override fun toDisplayString(): String = "Preparing Loki data directory..."
         }
 
+        /**
+         * The account compactor's scratch directories and lease agent jar were prepared on the
+         * control node. [uploaded] is false when the jar at [agentPath] was already there.
+         */
+        @Serializable
+        @SerialName("Grafana.CompactorAgentPrepared")
+        data class CompactorAgentPrepared(
+            val agentPath: String,
+            val uploaded: Boolean,
+        ) : Grafana {
+            override fun toDisplayString(): String =
+                if (uploaded) {
+                    "Prepared the account compactor: uploaded its lease agent to $agentPath"
+                } else {
+                    "Prepared the account compactor: lease agent $agentPath already present"
+                }
+        }
+
         @Serializable
         @SerialName("Grafana.GrafanaDirectoryPreparing")
         data object GrafanaDirectoryPreparing : Grafana {
@@ -2633,8 +2884,25 @@ sealed interface Event {
         }
 
         /**
+         * [kit]'s [dashboard] did not reach Grafana, for [reason]: the declared file is missing, or
+         * Grafana rejected the install. The kit's pods run, but its `start` fails.
+         */
+        @Serializable
+        @SerialName("Grafana.KitDashboardInstallFailed")
+        data class KitDashboardInstallFailed(
+            val kit: String,
+            val dashboard: String,
+            val reason: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Failed to install the Grafana dashboard $dashboard of $kit: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * [kit]'s [dashboards] were not installed because preparing them failed, for [reason]: the
-         * tenant listing in the account bucket, or reading a dashboard file. The kit itself is running.
+         * tenant listing in the account bucket, or reading or rendering a dashboard file. The kit's
+         * pods run, but its `start` fails.
          */
         @Serializable
         @SerialName("Grafana.KitDashboardsSkipped")
@@ -2707,46 +2975,6 @@ sealed interface Event {
             val s3Path: String,
         ) : Backup {
             override fun toDisplayString(): String = "Kubeconfig backed up to S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.KubeconfigRestored")
-        data class KubeconfigRestored(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Kubeconfig restored from S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.K8sManifestsBackedUp")
-        data class K8sManifestsBackedUp(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "K8s manifests backed up to S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.K8sManifestsRestored")
-        data class K8sManifestsRestored(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "K8s manifests restored from S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.CassandraPatchBackedUp")
-        data class CassandraPatchBackedUp(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Cassandra patch backed up to S3: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.CassandraPatchRestored")
-        data class CassandraPatchRestored(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Cassandra patch restored from S3: $s3Path"
         }
 
         @Serializable
@@ -3072,6 +3300,22 @@ sealed interface Event {
             val keyId: String,
         ) : Tailscale {
             override fun toDisplayString(): String = "Deleted Tailscale auth key: $keyId"
+        }
+
+        /**
+         * `tailscale stop` could not delete the auth key `tailscale start` recorded, so it stays valid in
+         * the tailnet until it expires or is revoked in the Tailscale admin console.
+         */
+        @Serializable
+        @SerialName("Tailscale.AuthKeyNotDeleted")
+        data class AuthKeyNotDeleted(
+            val keyId: String,
+            val reason: String,
+        ) : Tailscale {
+            override fun toDisplayString(): String =
+                "Tailscale auth key $keyId was not deleted and stays valid until it expires or is revoked: $reason"
+
+            override fun isError(): Boolean = true
         }
 
         /** `down` or `tailscale stop` removed the control node's device from the tailnet. */
@@ -3406,6 +3650,26 @@ sealed interface Event {
             override fun toDisplayString(): String = "Pod $podName is $status"
         }
 
+        /**
+         * The stress job's pod [podName] cannot start: its [container] cannot pull [image]
+         * ([reason], with the kubelet's [message]). `stress start` fails at once.
+         */
+        @Serializable
+        @SerialName("Stress.ImagePullFailed")
+        data class ImagePullFailed(
+            val podName: String,
+            val container: String,
+            val image: String,
+            val reason: String,
+            val message: String,
+        ) : Stress {
+            override fun toDisplayString(): String =
+                "Pod $podName cannot pull image $image for container $container ($reason)" +
+                    message.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty()
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Stress.JobStarted")
         data class JobStarted(
@@ -3618,6 +3882,21 @@ sealed interface Event {
 
     @Serializable
     sealed interface Provision : Event {
+        /**
+         * Instance setup (`setup_instance.sh`) exited non-zero on [host], for [reason]: for example
+         * no data disk was found, or mounting it at `/mnt/db1` failed. `up` stops before K3s starts.
+         */
+        @Serializable
+        @SerialName("Provision.InstanceSetupFailed")
+        data class InstanceSetupFailed(
+            val host: String,
+            val reason: String,
+        ) : Provision {
+            override fun toDisplayString(): String = "Instance setup failed on $host: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Provision.ControlNodeRequired")
         data class ControlNodeRequired(
@@ -3677,6 +3956,120 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /** The pre-launch capacity checks passed for the [newNodes] instances `up` is about to launch. */
+        @Serializable
+        @SerialName("Provision.LaunchCapacityVerified")
+        data class LaunchCapacityVerified(
+            val newNodes: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Capacity check passed: the account has the vCPUs, network interfaces and subnet addresses for $newNodes new instance(s)."
+        }
+
+        /** The new instances need more On-Demand standard vCPUs than the region's quota leaves free. */
+        @Serializable
+        @SerialName("Provision.VcpuQuotaInsufficient")
+        data class VcpuQuotaInsufficient(
+            val neededVcpus: Int,
+            val quota: Int,
+            val inUse: Int,
+            val shortBy: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The new instances need $neededVcpus vCPUs, but the On-Demand standard vCPU quota ($quota) has " +
+                    "${quota - inUse} available ($inUse in use): short by $shortBy. Request a quota increase " +
+                    "(Service Quotas, EC2, L-1216C47A) or launch fewer or smaller nodes."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** An instance type outside the standard families, whose own vCPU quota `up` does not check. */
+        @Serializable
+        @SerialName("Provision.VcpuQuotaNotChecked")
+        data class VcpuQuotaNotChecked(
+            val instanceType: String,
+            val family: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The vCPU quota for $instanceType is not checked: its '$family' family has a quota of its own, " +
+                    "not the On-Demand standard quota. If it is too low, RunInstances fails with VcpuLimitExceeded."
+        }
+
+        /** The instance type is not offered in some of the zones its new instances would land in. */
+        @Serializable
+        @SerialName("Provision.InstanceTypeNotOffered")
+        data class InstanceTypeNotOffered(
+            val instanceType: String,
+            val zones: List<String>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$instanceType is not offered in ${zones.joinToString(", ")}. Choose zones that offer it (--azs) " +
+                    "or another instance type."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** More availability zones were configured than the VPC has subnets for. */
+        @Serializable
+        @SerialName("Provision.TooManyAvailabilityZones")
+        data class TooManyAvailabilityZones(
+            val count: Int,
+            val max: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The cluster is configured for $count availability zones, but the VPC is split into at most $max subnets."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The new instances and their pod ENIs need more network interfaces than the region's quota leaves free. */
+        @Serializable
+        @SerialName("Provision.NetworkInterfaceQuotaInsufficient")
+        data class NetworkInterfaceQuotaInsufficient(
+            val needed: Int,
+            val quota: Int,
+            val inUse: Int,
+            val shortBy: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The new instances need $needed network interfaces, but the network interface quota ($quota) has " +
+                    "${quota - inUse} available ($inUse in use): short by $shortBy. Request a quota increase " +
+                    "(Service Quotas, VPC, L-DF5E4CA3) or launch fewer nodes."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** A zone's subnet has fewer free addresses than its new instances and their pods need. */
+        @Serializable
+        @SerialName("Provision.SubnetAddressesInsufficient")
+        data class SubnetAddressesInsufficient(
+            val zone: String,
+            val needed: Int,
+            val available: Int,
+            val shortBy: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The subnet in $zone has $available free addresses, but its new instances and their pods need " +
+                    "$needed: short by $shortBy. Spread the cluster over more zones (--azs) or use a larger VPC (--cidr)."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** AWS refused a `RunInstances` dry run: the real launch would fail the same way. */
+        @Serializable
+        @SerialName("Provision.LaunchDryRunRefused")
+        data class LaunchDryRunRefused(
+            val serverType: String,
+            val instanceType: String,
+            val errorCode: String,
+            val message: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "AWS would refuse to launch the $serverType instances ($instanceType): $errorCode: $message"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Provision.IamUpdating")
         data object IamUpdating : Provision {
@@ -3717,6 +4110,27 @@ sealed interface Event {
         @SerialName("Provision.InfrastructureFailureHeader")
         data object InfrastructureFailureHeader : Provision {
             override fun toDisplayString(): String = "\nInfrastructure creation had failures:"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A launch during `up` failed because AWS has no capacity for [instanceType] in
+         * [availabilityZone] (`InsufficientInstanceCapacity`). It is a shortage on AWS's side, not
+         * a bug; the fix is another zone or instance type. [availabilityZone] is null when it
+         * could not be resolved.
+         */
+        @Serializable
+        @SerialName("Provision.InstanceCapacityShortage")
+        data class InstanceCapacityShortage(
+            val serverType: String,
+            val instanceType: String,
+            val availabilityZone: String?,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "  - AWS has no capacity for $instanceType ($serverType nodes) in ${availabilityZone ?: "the target zone"}. " +
+                    "This is a capacity shortage, not an easy-db-lab error. Run easy-db-lab down, then init again with " +
+                    "a different availability zone (--azs) or instance type (--db.instance-type, --app.instance-type)."
 
             override fun isError(): Boolean = true
         }
@@ -3780,30 +4194,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Provision.SshWaiting")
-        data object SshWaiting : Provision {
-            override fun toDisplayString(): String = "Waiting for SSH to come up.."
-        }
-
-        /**
-         * `up`'s SSH readiness check failed and will run again.
-         *
-         * @property attempt how many attempts have failed so far
-         * @property lastError the message of the failure that triggered this retry, so an
-         *   operator can tell a node still booting from a fault that will never clear
-         */
-        @Serializable
-        @SerialName("Provision.SshRetrying")
-        data class SshRetrying(
-            val attempt: Int,
-            val lastError: String? = null,
-        ) : Provision {
-            override fun toDisplayString(): String =
-                "SSH still not up yet, waiting... (attempt $attempt)" +
-                    lastError?.let { ": ${it.lineSequence().first()}" }.orEmpty()
-        }
-
-        @Serializable
         @SerialName("Provision.SkippingNodeSetup")
         data object SkippingNodeSetup : Provision {
             override fun toDisplayString(): String =
@@ -3822,21 +4212,6 @@ sealed interface Event {
         @SerialName("Provision.TailscaleStarting")
         data object TailscaleStarting : Provision {
             override fun toDisplayString(): String = "Starting Tailscale VPN..."
-        }
-
-        @Serializable
-        @SerialName("Provision.NodeLabeling")
-        data class NodeLabeling(
-            val count: Int,
-            val nodeType: String = "db",
-        ) : Provision {
-            override fun toDisplayString(): String = "Labeling $count $nodeType nodes with ordinals..."
-        }
-
-        @Serializable
-        @SerialName("Provision.NodeLabelingComplete")
-        data object NodeLabelingComplete : Provision {
-            override fun toDisplayString(): String = "Node labeling complete"
         }
 
         @Serializable
@@ -3875,6 +4250,315 @@ sealed interface Event {
             val configFile: String,
         ) : Provision {
             override fun toDisplayString(): String = "AxonOps Workbench configuration written to $configFile"
+        }
+
+        // --- Per-node bring-up (services/bringup) ---
+
+        /** A node's pipeline started [step], attempt [attempt]. For subscribers; the console skips it. */
+        @Serializable
+        @SerialName("Provision.NodeStepStarted")
+        data class NodeStepStarted(
+            val alias: String,
+            val step: String,
+            val attempt: Int,
+        ) : Provision {
+            override fun toDisplayString(): String = "$alias: $step started (attempt $attempt)"
+
+            override fun showOnConsole(): Boolean = false
+        }
+
+        /** A node's pipeline finished [step] in [durationMs]. For subscribers; the console skips it. */
+        @Serializable
+        @SerialName("Provision.NodeStepCompleted")
+        data class NodeStepCompleted(
+            val alias: String,
+            val step: String,
+            val attempt: Int,
+            val durationMs: Long,
+        ) : Provision {
+            override fun toDisplayString(): String = "$alias: $step completed in ${durationMs}ms (attempt $attempt)"
+
+            override fun showOnConsole(): Boolean = false
+        }
+
+        /**
+         * Attempt [attempt] of [maxAttempts] of a node's [step] failed for [reason]. [willRetry] says
+         * whether the step runs again; when it does not, the node is replaced or fails.
+         */
+        @Serializable
+        @SerialName("Provision.NodeStepFailed")
+        data class NodeStepFailed(
+            val alias: String,
+            val step: String,
+            val attempt: Int,
+            val maxAttempts: Int,
+            val reason: String,
+            val willRetry: Boolean,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias: $step failed (attempt $attempt of $maxAttempts): $reason" + if (willRetry) "; retrying" else ""
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `up` is replacing [alias]: [oldInstanceId] failed [step] for [reason]. This is the node's
+         * [replacement]th replacement of at most [limit].
+         */
+        @Serializable
+        @SerialName("Provision.NodeReplacing")
+        data class NodeReplacing(
+            val alias: String,
+            val oldInstanceId: String,
+            val step: String,
+            val reason: String,
+            val replacement: Int,
+            val limit: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Replacing $alias ($oldInstanceId, replacement $replacement of $limit): $step failed: $reason"
+        }
+
+        /** [alias] runs on [newInstanceId] at [privateIp]; [oldInstanceId] is terminated. */
+        @Serializable
+        @SerialName("Provision.NodeReplaced")
+        data class NodeReplaced(
+            val alias: String,
+            val oldInstanceId: String,
+            val newInstanceId: String,
+            val privateIp: String,
+        ) : Provision {
+            override fun toDisplayString(): String = "Replaced $alias: $oldInstanceId terminated, now $newInstanceId ($privateIp)"
+        }
+
+        /**
+         * Replacing [alias] failed at [phase] (`terminate`, `capacity-check` or `launch`) for
+         * [reason]. [oldInstanceKept] is false when [oldInstanceId] was already terminated, so the
+         * node has no instance; no further replacement is made for it.
+         */
+        @Serializable
+        @SerialName("Provision.NodeReplaceFailed")
+        data class NodeReplaceFailed(
+            val alias: String,
+            val oldInstanceId: String,
+            val phase: String,
+            val reason: String,
+            val oldInstanceKept: Boolean,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Replacing $alias failed at $phase: $reason; " +
+                    if (oldInstanceKept) "$oldInstanceId is kept" else "$oldInstanceId is terminated and $alias has no instance"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** [alias] is a Ready K3s node, [elapsedSeconds] after `up` started its pipeline. */
+        @Serializable
+        @SerialName("Provision.NodeReady")
+        data class NodeReady(
+            val alias: String,
+            val instanceId: String,
+            val elapsedSeconds: Long,
+            val replacements: Int,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias ($instanceId) is Ready after ${elapsedSeconds}s" +
+                    if (replacements > 0) ", after $replacements replacement(s)" else ""
+        }
+
+        /**
+         * [alias] could not be brought up: [step] failed for [reason], on [instanceId] (kept for
+         * debugging unless [instanceKept] is false). Emitted the moment the node fails; the other
+         * nodes go on, and [NodesFailed] lists every failed node once they finish.
+         */
+        @Serializable
+        @SerialName("Provision.NodeFailed")
+        data class NodeFailed(
+            val alias: String,
+            val step: String,
+            val reason: String,
+            val instanceId: String,
+            val instanceKept: Boolean,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias failed at $step: $reason" + if (instanceKept) "" else " ($instanceId terminated)"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The control node [alias] failed at [step] for [reason], after its retries, or its control
+         * plane stayed unhealthy past the deadline. The control node is never replaced: every
+         * pipeline is stopped, every instance is kept, and `up` exits non-zero.
+         */
+        @Serializable
+        @SerialName("Provision.ControlNodeFailed")
+        data class ControlNodeFailed(
+            val alias: String,
+            val step: String,
+            val reason: String,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Control node $alias failed at $step: $reason. Every instance is kept; run up again after fixing the cause."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * One node `up` could not bring up: the step it last failed, why, and its last instance.
+         * [instanceKept] is false when that instance was terminated for a replacement that then
+         * could not launch.
+         */
+        @Serializable
+        data class FailedNode(
+            val alias: String,
+            val step: String,
+            val reason: String,
+            val instanceId: String,
+            val instanceKept: Boolean,
+        ) {
+            /** The node as one line of the failure list. */
+            fun toDisplayLine(): String =
+                "  $alias ($instanceId, ${if (instanceKept) "kept for debugging" else "terminated, no instance left"}): $step: $reason"
+        }
+
+        /** The nodes that could not be brought up. `up` exits non-zero after the others finished. */
+        @Serializable
+        @SerialName("Provision.NodesFailed")
+        data class NodesFailed(
+            val nodes: List<FailedNode>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "${nodes.size} node(s) could not be brought up:\n" + nodes.joinToString("\n") { it.toDisplayLine() }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A health sample crossed a limit: [latencyMs] for a minimal `get nodes` (null when the API
+         * could not be reached, [unreachableReason] saying why) or [rejections] new API-server
+         * rejections since the last sample. Joins and replacements wait until it is healthy again.
+         */
+        @Serializable
+        @SerialName("Provision.ControlPlaneUnhealthy")
+        data class ControlPlaneUnhealthy(
+            val latencyMs: Long?,
+            val rejections: Long,
+            val latencyLimitMs: Long,
+            val rejectionLimit: Long,
+            val unreachableReason: String? = null,
+        ) : Provision {
+            override fun toDisplayString(): String {
+                val latency =
+                    latencyMs?.let { "get nodes took ${it}ms (limit ${latencyLimitMs}ms)" }
+                        ?: "API server unreachable (${unreachableReason.orEmpty()})"
+                return "Control plane unhealthy: $latency" +
+                    ", $rejections rejected requests (limit $rejectionLimit). Joins and replacements wait until it recovers."
+            }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The control-plane gate opened after [waitedSeconds]: nodes may now join. [conditions]
+         * names every condition that held, the network plugin's among them.
+         */
+        @Serializable
+        @SerialName("Provision.ControlPlaneGateOpen")
+        data class ControlPlaneGateOpen(
+            val waitedSeconds: Long,
+            val conditions: List<String>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Control plane ready after ${waitedSeconds}s (${conditions.size} conditions hold); nodes may join"
+        }
+
+        /** The control-plane gate did not open in time; [conditions] names each one still false. */
+        @Serializable
+        @SerialName("Provision.ControlPlaneGateTimedOut")
+        data class ControlPlaneGateTimedOut(
+            val waitedSeconds: Long,
+            val conditions: List<String>,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "Control plane not ready after ${waitedSeconds}s; still waiting on: ${conditions.joinToString(", ")}"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The control plane is healthy again after [unhealthySeconds]. Joins resume. */
+        @Serializable
+        @SerialName("Provision.ControlPlaneHealthy")
+        data class ControlPlaneHealthy(
+            val unhealthySeconds: Long,
+        ) : Provision {
+            override fun toDisplayString(): String = "Control plane healthy again after ${unhealthySeconds}s; joins resume"
+        }
+
+        /** The control plane's state as the progress line reports it. */
+        @Serializable
+        enum class ControlPlaneState(
+            val label: String,
+        ) {
+            @SerialName("starting")
+            STARTING("starting"),
+
+            @SerialName("healthy")
+            HEALTHY("healthy"),
+
+            @SerialName("unhealthy")
+            UNHEALTHY("unhealthy"),
+        }
+
+        /**
+         * Where every node is, every `Constants.Scale.PROGRESS_INTERVAL_SECONDS` while pipelines run:
+         * [byStep] counts the nodes in each step before join, in pipeline order; [joining] holds a
+         * join permit of [joinLimit]. [controlStep] is the step the control node is in, or null
+         * once its pipeline is done.
+         */
+        @Serializable
+        @SerialName("Provision.BringUpProgress")
+        data class BringUpProgress(
+            val elapsedSeconds: Long,
+            val total: Int,
+            val byStep: Map<String, Int>,
+            val joining: Int,
+            val joinLimit: Int,
+            val ready: Int,
+            val replacements: Int,
+            val failed: Int,
+            val controlPlane: ControlPlaneState,
+            val controlStep: String? = null,
+        ) : Provision {
+            override fun toDisplayString(): String {
+                val control = listOfNotNull(controlStep?.let { "control $it" })
+                val steps = control + byStep.filterValues { it > 0 }.map { (step, count) -> "$step $count" }
+                val totals =
+                    listOf(
+                        "join $joining/$joinLimit",
+                        "ready $ready",
+                        "replaced $replacements",
+                        "failed $failed",
+                        "control plane ${controlPlane.label}",
+                    )
+                return "[${elapsed()}] $total nodes: " + (steps + totals).joinToString(", ")
+            }
+
+            private fun elapsed(): String {
+                val hours = elapsedSeconds / SECONDS_PER_HOUR
+                val minutes = elapsedSeconds % SECONDS_PER_HOUR / SECONDS_PER_MINUTE
+                val seconds = elapsedSeconds % SECONDS_PER_MINUTE
+                return when {
+                    hours > 0 -> "%dh%02dm%02ds".format(hours, minutes, seconds)
+                    minutes > 0 -> "%dm%02ds".format(minutes, seconds)
+                    else -> "${seconds}s"
+                }
+            }
+
+            private companion object {
+                const val SECONDS_PER_MINUTE = 60L
+                const val SECONDS_PER_HOUR = 3600L
+            }
         }
     }
 
@@ -3915,6 +4599,22 @@ sealed interface Event {
                     }
                 return "$headline\n$detail\n$remedy\nFor detailed error information, check the logs (logs/info.log by default)"
             }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * [command] stopped because the [nested] command it runs exited with [exitCode]. The
+         * nested command's own error, printed just before this, gives the cause.
+         */
+        @Serializable
+        @SerialName("Command.NestedCommandFailed")
+        data class NestedCommandFailed(
+            val command: String,
+            val nested: String,
+            val exitCode: Int,
+        ) : Command {
+            override fun toDisplayString(): String = "$command failed: $nested exited with code $exitCode; its error is shown above."
 
             override fun isError(): Boolean = true
         }
@@ -4091,14 +4791,10 @@ sealed interface Event {
         @SerialName("Status.SecurityGroupFetchFailed")
         data class SecurityGroupFetchFailed(
             val sgId: String,
+            val reason: String? = null,
         ) : Status {
-            override fun toDisplayString(): String = "\n=== SECURITY GROUP ===\nSecurity Group: $sgId (unable to fetch details)"
-        }
-
-        @Serializable
-        @SerialName("Status.StressJobsNoControlNode")
-        data object StressJobsNoControlNode : Status {
-            override fun toDisplayString(): String = "\n=== STRESS JOBS ===\n(no control node configured)"
+            override fun toDisplayString(): String =
+                "\n=== SECURITY GROUP ===\nSecurity Group: $sgId (unable to fetch details${reason?.let { ": $it" } ?: ""})"
         }
 
         @Serializable
@@ -4189,6 +4885,21 @@ sealed interface Event {
             override fun toDisplayString(): String = "\n=== DRY RUN - Resources that would be deleted ===\n$summary\n=== End DRY RUN ===\n"
         }
 
+        /**
+         * `down --dry-run` on a cluster whose VPC is already gone but whose control node is still
+         * a tailnet device: the only thing a real `down` would do is remove [deviceId].
+         */
+        @Serializable
+        @SerialName("Teardown.DryRunDeviceRemovalPreview")
+        data class DryRunDeviceRemovalPreview(
+            val deviceId: String,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "\n=== DRY RUN - The VPC is already gone ===\n" +
+                    "Tailscale device $deviceId (the control node) would be removed from the tailnet\n" +
+                    "=== End DRY RUN ===\n"
+        }
+
         @Serializable
         @SerialName("Teardown.ConfirmationPrompt")
         data class ConfirmationPrompt(
@@ -4259,6 +4970,35 @@ sealed interface Event {
             override fun toDisplayString(): String = "Stopped SOCKS5 proxy (PID: $pid)"
         }
 
+        /**
+         * `down` could not disable the request metrics of the cluster's data bucket [bucket]; [reason]
+         * is the AWS error. The bucket and its objects are untouched and teardown goes on.
+         */
+        @Serializable
+        @SerialName("Teardown.DataBucketMetricsDisableFailed")
+        data class DataBucketMetricsDisableFailed(
+            val bucket: String,
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Error: could not disable S3 request metrics on data bucket $bucket: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `down --all` could not list the data buckets, so none was considered for deletion;
+         * [reason] is the AWS error.
+         */
+        @Serializable
+        @SerialName("Teardown.DataBucketDiscoveryFailed")
+        data class DataBucketDiscoveryFailed(
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Error: could not list the data buckets: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         /** `down` asked, then forced, the tunnel process [pid] to end, and it still runs. Its PID stays recorded. */
         @Serializable
         @SerialName("Teardown.Socks5ProxyStopFailed")
@@ -4275,6 +5015,20 @@ sealed interface Event {
         @SerialName("Teardown.ClusterStateMarkedDown")
         data object ClusterStateMarkedDown : Teardown {
             override fun toDisplayString(): String = "Cluster state updated: infrastructure marked as DOWN"
+        }
+
+        /**
+         * `down` removed the infrastructure but could not read or write the cluster state file, so it
+         * still shows the cluster as up; [reason] is the error. Teardown itself succeeded.
+         */
+        @Serializable
+        @SerialName("Teardown.ClusterStateUpdateFailed")
+        data class ClusterStateUpdateFailed(
+            val reason: String,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Error: could not mark the cluster state as DOWN: $reason"
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -4306,18 +5060,28 @@ sealed interface Event {
              * @property signal the signal, as the operator reads it.
              * @property step the step it stopped in.
              * @property reason why it stopped.
+             * @property unreached true when the step never reached the cluster, so it changed nothing.
              */
             @Serializable
             data class SignalFailure(
                 val signal: String,
                 val step: String,
                 val reason: String,
+                val unreached: Boolean = false,
             )
 
             override fun toDisplayString(): String =
                 buildString {
                     appendLine("The pre-teardown save failed for ${failures.size} signal(s):")
-                    failures.forEach { appendLine("  ${it.signal}: '${it.step}' failed: ${it.reason}") }
+                    failures.forEach {
+                        appendLine(
+                            if (it.unreached) {
+                                "  ${it.signal}: '${it.step}' could not reach the cluster: ${it.reason}"
+                            } else {
+                                "  ${it.signal}: '${it.step}' failed: ${it.reason}"
+                            },
+                        )
+                    }
                     appendLine("down stopped: no infrastructure was removed, and nothing was started again.")
                     if (backends.isNotEmpty()) {
                         appendLine("Workloads: " + backends.entries.joinToString("; ") { (name, state) -> "$name: $state" })
@@ -4433,6 +5197,22 @@ sealed interface Event {
 
     @Serializable
     sealed interface Ami : Event {
+        /**
+         * `build-image` stopped because its [phase] (`build-base` or `build-cassandra`) exited
+         * with [exitCode]. The phase's own error, printed just before this, gives the cause.
+         */
+        @Serializable
+        @SerialName("Ami.BuildPhaseFailed")
+        data class BuildPhaseFailed(
+            val phase: String,
+            val exitCode: Int,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                "build-image failed: the $phase phase exited with code $exitCode; its error is shown above."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Ami.PruningStarting")
         data class PruningStarting(
@@ -5431,6 +6211,29 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `init --clean` found live AWS infrastructure for the workspace's cluster and refused:
+         * deleting `state.json` would orphan it. [instanceIds] are the instances still running or
+         * starting; [otherResources] counts the rest (subnets, security groups, gateways, EMR,
+         * OpenSearch). Nothing was deleted.
+         */
+        @Serializable
+        @SerialName("Setup.CleanRefusedLiveInfrastructure")
+        data class CleanRefusedLiveInfrastructure(
+            val vpcId: String,
+            val instanceIds: List<String>,
+            val otherResources: Int,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Error: init --clean refused. This workspace's cluster still has infrastructure in AWS: " +
+                    "VPC $vpcId, ${instanceIds.size} instance(s)" +
+                    (if (instanceIds.isEmpty()) "" else " (${instanceIds.joinToString(", ")})") +
+                    ", $otherResources other resource(s). Deleting the local state would orphan it. " +
+                    "Run easy-db-lab down first."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {
@@ -5754,11 +6557,16 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * One installable kit as `kit list` shows it. [problem] says why its `kit.yaml` could not
+         * be read (the file and the cause), and is empty for a kit that loads.
+         */
         @Serializable
         data class TemplateDetail(
             val name: String,
             val version: String,
             val description: String,
+            val problem: String = "",
         )
 
         // =========================================================================
@@ -5852,6 +6660,21 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * [kit]'s metrics scrape ConfigMaps could not be written, for [reason], so the collector
+         * will not scrape it. The kit's pods run, but its `start` fails.
+         */
+        @Serializable
+        @SerialName("Kit.MetricsRegistrationFailed")
+        data class MetricsRegistrationFailed(
+            val kit: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] metrics registration failed: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Kit.MetricsRegistered")
         data class MetricsRegistered(
@@ -5930,6 +6753,25 @@ sealed interface Event {
             override fun toDisplayString(): String =
                 "Error: kit '$kit' collides with the built-in command '$command'; the built-in is kept. " +
                     "Use a kit name that is not a built-in command."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A kit could not be loaded at startup and was skipped: [file] is its `kit.yaml` (or the
+         * built-in resource path) and [error] is what failed. Every other command still works, and
+         * only a command that needs [kit] fails.
+         */
+        @Serializable
+        @SerialName("Kit.LoadFailed")
+        data class LoadFailed(
+            val kit: String,
+            val file: String,
+            val error: String,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Warning: skipping kit '$kit': cannot load $file: $error. " +
+                    "Fix or remove it; 'easy-db-lab kit source list' shows the registered kit sources."
 
             override fun isError(): Boolean = true
         }
@@ -6109,114 +6951,6 @@ sealed interface Event {
             override fun toDisplayString(): String = "File not found: $path"
 
             override fun isError(): Boolean = true
-        }
-    }
-
-    // =========================================================================
-    // Event.Compactor — the account compactor service (ECS Fargate)
-    // =========================================================================
-
-    /**
-     * The account compactor: one ECS Fargate service per account that compacts the shared
-     * observability store. `up`, `down` and `observability compactor` start and stop it.
-     */
-    @Serializable
-    sealed interface Compactor : Event {
-        /** The compactor service was created or scaled from 0 to 1 task in [region]. */
-        @Serializable
-        @SerialName("Compactor.Started")
-        data class Started(
-            val region: String,
-            val taskDefinition: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor started in $region ($taskDefinition)"
-        }
-
-        /** The compactor service already runs [runningCount] task(s) in [region]; it is left as it is. */
-        @Serializable
-        @SerialName("Compactor.AlreadyRunning")
-        data class AlreadyRunning(
-            val region: String,
-            val runningCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor already running in $region ($runningCount task(s))"
-        }
-
-        /**
-         * The compactor service in [region] runs no task yet: [pendingCount] task(s) are pending, or ECS
-         * has not placed the first one, as happens for a minute or two after a start. It is left as it is.
-         */
-        @Serializable
-        @SerialName("Compactor.Starting")
-        data class Starting(
-            val region: String,
-            val pendingCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor starting in $region ($pendingCount task(s) pending)"
-        }
-
-        /**
-         * The compactor service in [region] asks for [desiredCount] task(s) but runs none, has none
-         * pending, and its latest task stopped, for example because the task fails and restarts. It is
-         * left as it is.
-         */
-        @Serializable
-        @SerialName("Compactor.NoTaskRunning")
-        data class NoTaskRunning(
-            val region: String,
-            val desiredCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "Account compactor in $region asks for $desiredCount task(s) but runs none; " +
-                    "run `observability compactor status` to see why"
-
-            override fun isError(): Boolean = true
-        }
-
-        /**
-         * ECS in [region] refused a compactor call because the operator's IAM lacks the
-         * `EasyDBLabCompactor` policy. [detail] is ECS's message, naming the refused action.
-         */
-        @Serializable
-        @SerialName("Compactor.AccessDenied")
-        data class AccessDenied(
-            val region: String,
-            val detail: String,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "ECS in $region refused the account compactor's call: $detail\n" +
-                    "Your IAM user or group needs the ${Constants.Compactor.OPERATOR_POLICY} policy. " +
-                    "Run `easy-db-lab show-iam-policies compactor` to print it, attach it, then run the command again."
-
-            override fun isError(): Boolean = true
-        }
-
-        /** The compactor service's desired count was set to 0 in [region]. */
-        @Serializable
-        @SerialName("Compactor.Stopped")
-        data class Stopped(
-            val region: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor stopped in $region"
-        }
-
-        /** A stop found no compactor service in [region], so there was nothing to stop. */
-        @Serializable
-        @SerialName("Compactor.NotCreated")
-        data class NotCreated(
-            val region: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "No account compactor to stop in $region"
-        }
-
-        /** `down` left the compactor running: [clusterVpcs] other cluster VPCs still name the account bucket. */
-        @Serializable
-        @SerialName("Compactor.KeptRunning")
-        data class KeptRunning(
-            val clusterVpcs: List<String>,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "Account compactor kept running: ${clusterVpcs.size} other cluster(s) use the account bucket"
         }
     }
 
@@ -6603,6 +7337,16 @@ sealed interface Event {
         }
     }
 }
+
+/**
+ * Where a resolved Cassandra version comes from, as `install` and `use` show it before any node
+ * changes. [url] is already redacted; [source] is the `CassandraSource` name.
+ */
+private fun resolvedFrom(
+    source: String,
+    url: String,
+    java: String,
+): String = "  source: $source, url: $url, JDK $java"
 
 /** A CIDR as the ingress events show it, naming it as this machine's public IP when it was detected. */
 private fun cidrLabel(

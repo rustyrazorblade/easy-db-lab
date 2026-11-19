@@ -21,6 +21,8 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import picocli.CommandLine
+import picocli.CommandLine.Model.CommandSpec
 import java.io.File
 
 class KitInstallCommandFactoryTest : BaseKoinTest() {
@@ -42,7 +44,6 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
             hosts =
@@ -114,8 +115,21 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
                 directorySource,
             )
 
-        assertThat(cl.usageMessage).contains("--size=<storage-size>")
-        assertThat(cl.usageMessage).contains("--cache-on-write[=<cache-on-write>]")
+        val options = cl.commandSpec.options().associateBy { it.longestName() }
+        assertThat(options.getValue("--size").paramLabel()).isEqualTo("<storage-size>")
+        assertThat(options.getValue("--cache-on-write").arity().min()).isZero()
+    }
+
+    /** Picocli formats descriptions with `String.format`; a kit's own `%` must reach the user unchanged. */
+    @Test
+    fun `a percent sign in a kit description is printed as written`() {
+        val cl =
+            factory.build(
+                config(arg("--keep", "KEEP").copy(description = "Keep 100% of the rows")).copy(description = "Loads 50% faster"),
+                directorySource,
+            )
+
+        assertThat(cl.usageMessage).contains("Keep 100% of the rows").contains("Loads 50% faster")
     }
 
     private fun parsedBoolean(
@@ -289,5 +303,59 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs("--extension", "duckdb")
         assertThat(command.argValues["EXTENSION"]).isEqualTo("duckdb")
+    }
+
+    @Test
+    fun `an omitted boolean install arg is false and a given one is true`() {
+        val cfg = config(arg("--tls", "TLS", KitArgSpec.ArgType.BOOLEAN))
+
+        val omitted = factory.build(cfg, directorySource)
+        omitted.parseArgs()
+        val given = factory.build(cfg, directorySource)
+        given.parseArgs("--tls")
+
+        assertThat((omitted.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("TLS", "false")
+        assertThat((given.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("TLS", "true")
+    }
+
+    @Test
+    fun `an explicit empty install arg overrides its default`() {
+        val cfg = config(arg("--suffix", "SUFFIX", default = "-prod"))
+
+        val cl = factory.build(cfg, directorySource)
+        cl.parseArgs("--suffix", "")
+
+        assertThat((cl.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("SUFFIX", "")
+    }
+
+    /** kit-command-args: "Install args and command args behave the same". */
+    @Test
+    fun `an install arg and a command arg with the same spec record the same values`() {
+        val specs =
+            listOf(
+                arg("--image", "IMAGE"),
+                arg("--level", "LEVEL", default = "info"),
+                arg("--count", "COUNT", KitArgSpec.ArgType.INT, default = "3"),
+                arg("--tls", "TLS", KitArgSpec.ArgType.BOOLEAN),
+            )
+        for (cliArgs in listOf(emptyArray(), arrayOf("--image", "x:1", "--level", "debug", "--count", "5", "--tls"))) {
+            val install = factory.build(config(*specs.toTypedArray()), directorySource)
+            install.parseArgs(*cliArgs)
+            val commandArgValues = mutableMapOf<String, String>()
+            val commandSpec = CommandSpec.create()
+            specs.forEach {
+                commandSpec.addOption(
+                    KitArgOptions.optionSpec(it, it.default, commandArgValues, KitArgOptions.UnsetArg.EMPTY),
+                )
+            }
+            CommandLine(commandSpec).parseArgs(*cliArgs)
+
+            // Install records "" for an unset arg once it has applied its defaults.
+            val installCommand = (install.commandSpec.userObject() as KitInstallCommand).also { it.applyArgDefaults() }
+
+            assertThat(installCommand.argValues)
+                .describedAs(cliArgs.joinToString(" "))
+                .isEqualTo(commandArgValues)
+        }
     }
 }

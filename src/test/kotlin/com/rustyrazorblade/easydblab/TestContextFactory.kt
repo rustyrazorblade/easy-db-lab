@@ -43,6 +43,7 @@ object TestContextFactory {
             Context(
                 easyDbLabUserDirectory = testTempDirectory.toFile(),
                 workingDirectory = workingDirectory ?: testTempDirectory.toFile(),
+                appHome = testTempDirectory.resolve("app").toString(),
             )
 
         // userConfigFile is accessed through the profileDir

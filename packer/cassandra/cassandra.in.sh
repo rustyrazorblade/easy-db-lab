@@ -4,7 +4,7 @@
 
 ### This is automatically appended to the end of every cassandra.in.sh
 
-# Agent selection helpers. Pure functions, unit tested in packer/cassandra/lib.
+# Agent and JDK helpers. Pure functions, unit tested in packer/cassandra/lib.
 ECL_AGENTS_LIB="/usr/local/lib/edl-cassandra-agents.sh"
 if [ -f "$ECL_AGENTS_LIB" ]; then
     # shellcheck disable=SC1090
@@ -34,8 +34,8 @@ edl_add_jvm_extra_opt() {
 # OpenTelemetry Java agent. Its JMX Metric Insight module reads Cassandra's own MBeans in-process
 # and reports them over OTLP to the node's collector.
 #
-# It sits above the release and JDK derivation on purpose. The agent needs neither of them, so a
-# jar name this file cannot parse costs the node its AxonOps agent but never its metrics.
+# It sits above the JDK derivation on purpose: the agent does not need it, so a `java -version`
+# line this file cannot parse costs the node its GC log but never its metrics.
 EDL_OTEL_AGENT_JAR="${EDL_OTEL_AGENT_JAR:-/usr/local/otel/opentelemetry-javaagent.jar}"
 
 # The complete JMX rule set, and the agent's only rule source: `otel.jmx.target.system` is
@@ -116,27 +116,6 @@ else
     echo "ERROR: $EDL_OTEL_AGENT_JAR is missing; this node will report NO Cassandra metrics." >&2
 fi
 
-# Extract Cassandra version from jar filename
-ECL_CASSANDRA_JAR=$(find /usr/local/cassandra/current/ -name "apache-cassandra-[0-9]*.jar" | head -n 1)
-if [ -z "$ECL_CASSANDRA_JAR" ]; then
-    echo "ERROR: Could not determine Cassandra version" >&2
-    exit 1
-fi
-
-# An unrecognised jar name leaves ECL_CASSANDRA_VERSION empty and says so. It must never carry the
-# raw filename forward: that is what used to match no agent case and start Cassandra silently
-# without an agent.
-ECL_CASSANDRA_VERSION=""
-if command -v edl_cassandra_version_from_jar >/dev/null 2>&1; then
-    ECL_CASSANDRA_VERSION=$(edl_cassandra_version_from_jar "$ECL_CASSANDRA_JAR") || ECL_CASSANDRA_VERSION=""
-fi
-if [ -z "$ECL_CASSANDRA_VERSION" ]; then
-    echo "ERROR: could not read a Cassandra X.Y release from $(basename "$ECL_CASSANDRA_JAR")." >&2
-    echo "ERROR: no AxonOps agent can be selected. Metrics are unaffected: the OTel agent above" >&2
-    echo "ERROR: needs neither the release nor the JDK." >&2
-fi
-export ECL_CASSANDRA_VERSION
-
 # Extract Java version
 ECL_JAVA_VERSION_OUTPUT=$(java -version 2>&1 | head -n 1)
 if [ -n "$ECL_JAVA_VERSION_OUTPUT" ]; then
@@ -156,26 +135,17 @@ else
     exit 1
 fi
 
-# AxonOps agent. AxonOps ships no agent for 5.1 and later, so most of the time this deliberately
-# selects nothing - but it says which release it skipped rather than going quiet.
-AXONOPS_AGENT=""
-if [ -n "$ECL_CASSANDRA_VERSION" ]; then
-    AXONOPS_AGENT=$(edl_axonops_agent_for "$ECL_CASSANDRA_VERSION" "$ECL_JAVA_VERSION") || AXONOPS_AGENT=""
-    if [ -z "$AXONOPS_AGENT" ]; then
-        echo "NOTE: no AxonOps agent is published for Cassandra ${ECL_CASSANDRA_VERSION} on JDK ${ECL_JAVA_VERSION}; skipping it" >&2
-    fi
-fi
-
-# Configure JVM_EXTRA_OPTS with agent if applicable.
-# The install dir is named after the full agent version (e.g. 5.0-agent-jdk11),
-# but the jar inside is always axon-cassandra<X.Y>-agent.jar (no jdk suffix),
-# so resolve it by glob rather than assuming the name matches the directory.
-if [ -n "$AXONOPS_AGENT" ]; then
-    ECL_AGENT_JAR=$(find "${EDL_AXONOPS_BASE:-/usr/share/axonops}/${AXONOPS_AGENT}/lib" -maxdepth 1 -name 'axon-cassandra*.jar' 2>/dev/null | head -n 1)
-    if [ -f "$ECL_AGENT_JAR" ]; then
-        edl_add_jvm_extra_opt "-javaagent:${ECL_AGENT_JAR}=/etc/axonops/axon-agent.yml"
+# AxonOps agent. `cassandra start` chooses it, installs it, and names it in EDL_AXONOPS_AGENT in
+# the systemd drop-in /etc/systemd/system/cassandra.service.d/axonops.conf; empty means this start
+# runs without AxonOps (`--skip-axonops`, or AxonOps off). Nothing here selects an agent. A named
+# agent whose jar is gone fails the start rather than running silently without it.
+if [ -n "${EDL_AXONOPS_AGENT:-}" ]; then
+    if ECL_AXONOPS_OPT=$(edl_axonops_javaagent "${EDL_AXONOPS_AGENT:-}"); then
+        edl_add_jvm_extra_opt "$ECL_AXONOPS_OPT"
     else
-        echo "WARNING: AxonOps agent jar not found for $AXONOPS_AGENT" >&2
+        echo "ERROR: the AxonOps agent ${EDL_AXONOPS_AGENT} has no jar under ${EDL_AXONOPS_BASE:-/usr/share/axonops}/${EDL_AXONOPS_AGENT}/lib." >&2
+        echo "ERROR: run 'easy-db-lab cassandra start' to install it, or start with --skip-axonops." >&2
+        exit 1
     fi
 fi
 

@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
@@ -121,7 +122,7 @@ class DefaultKitHookExecutor(
                     envVars,
                 )
             }.getOrElse { e ->
-                eventBus.emit(Event.Kit.HookFailed(kit = declaringKit, hook = hook.script, reason = e.message ?: e.toString()))
+                eventBus.emit(Event.Kit.HookFailed(kit = declaringKit, hook = hook.script, reason = e.messageOrString()))
                 return
             }
 

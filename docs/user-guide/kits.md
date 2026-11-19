@@ -12,6 +12,7 @@ easy-db-lab ships with built-in kits:
 - TiDB
 - memcached
 - Neo4j
+- FerrosaDB (see [FerrosaDB](ferrosa.md))
 - cassandra-pods (see [Cassandra Pods](cassandra-pods.md))
 - sysbench
 - clickhouse-benchmark

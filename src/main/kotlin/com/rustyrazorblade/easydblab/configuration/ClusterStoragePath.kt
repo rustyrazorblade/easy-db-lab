@@ -23,8 +23,12 @@ import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
  * Example usage:
  * ```
  * val clusterPath = ClusterStoragePath.from(clusterState)
- * val jarPath = clusterPath.spark().resolve("myapp.jar")
- * objectStore.uriOf(jarPath) // s3://my-account-bucket/clusters/mycluster-abc123/spark/myapp.jar on AWS
+ * val scriptPath = clusterPath.spark().resolve("bootstrap-otel.sh")
+ * objectStore.uriOf(scriptPath) // s3://my-account-bucket/clusters/mycluster-abc123/spark/bootstrap-otel.sh on AWS
+ *
+ * // `spark submit` uploads a job jar to the cluster's data bucket, at its root, not under a cluster prefix:
+ * val jarPath = ClusterStoragePath.root(clusterState.dataBucket).resolve("spark").resolve("myapp.jar")
+ * objectStore.uriOf(jarPath) // s3://my-data-bucket/spark/myapp.jar on AWS
  *
  * // For SDK calls:
  * val putRequest = PutObjectRequest.builder()
@@ -55,12 +59,12 @@ data class ClusterStoragePath(
         internal const val K8S_DIR = "k8s"
         internal const val CONFIG_DIR = "config"
         internal const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
-        internal const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
         internal const val ENV_SCRIPT_FILE = "env.sh"
         internal const val ENVIRONMENT_FILE = "environment.sh"
         internal const val SETUP_INSTANCE_FILE = "setup_instance.sh"
         internal const val CLICKHOUSE_BACKUPS_DIR = "clickhouse-backups"
         internal const val CASSANDRA_BUILDS_DIR = "cassandra-builds"
+        internal const val DOWNLOAD_CACHE_DIR = "download-cache"
 
         /**
          * Create a ClusterStoragePath from ClusterState.
@@ -105,7 +109,7 @@ data class ClusterStoragePath(
          * onto a path built with a store prefix ([root] or [from]); the prefix would appear twice.
          *
          * @param bucket The S3 bucket name
-         * @param key The S3 object key (e.g., "spark/myapp.jar")
+         * @param key The S3 object key (e.g., "spark/emr-logs/j-ABC/steps/s-123/stderr.gz")
          * @return A new ClusterStoragePath representing the key
          */
         fun fromKey(
@@ -123,6 +127,12 @@ data class ClusterStoragePath(
          * installed onto whichever clusters the profile later brings up.
          */
         fun cassandraBuildsRoot(accountBucket: String): ClusterStoragePath = root(accountBucket).resolve(CASSANDRA_BUILDS_DIR)
+
+        /**
+         * Root of the account's download cache: immutable downloads (Apache releases, AxonOps
+         * packages) that every node of every cluster of the profile reads before the origin.
+         */
+        fun downloadCacheRoot(accountBucket: String): ClusterStoragePath = root(accountBucket).resolve(DOWNLOAD_CACHE_DIR)
     }
 
     // Core Path-like methods
@@ -226,9 +236,6 @@ data class ClusterStoragePath(
 
     /** Path for Cassandra patch configuration file. */
     fun cassandraPatch(): ClusterStoragePath = resolve(CONFIG_DIR).resolve(CASSANDRA_PATCH_FILE)
-
-    /** Path for cassandra_versions.yaml file. */
-    fun cassandraVersions(): ClusterStoragePath = resolve(CONFIG_DIR).resolve(CASSANDRA_VERSIONS_FILE)
 
     /** Path for env.sh (main environment script with SSH aliases, kubectl, etc.). */
     fun envScript(): ClusterStoragePath = resolve(CONFIG_DIR).resolve(ENV_SCRIPT_FILE)

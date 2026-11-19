@@ -4,6 +4,9 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.services.DefaultK8sReadOperations
+import com.rustyrazorblade.easydblab.services.K8sClientProvider
+import com.rustyrazorblade.easydblab.services.K8sReadOperations
 import com.rustyrazorblade.easydblab.services.WorkspaceKubeApiLocator
 import io.fabric8.kubernetes.client.KubernetesClient
 import org.assertj.core.api.Assertions.assertThat
@@ -15,7 +18,7 @@ import org.mockito.kotlin.mock
 import java.io.File
 
 /**
- * The `KubernetesService` Koin wiring reaches the cluster through the workspace's [KubeApiLocator],
+ * The K8s read operations' Koin wiring reaches the cluster through the workspace's [KubeApiLocator],
  * so `kit status`, the kit workload probe and the server's pod listing target the context pinned in
  * cluster state, not the kubeconfig's current-context.
  */
@@ -40,18 +43,20 @@ class KubernetesModuleTest : BaseKoinTest() {
                 single<KubernetesClientFactory> { recordingFactory }
                 single { ClusterStateManager(File(workspace, "state.json")) }
                 single<KubeApiLocator> { WorkspaceKubeApiLocator(get(), workspace) }
+                single { K8sClientProvider(get(), get()) }
+                single<K8sReadOperations> { DefaultK8sReadOperations(get()) }
             },
         )
 
     @Test
-    fun `KubernetesService targets the recorded context, not the kubeconfig's current-context`() {
+    fun `the read operations target the recorded context, not the kubeconfig's current-context`() {
         val kubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
         kubeconfig.writeText(TWO_CONTEXT_KUBECONFIG)
         get<ClusterStateManager>().save(
-            ClusterState(name = "test", versions = mutableMapOf()).apply { kubeContext = "pinned-context" },
+            ClusterState(name = "test").apply { kubeContext = "pinned-context" },
         )
 
-        get<KubernetesService>().listPods()
+        get<K8sReadOperations>().listPods()
 
         val api = requested.single()
         assertThat(api).isEqualTo(KubeApi(kubeconfig.toPath(), "pinned-context"))

@@ -2,17 +2,27 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
+import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import org.assertj.core.api.Assertions.assertThat
@@ -38,20 +48,33 @@ class InitTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockEc2InstanceService: EC2InstanceService
     private lateinit var outputHandler: BufferedOutputHandler
+    private lateinit var mockInfrastructureService: AwsInfrastructureService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single { mockInfrastructureService }
                 single { mockEc2InstanceService }
                 single { TemplateService(get(), get()) }
+                single<CommandExecutor> {
+                    object : CommandExecutor {
+                        override fun <T : PicoCommand> execute(commandFactory: () -> T): Int = nestedFailure ?: commandFactory().call()
+
+                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) = Unit
+                    }
+                }
             },
         )
+
+    /** When set, the exit code every nested command reports instead of running. */
+    private var nestedFailure: Int? = null
 
     @BeforeEach
     fun setupMocks() {
         mockClusterStateManager = mock()
         mockEc2InstanceService = mock()
+        mockInfrastructureService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
         whenever(mockClusterStateManager.exists()).thenReturn(false)
@@ -65,6 +88,64 @@ class InitTest : BaseKoinTest() {
         File("setup_instance.sh").delete()
         File("cassandra").deleteRecursively()
         File("k8s").deleteRecursively()
+    }
+
+    /**
+     * `init --clean` deletes `state.json`, the only local record of the cluster's VPC, so it asks
+     * AWS first and refuses while the cluster has infrastructure.
+     */
+    @Nested
+    inner class CleanGuard {
+        private val workspaceFile: File get() = File(context.workingDirectory, "sshConfig")
+
+        private fun clusterWithVpc() {
+            whenever(mockClusterStateManager.exists()).thenReturn(true)
+            whenever(mockClusterStateManager.load())
+                .thenReturn(ClusterState(name = "lab").apply { vpcId = "vpc-live" })
+        }
+
+        @Test
+        fun `init --clean with live infrastructure is refused, names the VPC and instances, and deletes nothing`() {
+            clusterWithVpc()
+            workspaceFile.writeText("Host db0")
+            whenever(mockInfrastructureService.teardownVpc("vpc-live", true)).thenReturn(
+                TeardownResult.success(
+                    DiscoveredResources(vpcId = "vpc-live", instanceIds = listOf("i-aaa", "i-bbb"), subnetIds = listOf("subnet-1")),
+                ),
+            )
+            val events = mutableListOf<Event>()
+            getKoin().get<EventBus>().addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+
+            assertThatThrownBy { Init().apply { clean = true }.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(events.filterIsInstance<Event.Setup.CleanRefusedLiveInfrastructure>())
+                .containsExactly(Event.Setup.CleanRefusedLiveInfrastructure("vpc-live", listOf("i-aaa", "i-bbb"), 1))
+            assertThat(outputHandler.errors.joinToString("\n") { it.first })
+                .contains("vpc-live", "i-aaa", "i-bbb", "easy-db-lab down")
+            assertThat(workspaceFile).exists()
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
+        fun `init --clean proceeds when AWS shows nothing left for the cluster`() {
+            clusterWithVpc()
+            workspaceFile.writeText("Host db0")
+            whenever(mockInfrastructureService.teardownVpc("vpc-live", true))
+                .thenReturn(TeardownResult.success(DiscoveredResources(vpcId = "vpc-live")))
+
+            Init().apply { clean = true }.execute()
+
+            assertThat(workspaceFile).doesNotExist()
+            verify(mockClusterStateManager).save(any())
+        }
     }
 
     /** The workspace `bin/` belongs to the tool wrappers, so `init` refuses a directory that already has one. */
@@ -143,6 +224,17 @@ class InitTest : BaseKoinTest() {
         }
     }
 
+    @Test
+    fun `a failed clean fails init before any state is saved`() {
+        nestedFailure = Constants.ExitCodes.ERROR
+        val command = Init()
+        command.clean = true
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        verify(mockClusterStateManager, never()).save(any())
+    }
+
     @Nested
     inner class Validation {
         @Test
@@ -175,6 +267,42 @@ class InitTest : BaseKoinTest() {
 
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
+        }
+
+        @Test
+        fun `execute fails with a CIDR inside the K3s pod range, naming the range`() {
+            val command = Init()
+            command.clean = true
+            command.cidr = "10.230.0.0/16"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining(Constants.K3s.CLUSTER_CIDR)
+                .hasMessageContaining(Constants.K3s.SERVICE_CIDR)
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+
+        @Test
+        fun `execute fails with a CIDR smaller than a 25, before anything is saved`() {
+            val command = Init()
+            command.clean = true
+            command.cidr = "10.0.0.0/26"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("/25 or larger")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+
+        @Test
+        fun `execute fails with more than eight availability zones`() {
+            val command = Init()
+            command.clean = true
+            command.azs = listOf("a", "b", "c", "d", "e", "f", "g", "h", "i")
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("at most 8 availability zones")
         }
     }
 
@@ -433,6 +561,106 @@ class InitTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * Every node writes its data under `/mnt/db1`, so every node type needs a data disk
+     * (instance-storage-validation). `--ebs.type` adds an EBS volume to db nodes only, so control
+     * and app nodes need instance store.
+     */
+    @Nested
+    inner class DataDiskStorage {
+        private fun withStore(vararg typesWithStore: String) {
+            whenever(mockEc2InstanceService.describeInstanceType(any())).thenAnswer { call ->
+                InstanceTypeCapabilities(
+                    hasInstanceStore = call.getArgument<String>(0) in typesWithStore,
+                    supportedArchitectures = listOf("x86_64"),
+                )
+            }
+        }
+
+        private fun assertNothingSaved() = verify(mockClusterStateManager, never()).save(any())
+
+        @Test
+        fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
+            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 2
+            command.stressInstanceType = "c5.2xlarge"
+            command.ebsType = "gp3"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("app")
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `a control instance type without instance store fails, naming the node type and instance type`() {
+            withStore("i4i.xlarge", "c6id.2xlarge")
+            val command = Init()
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("control")
+                .hasMessageContaining(Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `a db instance type without instance store fails without an ebs type and passes with one`() {
+            withStore("c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val noEbs = Init()
+            noEbs.clean = true
+            noEbs.instanceType = "c5.2xlarge"
+
+            assertThatThrownBy { noEbs.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("The db instance type c5.2xlarge")
+                .hasMessageContaining("instance store")
+                .hasMessageContaining("--ebs.type")
+            assertNothingSaved()
+
+            val withEbs = Init()
+            withEbs.clean = true
+            withEbs.instanceType = "c5.2xlarge"
+            withEbs.ebsType = "gp3"
+            withEbs.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.instanceType == "c5.2xlarge" })
+        }
+
+        @Test
+        fun `an app instance type without instance store fails even with no app nodes`() {
+            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 0
+            command.stressInstanceType = "c5.2xlarge"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `the default db, control and app instance types pass`() {
+            withStore("i4i.xlarge", "c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 1
+
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.stressInstances == 1 })
+        }
+    }
+
     @Nested
     inner class ArchitectureDerivation {
         @Test
@@ -440,7 +668,7 @@ class InitTest : BaseKoinTest() {
             whenever(mockEc2InstanceService.describeInstanceType("arm.db"))
                 .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("arm64")))
             whenever(mockEc2InstanceService.describeInstanceType("x86.app"))
-                .thenReturn(InstanceTypeCapabilities(hasInstanceStore = false, supportedArchitectures = listOf("x86_64")))
+                .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
 
             val command = Init()
             command.clean = true
@@ -607,7 +835,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("^[a-z][a-z0-9_-]{0,62}$")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
 
         /** A Loki tenant named `index` would put its chunks under Loki's index path. */
@@ -620,7 +848,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("'index' is reserved")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 
@@ -658,7 +886,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 
@@ -678,6 +906,21 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager, atLeastOnce()).save(
                 argThat { vpcId == "vpc-existing123" },
             )
+        }
+
+        @Test
+        fun `a VPC given with --vpc is recorded as the user's, and a VPC that up creates is not`() {
+            val supplied =
+                Init().apply {
+                    clean = true
+                    existingVpcId = "vpc-existing123"
+                }
+            supplied.execute()
+            verify(mockClusterStateManager, atLeastOnce()).save(argThat { vpcId == "vpc-existing123" && vpcSupplied })
+
+            val own = Init().apply { clean = true }
+            own.execute()
+            verify(mockClusterStateManager, atLeastOnce()).save(argThat { vpcId == null && !vpcSupplied })
         }
     }
 
@@ -760,7 +1003,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("traces")
 
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 

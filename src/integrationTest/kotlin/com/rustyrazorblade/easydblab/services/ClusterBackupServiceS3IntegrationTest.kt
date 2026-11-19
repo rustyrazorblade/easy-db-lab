@@ -60,144 +60,72 @@ class ClusterBackupServiceS3IntegrationTest {
     private fun createClusterState(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = TEST_BUCKET,
         )
 
     @Nested
-    inner class BackupAndRestoreKubeconfig {
+    inner class BackupAndRestoreSingleTargets {
         @Test
         fun `should upload and download kubeconfig file`() {
-            // Given
             val kubeconfigContent = "apiVersion: v1\nclusters: []\nkind: Config"
-            val localKubeconfig =
-                File(tempDir, "kubeconfig").apply {
-                    writeText(kubeconfigContent)
-                }
+            val source = File(tempDir, "kubeconfig-source").apply { mkdirs() }
+            File(source, "kubeconfig").writeText(kubeconfigContent)
             val clusterState = createClusterState()
 
-            // When - backup
-            val backupResult = service.backupKubeconfig(localKubeconfig.toPath(), clusterState)
-
-            // Then - backup succeeded
+            val backupResult = service.backupAll(source.absolutePath, clusterState)
             assertThat(backupResult.isSuccess).isTrue()
+            assertThat(backupResult.getOrThrow().isBackedUp(BackupTarget.KUBECONFIG)).isTrue()
 
-            // When - restore to different location
-            val restoredPath = tempDir.toPath().resolve("restored-kubeconfig")
-            val restoreResult = service.restoreKubeconfig(restoredPath, clusterState)
+            val restoreDir = File(tempDir, "kubeconfig-restored").apply { mkdirs() }
+            val restoreResult = service.restoreAll(restoreDir.absolutePath, clusterState)
 
-            // Then - restore succeeded and content matches
             assertThat(restoreResult.isSuccess).isTrue()
-            assertThat(restoredPath.toFile().readText()).isEqualTo(kubeconfigContent)
+            assertThat(restoreResult.getOrThrow().isRestored(BackupTarget.KUBECONFIG)).isTrue()
+            assertThat(File(restoreDir, "kubeconfig").readText()).isEqualTo(kubeconfigContent)
         }
 
-        @Test
-        fun `kubeconfigExistsInS3 should return true after backup`() {
-            // Given
-            val localKubeconfig =
-                File(tempDir, "kubeconfig").apply {
-                    writeText("test-content")
-                }
-            val clusterState = createClusterState()
-
-            // When
-            service.backupKubeconfig(localKubeconfig.toPath(), clusterState)
-
-            // Then
-            assertThat(service.kubeconfigExistsInS3(clusterState)).isTrue()
-        }
-    }
-
-    @Nested
-    inner class BackupAndRestoreK8sManifests {
         @Test
         fun `should upload and download k8s manifests directory`() {
-            // Given
-            val k8sDir =
-                File(tempDir, "k8s").apply {
-                    mkdirs()
-                    File(this, "deployment.yaml").writeText("apiVersion: apps/v1\nkind: Deployment")
-                    File(this, "service.yaml").writeText("apiVersion: v1\nkind: Service")
-                }
+            val source = File(tempDir, "k8s-source").apply { mkdirs() }
+            File(source, "k8s").apply {
+                mkdirs()
+                File(this, "deployment.yaml").writeText("apiVersion: apps/v1\nkind: Deployment")
+                File(this, "service.yaml").writeText("apiVersion: v1\nkind: Service")
+            }
             val clusterState = createClusterState()
 
-            // When - backup
-            val backupResult = service.backupK8sManifests(k8sDir.toPath(), clusterState)
-
-            // Then - backup succeeded
+            val backupResult = service.backupAll(source.absolutePath, clusterState)
             assertThat(backupResult.isSuccess).isTrue()
+            assertThat(backupResult.getOrThrow().isBackedUp(BackupTarget.K8S_MANIFESTS)).isTrue()
 
-            // When - restore to different location
-            val restoredDir = File(tempDir, "restored-k8s")
-            val restoreResult = service.restoreK8sManifests(restoredDir.toPath(), clusterState)
+            val restoreDir = File(tempDir, "k8s-restored").apply { mkdirs() }
+            val restoreResult = service.restoreAll(restoreDir.absolutePath, clusterState)
 
-            // Then - restore succeeded and content matches
             assertThat(restoreResult.isSuccess).isTrue()
-            assertThat(File(restoredDir, "deployment.yaml").readText())
+            assertThat(restoreResult.getOrThrow().isRestored(BackupTarget.K8S_MANIFESTS)).isTrue()
+            assertThat(File(restoreDir, "k8s/deployment.yaml").readText())
                 .isEqualTo("apiVersion: apps/v1\nkind: Deployment")
-            assertThat(File(restoredDir, "service.yaml").readText())
+            assertThat(File(restoreDir, "k8s/service.yaml").readText())
                 .isEqualTo("apiVersion: v1\nkind: Service")
         }
 
         @Test
-        fun `k8sManifestsExistInS3 should return true after backup`() {
-            // Given
-            val k8sDir =
-                File(tempDir, "k8s-check").apply {
-                    mkdirs()
-                    File(this, "test.yaml").writeText("test")
-                }
-            val clusterState = createClusterState()
-
-            // When
-            service.backupK8sManifests(k8sDir.toPath(), clusterState)
-
-            // Then
-            assertThat(service.k8sManifestsExistInS3(clusterState)).isTrue()
-        }
-    }
-
-    @Nested
-    inner class BackupAndRestoreCassandraPatch {
-        @Test
         fun `should upload and download cassandra patch file`() {
-            // Given
             val patchContent = "concurrent_reads: 64\nconcurrent_writes: 64"
-            val localPatch =
-                File(tempDir, "cassandra.patch.yaml").apply {
-                    writeText(patchContent)
-                }
+            val source = File(tempDir, "patch-source").apply { mkdirs() }
+            File(source, "cassandra.patch.yaml").writeText(patchContent)
             val clusterState = createClusterState()
 
-            // When - backup
-            val backupResult = service.backupCassandraPatch(localPatch.toPath(), clusterState)
-
-            // Then - backup succeeded
+            val backupResult = service.backupAll(source.absolutePath, clusterState)
             assertThat(backupResult.isSuccess).isTrue()
+            assertThat(backupResult.getOrThrow().isBackedUp(BackupTarget.CASSANDRA_PATCH)).isTrue()
 
-            // When - restore to different location
-            val restoredPath = tempDir.toPath().resolve("restored-cassandra.patch.yaml")
-            val restoreResult = service.restoreCassandraPatch(restoredPath, clusterState)
+            val restoreDir = File(tempDir, "patch-restored").apply { mkdirs() }
+            val restoreResult = service.restoreAll(restoreDir.absolutePath, clusterState)
 
-            // Then - restore succeeded and content matches
             assertThat(restoreResult.isSuccess).isTrue()
-            assertThat(restoredPath.toFile().readText()).isEqualTo(patchContent)
-        }
-
-        @Test
-        fun `cassandraPatchExistsInS3 should return true after backup`() {
-            // Given
-            val localPatch =
-                File(tempDir, "cassandra.patch.yaml").apply {
-                    writeText("test-patch")
-                }
-            val clusterState = createClusterState()
-
-            // When
-            service.backupCassandraPatch(localPatch.toPath(), clusterState)
-
-            // Then
-            assertThat(service.cassandraPatchExistsInS3(clusterState)).isTrue()
+            assertThat(restoreResult.getOrThrow().isRestored(BackupTarget.CASSANDRA_PATCH)).isTrue()
+            assertThat(File(restoreDir, "cassandra.patch.yaml").readText()).isEqualTo(patchContent)
         }
     }
 
@@ -215,7 +143,6 @@ class ClusterBackupServiceS3IntegrationTest {
                         File(this, "manifest.yaml").writeText("manifest-content")
                     }
                     File(this, "cassandra.patch.yaml").writeText("patch-content")
-                    File(this, "cassandra_versions.yaml").writeText("versions-content")
                     File(this, "environment.sh").writeText("ENV_VAR=value")
                     File(this, "setup_instance.sh").writeText("#!/bin/bash\necho setup")
                 }
@@ -231,7 +158,6 @@ class ClusterBackupServiceS3IntegrationTest {
             assertThat(backupResult.isBackedUp(BackupTarget.KUBECONFIG)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.K8S_MANIFESTS)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.CASSANDRA_PATCH)).isTrue()
-            assertThat(backupResult.isBackedUp(BackupTarget.CASSANDRA_VERSIONS)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.ENVIRONMENT_SCRIPT)).isTrue()
             assertThat(backupResult.isBackedUp(BackupTarget.SETUP_INSTANCE_SCRIPT)).isTrue()
         }

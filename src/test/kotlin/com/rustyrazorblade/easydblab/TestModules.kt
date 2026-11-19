@@ -14,10 +14,14 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
+import com.rustyrazorblade.easydblab.providers.aws.AwsIamRoles
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
+import com.rustyrazorblade.easydblab.providers.aws.StsAccountIdentity
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
@@ -29,13 +33,14 @@ import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.DataBucketTeardown
 import com.rustyrazorblade.easydblab.services.ExternalIpService
-import com.rustyrazorblade.easydblab.services.ImagePullSecretService
+import com.rustyrazorblade.easydblab.services.TailnetCleanup
+import com.rustyrazorblade.easydblab.services.TailscaleService
+import com.rustyrazorblade.easydblab.services.TeardownPlanner
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
-import com.rustyrazorblade.easydblab.services.aws.CompactorService
-import com.rustyrazorblade.easydblab.services.aws.EcrPullSecretService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -44,7 +49,6 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import software.amazon.awssdk.services.ecr.EcrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
@@ -93,6 +97,7 @@ object TestModules {
             ContextFactory(
                 baseDirectory = testContext.easyDbLabUserDirectory,
                 workingDirectory = testContext.workingDirectory,
+                appHome = testContext.appHome,
             )
         return module {
             // Provide ContextFactory for tests that need it
@@ -180,26 +185,26 @@ object TestModules {
                 }
             }
 
-            // AWS service with mocked IAM, S3, and STS clients
-            // Using real AWS class with mocked clients ensures the service logic
-            // is tested while preventing actual AWS API calls
-            single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
-            single { InstanceRolePolicies(get()) }
+            // Account identity and IAM roles over the mocked STS and IAM clients: the real logic
+            // runs while no AWS API call is made
+            single<AccountIdentity> { StsAccountIdentity(get<StsClient>()) }
+            single<IamRoles> { AwsIamRoles(get<IamClient>(), get<AccountIdentity>()) }
+            single { InstanceRolePolicies(get<IamRoles>()) }
 
-            // Mock AWSClientFactory that returns the injected AWS service
+            // Mock AWSClientFactory that returns the injected account identity
             single<AWSClientFactory> {
-                val aws = get<AWS>()
+                val identity = get<AccountIdentity>()
                 object : AWSClientFactory {
-                    override fun createAWSClient(
+                    override fun createAccountIdentity(
                         accessKey: String,
                         secret: String,
                         region: String,
-                    ): AWS = aws
+                    ): AccountIdentity = identity
 
-                    override fun createAWSClientWithProfile(
+                    override fun createAccountIdentityWithProfile(
                         profileName: String,
                         region: String,
-                    ): AWS = aws
+                    ): AccountIdentity = identity
 
                     override fun createEc2Client(
                         accessKey: String,
@@ -217,22 +222,22 @@ object TestModules {
             // Mock AMIValidator to prevent AMI validation during tests
             single { mock<AMIValidator>() }
 
-            // The account compactor creates ECS, IAM and VPC resources in AWS; tests that care
-            // about what up and down do to it override this mock.
-            single { mock<CompactorService>() }
+            // AwsS3BucketService over the mocked S3 client
+            single { AwsS3BucketService(get<S3Client>(), get<AccountIdentity>()) }
+            single<S3BucketAdmin> { get<AwsS3BucketService>() }
 
-            // AwsS3BucketService using mocked AWS
-            single { AwsS3BucketService(get<AWS>()) }
+            // The jobs `down` delegates to, built when the command first asks for one so a test
+            // can still swap the Tailscale service, the bucket service or the user before then
+            single<TailscaleService> { mock() }
+            factory { TailnetCleanup(get(), lazy { get<User>() }, get()) }
+            factory { DataBucketTeardown(get(), get()) }
+            factory { TeardownPlanner(get()) }
 
             // Published Cassandra builds. Mocked rather than real: resolving it for real would
             // create the account bucket. Its defaults (no builds, no match) are what a profile
             // that has never run `cassandra build` actually looks like.
             single { mock<CassandraBuildCatalog>() }
 
-            // Real, over a mocked ECR client and K8s service: tests that exercise a custom image
-            // assert on the secret this actually builds, so a mock here would verify nothing.
-            single { mock<EcrClient>() }
-            single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
             factory { AwsKeyPairService(get(), get(), AwsErrorHandler()) }
 
             // Fake external IP resolver so tests never make a network call

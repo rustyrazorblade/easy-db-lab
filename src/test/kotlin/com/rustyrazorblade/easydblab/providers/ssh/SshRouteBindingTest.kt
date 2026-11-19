@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmProxyWrapper
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -67,6 +68,19 @@ internal class SshRouteBindingTest : BaseKoinTest() {
         assertThat(route.authTimeout).isNull()
         route.invalidate(host)
         assertThat(route.endpoint(host)).isEqualTo(SshEndpoint("54.1.2.3", 22))
+    }
+
+    @Test
+    fun `the route can be built before the profile exists and fails only when it is used`() {
+        getKoin().loadModules(
+            listOf(module { single<User> { error("User configuration file not found") } }),
+            allowOverride = true,
+        )
+
+        val route = getKoin().get<SshRoute>()
+
+        assertThatThrownBy { route.proxyCommand(host) }
+            .hasStackTraceContaining("User configuration file not found")
     }
 
     private fun useTransport(transport: SshTransport) {

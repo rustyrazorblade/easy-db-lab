@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.Constants
-
 /**
  * Represents all AWS resources discovered within a VPC that may need to be deleted.
  *
@@ -19,16 +17,16 @@ data class DiscoveredResources(
     val internetGatewayId: InternetGatewayId? = null,
     val natGatewayIds: List<NatGatewayId> = emptyList(),
     val routeTableIds: List<RouteTableId> = emptyList(),
+    /**
+     * False when the VPC was supplied with `init --vpc`: it belongs to the user, so teardown removes
+     * only the resources listed here and never the VPC itself.
+     */
+    val ownsVpc: Boolean = true,
 ) {
     /**
      * Returns true if this VPC is the packer infrastructure VPC.
      */
     fun isPackerVpc(): Boolean = vpcName == InfrastructureConfig.PACKER_VPC_NAME
-
-    /**
-     * Returns true if this is the account compactor's VPC, which outlives every cluster.
-     */
-    fun isCompactorVpc(): Boolean = vpcName == Constants.Vpc.COMPACTOR_VPC_NAME
 
     /**
      * Returns true if there are any resources to delete.
@@ -43,11 +41,24 @@ data class DiscoveredResources(
             natGatewayIds.isNotEmpty()
 
     /**
+     * Counts the resources that are not EC2 instances: EMR clusters, OpenSearch domains, security
+     * groups, subnets, NAT gateways and the internet gateway.
+     */
+    fun nonInstanceResourceCount(): Int =
+        emrClusterIds.size +
+            openSearchDomainNames.size +
+            securityGroupIds.size +
+            subnetIds.size +
+            natGatewayIds.size +
+            (if (internetGatewayId != null) 1 else 0)
+
+    /**
      * Returns a human-readable summary of discovered resources.
      */
     fun summary(): String {
         val parts = mutableListOf<String>()
-        parts.add("VPC: $vpcId" + (vpcName?.let { " ($it)" } ?: ""))
+        val kept = if (ownsVpc) "" else " (not created by easy-db-lab, kept)"
+        parts.add("VPC: $vpcId" + (vpcName?.let { " ($it)" } ?: "") + kept)
         if (instanceIds.isNotEmpty()) parts.add("  EC2 Instances: ${instanceIds.size}")
         if (emrClusterIds.isNotEmpty()) parts.add("  EMR Clusters: ${emrClusterIds.size}")
         if (openSearchDomainNames.isNotEmpty()) parts.add("  OpenSearch Domains: ${openSearchDomainNames.size}")

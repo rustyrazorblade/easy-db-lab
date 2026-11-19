@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.services.TailSignal
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -41,6 +42,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoMoreInteractions
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayInputStream
+import java.net.ConnectException
 import java.nio.file.AccessDeniedException
 import java.time.Instant
 
@@ -73,7 +75,6 @@ class DownBackupTest : BaseKoinTest() {
     private fun upClusterState() =
         ClusterState(
             name = "perf-test",
-            versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
             vpcId = "vpc-123",
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -83,7 +84,6 @@ class DownBackupTest : BaseKoinTest() {
     private fun downClusterState() =
         ClusterState(
             name = "perf-test",
-            versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
             vpcId = "vpc-123",
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
@@ -93,7 +93,6 @@ class DownBackupTest : BaseKoinTest() {
     private fun upClusterStateNoControlHost() =
         ClusterState(
             name = "perf-test",
-            versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
             vpcId = "vpc-123",
             hosts = emptyMap(),
@@ -183,6 +182,21 @@ class DownBackupTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a failed signal behind the Kubernetes client's generic wrapper is reported with the real cause`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        previewFindsResources()
+        val wrapper = KubernetesClientException("An error has occurred.", ConnectException("Connection refused"))
+        val failures = mapOf(TailSignal.TRACES to FlushStepFailed(FlushStep.TEMPO_BLOCKS_FLUSHED, emptyMap(), wrapper))
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any()))
+            .thenReturn(Result.failure(TailFlushFailed(failures, emptyMap())))
+
+        Down().apply { autoApprove = true }.call()
+
+        assertThat(errorOutput()).contains("Connection refused").doesNotContain("An error has occurred.")
+    }
+
+    @Test
     fun `every failed signal is reported with its step, its cause, each workload's state and --force`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
@@ -229,6 +243,67 @@ class DownBackupTest : BaseKoinTest() {
             .contains("left stopped: loki, mimir, otel-collector.")
             .contains("otel-collector-host: ${BackendState.ABSENT.description}")
             .contains("down --force")
+    }
+
+    /**
+     * K3s never started, so no step reached the cluster. The report must not say a workload was
+     * deleted or stopped, nor that the save left anything stopped: it could not have observed that.
+     */
+    @Test
+    fun `steps that never reached the cluster are reported as such and name no workload as stopped`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        previewFindsResources()
+        val backends =
+            mapOf(
+                "loki" to BackendState.UNREACHED,
+                "mimir" to BackendState.UNREACHED,
+                "otel-collector" to BackendState.UNREACHED,
+            )
+        val failures =
+            mapOf(
+                TailSignal.METRICS to
+                    FlushStepFailed(
+                        FlushStep.MIMIR_SHUTDOWN,
+                        backends,
+                        java.net.SocketException("Malformed reply from SOCKS server"),
+                        unreached = true,
+                    ),
+                TailSignal.TRACES to
+                    FlushStepFailed(
+                        FlushStep.SENDERS_STOP,
+                        backends,
+                        java.io.FileNotFoundException("kubeconfig (No such file or directory)"),
+                        unreached = true,
+                    ),
+            )
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.failure(TailFlushFailed(failures, backends)))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(errorOutput())
+            .contains("could not reach the cluster")
+            .contains("Malformed reply from SOCKS server")
+            .contains("kubeconfig (No such file or directory)")
+            .contains("mimir: ${BackendState.UNREACHED.description}")
+            .doesNotContain("deleted", "scaled to 0", "left stopped", "Stopped by the save")
+    }
+
+    /** Only the workload whose step never got an answer drops out of "left stopped"; the others keep their state. */
+    @Test
+    fun `a workload the save did stop stays listed when another one was never reached`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        previewFindsResources()
+        val backends = mapOf("loki" to BackendState.SCALED_TO_ZERO, "mimir" to BackendState.UNREACHED)
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(
+            failedSave(FlushStep.MIMIR_SHUTDOWN, "Malformed reply from SOCKS server", backends),
+        )
+
+        Down().apply { autoApprove = true }.call()
+
+        assertThat(errorOutput()).contains("left stopped: loki.")
     }
 
     @Test
@@ -567,5 +642,63 @@ class DownBackupTest : BaseKoinTest() {
             .contains("${TailSignal.ANNOTATIONS.description} at 2026-09-26T12:01:00Z")
             .doesNotContain("Saving annotations, logs, metrics and traces")
         assertThat(errorOutput()).isEmpty()
+    }
+
+    @Test
+    fun `a cluster in a user-supplied VPC tears down by its own cluster tag and never as a whole VPC`() {
+        val supplied = upClusterState().apply { vpcSupplied = true }
+        val owned = DiscoveredResources(vpcId = "vpc-123", instanceIds = listOf("i-control"), ownsVpc = false)
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(supplied)
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(saved)
+        whenever(teardownService.teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(true)))
+            .thenReturn(TeardownResult.success(owned))
+        whenever(teardownService.teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(false)))
+            .thenReturn(TeardownResult.success(owned))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(0)
+        verify(teardownService).teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(false))
+        verify(teardownService, never()).teardownVpc(any(), any())
+    }
+
+    @Test
+    fun `naming the supplied VPC on the command line still removes only the cluster's own resources`() {
+        val supplied = upClusterState().apply { vpcSupplied = true }
+        val owned = DiscoveredResources(vpcId = "vpc-123", instanceIds = listOf("i-control"), ownsVpc = false)
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(supplied)
+        whenever(teardownService.teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), any()))
+            .thenReturn(TeardownResult.success(owned))
+
+        val exitCode =
+            Down()
+                .apply {
+                    vpcId = "vpc-123"
+                    autoApprove = true
+                }.call()
+
+        assertThat(exitCode).isEqualTo(0)
+        verify(teardownService).teardownClusterInSuppliedVpc(eq("vpc-123"), eq(supplied.clusterId), eq(false))
+        verify(teardownService, never()).teardownVpc(any(), any())
+    }
+
+    @Test
+    fun `naming a VPC that is not the workspace's supplied VPC is decided by that VPC's own tags, not the workspace state`() {
+        val supplied = upClusterState().apply { vpcSupplied = true }
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(supplied)
+        whenever(teardownService.teardownVpcByTags(eq("vpc-other"), any()))
+            .thenReturn(TeardownResult.success(DiscoveredResources(vpcId = "vpc-other", instanceIds = listOf("i-1"))))
+
+        Down()
+            .apply {
+                vpcId = "vpc-other"
+                autoApprove = true
+            }.call()
+
+        verify(teardownService, never()).teardownClusterInSuppliedVpc(any(), any(), any())
+        verify(teardownService).teardownVpcByTags(eq("vpc-other"), eq(false))
     }
 }

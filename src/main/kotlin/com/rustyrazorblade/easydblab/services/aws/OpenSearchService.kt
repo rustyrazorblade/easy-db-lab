@@ -3,13 +3,15 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyAction
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.toJson
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyPrincipal
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyResource
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyStatement
+import com.rustyrazorblade.easydblab.providers.aws.IamRoles
+import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
@@ -27,6 +29,7 @@ import software.amazon.awssdk.services.opensearch.model.ResourceNotFoundExceptio
 import software.amazon.awssdk.services.opensearch.model.Tag
 import software.amazon.awssdk.services.opensearch.model.VPCOptions
 import software.amazon.awssdk.services.opensearch.model.VolumeType
+import java.time.Duration
 
 /**
  * State of an OpenSearch domain.
@@ -106,7 +109,8 @@ data class OpenSearchDomainResult(
  */
 class OpenSearchService(
     private val openSearchClient: OpenSearchClient,
-    private val aws: AWS,
+    private val iamRoles: IamRoles,
+    private val accountIdentity: AccountIdentity,
     private val eventBus: EventBus = EventBus(),
 ) {
     companion object {
@@ -119,14 +123,14 @@ class OpenSearchService(
      * OpenSearch requires a service-linked role to access VPC resources.
      * Delegates to [AWS.ensureOpenSearchServiceLinkedRole].
      */
-    fun ensureServiceLinkedRole() = aws.ensureOpenSearchServiceLinkedRole()
+    fun ensureServiceLinkedRole() = iamRoles.ensureOpenSearchServiceLinkedRole()
 
     /**
      * Retrieves the AWS account ID for the authenticated credentials.
      *
      * @return The AWS account ID
      */
-    fun getAccountId(): String = aws.getAccountId()
+    fun getAccountId(): String = accountIdentity.getAccountId()
 
     /**
      * Creates a new OpenSearch domain with the specified configuration.
@@ -302,13 +306,15 @@ class OpenSearchService(
      * Waits for an OpenSearch domain to become active.
      *
      * OpenSearch domains typically take 10-30 minutes to create. This method
-     * polls the domain status until it becomes active or times out.
+     * polls the domain status until it becomes active or times out. A describe call that
+     * fails (for example, a throttle) is retried within the timeout.
      *
      * @param domainName The domain name
      * @param timeoutMs Maximum time to wait in milliseconds (default: 45 minutes)
      * @param pollIntervalMs Interval between status checks (default: 30 seconds)
      * @return Domain result with endpoint information
-     * @throws IllegalStateException if timeout is exceeded
+     * @throws AwsTimeoutException if the domain is not active within [timeoutMs]
+     * @throws IllegalStateException if the domain was deleted
      */
     fun waitForDomainActive(
         domainName: String,
@@ -321,59 +327,38 @@ class OpenSearchService(
         val startTime = System.currentTimeMillis()
         var pollCount = 0
 
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val result = describeDomain(domainName)
-            pollCount++
-
-            val readyResult = checkDomainActiveState(result, domainName, pollCount, startTime)
-            if (readyResult != null) {
-                return readyResult
+        val result =
+            pollUntilOrTimeout(
+                what = "OpenSearch domain $domainName to become active",
+                timeout = Duration.ofMillis(timeoutMs),
+                interval = Duration.ofMillis(pollIntervalMs),
+                done = { it.state == DomainState.DELETED || it.isReady() },
+            ) {
+                describeDomain(domainName).also { logActiveProgress(it, ++pollCount, startTime) }
             }
 
-            Thread.sleep(pollIntervalMs)
-        }
-
-        error("Timeout waiting for OpenSearch domain $domainName to become active after ${timeoutMs}ms")
+        check(result.state != DomainState.DELETED) { "OpenSearch domain $domainName was deleted" }
+        log.info { "OpenSearch domain $domainName is active with endpoint: ${result.endpoint}" }
+        eventBus.emit(Event.OpenSearch.Ready)
+        return result
     }
 
-    /**
-     * Checks the domain state during active waiting and returns the result if ready.
-     *
-     * @return The domain result if ready, null if still waiting
-     * @throws IllegalStateException if domain was deleted
-     */
-    private fun checkDomainActiveState(
-        result: OpenSearchDomainResult,
-        domainName: String,
-        pollCount: Int,
-        startTime: Long,
-    ): OpenSearchDomainResult? =
-        when (result.state) {
-            DomainState.ACTIVE -> handleActiveState(result, domainName, pollCount, startTime)
-            DomainState.DELETED -> error("OpenSearch domain $domainName was deleted")
-            DomainState.PROCESSING -> {
-                logPollProgress(pollCount, startTime, "Domain still processing")
-                null
-            }
-        }
+    private fun OpenSearchDomainResult.isReady(): Boolean = state == DomainState.ACTIVE && endpoint != null
 
     /**
-     * Handles the ACTIVE state, returning the result if endpoint is available.
+     * Logs progress at regular intervals while the domain is not yet ready.
      */
-    private fun handleActiveState(
+    private fun logActiveProgress(
         result: OpenSearchDomainResult,
-        domainName: String,
         pollCount: Int,
         startTime: Long,
-    ): OpenSearchDomainResult? =
-        if (result.endpoint != null) {
-            log.info { "OpenSearch domain $domainName is active with endpoint: ${result.endpoint}" }
-            eventBus.emit(Event.OpenSearch.Ready)
-            result
-        } else {
-            logPollProgress(pollCount, startTime, "Domain active, waiting for endpoint")
-            null
+    ) {
+        when {
+            result.state == DomainState.PROCESSING -> logPollProgress(pollCount, startTime, "Domain still processing")
+            result.state == DomainState.ACTIVE && !result.isReady() ->
+                logPollProgress(pollCount, startTime, "Domain active, waiting for endpoint")
         }
+    }
 
     /**
      * Logs progress at regular intervals during polling.
@@ -393,12 +378,13 @@ class OpenSearchService(
      * Waits for an OpenSearch domain to be fully deleted.
      *
      * OpenSearch domains take 10-20+ minutes to fully delete. This method
-     * polls the domain status until it no longer exists or times out.
+     * polls the domain status until it no longer exists or times out. A describe call that
+     * fails for any reason other than the domain not existing is retried within the timeout.
      *
      * @param domainName The domain name
      * @param timeoutMs Maximum time to wait in milliseconds (default: 45 minutes)
      * @param pollIntervalMs Interval between status checks (default: 30 seconds)
-     * @throws IllegalStateException if timeout is exceeded
+     * @throws AwsTimeoutException if the domain still exists after [timeoutMs]
      */
     fun waitForDomainDeleted(
         domainName: String,
@@ -411,59 +397,31 @@ class OpenSearchService(
         val startTime = System.currentTimeMillis()
         var pollCount = 0
 
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            pollCount++
-
-            if (checkDomainDeletedState(domainName, pollCount, startTime)) {
-                return
+        pollUntilOrTimeout(
+            what = "OpenSearch domain $domainName to be deleted",
+            timeout = Duration.ofMillis(timeoutMs),
+            interval = Duration.ofMillis(pollIntervalMs),
+            done = { it == DomainState.DELETED },
+        ) {
+            describeDomainStateOrDeleted(domainName).also { state ->
+                pollCount++
+                if (state != DomainState.DELETED) logPollProgress(pollCount, startTime, "Domain still deleting")
             }
-
-            Thread.sleep(pollIntervalMs)
         }
 
-        error("Timeout waiting for OpenSearch domain $domainName to be deleted after ${timeoutMs}ms")
+        log.info { "OpenSearch domain $domainName is deleted" }
+        eventBus.emit(Event.OpenSearch.Deleted(domainName))
     }
 
     /**
-     * Checks if domain is deleted during deletion polling.
-     *
-     * @return true if domain is deleted, false if still waiting
+     * Describes the domain, reading "no such domain" as [DomainState.DELETED].
      */
-    private fun checkDomainDeletedState(
-        domainName: String,
-        pollCount: Int,
-        startTime: Long,
-    ): Boolean =
+    private fun describeDomainStateOrDeleted(domainName: String): DomainState =
         try {
-            val result = describeDomain(domainName)
-            handleDeletedPollResult(result, domainName, pollCount, startTime)
-        } catch (e: software.amazon.awssdk.services.opensearch.model.ResourceNotFoundException) {
-            log.info { "OpenSearch domain $domainName no longer exists (deleted)" }
-            eventBus.emit(Event.OpenSearch.Deleted(domainName))
-            true
-        }
-
-    /**
-     * Handles poll result during deletion waiting.
-     *
-     * @return true if domain is deleted, false if still waiting
-     */
-    private fun handleDeletedPollResult(
-        result: OpenSearchDomainResult,
-        domainName: String,
-        pollCount: Int,
-        startTime: Long,
-    ): Boolean =
-        when (result.state) {
-            DomainState.DELETED -> {
-                log.info { "OpenSearch domain $domainName is deleted" }
-                eventBus.emit(Event.OpenSearch.Deleted(domainName))
-                true
-            }
-            DomainState.ACTIVE, DomainState.PROCESSING -> {
-                logPollProgress(pollCount, startTime, "Domain still deleting")
-                false
-            }
+            describeDomain(domainName).state
+        } catch (e: ResourceNotFoundException) {
+            log.debug(e) { "OpenSearch domain $domainName no longer exists" }
+            DomainState.DELETED
         }
 
     /**

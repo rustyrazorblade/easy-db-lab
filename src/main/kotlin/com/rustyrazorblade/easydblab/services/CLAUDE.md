@@ -186,4 +186,56 @@ myService.start(host).onSuccess {
 1. **Use Result Types**: Never throw exceptions directly - wrap operations in `runCatching {}`
 2. **Log Appropriately**: Use `log.info` for successful operations, `log.debug` for status checks
 3. **Test Thoroughly**: Test both success and failure scenarios
+4. **Name the failures you handle**: A `catch` names the exception types its body can throw; never `catch (e: Exception)` and never `@Suppress("TooGenericExceptionCaught")`. A boundary that must turn any failure into a report or fallback uses `runCatchingException { }` (in `Throwables.kt`), which captures an `Exception` and still rethrows a JVM `Error`.
 5. **Document Custom Behavior**: Clearly document any overridden methods or custom logic
+
+## Cassandra Versions (`cassandraversions/`)
+
+The on-demand Cassandra install (#1130). The CLI resolves everything; the node scripts take it as arguments.
+
+- `CassandraVersionResolver` turns a name and the CLI options into one `InstallSpec`, reading the sources in order: the state record, a profile build, `--url`, the ASF releases, the cassandra-builds `nightly` release, the build catalog. `VersionName` is the one rule for a valid name, checked here and in `ProfileBuildSource`, and again by the node scripts.
+- `VersionSources` is the port for every source but the state (`DefaultVersionSources`: `ProfileBuildSource`, `PublicHttp` for the public hosts, `VersionSourceCache` for the ASF and cassandra-builds lists, the profile's build catalog). Tests use a fixed fake.
+- `ReleaseLines` is the release-line JDK table (`cassandra/release-lines.yaml`), the last layer of the JDK choice.  Its `build_java` is the JDK a cassandra-builds nightly of the line is compiled on; a nightly with no manifest runs only on that JDK and newer, and `ReleaseLinesBuildPlanTest` checks it against `.github/cassandra-image/resolve-build-plan.sh`.
+- `CassandraInstaller` plans each node's action (download, present, refused) with no change, runs `install-cassandra-version` in parallel, records each node's outcome and runs `use-cassandra`. A node that would download a URL whose credential the record redacted is refused with the `--reinstall --url` to run.
+- `AxonOpsAgents` installs the agent for each node's release and JDK and writes the systemd drop-in: at `cassandra start`, and after `cassandra use` on a node whose last start loaded an agent.
+- `CassandraNodeRestorer` puts a replaced node back on its active version (design D7); its caller applies the config. Nothing calls it yet: issue 1158 left the replacement path without it, and a follow-up wires it in.
+
+## Per-Node Bring-Up (`bringup/`)
+
+`up` brings every node up through its own pipeline (`NodeBringUp`), not one phase at a time across
+the cluster. The user-facing behaviour is in `docs/user-guide/large-clusters.md`; the decisions are
+in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
+
+- **Ports**: `NodeSteps`, `ControlNodeSteps`, `ControlPlaneConnection`, `NodeTracker` and
+  `HealthSampler` (`BringUpPorts.kt`), `InstanceTracker` and `InstanceFleet`. `NodeBringUp`, `NodePipeline`, `ControlPipeline` and
+  `NodeReplacer` see only these. Files directly in `bringup/` import no `providers.aws.*` or
+  `services.aws.*` and nothing K3s- or Cilium-specific.
+- **Adapters**: the EC2 ones (`Ec2InstanceFleet`, `Ec2InstanceStateWatcher`, and `Ec2K3sBringUp`,
+  which assembles the port set) are in `bringup/aws/`; the K3s and Cilium ones (`K3sNodeSteps`,
+  `K3sControlSteps`, `Fabric8ControlPlaneConnector`, `Fabric8ControlPlaneReader`, `NodeWatcher`,
+  `NodeCleanup`, `ControlPlaneSampler`) are in `bringup/k3s/`. A second provider
+  adds its own adapter package; it never changes the ports.
+- **Coordination**: one virtual thread per node. Shared limits are in `Limiters.kt` (join slots,
+  SSH sessions); the workspace files, the registry certificate and the open control plane
+  (released by the gate) are latches in `BringUpRun`. Use `ReentrantLock`, not `synchronized`, so a virtual thread never pins.
+- **Failure**: `StepRunner` retries only an `AttemptFailed`; a node step that still fails goes to
+  `NodeReplacer` (budget in `ReplacementBudget`). Control steps are retried and never replaced:
+  `ControlNodeFailedException`. `ClusterStateWriter` is the only writer of hosts to `state.json`
+  during bring-up.
+- **Tests**: `src/test/.../services/bringup/BringUpFakes.kt` and `FakeInstanceFleet` drive every
+  pipeline without SSH or AWS; `UpTestFixture` wires the real `K3sBringUpSteps` over a fake
+  `RemoteOperationsService` with fake tracker, fleet and control plane.
+
+## Node Setup and OS Tuning
+
+`NodeSetupService` sets up one node: `environment.sh`, the per-type files, the hostname, then
+`setup_instance.sh`. Before the script runs it uploads the packaged OS tuning files
+(`commands/node-tuning/`, listed in `Constants.NodeTuning.FILES`) into `node-tuning/` beside
+it with one directory upload, staged by `NodeTuningFiles`. The script's `tune_node` installs
+them, applies them and runs `edl-node-tuning verify`, whose `ERROR:` lines fail the node's setup
+step. A new tuning file goes in that directory, in `Constants.NodeTuning.FILES` and in
+`tune_node`; `NodeTuningFilesTest` and `setup-instance-tuning.test.sh` fail until all three
+agree. The script is run as `sudo EDL_INSTANCE_TYPE=<type> bash setup_instance.sh` with the
+node's instance type from `NodeSetupContext.instanceTypes` (the cluster state), so nothing on the
+node asks the cloud provider. The values and why are in `docs/user-guide/node-tuning.md`; the decisions are in
+`openspec/changes/issue-1199/design.md` until it is archived.

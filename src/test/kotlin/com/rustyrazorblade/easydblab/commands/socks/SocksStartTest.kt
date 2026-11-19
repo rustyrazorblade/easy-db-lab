@@ -115,7 +115,7 @@ class SocksStartTest : BaseKoinTest() {
     /** A local workspace has no provisioned hosts, and still is not "no running cluster": it needs no tunnel. */
     @Test
     fun `in a K3s in Docker workspace it starts nothing and says the cluster is reached directly`() {
-        save(ClusterState(name = "local", versions = mutableMapOf(), environment = Environment.K3sDocker("/data")))
+        save(ClusterState(name = "local", environment = Environment.K3sDocker("/data")))
 
         SocksStart().call()
 
@@ -140,7 +140,6 @@ class SocksStartTest : BaseKoinTest() {
     private fun clusterState(tailscale: Boolean): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts = mapOf(ServerType.Control to listOf(ClusterHost("54.1.2.3", "10.0.1.5", "control0", "us-west-2a", "i-ctrl"))),
             tailscaleActive = tailscale,
         ).apply { markInfrastructureUp() }

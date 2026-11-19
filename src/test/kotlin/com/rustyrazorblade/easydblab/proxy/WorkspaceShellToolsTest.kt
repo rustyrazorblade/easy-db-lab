@@ -16,7 +16,7 @@ class WorkspaceShellToolsTest {
 
     @Test
     fun `a K3s in Docker workspace is recorded as direct`() {
-        tools.prepare(workspace, ClusterState(name = "local", versions = mutableMapOf(), environment = Environment.K3sDocker("/d")))
+        tools.prepare(workspace, ClusterState(name = "local", environment = Environment.K3sDocker("/d")))
 
         assertThat(ProxyEnvFile(workspace).read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = true))
     }
@@ -25,7 +25,7 @@ class WorkspaceShellToolsTest {
     fun `an EC2 plus K3s workspace loses a stale direct key and records its Tailscale flag`() {
         ProxyEnvFile(workspace).recordDirect(true)
 
-        tools.prepare(workspace, ClusterState(name = "aws", versions = mutableMapOf(), tailscaleActive = true))
+        tools.prepare(workspace, ClusterState(name = "aws", tailscaleActive = true))
 
         assertThat(ProxyEnvFile(workspace).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null, direct = false))
     }

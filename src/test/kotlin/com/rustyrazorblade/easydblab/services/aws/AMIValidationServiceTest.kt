@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -24,7 +24,7 @@ import java.time.Instant
 class AMIValidationServiceTest {
     private lateinit var mockEc2Client: Ec2Client
     private lateinit var eventBus: EventBus
-    private lateinit var mockAWS: AWS
+    private lateinit var mockAccountIdentity: AccountIdentity
     private lateinit var amiService: AMIService
 
     companion object {
@@ -35,16 +35,16 @@ class AMIValidationServiceTest {
     fun setup() {
         mockEc2Client = mock()
         eventBus = EventBus()
-        mockAWS = mock()
+        mockAccountIdentity = mock()
 
-        whenever(mockAWS.getAccountId()).thenReturn(TEST_ACCOUNT_ID)
+        whenever(mockAccountIdentity.getAccountId()).thenReturn(TEST_ACCOUNT_ID)
 
         amiService =
             spy(
                 AMIService(
                     ec2Client = mockEc2Client,
                     eventBus = eventBus,
-                    aws = mockAWS,
+                    accountIdentity = mockAccountIdentity,
                     // Zero backoff so the retry-path tests do not sit through the production
                     // 2s/4s/8s wall-clock backoff; the retry predicate (which decides what to
                     // retry) is identical to production, only the wait is removed.
@@ -309,6 +309,7 @@ class AMIValidationServiceTest {
         creationDate = creationDate,
         ownerId = "123456789012",
         isPublic = false,
+        state = AMI.AVAILABLE_STATE,
         snapshotIds = emptyList(),
     )
 }

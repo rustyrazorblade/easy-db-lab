@@ -187,6 +187,13 @@ build {
     script = "install/install_k3s.sh"
   }
 
+  # install the kubelet ECR image credential provider so every node pulls ECR images
+  # using its instance role (no per-pod imagePullSecrets)
+  provisioner "shell" {
+    environment_vars = ["ARCH=${var.arch}"]
+    script           = "install/install_ecr_credential_provider.sh"
+  }
+
   # install tailscale (disabled, not auto-started)
   provisioner "shell" {
     script = "install/install_tailscale.sh"
@@ -210,9 +217,17 @@ build {
     script = "install/install_cilium_cli.sh"
   }
 
-  # Leave Cilium's secondary ENIs (ens6+) unmanaged by systemd-networkd so the OS does not
-  # DHCP them and hijack host routing (see the script header for the full rationale). Inert on
-  # Flannel; must be baked in because the ENIs are attached at runtime.
+  # Upload the primary ENI boot script; configure_cilium_eni_networkd.sh installs it from /tmp.
+  provisioner "file" {
+    source      = "install/edl-primary-eni-network"
+    destination = "/tmp/edl-primary-eni-network"
+  }
+
+  # Keep the primary ENI managed, matched by its IMDS MAC through a boot-time unit that writes
+  # /run/systemd/network/05-cilium-eni-primary.network, and leave every other ENA link (Cilium's
+  # secondary ENIs) unmanaged by systemd-networkd so the OS does not DHCP them and hijack host
+  # routing (see the script header for the full rationale). Inert on Flannel; must be baked in
+  # because the ENIs are attached at runtime.
   provisioner "shell" {
     script = "install/configure_cilium_eni_networkd.sh"
   }

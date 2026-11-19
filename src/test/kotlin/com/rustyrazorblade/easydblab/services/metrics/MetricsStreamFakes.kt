@@ -20,7 +20,6 @@ import java.time.Duration
 internal fun runningCluster(): ClusterState =
     ClusterState(
         name = "lab",
-        versions = mutableMapOf(),
         hosts = mapOf(ServerType.Control to listOf(ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a", "i-1"))),
     ).apply { infrastructureStatus = InfrastructureStatus.UP }
 

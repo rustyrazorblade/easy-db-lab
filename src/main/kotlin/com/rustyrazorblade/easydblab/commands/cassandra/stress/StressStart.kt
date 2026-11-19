@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.exceptions.ImagePullFailedException
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.StressJobConfig
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -21,15 +23,20 @@ import picocli.CommandLine.Parameters
  * to stress test a Cassandra cluster. The job runs on stress nodes and connects
  * to Cassandra nodes in the cluster.
  *
- * All arguments after the options are passed directly to cassandra-easy-stress.
- * Example: easy-db-lab stress start KeyValue -d 1h --threads 100
+ * Everything after `--` is passed directly to cassandra-easy-stress, whose own flags (`-d`,
+ * `--threads`) are not options of this command. Without the `--`, picocli rejects them.
+ * Example: easy-db-lab cassandra stress start -- KeyValue -d 1h --threads 100
  */
 @RequireProfileSetup
 @RequiresProxy
 @Command(
     name = "start",
     aliases = ["run"],
-    description = ["Start a cassandra-easy-stress job on K8s. Args are passed to cassandra-easy-stress."],
+    description = [
+        "Start a cassandra-easy-stress job on K8s.",
+        "Arguments after '--' go to cassandra-easy-stress on the cluster; see its own help for them.",
+        "Example: cassandra stress start -- KeyValue -d 1h --threads 100",
+    ],
 )
 class StressStart : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
@@ -54,19 +61,12 @@ class StressStart : PicoBaseCommand() {
     var tags: String? = null
 
     @Parameters(
-        description = ["Arguments passed directly to cassandra-easy-stress (e.g., KeyValue -d 1h --threads 100)"],
+        description = ["Arguments for cassandra-easy-stress, after '--' (e.g., -- KeyValue -d 1h --threads 100)"],
         arity = "0..*",
     )
     var stressArgs: List<String> = emptyList()
 
     override fun execute() {
-        val controlHosts = clusterState.hosts[ServerType.Control]
-        if (controlHosts.isNullOrEmpty()) {
-            error("No control nodes found. Please ensure the environment is running.")
-        }
-        val controlNode = controlHosts.first()
-        log.debug { "Using control node: ${controlNode.alias} (${controlNode.publicIp})" }
-
         val cassandraHosts = clusterState.hosts[ServerType.Cassandra]
         if (cassandraHosts.isNullOrEmpty()) {
             error("No Cassandra nodes found. Please ensure the environment is running.")
@@ -77,7 +77,7 @@ class StressStart : PicoBaseCommand() {
 
         // Increment counter for port and auto-naming
         val counter = clusterStateManager.incrementStressJobCounter()
-        val promPort = Constants.Stress.PROMETHEUS_PORT + counter
+        val promPort = promPortFor(counter)
 
         // Generate job name
         val fullJobName =
@@ -106,7 +106,11 @@ class StressStart : PicoBaseCommand() {
                             promPort = promPort,
                         ),
                 ).getOrElse { e ->
-                    error("Failed to create job: ${e.message}")
+                    when (e) {
+                        // The service already reported the pod, the image and the kubelet's message.
+                        is ImagePullFailedException -> throw CommandFailedException("Stress job $fullJobName did not start")
+                        else -> error("Failed to create job: ${e.message}")
+                    }
                 }
 
         eventBus.emit(
@@ -233,5 +237,21 @@ class StressStart : PicoBaseCommand() {
         }
 
         return args
+    }
+
+    /** How a stress run picks its metrics port, shared with the node tuning reserved-port test. */
+    companion object {
+        /**
+         * The stress metrics port for the [counter]th run: the next port in the reserved window
+         * that starts at [Constants.Stress.PROMETHEUS_PORT], wrapping after
+         * [Constants.Stress.PROMETHEUS_PORT_COUNT] runs. A port outside the window could be handed to
+         * an outbound connection as its source port, and the run could not bind it. Run N and run
+         * N+100 share a port, so the later one cannot bind it while the earlier one still runs on
+         * the same node.
+         */
+        internal fun promPortFor(counter: Int): Int {
+            val offset = counter % Constants.Stress.PROMETHEUS_PORT_COUNT
+            return Constants.Stress.PROMETHEUS_PORT + offset
+        }
     }
 }

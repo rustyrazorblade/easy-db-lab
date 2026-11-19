@@ -20,7 +20,6 @@
             "Effect": "Deny",
             "Principal": {
                 "AWS": [
-                    "arn:aws:iam::123456789012:role/EasyDBLabEC2Role",
                     "arn:aws:iam::123456789012:role/EasyDBLabEMRServiceRole",
                     "arn:aws:iam::123456789012:role/EasyDBLabEMREC2Role"
                 ]

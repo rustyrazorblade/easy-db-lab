@@ -49,7 +49,6 @@ class ObservabilityHttpRouteIntegrationTest : BaseKoinTest() {
         state =
             ClusterState(
                 name = "lab",
-                versions = mutableMapOf(),
                 initConfig = InitConfig(tenant = "acme"),
                 hosts =
                     mapOf(

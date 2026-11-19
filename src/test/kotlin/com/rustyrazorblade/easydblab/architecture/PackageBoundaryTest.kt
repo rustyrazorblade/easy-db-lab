@@ -20,7 +20,8 @@ import org.junit.jupiter.api.Test
 /**
  * Where cloud SDK types may appear, and which package dependencies stay broken.
  *
- * The AWS SDK belongs to the AWS adapter packages (`providers.aws..` and `services.aws..`); anything
+ * The AWS SDK belongs to the AWS adapter packages (`providers.aws..`, `services.aws..` and the lease
+ * agent's S3 adapter, `compactorlease.aws..`, in the `compactor-lease` module); anything
  * else that names an SDK type blocks a second cloud. These rules scan main classes only, carry no
  * allowlist, and read compiled bytecode, so they also see types no import shows (an inferred return
  * type, a reified binding, a class literal).
@@ -28,7 +29,7 @@ import org.junit.jupiter.api.Test
 class PackageBoundaryTest {
     private val root = "com.rustyrazorblade.easydblab"
     private val sdk = "software.amazon.awssdk.."
-    private val adapters = arrayOf("$root.providers.aws..", "$root.services.aws..")
+    private val adapters = arrayOf("$root.providers.aws..", "$root.services.aws..", "$root.compactorlease.aws..")
 
     private val mainClasses: JavaClasses =
         ClassFileImporter()

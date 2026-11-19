@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -163,7 +164,6 @@ class DownTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
         state.markInfrastructureUp()
         manager.save(state)
@@ -255,7 +255,6 @@ class DownTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
             )
         state.updateTailscaleAuthKeyId("key-id-123")
         manager.save(state)
@@ -286,7 +285,7 @@ class DownTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf("cassandra" to "4.1.3"),
+                nodes = mutableMapOf("db0" to NodeState("4.1.3")),
             )
         state.markInfrastructureUp()
         manager.save(state)
@@ -301,7 +300,7 @@ class DownTest : BaseKoinTest() {
         // Reload and verify all fields preserved except status
         val reloadedState = manager.load()
         assertThat(reloadedState.name).isEqualTo("test-cluster")
-        assertThat(reloadedState.versions).containsEntry("cassandra", "4.1.3")
+        assertThat(reloadedState.nodes["db0"]?.version).isEqualTo("4.1.3")
         assertThat(reloadedState.clusterId).isEqualTo(clusterId)
         assertThat(reloadedState.createdAt).isEqualTo(createdAt)
         assertThat(reloadedState.infrastructureStatus).isEqualTo(InfrastructureStatus.DOWN)

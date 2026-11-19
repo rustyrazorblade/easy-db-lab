@@ -86,7 +86,7 @@ easy-db-lab show-iam-policies [policy-name]
 
 | Argument | Description |
 |----------|-------------|
-| `policy-name` | Optional filter: `ec2`, `iam`, `emr`, `opensearch` or `compactor` |
+| `policy-name` | Optional filter: `ec2`, `iam`, `emr` or `opensearch` |
 
 To create the policies and attach them to an IAM user, group, or role, see [Applying the Policies](../getting-started/setup.md#applying-the-policies).
 
@@ -115,6 +115,9 @@ Initialize a directory for easy-db-lab.
 easy-db-lab init [cluster-name] [options]
 ```
 
+The cluster name is the positional argument. `--name` is not an option: `init --name my-cluster`
+fails at parse time and names the form `init my-cluster`.
+
 Use a new, empty directory as the workspace, for example under `clusters/`. `init` fails, and
 writes nothing, in a directory that already has a `bin/` file or directory: easy-db-lab writes its
 tool wrappers into the workspace's `bin/`. This also keeps a source checkout from being used as a
@@ -141,7 +144,7 @@ determined fails at `init`, before any instance is created.
 | `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
 | `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
 | `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
-| `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all |
+| `--azs`, `-z` | Availability zones (e.g., `a,b,c`), at most 8: the VPC is split into eight equal subnets, one per zone | `a,b,c` |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
 | `--ebs.iops` | EBS IOPS (gp3 only) | 0 |
@@ -152,15 +155,15 @@ determined fails at `init`, before any instance is created.
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
 | `--node-label` | Node label (key=value, repeatable) the observability backends, Grafana and kube-state-metrics are scheduled by, added to the environment's own placement (the control node on AWS). The label must already be on a node; the deploy fails if no node matches | - |
-| `--vpc` | Use existing VPC ID | - |
-| `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
+| `--vpc` | Use an existing VPC ID. The VPC is yours: `down` removes only the instances, subnets, security group, internet gateway and default route this cluster created in it (found by the cluster's `ClusterId` tag), and never deletes the VPC or anything else in it | - |
+| `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/25` or larger (it is split into eight equal subnets, `/19` each for a `/16`), name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--kit-storage-class` | StorageClass every kit claim names, for a cluster that provisions its own volumes. It must reclaim with `Retain`; `up` and every kit's `kit-storage` step refuse one that deletes, has no policy, or does not exist. Without it, kits use local volumes on `/mnt/db1`, one `edl-local-<kit>` class per kit. See [Kit Storage](../user-guide/platform-substrate.md#kit-storage) | - (local volumes) |
 | `--kit-storage-size` | Default size of a kit claim, a positive Kubernetes quantity such as `500Gi`; a kit's `--storage-size` overrides it | `10Ti` on local volumes, `100Gi` on a kit StorageClass |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--capability` | Override one node capability, as `<name>=true` or `<name>=false`; repeatable. Names: `systemd-journal`, `cloudwatch`, `s3`, `privileged`, `host-network`, `host-path`, `node-ssh`. An unknown name, a value other than `true`/`false`, or one name given both values fails `init` before anything is written. See [Node capabilities](#node-capabilities) | (the environment's declared set) |
 | `--up` | Auto-provision after init | false |
-| `--clean` | Remove existing config first | false |
+| `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
 | `--local` | Create a K3s in Docker workspace on this machine instead of an AWS cluster. Needs no AWS profile. See [Local workspaces](#local-workspaces) | false |
 | `--data-dir` | With `--local`: the directory the observability data is kept in. A relative path is resolved against the current directory of the easy-db-lab process (in the REPL or the server, the directory it was started in, which need not be the workspace), like every other path option, and recorded as an absolute path. Without `--local`, `init` fails and writes nothing | `observability-data` |
 
@@ -225,9 +228,15 @@ easy-db-lab up [options]
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
 
-Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Starts the [account compactor](../user-guide/compactor.md) when it is not running, and leaves it as it is when it runs; `up` does not wait for its task.
+Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Deploys the [account compactor](../user-guide/compactor.md) pod with the observability stack.
 
-`up` fails fast. If any provisioning step fails — EC2 setup, K3s, node labeling, the
+Before it launches any instance, `up` checks that the account can hold the new instances: the
+availability zone count, each instance type's zone offerings, the On-Demand standard vCPU quota,
+the network interface quota, the free subnet addresses, and a `RunInstances` dry run of each
+node type. Only the instances still to launch are counted. See
+[Large Clusters](../user-guide/large-clusters.md).
+
+`up` fails fast. If any provisioning step fails — EC2 setup, K3s, node registration, the
 recorded kit StorageClass check, the observability stack, Tailscale, and so
 on — the command exits non-zero and stops rather than continuing with a partially-provisioned
 cluster. EC2 instances that were already launched are left running; there is no automatic
@@ -243,13 +252,14 @@ easy-db-lab down [vpc-id] [options]
 
 | Argument | Description |
 |----------|-------------|
-| `vpc-id` | Optional: specific VPC to tear down |
+| `vpc-id` | Optional: specific VPC to tear down. With no cluster state, `down` reads the VPC's tags: a VPC tagged `easy_cass_lab=1` with a `ClusterId` (or the packer VPC, which has the marker and its name) was created by easy-db-lab and is deleted whole; any other VPC is kept, and only the resources in it that carry an easy-db-lab `ClusterId` tag are removed, for every easy-db-lab cluster in it, since no state names one |
 
 | Option | Description |
 |--------|-------------|
-| `--all` | Tear down all VPCs tagged with easy_cass_lab; the account compactor's VPC is kept |
+| `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
+| `--dry-run` | Preview the resources that would be deleted and change nothing: the cluster state, the SOCKS tunnel and the Tailscale device are left as they are, and the command exits 0. With no cluster state, or a state that records no VPC and no Tailscale device, it reports that there is nothing to tear down and exits non-zero, as `down` does, and still changes nothing. When the VPC is already gone and only the control node's Tailscale device is left, it reports that the device would be removed |
 
 **Save before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The save stops Loki, Mimir and both OTel collectors, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops nothing. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. The save has two phases.
 
@@ -268,7 +278,7 @@ Phase B runs every step at the same time, so the save takes about as long as its
 
 Every step has a timeout. `down` only flushes, waits for the flush to finish, and refuses to tear down if it did not finish; it runs no other check. A redirect cluster has no local backends, so it skips both phases.
 
-**Stop on failure.** Every Phase B step runs to completion, and a failed step never stops another. If any step failed or timed out, `down` then stops. It removes no infrastructure, because tearing down would destroy the data that is not yet in S3. It does not start Loki, Mimir or the collector again, retry a step, or undo anything: each backend stays as its step left it, and its write-ahead log and local blocks stay on the control node's disk. The report names every failed signal with its step and cause, the state of each workload (running, ingester stopped, scaled to 0, or deleted), and `down --force`. `down` exits with a non-zero status.
+**Stop on failure.** Every Phase B step runs to completion, and a failed step never stops another. If any step failed or timed out, `down` then stops. It removes no infrastructure, because tearing down would destroy the data that is not yet in S3. It does not start Loki, Mimir or the collector again, retry a step, or undo anything: each backend stays as its step left it, and its write-ahead log and local blocks stay on the control node's disk. The report names every failed signal with its step and cause, the state of each workload (running, ingester stopped, scaled to 0, or deleted), and `down --force`. A step that could not reach the cluster at all (K3s never started, the SOCKS tunnel is down, there is no kubeconfig) is reported as "could not reach the cluster" with its error, and its workload as "not reached": `down` reports a workload as stopped or deleted only when its step got an answer, or may have, as after a timeout. `down` exits with a non-zero status.
 
 **Logs and metrics are recorded as they finish.** The Loki and Mimir flushes stop their backends and cannot run twice, so each is recorded in the cluster state the moment it succeeds, with the time it finished. A `down` that fails or is interrupted keeps these records. Run `down` again and it reports them as already saved, skips them, and runs the collector stop, the Tempo drain, the profiles report and the annotations backup again. `up` clears the record, so the next `down` saves the new data.
 
@@ -277,8 +287,6 @@ Every step has a timeout. `down` only flushes, waits for the flush to finish, an
 **Nothing is deleted.** `down` sets no S3 lifecycle, expiry or retention rule on any bucket and deletes no object that holds your data. With `--all`, a per-cluster data bucket is deleted only when it is already empty. A data bucket that still holds objects is left as it is, and `down` reports it as kept, with S3's reason.
 
 **`--force` skips the save.** Pass `--force` to skip both phases and tear down anyway. With the teardown preview, before the confirmation prompt, `down --force` lists the signals it will not save: logs and metrics unless an earlier `down` saved them, then traces and annotations. After a save of every signal, it lists none. Profiles are never listed. Use it only when the backends are already stopped or gone, or when you do not need the data.
-
-**The account compactor.** After the infrastructure teardown succeeds, `down` counts the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the account bucket, leaving out the ones it just removed. When none is left, it stops the [account compactor](../user-guide/compactor.md); otherwise the compactor keeps running.
 
 **Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the save stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 
@@ -337,7 +345,7 @@ Use it when your public IP changed and SSH and the SOCKS tunnel stopped working,
 - Values that are the same CIDR, such as `203.0.113.7` and `203.0.113.7/32`, count as one.
 - A rule that already exists is reported and left as it is.
 - If AWS refuses one rule, for example because the security group has too many rules, the command still adds the others, reports AWS's reason, and exits non-zero.
-- If the public IP cannot be detected, the command tells you to give it with `--cidr`.  Detection waits up to 5 seconds to connect to `api.ipify.org` and up to 10 seconds for its answer.
+- If the public IP cannot be detected, the command tells you to give it with `--cidr`.  Detection asks `checkip.amazonaws.com` first and falls back to `api.ipify.org` when that fails or does not answer with an IPv4 address.  Each waits up to 5 seconds to connect and up to 10 seconds for its answer.
 
 A security group allows a connection that is already open.  After a change, an SSH session or tunnel that is still connected can keep working until it reconnects.
 
@@ -392,22 +400,36 @@ All Cassandra commands are available under the `cassandra` subcommand group.
 
 ### cassandra use
 
-Switch the active Cassandra version.
+Switch the active Cassandra version, installing it on every targeted node that does not have it.
 
 ```bash
 easy-db-lab cassandra use <version> [options]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--java` | Java version to use: 8, 11, 17, 21 or 25 |
-| `--hosts` | Filter to specific hosts |
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--java`, `-j` | JDK to run the version on: 8, 11, 17, 21 or 25 | the recorded JDK, else the highest supported JDK |
+| `--python` | Python version cqlsh runs under | the profile build's, else `3.11.9` |
+| `--hosts` | Filter to specific hosts | all Cassandra nodes |
 
-The version can be any installed version, including a build published by `cassandra build`.
-Run `cassandra list` to see them.
+The version can be any name a version source has: a profile build, an ASF release (`4.1.7`) or
+release line (`5.0`), a cassandra-builds nightly (`5.0-HEAD`), or a build published by
+`cassandra build`. Run `cassandra list` to see them. A name no source has fails before any node
+changes. `use` prints the hosts that download the version. A `--java` the version does not support
+fails before any node changes and lists the supported JDKs. See
+[Versions](../user-guide/installing-cassandra.md#versions) for the source order and the JDK rules.
 
-Fails if the version is not installed on a targeted node — install it first with
-`cassandra install`.
+The cluster state records the active version and its JDK for each node, and every version
+installed there.
+
+`use` has two side effects beyond switching the version:
+
+- **It re-applies `cassandra.patch.yaml` to every targeted host as its last step.** Any per-host
+  settings you applied earlier with `update-config` are overwritten. Run `cassandra use` first and
+  `cassandra update-config --hosts ...` after it, never the other way round. `use` prints the hosts
+  it is about to re-apply the file to.
+- **It switches the JDK.** The CLI picks the JDK for the version; `--java` overrides it, and the
+  JDK you pass is kept for later `use` and `start` runs.
 
 ### cassandra build
 
@@ -464,7 +486,8 @@ cassandra-builds/5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17/
 ```
 
 `manifest.json` records the base version, the full and short sha, the branch and remote, whether
-the tree was dirty, the ticket, the ant flags, when it was built and by which profile, and the
+the tree was dirty, the ticket, the ant flags, the supported JDKs (from `java.supported` in the
+checkout's `build.xml`), when it was built and by which profile, and the
 tarball's size and SHA-256.
 
 Then install it on a cluster:
@@ -477,7 +500,7 @@ Nodes fetch the tarball straight from the bucket with their instance profile.
 
 ### cassandra install
 
-Install an additional Cassandra version onto a running cluster, without rebuilding the AMI.
+Install a Cassandra version onto a running cluster without switching to it.
 
 ```bash
 easy-db-lab cassandra install <version> [options]
@@ -485,29 +508,34 @@ easy-db-lab cassandra install <version> [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--url` | Tarball URL (`.tar.gz`) or git repository URL (with `--branch`) | from the declared entry |
-| `--branch` | Git branch to clone and build, requires `--url` | from the declared entry |
-| `--java`, `-j` | Java version to build and run this version with | from the declared entry |
-| `--python` | Python version cqlsh runs under | `3.11.9` |
-| `--ant-flags` | Extra flags passed to ant when building from a branch | from the declared entry |
+| `--url` | Tarball URL (`.tar.gz` or `s3://`) or git repository URL (with `--branch`) | from the version source |
+| `--branch` | Git branch to clone and build, requires `--url` | from the version source |
+| `--java`, `-j` | JDK to build and run this version with | the highest supported JDK |
+| `--python` | Python version cqlsh runs under | the profile build's, else `3.11.9` |
+| `--ant-flags` | Extra flags passed to ant when building from a branch | the release line's flags for the JDK |
+| `--reinstall` | Download or build the version again, replacing the install | off |
 | `--hosts` | Filter to specific hosts | all Cassandra nodes |
 
-Each option falls back to the version's `cassandra_versions.yaml` entry when not supplied, so a
-declared version needs no options at all. A name that is not declared locally is looked up among
-the builds published by [`cassandra build`](#cassandra-build), so a build installs by name with no
-options either. Every targeted node is attempted regardless of what
-happens on the others, and each node's outcome is reported individually.
+A version name needs no options: it resolves through the same sources as
+[`cassandra use`](#cassandra-use). `--url` (with `--branch` for a git build) installs a one-off
+build under the name you give. Every targeted node is attempted regardless of what happens on the
+others, and each node's outcome is reported individually.
 
-A version already installed on a node is never rebuilt:
+A version already installed on a node is not rebuilt without `--reinstall`:
 
 - Asking for the parameters it was built with is a no-op.
 - Asking for different `--java`, `--python`, or `--ant-flags` changes nothing on that node, reports
   which fields disagree, and exits non-zero. To run the existing build under a different JDK, use
-  `cassandra use <version> --java <version>` instead.
+  `cassandra use <version> --java <N>` instead.
+
+`--reinstall` downloads or builds the version again, for example to get a new nightly of
+`5.0-HEAD`. It re-applies `cassandra.patch.yaml` to the new install. A node where Cassandra runs the
+version is refused; stop Cassandra first. A node whose download or build fails keeps its old
+install.
 
 A failure on any node also exits non-zero, with the reason reported against that node. A token
-embedded in `--url` is used for the clone but never persisted to the node and never appears in logs,
-errors, or events.
+embedded in `--url` is used for the download or clone but never written to the cluster state and
+never appears in logs, errors, or events.
 
 See [Configuring Cassandra](../user-guide/installing-cassandra.md#custom-builds) for the full
 workflow.
@@ -553,7 +581,13 @@ easy-db-lab cassandra download-config [options]
 
 | Option | Description |
 |--------|-------------|
-| `--version` | Version to download config for |
+| `--version` | Version to download config for (default: the current one) |
+| `--hosts` | Download from these hosts; blank means every host. A host name that matches no node is an error |
+
+Each targeted host's own version is resolved on that host, and one directory is downloaded for each
+distinct version among them, so a cluster running a custom build on one node gets a directory for
+that build as well as for the stock version. `update-config` needs the directory of each host's
+version and, when it is missing, stops before changing the host and names this command.
 
 The files land in a directory named for the version (for example `5.0/`) in the workspace. An
 existing directory is never overwritten: the command reports that it already exists and skips the
@@ -572,12 +606,20 @@ easy-db-lab cassandra start [options]
 | `--sleep` | Time between starts in seconds | 120 |
 | `--hosts` | Filter to specific hosts | - |
 | `--sidecar-image` | Container image for the sidecar DaemonSet | `ghcr.io/apache/cassandra-sidecar:latest` |
+| `--skip-axonops` | Start Cassandra with no AxonOps agent this time, and do not start `axon-agent` | off |
+
+`start` refuses a targeted node that has no active version; run `cassandra use` first. With AxonOps
+on, it installs on each node the AxonOps agent for the node's release and JDK before it starts
+Cassandra anywhere. When AxonOps ships no agent for a node's release and JDK, `start` fails before
+Cassandra starts on any node, lists the agents AxonOps ships, and names `--skip-axonops`.
 
 Use `--sidecar-image` to test a fork or specific version:
 
 ```bash
 easy-db-lab cassandra start --sidecar-image ghcr.io/myfork/cassandra-sidecar:my-branch
 ```
+
+An image in your account's ECR (`<account>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>`) works the same way. Every node runs the kubelet ECR credential provider from the base AMI, so the node pulls the image with its instance role. easy-db-lab creates no image pull secret, and the pull keeps working on a cluster that runs for days. If a node was launched from a base AMI without the credential provider, `up` fails before K3s starts and names the node and the missing files. Rebuild the images with `easy-db-lab build-image`, then run `down` and `up`.
 
 ### cassandra stop
 
@@ -605,18 +647,31 @@ easy-db-lab cassandra restart [options]
 
 ### cassandra list
 
-List available Cassandra versions.
+List the Cassandra versions you can install, and the ones on each node.
 
 ```bash
-easy-db-lab cassandra list
+easy-db-lab cassandra list [--refresh]
 ```
 
 **Aliases:** `ls`
 
-Versions installed on the node are listed first. A version declared with `lazy: true` that is not
-installed on that node is listed too, marked `(declared, not installed)`, as is any build published
-by [`cassandra build`](#cassandra-build) and not yet installed there, marked
-`(build, not installed)`.
+| Option | Description |
+|--------|-------------|
+| `--refresh` | Fetch the ASF and cassandra-builds lists again |
+
+No cluster is needed. The table lists, with the `SOURCE` of each: the profile builds (`profile`),
+one row per ASF release line with its latest release and its patch releases (`asf`), the
+cassandra-builds nightlies (`cassandra-builds`) and the builds published by
+[`cassandra build`](#cassandra-build) (`build`).
+
+In a cluster workspace every db node is asked as well, and an `INSTALLED` column shows `all` or the
+nodes that have each version. A version installed on a node that no source lists is shown with its
+recorded source. A node that cannot be listed is named with its error, and the command exits
+non-zero.
+
+The ASF and cassandra-builds lists are cached in the profile directory, so a second run makes no
+network call. When a fetch fails and a cache exists, the cached list is shown and marked stale.
+When a fetch fails and there is no cache, the command fails and names the URL.
 
 ---
 
@@ -723,10 +778,18 @@ Stress testing commands under `cassandra stress`.
 Start a stress job on Kubernetes.
 
 ```bash
-easy-db-lab cassandra stress start [options]
+easy-db-lab cassandra stress start [options] -- <cassandra-easy-stress arguments>
+```
+
+Everything after `--` is passed to `cassandra-easy-stress`, which runs on the cluster; the flags before `--` (`--name`, `--image`, `--tags`) belong to `easy-db-lab`. The `--` is required: `-d` and `--threads` are `cassandra-easy-stress` flags, and without it `easy-db-lab` rejects them as unknown options.
+
+```bash
+easy-db-lab cassandra stress start -- KeyValue -d 1h --threads 100
 ```
 
 **Aliases:** `run`
+
+`--image` runs a custom stress image. An image in your account's ECR (`<account>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>`) pulls through the kubelet ECR credential provider that every node runs, with the node's instance role. easy-db-lab creates no image pull secret. If the image cannot be pulled, `stress start` fails at once and names the pod, the image and the registry's message.
 
 ### cassandra stress stop
 
@@ -966,37 +1029,17 @@ On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement,
 
 ## Observability Commands
 
-These commands manage the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
-
-### observability compactor start
-
-Start the account compactor as `up` does: create it when it is missing, and start it at 1 task when it is stopped. A running compactor is left as it is.
-
-```bash
-easy-db-lab observability compactor start
-```
-
-### observability compactor stop
-
-Stop the account compactor by setting its desired count to 0. When the compactor was never created, it says so and changes nothing.
-
-```bash
-easy-db-lab observability compactor stop
-```
+These commands inspect the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
 
 ### observability compactor status
 
-Print the compactor's state, its desired, running and pending task counts, and its current or last task with its state. It changes nothing.
-
-The state is one of `not created`, `stopped`, `stopping`, `starting`, `running` or `failing`. A compactor that asks for a task but runs none is `starting` while a task is pending or before any task has stopped, and `failing` when none is pending and its latest task stopped, so a task that crashes in a loop never reads as running.
-
-For that task it prints why the task stopped (ECS's stop code and reason) and each container's status, exit code and reason. It also prints the service's 5 newest events and the last 20 log lines of the task's containers. It leaves out the Tempo worker's `no jobs found` line, which an idle worker logs on every poll.
-
-If your IAM user lacks the `EasyDBLabCompactor` policy, `observability compactor start`, `stop` and `status` fail and name the policy. Run `easy-db-lab show-iam-policies compactor` to print it, then attach it.
+Print who holds the compactor's store lease: the holder (the cluster and the pod), the lease's sequence number, when it was last renewed and how long ago. It reads the lease in the account bucket's region and changes nothing. A lease that has not been renewed for longer than its 2-minute TTL is shown as expired. When no compactor has ever taken the lease, it says so.
 
 ```bash
 easy-db-lab observability compactor status
 ```
+
+There is no `start` or `stop`: every cluster runs a compactor pod, and the lease decides which one compacts.
 
 ## Grafana Commands
 

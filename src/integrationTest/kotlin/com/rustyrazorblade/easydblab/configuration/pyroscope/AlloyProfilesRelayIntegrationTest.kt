@@ -81,7 +81,6 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "relay-lab",
-            versions = mutableMapOf(),
             s3Bucket = bucket,
             initConfig = InitConfig(region = SharedLocalStack.region(), tenant = TENANT),
         )

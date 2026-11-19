@@ -116,7 +116,7 @@ class OpenSearchStart : PicoBaseCommand() {
         tags =
             mapOf(
                 Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
-                "ClusterId" to clusterState.clusterId,
+                Constants.Vpc.CLUSTER_ID_TAG_KEY to clusterState.clusterId,
             ),
     )
 

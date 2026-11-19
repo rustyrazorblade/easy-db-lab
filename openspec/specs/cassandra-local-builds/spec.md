@@ -168,9 +168,9 @@ There MUST be no index object listing builds; the objects in the bucket are the 
 A manifest that cannot be read MUST be skipped with a warning, and MUST NOT prevent the remaining
 builds from being listed.
 
-`cassandra list` MUST show published builds that are not installed on the queried node, marked
+`cassandra list` MUST show published builds that are not installed on any node, marked
 distinguishably from installed versions and from declared-but-uninstalled versions, and MUST NOT
-list a build that is already installed there as available to install.
+list a build that is installed on a node as available to install.
 
 #### Scenario: A build published elsewhere is installable here
 

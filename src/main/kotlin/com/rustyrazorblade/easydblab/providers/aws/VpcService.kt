@@ -23,7 +23,7 @@ interface VpcCoreOperations {
      *
      * @param vpcId The VPC ID where the subnet should be created
      * @param name The name to use for the subnet (applied as Name tag)
-     * @param cidr The CIDR block for the subnet (e.g., "10.0.1.0/24")
+     * @param cidr The CIDR block for the subnet (e.g., "10.0.32.0/19")
      * @param tags Additional tags to apply to the subnet
      * @param availabilityZone Optional availability zone for the subnet
      * @return The subnet ID
@@ -269,9 +269,39 @@ interface VpcDiscoveryOperations {
 }
 
 /**
+ * The resources of one cluster inside a VPC, found by the cluster's `ClusterId` tag.
+ */
+data class ClusterVpcResources(
+    val instanceIds: List<InstanceId> = emptyList(),
+    val subnetIds: List<SubnetId> = emptyList(),
+    val securityGroupIds: List<SecurityGroupId> = emptyList(),
+    val internetGatewayId: InternetGatewayId? = null,
+    val routeTableIds: List<RouteTableId> = emptyList(),
+)
+
+/**
  * Operations for tearing down VPC resources.
  */
 interface VpcTeardownOperations {
+    /**
+     * Waits for the active network interfaces in [subnetIds] to be cleared, ignoring every other
+     * subnet of the VPC. Used when the VPC is shared and only this cluster's subnets are ours.
+     */
+    fun waitForNetworkInterfacesClearedInSubnets(
+        subnetIds: List<SubnetId>,
+        timeoutMs: Long = VpcService.DEFAULT_ENI_TIMEOUT_MS,
+    )
+
+    /**
+     * Removes every `0.0.0.0/0` route that points at [igwId] from the route tables of [vpcId],
+     * the main route table included. `up` adds that route to the VPC's main route table, which
+     * outlives the cluster in a user-supplied VPC.
+     */
+    fun deleteRoutesToInternetGateway(
+        vpcId: VpcId,
+        igwId: InternetGatewayId,
+    )
+
     /**
      * Terminates EC2 instances.
      */
@@ -331,6 +361,30 @@ interface VpcTeardownOperations {
 }
 
 /**
+ * Operations for discovering what one cluster owns inside a VPC it may share.
+ */
+interface ClusterVpcDiscovery {
+    /**
+     * Finds only what the cluster [clusterId] created in a VPC it shares with others: the
+     * resources that carry its `ClusterId` tag. A user-supplied VPC (`init --vpc`) holds the
+     * user's own resources and other clusters', so teardown must never discover by VPC alone.
+     *
+     * The main route table and the default security group are never reported: they belong to the VPC.
+     */
+    fun findClusterResourcesInVpc(
+        vpcId: VpcId,
+        clusterId: String,
+    ): ClusterVpcResources
+
+    /**
+     * Finds the resources in a VPC that carry any easy-db-lab `ClusterId` tag (and the easy-db-lab
+     * marker tag), whichever cluster they belong to. Used when no cluster state says which cluster
+     * to remove. The same exclusions as [findClusterResourcesInVpc] apply.
+     */
+    fun findEasyDbLabResourcesInVpc(vpcId: VpcId): ClusterVpcResources
+}
+
+/**
  * Service for managing AWS VPC infrastructure resources.
  *
  * This interface provides operations for creating and managing VPC components
@@ -342,7 +396,8 @@ interface VpcService :
     VpcCoreOperations,
     SecurityGroupOperations,
     VpcDiscoveryOperations,
-    VpcTeardownOperations {
+    VpcTeardownOperations,
+    ClusterVpcDiscovery {
     companion object {
         /** Default timeout for waiting on resource termination/deletion (10 minutes) */
         const val DEFAULT_TERMINATION_TIMEOUT_MS = 10 * 60 * 1000L

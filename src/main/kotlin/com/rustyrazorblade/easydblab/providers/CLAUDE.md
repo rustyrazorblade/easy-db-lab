@@ -7,12 +7,15 @@ This package contains low-level infrastructure providers for AWS, SSH, and Docke
 ```
 providers/
 ├── aws/                    # AWS SDK wrappers and data types
-│   ├── AwsClientsModule.kt # Koin: region, credentials, the SDK clients, AWS, AWSClientFactory, AWSCredentialsManager (factory), AwsErrorHandler, SSM
+│   ├── AwsClientsModule.kt # Koin: region, credentials, the SDK clients, AccountIdentity, IamRoles, AWSClientFactory, AWSCredentialsManager (factory), AwsErrorHandler, SSM
 │   ├── AwsErrorHandler.kt  # Classifies AWS credential and permission failures for the ProviderErrorHandler contract
-│   ├── AWS.kt              # Low-level IAM, S3, STS operations
+│   ├── AccountIdentity.kt  # AccountIdentity interface + StsAccountIdentity (STS: account ID, credential check)
+│   ├── IamRoles.kt         # IamRoles interface (roles, instance profiles, inline policies, service-linked role) + RoleValidationResult
+│   ├── AwsIamRoles.kt      # IamRoles on IamClient
+│   ├── S3BucketAdmin.kt    # S3BucketAdmin interface; the one adapter is services/aws/AwsS3BucketService on S3Client
 │   ├── EC2.kt              # Low-level EC2 operations
 │   ├── RetryUtil.kt        # Centralized retry configuration
-│   ├── PollUntil.kt        # pollUntil: fixed-interval poll over createPollUntilRetryConfig
+│   ├── PollUntil.kt        # pollUntil: fixed-interval poll over createPollUntilRetryConfig; pollUntilOrTimeout: the same bounded by a timeout, throws AwsTimeoutException
 │   ├── AWSPolicy.kt        # Policy definitions and templates
 │   ├── InstanceRolePolicies.kt # EasyDBLabEC2Role's inline policy set (S3Access + SessionManagerInstance)
 │   ├── IamPolicy.kt        # IAM policy data model
@@ -25,6 +28,7 @@ providers/
 │   ├── TeardownTypes.kt    # Data classes: DiscoveredResources, TeardownResult, TeardownMode
 │   ├── SecurityGroupService.kt  # Data classes: SecurityGroupDetails, WellKnownPorts
 │   ├── AwsTypes.kt         # EC2 type aliases and data classes
+│   ├── AwsFailures.kt      # isAwsFailure / requireAwsFailure: lets code outside the adapters handle only AWS failures without naming an SDK type
 │   ├── EMRTypes.kt         # EMR type aliases and data classes
 │   ├── InstanceTypes.kt    # Instance type data classes
 │   └── model/              # Data models (AMI, etc.)
@@ -40,6 +44,7 @@ providers/
 │   ├── SshRoute.kt        # How each SSH transport reaches a node (DirectSshRoute)
 │   ├── DeferredSshRoute.kt # The bound SshRoute: picks the real one on first use, so building it needs no profile
 │   ├── RemoteOperationsService.kt
+│   ├── InstallFile.kt     # RemoteOperationsService.installFile: the one stage-then-sudo-mv sequence (unique staging name, mode, quoted paths)
 │   └── DefaultRemoteOperationsService.kt
 ```
 
@@ -64,14 +69,14 @@ Always use factory methods instead of creating manual retry configurations.
 | `createAwsRetryConfig<T>()` | 3 | Exponential 1s→4s | S3, EC2, EMR (standard AWS) |
 | `createDockerRetryConfig<T>()` | 3 | Exponential 1s→4s | Container start/stop/remove; retries socket `IOException` and docker-java API errors except the 404 `NotFoundException` |
 | `createNetworkRetryConfig<T>()` | 3 | Exponential 1s→4s | Generic network ops |
-| `createSshConnectionRetryConfig(interval)` | 30 | Fixed 10s (tests pass a short `interval`) | SSH boot-up (~5 min total); retries `SshException` and `SsmForwardNotReadyException`, fails fast on any other `IOException`. `SshException` is checked: decorate with `decorateCheckedRunnable`/`decorateCheckedSupplier` |
+| `createSshConnectionRetryConfig(interval)` | 30 | Fixed 10s (tests pass a short `interval`) | SSH boot-up (~5 min total); retries `SshException` and `SsmForwardNotReadyException` (`isSshNotReady`, in `providers/ssh/SshNotReady.kt`), fails fast on any other `IOException`. `SshException` is checked: decorate with `decorateCheckedRunnable`/`decorateCheckedSupplier` |
 | `createS3LogRetrievalRetryConfig<T>()` | 10 | Fixed 3s | S3 log retrieval (eventual consistency) |
 | `createBooleanPollRetryConfig(maxAttempts, interval)` | `maxAttempts` | Fixed `interval` | Retries on result until a boolean check is `true`: the tailnet reachability probe before K3s, and a failed step's `stderr.gz` uploaded after the step ended (28 attempts, 15s apart) |
 | `createVpcTeardownRetryConfig<T>()` | 5 | Exponential 5s→40s | VPC teardown DependencyViolation |
-| `createEcsRoleRetryConfig()` | 5 | Exponential 1s→16s | ECS calls that pass a role IAM just created (`InvalidParameterException`, `ClientException`); wrapper `withEcsRoleRetry` |
 | `createVpcAutoCidrRetryConfig()` | 3 | None | VPC creation on an auto-selected CIDR (`SdkException` only); `up` picks a new random unused block per attempt |
 | `createLocalPortBindRetryConfig()` | 3 | Fixed 100ms | Local listener lost its port between selection and bind (`BindException` only); the SOCKS proxy selects a new port per attempt |
-| `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline) |
+| `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?, isTransient)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline). An `InterruptedException` is never retried. An optional `isTransient` predicate names the exceptions that are retried; any other fails the poll at once. `pollUntilOrTimeout` (the AWS waits) passes `isTransientAwsFailure`: a throttle, a 5xx or a network failure is retried, access denied, expired credentials, a 4xx and a defect end the wait at once |
+| `createEc2ThrottleRetryConfig<T>(backoffBase)` | `Constants.Scale.THROTTLE_MAX_ATTEMPTS` (8) | Exponential from `backoffBase`, capped at 30s | EC2 calls at scale: retries `RequestLimitExceeded`, `InvalidInstanceID.NotFound` and 5xx. RunInstances keeps one client token across its retries, so a retry cannot launch a second set |
 
 ### Checked Exceptions Need The Checked Decorators
 
@@ -104,17 +109,28 @@ val result = withAwsRetry("describe-cluster") { emrClient.describeCluster(reques
 val result = withEc2InstanceRetry("describe") { ec2Client.describeInstances(request) }
 withVpcTeardownRetry("delete-sg") { ec2Client.deleteSecurityGroup(request) }
 withS3BucketPolicyRetry("put-bucket-policy") { s3Client.putBucketPolicy(request) }
+// EC2 calls at scale (RunInstances, CreateTags, the RunInstances dry run), on createEc2ThrottleRetryConfig
+withEc2ThrottleRetry("run-instances-db0", throttleBackoff) { ec2Client.runInstances(request) }
 
 // Poll until a condition holds (top-level pollUntil in PollUntil.kt, over createPollUntilRetryConfig);
 // returns the last result if it never does
 val pods = pollUntil("wait-for-pod", maxAttempts = 10, interval = Duration.ofSeconds(3), done = { it.isNotEmpty() }) {
     k8sService.getPods().getOrThrow()
 }
+
+// The AWS waits (EC2, EMR, OpenSearch) use pollUntilOrTimeout: it retries a look that throws
+// (a throttle) within the timeout and throws AwsTimeoutException when the condition never holds.
+// Never write a while-sleep loop for a wait. A wait that must stop on a failure of its own besides the
+// timeout (EC2InstanceService.waitForInstancesRunning stops on an ended instance, through `done`) calls
+// pollUntil directly and passes isTransient = ::isTransientAwsFailure, so a permanent failure still fails at once.
+val states = pollUntilOrTimeout("instances to terminate", timeout, interval, done = { it.all { s -> s == TERMINATED } }) {
+    describeStates()
+}
 ```
 
 ## Koin Registration
 
-`AwsClientsModule.kt` registers the region, the credentials provider, the SDK clients, `AWS`, `AWSClientFactory`, `AWSCredentialsManager`, `AwsErrorHandler` and the SSM transport. Its only edges are `configuration`, `events` and `Context`. The bindings of `services/aws` classes live in `services/aws/AwsServicesModule.kt`, so the services layer never builds an SDK client. `AWSCredentialsManager` is a `factory`, not a `single`: its credentials file is lazy, and a single would keep stale SSO credentials across builds in REPL or Server mode.
+`AwsClientsModule.kt` registers the region, the credentials provider, the SDK clients, `AccountIdentity`, `IamRoles`, `AWSClientFactory`, `AWSCredentialsManager`, `AwsErrorHandler` and the SSM transport. Its only edges are `configuration`, `events` and `Context`. The bindings of `services/aws` classes live in `services/aws/AwsServicesModule.kt`, so the services layer never builds an SDK client. `AWSCredentialsManager` is a `factory`, not a `single`: its credentials file is lazy, and a single would keep stale SSO credentials across builds in REPL or Server mode.
 
 ## The SDK Boundary
 
@@ -153,9 +169,11 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
 The binding is a `DeferredSshRoute`: it picks the route, which loads the profile, the first time a
 host is reached, and a route never used closes without picking one. `DefaultSSHConnectionProvider`
 likewise loads the profile's key and starts MINA on the first connection, and `ProxyModule` reads
-the tunnel verify budget when a tunnel starts. That is what lets a command in a local workspace,
-which has no profile, build `remoteOps`, the SOCKS service and the service-access seam
-(`LocalWorkspaceNeedsNoProfileTest`). Do not read the route, the key or `User` at construction.
+the tunnel verify budget when a tunnel starts (`ProcessSocksProxyService` takes `verifyAttempts` as
+a function). That is what lets a command in a local workspace, which has no profile, build
+`remoteOps`, the SOCKS service and the service-access seam (`LocalWorkspaceNeedsNoProfileTest`), and
+what lets `profile setup` run on a new profile: Koin builds the SOCKS proxy (which holds the route)
+before that command creates the profile. Do not read the route, the key or `User` at construction.
 
 - **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper and the `bin/` SSH wrappers) use
   `sshConfig`. `ClusterConfigWriter.writeSshConfig` puts every cluster-wide option (host keys, user,

@@ -129,7 +129,7 @@ Start has a second window.  Without a tokens file the segment writer rejoins its
 ## Risks / Trade-offs
 
 - [A collector restart during an outage loses its queue] → Accepted by the owner (in-memory, option A).  It includes a `down` that stops the collectors while Mimir is down; `down` flushes Mimir after the collectors stop, so it never stops them during a backend outage it causes.
-- [Memory: a full queue holds an hour of batches in the collector's memory, up to a few GB on a busy node] → The nodes have the memory, and there is no limiter by rule.  The queue only grows while a backend is down.
+- [Capacity: 20000 batches last an hour only below about 5.5 batches (about 5,600 data points) a second; a busier collector fills its queue sooner and drops new batches, and the docs state that limit as a rate. Memory: a full queue holds 20000 batches in the collector's memory, up to a few GB on a busy node] → The nodes have the memory, and there is no limiter by rule.  The queue only grows while a backend is down.
 - [Drain time: one consumer drains a backlog more slowly than many] → At tens of pushes a second, an hour's backlog drains in minutes.  The real-cluster check measures it.
 - [Replay pressure on Mimir: 429 is permanent in PRW] → Mimir's ingestion limits are far above a test cluster's rate (`ingestion_rate: 10000000`).
 - [Loki answers 500 while it starts, which `otlp_http` treats as permanent] → The Loki restart test decides, and this change fixes it (Decision 5a).

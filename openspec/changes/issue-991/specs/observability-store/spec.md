@@ -39,7 +39,7 @@ What a sender holds in memory is lost if the sender itself restarts.  Two signal
 
 #### Scenario: A Pyroscope restart loses no Java-agent profile
 - **WHEN** the Pyroscope server is down for less than 1 hour while a Java agent keeps profiling
-- **THEN** the agent keeps every snapshot and uploads it after the server starts
+- **THEN** the agent keeps every snapshot and uploads it after the server starts, except a snapshot pushed in the instant after the restarted server opens its port and before it reads its ring tokens, which is lost
 
 #### Scenario: No sender queues on disk
 - **WHEN** the collector configuration is rendered

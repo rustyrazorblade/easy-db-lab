@@ -43,6 +43,10 @@ import java.util.UUID
  * up on one after 8 tries, about two minutes, so a 150-second outage lost its first minute of
  * profiles before the fix. The server answers to its in-cluster Service name only once it is ready,
  * as in `CollectorReplayIntegrationTest`.
+ *
+ * Empty windows alone cannot show one lost snapshot, so the test also reads the agent's log and
+ * fails on any upload it dropped, apart from at most one push refused in the restarted server's
+ * start race.
  */
 class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     private companion object {
@@ -211,7 +215,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         docker.createVolumeCmd().withName(volume).exec()
         val first = startPyroscope()
-        startProfiledJvm()
+        val jvm = startProfiledJvm()
         awaitUntil { cpuTicks(first, nowSecond() - WAIT.seconds, nowSecond()) > 0 }
 
         val down = nowSecond()
@@ -234,7 +238,31 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
                 "seconds into the ${OUTAGE.seconds}s outage of each 10s window with no profile " +
                     "(${windows.size} windows checked)",
             ).isEmpty()
+        // One dropped snapshot leaves no window empty, since its neighbours overlap both windows
+        // it touches, so the agent's own log is what shows a drop. The restarted server opens its
+        // port about 20ms before it reads its ring tokens, and a push in that instant is refused
+        // with an empty ring: at most that one drop is allowed (the race the design states).
+        val dropped = droppedUploads(jvm.logs)
+        val (startRace, other) = dropped.partition { EMPTY_RING in it.lowercase() }
+        assertThat(other).describedAs("uploads the agent dropped; JVM log:\n${jvm.logs}").isEmpty()
+        assertThat(startRace).describedAs("uploads refused in the start race; JVM log:\n${jvm.logs}").hasSizeLessThanOrEqualTo(1)
     }
+
+    /**
+     * The agent's log lines for each snapshot it dropped. Agent 2.3.0 logs `Error uploading
+     * snapshot: <status> <body>` for every refused upload and retries only a 429 or a 5xx, so any
+     * other status is a dropped snapshot; `Gave up uploading` is one that ran out of tries.
+     */
+    private fun droppedUploads(log: String): List<String> =
+        log.lines().filter { line ->
+            val status =
+                REFUSED_UPLOAD
+                    .find(line)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.toInt()
+            (status != null && status != HTTP_TOO_MANY_REQUESTS && status < HTTP_SERVER_ERROR) || GAVE_UP in line
+        }
 
     private fun nowSecond(): Long = System.currentTimeMillis() / MILLIS_PER_SECOND
 
@@ -248,4 +276,9 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
 }
 
 private const val HTTP_OK = 200
+private const val HTTP_TOO_MANY_REQUESTS = 429
+private const val HTTP_SERVER_ERROR = 500
 private const val MILLIS_PER_SECOND = 1000L
+private const val GAVE_UP = "Gave up uploading"
+private const val EMPTY_RING = "empty ring"
+private val REFUSED_UPLOAD = Regex("Error uploading snapshot: (\\d{3}) ")

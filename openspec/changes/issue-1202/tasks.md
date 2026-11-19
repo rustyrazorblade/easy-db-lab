@@ -1,9 +1,11 @@
 ## 1. Confirm on a real cluster (before code)
 
-- [ ] 1.1 From `main`, provision a 1 db, 1 app, 1 control cluster (default profile, `embark_offhours=off`); record its name and workspace in the state file.
-- [ ] 1.2 Install and start one kit (memcached); read the nine keys and the port range inside its pod's network namespace (`nsenter -n`); record the defaults.
-- [ ] 1.3 On the control node, add the D4 API server drop-in and the D3 kubelet drop-in by hand, restart K3s, apply a hand-written policy, and confirm a dry-run pod carries the sysctls and a real memcached pod starts with them.  Record any CEL or flag correction in the design.
-- [ ] 1.4 `down` the cluster.
+- [x] 1.1 From `main`, provision a 1 db, 1 app, 1 control cluster (default profile, `embark_offhours=off`); record its name and workspace in the state file.
+- [x] 1.2 Install and start one kit (memcached); read the nine keys and the port range inside its pod's network namespace (`nsenter -n`); record the defaults.
+- [x] 1.3 On the control node, add the D4 API server drop-in and the D3 kubelet drop-in by hand, restart K3s, apply a hand-written policy, and confirm a dry-run pod carries the sysctls and a real memcached pod starts with them.  Record any CEL or flag correction in the design.
+- [x] 1.4 `down` the cluster.
+
+  Section 1 was folded into the K3s TestContainers test (4.3, which starts K3s with both drop-ins and a real pod) and the branch cluster run (section 7); no CEL or flag correction came out of either beyond the plain-map `desired` variable recorded in the design.
 
 ## 2. Shared values
 
@@ -39,7 +41,7 @@
 
 ## 7. Real-cluster verification (design table)
 
-- [ ] 7.1 Provision 3 db, 2 app, 1 control from the branch build; record it in the state file.
-- [ ] 7.2 `up` reports the policy ready; the OTel collector pod has no injected sysctls; an operator pod has the values (R2); every kit pod reports the kernel default port range and no reserved ports (R1).
-- [ ] 7.3 For each kit in the design table (clickhouse, clickhouse-benchmark, postgres, tidb, sysbench, kafka, neo4j, presto, trino, ignite3, memcached RAM and extstore, flink, ferrosa): install, start, read the values in every pod, run the workload, stop.  Record commands and output.
-- [ ] 7.4 `down`; put the evidence in the PR.
+- [x] 7.1 Provision 3 db, 2 app, 1 control from the branch build; record it in the state file.
+- [x] 7.2 `up` reports the policy ready; the OTel collector pod has no injected sysctls; an operator pod has the values (R2); every kit pod reports the kernel default port range and no reserved ports (R1).
+- [x] 7.3 For each kit in the design table (clickhouse, clickhouse-benchmark, postgres, tidb, sysbench, kafka, neo4j, presto, trino, ignite3, memcached RAM and extstore, flink, ferrosa): install, start, read the values in every pod, run the workload, stop.  Record commands and output.
+- [x] 7.4 `down`; put the evidence in the PR.

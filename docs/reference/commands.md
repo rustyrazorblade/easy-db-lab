@@ -163,7 +163,7 @@ determined fails at `init`, before any instance is created.
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--capability` | Override one node capability, as `<name>=true` or `<name>=false`; repeatable. Names: `systemd-journal`, `cloudwatch`, `s3`, `privileged`, `host-network`, `host-path`, `node-ssh`. An unknown name, a value other than `true`/`false`, or one name given both values fails `init` before anything is written. See [Node capabilities](#node-capabilities) | (the environment's declared set) |
 | `--role-nodes` | Nodes one role's pods run on, as `<role>=<key=value>[,<key=value>...]` with role `db`, `app` or `control`; repeatable, once per role. Replaces that role's default node selector, `type=<role>` on the nodes easy-db-lab builds. `<role>=` (no labels) lets that role's pods run on any node. A malformed mapping fails `init` before anything is written. See [Role node selectors](#role-node-selectors) | (`type=<role>`) |
-| `--client-network` | A network database kits accept passwordless clients from, as an IPv4 CIDR or address (a bare address means `/32`); repeatable. Added after the VPC CIDR and the K3s cluster CIDR (`10.42.0.0/16`). A malformed value, one with host bits set, or a `/0` (every address would get passwordless access) fails `init` before anything is written | - |
+| `--client-network` | A network database kits accept passwordless clients from, as an IPv4 CIDR or address (a bare address means `/32`); repeatable. Added after the VPC CIDR and the K3s cluster CIDR (`10.224.0.0/12`). A malformed value, one with host bits set, or a `/0` (every address would get passwordless access) fails `init` before anything is written; a `/1` to `/7` is recorded with a warning. `init` lists every network the kits will accept | - |
 | `--up` | Auto-provision after init | false |
 | `--quiet`, `-q` | With `--up`: run `up --quiet`. Refused without `--up` | false |
 | `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
@@ -224,7 +224,9 @@ get `EDL_NODE_SSH` from `node-ssh`, and `status` lists every capability.
 Each role (`db`, `app`, `control`) has a node selector that decides where its kit and stress pods
 run. On the nodes easy-db-lab builds it is `type=<role>`, the label `up` gives each node.
 `--role-nodes` replaces one role's selector, for example `--role-nodes app=pool=bench`, and
-`--role-nodes app=` removes it, so that role's pods run on any node. Kits receive the selectors as
+`--role-nodes app=` removes it, so that role's pods run on any node. A label may have an empty
+value, as Kubernetes allows: `--role-nodes db=dedicated=` selects nodes whose `dedicated` label is
+empty. Kits receive the selectors as
 `DB_NODE_LABELS`, `APP_NODE_LABELS` and `CONTROL_NODE_LABELS` (label selectors, empty when
 unconstrained) and in templates as `__DB_NODE_SELECTOR__` and `__APP_NODE_SELECTOR__` (JSON maps,
 `{}` when unconstrained). `init` records them in `state.json`.

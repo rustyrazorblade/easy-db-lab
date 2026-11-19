@@ -888,6 +888,15 @@ object Constants {
         const val NODE_CIDR_MASK_SIZE = 24
     }
 
+    // The networks the passwordless database kits trust (configuration/ClientNetworks.kt)
+    object ClientNetworks {
+        /**
+         * The narrowest prefix `init --client-network` warns about: a /1 to /7 network is a large
+         * share of every address, so it is recorded with `Setup.WideClientNetwork`. /0 is refused.
+         */
+        const val WIDE_PREFIX_WARNING_MAX = 7
+    }
+
     // The helm and kubectl seam (services/ClusterTooling.kt)
     object ClusterTooling {
         /** Lines of a failed tool's stderr kept in `ClusterToolFailedException`. */

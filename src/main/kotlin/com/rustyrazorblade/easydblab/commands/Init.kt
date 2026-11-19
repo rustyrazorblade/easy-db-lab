@@ -31,8 +31,8 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.network.CidrBlock
-import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.network.Ipv4Cidr
+import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.ClientNetworkProbe
@@ -592,6 +592,7 @@ class Init :
         clusterStateManager.save(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
+        reportClientNetworks(clusterState, extraClients)
 
         // Only set VPC ID if user explicitly provided one via --vpc
         // Otherwise, VPC will be created during 'up'
@@ -615,6 +616,20 @@ class Init :
         } else {
             eventBus.emit(Event.Setup.InitNextSteps)
         }
+    }
+
+    /**
+     * Tells the user which networks the passwordless database kits will trust ([Event.Setup.ClientNetworksRecorded]),
+     * after warning about each very wide [extraClients] network ([Event.Setup.WideClientNetwork]).
+     */
+    private fun reportClientNetworks(
+        clusterState: ClusterState,
+        extraClients: List<Ipv4Cidr>,
+    ) {
+        extraClients.filter(ClientNetworks::isVeryWide).forEach { cidr ->
+            eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, ClientNetworks.addressCount(cidr)))
+        }
+        eventBus.emit(Event.Setup.ClientNetworksRecorded(ClientNetworks.from(clusterState).cidrs.map { it.value }))
     }
 
     /**

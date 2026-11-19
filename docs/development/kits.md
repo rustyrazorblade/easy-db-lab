@@ -950,8 +950,19 @@ The variables injected depend on what endpoints the target kit declares:
 `https` and `cql` endpoints inject nothing. Every `*_USER` variable comes from the target's `sql`
 capability `user`, and is empty when the target declares no `sql` capability.
 
-If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`
-variables are injected and no error is raised (fail-safe).
+Every address except `TARGET_HTTP_URL` is one the kit's pods dial in the cluster: the
+endpoint's Service DNS name and Service port when a file of the target declares the Service,
+else the first recorded node of its role on the NodePort. `TARGET_HTTP_URL` is curled from your
+machine, so it is the address the CLI reaches the Service at: the node's private address on the
+NodePort on an AWS cluster (the workspace `curl` wrapper routes it through the tunnel), or a
+`127.0.0.1` port-forward to the Service on a local or brought cluster, open until the phase ends.
+
+If the target kit directory does not exist, no `TARGET_*` variables are injected. A target
+`kit.yaml` that does not parse fails the phase before it runs, naming the target, the file and
+the parse error (`Kit.TargetConfigInvalid`). An HTTP endpoint the CLI cannot reach (no node of
+its role recorded, or a Service it cannot port-forward) fails the phase the same way
+(`Kit.TargetEndpointUnreachable`); `stop` and `uninstall` report it and run without that
+endpoint's variable, so a kit can always be released.
 
 ### Wiring a TARGET_* endpoint into an application pod
 

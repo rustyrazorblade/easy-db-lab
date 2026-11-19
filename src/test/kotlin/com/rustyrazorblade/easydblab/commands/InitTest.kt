@@ -982,6 +982,56 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager, never()).save(any())
         }
 
+        @Test
+        fun `init reports the client networks it recorded, which the database kits trust`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--cidr", "172.16.0.0/16", "--client-network", "192.168.0.0/16")
+            command.clean = true
+            command.execute()
+
+            assertThat(outputHandler.messages.joinToString("\n")).contains(
+                "The database kits will accept passwordless clients from: 172.16.0.0/16, " +
+                    "${Constants.K3s.CLUSTER_CIDR}, 192.168.0.0/16",
+            )
+        }
+
+        @Test
+        fun `on a cluster the user brings, init reports the probed networks it recorded`() {
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            assertThat(outputHandler.messages.joinToString("\n"))
+                .contains("The database kits will accept passwordless clients from: 10.244.0.0/24, 192.168.1.5/32")
+        }
+
+        /** A /1 to /7 network is almost every address, so it is recorded with a warning naming it. */
+        @Test
+        fun `a very wide --client-network is recorded with a warning naming it`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "10.0.0.0/7", "--client-network", "192.168.0.0/16")
+            command.clean = true
+            command.execute()
+
+            val output = outputHandler.messages.joinToString("\n")
+            assertThat(output)
+                .contains("Warning: --client-network 10.0.0.0/7 gives 33554432 addresses passwordless access")
+                .doesNotContain("--client-network 192.168.0.0/16 gives")
+            verify(mockClusterStateManager).save(argThat { extraClientNetworks.contains("10.0.0.0/7") })
+        }
+
+        @Test
+        fun `a slash 8 --client-network is recorded without a warning`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "10.0.0.0/8")
+            command.clean = true
+            command.execute()
+
+            assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("passwordless access")
+        }
+
         /** Every client network gets passwordless trust, so `/0` would open the kits to every address. */
         @Test
         fun `a --client-network of slash 0 fails before anything is saved, naming the value`() {

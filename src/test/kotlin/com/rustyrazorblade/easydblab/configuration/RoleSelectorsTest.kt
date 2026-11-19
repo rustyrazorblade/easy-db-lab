@@ -55,7 +55,7 @@ class RoleSelectorsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["db=bad", "db", "db==x", "db=k=", "db=k=v,", "stress=k=v", "db=k=v,bad"])
+    @ValueSource(strings = ["db=bad", "db", "db==x", "db==", "db=k=v,", "stress=k=v", "db=k=v,bad"])
     fun `a malformed role mapping is refused, naming the value and the expected form`(value: String) {
         assertThatThrownBy { RoleSelectors.parse(listOf(value)) }
             .isInstanceOf(IllegalArgumentException::class.java)
@@ -65,7 +65,7 @@ class RoleSelectorsTest {
 
     @Test
     fun `a malformed label pair is refused, naming the pair`() {
-        val cases = mapOf("db=a=b=c" to "a=b=c", "db=k=v,bad" to "bad", "app=k=v,=v" to "=v", "db=k=,x=y" to "k=")
+        val cases = mapOf("db=a=b=c" to "a=b=c", "db=k=v,bad" to "bad", "app=k=v,=v" to "=v", "db=k=v,=" to "=")
 
         cases.forEach { (value, pair) ->
             assertThatThrownBy { RoleSelectors.parse(listOf(value)) }
@@ -117,6 +117,22 @@ class RoleSelectorsTest {
     }
 
     @Test
+    fun `a label with no value selects nodes whose label is empty, as Kubernetes allows`() {
+        val mapped = RoleSelectors.parse(listOf("db=dedicated=,pool=databases")).getValue(ServerType.Cassandra)
+
+        assertThat(mapped.labels).isEqualTo(mapOf("dedicated" to "", "pool" to "databases"))
+        assertThat(mapped.toLabelSelector()).isEqualTo("dedicated=,pool=databases")
+        assertThat(mapped.toJson()).isEqualTo("""{"dedicated":"","pool":"databases"}""")
+    }
+
+    @Test
+    fun `a label with no value still needs a valid key`() {
+        assertThatThrownBy { RoleSelectors.parse(listOf("db=-bad=")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("'-bad' is not a valid Kubernetes label key")
+    }
+
+    @Test
     fun `a role mapped to nothing is unconstrained`() {
         val mapped = RoleSelectors.OWNED_NODES.withMappings(RoleSelectors.parse(listOf("app=")))
 
@@ -134,7 +150,7 @@ class RoleSelectorsTest {
     fun `a role mapped twice is refused`() {
         assertThatThrownBy { RoleSelectors.parse(listOf("db=a=1", "db=b=2")) }
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("db")
+            .hasMessage("Role 'db' is mapped twice in --role-nodes; give it once.")
     }
 
     @Test

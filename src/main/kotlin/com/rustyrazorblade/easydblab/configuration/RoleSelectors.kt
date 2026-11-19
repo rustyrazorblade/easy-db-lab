@@ -101,7 +101,7 @@ data class RoleSelectors(
 
         /**
          * Parses `--role-nodes` values, each `<role>=<key=value>[,<key=value>...]` with `<role>` one
-         * of `db`, `app` or `control`.
+         * of `db`, `app` or `control`. A pair's value may be empty (`key=`).
          *
          * @throws IllegalArgumentException on a malformed value, an unknown role, or a role mapped
          *   twice; the message names the value and the expected form.
@@ -135,9 +135,13 @@ data class RoleSelectors(
             return role to NodeSelector(parsed.toMap())
         }
 
+        /**
+         * One `key=value` pair, or null when it is not one. The key is required; the value may be
+         * empty (`key=`), which Kubernetes allows and which selects nodes whose label is empty.
+         */
         private fun parseLabel(pair: String): Pair<String, String>? {
             val parts = pair.split("=")
-            return parts.takeIf { it.size == 2 && it.all(String::isNotBlank) }?.let { it[0].trim() to it[1].trim() }
+            return parts.takeIf { it.size == 2 && it[0].isNotBlank() }?.let { it[0].trim() to it[1].trim() }
         }
 
         /**
@@ -161,9 +165,9 @@ data class RoleSelectors(
                     "(an optional DNS-subdomain prefix and '/', then up to ${Constants.K8s.LABEL_NAME_MAX_LENGTH} " +
                     "alphanumerics, '-', '_' or '.', beginning and ending alphanumeric)."
             }
-            require(isLabelName(labelValue)) {
+            require(labelValue.isEmpty() || isLabelName(labelValue)) {
                 "Invalid $OPTION '$value': '$labelValue' is not a valid Kubernetes label value " +
-                    "(up to ${Constants.K8s.LABEL_NAME_MAX_LENGTH} alphanumerics, '-', '_' or '.', " +
+                    "(empty, or up to ${Constants.K8s.LABEL_NAME_MAX_LENGTH} alphanumerics, '-', '_' or '.', " +
                     "beginning and ending alphanumeric)."
             }
         }

@@ -1,13 +1,11 @@
 package com.rustyrazorblade.easydblab.services.sql
 
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.SocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.proxy.defaultSocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import com.rustyrazorblade.easydblab.services.access.ServiceEndpoint
-import com.rustyrazorblade.easydblab.services.access.ServiceTarget
+import com.rustyrazorblade.easydblab.services.access.serviceTarget
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.sql.Connection
 import java.util.Properties
@@ -61,14 +59,7 @@ class KitJdbcSqlService(
      */
     fun execute(sql: String): Result<SqlQueryResult> =
         runCatching {
-            val target =
-                ServiceTarget(
-                    service?.namespace ?: Constants.K8s.NAMESPACE,
-                    service?.name.orEmpty(),
-                    service?.port ?: endpoint.port,
-                    ServerType.from(endpoint.nodeType),
-                    endpoint.port,
-                )
+            val target = endpoint.serviceTarget(service)
             val props =
                 Properties().apply {
                     if (user.isNotBlank()) setProperty("user", user)

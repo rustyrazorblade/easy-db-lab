@@ -6155,6 +6155,36 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `init` recorded [networks] (canonical CIDRs, in the order the kit configuration lists them)
+         * as the client networks the passwordless database kits trust, so the user can see who the
+         * kits will accept before a client outside them is refused.
+         */
+        @Serializable
+        @SerialName("Setup.ClientNetworksRecorded")
+        data class ClientNetworksRecorded(
+            val networks: List<String>,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "The database kits will accept passwordless clients from: ${networks.joinToString(", ")}. " +
+                    "Add a network with --client-network <cidr>."
+        }
+
+        /**
+         * `init --client-network` was given [network], a /1 to /7 prefix covering [addresses]
+         * addresses, and recorded it: every one of them gets passwordless access to the database kits.
+         */
+        @Serializable
+        @SerialName("Setup.WideClientNetwork")
+        data class WideClientNetwork(
+            val network: String,
+            val addresses: Long,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Warning: --client-network $network gives $addresses addresses passwordless access to the " +
+                    "database kits. Give a narrower network unless that is intended."
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {
@@ -6668,6 +6698,54 @@ sealed interface Event {
                     "Run 'easy-db-lab $kit stop' before running '$phase' again."
 
             override fun isError(): Boolean = true
+        }
+
+        /**
+         * The `kit.yaml` of [target], the kit [kit]'s kit-ref arg names, does not parse, so no
+         * `TARGET_*` variable can be built from it. [file] is its path and [reason] the parse error.
+         * No step of the phase ran.
+         */
+        @Serializable
+        @SerialName("Kit.TargetConfigInvalid")
+        data class TargetConfigInvalid(
+            val kit: String,
+            val target: String,
+            val file: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: [$kit] cannot read the kit.yaml of target '$target' ($file): $reason. " +
+                    "Fix that file, or install '$target' again."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The [endpoint] of [target] (the kit [kit]'s kit-ref arg) cannot be reached from this
+         * machine, for [reason]. When [continued] is false, no step of [phase] ran. A `stop` or
+         * `uninstall` releases the kit whatever state its target is in, so it [continued] without
+         * that endpoint's `TARGET_*` variables.
+         */
+        @Serializable
+        @SerialName("Kit.TargetEndpointUnreachable")
+        data class TargetEndpointUnreachable(
+            val kit: String,
+            val target: String,
+            val phase: String,
+            val endpoint: String,
+            val reason: String,
+            val continued: Boolean,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                when (continued) {
+                    true ->
+                        "[$kit] $phase continues without the '$endpoint' endpoint of target '$target', " +
+                            "which this machine cannot reach: $reason"
+                    false ->
+                        "Error: [$kit] cannot reach the '$endpoint' endpoint of target '$target' from this machine: $reason"
+                }
+
+            override fun isError(): Boolean = !continued
         }
 
         /**

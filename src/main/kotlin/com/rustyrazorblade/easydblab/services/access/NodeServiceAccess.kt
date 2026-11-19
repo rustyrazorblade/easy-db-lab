@@ -3,13 +3,22 @@ package com.rustyrazorblade.easydblab.services.access
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 
-/** The private address of the first node of [target]'s role, or a failure naming the role and Service. */
+/**
+ * The private address of the first node of [target]'s role, or a failure naming the role and the
+ * Service, or the NodePort when no Service is known.
+ */
 internal fun ClusterState.nodeAddressFor(target: ServiceTarget): String =
     hosts[target.nodeRole]?.firstOrNull()?.privateIp
         ?: error(
-            "No ${target.nodeRole.serverType} node in cluster state runs ${target.namespace}/${target.service}. " +
+            "No ${target.nodeRole.serverType} node in cluster state runs ${target.describe()}. " +
                 "Please ensure the environment is running.",
         )
+
+private fun ServiceTarget.describe(): String =
+    when (service.isBlank()) {
+        true -> "NodePort $nodePort"
+        false -> "$namespace/$service"
+    }
 
 /**
  * [ServiceAccess] for an AWS cluster: the node's private address through the per-client SOCKS tunnel.

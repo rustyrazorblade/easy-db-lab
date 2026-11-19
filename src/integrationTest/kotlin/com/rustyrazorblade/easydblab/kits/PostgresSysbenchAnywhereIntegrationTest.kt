@@ -37,6 +37,7 @@ import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.WorkspaceKubeApiLocator
+import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
@@ -113,7 +114,6 @@ class PostgresSysbenchAnywhereIntegrationTest {
         stateManager.save(
             ClusterState(
                 name = CLUSTER_NAME,
-                versions = mutableMapOf(),
                 initConfig = InitConfig(name = CLUSTER_NAME, kitStorageClass = RETAINED_CLASS),
                 capabilities = emptySet(),
                 roleSelectors = RoleSelectors.ANYWHERE,
@@ -141,7 +141,7 @@ class PostgresSysbenchAnywhereIntegrationTest {
 
         val postgresDir = installPostgres()
         val sysbenchDir = installSysbench()
-        val targetVars = DefaultKitEndpointResolver().resolveTargetVars(postgresDir, stateManager.load())
+        val targetVars = DefaultKitEndpointResolver(NO_HTTP_ENDPOINT).resolveTargetVars(postgresDir, stateManager.load())
         assertThat(targetVars).containsEntry("TARGET_PG_HOST", "postgres-nodeport.default.svc")
 
         runScript(sysbenchDir, "prepare", targetVars + PREPARE_ARGS)
@@ -384,6 +384,9 @@ class PostgresSysbenchAnywhereIntegrationTest {
         const val KIT_RESOURCES = "com/rustyrazorblade/easydblab/kits"
         const val STORAGE_SIZE = "1Gi"
         const val LOCAL_PATH = "local-path"
+
+        /** postgres declares no HTTP endpoint, so the resolver never opens a Service from this machine. */
+        val NO_HTTP_ENDPOINT = ServiceAccess { target -> error("postgres has no HTTP endpoint to open, yet ${target.service} was opened") }
         const val RETAINED_CLASS = "local-path-retain"
         const val LOCAL_PATH_PROVISIONER_IMAGE = "rancher/local-path-provisioner:v0.0.34"
         const val LOCAL_PATH_HELPER_IMAGE = "rancher/mirrored-library-busybox:1.37.0"

@@ -84,6 +84,13 @@ or server) recorded another:
   true after the pod a Service forward resolved is replaced, so `isAlive` alone is not enough), fails naming namespace/Service/port and the Kubernetes
   error, and closes every forward when the CLI exits.
 
+A bench kit's `TARGET_HTTP_URL` (`services/KitEndpointResolver`) is opened through the same seam,
+because its scripts `curl` it from this machine: the node address on Socks and Direct (the `curl`
+wrapper routes it), a loopback forward on PortForward, held for the whole phase. `KitEndpoint.serviceTarget`
+builds the target for it and for `KitJdbcSqlService`. When the seam cannot open it, the phase fails
+with `Kit.TargetEndpointUnreachable` (stop and uninstall continue without it); it never falls back
+to a `.svc` name this machine cannot resolve.
+
 CQL on a port-forward cluster does not use the seam's Service forward. It uses
 `CassandraPodForward`, which forwards one `cassandra-pods` StatefulSet pod on a fixed local port.
 `CqlSessionFactory.createSingleEndpointSession` uses that port as the only contact point, with

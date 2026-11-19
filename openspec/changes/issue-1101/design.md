@@ -61,7 +61,7 @@ Owner, 2026-11-16: every decision D1-D9 below is decided as its option (a). D6: 
 - (c) Required anti-affinity. Breaks AC2 on one node; rejected.
 
 ### D5. ClickHouse and Postgres allowed CIDRs (decided (a), owner 2026-11-16)
-- **(a) Chosen (owner 2026-11-16):** AWS: VPC CIDR + `Constants.K3s.CLUSTER_CIDR` (10.42.0.0/16, passed explicitly as `--cluster-cidr`). Elsewhere: probed at `init` from node `spec.podCIDRs` and InternalIP /32s, plus `init --client-network` (for CNIs like EKS VPC-CNI). Recorded in state.
+- **(a) Chosen (owner 2026-11-16):** AWS: VPC CIDR + `Constants.K3s.CLUSTER_CIDR` (10.224.0.0/12, which K3s is already started on with `--cluster-cidr`). Elsewhere: probed at `init` from node `spec.podCIDRs` and InternalIP /32s, plus `init --client-network` (for CNIs like EKS VPC-CNI). Recorded in state.
 - (b) Probe at every kit start, no state; cannot cover VPC-CNI without an override anyway.
 - (c) Allow every address. Simplest; on your cluster a passwordless ClickHouse and a `trust` Postgres would be open to anything reaching their NodePorts.
 

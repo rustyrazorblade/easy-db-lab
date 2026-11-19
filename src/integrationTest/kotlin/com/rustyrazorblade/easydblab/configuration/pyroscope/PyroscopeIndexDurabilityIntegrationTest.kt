@@ -54,6 +54,9 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         val AFTER_START: Duration = Duration.ofSeconds(10)
         val PUSH_PERIOD: Duration = Duration.ofMillis(200)
 
+        /** Bounds one push, so a server that accepts the connection and then hangs fails the test. */
+        val PUSH_TIMEOUT: Duration = Duration.ofSeconds(30)
+
         /**
          * Pyroscope 2.3.1 opens its HTTP port about 20ms before the segment writer reads its tokens
          * file, and no setting delays the port, so a push in those first milliseconds is refused
@@ -136,6 +139,7 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
             HttpRequest
                 .newBuilder(URI("${baseUrl(pyroscope)}/ingest?name=$name&format=folded"))
                 .header(Constants.Observability.TENANT_HEADER, TENANT)
+                .timeout(PUSH_TIMEOUT)
                 .POST(HttpRequest.BodyPublishers.ofString(folded))
                 .build()
         return http.send(request, HttpResponse.BodyHandlers.ofString())

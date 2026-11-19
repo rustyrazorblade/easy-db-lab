@@ -76,6 +76,7 @@ class TelemetryOutageConfigTest : BaseKoinTest() {
         val output = (nodeAt(yaml, "pipeline", "outputs") as YamlList).items.single() as YamlMap
 
         assertThat(output.get<YamlScalar>("retry_limit")?.content).isEqualTo("no_limits")
+        assertThat(scalarAt(yaml, "service", "scheduler.cap")).isEqualTo("30")
         assertThat(keysAt(yaml, "service")).noneMatch { it.startsWith("storage.") }
         assertThat(output.entries.keys.map { it.content }).noneMatch { it.startsWith("storage.") }
     }

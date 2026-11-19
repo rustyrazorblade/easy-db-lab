@@ -12,9 +12,9 @@
 
 - [x] 2.1 `prometheus_remote_write`: move `endpoint`, `tls`, `headers` under `http:` with `timeout: 30s`; set top-level `timeout: 0`; `retry_on_failure` with `initial_interval: 5s`, `max_elapsed_time: 0`; `remote_write_queue` enabled with `queue_size: 20000`; comments state why (the 0.161.0 deadline, the uncopied `max_interval`)
 - [x] 2.2 `otlp_http/logs` and `otlp_grpc/tempo`: `retry_on_failure.max_elapsed_time: 0` and `sending_queue.queue_size: 20000`, in memory
-- [x] 2.3 Update `OtelManifestBuilderTest` (endpoint now under `http`, the retry, timeout and queue settings, and no `storage`, `wal` or `memory_limiter`) and the `otel.yaml` golden manifest
-- [x] 2.3a The collectors that send to a cluster collector (EMR `otlp_grpc/control`, stress sidecar `otlp_grpc`, whose queue was disabled) get the same unlimited retry and 20000-batch in-memory queue, because the cluster collector restarts on every kit start and stop; `OtelManifestBuilderTest` asserts both (found in review)
-- [x] 2.3b The Fluent Bit journald sender, which sends to the node collector, sets `retry_limit: no_limits` (default 1) and keeps its in-memory buffer; `OtelManifestBuilderTest` asserts it, and the kit-author guide and create-kit skill use `edl_patch_pyroscope` instead of hand-written agent options (found in review)
+- [x] 2.3 Update `OtelManifestBuilderTest` (endpoint now under `http`); `TelemetryOutageConfigTest` asserts the retry, timeout and queue settings, and no `storage`, `wal` or `memory_limiter`; and the `otel.yaml` golden manifest
+- [x] 2.3a The collectors that send to a cluster collector (EMR `otlp_grpc/control`, stress sidecar `otlp_grpc`, whose queue was disabled) get the same unlimited retry and 20000-batch in-memory queue, because the cluster collector restarts on every kit start and stop; `TelemetryOutageConfigTest` asserts both (found in review)
+- [x] 2.3b The Fluent Bit journald sender, which sends to the node collector, sets `retry_limit: no_limits` (default 1) and keeps its in-memory buffer, with retries capped at 30s apart (`scheduler.cap`, default 2000s); `TelemetryOutageConfigTest` asserts both, and the kit-author guide and create-kit skill use `edl_patch_pyroscope` instead of hand-written agent options (found in review)
 - [x] 2.4 Run `OtelCollectorConfigValidationIntegrationTest` so the pinned collector accepts the new keys
 
 ## 2a. Loki at start

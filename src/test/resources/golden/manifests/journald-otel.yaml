@@ -15,6 +15,10 @@ data:
       http_listen: 0.0.0.0
       http_port: 2020
       health_check: true
+      # Retries back off exponentially up to this many seconds (default 2000). At the default, a
+      # chunk could wait many minutes after the collector came back, and arrive past Loki's 30-minute
+      # out-of-order window or after `down` removed the collector (issue 991).
+      scheduler.cap: 30
 
     pipeline:
       inputs:

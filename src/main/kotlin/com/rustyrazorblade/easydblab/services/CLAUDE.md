@@ -254,7 +254,7 @@ node asks the cloud provider. The values and why are in `docs/user-guide/node-tu
 ## Pod Network Sysctls
 
 The per-namespace `net.*` keys of the tuning file also reach every non-hostNetwork pod
-(`openspec/changes/issue-1202/` until it is archived):
+(spec `openspec/specs/pod-network-tuning/`, decisions in `openspec/changes/archive/2026-11-19-issue-1202/design.md`):
 
 - `PodNetworkSysctls` reads the packaged `60-easydblab.conf` and returns the keys of
   `Constants.NodeTuning.POD_NETWORK_SYSCTLS` with the file's values. It is the only source of the

@@ -117,6 +117,17 @@ kubectl exec <pod> -- cat /proc/sys/net/core/somaxconn /proc/sys/net/ipv4/tcp_ke
 kubectl get pod <pod> -o jsonpath='{.spec.securityContext.sysctls}'
 ```
 
+```admonish warning title="When new pods are refused, check the sysctl policy first"
+The policy uses `failurePolicy: Fail`: when the API server cannot apply it, a new pod in the pod network is refused, never created untuned. If pods stop being created (a Deployment or StatefulSet stuck with no new pods, an operator that reports a create error, or `kubectl run` failing with a message that names `easydblab-pod-network-sysctls`), look at the policy before anything else:
+
+    kubectl get mutatingadmissionpolicy easydblab-pod-network-sysctls -o yaml
+    kubectl get mutatingadmissionpolicybinding easydblab-pod-network-sysctls -o yaml
+    kubectl get events -A --field-selector reason=FailedCreate
+    kubectl run sysctl-check --image=busybox --restart=Never --dry-run=server -o jsonpath='{.spec.securityContext.sysctls}'
+
+The dry-run pod is what `up` itself checks: it should print every key listed above. A pod that is created but does not start with `SysctlForbidden` means the node's kubelet does not permit the keys; check `/etc/rancher/k3s/config.yaml.d/25-kubelet-sysctls.yaml` on that node.
+```
+
 The global keys (`netdev_max_backlog`, `rmem_max`, `wmem_max`, `rps_sock_flow_entries`) and the packet steering below do reach pods, because pod traffic arrives on the node's physical interfaces.
 
 ## Packet steering and interrupts

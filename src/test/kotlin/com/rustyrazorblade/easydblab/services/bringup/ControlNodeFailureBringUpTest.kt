@@ -12,6 +12,7 @@ import java.io.File
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * What a control node failure does to the bring-up (design D7): it is reported once with the
@@ -54,6 +55,42 @@ class ControlNodeFailureBringUpTest {
         assertThatThrownBy { h.run() }.isInstanceOf(ControlNodeFailedException::class.java)
 
         assertThat(finished).isTrue()
+    }
+
+    /**
+     * Work outside a step, a replacement's terminate here, has no step grace. A pipeline that
+     * ignores its interrupt there is named by its node once the pipeline grace has passed, and
+     * `run` returns without it.
+     */
+    @Test
+    fun `a pipeline still running after the stop grace is reported by its node, and run returns`() {
+        val h = harness(dbs = 2)
+        h.settings = h.settings.copy(timing = h.settings.timing.copy(pipelineStopGrace = Duration.ofMillis(SETTLE_MS)))
+        val terminating = CountDownLatch(1)
+        val release = AtomicBoolean(false)
+        val stuck = AtomicReference<Thread>()
+        h.steps.scripts["db1 setup"] = { _, _ -> error("disk full") }
+        h.fleet.onTerminate = {
+            stuck.set(Thread.currentThread())
+            terminating.countDown()
+            // A provider call that ignores its interrupt.
+            while (!release.get()) Thread.onSpinWait()
+        }
+        h.steps.scripts["control0 control-plane"] = { _, _ ->
+            terminating.await()
+            error("k3s.service failed")
+        }
+
+        try {
+            assertThatThrownBy { h.run() }.isInstanceOf(ControlNodeFailedException::class.java)
+
+            assertThat(h.eventsOf<Event.Provision.PipelinesAbandoned>())
+                .containsExactly(Event.Provision.PipelinesAbandoned(listOf("db1"), SETTLE_MS))
+        } finally {
+            // Let it end before JUnit deletes the directory it saves the state in.
+            release.set(true)
+            stuck.get()?.join()
+        }
     }
 
     @Test

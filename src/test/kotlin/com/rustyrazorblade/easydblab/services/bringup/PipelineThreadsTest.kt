@@ -43,14 +43,17 @@ class PipelineThreadsTest {
         threads.newThread {}.also { it.name = "db8" }.start()
         started.await()
 
-        val began = System.nanoTime()
-        threads.close()
-        val waited = Duration.ofNanos(System.nanoTime() - began)
+        try {
+            val began = System.nanoTime()
+            threads.close()
+            val waited = Duration.ofNanos(System.nanoTime() - began)
 
-        assertThat(reported).containsExactly(listOf("db7"))
-        assertThat(waited).isLessThan(Duration.ofSeconds(5))
-        release.set(true)
-        stuck.join()
+            assertThat(reported).containsExactly(listOf("db7"))
+            assertThat(waited).isLessThan(Duration.ofSeconds(5))
+        } finally {
+            release.set(true)
+            stuck.join()
+        }
     }
 
     @Test

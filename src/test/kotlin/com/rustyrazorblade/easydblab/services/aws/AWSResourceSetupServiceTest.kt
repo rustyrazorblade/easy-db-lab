@@ -18,6 +18,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.component.KoinComponent
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -42,6 +44,7 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse
 import software.amazon.awssdk.services.sts.model.StsException
+import java.util.stream.Stream
 
 /**
  * Tests for AWSResourceSetupService.
@@ -58,6 +61,33 @@ import software.amazon.awssdk.services.sts.model.StsException
 internal class AWSResourceSetupServiceTest :
     BaseKoinTest(),
     KoinComponent {
+    companion object {
+        private fun stsFailure(
+            status: Int,
+            code: String,
+        ): StsException =
+            StsException
+                .builder()
+                .statusCode(status)
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode(code)
+                        .errorMessage(code)
+                        .build(),
+                ).message(code)
+                .build() as StsException
+
+        /** Clock skew, a 5xx and throttling: none is a credentials or permission problem. */
+        @JvmStatic
+        fun neitherCredentialsNorPermission(): Stream<StsException> =
+            Stream.of(
+                stsFailure(403, Constants.AWS.ErrorCodes.CLOCK_SKEW),
+                stsFailure(503, "ServiceUnavailable"),
+                stsFailure(400, "Throttling"),
+            )
+    }
+
     // Core service under test - recreated in each test with real AWS + mocked clients
     private lateinit var service: AWSResourceSetupService
 
@@ -380,26 +410,15 @@ internal class AWSResourceSetupServiceTest :
         assertThat(capturedEvents).noneMatch { it.event is Event.AwsSetup.IamPermissionError }
     }
 
-    @Test
-    fun `a failure that is neither credentials nor permission is rethrown unchanged with no guidance`() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("neitherCredentialsNorPermission")
+    fun `a failure that is neither credentials nor permission is rethrown unchanged with no guidance`(failure: StsException) {
         val userConfig = createUserConfig()
         stubInvalidRoleSetup()
-        val clockSkew =
-            StsException
-                .builder()
-                .statusCode(403)
-                .awsErrorDetails(
-                    AwsErrorDetails
-                        .builder()
-                        .errorCode(Constants.AWS.ErrorCodes.CLOCK_SKEW)
-                        .errorMessage("Signature expired")
-                        .build(),
-                ).message("Signature expired")
-                .build()
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
-            .thenThrow(clockSkew)
+            .thenThrow(failure)
 
-        assertThatThrownBy { service.ensureAWSResources(userConfig) }.isSameAs(clockSkew)
+        assertThatThrownBy { service.ensureAWSResources(userConfig) }.isSameAs(failure)
 
         assertThat(capturedEvents).noneMatch {
             it.event is Event.AwsSetup.AuthenticationError || it.event is Event.AwsSetup.IamPermissionError

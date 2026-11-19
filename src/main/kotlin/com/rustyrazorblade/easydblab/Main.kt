@@ -27,12 +27,7 @@ fun main(arguments: Array<String>) {
         }
     }
 
-    // Building the parser registers kit subcommands and resolves beans; a failure there is reported
-    // like a command's, not left to escape as a stack trace. An Error is not ours to report.
-    runCatchingException { CommandLineParser() }
-        .onFailure { failure ->
-            koin.get<CommandFailureReporter>().report(failure)
-            exitProcess(Constants.ExitCodes.ERROR)
-        }.getOrThrow()
-        .eval(arguments)
+    val reporter = koin.get<CommandFailureReporter>()
+    val parser = ParserStartup.buildOrReport(reporter) { CommandLineParser() } ?: exitProcess(Constants.ExitCodes.ERROR)
+    parser.eval(arguments)
 }

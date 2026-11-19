@@ -14,7 +14,7 @@ args:
 
 commands:
   start:
-    description: "Run the concurrent read-load driver against cqlite.<ks>.<tbl>"
+    description: "Run the concurrent read-load driver against cqlite.<ks>.<tbl>. Fails before any pod runs unless the target Trino has a cqlite catalog, which the trino kit does not ship yet (pmcfadin/cqlite#2869)"
     args:
       - flag: --ks
         variable: TRINO_LOADTEST_KEYSPACE

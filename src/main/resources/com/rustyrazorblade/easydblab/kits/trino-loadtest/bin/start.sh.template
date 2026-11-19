@@ -11,6 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_DIR="$(dirname "${SCRIPT_DIR}")"
 . "${KIT_DIR}/lib/snapshot-check.sh"
+. "${KIT_DIR}/lib/catalog-check.sh"
 IMAGE="docker.io/library/python:3.12-slim"
 # The trino-python-client the driver uses, pinned so every run of a comparison uses the same one.
 TRINO_CLIENT_VERSION="0.340.0"
@@ -61,6 +62,9 @@ ARGV+=(--threads "${THREADS}" --duration "${DURATION}" --interval "${INTERVAL}")
 
 edl_require_app_node trino-loadtest
 
+# The driver reads cqlite.<ks>.<tbl>; a target with no cqlite catalog fails here, before any pod.
+tl_require_cqlite_catalog "${TARGET_HTTP_URL%/}" "${TRINO_LOADTEST_USER}"
+
 POD="$(edl_resource_name "${ROLE}")"
 # The ConfigMap stays until stop, which deletes it with the pod by label. Deleting it when this
 # script exits, as on Ctrl-C, would leave a pod that is still Pending waiting for its volume forever.
@@ -73,8 +77,10 @@ kubectl run "${POD}" \
   --labels="$(edl_labels "${ROLE}")" \
   --overrides="$(edl_pod_overrides "${POD}" /driver "${POD}")" \
   --override-type=strategic \
-  --command -- sh -c "pip install --quiet trino==${TRINO_CLIENT_VERSION} && exec python /driver/driver.py \"\$@\"" sh "${ARGV[@]}"
+  --command -- sh -c "echo \"trino-loadtest: installing trino client ${TRINO_CLIENT_VERSION} from PyPI...\" && pip install --quiet trino==${TRINO_CLIENT_VERSION} && exec python /driver/driver.py \"\$@\"" sh "${ARGV[@]}"
 
+# Running is reached before pip install starts. The pod logs that it is installing the client, so
+# the time pip takes shows in the streamed log below rather than looking like a hang.
 edl_wait_for_pod_running "${POD}"
 
 # The fields of driver.py's format_interval_line, each pushed as the gauge after it:

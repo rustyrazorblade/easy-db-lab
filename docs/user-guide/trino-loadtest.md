@@ -8,7 +8,9 @@ per-interval stats (qps, rows/s, p50/p99 latency, error rate) to the metrics sto
 
 ```admonish note title="Waiting on the cqlite catalog"
 The Trino kit's `cqlite` catalog is planned, not shipped: its connector plugin delivery is
-deferred to `pmcfadin/cqlite#2869`. Until it lands, this kit cannot run end to end.
+deferred to `pmcfadin/cqlite#2869`. Until it lands, this kit cannot run end to end. `start`
+checks first: it runs `SHOW CATALOGS` on the target Trino through the Trino HTTP API, from your
+machine, and fails before any pod runs when there is no `cqlite` catalog.
 ```
 
 ```admonish warning title="Offline, read-only, flushed-SSTables-only load"
@@ -33,6 +35,8 @@ database:
 - The target keyspace/table has flushed SSTables to read
 - App nodes can reach PyPI (`pypi.org` and `files.pythonhosted.org`). The driver pod runs
   `pip install trino==<pinned version>` every time it starts, so a run fails if PyPI is unreachable.
+  The pod logs `installing trino client <version> from PyPI...` first, so the install time shows
+  in the streamed log instead of looking like a hang.
 
 ## Quick Start
 

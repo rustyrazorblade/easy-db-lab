@@ -18,20 +18,25 @@ kubectl apply -f "${MANIFEST}"
 
 echo "Waiting for cqlite-flight DaemonSet rollout on db nodes..."
 if ! kubectl rollout status daemonset/cqlite-flight --namespace default --timeout=180s; then
-  echo "cqlite-flight did not roll out. --data-dir (__CASSANDRA_DATA_DIR__) and --data-root" >&2
-  echo "(__CASSANDRA_DATA_ROOT__) must both exist on every db node; a missing one fails the pod with" >&2
-  echo "\"hostPath type check failed\". See: kubectl describe pod -l app.kubernetes.io/name=cqlite-flight" >&2
+  cat >&2 <<'HINT'
+cqlite-flight did not roll out. --data-dir (__CASSANDRA_DATA_DIR__) and --data-root
+(__CASSANDRA_DATA_ROOT__) must both exist on every db node; a missing one fails the pod with
+"hostPath type check failed". The pod reads the data dir through --data-gid (__CASSANDRA_DATA_GID__),
+which must be the GID that owns it. See: kubectl describe pod -l app.kubernetes.io/name=cqlite-flight
+
+NOTE (issue #2114): cqlite-flight serves EXACTLY ONE --data-dir (__CASSANDRA_DATA_DIR__) and
+cannot span disks. On a multi-disk node (data_file_directories across /mnt/db1, /mnt/db2, ...)
+the unserved disks are read as if absent — PARTIAL results with NO error. Each pod's
+'detect-multidisk' init container scans --data-root (__CASSANDRA_DATA_ROOT__) and warns on
+more than one data dir, or that it cannot verify the layout when the served dir is not the
+only data dir under the root. Read it per node with:
+  kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix
+HINT
   exit 1
 fi
 
-echo "cqlite-flight is ready — Arrow Flight gRPC on <db-node-ip>:30816 (NodePort, node-local: each db node's own pod)."
-echo "Read path: live Cassandra data dir mount (__CASSANDRA_DATA_DIR__). Sidecar-snapshot reads are"
-echo "driven by the trino-connector's ticket, not by this kit."
-echo
-echo "NOTE (issue #2114): cqlite-flight serves EXACTLY ONE --data-dir (__CASSANDRA_DATA_DIR__) and"
-echo "cannot span disks. On a multi-disk node (data_file_directories across /mnt/db1, /mnt/db2, ...)"
-echo "the unserved disks are read as if absent — PARTIAL results with NO error. Each pod's"
-echo "'detect-multidisk' init container scans --data-root (__CASSANDRA_DATA_ROOT__) and warns on"
-echo "more than one data dir, or that it cannot verify the layout when the served dir is not the"
-echo "only data dir under the root. Read it per node with:"
-echo "  kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix"
+cat <<'READY'
+cqlite-flight is ready — Arrow Flight gRPC on <db-node-ip>:30816 (NodePort, node-local: each db node's own pod).
+Read path: live Cassandra data dir mount (__CASSANDRA_DATA_DIR__). Sidecar-snapshot reads are
+driven by the trino-connector's ticket, not by this kit.
+READY

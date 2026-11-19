@@ -83,7 +83,8 @@ kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefi
 It prints one of three results:
 
 - **OK**: the served `--data-dir` is the only data dir under the root (compared
-  as host paths, trailing slashes ignored). One line, no warning.
+  as host paths after repeated and trailing slashes are dropped and symlinks are
+  resolved, so a link to a disk is that disk). One line, no warning.
 - **MULTIPLE Cassandra data dirs**: more than one data dir. Each is listed, and
   every one but the served dir is marked NOT served, since its SSTables are
   missing from query results.
@@ -95,7 +96,9 @@ It prints one of three results:
 The detection volume uses `hostPath` `type: Directory`, like the data dir, so a
 **missing or mistyped `--data-root` fails the pod at start**: `kubectl describe
 pod` shows the hostPath type check failure, and `start` fails when the rollout
-times out. Nothing is created on the node.
+times out. Only then does `start` print the multi-disk note and a hint naming
+`--data-dir`, `--data-root` and `--data-gid`; a healthy start prints neither.
+Nothing is created on the node.
 
 **Remedies** (the server side is out of scope for this kit — #2114 covers only
 making the gap visible):

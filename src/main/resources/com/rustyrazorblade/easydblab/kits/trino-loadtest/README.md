@@ -17,6 +17,11 @@ against multiple Trino installs at once if you have them.
 easy-db-lab kit install trino-loadtest --target trino
 ```
 
+`start` first checks that the target Trino has a `cqlite` catalog (`SHOW CATALOGS`
+over the Trino HTTP API, through the workspace `curl` wrapper) and fails before any
+pod runs when it has none. The trino kit does not ship that catalog yet
+(pmcfadin/cqlite#2869).
+
 ## Usage
 
 ```bash
@@ -165,7 +170,9 @@ against coordinator-side and Flight-side latency on one dashboard.
   query fires. This time is outside the driver's own `--duration` clock (the
   clock starts when `driver.py` runs, not when the pod starts), so it doesn't
   eat into the requested load window — it just delays when results appear in
-  `kubectl logs -f` / Grafana.
+  `kubectl logs -f` / Grafana. The pod logs
+  `trino-loadtest: installing trino client <version> from PyPI...` first, so the
+  wait is visible in the streamed log.
 - **Per-query header injection uses a semi-private trino-python-client API**:
   `Connection._create_request()` and the lower-level `trino.client.TrinoQuery`
   class, because the public `dbapi.Cursor.execute()` has no

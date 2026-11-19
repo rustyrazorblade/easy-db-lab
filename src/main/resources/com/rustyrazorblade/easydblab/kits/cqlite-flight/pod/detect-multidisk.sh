@@ -14,19 +14,54 @@
 #   DETECT_ROOT       where the pod mounts the data root (read-only)
 #
 # Each disk mounts at <root>/<disk>/cassandra/data. A data dir counts whether or not it holds
-# files: an empty one receives SSTables later.
+# files: an empty one receives SSTables later. Paths are compared after squeezing repeated
+# slashes and resolving symlinks (cd -P / pwd -P), so a link to a disk is the same disk, both
+# when it is the served --data-dir and when it is one more entry under the root.
 
 set -u
 
-served="${DETECT_SERVED%/}"
-root_host="${DETECT_ROOT_HOST%/}"
-root="${DETECT_ROOT%/}"
+# Prints $1 with every run of slashes squeezed to one and no trailing slash ("/" stays "/").
+squeeze() {
+  p="$1"
+  while :; do
+    case "${p}" in
+      *//*) p="${p%%//*}/${p#*//}" ;;
+      *) break ;;
+    esac
+  done
+  [ "${p}" = "/" ] || p="${p%/}"
+  printf '%s\n' "${p:-/}"
+}
+
+root_host="$(squeeze "${DETECT_ROOT_HOST}")"
+root="$(squeeze "${DETECT_ROOT}")"
+root_phys="$(cd -P "${root}" 2>/dev/null && pwd -P)" || root_phys="${root}"
+
+# Prints the host path of pod path $1 with its symlinks resolved, or $1's host path unresolved
+# when it is not a directory the pod can enter (a link to a path outside the mount).
+host_path() {
+  phys="$(cd -P "$1" 2>/dev/null && pwd -P)" || phys=""
+  case "${phys}" in
+    "${root_phys}") printf '%s\n' "${root_host}" ;;
+    "${root_phys}"/*) printf '%s\n' "${root_host}${phys#"${root_phys}"}" ;;
+    *) printf '%s\n' "${root_host}${1#"${root}"}" ;;
+  esac
+}
+
+served="$(squeeze "${DETECT_SERVED}")"
+case "${served}" in
+  "${root_host}"/*) served="$(host_path "${root}${served#"${root_host}"}")" ;;
+esac
 
 found=""
 count=0
 for d in "${root}"/*/cassandra/data; do
   [ -d "${d}" ] || continue
-  found="${found} ${root_host}${d#"${root}"}"
+  h="$(host_path "${d}")"
+  case " ${found} " in
+    *" ${h} "*) continue ;;
+  esac
+  found="${found} ${h}"
   count=$((count + 1))
 done
 

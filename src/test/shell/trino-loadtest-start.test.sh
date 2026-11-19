@@ -52,6 +52,9 @@ trino-loadtest: 4 threads, 20s
 EOF
   sed 's/^/2026-10-15T10:00:00Z /' "${WORK}/driver.log" > "${STUB_STATE}/log.1"
   cp "${WORK}/driver.log" "${STUB_STATE}/full-log"
+  # The catalog preflight's SHOW CATALOGS answers at once with the cqlite catalog.
+  echo '{"id":"q1","stats":{"state":"FINISHED"},"columns":[{"name":"Catalog"}],"data":[["cqlite"]]}' \
+    > "${STUB_STATE}/curl-out.1"
 }
 
 # Runs start.sh with the kit runner's environment; extra VAR=value pairs in "$@" override it.
@@ -77,6 +80,7 @@ test_pushes_interval_figures_as_otlp_gauges_to_the_collector() {
   local call
   for call in "${STUB_STATE}"/curl.[0-9]*; do
     [ -e "${call}" ] || { fail "nothing was pushed"; return; }
+    ! grep -q '/v1/statement' "${call}" || continue
     grep -Fqx 'http://10.0.0.5:4318/v1/metrics' "${call}" || fail "push not sent to the collector: $(cat "${call}")"
   done
   if grep -q ':8428' "${STUB_STATE}"/curl.[0-9]*; then
@@ -253,6 +257,66 @@ test_bad_snapshot_check_args_fail_before_any_pod_runs() {
   done
 }
 
+
+# The cqlite catalog preflight (pmcfadin/cqlite#2869): start asks the target Trino for its catalogs
+# over the HTTP API before any pod runs.
+test_the_preflight_asks_the_target_for_the_cqlite_catalog_before_any_pod() {
+  start_test "catalog preflight request"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  local call="${STUB_STATE}/curl.1"
+  grep -Fqx 'http://10.0.0.9:8080/v1/statement' "${call}" || fail "not sent to the target: $(cat "${call}")"
+  grep -Fqx 'X-Trino-User: cqlite-loadtest' "${call}" || fail "no Trino user header: $(cat "${call}")"
+  grep -Fq "SHOW CATALOGS" "${call}" || fail "does not list catalogs: $(cat "${call}")"
+  grep -Fq "cqlite catalog: found" "${WORK}/out.txt" || fail "no found line: $(cat "${WORK}/out.txt")"
+}
+
+test_a_target_with_no_cqlite_catalog_runs_no_pod_and_names_2869() {
+  start_test "no cqlite catalog"
+  echo '{"id":"q1","stats":{"state":"FINISHED"},"columns":[{"name":"Catalog"}],"data":[["cqlite_old"]]}' \
+    > "${STUB_STATE}/curl-out.1"
+  run_script && fail "exited 0"
+  grep -Fq "has no cqlite catalog" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+  grep -Fq "pmcfadin/cqlite#2869" "${WORK}/out.txt" || fail "does not name #2869: $(cat "${WORK}/out.txt")"
+  [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+}
+
+# Trino answers a new statement with no rows and a nextUri; the rows come on a later page.
+test_the_preflight_follows_next_uri_to_the_rows() {
+  start_test "catalog preflight paging"
+  echo '{"id":"q1","nextUri":"http://10.0.0.9:8080/v1/statement/queued/q1/y/1","stats":{"state":"QUEUED"}}' \
+    > "${STUB_STATE}/curl-out.1"
+  echo '{"id":"q1","stats":{"state":"FINISHED"},"data":[["system"],["cqlite"]]}' > "${STUB_STATE}/curl-out.2"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  grep -Fqx 'http://10.0.0.9:8080/v1/statement/queued/q1/y/1' "${STUB_STATE}/curl.2" ||
+    fail "did not follow nextUri: $(cat "${STUB_STATE}/curl.2")"
+}
+
+test_an_unreachable_target_runs_no_pod() {
+  start_test "catalog preflight unreachable"
+  echo 7 > "${STUB_STATE}/curl-exit"
+  run_script && fail "exited 0"
+  grep -Fq "could not ask the target Trino (http://10.0.0.9:8080)" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+  [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+}
+
+test_a_failed_catalog_query_runs_no_pod_and_shows_the_error() {
+  start_test "catalog preflight query error"
+  echo '{"id":"q1","stats":{"state":"FAILED"},"error":{"message":"Access Denied: Cannot show catalogs","errorCode":4}}' \
+    > "${STUB_STATE}/curl-out.1"
+  run_script && fail "exited 0"
+  grep -Fq "Access Denied: Cannot show catalogs" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+  [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+}
+
+# pip runs after the pod is Running, so the pod says it is installing the client, before pip, and
+# the wait does not look like a hang.
+test_the_pod_logs_that_it_is_installing_the_trino_client_before_pip() {
+  start_test "installing line"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  run_call | grep -Eq "echo [^&]*installing trino client [0-9.]+[^&]*&& pip install" ||
+    fail "no installing line before pip: $(run_call)"
+}
+
 test_pushes_interval_figures_as_otlp_gauges_to_the_collector
 test_the_driver_pod_is_labelled_and_pinned_to_an_app_node
 test_the_driver_configmap_carries_the_role_labels
@@ -272,6 +336,12 @@ test_a_check_command_that_fails_fails_the_run
 test_a_wedged_check_command_times_out_and_leaves_nothing_running
 test_an_unset_check_is_reported_as_skipped
 test_bad_snapshot_check_args_fail_before_any_pod_runs
+test_the_preflight_asks_the_target_for_the_cqlite_catalog_before_any_pod
+test_a_target_with_no_cqlite_catalog_runs_no_pod_and_names_2869
+test_the_preflight_follows_next_uri_to_the_rows
+test_an_unreachable_target_runs_no_pod
+test_a_failed_catalog_query_runs_no_pod_and_shows_the_error
+test_the_pod_logs_that_it_is_installing_the_trino_client_before_pip
 
 echo "trino-loadtest start (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

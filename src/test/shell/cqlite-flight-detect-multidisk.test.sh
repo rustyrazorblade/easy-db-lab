@@ -42,11 +42,11 @@ disk() {
 }
 
 # Runs the detector serving host path $1 (default /mnt/db1/cassandra/data). Its stdout goes to
-# out.txt and its stderr to err.txt; it fails the test unless the detector exits 0, since the
+# out.txt and its stderr to err.txt. ROOT_HOST overrides the host path of the root (default /mnt); it fails the test unless the detector exits 0, since the
 # detector must never block the rollout.
 run_detector() {
   local status=0
-  env DETECT_SERVED="${1:-/mnt/db1/cassandra/data}" DETECT_ROOT_HOST=/mnt DETECT_ROOT="${WORK}/root" \
+  env DETECT_SERVED="${1:-/mnt/db1/cassandra/data}" DETECT_ROOT_HOST="${ROOT_HOST:-/mnt}" DETECT_ROOT="${WORK}/root" \
     "${TEST_SH}" "${SCRIPT}" > "${WORK}/out.txt" 2> "${WORK}/err.txt" || status=$?
   [ "${status}" -eq 0 ] || fail "exited ${status}, want 0: $(cat "${WORK}/err.txt")"
 }
@@ -64,6 +64,44 @@ test_a_trailing_slash_on_the_served_dir_still_matches() {
   disk db1
   run_detector /mnt/db1/cassandra/data/
   grep -Fq "OK" "${WORK}/out.txt" || fail "no OK line: $(cat "${WORK}/out.txt") $(cat "${WORK}/err.txt")"
+}
+
+test_doubled_slashes_in_the_served_dir_and_the_root_still_match() {
+  start_test "doubled slashes"
+  disk db1
+  ROOT_HOST=//mnt// run_detector //mnt//db1/cassandra//data
+  grep -Fq "OK" "${WORK}/out.txt" || fail "no OK line: $(cat "${WORK}/out.txt") $(cat "${WORK}/err.txt")"
+}
+
+# A symlink to a disk is the same disk: it must not count as a second data dir.
+test_a_symlinked_alias_of_the_served_disk_is_one_disk() {
+  start_test "symlinked alias of the served disk"
+  disk db1 nb-1-big-Data.db
+  ln -s db1 "${WORK}/root/data"
+  run_detector
+  grep -Fq "OK" "${WORK}/out.txt" || fail "no OK line: $(cat "${WORK}/out.txt") $(cat "${WORK}/err.txt")"
+  [ ! -s "${WORK}/err.txt" ] || fail "warned about an alias of the served disk: $(cat "${WORK}/err.txt")"
+}
+
+# Serving a disk through a symlink matches the disk the link resolves to.
+test_a_served_dir_reached_through_a_symlink_matches_its_disk() {
+  start_test "served dir through a symlink"
+  disk db1
+  ln -s db1 "${WORK}/root/current"
+  run_detector /mnt/current/cassandra/data
+  grep -Fq "OK" "${WORK}/out.txt" || fail "no OK line: $(cat "${WORK}/out.txt") $(cat "${WORK}/err.txt")"
+}
+
+# With a symlink to the served disk and a real second disk, the second disk is still named.
+test_a_second_real_disk_is_named_despite_an_alias_of_the_served_one() {
+  start_test "alias plus a second disk"
+  disk db1
+  disk db2
+  ln -s db1 "${WORK}/root/current"
+  run_detector /mnt/current/cassandra/data
+  grep -Fq "2 data dirs" "${WORK}/err.txt" || fail "the alias was counted as a disk: $(cat "${WORK}/err.txt")"
+  grep -Fq "/mnt/db1/cassandra/data   <-- SERVED" "${WORK}/err.txt" || fail "served disk not marked: $(cat "${WORK}/err.txt")"
+  grep -Fq "/mnt/db2/cassandra/data   (NOT served" "${WORK}/err.txt" || fail "second disk not named: $(cat "${WORK}/err.txt")"
 }
 
 test_two_data_dirs_warn_and_name_the_unserved_one() {
@@ -96,6 +134,10 @@ test_layouts_it_cannot_check_warn_that_it_cannot_verify() {
 
 test_one_data_dir_that_is_served_is_ok
 test_a_trailing_slash_on_the_served_dir_still_matches
+test_doubled_slashes_in_the_served_dir_and_the_root_still_match
+test_a_symlinked_alias_of_the_served_disk_is_one_disk
+test_a_served_dir_reached_through_a_symlink_matches_its_disk
+test_a_second_real_disk_is_named_despite_an_alias_of_the_served_one
 test_two_data_dirs_warn_and_name_the_unserved_one
 test_layouts_it_cannot_check_warn_that_it_cannot_verify
 

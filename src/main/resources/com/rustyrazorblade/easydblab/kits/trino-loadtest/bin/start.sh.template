@@ -24,6 +24,9 @@ TRINO_LOADTEST_HOST_PORT="${TARGET_HTTP_URL#http://}"
 TRINO_LOADTEST_HOST_PORT="${TRINO_LOADTEST_HOST_PORT#https://}"
 TRINO_LOADTEST_HOST="${TRINO_LOADTEST_HOST_PORT%%:*}"
 TRINO_LOADTEST_PORT="${TRINO_LOADTEST_HOST_PORT##*:}"
+# With no ":<port>", the expansion above returns the whole host, so check the port is a number.
+[[ "${TRINO_LOADTEST_HOST_PORT}" == *:* && "${TRINO_LOADTEST_PORT}" =~ ^[0-9]+$ ]] ||
+  edl_fail "TARGET_HTTP_URL (${TARGET_HTTP_URL}) has no numeric port; the trino kit's http endpoint must be http://<host>:<port>."
 TRINO_LOADTEST_USER="${TARGET_JDBC_USER:-cqlite-loadtest}"
 
 # The kit runner passes an unset optional arg whose kit.yaml default is "" as the literal string
@@ -59,8 +62,9 @@ ARGV+=(--threads "${THREADS}" --duration "${DURATION}" --interval "${INTERVAL}")
 edl_require_app_node trino-loadtest
 
 POD="$(edl_resource_name "${ROLE}")"
+# The ConfigMap stays until stop, which deletes it with the pod by label. Deleting it when this
+# script exits, as on Ctrl-C, would leave a pod that is still Pending waiting for its volume forever.
 edl_create_configmap "${POD}" "${ROLE}" "${CONFIGMAP_FILES[@]}"
-trap 'kubectl delete configmap "${POD}" --ignore-not-found > /dev/null 2>&1 || true' EXIT
 
 echo "Starting trino-loadtest: coordinator=${TRINO_LOADTEST_HOST}:${TRINO_LOADTEST_PORT}, threads=${THREADS}, duration=${DURATION}s, interval=${INTERVAL}s, traceparent=${TRACEPARENT}..."
 kubectl run "${POD}" \
@@ -119,4 +123,4 @@ else
   echo "snapshot-leak check: SKIPPED (no --snapshot-check-cmd configured)"
 fi
 
-echo "trino-loadtest run complete (pod: ${POD}). Run '${KIT_NAME} stop' to remove its pods."
+echo "trino-loadtest run complete (pod: ${POD}). Run '${KIT_NAME} stop' to remove its pod and ConfigMap."

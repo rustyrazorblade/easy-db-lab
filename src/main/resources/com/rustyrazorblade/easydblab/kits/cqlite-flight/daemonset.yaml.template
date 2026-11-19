@@ -48,133 +48,29 @@ spec:
         supplementalGroups:
           - __CASSANDRA_DATA_GID__
       initContainers:
-        # Issue #2114: cqlite-flight's --data-dir accepts EXACTLY ONE directory.
-        # On a multi-disk node whose Cassandra spreads data_file_directories
-        # across /mnt/db1, /mnt/db2, ..., only the single served dir is mounted;
-        # SSTables on the other disks are read as if absent — reads return
-        # PARTIAL results with NO error (a silent, latent misconfiguration).
-        # This init container scans --data-root (__CASSANDRA_DATA_ROOT__, default
-        # /mnt) read-only and prints a LOUD, NON-FATAL warning when it finds more
-        # candidate Cassandra data dirs than the one being served, so the failure
-        # mode is visible in `kubectl logs -c detect-multidisk <pod>`. It reuses
-        # the flight image (debian-slim → has /bin/sh) so there is no extra image
-        # pull, and always exits 0 — it NEVER blocks the DaemonSet rollout.
+        # cqlite-flight serves exactly one --data-dir. On a node whose Cassandra spreads
+        # data_file_directories over several disks, the other disks' SSTables are missing from
+        # every read, with no error (pmcfadin/cqlite#2114). This container runs
+        # pod/detect-multidisk.sh (ConfigMap cqlite-flight-detect-multidisk, created by start),
+        # which scans --data-root read-only and warns in `kubectl logs <pod> -c detect-multidisk`.
+        # It reuses the flight image, so there is no extra pull, and always exits 0.
         - name: detect-multidisk
           image: "ghcr.io/pmcfadin/cqlite-flight:__TAG__"
           imagePullPolicy: Always
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              set -u
-              SERVED="__CASSANDRA_DATA_DIR__"
-              ROOT_HOST="__CASSANDRA_DATA_ROOT__"
-              ROOT="/data-root"
-              # Map the served host path into this container's view of the root
-              # so it can be marked in the listing below.
-              case "$SERVED" in
-                "$ROOT_HOST"/*) SERVED_IN="$ROOT${SERVED#$ROOT_HOST}" ;;
-                *) SERVED_IN="" ;;
-              esac
-              found=""
-              count=0
-              # Lab convention: each disk mounts at $ROOT_HOST/<disk>/cassandra/data.
-              # Candidacy = EXISTENCE of the dir, regardless of contents (roborev
-              # r2 on #2114): an empty second data dir still counts — Cassandra
-              # will spread SSTables onto it later, and calling it single-disk OK
-              # today would land right back in silent-partial-read territory.
-              for d in "$ROOT"/*/cassandra/data; do
-                [ -d "$d" ] || continue
-                found="$found ${d#$ROOT}"
-                count=$((count + 1))
-              done
-              if [ "$count" -eq 0 ]; then
-                # Zero candidates is NEVER a clean OK (roborev on #2114). A
-                # missing --data-root never gets here: its hostPath volume is
-                # type Directory, so the pod fails to start instead. An
-                # existing but empty root, or one with another layout, is
-                # warned about. Distinguish WHY the scan came up empty:
-                if [ -z "$(ls -A "$ROOT" 2>/dev/null)" ]; then
-                  {
-                    echo "#################################################################"
-                    echo "## WARNING (issue #2114): data root EMPTY                      ##"
-                    echo "#################################################################"
-                    echo "--data-root (${ROOT_HOST}) exists but contains no entries at all"
-                    echo "— likely a wrong --data-root."
-                    echo "The detector CANNOT verify this node's disk layout — a multi-disk"
-                    echo "configuration would NOT be caught. Fix --data-root so the check"
-                    echo "is meaningful. Serving ${SERVED} regardless."
-                  } >&2
-                else
-                  {
-                    echo "#################################################################"
-                    echo "## WARNING (issue #2114): no candidate data dirs under root    ##"
-                    echo "#################################################################"
-                    echo "--data-root (${ROOT_HOST}) is non-empty but holds no"
-                    echo "<root>/*/cassandra/data dirs. The node's layout does not match"
-                    echo "the convention this detector scans, so it CANNOT verify whether"
-                    echo "data spans multiple disks. Point --data-root at the directory"
-                    echo "holding the per-disk mounts. Serving ${SERVED} regardless."
-                  } >&2
-                fi
-                # Non-fatal: cannot-verify, never block the DaemonSet rollout.
-                exit 0
-              fi
-              if [ "$count" -eq 1 ]; then
-                # roborev r3: a lone candidate is only an OK if it IS the served
-                # --data-dir. A misconfigured --data-root holding exactly one
-                # UNRELATED */cassandra/data dir must not report single-disk OK.
-                # Compare in HOST-path form (candidates were enumerated under the
-                # container mount and stored root-relative; SERVED is a host
-                # path), with trailing slashes stripped on both sides.
-                cand="${found# }"
-                cand_host="${ROOT_HOST%/}${cand}"
-                cand_norm="${cand_host%/}"
-                served_norm="${SERVED%/}"
-                if [ "$cand_norm" = "$served_norm" ]; then
-                  echo "cqlite-flight multi-disk check (#2114): OK — exactly 1 Cassandra data dir exists under ${ROOT_HOST} and it matches served --data-dir ${SERVED} (verified single-disk)."
-                  exit 0
-                fi
-                {
-                  echo "#################################################################"
-                  echo "## WARNING (issue #2114): lone candidate != served --data-dir  ##"
-                  echo "#################################################################"
-                  echo "The scanned root's only candidate ${cand_host} is NOT the served"
-                  echo "--data-dir ${SERVED} — wrong --data-root or wrong --data-dir; the"
-                  echo "served dir was not found under the root. The detector CANNOT"
-                  echo "verify this node's disk layout. Serving ${SERVED} regardless."
-                } >&2
-                # Non-fatal: cannot-verify, never block the DaemonSet rollout.
-                exit 0
-              fi
-              {
-                echo "##############################################################"
-                echo "## WARNING (issue #2114): MULTIPLE Cassandra data dirs found ##"
-                echo "##############################################################"
-                echo "cqlite-flight serves EXACTLY ONE --data-dir and CANNOT span disks."
-                echo "This node has ${count} candidate data dirs under ${ROOT_HOST}:"
-                for f in $found; do
-                  host="${ROOT_HOST}${f}"
-                  if [ -n "$(ls -A "$ROOT$f" 2>/dev/null)" ]; then
-                    fill="populated"
-                  else
-                    fill="currently empty — WILL receive SSTables later"
-                  fi
-                  if [ "$ROOT$f" = "$SERVED_IN" ]; then
-                    echo "  - ${host}   <-- SERVED by this pod (${fill})"
-                  else
-                    echo "  - ${host}   (NOT served, ${fill} — its SSTables are/will be SILENTLY MISSING from query results)"
-                  fi
-                done
-                echo "Reads touching data on an unserved disk return PARTIAL results with NO"
-                echo "error. Remedy: keep the queried tables on the served disk, or run one"
-                echo "cqlite-flight per disk on distinct ports."
-                echo "See easy-db-lab-kits/cqlite-flight/README.md (issue #2114)."
-              } >&2
-              # Non-fatal: warn only, never block the DaemonSet rollout.
-              exit 0
+          command: ["/bin/sh", "/detect/detect-multidisk.sh"]
+          env:
+            - name: DETECT_SERVED
+              value: "__CASSANDRA_DATA_DIR__"
+            - name: DETECT_ROOT_HOST
+              value: "__CASSANDRA_DATA_ROOT__"
+            - name: DETECT_ROOT
+              value: /data-root
           volumeMounts:
             - name: cassandra-data-root
               mountPath: /data-root
+              readOnly: true
+            - name: detect-multidisk-script
+              mountPath: /detect
               readOnly: true
       containers:
         - name: cqlite-flight
@@ -234,6 +130,9 @@ spec:
           hostPath:
             path: "__CASSANDRA_DATA_ROOT__"
             type: Directory
+        - name: detect-multidisk-script
+          configMap:
+            name: cqlite-flight-detect-multidisk
 ---
 # The Flight endpoint. externalTrafficPolicy: Local keeps <db-node-ip>:30816 on that node's own
 # pod, which is the only pod holding that node's SSTables; with Cluster, kube-proxy would send it
@@ -253,7 +152,7 @@ spec:
     app.kubernetes.io/name: cqlite-flight
   ports:
     - name: flight-grpc
-      port: 8815
+      port: __FLIGHT_PORT__
       targetPort: flight-grpc
       nodePort: 30816
       protocol: TCP

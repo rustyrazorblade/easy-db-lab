@@ -535,6 +535,7 @@ tasks.register("testScripts") {
         "testTrinoLoadtestDriver",
         "testTrinoLoadtestStartScript",
         "testTrinoLoadtestStopScript",
+        "testCqliteFlightDetectMultidisk",
     )
 }
 
@@ -723,6 +724,16 @@ tasks.register<Exec>("testTrinoLoadtestStopScript") {
     description = "Unit-test the trino-loadtest kit stop script"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-stop.test.sh")
+}
+
+// Unit-test the cqlite-flight kit's detect-multidisk init-container script against fake data roots:
+// the verified single disk, the multi-disk warning and the cannot-verify warning. Runs under dash
+// when installed, as the image's /bin/sh is POSIX sh.
+tasks.register<Exec>("testCqliteFlightDetectMultidisk") {
+    group = "Verification"
+    description = "Unit-test the cqlite-flight detect-multidisk script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/cqlite-flight-detect-multidisk.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,

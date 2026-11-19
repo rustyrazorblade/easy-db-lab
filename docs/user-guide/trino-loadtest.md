@@ -31,6 +31,8 @@ database:
 - A [Trino](install-trino.md) kit is installed and running, with its
   [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads) wired.
 - The target keyspace/table has flushed SSTables to read
+- App nodes can reach PyPI (`pypi.org` and `files.pythonhosted.org`). The driver pod runs
+  `pip install trino==<pinned version>` every time it starts, so a run fails if PyPI is unreachable.
 
 ## Quick Start
 
@@ -82,14 +84,18 @@ easy-db-lab trino-loadtest-trino start --ks my_keyspace --tbl my_table \
 
 Print the raw listing and do not pipe it through `grep`. The kit matches `cqlite-` names
 itself, and a command that exits non-zero fails the check. That includes `grep` on a clean
-cluster. If the check is unset, the run reports `snapshot-leak check: SKIPPED`.
+cluster. A command that exits 0 but prints nothing also fails the check, because
+`nodetool listsnapshots` always prints something, even if only "There are no snapshots". An
+empty listing means the command listed no node, for example a loop over the wrong aliases. If
+the check is unset, the run reports `snapshot-leak check: SKIPPED`.
 
 ## Metrics
 
 During a run, per-interval stats are pushed to the OpenTelemetry Collector on the control
 node and stored in Mimir, labelled by instance (`kit`) and `cluster`. A run that exits
-non-zero (bad arguments, a failed run, a snapshot leak) fails `start`. `stop` deletes the
-instance's driver pods and ConfigMaps.
+non-zero (bad arguments, a failed run, a snapshot leak) fails `start`. `start` leaves each
+run's pod and ConfigMap in place, and `stop` deletes the instance's driver pods and
+ConfigMaps by label.
 
 | Metric | Description |
 |--------|-------------|

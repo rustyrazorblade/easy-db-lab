@@ -152,6 +152,27 @@ test_no_target_runs_no_pod() {
   [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
 }
 
+test_a_target_url_without_a_numeric_port_runs_no_pod() {
+  local url
+  for url in http://10.0.0.9 http://10.0.0.9:abc https://trino.local:; do
+    start_test "target port: ${url}"
+    run_script TARGET_HTTP_URL="${url}" && fail "exited 0"
+    grep -Fq "has no numeric port" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+    [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+  done
+}
+
+# start never deletes the driver's ConfigMap, at exit or on Ctrl-C: a Pending pod whose ConfigMap
+# volume is gone never starts. stop removes both by label.
+test_start_leaves_the_configmap_for_stop() {
+  start_test "ConfigMap cleanup"
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  if grep -q '^delete configmap' "${STUB_STATE}/kubectl.calls"; then
+    fail "start deleted the ConfigMap: $(grep '^delete' "${STUB_STATE}/kubectl.calls")"
+  fi
+  grep -Fq "stop" "${WORK}/out.txt" || fail "does not point at stop: $(cat "${WORK}/out.txt")"
+}
+
 test_the_trino_client_is_pinned() {
   start_test "pinned client"
   run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
@@ -186,6 +207,17 @@ test_a_leaked_snapshot_fails_the_run_and_names_it() {
   run_script TRINO_LOADTEST_SNAPSHOT_CHECK_CMD="printf 'cqlite-abc ks t 1 KiB\nother ks t 1 KiB\n'" && fail "exited 0"
   grep -Fq "snapshot-leak check: FAIL - 1 leaked snapshot(s): cqlite-abc" "${WORK}/out.txt" ||
     fail "no leak line: $(cat "${WORK}/out.txt")"
+}
+
+test_a_check_command_that_prints_nothing_fails_the_run() {
+  local cmd
+  for cmd in "true" "echo ''" "printf ' \n\t\n'"; do
+    start_test "empty snapshot listing: ${cmd}"
+    run_script TRINO_LOADTEST_SNAPSHOT_CHECK_CMD="${cmd}" && fail "exited 0"
+    grep -Fq "snapshot-leak check: FAIL - the check command printed nothing" "${WORK}/out.txt" ||
+      fail "no empty-output line: $(cat "${WORK}/out.txt")"
+    if grep -Fq "snapshot-leak check: PASS" "${WORK}/out.txt"; then fail "passed on an empty listing"; fi
+  done
 }
 
 test_a_check_command_that_fails_fails_the_run() {
@@ -229,10 +261,13 @@ test_unset_optional_args_are_omitted
 test_a_failed_driver_fails_the_run
 test_no_app_node_runs_no_pod
 test_no_target_runs_no_pod
+test_a_target_url_without_a_numeric_port_runs_no_pod
+test_start_leaves_the_configmap_for_stop
 test_the_trino_client_is_pinned
 test_an_interval_line_missing_a_field_pushes_no_gauges
 test_the_snapshot_check_runs_on_the_operator_machine_not_in_the_pod
 test_a_leaked_snapshot_fails_the_run_and_names_it
+test_a_check_command_that_prints_nothing_fails_the_run
 test_a_check_command_that_fails_fails_the_run
 test_a_wedged_check_command_times_out_and_leaves_nothing_running
 test_an_unset_check_is_reported_as_skipped

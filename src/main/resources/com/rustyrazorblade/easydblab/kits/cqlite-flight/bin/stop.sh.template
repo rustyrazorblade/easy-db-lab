@@ -6,7 +6,7 @@ export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 
 LABELS="easydblab/kit=cqlite-flight"
 
-echo "Stopping cqlite-flight (deleting the DaemonSet and its NodePort Service by label selector: ${LABELS})..."
-kubectl delete daemonset,service -l "${LABELS}" --namespace default --ignore-not-found
+echo "Stopping cqlite-flight (deleting the DaemonSet, its NodePort Service and its ConfigMap by label selector: ${LABELS})..."
+kubectl delete daemonset,service,configmap -l "${LABELS}" --namespace default --ignore-not-found
 
 echo "cqlite-flight stopped. The Cassandra data dir mount was read-only; nothing to clean up on-node."

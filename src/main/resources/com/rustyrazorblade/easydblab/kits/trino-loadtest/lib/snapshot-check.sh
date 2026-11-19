@@ -56,10 +56,14 @@ tl_snapshot_listing() {
 }
 
 # Runs the check command $1 with timeout $2, prints PASS when no cqlite- snapshot remains, and
-# fails naming every leaked snapshot otherwise.
+# fails naming every leaked snapshot otherwise. A listing with no visible character fails too:
+# `nodetool listsnapshots` always prints a header or "There are no snapshots", so an empty one
+# means the command listed nothing (a loop over no hosts, a typo), not a clean cluster.
 tl_run_snapshot_check() {
   local listing leaked count
   listing="$(tl_snapshot_listing "$1" "$2")" || exit 1
+  [ -n "${listing//[[:space:]]/}" ] ||
+    edl_fail "snapshot-leak check: FAIL - the check command printed nothing; it must print the nodetool listsnapshots output of every db node"
   leaked="$(printf '%s\n' "${listing}" | tl_leaked_snapshots)"
   if [ -n "${leaked}" ]; then
     count="$(printf '%s\n' "${leaked}" | wc -l | tr -d ' ')"

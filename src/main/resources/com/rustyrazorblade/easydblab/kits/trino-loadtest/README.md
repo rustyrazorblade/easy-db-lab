@@ -1,8 +1,8 @@
 # trino-loadtest
 
 A concurrent read-load driver against a running `trino` kit's `cqlite` catalog.
-Each `start` runs one timestamped, labelled pod (`python:3.12-slim` + `pip install
-trino` at pod start — no Java toolchain needed) that holds a pool of persistent
+Each `start` runs one timestamped, labelled pod (`python:3.12-slim` + a pinned
+`pip install trino` at pod start — no Java toolchain needed) that holds a pool of persistent
 Trino connections and issues queries for a fixed duration, printing periodic
 stats that `start.sh` scrapes and pushes, as OTLP gauges, to the OpenTelemetry
 Collector on the control node, which stores them in Mimir.
@@ -103,6 +103,10 @@ itself, and on a clean cluster `grep` exits 1, which fails the check.
   and `start` fails.
 - The command exits non-zero (an unreachable node, a typo): `FAIL` with its
   exit code and stderr, never a pass.
+- The command exits 0 but prints nothing, or only whitespace: `FAIL - the
+  check command printed nothing`. `nodetool listsnapshots` always prints
+  something, even if only "There are no snapshots", so an empty listing means
+  no node was listed (a loop over the wrong aliases), not a clean cluster.
 - The command runs longer than `--snapshot-check-timeout-s` (default 60):
   `FAIL`, and every process it started is killed.
 - A blank command or a timeout that is not a whole number above 0 fails
@@ -152,7 +156,11 @@ against coordinator-side and Flight-side latency on one dashboard.
 
 ## Risks / caveats
 
-- **Cold-start tax**: each pod runs `pip install --quiet trino` before the
+- **PyPI at every start**: app nodes must reach `pypi.org` and
+  `files.pythonhosted.org`. The pinned version keeps runs comparable, but it
+  does not help when PyPI is unreachable: the pod's install fails and so does
+  `start`.
+- **Cold-start tax**: each pod runs `pip install --quiet trino==<pinned>` before the
   driver starts, adding roughly 5-15s (network-dependent) before the first
   query fires. This time is outside the driver's own `--duration` clock (the
   clock starts when `driver.py` runs, not when the pod starts), so it doesn't

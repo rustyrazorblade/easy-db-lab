@@ -7,6 +7,13 @@ export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 MANIFEST="${SCRIPT_DIR}/../daemonset.yaml"
 
 echo "Deploying cqlite-flight (image tag: __TAG__, Flight port: __FLIGHT_PORT__, data dir: __CASSANDRA_DATA_DIR__)..."
+# The detect-multidisk init container runs pod/detect-multidisk.sh from this ConfigMap. It carries
+# the kit label, so stop removes it with the DaemonSet; apply keeps a re-run of start idempotent.
+kubectl create configmap cqlite-flight-detect-multidisk --namespace default \
+  --from-file=detect-multidisk.sh="${SCRIPT_DIR}/../pod/detect-multidisk.sh" --dry-run=client -o yaml |
+  kubectl label --local -f - easydblab/kit=cqlite-flight easydblab/role=flight -o yaml |
+  kubectl apply -f -
+
 kubectl apply -f "${MANIFEST}"
 
 echo "Waiting for cqlite-flight DaemonSet rollout on db nodes..."
@@ -25,6 +32,6 @@ echo "NOTE (issue #2114): cqlite-flight serves EXACTLY ONE --data-dir (__CASSAND
 echo "cannot span disks. On a multi-disk node (data_file_directories across /mnt/db1, /mnt/db2, ...)"
 echo "the unserved disks are read as if absent — PARTIAL results with NO error. Each pod's"
 echo "'detect-multidisk' init container scans --data-root (__CASSANDRA_DATA_ROOT__) and warns on"
-echo "more than one candidate data dir, and on zero candidates (empty/mismatched root ="
-echo "cannot-verify, never a silent OK). Review it per node with:"
+echo "more than one data dir, or that it cannot verify the layout when the served dir is not the"
+echo "only data dir under the root. Read it per node with:"
 echo "  kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix"

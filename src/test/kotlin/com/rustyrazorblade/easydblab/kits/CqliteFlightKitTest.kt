@@ -28,7 +28,7 @@ class CqliteFlightKitTest : BaseKoinTest() {
     private fun daemonSet(args: Map<String, String> = emptyMap()): DaemonSet =
         kit.render(MANIFEST, args).filterIsInstance<DaemonSet>().single()
 
-    private fun service(): Service = kit.render(MANIFEST).filterIsInstance<Service>().single()
+    private fun service(args: Map<String, String> = emptyMap()): Service = kit.render(MANIFEST, args).filterIsInstance<Service>().single()
 
     private fun flightContainer(args: Map<String, String> = emptyMap()): Container =
         daemonSet(args)
@@ -66,6 +66,12 @@ class CqliteFlightKitTest : BaseKoinTest() {
         assertThat(port.targetPort.strVal).isEqualTo("flight-grpc")
         assertThat(flightPort.containerPort).isEqualTo(9915)
         assertThat(
+            service(mapOf("FLIGHT_PORT" to "9915"))
+                .spec.ports
+                .single()
+                .port,
+        ).isEqualTo(9915)
+        assertThat(
             daemonSet()
                 .spec.template.metadata.labels,
         ).containsAllEntriesOf(service.spec.selector)
@@ -93,11 +99,28 @@ class CqliteFlightKitTest : BaseKoinTest() {
 
     @Test
     fun `a data root that does not exist fails the pod instead of being created`() {
-        val volumes =
+        val hostPaths =
             daemonSet()
                 .spec.template.spec.volumes
+                .mapNotNull { it.hostPath }
 
-        assertThat(volumes.map { it.hostPath?.type }).containsOnly("Directory")
+        assertThat(hostPaths.map { it.path }).containsExactlyInAnyOrder("/mnt/db1/cassandra/data", "/mnt")
+        assertThat(hostPaths.map { it.type }).containsOnly("Directory")
+    }
+
+    @Test
+    fun `the multi-disk detector runs the packaged script from the ConfigMap start creates`() {
+        val pod = daemonSet().spec.template.spec
+        val detector = pod.initContainers.single { it.name == "detect-multidisk" }
+        val scriptMount = detector.volumeMounts.single { it.name == DETECTOR_VOLUME }
+        val configMap = pod.volumes.single { it.name == DETECTOR_VOLUME }.configMap
+        val start = kit.renderText("bin/start.sh.template")
+
+        assertThat(detector.command).containsExactly("/bin/sh", "${scriptMount.mountPath}/$DETECTOR_SCRIPT")
+        assertThat(configMap.name).isEqualTo(DETECTOR_CONFIGMAP)
+        assertThat(start).contains("create configmap $DETECTOR_CONFIGMAP", "--from-file=$DETECTOR_SCRIPT=")
+        assertThat(kit.resource("pod/$DETECTOR_SCRIPT")).startsWith("#!/bin/sh")
+        assertThat(detector.env.map { it.name }).contains("DETECT_SERVED", "DETECT_ROOT_HOST", "DETECT_ROOT")
     }
 
     @Test
@@ -109,7 +132,7 @@ class CqliteFlightKitTest : BaseKoinTest() {
                 .replace("__KIT_NAME__", "cqlite-flight")
         val labels = parseLabelSelector(selector)
 
-        assertThat(stop).contains("delete daemonset,service")
+        assertThat(stop).contains("delete daemonset,service,configmap")
         assertThat(daemonSet().metadata.labels).containsAllEntriesOf(labels)
         assertThat(service().metadata.labels).containsAllEntriesOf(labels)
     }
@@ -117,6 +140,9 @@ class CqliteFlightKitTest : BaseKoinTest() {
     private companion object {
         const val MANIFEST = "daemonset.yaml.template"
         const val FLIGHT_NODE_PORT = 30816
+        const val DETECTOR_VOLUME = "detect-multidisk-script"
+        const val DETECTOR_SCRIPT = "detect-multidisk.sh"
+        const val DETECTOR_CONFIGMAP = "cqlite-flight-detect-multidisk"
         val SELECTOR = Regex("""LABELS="(easydblab/kit=[^"]+)"""")
     }
 }

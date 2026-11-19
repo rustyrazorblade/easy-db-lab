@@ -56,6 +56,9 @@ commands:
         type: string
         description: "Shell command run with bash on your machine (not in the driver pod) after the run, printing the raw `nodetool listsnapshots` output of every db node, e.g. \"for h in db0 db1 db2; do ssh $h nodetool listsnapshots; done\" (ssh goes through the workspace wrapper). Fails the run if any cqlite- snapshot remains. Do NOT pipe through grep: a non-zero exit fails the check. Unset: the check is skipped."
         default: ""
+      # A string with no default, not an int: unset means "use the 60s default", which lives only
+      # in lib/snapshot-check.sh, and start.sh rejects anything but a whole number above 0 with a
+      # message naming this flag, before any pod runs.
       - flag: --snapshot-check-timeout-s
         variable: TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S
         type: string

@@ -307,6 +307,13 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     }
 
     @Test
+    fun `listTemplateFiles ships the cqlite-flight detector script that start puts in a ConfigMap`() {
+        val names = resolver.listTemplateFiles(resolver.resolve("cqlite-flight")).map { it.name }
+
+        assertThat(names).contains("pod/detect-multidisk.sh", "bin/start.sh.template")
+    }
+
+    @Test
     fun `cqlite catalog file is deferred and not shipped in the trino kit yet`() {
         // The cqlite catalog is intentionally NOT shipped until the cqlite_flight
         // connector plugin lands (pmcfadin/cqlite#2869). Its placeholders

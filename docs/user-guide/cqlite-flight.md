@@ -71,9 +71,13 @@ cannot read a database that runs in Kubernetes pods with its own volumes.
 cqlite-flight serves exactly one data directory. On a multi-disk node where the database
 spreads its data across `/mnt/db1`, `/mnt/db2`, … the SSTables on every disk other than
 the served `--data-dir` are invisible, and reads that touch that data return partial or
-empty results with no error. The `--data-root` init container scans for extra data dirs
-and prints a loud (non-fatal) warning so this misconfiguration is visible rather than
-silent. Every lab run to date uses single-disk nodes.
+empty results with no error. Each pod's `detect-multidisk` init container scans
+`--data-root` and never blocks the rollout. It prints `OK` when the served dir is the only
+data dir there. It warns when it finds more than one, naming the dirs that are not served,
+and it warns that it cannot verify the layout when the root holds no data dir, or holds a
+single one that is not the served dir. Read it with
+`kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix`.
+Every lab run to date uses single-disk nodes.
 
 ## Lifecycle
 

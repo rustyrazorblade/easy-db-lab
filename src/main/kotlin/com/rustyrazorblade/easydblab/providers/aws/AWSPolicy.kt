@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.toJson
+import org.apache.commons.text.StringSubstitutor
 
 /**
  * Centralized AWS policy definitions for easy-db-lab.
@@ -104,10 +105,14 @@ sealed class AWSPolicy {
             val ALL_NAMES = listOf(EC2_POLICY, IAM_POLICY, EMR_POLICY, OPENSEARCH_POLICY)
 
             /**
-             * Loads all four required user IAM policies from JSON resource files.
-             * Performs account ID substitution in policy templates.
+             * Loads all four required user IAM policies from JSON resource files, filling the
+             * `__ACCOUNT_ID__`, `__LEGACY_TAG_KEY__` and `__TAG_VALUE__` placeholders with the
+             * `__KEY__` substitution `TemplateService` uses (that service lives in `services`,
+             * which `providers` may not depend on).
              *
-             * @param accountId The AWS account ID to substitute for the __ACCOUNT_ID__ placeholder
+             * @param accountId The AWS account ID put in place of `__ACCOUNT_ID__`. Setup paths with
+             *   no working credentials pass [Constants.AWS.ACCOUNT_ID_PLACEHOLDER], so the policies
+             *   they show read `ACCOUNT_ID` where the account goes.
              * @return List of Policy objects with name and processed JSON content
              * @throws IllegalStateException if unable to load policy template files
              */
@@ -128,10 +133,15 @@ sealed class AWSPolicy {
                             ?: error("Unable to load IAM policy template: $fileName")
 
                     val processedContent =
-                        policyContent
-                            .replace("__ACCOUNT_ID__", accountId)
-                            .replace("__LEGACY_TAG_KEY__", Constants.Vpc.LEGACY_TAG_KEY)
-                            .replace("__TAG_VALUE__", Constants.Vpc.TAG_VALUE)
+                        StringSubstitutor(
+                            mapOf(
+                                "ACCOUNT_ID" to accountId,
+                                "LEGACY_TAG_KEY" to Constants.Vpc.LEGACY_TAG_KEY,
+                                "TAG_VALUE" to Constants.Vpc.TAG_VALUE,
+                            ),
+                            "__",
+                            "__",
+                        ).replace(policyContent)
 
                     Policy(name = policyName, body = processedContent)
                 }

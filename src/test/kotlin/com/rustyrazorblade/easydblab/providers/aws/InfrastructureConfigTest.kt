@@ -217,6 +217,15 @@ class InfrastructureConfigTest {
         }
 
         @Test
+        fun `the packer infrastructure carries both marker tags`() {
+            val config = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
+
+            assertThat(config.tags).containsExactlyInAnyOrderEntriesOf(
+                mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE),
+            )
+        }
+
+        @Test
         fun `should use correct packer VPC name`() {
             val config = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
 

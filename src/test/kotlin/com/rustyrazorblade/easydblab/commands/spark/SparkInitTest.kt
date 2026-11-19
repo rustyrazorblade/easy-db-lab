@@ -7,8 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
-import com.rustyrazorblade.easydblab.services.EMRProvisioningService
-import com.rustyrazorblade.easydblab.services.EmrClusterProvisioningConfig
+import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService
+import com.rustyrazorblade.easydblab.services.aws.EmrClusterProvisioningConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test

@@ -226,6 +226,15 @@ interface VpcDiscoveryOperations {
     )
 
     /**
+     * Adds or updates [tags] on every resource in [resourceIds] (VPCs, subnets, gateways, security
+     * groups, route tables), keeping the tags already on them.
+     */
+    fun addTags(
+        resourceIds: List<String>,
+        tags: Map<String, String>,
+    )
+
+    /**
      * Finds all EC2 instances in a VPC.
      */
     fun findInstancesInVpc(vpcId: VpcId): List<InstanceId>

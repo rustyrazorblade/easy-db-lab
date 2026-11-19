@@ -137,7 +137,9 @@ class AWSpolicyTest {
         val policies = AWSPolicy.UserIAM.loadAll("123456789012")
 
         assertThat(policies.map { it.name }).containsExactly("EasyDBLabEC2", "EasyDBLabIAM", "EasyDBLabEMR", "EasyDBLabOpenSearch")
-        assertThat(policies).allSatisfy { assertThat(it.body).doesNotContain("ACCOUNT_ID", "LEGACY_TAG_KEY", "TAG_VALUE") }
+        assertThat(policies).allSatisfy {
+            assertThat(it.body).doesNotContain("ACCOUNT_ID", "LEGACY_TAG_KEY", "TAG_VALUE").doesNotContainPattern("__[A-Z_]+__")
+        }
     }
 
     /**

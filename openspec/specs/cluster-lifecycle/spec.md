@@ -59,13 +59,19 @@ The workspace's `bin/` directory belongs to easy-db-lab, which writes its tool w
 
 The system MUST provision EC2 instances in AWS with configurable instance types and counts. The system MUST create a per-cluster data bucket for high-volume storage and CloudWatch metrics.
 
-Every AWS resource the system creates MUST carry both marker tags, `easy_cass_lab=1` (the legacy key) and `easy_db_lab=1` (the new key): VPCs and their subnets, security groups, internet gateways and route tables, instances and their volumes, the account and data buckets, key pairs, EMR clusters and OpenSearch domains.  Every read of the marker (the IAM conditions, YACE discovery, the `down --all` VPC search, the VPC ownership check, `aws vpcs` and the data-bucket search) MUST stay on the legacy key, because infrastructure created before the new key carries only the legacy one.  Moving the reads to the new key and removing the legacy one is a later change.  The tag keys MUST be named only in `Constants.Vpc`.
+Every AWS resource the system creates MUST carry both marker tags, `easy_cass_lab=1` (the legacy key) and `easy_db_lab=1` (the new key): VPCs and their subnets, security groups, internet gateways and route tables, instances and their volumes, the account and data buckets, key pairs, EMR clusters and OpenSearch domains.  A VPC the user supplies with `init --vpc` is not one the system created, so it gets no marker tag; the subnets, gateway, route tables and security group `up` creates inside it do.  A long-lived resource the system reuses, which may predate the new key (the account bucket, the profile's key pair, and the packer VPC with the resources in it), MUST gain any marker tag it lacks the next time `up` or an image build uses it, keeping its other tags.  Every read of the marker (the IAM conditions, YACE discovery, the `down --all` VPC search, the VPC ownership check, `aws vpcs` and the data-bucket search) MUST stay on the legacy key, because infrastructure created before the new key carries only the legacy one.  Moving the reads to the new key and removing the legacy one is a later change.  The tag keys MUST be named only in `Constants.Vpc`.
 
 #### Scenario: up writes both marker tags
 
 - **GIVEN** an initialized cluster configuration
 - **WHEN** `up` creates the cluster
 - **THEN** its VPC, instances, volumes and data bucket carry both `easy_cass_lab=1` and `easy_db_lab=1`, and the VPC, instances and volumes also carry the cluster's `ClusterId`
+
+#### Scenario: A reused resource gains the new marker tag
+
+- **GIVEN** an account bucket, a key pair or a packer VPC that carries `easy_cass_lab=1` and not `easy_db_lab=1`
+- **WHEN** `up` or an image build reuses it
+- **THEN** it carries `easy_db_lab=1` as well, and every tag it carried before is unchanged
 
 #### Scenario: Provision EC2 instances
 

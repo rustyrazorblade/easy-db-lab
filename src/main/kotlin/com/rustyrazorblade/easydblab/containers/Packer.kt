@@ -84,9 +84,17 @@ class Packer(
                 add(name)
             }
 
-        /** An HCL map literal for a `-var` of type `map(string)`, e.g. `{"a" = "1", "b" = "2"}`. */
-        private fun hclMap(entries: Map<String, String>): String =
-            entries.entries.joinToString(prefix = "{", postfix = "}", separator = ", ") { (key, value) -> "\"$key\" = \"$value\"" }
+        /**
+         * An HCL map literal for a `-var` of type `map(string)`, e.g. `{"a" = "1", "b" = "2"}`.
+         * A backslash or a double quote in a key or value is escaped, so it stays inside its string.
+         */
+        internal fun hclMap(entries: Map<String, String>): String =
+            entries.entries.joinToString(prefix = "{", postfix = "}", separator = ", ") { (key, value) ->
+                "${hclString(key)} = ${hclString(value)}"
+            }
+
+        /** [text] as a quoted HCL string. */
+        private fun hclString(text: String): String = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
         private fun MutableList<String>.addVar(
             key: String,

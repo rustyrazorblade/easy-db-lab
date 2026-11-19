@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -21,6 +23,9 @@ import software.amazon.awssdk.services.ec2.model.CreateInternetGatewayRequest
 import software.amazon.awssdk.services.ec2.model.CreateSecurityGroupRequest
 import software.amazon.awssdk.services.ec2.model.CreateSubnetRequest
 import software.amazon.awssdk.services.ec2.model.CreateVpcRequest
+import software.amazon.awssdk.services.ec2.model.DescribeRouteTablesRequest
+import software.amazon.awssdk.services.ec2.model.DescribeTagsRequest
+import software.amazon.awssdk.services.ec2.model.Filter
 import software.amazon.awssdk.services.ec2.model.IpPermission
 import software.amazon.awssdk.services.ec2.model.IpRange
 import software.amazon.awssdk.services.ec2.model.Tag
@@ -150,6 +155,73 @@ class AwsInfrastructureServiceIntegrationTest {
         )
 
         return igwId
+    }
+
+    private fun tagsOf(resourceId: String): Map<String, String> =
+        ec2Client
+            .describeTags(
+                DescribeTagsRequest
+                    .builder()
+                    .filters(
+                        Filter
+                            .builder()
+                            .name("resource-id")
+                            .values(resourceId)
+                            .build(),
+                    ).build(),
+            ).tags()
+            .associate { it.key() to it.value() }
+
+    @Nested
+    inner class ReusedInfrastructureBackfill {
+        @Test
+        fun `reused infrastructure with only the legacy marker gains the new one and keeps its other tags`() {
+            val suffix = System.nanoTime()
+            val reusable =
+                InfrastructureConfig
+                    .forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
+                    .copy(
+                        vpcName = "test-backfill-$suffix",
+                        internetGatewayName = "test-backfill-igw-$suffix",
+                        securityGroupName = "test-backfill-sg-$suffix",
+                    )
+            val legacyOnly = reusable.copy(tags = mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE, "Purpose" to "kept"))
+            val created = service.ensureInfrastructure(legacyOnly)
+            val routeTableId =
+                ec2Client
+                    .describeRouteTables(
+                        DescribeRouteTablesRequest
+                            .builder()
+                            .filters(
+                                Filter
+                                    .builder()
+                                    .name("vpc-id")
+                                    .values(created.vpcId)
+                                    .build(),
+                                Filter
+                                    .builder()
+                                    .name("association.main")
+                                    .values("true")
+                                    .build(),
+                            ).build(),
+                    ).routeTables()
+                    .single()
+                    .routeTableId()
+            assertThat(tagsOf(created.vpcId)).doesNotContainKey(Constants.Vpc.TAG_KEY)
+
+            val reused = service.ensureReusableInfrastructure(reusable)
+
+            assertThat(reused.vpcId).isEqualTo(created.vpcId)
+            listOf(created.vpcId, created.internetGatewayId, created.subnetIds.single(), created.securityGroupId, routeTableId)
+                .forEach { resourceId ->
+                    assertThat(tagsOf(resourceId))
+                        .`as`(resourceId)
+                        .containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+                        .containsEntry(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
+                        .containsEntry("Purpose", "kept")
+                }
+            assertThat(tagsOf(created.vpcId)).containsEntry(Constants.Vpc.NAME_TAG_KEY, reusable.vpcName)
+        }
     }
 
     @Nested

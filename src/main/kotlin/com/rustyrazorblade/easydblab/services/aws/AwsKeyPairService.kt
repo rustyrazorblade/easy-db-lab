@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.AwsKeyName
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
@@ -14,6 +15,8 @@ import com.rustyrazorblade.easydblab.services.toEvent
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.CreateKeyPairRequest
+import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsRequest
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.Tag
@@ -57,15 +60,65 @@ class AwsKeyPairService(
         accessKey: String,
         secret: String,
     ): AwsKeyName {
-        val ec2Client =
-            if (awsProfile.isNotEmpty()) {
-                clientFactory.createEc2ClientWithProfile(awsProfile, region)
-            } else {
-                clientFactory.createEc2Client(accessKey, secret, region)
-            }
         // This method built the client, so it closes it; the overload below never closes a client it was given.
-        return ec2Client.use { generate(profileDir, it) }
+        return ec2Client(region, awsProfile, accessKey, secret).use { generate(profileDir, it) }
     }
+
+    /**
+     * Gives the profile's existing key pair every marker tag it lacks, with the [user]'s
+     * credentials. A key pair created before the `easy_db_lab` key existed carries only the legacy
+     * one. Does nothing when the profile has no key pair yet.
+     */
+    fun ensureMarkerTags(user: User) {
+        if (user.keyName.isBlank()) return
+        ec2Client(user.region, user.awsProfile, user.awsAccessKey, user.awsSecret).use { ensureMarkerTags(user.keyName, it) }
+    }
+
+    /**
+     * Adds every marker tag ([Constants.Vpc.MARKER_TAGS]) the key pair [keyName] lacks; its other
+     * tags stay. Nothing is written when it carries them all.
+     */
+    fun ensureMarkerTags(
+        keyName: AwsKeyName,
+        ec2Client: Ec2Client,
+    ) {
+        val keyPair =
+            ec2Client
+                .describeKeyPairs(DescribeKeyPairsRequest.builder().keyNames(keyName).build())
+                .keyPairs()
+                .single()
+        val current = keyPair.tags().associate { it.key() to it.value() }
+        val missing = Constants.Vpc.MARKER_TAGS.filter { (key, value) -> current[key] != value }
+        if (missing.isEmpty()) return
+        ec2Client.createTags(
+            CreateTagsRequest
+                .builder()
+                .resources(keyPair.keyPairId())
+                .tags(
+                    missing.map { (key, value) ->
+                        Tag
+                            .builder()
+                            .key(key)
+                            .value(value)
+                            .build()
+                    },
+                ).build(),
+        )
+        log.info { "Added the missing marker tags to key pair $keyName" }
+    }
+
+    /** An EC2 client for the named AWS [awsProfile] when it is not empty, otherwise the static [accessKey] and [secret]. */
+    private fun ec2Client(
+        region: String,
+        awsProfile: String,
+        accessKey: String,
+        secret: String,
+    ): Ec2Client =
+        if (awsProfile.isNotEmpty()) {
+            clientFactory.createEc2ClientWithProfile(awsProfile, region)
+        } else {
+            clientFactory.createEc2Client(accessKey, secret, region)
+        }
 
     /**
      * Creates a key pair tagged for the lab and writes the private key to `secret.pem` in
@@ -87,11 +140,13 @@ class AwsKeyPairService(
                     .builder()
                     .resourceType(ResourceType.KEY_PAIR)
                     .tags(
-                        Tag
-                            .builder()
-                            .key(Constants.Vpc.TAG_KEY)
-                            .value(Constants.Vpc.TAG_VALUE)
-                            .build(),
+                        Constants.Vpc.MARKER_TAGS.map { (key, value) ->
+                            Tag
+                                .builder()
+                                .key(key)
+                                .value(value)
+                                .build()
+                        },
                     ).build()
             val request =
                 CreateKeyPairRequest

@@ -20,7 +20,7 @@ The system MUST support building AMIs with multiple database versions and suppor
 #### Scenario: The builder instance and the AMI carry both marker tags
 - **GIVEN** an AMI build
 - **WHEN** Packer launches the builder instance and registers the AMI
-- **THEN** both carry `easy_cass_lab=1` and `easy_db_lab=1`, which easy-db-lab passes to Packer from `Constants.Vpc.MARKER_TAGS`
+- **THEN** the builder instance, its volumes, the AMI and its snapshots all carry `easy_cass_lab=1` and `easy_db_lab=1`, which easy-db-lab passes to Packer from `Constants.Vpc.MARKER_TAGS`
 
 #### Scenario: Multiple Cassandra versions still supported
 - **GIVEN** multiple Cassandra versions in the build config

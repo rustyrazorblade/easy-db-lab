@@ -30,7 +30,7 @@ services/aws/
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 ├── CompactorLeaseReader.kt    # Reads the account compactor's lease for `observability compactor status`, in the bucket's region
-├── AwsKeyPairService.kt       # Creates the EC2 key pair for profile setup; saves secret.pem owner-only
+├── AwsKeyPairService.kt       # Creates the EC2 key pair for profile setup (both marker tags); saves secret.pem owner-only; backfills a missing marker on an existing key pair (up, build-image)
 ├── AwsServicesModule.kt       # Koin bindings for this package
 ├── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
 └── DataDiskRequirement.kt     # Every node needs a data disk: db has instance store or --ebs.type, control and app have instance store (checked by init, and by InstanceSpecFactory for db)

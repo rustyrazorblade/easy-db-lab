@@ -145,7 +145,9 @@ class AwsInfrastructureService(
 
     /**
      * Ensures the single-subnet infrastructure [config] names exists, reusing its VPC when one
-     * with that name exists. The packer VPC is kept this way.
+     * with that name exists. The packer VPC is kept this way. A reused VPC and the resources
+     * found in it are given [InfrastructureConfig.tags] again, so they gain any tag added since
+     * they were created; their other tags stay.
      *
      * @return VpcInfrastructure containing the IDs of all created/found resources
      */
@@ -178,6 +180,9 @@ class AwsInfrastructureService(
             config.securityGroupRules.forEach { rule ->
                 authorizeIngress(sgId, rule.fromPort, rule.toPort, rule.cidr, rule.protocol)
             }
+            // The found resources may predate a tag in config.tags (the easy_db_lab marker); the
+            // route table was tagged by ensureRouteTable.
+            vpcService.addTags(listOf(existingVpcId, igwId, subnetId, sgId), config.tags)
 
             eventBus.emit(Event.Infra.InfrastructureReady(config.vpcName))
             return VpcInfrastructure(existingVpcId, listOf(subnetId), sgId, igwId)

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -24,7 +25,12 @@ import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.CreateKeyPairRequest
 import software.amazon.awssdk.services.ec2.model.CreateKeyPairResponse
+import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsRequest
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsResponse
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
+import software.amazon.awssdk.services.ec2.model.KeyPairInfo
+import software.amazon.awssdk.services.ec2.model.Tag
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
@@ -72,9 +78,72 @@ class AwsKeyPairServiceTest {
                 .tagSpecifications()
                 .single()
                 .tags()
-                .single()
-                .key(),
-        ).isEqualTo("easy_cass_lab")
+                .associate { it.key() to it.value() },
+        ).containsExactlyInAnyOrderEntriesOf(mapOf("easy_cass_lab" to "1", "easy_db_lab" to "1"))
+    }
+
+    private fun existingKeyPair(vararg tags: Pair<String, String>) {
+        val keyPair =
+            KeyPairInfo
+                .builder()
+                .keyName("lab-key")
+                .keyPairId("key-0abc")
+                .tags(
+                    tags.map { (key, value) ->
+                        Tag
+                            .builder()
+                            .key(key)
+                            .value(value)
+                            .build()
+                    },
+                ).build()
+        whenever(ec2.describeKeyPairs(any<DescribeKeyPairsRequest>()))
+            .thenReturn(DescribeKeyPairsResponse.builder().keyPairs(keyPair).build())
+    }
+
+    @Test
+    fun `a key pair with only the legacy marker gains the new one and nothing else`() {
+        existingKeyPair("easy_cass_lab" to "1", "Purpose" to "lab")
+
+        service.ensureMarkerTags("lab-key", ec2)
+
+        val request = argumentCaptor<CreateTagsRequest>()
+        verify(ec2).createTags(request.capture())
+        assertThat(request.firstValue.resources()).containsExactly("key-0abc")
+        assertThat(request.firstValue.tags().associate { it.key() to it.value() })
+            .containsExactlyEntriesOf(mapOf("easy_db_lab" to "1"))
+    }
+
+    @Test
+    fun `a key pair that carries both markers is left alone`() {
+        existingKeyPair("easy_db_lab" to "1", "easy_cass_lab" to "1")
+
+        service.ensureMarkerTags("lab-key", ec2)
+
+        verify(ec2, never()).createTags(any<CreateTagsRequest>())
+    }
+
+    @Test
+    fun `a profile with no key pair yet asks EC2 nothing`() {
+        val factory: AWSClientFactory = mock()
+        val user = User("a@b.c", "us-west-2", keyName = "", awsProfile = "lab", awsAccessKey = "", awsSecret = "")
+
+        AwsKeyPairService(eventBus, factory, AwsErrorHandler()).ensureMarkerTags(user)
+
+        verify(factory, never()).createEc2ClientWithProfile(any(), any())
+    }
+
+    @Test
+    fun `the backfill uses the profile's credentials and closes the client it built`() {
+        val factory: AWSClientFactory = mock()
+        whenever(factory.createEc2ClientWithProfile("lab", "us-west-2")).thenReturn(ec2)
+        existingKeyPair("easy_cass_lab" to "1")
+        val user = User("a@b.c", "us-west-2", keyName = "lab-key", awsProfile = "lab", awsAccessKey = "", awsSecret = "")
+
+        AwsKeyPairService(eventBus, factory, AwsErrorHandler()).ensureMarkerTags(user)
+
+        verify(ec2).createTags(any<CreateTagsRequest>())
+        verify(ec2).close()
     }
 
     @Test

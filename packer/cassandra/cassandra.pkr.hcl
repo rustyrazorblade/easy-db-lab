@@ -48,7 +48,7 @@ variable "ssh_interface" {
   default = ""
 }
 
-# The marker tags put on the builder instance and the AMI.  easy-db-lab passes them from
+# The marker tags put on the builder instance and its volumes, the AMI and its snapshots.  easy-db-lab passes them from
 # Constants.Vpc.MARKER_TAGS (the new easy_db_lab key and the legacy easy_cass_lab key, which the
 # IAM conditions match on), so the keys live in one place.  No default: a build without them
 # would launch a builder the IAM conditions do not cover.
@@ -116,8 +116,10 @@ source "amazon-ebs" "ubuntu" {
     http_put_response_hop_limit = 2
   }
 
-  run_tags = var.marker_tags
-  tags     = var.marker_tags
+  run_tags        = var.marker_tags
+  run_volume_tags = var.marker_tags
+  tags            = var.marker_tags
+  snapshot_tags   = var.marker_tags
   launch_block_device_mappings {
     device_name = "/dev/sda1"
     # Larger than 16 GiB to hold the base image plus multiple staged Cassandra versions.

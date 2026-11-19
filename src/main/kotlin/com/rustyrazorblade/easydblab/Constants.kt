@@ -402,8 +402,9 @@ object Constants {
     object AWS {
         const val DEFAULT_CREDENTIALS_NAME = "awscredentials"
 
-        // The account ID token in the IAM policy templates. AWSPolicy replaces it with the real
-        // account; setup paths that have no working credentials show the policies with it kept.
+        // What the shown IAM policies read where the account goes when no account is known: setup
+        // paths with no working credentials pass it to AWSPolicy.UserIAM.loadAll in place of the
+        // real account, which fills the templates' `__ACCOUNT_ID__` placeholder with it.
         const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
 
         // The shared-credentials file the tool writes holds one profile under this name; the AWS CLI
@@ -559,6 +560,18 @@ object Constants {
 
         /** Maximum length for S3 metrics configuration IDs */
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
+
+        /** Account bucket tag key: the easy-db-lab profile that created the bucket */
+        const val PROFILE_TAG_KEY = "Profile"
+
+        /** Account bucket tag key: the email of the profile that created the bucket */
+        const val OWNER_TAG_KEY = "Owner"
+
+        /** Data bucket tag key: the id of the cluster the bucket belongs to */
+        const val CLUSTER_ID_TAG_KEY = "cluster_id"
+
+        /** Data bucket tag key: the name of the cluster the bucket belongs to */
+        const val CLUSTER_NAME_TAG_KEY = "cluster_name"
     }
 
     /**
@@ -1963,6 +1976,9 @@ object Constants {
 
         /** Tag key naming the cluster that created a resource, set on every VPC and resource `up` creates */
         const val CLUSTER_ID_TAG_KEY = "ClusterId"
+
+        /** The EC2 `Name` tag key, which the console shows as the resource name and the find-or-create lookups match on */
+        const val NAME_TAG_KEY = "Name"
 
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"

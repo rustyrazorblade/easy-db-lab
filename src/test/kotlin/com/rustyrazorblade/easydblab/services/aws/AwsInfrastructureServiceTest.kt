@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.doAnswer
@@ -822,13 +823,16 @@ class AwsInfrastructureServiceTest {
     inner class TeardownAllTagged {
         /** VPCs from before the new marker carry only the legacy one, so `down --all` searches on it. */
         @Test
-        fun `searches on the legacy marker tag, which old and new VPCs both carry`() {
-            whenever(vpcService.findVpcsByTag(any(), any())).thenReturn(emptyList())
+        fun `a VPC found by the legacy marker alone is previewed for teardown`() {
+            whenever(vpcService.findVpcsByTag(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)).thenReturn(listOf("vpc-old"))
+            whenever(vpcService.findVpcsByTag(eq(Constants.Vpc.TAG_KEY), any())).thenReturn(emptyList())
+            whenever(vpcService.getVpcName("vpc-old")).thenReturn("old-cluster")
+            setupEmptyResourcesFor("vpc-old")
 
-            service.teardownAllTagged(dryRun = true)
+            val result = service.teardownAllTagged(dryRun = true)
 
-            verify(vpcService).findVpcsByTag(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
-            verify(vpcService, never()).findVpcsByTag(eq(Constants.Vpc.TAG_KEY), any())
+            assertThat(result.resourcesDeleted.map { it.vpcId }).containsExactly("vpc-old")
+            verify(vpcService, never()).deleteVpc(any())
         }
 
         @Test
@@ -1043,6 +1047,25 @@ class AwsInfrastructureServiceTest {
             verify(vpcService).findOrCreateSubnet(eq(vpcId), any(), any(), any(), eq("us-east-1b"))
             assertThat(infrastructure.subnetIds).containsExactly("subnet-1")
         }
+
+        @Test
+        fun `a reused VPC and the resources found in it are given both marker tags`() {
+            whenever(vpcService.findVpcByName(InfrastructureConfig.PACKER_VPC_NAME)).thenReturn("vpc-packer")
+            whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), anyOrNull())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn("sg-1")
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any())).thenReturn(IngressAuthorization.ADDED)
+
+            service.ensurePackerInfrastructure(22, "203.0.113.10/32")
+
+            val ids = argumentCaptor<List<String>>()
+            val tags = argumentCaptor<Map<String, String>>()
+            verify(vpcService).addTags(ids.capture(), tags.capture())
+            assertThat(ids.firstValue).containsExactlyInAnyOrder("vpc-packer", "igw-1", "subnet-1", "sg-1")
+            assertThat(tags.firstValue).containsExactlyInAnyOrderEntriesOf(
+                mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE, Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
+            )
+        }
     }
 
     @Nested
@@ -1140,7 +1163,7 @@ class AwsInfrastructureServiceTest {
         fun stubExistingPackerVpc() {
             whenever(vpcService.findVpcByName(any())).thenReturn("vpc-packer")
             whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
-            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), anyOrNull())).thenReturn("subnet-1")
             whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn(packerSgId)
         }
 

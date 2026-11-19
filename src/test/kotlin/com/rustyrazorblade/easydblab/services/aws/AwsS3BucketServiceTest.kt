@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -19,13 +20,18 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.PutBucketLifecycleConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.S3Exception
+import software.amazon.awssdk.services.s3.model.Tag
 
 /**
  * Tests for [AwsS3BucketService].
@@ -102,6 +108,96 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
             .containsEntry(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
             .containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
             .containsEntry("Owner", user.email)
+    }
+
+    private fun s3Tags(vararg tags: Pair<String, String>) =
+        tags.map { (key, value) ->
+            Tag
+                .builder()
+                .key(key)
+                .value(value)
+                .build()
+        }
+
+    @Test
+    fun `an existing account bucket with only the legacy marker gains the new one and keeps its other tags`() {
+        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+        whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
+            GetBucketTaggingResponse
+                .builder()
+                .tagSet(s3Tags("easy_cass_lab" to "1", "Profile" to "default", "Owner" to "someone@example.com"))
+                .build(),
+        )
+
+        assertThat(service.ensureAccountBucket(user)).isEqualTo("easy-db-lab-existing")
+
+        val request = argumentCaptor<PutBucketTaggingRequest>()
+        verify(mockS3Client).putBucketTagging(request.capture())
+        assertThat(request.firstValue.bucket()).isEqualTo("easy-db-lab-existing")
+        assertThat(
+            request.firstValue
+                .tagging()
+                .tagSet()
+                .associate { it.key() to it.value() },
+        ).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "easy_cass_lab" to "1",
+                "easy_db_lab" to "1",
+                "Profile" to "default",
+                "Owner" to "someone@example.com",
+            ),
+        )
+        verify(mockS3Client, never()).createBucket(any<CreateBucketRequest>())
+    }
+
+    @Test
+    fun `an existing account bucket that carries both markers is not rewritten`() {
+        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+        whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
+            GetBucketTaggingResponse.builder().tagSet(s3Tags("easy_db_lab" to "1", "easy_cass_lab" to "1")).build(),
+        )
+
+        service.ensureAccountBucket(user)
+
+        verify(mockS3Client, never()).putBucketTagging(any<PutBucketTaggingRequest>())
+    }
+
+    @Test
+    fun `an existing account bucket with no tags at all gets both markers`() {
+        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+        val noTagSet =
+            S3Exception
+                .builder()
+                .statusCode(404)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("NoSuchTagSet").build())
+                .build()
+        whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenThrow(noTagSet)
+
+        service.ensureAccountBucket(user)
+
+        val request = argumentCaptor<PutBucketTaggingRequest>()
+        verify(mockS3Client).putBucketTagging(request.capture())
+        assertThat(
+            request.firstValue
+                .tagging()
+                .tagSet()
+                .associate { it.key() to it.value() },
+        ).containsExactlyInAnyOrderEntriesOf(mapOf("easy_cass_lab" to "1", "easy_db_lab" to "1"))
+    }
+
+    @Test
+    fun `any other failure reading an existing bucket's tags is rethrown and nothing is written`() {
+        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+        val denied =
+            S3Exception
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("AccessDenied").build())
+                .build()
+        whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenThrow(denied)
+
+        assertThatThrownBy { service.ensureAccountBucket(user) }.isSameAs(denied)
+        verify(mockS3Client, never()).putBucketTagging(any<PutBucketTaggingRequest>())
     }
 
     @Test

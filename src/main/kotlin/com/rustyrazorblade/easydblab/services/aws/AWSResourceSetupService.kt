@@ -239,7 +239,8 @@ class AWSResourceSetupService(
 
     /**
      * Shows every lab IAM policy, numbered, after a credentials failure: the header names them and
-     * their count, and the policies keep the `ACCOUNT_ID` placeholder, since no account is known.
+     * their count, and the policies read [Constants.AWS.ACCOUNT_ID_PLACEHOLDER] where the account
+     * goes, since no account is known.
      */
     private fun showRequiredPolicies() {
         val policies = AWSPolicy.UserIAM.loadAll(Constants.AWS.ACCOUNT_ID_PLACEHOLDER)

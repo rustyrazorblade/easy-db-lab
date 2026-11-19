@@ -467,8 +467,7 @@ class Down : PicoBaseCommand() {
      * Tears down all VPCs that carry the legacy marker tag.
      */
     private fun teardownAllTagged(): TeardownOutcome {
-        eventBus.emit(Event.Teardown.FindingTaggedVpcs)
-
+        // The search itself reports what it looks for (Infra.VpcTeardownSearching).
         val stop =
             previewAndConfirm(
                 preview = teardownService.teardownAllTagged(dryRun = true, includePackerVpc = teardownPacker),

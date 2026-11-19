@@ -24,7 +24,8 @@ processors:
 exporters:
   # The node collector restarts on every kit start and stop (its config changes). This exporter
   # holds what it cannot send in memory and retries without a time limit, as the node collector's
-  # backend exporters do (issue 991). No on-disk queue.
+  # backend exporters do (issue 991). No on-disk queue. The sidecar sets no GOMEMLIMIT, so a long
+  # outage grows the heap with the queue instead of running the Go GC against a soft limit.
   otlp_grpc:
     endpoint: ${env:HOST_IP}:4317
     tls:

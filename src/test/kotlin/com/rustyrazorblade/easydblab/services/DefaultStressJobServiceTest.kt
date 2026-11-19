@@ -183,7 +183,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             "K8S_NODE_NAME",
             "HOST_IP",
             "CLUSTER_NAME",
-            "GOMEMLIMIT",
             "OTEL_RESOURCE_ATTRIBUTES",
             "STRESS_PROM_PORT",
         )
@@ -200,9 +199,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val clusterNameEnv = sidecar.env.first { it.name == "CLUSTER_NAME" }
         assertThat(clusterNameEnv.valueFrom).isNull()
         assertThat(clusterNameEnv.value).isEqualTo(clusterStateManager.load().clusterLabelName())
-
-        val goMemLimitEnv = sidecar.env.first { it.name == "GOMEMLIMIT" }
-        assertThat(goMemLimitEnv.value).isEqualTo("64MiB")
 
         val resourceAttrsEnv = sidecar.env.first { it.name == "OTEL_RESOURCE_ATTRIBUTES" }
         assertThat(resourceAttrsEnv.value).isEqualTo("job_name=stress-test-123")

@@ -67,8 +67,6 @@ spec:
               fieldPath: "status.hostIP"
         - name: "CLUSTER_NAME"
           value: "test-cluster-golden-cluster-id"
-        - name: "GOMEMLIMIT"
-          value: "64MiB"
         - name: "OTEL_RESOURCE_ATTRIBUTES"
           value: "job_name=stress-golden,team=perf,run=42"
         - name: "STRESS_PROM_PORT"

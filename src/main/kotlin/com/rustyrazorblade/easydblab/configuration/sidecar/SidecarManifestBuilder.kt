@@ -260,10 +260,8 @@ class SidecarManifestBuilder(
             "-Dpyroscope.labels=hostname=\$(NODE_NAME),cluster=$clusterName",
             // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
             "-Dpyroscope.tenant.id=$tenant",
-            "-Dpyroscope.profiler.event=cpu",
-            "-Dpyroscope.profiler.alloc=512k",
-            "-Dpyroscope.profiler.lock=10ms",
-        ).plus(Constants.PyroscopeJavaAgent.OUTAGE_FLAGS)
+        ).plus(Constants.PyroscopeJavaAgent.PROFILER_FLAGS)
+            .plus(Constants.PyroscopeJavaAgent.OUTAGE_FLAGS)
             .joinToString(" ")
     }
 }

@@ -206,13 +206,10 @@ class DefaultEMRProvisioningService(
                 "-javaagent:${Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH}",
                 "-Dpyroscope.application.name=spark",
                 "-Dpyroscope.server.address=$pyroscopeServerAddress",
-                "-Dpyroscope.format=jfr",
-                "-Dpyroscope.profiler.event=cpu",
-                "-Dpyroscope.profiler.alloc=512k",
-                "-Dpyroscope.profiler.lock=10ms",
+            ) + Constants.PyroscopeJavaAgent.PROFILER_FLAGS +
                 // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
-                "-Dpyroscope.tenant.id=${clusterState.tenant()}",
-            ) + Constants.PyroscopeJavaAgent.OUTAGE_FLAGS
+                "-Dpyroscope.tenant.id=${clusterState.tenant()}" +
+                Constants.PyroscopeJavaAgent.OUTAGE_FLAGS
         val extraJavaOptions = "$otelAgentFlag ${pyroscopeFlags.joinToString(" ")}"
 
         val otelEnvVars =

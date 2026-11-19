@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
+import com.github.dockerjava.api.model.HostConfig
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -13,9 +15,15 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
+import org.testcontainers.images.RemoteDockerImage
 import org.testcontainers.images.builder.Transferable
+import org.testcontainers.utility.DockerImageName
+import org.testcontainers.utility.LogUtils
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.time.Duration
 import java.util.UUID
 
@@ -29,20 +37,31 @@ import java.util.UUID
  * has failed [RETRIES_BEFORE_COLLECTOR] tries in a row. Then a collector starts in its network
  * namespace, as the node collector does after a roll, and the test asserts that the chunk arrives
  * within [ARRIVAL], which a backoff past the 30-second cap would miss, and that no retry was put off
- * longer than the cap.
+ * longer than the cap plus the one second Fluent Bit adds to every delay.
  */
 class JournaldRetryIntegrationTest : BaseKoinTest() {
     private companion object {
         const val RETRIES_BEFORE_COLLECTOR = 5
         const val SCHEDULER_CAP_SECONDS = 30
+
+        /**
+         * The longest retry delay with the cap: Fluent Bit 5.1.2 draws the delay from the capped
+         * backoff and then adds one second (`flb_sched_request_create`, `seconds += 1`).
+         */
+        const val LONGEST_RETRY_SECONDS = SCHEDULER_CAP_SECONDS + 1
         val FAILING: Duration = Duration.ofMinutes(5)
         val ARRIVAL: Duration = Duration.ofSeconds(60)
         val POLL: Duration = Duration.ofSeconds(2)
         val RETRY_IN = Regex("retry in (\\d+) seconds")
+        val COLLECTOR_STARTUP: Duration = Duration.ofMinutes(1)
+        const val COLLECTOR_CONFIG = "/etc/otel-collector-config.yaml"
+        const val COLLECTOR_READY = "Everything is ready"
     }
 
     private val probe = "journald-retry-${UUID.randomUUID()}"
     private val containers = mutableListOf<GenericContainer<*>>()
+    private val collectorIds = mutableListOf<String>()
+    private val docker = DockerClientFactory.instance().client()
     private val state = ClusterState(name = "journald-retry", initConfig = InitConfig(tenant = "acme"))
 
     override fun additionalTestModules(): List<Module> =
@@ -55,6 +74,7 @@ class JournaldRetryIntegrationTest : BaseKoinTest() {
 
     @AfterEach
     fun cleanUp() {
+        collectorIds.forEach { id -> runCatching { docker.removeContainerCmd(id).withForce(true).exec() } }
         containers.reversed().forEach { it.stop() }
     }
 
@@ -91,20 +111,47 @@ class JournaldRetryIntegrationTest : BaseKoinTest() {
             }
     }
 
-    private fun startCollector(fluentBit: GenericContainer<*>): GenericContainer<*> {
+    /**
+     * Starts the collector in [fluentBit]'s network namespace, as the node collector shares the
+     * node's, and returns its container id once it is ready. It is created with the Docker client:
+     * after any test in the JVM has exposed a host port, Testcontainers adds its host-access name to
+     * every container it creates, and Docker refuses that for a joined namespace. It carries the
+     * session labels, so the session's cleanup removes it too.
+     */
+    private fun startCollector(fluentBit: GenericContainer<*>): String {
         val config =
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/configuration/otel/otlp-debug-collector.yaml"))
                 .readText()
-        return GenericContainer("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
-            .withCopyToContainer(Transferable.of(config), "/etc/otel-collector-config.yaml")
-            .withCommand("--config=/etc/otel-collector-config.yaml")
-            .withNetworkMode("container:${fluentBit.containerId}")
-            .waitingFor(Wait.forLogMessage(".*Everything is ready.*", 1))
-            .also {
-                containers.add(it)
-                it.start()
-            }
+        val image = "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"
+        RemoteDockerImage(DockerImageName.parse(image)).get()
+        val id =
+            docker
+                .createContainerCmd(image)
+                .withCmd("--config=$COLLECTOR_CONFIG")
+                .withLabels(
+                    DockerClientFactory.DEFAULT_LABELS +
+                        (DockerClientFactory.TESTCONTAINERS_SESSION_ID_LABEL to DockerClientFactory.SESSION_ID),
+                ).withHostConfig(HostConfig.newHostConfig().withNetworkMode("container:${fluentBit.containerId}"))
+                .exec()
+                .id
+        collectorIds += id
+        val tar = ByteArrayOutputStream()
+        TarArchiveOutputStream(tar).use { Transferable.of(config).transferTo(it, COLLECTOR_CONFIG.removePrefix("/")) }
+        docker
+            .copyArchiveToContainerCmd(id)
+            .withTarInputStream(ByteArrayInputStream(tar.toByteArray()))
+            .withRemotePath("/")
+            .exec()
+        docker.startContainerCmd(id).exec()
+        val deadline = System.nanoTime() + COLLECTOR_STARTUP.toNanos()
+        while (COLLECTOR_READY !in collectorLogs(id) && System.nanoTime() < deadline) {
+            Thread.sleep(POLL.toMillis())
+        }
+        check(COLLECTOR_READY in collectorLogs(id)) { "the collector did not start:\n${collectorLogs(id)}" }
+        return id
     }
+
+    private fun collectorLogs(id: String): String = LogUtils.getOutput(docker, id)
 
     @Test
     fun `a journal chunk is retried without a limit and arrives soon after the collector is back`() {
@@ -112,16 +159,16 @@ class JournaldRetryIntegrationTest : BaseKoinTest() {
         val collector = startCollector(fluentBit)
 
         val deadline = System.nanoTime() + ARRIVAL.toNanos()
-        while (probe !in collector.logs && System.nanoTime() < deadline) {
+        while (probe !in collectorLogs(collector) && System.nanoTime() < deadline) {
             Thread.sleep(POLL.toMillis())
         }
 
-        assertThat(collector.logs)
+        assertThat(collectorLogs(collector))
             .describedAs("the collector received the journal chunk; Fluent Bit log:\n${fluentBit.logs}")
             .contains(probe)
         assertThat(RETRY_IN.findAll(fluentBit.logs).map { it.groupValues[1].toInt() }.toList())
             .describedAs("seconds Fluent Bit put each retry off")
             .hasSizeGreaterThanOrEqualTo(RETRIES_BEFORE_COLLECTOR)
-            .allMatch { it <= SCHEDULER_CAP_SECONDS }
+            .allMatch { it <= LONGEST_RETRY_SECONDS }
     }
 }

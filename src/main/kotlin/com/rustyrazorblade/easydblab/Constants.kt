@@ -1089,6 +1089,19 @@ object Constants {
          */
         const val PUSH_QUEUE_CAPACITY = 360
 
+        /**
+         * What the agent profiles and how it sends it, the same for every JVM the tool attaches it
+         * to: JFR format, CPU samples, an allocation sample every 512 KB and locks held 10ms or more.
+         * `edl_pyroscope_opts` in `edl-kit-lib.sh` repeats them, and `TemplateVariablesTest` checks it.
+         */
+        val PROFILER_FLAGS: List<String> =
+            listOf(
+                "-Dpyroscope.format=jfr",
+                "-Dpyroscope.profiler.event=cpu",
+                "-Dpyroscope.profiler.alloc=512k",
+                "-Dpyroscope.profiler.lock=10ms",
+            )
+
         /** The two agent options above, as JVM flags, for every JVM the tool attaches the agent to. */
         val OUTAGE_FLAGS: List<String> =
             listOf(

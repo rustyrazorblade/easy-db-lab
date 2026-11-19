@@ -23,13 +23,7 @@ import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.utility.MountableFile
 import java.io.File
-import java.net.URI
 import java.net.URLEncoder
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.time.Duration
 import java.util.UUID
 
@@ -62,10 +56,6 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         val WAIT: Duration = Duration.ofMinutes(3)
         val POLL: Duration = Duration.ofSeconds(5)
 
-        /** The agent jar is a few MB; a stalled download fails the test instead of hanging it. */
-        val DOWNLOAD_CONNECT_TIMEOUT: Duration = Duration.ofSeconds(10)
-        val DOWNLOAD_TIMEOUT: Duration = Duration.ofMinutes(5)
-
         val PYROSCOPE_HOST = "${Constants.K8s.PYROSCOPE_APP_LABEL}.default.svc.cluster.local"
 
         /** A JVM that keeps one CPU busy, so every snapshot holds CPU samples. */
@@ -91,12 +81,6 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     private val volume = "pyroscope-replay-${UUID.randomUUID().toString().take(8)}"
     private val network: Network = Network.newNetwork()
     private val containers = mutableListOf<GenericContainer<*>>()
-    private val http =
-        HttpClient
-            .newBuilder()
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .connectTimeout(DOWNLOAD_CONNECT_TIMEOUT)
-            .build()
     private val state =
         ClusterState(
             name = "pyroscope-agent-replay",
@@ -128,30 +112,16 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     }
 
     /**
-     * The pinned agent jar, from the same release URL the AMI and EMR install it from. It is kept in
-     * the machine's temp directory under its version, so only the first run on a machine downloads
-     * it; the download goes to a temporary file and is renamed into place, so a cut-off download is
-     * never used.
+     * The pinned agent jar (`io.pyroscope:agent`, the same jar as the release the AMI and EMR
+     * install), which Gradle resolves from Maven Central into its cache and passes as a system
+     * property. Its version must be the one the cluster installs.
      */
     private fun agentJar(): File {
-        val jar = File(System.getProperty("java.io.tmpdir"), "easy-db-lab-pyroscope-${Constants.PyroscopeJavaAgent.VERSION}.jar")
-        if (jar.isFile) return jar
-        val partial = File.createTempFile("pyroscope-agent", ".part", jar.parentFile)
-        try {
-            val response =
-                http.send(
-                    HttpRequest
-                        .newBuilder(URI(Constants.PyroscopeJavaAgent.DOWNLOAD_URL))
-                        .timeout(DOWNLOAD_TIMEOUT)
-                        .GET()
-                        .build(),
-                    HttpResponse.BodyHandlers.ofFile(partial.toPath()),
-                )
-            check(response.statusCode() == HTTP_OK) { "agent download answered ${response.statusCode()}" }
-            Files.move(partial.toPath(), jar.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } finally {
-            partial.delete()
-        }
+        assertThat(System.getProperty("easydblab.test.pyroscopeAgentVersion"))
+            .describedAs("the agent version in libs.versions.toml")
+            .isEqualTo(Constants.PyroscopeJavaAgent.VERSION)
+        val jar = File(checkNotNull(System.getProperty("easydblab.test.pyroscopeAgentJar")) { "run through Gradle" })
+        check(jar.isFile) { "no agent jar at $jar" }
         return jar
     }
 

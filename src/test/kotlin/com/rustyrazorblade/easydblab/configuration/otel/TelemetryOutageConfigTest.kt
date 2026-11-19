@@ -57,6 +57,7 @@ class TelemetryOutageConfigTest : BaseKoinTest() {
         )) {
             val yaml = checkNotNull(javaClass.getResource(resource)).readText()
             val path = arrayOf("exporters", exporter)
+            assertThat(scalarAt(yaml, *path, "retry_on_failure", "enabled")).describedAs(resource).isEqualTo("true")
             assertThat(scalarAt(yaml, *path, "retry_on_failure", "max_elapsed_time")).describedAs(resource).isEqualTo("0")
             assertThat(scalarAt(yaml, *path, "sending_queue", "enabled")).describedAs(resource).isEqualTo("true")
             assertThat(scalarAt(yaml, *path, "sending_queue", "queue_size")).describedAs(resource).isEqualTo("20000")

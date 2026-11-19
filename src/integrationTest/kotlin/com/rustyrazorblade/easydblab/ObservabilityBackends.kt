@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.ContainerNetwork
+import com.github.dockerjava.api.model.DockerObjectAccessor
 import com.github.dockerjava.api.model.HostConfig
 import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
@@ -13,6 +14,7 @@ import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
+import org.testcontainers.containers.wait.strategy.AbstractWaitStrategy
 import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.RemoteDockerImage
 import org.testcontainers.images.builder.Transferable
@@ -39,6 +41,10 @@ object ObservabilityBackends {
     private const val TEMPO_DATA = "/var/tempo"
     private const val PYROSCOPE_DATA = "/data"
     private const val HTTP_OK = 200
+
+    /** The Docker endpoint setting that picks which network gives a container its default route (API 1.48+). */
+    private const val GATEWAY_PRIORITY = "GwPriority"
+    private const val LOWEST_GATEWAY_PRIORITY = -1
 
     /** How long the Pyroscope Deployment's startup probe lets the server take to answer `/ready`. */
     private val PYROSCOPE_STARTUP_PROBE_BUDGET: Duration =
@@ -143,25 +149,36 @@ object ObservabilityBackends {
             ).apply { start() }
 
     /**
-     * Starts the Pyroscope server like [startPyroscope], but returns as soon as its HTTP port is
-     * open, without waiting for `/ready`. A Java agent with queued profiles pushes at that moment,
-     * so a test of what a restarted server does with those pushes starts it this way, then calls
-     * [awaitPyroscopeReady].
+     * A Pyroscope server started by [startPyroscopeUnwaited]. [startedAt] is when its container
+     * started, a [System.nanoTime] value, where the kubelet starts counting the startup-probe budget.
      */
-    fun startPyroscopeListening(
+    data class StartedPyroscope(
+        val container: GenericContainer<*>,
+        val startedAt: Long,
+    )
+
+    /**
+     * Starts the Pyroscope server like [startPyroscope], but returns as soon as its container runs,
+     * without waiting for `/ready`. A Java agent with queued profiles pushes as soon as the port
+     * opens, so a test of what a restarted server does with those pushes starts it this way, pushes
+     * from inside its network namespace, then calls [awaitPyroscopeReady] with
+     * [StartedPyroscope.startedAt].
+     */
+    fun startPyroscopeUnwaited(
         config: String,
         volume: String,
-    ): GenericContainer<*> =
-        pyroscopeContainer(config, volume)
-            .waitingFor(
-                // Any HTTP answer means the port is open. forListeningPort execs /bin/sh in the
-                // container to check, and the Pyroscope image has no shell.
-                Wait
-                    .forHttp("/ready")
-                    .forPort(PyroscopeManifestBuilder.SERVER_PORT)
-                    .forStatusCodeMatching { true }
-                    .withStartupTimeout(PYROSCOPE_STARTUP_PROBE_BUDGET),
-            ).apply { start() }
+        onCreated: (GenericContainer<*>) -> Unit = {},
+    ): StartedPyroscope {
+        val container = pyroscopeContainer(config, volume).waitingFor(ContainerStarted)
+        onCreated(container)
+        container.start()
+        return StartedPyroscope(container, System.nanoTime())
+    }
+
+    /** A wait strategy that returns as soon as the container is running, for a caller that polls itself. */
+    private object ContainerStarted : AbstractWaitStrategy() {
+        override fun waitUntilReady() = Unit
+    }
 
     /**
      * Waits until [pyroscope] answers `/ready`, and fails if that takes longer than the
@@ -272,19 +289,26 @@ object ObservabilityBackends {
      * [networkId], as a Kubernetes Service does: the name resolves to the backend only once its
      * readiness wait has passed, and stops resolving when the container is gone, so a client sees a
      * connection error, never a backend that is still starting.
+     *
+     * The endpoint gets the lowest gateway priority, so the container keeps its default route on
+     * the network its ports are published from. Without it a Linux Docker engine moves the default
+     * route to whichever network's name sorts first, and Testcontainers names a network with a
+     * random UUID, so most networks sort before `bridge`: the published port then stops answering.
      */
     fun attachAsService(
         container: GenericContainer<*>,
         networkId: String,
         alias: String,
     ) {
+        val endpoint = ContainerNetwork().withAliases(alias)
+        DockerObjectAccessor.overrideRawValue(endpoint, GATEWAY_PRIORITY, LOWEST_GATEWAY_PRIORITY)
         DockerClientFactory
             .instance()
             .client()
             .connectToNetworkCmd()
             .withContainerId(container.containerId)
             .withNetworkId(networkId)
-            .withContainerNetwork(ContainerNetwork().withAliases(alias))
+            .withContainerNetwork(endpoint)
             .exec()
     }
 

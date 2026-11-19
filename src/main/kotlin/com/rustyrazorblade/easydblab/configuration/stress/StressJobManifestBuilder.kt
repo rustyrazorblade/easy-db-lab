@@ -138,14 +138,12 @@ object StressJobManifestBuilder {
                 "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
                 "-Dpyroscope.application.name=cassandra-easy-stress",
                 "-Dpyroscope.server.address=$pyroscopeServerAddress",
-                "-Dpyroscope.format=jfr",
-                "-Dpyroscope.profiler.event=cpu",
-                "-Dpyroscope.profiler.alloc=512k",
-                "-Dpyroscope.profiler.lock=10ms",
-                "-Dpyroscope.labels=$pyroscopeLabels",
-                // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
-                "-Dpyroscope.tenant.id=${cluster.tenant}",
-            ) + Constants.PyroscopeJavaAgent.OUTAGE_FLAGS
+            ) + Constants.PyroscopeJavaAgent.PROFILER_FLAGS +
+                listOf(
+                    "-Dpyroscope.labels=$pyroscopeLabels",
+                    // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
+                    "-Dpyroscope.tenant.id=${cluster.tenant}",
+                ) + Constants.PyroscopeJavaAgent.OUTAGE_FLAGS
         val otel =
             listOf(
                 "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",

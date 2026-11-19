@@ -1083,6 +1083,33 @@ test_client_error_is_rejected_and_never_retried() {
   teardown
 }
 
+# Pyroscope answers 422 to every push while it shuts down and in the instant a restarted server
+# opens its port before it reads its ring tokens, and 429 when it rate-limits. The chunk is fine, so
+# renaming it .rejected would lose that interval's profile to a restart; it must wait for the next
+# pass and ship once the server answers.
+test_unavailable_or_rate_limited_is_retried_not_rejected() {
+  local status
+  for status in 422 429; do
+    setup
+    write_config true '["-e", "cpu"]'
+    make_chunk "cassandra-1-100.jfr" 600
+    make_chunk "cassandra-1-200.jfr" 500
+    run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=$status >/dev/null
+
+    assert_file "a $status leaves the chunk pending" "$PROFILE_DIR/cassandra-1-100.jfr"
+    assert_no_file "a $status does not reject the chunk" "$PROFILE_DIR/cassandra-1-100.jfr.rejected"
+    assert_contains "a $status counts as a transient failure" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_ship_failures_total 1"
+    assert_contains "a $status is not counted as a rejection" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_ship_rejected_total 0"
+
+    : >"$CURL_LOG"
+    make_chunk "cassandra-1-300.jfr" 400
+    run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=200 >/dev/null
+    assert_contains "the chunk refused with $status is sent again" "$(curl_log)" "cassandra-1-100.jfr"
+    assert_file "and ships once Pyroscope answers" "$PROFILE_DIR/cassandra-1-100-shipped.jfr"
+    teardown
+  done
+}
+
 # The series label is percent-encoded a character at a time. In a UTF-8 locale that yields code
 # points rather than bytes, so `café` encodes as `caf%E9` — Latin-1, not what those bytes are — and
 # an emoji as `%1F600`, which is not a well-formed escape at all. Pyroscope answers 4xx, a 4xx is
@@ -2152,6 +2179,7 @@ test_chunks_the_shipper_failed_to_send_are_counted_as_pending
 test_server_error_leaves_the_chunk_for_retry
 test_network_failure_reports_what_curl_said
 test_client_error_is_rejected_and_never_retried
+test_unavailable_or_rate_limited_is_retried_not_rejected
 test_a_non_ascii_cluster_name_encodes_as_utf8_bytes
 test_a_chunk_exactly_on_the_grace_boundary_ships
 test_a_chunk_one_second_inside_the_grace_boundary_does_not_ship

@@ -1198,6 +1198,16 @@ upload_chunk() {
       mv -f "$path" "${path%.jfr}-shipped.jfr"
       LAST_SUCCESS="$NOW"
       ;;
+    422 | 429)
+      # Transient, though a 4xx: Pyroscope answers 422 ("service is unavailable") to every push
+      # from SIGTERM until it exits, and in the instant a restarted server opens its port before it
+      # reads its ring tokens; 429 is a rate limit. The chunk is fine, so it waits for the next pass
+      # with the 5xx below. Renaming it .rejected would lose that interval's profile to a restart.
+      FAILURES=$((FAILURES + 1))
+      LAST_ERROR="http_${status}"
+      log error jfr_ship_failed \
+        "chunk=$(basename "$path") status=${status} curl_exit=${curl_exit} err=\"${curl_error}\""
+      ;;
     4??)
       # Permanent: Pyroscope cannot parse this chunk, usually truncation after an unclean shutdown.
       # Never retry it — one malformed chunk must not wedge the queue behind it.

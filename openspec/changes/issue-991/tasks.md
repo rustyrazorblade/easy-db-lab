@@ -35,6 +35,8 @@
 - [x] 4.3 `PyroscopeAgentReplayIntegrationTest`: the pinned agent with `OUTAGE_FLAGS` keeps every 10s snapshot through a 150s Pyroscope outage; without the flags the first 60s are lost
 - [x] 4.3a Pyroscope answers 422 to every push from SIGTERM to exit (about 30s), and the agent drops a 422, so the test lost the windows around the stop. `config.yaml` sets the metastore and segment-writer `min_ready_duration` to `0s` and turns usage reporting off, so the server exits within seconds; `PyroscopeManifestBuilderTest` asserts the three settings (found in review)
 
+- [x] 4.3b `edl-profiling-reconcile` kept treating Pyroscope's 422 (shutdown, start race) and 429 as permanent and renamed the chunk `.rejected`; both now leave it pending for the next pass, and `edl-profiling-reconcile.test.sh` covers each (found in review)
+
 ## 5. Green
 
 - [x] 5.1 `CollectorReplayIntegrationTest` and the Loki restart test pass with the fix

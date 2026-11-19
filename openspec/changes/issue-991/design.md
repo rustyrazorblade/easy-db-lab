@@ -1,6 +1,6 @@
 ## Context
 
-Every node runs the OTel collector DaemonSet (`otel-collector-config.yaml`, rendered by `OtelManifestBuilder`).  It is the only process that writes metrics to Mimir: the stress-job sidecar and the EMR collectors send OTLP to a node collector, and Tempo's metrics generator is configured but inert.  The same collector writes logs to Loki (`otlp_http/logs`) and traces to Tempo (`otlp_grpc/tempo`).  Profiles reach Pyroscope from two other senders: the Alloy eBPF DaemonSet (`pyroscope.write`) and the Pyroscope Java agent (stress jobs, the Cassandra sidecar, EMR Spark, and kits through `edl_pyroscope_opts`).
+Every node runs the OTel collector DaemonSet (`otel-collector-config.yaml`, rendered by `OtelManifestBuilder`).  It is the only process that writes metrics to Mimir: the stress-job sidecar and the EMR collectors send OTLP to a node collector, and Tempo's metrics generator is configured but inert.  The same collector writes logs to Loki (`otlp_http/logs`) and traces to Tempo (`otlp_grpc/tempo`).  Profiles reach Pyroscope from three other senders: the Alloy eBPF DaemonSet (`pyroscope.write`), the Pyroscope Java agent (stress jobs, the Cassandra sidecar, EMR Spark, and kits through `edl_pyroscope_opts`), and the database nodes' JFR shipper `edl-profiling-reconcile`, which posts each finished async-profiler chunk to `/ingest` on a timer and keeps any chunk it could not send for the next pass.
 
 Mimir, Loki and Tempo run as one-replica `Recreate` Deployments.  Every config roll that `ConfigHashAnnotator` triggers takes the backend down for its whole restart, and a bad config takes it down until someone fixes it (11 minutes on qa971f).
 
@@ -89,6 +89,10 @@ For `otlp_http/logs` and `otlp_grpc/tempo`: `retry_on_failure.max_elapsed_time: 
 ### 4. Pyroscope Java agent
 
 Add `-Dpyroscope.ingest.max.tries=-1` and `-Dpyroscope.push.queue.capacity=360` (1 hour of 10s snapshots) wherever the tool starts the agent: `StressJobManifestBuilder`, `SidecarManifestBuilder`, `EMRProvisioningService`, and `edl_pyroscope_opts` in `edl-kit-lib.sh`.  The values go in `Constants.PyroscopeJavaAgent`.  The queue holds compressed JFR snapshots in the JVM heap.
+
+### 4a. Database-node JFR chunks
+
+`edl-profiling-reconcile` already keeps a chunk it could not send and retries it on the next pass, and it never deletes an unshipped chunk.  But it treated every 4xx as a chunk Pyroscope cannot parse and renamed it `.rejected`, never to be sent again, so a pass that hit Pyroscope's 422 window around a restart lost that chunk.  It now leaves a chunk answered 422 or 429 pending, as it does for a 5xx, and keeps `.rejected` for the other 4xx (a 400 for a truncated chunk).
 
 ### 5. Coverage differs per signal
 

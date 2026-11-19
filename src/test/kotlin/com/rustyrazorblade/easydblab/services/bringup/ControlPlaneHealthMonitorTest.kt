@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.io.InterruptedIOException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -120,6 +121,27 @@ class ControlPlaneHealthMonitorTest {
         assertThat(latch.healthy).isTrue()
         assertThat(events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>()).isEmpty()
         assertThat(progress.snapshot().controlPlane).isNotEqualTo(Event.Provision.ControlPlaneState.UNHEALTHY)
+    }
+
+    /**
+     * The client may turn the stop's interrupt into an I/O error and clear the flag. The monitor is
+     * marked stopped before its ticker is closed, so that sample is dropped too.
+     */
+    @Test
+    fun `a sample that fails after the monitor was stopped, with no interrupt left, changes nothing`() {
+        lateinit var m: ControlPlaneHealthMonitor
+        m =
+            monitor(
+                listOf({
+                    m.stop()
+                    throw InterruptedIOException("interrupted")
+                }),
+            )
+
+        m.tick()
+
+        assertThat(latch.healthy).isTrue()
+        assertThat(events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>()).isEmpty()
     }
 
     @Test

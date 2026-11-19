@@ -59,20 +59,34 @@ A step whose pipeline is interrupted MUST interrupt its running attempt and wait
 
 ### Requirement: A node that fails before it joins leaves no old Node behind
 
-A database or application node that fails at a step before its node cleanup MUST delete the alias's Node object and its K3s node password when it fails, if an earlier instance of the alias may have registered them: the node was replaced in this `up`, or its first instance was launched in this `up`.  It MUST NOT delete them for a node `up` found running and never replaced, because they may be its own.  The Node's kubelet is gone, so it never posts status again, and the DaemonSet pods bound to it would fail the post-steps' rollout wait on a node already reported failed.  A deletion that fails MUST be added to the node's failure reason; the node has failed either way.
+A database or application node that fails at a step before its node cleanup MUST delete the alias's Node object and its K3s node password when it fails, if an earlier instance of the alias may have registered them: the node was replaced in this `up`, or its first instance was launched in this `up`.  It MUST NOT delete them for a node `up` found running and never replaced, because they may be its own.  The Node's kubelet is gone, so it never posts status again, and the DaemonSet pods bound to it would fail the post-steps' rollout wait on a node already reported failed.  The node's failure MUST be reported (`Provision.NodeFailed`) before the deletion, which waits for the control plane's gate.  A deletion that fails MUST be added to the node's reason in `Provision.NodesFailed`; the node has failed either way.
 
 #### Scenario: A replaced node fails at setup
 - **GIVEN** app0 was found running and registered, and its setup fails on every instance
 - **WHEN** app0 fails after its 2 replacements
 - **THEN** app0's Node object and node password are deleted, and the observability rollout does not wait on app0
 
+#### Scenario: A launched node fails before the gate opens
+- **GIVEN** db1 was launched in this `up` and the control plane's gate is not open yet
+- **WHEN** db1 fails at its image check
+- **THEN** `db1 failed at image-check` is reported at once, and db1's old Node is deleted once the gate opens
+
 #### Scenario: A found-running node fails with no replacement
 - **WHEN** a found-running db1 fails at its image check
 - **THEN** db1's Node object and node password are kept
 
+### Requirement: The bring-up returns only after every pipeline has stopped
+
+When the bring-up ends, by a control node failure or otherwise, it MUST NOT return while any node or control pipeline thread is still running, so nothing a stopped pipeline does (a state save among it) lands after `up` has gone on.
+
+#### Scenario: The control node fails while a node is mid-step
+- **GIVEN** db1 is in its setup step, which takes a moment to stop when interrupted
+- **WHEN** the control node fails and the bring-up stops every pipeline
+- **THEN** the bring-up returns only after db1's setup step has finished stopping
+
 ### Requirement: The health monitor's stop is not an unhealthy sample
 
-A health sample cut short because the monitor itself was stopped (its thread was interrupted) MUST NOT be recorded: it MUST NOT report `Provision.ControlPlaneUnhealthy` or change the latch.
+A health sample that ends after the monitor itself was stopped (it is marked stopped before its thread is interrupted, since the client may clear the interrupt) MUST NOT be recorded: it MUST NOT report `Provision.ControlPlaneUnhealthy` or change the latch.
 
 #### Scenario: The bring-up ends during a sample
 - **WHEN** the last pipeline ends while a health sample is in flight

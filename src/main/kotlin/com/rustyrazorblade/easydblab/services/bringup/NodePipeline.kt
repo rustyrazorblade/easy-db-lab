@@ -191,26 +191,26 @@ internal class NodePipeline(
     }
 
     /**
-     * Ends the node as failed at a step of its pipeline. When its last instance never reached its
-     * join and the alias may hold an older instance's Node (a replacement was made, or the first
-     * instance was launched in this `up`), that Node and its node password are removed first: the
-     * Node's kubelet is gone, so it stays NotReady, and the DaemonSet pods bound to it would hold
-     * the post-steps' rollout wait on a node already reported failed. A removal that fails is
-     * added to the reason; the node has failed anyway.
+     * Ends the node as failed at a step of its pipeline, reporting it at once. When its last
+     * instance never reached its join and the alias may hold an older instance's Node (a
+     * replacement was made, or the first instance was launched in this `up`), that Node and its
+     * node password are then removed: the Node's kubelet is gone, so it stays NotReady, and the
+     * DaemonSet pods bound to it would hold the post-steps' rollout wait on a node already
+     * reported failed. The removal waits for the gate, so the failure is reported before it. A
+     * removal that fails is added to the reason in the summary; the node has failed anyway.
      */
     private fun failedBeforeJoin(end: NodeEnd.Failed): NodeEnd {
+        failed(end)
         val older = end.replacements > 0 || origin == LaunchSink.Origin.LAUNCHED
-        if (!older || end.step >= PipelineStep.NODE_CLEANUP || run.settings.noSetup) return failed(end)
+        if (!older || end.step >= PipelineStep.NODE_CLEANUP || run.settings.noSetup) return end
         // Waits for the gate, as a join would; an interrupt (the control node failed) propagates.
         val connection = run.controlPlane.get().connection
-        val removed =
-            runCatchingException { connection.cleanup(alias) }
-                .onFailure { log.warn(it) { "Removing $alias's old node after it failed did not succeed" } }
-        return failed(
-            removed.fold(
-                { end },
-                { end.copy(reason = "${end.reason}; removing the old node $alias from the control plane failed: ${it.messageOrString()}") },
-            ),
+        return runCatchingException { connection.cleanup(alias) }.fold(
+            { end },
+            {
+                log.warn(it) { "Removing $alias's old node after it failed did not succeed" }
+                end.copy(reason = "${end.reason}; removing the old node $alias from the control plane failed: ${it.messageOrString()}")
+            },
         )
     }
 

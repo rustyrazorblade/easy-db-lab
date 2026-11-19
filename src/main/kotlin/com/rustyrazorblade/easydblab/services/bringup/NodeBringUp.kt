@@ -58,8 +58,10 @@ class NodeBringUp(
      */
     fun run(launch: (LaunchSink) -> Unit): BringUpResult =
         BringUpRun(ports, settings, reporting, clock).use { run ->
-            Executors.newVirtualThreadPerTaskExecutor().use { executor ->
-                Coordinator(run, executor).bringUp(launch)
+            PipelineThreads().use { threads ->
+                Executors.newThreadPerTaskExecutor(threads).use { executor ->
+                    Coordinator(run, executor).bringUp(launch)
+                }
             }
         }
 

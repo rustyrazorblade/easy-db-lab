@@ -204,7 +204,9 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
   `K3sControlSteps`, `Fabric8ControlPlaneConnector`, `Fabric8ControlPlaneReader`, `NodeWatcher`,
   `NodeCleanup`, `ControlPlaneSampler`) are in `bringup/k3s/`. A second provider
   adds its own adapter package; it never changes the ports.
-- **Coordination**: one virtual thread per node. Shared limits are in `Limiters.kt` (join slots,
+- **Coordination**: one virtual thread per node, made by `PipelineThreads`; `NodeBringUp.run`
+  closes it after the executor, joining every pipeline thread, because a cancelled pipeline's
+  future is done before its thread stops and that thread may still save the state. Shared limits are in `Limiters.kt` (join slots,
   SSH sessions); the workspace files, the registry certificate and the open control plane
   (released by the gate) are latches in `BringUpRun`. Use `ReentrantLock`, not `synchronized`, so a virtual thread never pins.
 - **Failure**: `StepRunner` retries only an `AttemptFailed`; a node step that still fails goes to
@@ -217,8 +219,10 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
   instance ended, it interrupts the attempt and returns at once, so the replacement starts.
   A node that fails before its node cleanup, after a replacement or when launched in this `up`,
   deletes the alias's old Node and node password in `NodePipeline.failedBeforeJoin`, so a stale
-  NotReady Node cannot fail the post-steps' rollout wait. `ControlPlaneHealthMonitor.tick` drops a
-  sample cut short by its own stop (thread interrupted).
+  NotReady Node cannot fail the post-steps' rollout wait. It emits `NodeFailed` first, then waits
+  for the gate to delete; a failed deletion is added to the reason in `NodesFailed`.
+  `ControlPipeline` calls `ControlPlaneHealthMonitor.stop()` before closing its ticker, and `tick`
+  drops a sample that ends after the stop or with its thread interrupted.
 - **Output tail**: every node's script lines go to `output/NodeOutput` as `[alias] ...`, each line
   carrying the instance that printed it. `NodeBringUp` takes a `BringUpReporting` (the event bus and
   the `NodeOutput`); `BringUpRun` exposes both. `InstanceRun` calls `reset(alias, instanceId)` when
@@ -228,7 +232,7 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
   `NodeBringUp.run` in `NodeOutput.quietly`: quiet ends when the last pipeline ends, and the
   post-steps print as usual. The tail is kept in quiet mode too.
 - **Tests**: `src/test/.../services/bringup/BringUpFakes.kt` and `FakeInstanceFleet` drive every
-  pipeline without SSH or AWS; `UpTestFixture` wires the real `K3sBringUpSteps` over a fake
+  pipeline without SSH or AWS (`NodeBringUpTest`, `NodeCleanupBringUpTest`, `ControlNodeFailureBringUpTest`); `UpTestFixture` wires the real `K3sBringUpSteps` over a fake
   `RemoteOperationsService` with fake tracker, fleet and control plane.
 
 ## Node Setup and OS Tuning

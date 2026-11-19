@@ -199,9 +199,10 @@ When a node has used its replacements, or the cluster has used its limit, the no
 keeps its last instance for debugging. `up` prints the failure as it happens
 (`db7 failed at setup: ...`). The other nodes and the cluster-wide steps still finish.
 A node that failed before its last instance joined has the alias's old Node and node password
-deleted when it fails, if an earlier instance may have registered them (it was replaced, or it
+deleted once the control plane is ready, after its failure is printed, if an earlier instance may have registered them (it was replaced, or it
 was launched in this `up`). That Node's kubelet is gone, so it would stay NotReady and hold the
-observability rollout on a node already reported failed.
+observability rollout on a node already reported failed. If the deletion fails, the summary
+below adds that to the node's reason.
 Then `up` names each failed node, its instance, its step and the reason, and exits non-zero:
 
 ```

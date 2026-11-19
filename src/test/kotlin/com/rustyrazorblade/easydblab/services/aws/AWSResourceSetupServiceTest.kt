@@ -8,6 +8,9 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.ErrorDescription
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.AwsIamRoles
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
@@ -78,7 +81,7 @@ internal class AWSResourceSetupServiceTest :
                 ).message(code)
                 .build() as StsException
 
-        /** Clock skew, a 5xx and throttling: none is a credentials or permission problem. */
+        /** Clock skew, a 5xx and throttling: the AWS handler claims none of them, so each takes the unclaimed path. */
         @JvmStatic
         fun neitherCredentialsNorPermission(): Stream<StsException> =
             Stream.of(
@@ -419,6 +422,25 @@ internal class AWSResourceSetupServiceTest :
             .thenThrow(failure)
 
         assertThatThrownBy { service.ensureAWSResources(userConfig) }.isSameAs(failure)
+
+        assertThat(capturedEvents).noneMatch {
+            it.event is Event.AwsSetup.AuthenticationError || it.event is Event.AwsSetup.IamPermissionError
+        }
+    }
+
+    @Test
+    fun `a failure the handler calls unavailable is rethrown unchanged with no guidance`() {
+        val unavailable =
+            object : ProviderErrorHandler {
+                override fun describe(error: Throwable) = ErrorDescription("AWS", ProviderErrorKind.UNAVAILABLE, "down", "retry later")
+            }
+        val unavailableService = AWSResourceSetupService(accountIdentity, iamRoles, eventBus, InstanceRolePolicies(iamRoles), unavailable)
+        stubInvalidRoleSetup()
+        val failure = stsFailure(503, "ServiceUnavailable")
+        whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
+            .thenThrow(failure)
+
+        assertThatThrownBy { unavailableService.ensureAWSResources(createUserConfig()) }.isSameAs(failure)
 
         assertThat(capturedEvents).noneMatch {
             it.event is Event.AwsSetup.AuthenticationError || it.event is Event.AwsSetup.IamPermissionError

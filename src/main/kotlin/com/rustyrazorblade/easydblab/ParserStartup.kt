@@ -7,9 +7,9 @@ import com.rustyrazorblade.easydblab.services.CommandFailureReporter
  * stack trace.
  *
  * Building the parser registers kit subcommands and resolves beans, outside any command's
- * lifecycle, so nothing else would report a failure there. The reporter is resolved before the
- * parser is built, so a broken parser bean cannot also break the report. An [Error] is not ours to
- * report and propagates.
+ * lifecycle, so nothing else would report a failure there. The caller resolves the reporter
+ * before calling this, so a broken parser bean cannot also break the report. An [Error] is not
+ * ours to report and propagates.
  */
 object ParserStartup {
     /** The parser [build] returned, or null after [reporter] has reported why it could not be built. */

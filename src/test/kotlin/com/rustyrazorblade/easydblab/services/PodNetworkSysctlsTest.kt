@@ -19,10 +19,10 @@ class PodNetworkSysctlsTest {
     @Test
     fun `every network key of the host file is classed exactly once, as injected into pods or host only`() {
         // The concatenation holds a key twice when it is in both lists; the file's keys are distinct.
-        val classed = Constants.NodeTuning.POD_NETWORK_SYSCTLS + Constants.NodeTuning.HOST_ONLY_NETWORK_SYSCTLS
+        val classed = Constants.NodeTuning.POD_NETWORK_SYSCTLS + Constants.NodeTuning.NOT_INJECTED_NETWORK_SYSCTLS
         assertThat(classed)
             .describedAs(
-                "a net.* key in the packaged sysctl file is in neither or both of POD_NETWORK_SYSCTLS and HOST_ONLY_NETWORK_SYSCTLS",
+                "a net.* key in the packaged sysctl file is in neither or both of POD_NETWORK_SYSCTLS and NOT_INJECTED_NETWORK_SYSCTLS",
             ).containsExactlyInAnyOrderElementsOf(packagedNetworkKeys())
     }
 

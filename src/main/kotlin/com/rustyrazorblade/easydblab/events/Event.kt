@@ -6260,19 +6260,19 @@ sealed interface Event {
         }
 
         /**
-         * After [timeoutSeconds], a dry-run pod still lacked [missingKeys]; [refusal] is the API
-         * server's message when it refused the pod outright.
+         * After [timeoutSeconds], a dry-run pod still lacked [missingKeys]; [reason] says why the last
+         * probe got no pod back, when the API server refused it or could not be reached.
          */
         @Serializable
         @SerialName("Platform.PodSysctlPolicyNotInEffect")
         data class PodSysctlPolicyNotInEffect(
             val missingKeys: List<String>,
             val timeoutSeconds: Long,
-            val refusal: String? = null,
+            val reason: String? = null,
         ) : Platform {
             override fun toDisplayString(): String =
                 "Error: after ${timeoutSeconds}s a new pod still lacks the pod network sysctls ${missingKeys.joinToString(", ")}" +
-                    (refusal?.let { "; the API server refused the pod: $it" } ?: "")
+                    (reason?.let { "; no pod was admitted: $it" } ?: "")
 
             override fun isError(): Boolean = true
         }

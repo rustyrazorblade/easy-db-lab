@@ -85,7 +85,7 @@ A new reader, `PodNetworkSysctls`, reads `Constants.NodeTuning.RESOURCE_DIR/SYSC
 
 `Constants.NodeTuning` gets two name lists:
 - `POD_NETWORK_SYSCTLS`: the nine per-namespace keys to inject: the table above less `ip_local_port_range` and `ip_local_reserved_ports` (R1).
-- `HOST_ONLY_NETWORK_SYSCTLS`: `net.core.netdev_max_backlog`, `net.core.rmem_max`, `net.core.wmem_max`, `net.core.rps_sock_flow_entries`, `net.ipv4.ip_local_port_range` and `net.ipv4.ip_local_reserved_ports` (R1).
+- `NOT_INJECTED_NETWORK_SYSCTLS`: `net.core.netdev_max_backlog`, `net.core.rmem_max`, `net.core.wmem_max`, `net.core.rps_sock_flow_entries`, `net.ipv4.ip_local_port_range` and `net.ipv4.ip_local_reserved_ports` (R1).
 
 A unit test parses the packaged file and fails when a `net.*` key in it is in neither list or in both.  A new network key added to the host file therefore fails the build until someone decides whether pods get it.
 
@@ -158,7 +158,7 @@ Also checked once: a host-network pod (the OTel collector) has no injected `sysc
 
 ## Resolved (owner decisions, 2026-11-19)
 
-**R1. Pods keep the kernel defaults for `ip_local_port_range` and `ip_local_reserved_ports`.**  Both are in `HOST_ONLY_NETWORK_SYSCTLS`, not injected.  The host's reserved list names host ports, not a pod's own listener ports, so the host's wide 1024-65535 range in a pod would let a database's outbound connection take its own listener port; the default 32768-60999 range sits above every kit's listener port.
+**R1. Pods keep the kernel defaults for `ip_local_port_range` and `ip_local_reserved_ports`.**  Both are in `NOT_INJECTED_NETWORK_SYSCTLS`, not injected.  The host's reserved list names host ports, not a pod's own listener ports, so the host's wide 1024-65535 range in a pod would let a database's outbound connection take its own listener port; the default 32768-60999 range sits above every kit's listener port.
 
 **R2. Every pod in the pod network gets the values, not only kit pods.**  Operator-built pods carry the operator's labels, not the kit's, so a kit-label match would miss them; every pod also matches a tuned production host, where every process gets these values.
 

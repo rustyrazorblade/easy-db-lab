@@ -17,6 +17,11 @@ sealed interface ProbeResult {
     data class Refused(
         val reason: String,
     ) : ProbeResult
+
+    /** The API server could not be reached (a transport failure); [reason] says why. The probe is tried again. */
+    data class Unreachable(
+        val reason: String,
+    ) : ProbeResult
 }
 
 /**
@@ -32,7 +37,9 @@ fun interface PodSysctlProbe {
  * [PodSysctlProbe] over fabric8: a `dryRun=All` create of a plain pod in
  * [Constants.NodeTuning.POD_SYSCTL_PROBE_NAMESPACE].
  *
- * A failure to reach the cluster propagates; only a refusal by the API server is a [ProbeResult.Refused].
+ * An answer from the API server that refuses the pod is a [ProbeResult.Refused]; a client exception
+ * with no HTTP status (the cluster was not reached) is a [ProbeResult.Unreachable], so one transient
+ * failure does not end the wait.
  */
 class Fabric8PodSysctlProbe(
     private val clientProvider: K8sClientProvider,
@@ -41,8 +48,10 @@ class Fabric8PodSysctlProbe(
         try {
             ProbeResult.Admitted(sysctlsOf(admit(probePod())))
         } catch (e: KubernetesClientException) {
-            if (e.code == 0) throw e
-            ProbeResult.Refused(e.status?.message ?: e.messageOrString())
+            when (e.code) {
+                0 -> ProbeResult.Unreachable(e.messageOrString())
+                else -> ProbeResult.Refused(e.status?.message ?: e.messageOrString())
+            }
         }
 
     /** [pod] as the API server would create it, after every admission plugin and policy; nothing is created. */

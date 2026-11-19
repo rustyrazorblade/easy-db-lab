@@ -51,8 +51,7 @@ class PodNetworkTuning(
             ) { probe.probe() }
         val missing = missing(last)
         if (missing.isNotEmpty()) {
-            val refusal = (last as? ProbeResult.Refused)?.reason
-            eventBus.emit(Event.Platform.PodSysctlPolicyNotInEffect(missing, readyTimeout.seconds, refusal))
+            eventBus.emit(Event.Platform.PodSysctlPolicyNotInEffect(missing, readyTimeout.seconds, reasonOf(last)))
             throw CommandFailedException(
                 "The pod network sysctl policy was not in effect after ${readyTimeout.seconds}s; a new pod lacks $missing",
             )
@@ -60,10 +59,18 @@ class PodNetworkTuning(
         eventBus.emit(Event.Platform.PodSysctlPolicyReady(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, sysctls))
     }
 
-    /** The injected keys [result] does not carry with the injected value; every key when the pod was refused. */
+    /** The injected keys [result] does not carry with the injected value; every key when no pod was admitted. */
     private fun missing(result: ProbeResult): List<String> =
         when (result) {
-            is ProbeResult.Refused -> sysctls.keys.toList()
+            is ProbeResult.Refused, is ProbeResult.Unreachable -> sysctls.keys.toList()
             is ProbeResult.Admitted -> sysctls.filter { (key, value) -> result.sysctls[key] != value }.keys.toList()
+        }
+
+    /** Why the last probe admitted no pod, or null when it did. */
+    private fun reasonOf(result: ProbeResult): String? =
+        when (result) {
+            is ProbeResult.Refused -> result.reason
+            is ProbeResult.Unreachable -> result.reason
+            is ProbeResult.Admitted -> null
         }
 }

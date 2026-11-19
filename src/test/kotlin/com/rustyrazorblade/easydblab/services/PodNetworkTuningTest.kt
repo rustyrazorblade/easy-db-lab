@@ -84,6 +84,28 @@ class PodNetworkTuningTest {
     }
 
     @Test
+    fun `an unreachable API server is probed again until it answers`() {
+        var probes = 0
+        tuning {
+            probes++
+            if (probes == 1) ProbeResult.Unreachable("connect timed out") else ProbeResult.Admitted(sysctls)
+        }.apply()
+
+        assertThat(probes).isEqualTo(2)
+        assertThat(events.single()).isInstanceOf(Event.Platform.PodSysctlPolicyReady::class.java)
+    }
+
+    @Test
+    fun `an API server unreachable until the deadline fails naming every key and the reason`() {
+        val probe = PodSysctlProbe { ProbeResult.Unreachable("connect timed out") }
+
+        assertThatThrownBy { tuning(probe).apply() }.isInstanceOf(CommandFailedException::class.java)
+        assertThat(events).containsExactly(
+            Event.Platform.PodSysctlPolicyNotInEffect(sysctls.keys.toList(), 0, "connect timed out"),
+        )
+    }
+
+    @Test
     fun `a policy the API server rejects fails before any probe`() {
         manifests.failure = IllegalStateException("no kind MutatingAdmissionPolicy")
         var probes = 0

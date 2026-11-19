@@ -655,7 +655,7 @@ object Constants {
          * The network keys of [SYSCTL_FILE] that are per network namespace and that every pod in
          * the pod network gets (pod-network-tuning). Their values are read from [SYSCTL_FILE] by
          * `PodNetworkSysctls`, never repeated here. Every `net.*` key of the file is in exactly one
-         * of this list and [HOST_ONLY_NETWORK_SYSCTLS]; PodNetworkSysctlsTest checks it.
+         * of this list and [NOT_INJECTED_NETWORK_SYSCTLS]; PodNetworkSysctlsTest checks it.
          */
         val POD_NETWORK_SYSCTLS =
             listOf(
@@ -676,7 +676,7 @@ object Constants {
          * kernel's port range and reserved list: the host's reserved list names host ports, not a
          * pod's own listeners (owner decision R1 of #1202).
          */
-        val HOST_ONLY_NETWORK_SYSCTLS =
+        val NOT_INJECTED_NETWORK_SYSCTLS =
             listOf(
                 "net.core.netdev_max_backlog",
                 "net.core.rmem_max",

@@ -259,7 +259,7 @@ The per-namespace `net.*` keys of the tuning file also reach every non-hostNetwo
 - `PodNetworkSysctls` reads the packaged `60-easydblab.conf` and returns the keys of
   `Constants.NodeTuning.POD_NETWORK_SYSCTLS` with the file's values. It is the only source of the
   numbers; `PodNetworkSysctlsTest` fails when a `net.*` key of the file is in neither
-  `POD_NETWORK_SYSCTLS` nor `HOST_ONLY_NETWORK_SYSCTLS`, or in both.
+  `POD_NETWORK_SYSCTLS` nor `NOT_INJECTED_NETWORK_SYSCTLS`, or in both.
 - `PodNetworkTuning` is the first of `UpPostSteps`: it applies `configuration/PodNetworkSysctlPolicyBuilder`
   through `K8sManifestOperations`, then polls `PodSysctlProbe` (a `dryRun=All` pod,
   `Fabric8PodSysctlProbe`) until the pod carries every value, up to

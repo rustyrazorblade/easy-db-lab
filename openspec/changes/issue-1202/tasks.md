@@ -7,7 +7,7 @@
 
 ## 2. Shared values
 
-- [x] 2.1 `Constants.NodeTuning`: `POD_NETWORK_SYSCTLS`, `HOST_ONLY_NETWORK_SYSCTLS`, `POD_SYSCTL_POLICY_NAME`, `POD_SYSCTL_POLICY_READY_SECONDS`.
+- [x] 2.1 `Constants.NodeTuning`: `POD_NETWORK_SYSCTLS`, `NOT_INJECTED_NETWORK_SYSCTLS`, `POD_SYSCTL_POLICY_NAME`, `POD_SYSCTL_POLICY_READY_SECONDS`.
 - [x] 2.2 `PodNetworkSysctls`: reads the packaged `60-easydblab.conf` from the classpath and returns the injected keys with their values; fails naming a missing key.
 - [x] 2.3 Unit tests: every `net.*` key in the file is in exactly one list; the reader returns the file's values; a missing key fails with its name.
 

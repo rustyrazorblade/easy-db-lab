@@ -20,6 +20,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
+import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
@@ -53,6 +54,7 @@ import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.LaunchGroup
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.missingOrdinals
+import com.rustyrazorblade.easydblab.services.bringup.BringUpReporting
 import com.rustyrazorblade.easydblab.services.bringup.BringUpResult
 import com.rustyrazorblade.easydblab.services.bringup.BringUpSettings
 import com.rustyrazorblade.easydblab.services.bringup.BringUpTiming
@@ -128,6 +130,7 @@ class Up(
     private val documentService: DocumentService by inject()
     private val tcpReachabilityProbe: TcpReachabilityProbe by inject()
     private val ec2BringUpPorts: Ec2BringUpPorts by inject()
+    private val nodeOutput: NodeOutput by inject()
 
     // Working copy loaded during execute(). Once the launch starts, every change goes through [writer].
     private lateinit var workingState: ClusterState
@@ -145,6 +148,12 @@ class Up(
         description = ["Provision the instances only: skip instance setup, K3s, and AxonOps configuration"],
     )
     var noSetup = false
+
+    @CommandLine.Option(
+        names = ["--quiet", "-q"],
+        description = ["Hide the output of each node's scripts; Ready lines, progress and failures (with their last output) still print"],
+    )
+    var quiet = false
 
     @CommandLine.Mixin
     var hosts = HostsMixin()
@@ -212,8 +221,9 @@ class Up(
                 instanceConfig.replacementLaunches(),
                 replacementPlan,
             )
-        val result =
-            NodeBringUp(ec2BringUpPorts.ports(request), bringUpSettings(initConfig), eventBus).run { sink ->
+        val nodeBringUp = NodeBringUp(ec2BringUpPorts.ports(request), bringUpSettings(initConfig), BringUpReporting(eventBus, nodeOutput))
+        val runPipelines = {
+            nodeBringUp.run { sink ->
                 existingHosts.forEach { (serverType, hosts) -> sink.launched(serverType, hosts, LaunchSink.Origin.FOUND_RUNNING) }
                 try {
                     reportProvisioningFailures(executeProvisioning(instanceConfig, servicesConfig, existingHosts, sink, launched))
@@ -221,6 +231,9 @@ class Up(
                     launched.complete(Unit)
                 }
             }
+        }
+        // --quiet hides the pipelines' script output only; the post-steps print as they always do.
+        val result = if (quiet) nodeOutput.quietly(runPipelines) else runPipelines()
         printProvisioningSuccessMessage()
         eventBus.emit(Event.Provision.ClusterStateUpdated(writer.read { state -> state.hosts.values.sumOf { it.size } }))
         return result

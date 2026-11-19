@@ -1,26 +1,24 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.services.bringup.BringUpHarness.Companion.hang
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
-import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
 import java.time.Duration
-import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
  * The coordinator's decisions (design D11), each one over fakes: when a node may go on without
  * the others, when a step is retried, when a node is replaced and how, when it fails for good,
- * what the control plane's gate and health hold back, and what a control node failure stops.
+ * and what the control plane's gate and health hold back. The node cleanup is in
+ * [NodeCleanupBringUpTest], and a control node failure in [ControlNodeFailureBringUpTest].
  */
 class NodeBringUpTest {
     @TempDir
@@ -120,130 +118,6 @@ class NodeBringUpTest {
         assertThat(h.eventsOf<Event.Provision.NodeReplacing>().single().step).isEqualTo("setup")
     }
 
-    /**
-     * Whatever step the first instance stopped at, the alias may hold a Node and a node password,
-     * left by this run or by an earlier `up` (which would make K3s refuse the replacement), so the
-     * replacement removes them once, before its first join. The first instances here were found
-     * running, so they may own those objects and remove nothing.
-     */
-    @ParameterizedTest
-    @ValueSource(strings = ["setup", "registry-tls", "join", "readiness", "ended"])
-    fun `a replacement removes its alias's old cluster objects once, before its first join`(stoppedAt: String) {
-        val h = harness(dbs = 2)
-        h.foundRunning = setOf("db0", "db1")
-        val first = { host: ClusterHost -> host.instanceId == "i-db1" }
-        when (stoppedAt) {
-            "readiness" -> h.plane.neverReady += h.dbs[1].privateIp
-            "ended" ->
-                h.steps.scripts["db1 setup"] = { host, _ ->
-                    if (first(host)) {
-                        h.tracker.end(host.instanceId)
-                        hang()
-                    }
-                }
-            else -> h.steps.scripts["db1 $stoppedAt"] = { host, _ -> check(!first(host)) { "$stoppedAt failed" } }
-        }
-        val cleanedAtJoin = Collections.synchronizedList(mutableListOf<String>())
-        val joinScript = h.steps.scripts["db1 join"]
-        h.steps.scripts["db1 join"] = { host, attempt ->
-            cleanedAtJoin += "${host.instanceId} ${h.plane.cleaned}"
-            joinScript?.invoke(host, attempt)
-        }
-
-        val result = h.run()
-
-        assertThat(result.nodes.values).allMatch { it is NodeEnd.Ready }
-        assertThat(
-            result.nodes
-                .getValue("db1")
-                .host.instanceId,
-        ).isEqualTo("i-db1-1")
-        assertThat(h.plane.cleaned).containsExactly("db1")
-        assertThat(cleanedAtJoin.filter { it.startsWith("i-db1 ") }).allMatch { it == "i-db1 []" }
-        assertThat(cleanedAtJoin.filter { it.startsWith("i-db1-1 ") }).containsExactly("i-db1-1 [db1]")
-    }
-
-    /**
-     * An instance launched in this `up` takes its alias from one an earlier `up` started, which may
-     * have registered and gone (terminated outside `up`), so it removes the alias's objects once,
-     * before its first join, or K3s refuses it ("Node password rejected"). An instance found
-     * running may be the one that owns them, so it removes nothing. Each row mixes the two.
-     */
-    @ParameterizedTest
-    @CsvSource(
-        "'', 'db0,db1,app0'",
-        "'db0,db1,app0', ''",
-        "'db1', 'db0,app0'",
-        "'db0,app0', 'db1'",
-    )
-    fun `a first instance launched in this up removes its alias's old cluster objects once, before its first join`(
-        foundRunning: String,
-        launched: String,
-    ) {
-        val h = harness(dbs = 2, apps = 1)
-        h.foundRunning = foundRunning.split(",").filter { it.isNotEmpty() }.toSet()
-        val cleanedAtJoin = Collections.synchronizedList(mutableListOf<String>())
-        (h.dbs + h.apps).forEach { node ->
-            h.steps.scripts["${node.alias} join"] = { host, _ -> cleanedAtJoin += "${host.alias} ${host.alias in h.plane.cleaned}" }
-        }
-
-        val result = h.run()
-
-        assertThat(result.nodes.values).allMatch { it is NodeEnd.Ready }
-        val expected = launched.split(",").filter { it.isNotEmpty() }
-        assertThat(h.plane.cleaned).containsExactlyInAnyOrderElementsOf(expected)
-        assertThat(cleanedAtJoin).containsExactlyInAnyOrderElementsOf(
-            (h.dbs + h.apps).map { "${it.alias} ${it.alias in expected}" },
-        )
-    }
-
-    /**
-     * A cleanup that fails (the control plane still holds the old Node) is a control-plane fault, not
-     * an instance fault: replacing the healthy instance would burn a budget slot and wait on the
-     * same Node, so the node fails on its instance, which is kept.
-     */
-    @Test
-    fun `a failed cleanup of the old node fails the node with no replacement`() {
-        val h = harness(dbs = 2)
-        h.plane.cleanupFailures["db1"] = "Node db1 (uid u1) was still present: deletionTimestamp=t"
-
-        val result = h.run()
-
-        val end = result.nodes.getValue("db1")
-        assertThat(end).isInstanceOf(NodeEnd.Failed::class.java)
-        assertThat(end.replacements).isEqualTo(0)
-        assertThat(h.fleet.calls).isEmpty()
-        assertThat(result.nodes.getValue("db0")).isInstanceOf(NodeEnd.Ready::class.java)
-        val failed = h.eventsOf<Event.Provision.NodeFailed>().single()
-        assertThat(failed.step).isEqualTo("node-cleanup")
-        assertThat(failed.reason).contains("db1").contains("deletionTimestamp=t")
-    }
-
-    @Test
-    fun `a cleanup that fails once and then succeeds ends Ready with no replacement`() {
-        val h = harness(dbs = 2)
-        h.plane.cleanupFlakes["db1"] = 1
-
-        val result = h.run()
-
-        assertThat(result.nodes.getValue("db1")).isInstanceOf(NodeEnd.Ready::class.java)
-        assertThat(result.nodes.getValue("db1").replacements).isEqualTo(0)
-        assertThat(h.fleet.calls).isEmpty()
-        assertThat(h.plane.cleaned).contains("db1")
-    }
-
-    @Test
-    fun `a registered node that never becomes Ready is removed from the cluster before its replacement joins`() {
-        val h = harness(dbs = 2)
-        h.plane.neverReady += h.dbs[1].privateIp
-
-        val result = h.run()
-
-        assertThat(h.plane.registered.filter { it == "db1" }).hasSize(2)
-        assertThat(result.nodes.getValue("db1").replacements).isEqualTo(1)
-        assertThat(h.eventsOf<Event.Provision.NodeReplacing>().single().step).isEqualTo("readiness")
-    }
-
     @Test
     fun `an instance that ends mid-setup is replaced at once, with no retry`() {
         val h = harness(dbs = 3)
@@ -315,7 +189,17 @@ class NodeBringUpTest {
         assertThat(h.fleet.calls).containsExactly("terminate i-db1", "verify db1", "launch db1")
         assertThat(h.eventsOf<Event.Provision.NodeReplaceFailed>().single().oldInstanceKept).isFalse()
         assertThat(h.eventsOf<Event.Provision.NodeFailed>().single())
-            .isEqualTo(Event.Provision.NodeFailed("db1", "setup", failed.reason, "i-db1", instanceKept = false))
+            .isEqualTo(
+                Event.Provision.NodeFailed(
+                    "db1",
+                    "setup",
+                    failed.reason,
+                    "i-db1",
+                    instanceKept = false,
+                    // The launch was refused, so the tail still belongs to the first instance: its retry mark.
+                    outputTail = listOf("setup attempt 2"),
+                ),
+            )
         assertThat(
             result
                 .failureEvent()
@@ -385,24 +269,6 @@ class NodeBringUpTest {
         h.plane.open.set(true)
         assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).allMatch { it is NodeEnd.Ready }
         assertThat(h.eventsOf<Event.Provision.ControlPlaneGateOpen>()).hasSize(1)
-    }
-
-    @Test
-    fun `a gate that never opens fails the control node, naming what is still false`() {
-        val h = harness(dbs = 1)
-        h.plane.open.set(false)
-
-        assertThatThrownBy { h.run() }
-            .isInstanceOfSatisfying(ControlNodeFailedException::class.java) {
-                assertThat(it.step).isEqualTo("gate")
-                assertThat(it.reason).contains("API server ready")
-            }
-        assertThat(h.steps.callsOf("join")).isEmpty()
-        assertThat(h.fleet.calls).isEmpty()
-        val reported = h.eventsOf<Event.Provision.ControlNodeFailed>().single()
-        assertThat(reported.step).isEqualTo("gate")
-        assertThat(reported.reason).contains("API server ready")
-        assertThat(reported.isError()).isTrue()
     }
 
     @Test
@@ -588,39 +454,41 @@ class NodeBringUpTest {
     }
 
     @Test
-    fun `a control plane unhealthy past its deadline fails up, naming the last sample`() {
+    fun `a node that fails for good carries the last output of its last instance only`() {
         val h = harness(dbs = 2)
-        h.settings = h.settings.copy(timing = h.settings.timing.copy(unhealthyTimeout = Duration.ofMillis(SETTLE_MS)))
-        h.plane.unhealthy.set(true)
-        // Hold the node until the monitor has seen the control plane unhealthy, so it cannot join first.
-        h.steps.scripts["db0 registry-tls"] = { _, _ ->
-            h.waitFor("unhealthy") { h.eventsOf<Event.Provision.ControlPlaneUnhealthy>().isNotEmpty() }
+        h.steps.scripts["db0 setup"] = { host, attempt ->
+            h.nodeOutput.line(host.alias, NodeStream.Stdout, "${host.instanceId} attempt $attempt")
+            h.nodeOutput.line(host.alias, NodeStream.Stderr, "${host.instanceId} E: no disk")
+            error("setup_instance.sh exited 1")
         }
 
-        assertThatThrownBy { h.run() }
-            .isInstanceOfSatisfying(ControlNodeFailedException::class.java) {
-                assertThat(it.step).isEqualTo("control-plane-health")
-                assertThat(it.reason).contains("60000ms").endsWith(". ${FakeControlPlane.RECOVERY}")
-            }
-        assertThat(h.fleet.calls).isEmpty()
-    }
+        h.run()
 
-    @Test
-    fun `a control step that fails after its retries stops every pipeline and replaces nothing`() {
-        val h = harness(dbs = 3)
-        h.steps.scripts["control0 control-plane"] = { _, _ -> error("k3s.service failed") }
-        h.steps.scripts["db1 setup"] = { _, _ -> hang() }
-
-        assertThatThrownBy { h.run() }
-            .isInstanceOfSatisfying(ControlNodeFailedException::class.java) {
-                assertThat(it.alias).isEqualTo("control0")
-                assertThat(it.step).isEqualTo("control-plane")
-                assertThat(it.reason).contains("k3s.service failed")
-            }
-        assertThat(h.steps.callsOf("control-plane")).hasSize(2)
-        assertThat(h.steps.callsOf("join")).isEmpty()
-        assertThat(h.fleet.calls).isEmpty()
-        assertThat(h.saved(ServerType.Cassandra)).hasSize(3)
+        val failed = h.eventsOf<Event.Provision.NodeFailed>().single()
+        assertThat(failed.instanceId).isEqualTo("i-db0-2")
+        assertThat(failed.outputTail).containsExactly(
+            "i-db0-2 attempt 1",
+            "stderr: i-db0-2 E: no disk",
+            "setup attempt 2",
+            "i-db0-2 attempt 2",
+            "stderr: i-db0-2 E: no disk",
+        )
+        // Every instance's lines still reached the console, tagged with the node, each second attempt after its mark.
+        assertThat(
+            h.nodeOutput.stdout
+                .filter { it.startsWith("[db0]") }
+                .map { it.substringAfter("]").trim() },
+        ).containsExactly(
+            "i-db0 attempt 1",
+            "setup attempt 2",
+            "i-db0 attempt 2",
+            "i-db0-1 attempt 1",
+            "setup attempt 2",
+            "i-db0-1 attempt 2",
+            "i-db0-2 attempt 1",
+            "setup attempt 2",
+            "i-db0-2 attempt 2",
+        )
     }
 
     @Test

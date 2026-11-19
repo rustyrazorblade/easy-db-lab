@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.captureStdout
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -41,11 +42,11 @@ class CqlTest : BaseKoinTest() {
 
         val command = Cql()
         command.statement = "SELECT * FROM system.local"
-        command.execute()
+        val printed = captureStdout { command.execute() }
 
-        verify(mockCqlSessionService).execute("SELECT * FROM system.local")
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("Test Cluster")
+        // The rows are printed as plain, untagged text, and no event carries them.
+        assertThat(printed).isEqualTo("cluster_name\nTest Cluster\n")
+        assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("Test Cluster")
     }
 
     @Test

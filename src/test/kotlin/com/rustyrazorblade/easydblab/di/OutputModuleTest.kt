@@ -4,6 +4,9 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.output.CompositeOutputHandler
 import com.rustyrazorblade.easydblab.output.ConsoleOutputHandler
 import com.rustyrazorblade.easydblab.output.LoggerOutputHandler
+import com.rustyrazorblade.easydblab.output.NodeOutput
+import com.rustyrazorblade.easydblab.output.NodeOutputTail
+import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -50,5 +53,15 @@ class OutputModuleTest : BaseKoinTest() {
         val handler2: OutputHandler by inject()
 
         assertThat(handler1).isSameAs(handler2)
+    }
+
+    /** A tail is read from the instance the lines were written to; two instances would always read empty. */
+    @Test
+    fun `the node output and its tail are the same instance`() {
+        val written = getKoin().get<NodeOutput>()
+        written.line("db0", NodeStream.Stdout, "kept")
+
+        assertThat(getKoin().get<NodeOutputTail>()).isSameAs(written)
+        assertThat(getKoin().get<NodeOutputTail>().tail("db0")).containsExactly("kept")
     }
 }

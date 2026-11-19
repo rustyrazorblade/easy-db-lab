@@ -15,6 +15,8 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.NodeOutput
+import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
@@ -306,11 +308,14 @@ abstract class UpTestFixture : BaseKoinTest() {
                 }
             }
 
-            factory<RemoteOperationsService> { fakeRemoteOperations() }
+            factory<RemoteOperationsService> { fakeRemoteOperations(get()) }
         }
 
-    /** An SSH layer that runs nothing and answers through [fakeRemoteResponse]. */
-    private fun fakeRemoteOperations(): RemoteOperationsService =
+    /**
+     * An SSH layer that runs nothing and answers through [fakeRemoteResponse]. A command run with
+     * its output shown writes one line to [nodeOutput], tagged with its host, as the real adapter does.
+     */
+    private fun fakeRemoteOperations(nodeOutput: NodeOutput): RemoteOperationsService =
         object : RemoteOperationsService {
             override fun executeRemotely(
                 host: Host,
@@ -318,7 +323,10 @@ abstract class UpTestFixture : BaseKoinTest() {
                 output: Boolean,
                 secret: Boolean,
             ): Response {
-                if (output) echoedCommands.add(command)
+                if (output) {
+                    echoedCommands.add(command)
+                    nodeOutput.line(host.alias, NodeStream.Stdout, "ran $command", host.instanceId)
+                }
                 return fakeRemoteResponse(host, command)
             }
 
@@ -326,6 +334,7 @@ abstract class UpTestFixture : BaseKoinTest() {
                 host: Host,
                 local: Path,
                 remote: String,
+                notice: String,
             ) {
                 // The setup script is uploaded from a relative path that tests do not create.
                 uploads += remote to

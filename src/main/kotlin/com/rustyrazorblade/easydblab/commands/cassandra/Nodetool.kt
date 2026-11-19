@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -44,14 +46,13 @@ class Nodetool : PicoBaseCommand() {
         val command = args.joinToString(" ")
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
-            // output = false: the NodetoolOutput event prints the output once, under the host's header.
-            val result =
-                remoteOps.executeRemotely(
-                    host.toHost(),
-                    "/usr/local/cassandra/current/bin/nodetool $command",
-                    output = false,
-                )
-            eventBus.emit(Event.Cassandra.NodetoolOutput(host.alias, result.text))
+            // Each line prints as it arrives, tagged with the host, so a failure is named by its
+            // one-line summary: its output was already printed and is not repeated.
+            try {
+                remoteOps.executeRemotely(host.toHost(), "/usr/local/cassandra/current/bin/nodetool $command")
+            } catch (e: RemoteCommandFailedException) {
+                throw CommandFailedException("nodetool failed on ${host.alias}: ${e.summary}")
+            }
         }
     }
 }

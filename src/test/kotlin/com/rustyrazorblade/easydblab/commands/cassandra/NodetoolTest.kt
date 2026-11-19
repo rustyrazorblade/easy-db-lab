@@ -7,8 +7,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultRemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
@@ -16,7 +18,9 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.SSHClient
 import org.apache.sshd.client.session.ClientSession
+import org.apache.sshd.common.io.IoSession
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -25,11 +29,13 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.OutputStream
+import java.net.InetSocketAddress
 import java.nio.charset.Charset
+import java.rmi.RemoteException
 
 /**
- * Tests `cassandra nt` through the real remote-operations and SSH layers, so a host's output that
- * is printed both as it streams and under its `=== <alias> ===` header shows up twice.
+ * Tests `cassandra nt` through the real remote-operations, SSH and node-output layers: each host's
+ * output must come out once, every line tagged with that host, and never as an event.
  */
 class NodetoolTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -63,9 +69,16 @@ class NodetoolTest : BaseKoinTest() {
             override fun discard(host: Host) = Unit
 
             override fun getConnection(host: Host): ISSHClient {
+                val ioSession = mock<IoSession>()
+                whenever(ioSession.remoteAddress).thenReturn(InetSocketAddress(host.private, SSH_PORT))
                 val session = mock<ClientSession>()
+                whenever(session.ioSession).thenReturn(ioSession)
                 whenever(session.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->
                     invocation.getArgument<OutputStream>(1).write(ringOf(host.alias).toByteArray())
+                    if (host.alias == failingAlias) {
+                        invocation.getArgument<OutputStream>(2).write(LONG_ERROR.toByteArray())
+                        throw RemoteException("Remote command failed (1): nodetool")
+                    }
                     null
                 }
                 return SSHClient(session)
@@ -75,6 +88,8 @@ class NodetoolTest : BaseKoinTest() {
                 // Nothing to close: the sessions are mocks.
             }
         }
+
+    private var failingAlias: String? = null
 
     private fun ringOf(alias: String) = "Datacenter: us-west-2 ring-of-$alias"
 
@@ -106,17 +121,33 @@ class NodetoolTest : BaseKoinTest() {
     }
 
     @Test
-    fun `each host's output appears exactly once, under its header`() {
+    fun `each host's output appears exactly once, tagged with the host`() {
         val command = Nodetool()
         command.args = listOf("status")
         command.execute()
 
-        val output = outputHandler.messages.joinToString("\n")
-        cassandraHosts.map { it.alias }.forEach { alias ->
-            assertThat(output.split(ringOf(alias)).size - 1)
-                .describedAs("occurrences of $alias's output in:\n$output")
-                .isEqualTo(1)
-            assertThat(output).contains("=== $alias ===\n${ringOf(alias)}")
-        }
+        val printed = getKoin().get<RecordingNodeOutput>().stdout.toList()
+        assertThat(printed).containsExactlyInAnyOrderElementsOf(
+            cassandraHosts.map { "[${it.alias}] ${ringOf(it.alias)}" },
+        )
+        assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("ring-of-")
+    }
+
+    /** The host's output printed tagged as it ran; the failure says which host and command, and does not repeat it. */
+    @Test
+    fun `a failed nodetool is reported by its one-line summary, not its output again`() {
+        failingAlias = "db1"
+
+        assertThatThrownBy { Nodetool().apply { args = listOf("status") }.execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining("db1")
+            .hasMessageContaining("Remote command failed (1)")
+            .hasMessageNotContaining("error line")
+        assertThat(getKoin().get<RecordingNodeOutput>().stderr).contains("[db1] error line 1")
+    }
+
+    private companion object {
+        const val SSH_PORT = 22
+        val LONG_ERROR = (1..40).joinToString("\n", postfix = "\n") { "error line $it" }
     }
 }

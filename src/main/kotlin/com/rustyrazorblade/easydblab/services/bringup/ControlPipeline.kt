@@ -87,6 +87,12 @@ internal class ControlPipeline(
                 run.eventBus,
                 run.clock,
             ) { reason -> onUnhealthyTimeout("$reason. ${connection.recovery}") }
-        run.own(Ticker.every("control-plane-health", run.timing.healthInterval, delayFirst = true, monitor::tick))
+        val ticker = Ticker.every("control-plane-health", run.timing.healthInterval, delayFirst = true, monitor::tick)
+        run.own(
+            AutoCloseable {
+                monitor.stop()
+                ticker.close()
+            },
+        )
     }
 }

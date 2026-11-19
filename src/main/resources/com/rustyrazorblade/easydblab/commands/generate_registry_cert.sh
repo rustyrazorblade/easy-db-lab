@@ -32,5 +32,5 @@ echo "Certificate generated successfully"
 ls -la "$CERT_DIR/"
 
 # Upload certificate to S3 (use full path since sudo doesn't preserve PATH)
-sudo /usr/local/bin/aws s3 cp "$CERT_DIR/registry.crt" "s3://$S3_BUCKET/$S3_PATH"
+sudo /usr/local/bin/aws s3 cp --no-progress "$CERT_DIR/registry.crt" "s3://$S3_BUCKET/$S3_PATH"
 echo "Certificate uploaded to S3"

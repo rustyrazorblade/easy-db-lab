@@ -5,8 +5,8 @@
 #
 # Each case copies a kit's scripts and the shared library into a scratch workspace, runs them with
 # helm and kubectl stubbed, and checks what they ran: the helm release, chart and pinned version,
-# the catalogs handed to the chart, the coordinator pod replacement that keeps a catalog update from
-# deadlocking on a single app node, and the hostPort patch. No cluster, no network.
+# the catalogs handed to the chart, the coordinator restart that loads a catalog change, the
+# Pyroscope agent patch (an init container, no hostPort) and the NodePort Service. No cluster, no network.
 #
 # Run directly:  bash src/test/shell/presto-trino-scripts.test.sh
 # Or via gradle: ./gradlew testPrestoTrinoScripts
@@ -17,6 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KITS="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
 LABEL="lab1-0f3c2a1e-1111-2222-3333-444455556666"
+AGENT_IMAGE="ghcr.io/rustyrazorblade/pyroscope-java-agent:test"
 
 tests_run=0
 tests_failed=0
@@ -39,6 +40,7 @@ setup() {
     sed -e 's#__KUBECONFIG__#kubeconfig#' -e 's#__WORKERS__#3#' "${KITS}/$1/bin/${script}.sh.template" > "${WORK}/kit/bin/${script}.sh"
     chmod +x "${WORK}/kit/bin/${script}.sh"
   done
+  cp "${KITS}/$1/nodeport-service.yaml.template" "${WORK}/kit/nodeport-service.yaml"
   : > "${WORK}/kit/values.yaml"
   printf 'connector.name=postgresql\nconnection-url=jdbc:postgresql://db:5432/\n' > "${WORK}/kit/catalogs/postgres.properties"
   printf 'connector.name=opensearch\nopensearch.host=search.example.com\n' > "${WORK}/kit/catalogs/opensearch.properties"
@@ -52,6 +54,7 @@ EOF
 printf 'kubectl %s\n' "\$*" >> "${WORK}/calls"
 case " \$* " in
   *" get configmap cluster-config "*) printf '%s' "${LABEL}" ;;
+  *" apply -f - "*) cat >> "${WORK}/applied" ;;
   *" patch deployment "*)
     for arg in "\$@"; do
       case "\$arg" in -p=*) printf '%s\n' "\${arg#-p=}" >> "${WORK}/patches" ;; esac
@@ -62,6 +65,7 @@ EOF
   chmod +x "${WORK}/stubs/helm" "${WORK}/stubs/kubectl"
   : > "${WORK}/calls"
   : > "${WORK}/patches"
+  : > "${WORK}/applied"
 }
 
 # run <script> [VAR=value...]: runs a kit script with the stubs on PATH, under "$BASH".
@@ -71,7 +75,7 @@ run() {
   (
     cd "${WORK}" &&
       env "$@" PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" CLUSTER_NAME=lab1 \
-        PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default \
+        PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default PYROSCOPE_AGENT_IMAGE="${AGENT_IMAGE}" \
         "${BASH}" "${WORK}/kit/bin/${script}.sh"
   ) > "${WORK}/out" 2>&1
   rc=$?
@@ -102,15 +106,19 @@ check_update_catalogs() {
   grep -qF -- "--values ${WORK}/kit/bin/../.catalogs-override.yaml" "${WORK}/calls" || fail "the catalogs were not passed to helm: $(calls)"
   grep -q '^kind:' "${WORK}/kit/.catalogs-override.yaml" 2> /dev/null && fail "override file is not a values file"
   head -n 1 "${WORK}/kit/.catalogs-override.yaml" | grep -qx "${key}:" || fail "the catalogs are not under ${key}: $(head -n 1 "${WORK}/kit/.catalogs-override.yaml")"
-  grep -qF -- ' --wait' "${WORK}/calls" && fail "helm waits for a rollout that deadlocks on a hostPort: $(calls)"
+  # The coordinator reads its catalogs only at startup, so the script restarts its deployment and
+  # waits for the new pod. The pod declares no hostPort, so a rolling restart cannot deadlock on a
+  # single app node and nothing deletes a pod; the shared helm helper does not wait.
+  grep -qF -- ' --wait' "${WORK}/calls" && fail "helm waits for the rollout instead of the script: $(calls)"
+  grep -qF "kubectl delete pod" "${WORK}/calls" && fail "deleted the coordinator pod instead of restarting its deployment: $(calls)"
 
-  local helm_at delete_at rollout_at
+  local helm_at restart_at rollout_at
   helm_at="$(first_call 'helm upgrade')"
-  delete_at="$(first_call "kubectl delete pod -n default -l app.kubernetes.io/name=${kit},app.kubernetes.io/component=coordinator --ignore-not-found")"
+  restart_at="$(first_call "kubectl rollout restart deployment/${kit}-coordinator --namespace default")"
   rollout_at="$(first_call "kubectl rollout status deployment/${kit}-coordinator --namespace default --timeout=180s")"
-  [ -n "${helm_at}" ] && [ -n "${delete_at}" ] && [ -n "${rollout_at}" ] ||
-    { fail "expected helm, then the coordinator pod replaced, then its rollout awaited: $(calls)"; return; }
-  [ "${helm_at}" -lt "${delete_at}" ] && [ "${delete_at}" -lt "${rollout_at}" ] || fail "steps out of order: $(calls)"
+  [ -n "${helm_at}" ] && [ -n "${restart_at}" ] && [ -n "${rollout_at}" ] ||
+    { fail "expected helm, then the coordinator restarted, then its rollout awaited: $(calls)"; return; }
+  [ "${helm_at}" -lt "${restart_at}" ] && [ "${restart_at}" -lt "${rollout_at}" ] || fail "steps out of order: $(calls)"
 }
 
 check_catalog_sources() {
@@ -139,7 +147,7 @@ check_no_catalogs() {
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: $(cat "${WORK}/out")"; return; }
   [ -e "${WORK}/kit/.catalogs-override.yaml" ] && fail "wrote an override file with no catalogs"
   grep -qF -- '.catalogs-override.yaml' "${WORK}/calls" && fail "passed an override file with no catalogs"
-  [ -n "$(first_call "deployment/${kit}-coordinator")" ] || fail "did not replace the coordinator: $(calls)"
+  [ -n "$(first_call "deployment/${kit}-coordinator")" ] || fail "did not restart the coordinator: $(calls)"
 }
 
 check_opensearch() {
@@ -162,8 +170,8 @@ check_opensearch() {
 }
 
 check_start() {
-  local kit="$1" ports="$2"
-  current_test="${kit} start patches hostPorts [${ports}] and the Pyroscope agent"
+  local kit="$1" node_port="$2"
+  current_test="${kit} start patches the Pyroscope agent without a host port and publishes NodePort ${node_port}"
   tests_run=$((tests_run + 1))
   setup "${kit}"
   cat > "${WORK}/kit/bin/update-catalogs.sh" <<'EOF'
@@ -176,22 +184,27 @@ EOF
   local coordinator worker
   coordinator="$(sed -n 1p "${WORK}/patches")"
   worker="$(sed -n 2p "${WORK}/patches")"
-  [ "$(jq -c '[.spec.template.spec.containers[0].ports[]? | select(.hostPort) | .hostPort]' <<< "${coordinator}")" = "${ports}" ] ||
-    fail "coordinator hostPorts: $(jq -c '.spec.template.spec.containers[0].ports' <<< "${coordinator}")"
-  [ "$(jq -r '.spec.template.spec.containers[0].ports // "none"' <<< "${worker}")" = none ] || fail "the worker patch carries ports"
+  [ -n "${coordinator}" ] && [ -n "${worker}" ] || { fail "expected a coordinator and a worker patch: $(calls)"; return; }
+  local patch
+  for patch in "${coordinator}" "${worker}"; do
+    [ "$(jq -r '.spec.template.spec.containers[0].ports // "none"' <<< "${patch}")" = none ] || fail "a patch declares container ports: ${patch}"
+    [ "$(jq -r '.spec.template.spec.initContainers[0].image' <<< "${patch}")" = "${AGENT_IMAGE}" ] ||
+      fail "a patch does not copy the agent from PYROSCOPE_AGENT_IMAGE: ${patch}"
+    jq -e '.spec.template.spec.volumes[] | select(.name == "java-agents") | .emptyDir' <<< "${patch}" > /dev/null ||
+      fail "a patch does not hold the agent in an emptyDir: ${patch}"
+  done
+  grep -q hostPort "${WORK}/patches" && fail "a patch declares a hostPort: $(cat "${WORK}/patches")"
   jq -r '.spec.template.spec.containers[0].env[0].value' <<< "${coordinator}" | grep -q "pyroscope.application.name=${kit} .*component=coordinator" ||
     fail "coordinator patch has no Pyroscope agent for ${kit}"
   jq -r '.spec.template.spec.containers[0].env[0].value' <<< "${worker}" | grep -q "cluster=${LABEL},component=worker" ||
     fail "worker patch has no cluster label"
-  # Trino start replaces its coordinator pod after the patches (the new hostPort cannot be taken up
-  # by a rolling update); Presto start leaves that to its rollout wait, so only update-catalogs deletes.
-  if [ "${kit}" = trino ]; then
-    grep -qF "kubectl delete pod -n default -l app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator" "${WORK}/calls" ||
-      fail "trino start does not replace its coordinator pod"
-  else
-    grep -qF "kubectl delete" "${WORK}/calls" && fail "${kit} start deletes a pod: $(calls)"
-  fi
+  # No hostPort, so the rollouts move the patched pods and nothing deletes one.
+  grep -qF "kubectl delete" "${WORK}/calls" && fail "${kit} start deletes something: $(calls)"
+  grep -qF "kubectl rollout status deployment/${kit}-coordinator" "${WORK}/calls" || fail "start does not await the coordinator rollout: $(calls)"
   grep -qF "kubectl rollout status deployment/${kit}-worker" "${WORK}/calls" || fail "start does not await the worker rollout: $(calls)"
+  # Clients reach the coordinator through the kit's NodePort Service.
+  grep -q "^kind: Service" "${WORK}/applied" || fail "start did not apply the NodePort Service: $(calls)"
+  grep -qE "nodePort: ${node_port}\$" "${WORK}/applied" || fail "the NodePort Service is not on ${node_port}: $(cat "${WORK}/applied")"
 }
 
 check_start_without_label() {
@@ -215,9 +228,13 @@ check_stop_and_uninstall() {
   [ "${rc}" -eq 0 ] || { fail "stop exited ${rc}: $(cat "${WORK}/out")"; return; }
   grep -qx "kubectl scale deployment ${kit}-coordinator ${kit}-worker --replicas=0 --namespace default" "${WORK}/calls" ||
     fail "stop did not scale ${kit} to zero: $(calls)"
+  # Uninstall can run without a stop first, so its own calls must remove the Service stop removes.
+  : > "${WORK}/calls"
   run uninstall
   [ "${rc}" -eq 0 ] || { fail "uninstall exited ${rc}: $(cat "${WORK}/out")"; return; }
   grep -qx "helm uninstall ${kit} --namespace default --ignore-not-found" "${WORK}/calls" || fail "uninstall did not remove the release: $(calls)"
+  grep -qx "kubectl delete service ${kit}-nodeport --namespace default --ignore-not-found" "${WORK}/calls" ||
+    fail "uninstall did not delete the NodePort Service: $(calls)"
 }
 
 check_update_catalogs presto prestodb/presto catalog
@@ -230,8 +247,8 @@ for kit in presto trino; do
 done
 check_opensearch trino added
 check_opensearch presto "not added"
-check_start presto '[8080,9090]'
-check_start trino '[8080]'
+check_start presto 30882
+check_start trino 30881
 
 echo "${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

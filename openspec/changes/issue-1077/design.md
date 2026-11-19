@@ -65,7 +65,7 @@ Who sets it:
 
 `load()` does not write the file.  The next `save()` writes `networkMode` and no `tailscaleActive`, because the class no longer has the field.  Most commands save the state (the `lastAccessedAt` update, the incremental backup hashes), so the file is rewritten on the first ordinary command after the upgrade.  Until then the file is still readable by the new build, so nothing depends on when that happens.
 
-An unknown value fails the load with one line: `Unknown networkMode 'vpn' in state.json: the known values are socks, tailscale, direct`.  A wrong mode would send traffic down the wrong path (for example, skip the tunnel on a SOCKS cluster) and fail later with a confusing connect timeout, so failing at load is the clearer error.
+An unknown value fails the load with one line: `Unknown networkMode 'vpn' in state.json: the known values are socks, tailscale, direct`.  A wrong mode would send traffic down the wrong path (for example, skip the tunnel on a SOCKS cluster) and fail later with a confusing connect timeout, so failing at load is the clearer error.  Owner decision (2026-11-19): an unknown value fails the load, for every command in that workspace, `down` included; it is never read as `socks`.
 
 ### D4. The env file: the key `EDL_NETWORK_MODE`
 
@@ -106,7 +106,7 @@ An old wrapper knows only `EDL_TAILSCALE_ACTIVE`.  On a converted env file of a 
 
 Kit processes already install the wrappers before every run (`KitProcessEnvironment.applyTo`), so a kit step never sees an old wrapper either.
 
-The remaining window is a shell that sourced the old `env.sh`.  Its `with-proxy` and `socks5-status` are shell functions that live in that shell, not files.  After the env file is converted, the old `with-proxy` on a Tailscale cluster fails with the `socks start` message until the user sources the new `env.sh`.  `up` rewrites `env.sh`, and the tools themselves (`kubectl`, `curl`, ...) resolve to the new wrappers through `PATH`, so only these two helper functions are affected.  See Open Question 1.
+The remaining window is a shell that sourced the old `env.sh`.  Its `with-proxy` and `socks5-status` are shell functions that live in that shell, not files.  After the env file is converted, the old `with-proxy` on a Tailscale cluster fails with the `socks start` message until the user sources the new `env.sh`.  `up` rewrites `env.sh`, and the tools themselves (`kubectl`, `curl`, ...) resolve to the new wrappers through `PATH`, so only these two helper functions are affected.  Owner decision (2026-11-19): this is accepted.  The user sources `env.sh` again; the CLI does not keep writing `EDL_TAILSCALE_ACTIVE` as a second key for a transition, because that would bring back the two-key form.
 
 ### D7. How the wrappers and `env.sh` branch on the mode
 
@@ -144,13 +144,17 @@ If `state.json` says `tailscale` or `direct` while the env file still records a 
 
 ### D10. `tailscale-direct-connect` spec
 
-That spec still says `init` runs `tailscale status --json` to set `tailscaleActive`.  The code and the networking spec ("Tailscale detection is profile-based") use the profile credentials and `--no-tailscale`.  This change rewrites that requirement to the profile rule and the new field, because it has to touch it anyway to rename the field.  See Open Question 3.
+That spec still says `init` runs `tailscale status --json` to set `tailscaleActive`.  The code and the networking spec ("Tailscale detection is profile-based") use the profile credentials and `--no-tailscale`.  This change rewrites that requirement to the profile rule and the new field, because it has to touch it anyway to rename the field.  Owner decision (2026-11-19): the stale requirement is corrected in this change; correcting a spec is always high priority.
+
+### D11. One network mode type, also after #1163
+
+Owner decision (2026-11-19).  Patrick's later piece #1163 (`c9e5b8f8e`) adds `configuration.environment.NetworkMode { Tunnel, Direct }`, which `ClusterContract.networkMode` returns per environment.  When #1163 is ported, that enum goes.  The environment supplies only the initial mode `init` records in `state.json` (EC2 + K3s: `socks` or `tailscale`, from the profile and `--no-tailscale` as today; K3s in Docker and a brought cluster: `direct`), and every reader, `ClusterContract` included, reads `state.networkMode`.  There is one network mode type, `configuration/NetworkMode`, and one recorded value.
 
 ## Risks / Trade-offs
 
-- [A shell that sourced the old `env.sh` keeps the old `with-proxy` and `socks5-status`.] → After the conversion, those two functions fail on a Tailscale cluster with the `socks start` message until the user sources `env.sh` again.  Wrapped tools are not affected.  Open Question 1 asks whether that is acceptable.
+- [A shell that sourced the old `env.sh` keeps the old `with-proxy` and `socks5-status`.] → After the conversion, those two functions fail on a Tailscale cluster with the `socks start` message until the user sources `env.sh` again.  Wrapped tools are not affected.  Accepted by the owner (D6).
 - [A state saved by the new build cannot be read by the old build.] → The old build ignores unknown fields and reads the cluster as SOCKS.  Clusters are ephemeral and nobody downgrades; no handling.
-- [Name clash with a later piece of Patrick's branch.] → #1163 adds `configuration.environment.NetworkMode { Tunnel, Direct }` on `ClusterContract`.  Open Question 2.
+- [Name clash with a later piece of Patrick's branch.] → #1163 adds `configuration.environment.NetworkMode { Tunnel, Direct }` on `ClusterContract`.  Resolved by D11: one type.
 - [An unknown mode fails every command that loads state.] → That is the intent: the mode is read before the first connection, and the error names the file and the known values.
 
 ## Migration Plan
@@ -165,7 +169,4 @@ The real-cluster test before merge covers this: a 3-node cluster brought up by t
 
 ## Open Questions
 
-1. **The old `env.sh` functions in a shell that is still open.**  After the conversion, an `env.sh` sourced before the upgrade keeps the old `with-proxy` and `socks5-status`, which fail on a Tailscale cluster until the user sources `env.sh` again.  Options: (a) accept it; (b) have the new build also write `EDL_TAILSCALE_ACTIVE` as a derived line during a transition, which keeps two keys in the file.  **Recommendation: (a).**  It affects two helper functions on Tailscale clusters only, the fix is to source `env.sh` again, and (b) brings back the two-key form the owner rejected.
-2. **The `NetworkMode` name in #1163.**  The later piece #1163 (`c9e5b8f8e`) adds `configuration.environment.NetworkMode { Tunnel, Direct }`, which `ClusterContract.networkMode` returns per environment, and records `direct` in the env file from it.  With this change, the mode is a recorded fact in `state.json`.  Options: (a) when #1163 is ported, the environment gives only the mode `init` records (EC2 + K3s gives `socks` or `tailscale` as today, K3s in Docker and a brought cluster give `direct`), its own enum goes, and every reader reads `state.networkMode`; (b) keep both types with different names.  **Recommendation: (a).**  One recorded value is the point of this change, and the contract can still derive the initial mode.
-3. **Fix the stale detection rule in `tailscale-direct-connect`.**  It says `init` runs `tailscale status --json`; the code and the networking spec use the profile credentials.  Options: (a) correct it in this change (D10); (b) only rename the field and leave the stale text for a separate fix.  **Recommendation: (a).**  The requirement is rewritten either way, and keeping a requirement that the code does not follow would leave two specs that disagree.
-4. **Fail the load on an unknown `networkMode` in `state.json`.**  Options: (a) fail every command with one line naming the file, the value and the known values (D3); (b) read it as `socks` and continue.  **Recommendation: (a).**  A wrong guess sends traffic down the wrong path, and fail-fast is the house rule.  It is listed because it makes every command in that workspace fail, including `down`.
+None.  The owner settled the four questions of the first draft on 2026-11-19, each as recommended: old `env.sh` shells re-source it (D6), one network mode type after #1163 (D11), the stale `tailscale-direct-connect` requirement is corrected here (D10), and an unknown `networkMode` fails the load (D3).

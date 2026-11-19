@@ -35,6 +35,7 @@
 - [ ] 6.2 Root `CLAUDE.md` standing rule: the env file holds `EDL_NETWORK_MODE`, `EDL_SOCKS_PORT`, `EDL_SOCKS_PID`; `EDL_TAILSCALE_ACTIVE` is read only from old files.
 - [ ] 6.3 `docs/user-guide/network-connectivity.md`: the env file keys and the three modes.
 - [ ] 6.4 `configuration/CLAUDE.md` and `proxy` KDoc where they name `tailscaleActive`.
+- [ ] 6.5 Record design D11 where the #1163 port will see it (the `port-patricks-branch-in-pieces` notes / the #1163 piece's issue): its `environment.NetworkMode` goes, the environment supplies only the initial mode `init` records, and every reader uses `state.networkMode`.
 
 ## 7. Gates
 

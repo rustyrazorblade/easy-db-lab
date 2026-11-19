@@ -8,7 +8,7 @@ The cluster state MUST record how this machine reaches the cluster as one value,
 - `tailscale`: over the tailnet, to the cluster's private addresses.
 - `direct`: the cluster API is reachable from this machine as it is, with no tunnel.
 
-`state.json` MUST NOT record the mode in any other field. The proxy env file holds a copy of it for shell-side tools (see "Proxy env file for shell-side tools"). `init` MUST record `tailscale` when both Tailscale credentials are configured in the user profile and `--no-tailscale` is not given, and `socks` otherwise. The user profile MUST NOT hold a network mode. Nothing in production records `direct` until the local execution environment (#1040) records it.
+`state.json` MUST NOT record the mode in any other field, and every component that needs the mode MUST read it from `networkMode` in the cluster state; no component MAY derive its own mode from the execution environment. The proxy env file holds a copy of it for shell-side tools (see "Proxy env file for shell-side tools"). `init` MUST record `tailscale` when both Tailscale credentials are configured in the user profile and `--no-tailscale` is not given, and `socks` otherwise. The user profile MUST NOT hold a network mode. Nothing in production records `direct` until the local execution environment (#1040) records it.
 
 A tunnel is used only in `socks` mode. In `tailscale` and `direct` mode the CLI MUST NOT start or use the SOCKS tunnel for any connection, and connects directly. Checks and steps that exist for Tailscale itself (the local Tailscale client check, the tailnet route probe in `up`, the Cilium Tailscale masquerade) MUST run only in `tailscale` mode.
 
@@ -46,7 +46,7 @@ The CLI MUST read a `state.json` written before `networkMode` existed:
 
 Loading MUST NOT write the file. The next save MUST write `networkMode` and MUST NOT write `tailscaleActive`.
 
-A `networkMode` value other than `socks`, `tailscale` or `direct` MUST fail the load with one line that names `state.json`, the value, and the known values.
+A `networkMode` value other than `socks`, `tailscale` or `direct` MUST fail the load with one line that names `state.json`, the value, and the known values. It applies to every command that loads the state, `down` included; the value MUST NOT be read as `socks` or any other mode.
 
 #### Scenario: Old Tailscale state
 
@@ -80,6 +80,7 @@ A workspace made by an earlier release has an env file with `EDL_TAILSCALE_ACTIV
 - The CLI MUST write the packaged wrappers into `<workspace>/bin/`, replacing every copy that differs, before every write that records the network mode, and the env file MUST be converted only by a write that records the mode. That write MUST replace `EDL_TAILSCALE_ACTIVE` with `EDL_NETWORK_MODE`.
 - Recording or removing a tunnel MUST NOT convert the file: it keeps `EDL_TAILSCALE_ACTIVE` as it found it.
 - The new wrappers, `with-proxy` and `socks5-status` MUST read an old env file correctly (see "Wrappers branch on the network mode").
+- The CLI MUST NOT write `EDL_TAILSCALE_ACTIVE` for a transition. A shell that sourced an `env.sh` from an earlier release keeps that release's `with-proxy` and `socks5-status` functions until the user sources `env.sh` again; wrapped tools resolve to the new wrappers through `PATH` and are not affected.
 
 #### Scenario: Upgraded Tailscale workspace
 

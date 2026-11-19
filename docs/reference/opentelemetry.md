@@ -50,6 +50,8 @@ Each node's collector holds what it cannot deliver while Mimir, Loki or Tempo is
 
 The collectors that send to a cluster collector, rather than to a backend, do the same: the EMR collector (`otlp_grpc/control`, to the control node's collector) and the stress-job sidecar collector (`otlp_grpc`, to its node's collector) each keep a 20000-batch in-memory `sending_queue` and retry without a time limit. The cluster collector restarts whenever a kit starts or stops, and the senders hold their data through that restart. Fluent Bit, which sends each node's systemd journal to its node's collector, retries without a limit (`retry_limit: no_limits`) and holds the chunks in memory.
 
+The OpenTelemetry Java agents (Cassandra on each db node, cassandra-easy-stress, Spark) are the exception. Their SDK (agent 2.31.1) allows at most 5 attempts with a 1 to 5 second backoff, about 8 seconds in all, and has no setting for more. A collector restart that keeps its OTLP port closed longer than that loses the metrics and logs those JVMs send during it, including Cassandra's `system.log` and `debug.log` lines. A backend outage does not: the collector queues it.
+
 Notes on `prometheus_remote_write` in collector 0.161.0:
 
 - Its queue is `remote_write_queue`; it has no `sending_queue`.

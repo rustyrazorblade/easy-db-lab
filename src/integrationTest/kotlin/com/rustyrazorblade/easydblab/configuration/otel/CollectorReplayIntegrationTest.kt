@@ -67,6 +67,9 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         val ARRIVAL: Duration = Duration.ofMinutes(4)
         val POLL: Duration = Duration.ofSeconds(5)
 
+        /** One trace lookup; a slow Tempo must not let one poll of ~400 lookups outlast [ARRIVAL]. */
+        val TRACE_LOOKUP_TIMEOUT: Duration = Duration.ofSeconds(2)
+
         /** Older than Mimir's 1h out-of-order window, so Mimir answers 400. */
         val TOO_OLD: Duration = Duration.ofHours(2)
 
@@ -295,7 +298,15 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
             .filter { it !in found }
             .filter { n ->
                 runCatching {
-                    val response = ObservabilityBackends.get("$url/api/v2/traces/${traceId(n)}", TENANT)
+                    val response =
+                        ObservabilityBackends.send(
+                            HttpRequest
+                                .newBuilder(URI("$url/api/v2/traces/${traceId(n)}"))
+                                .header(Constants.Observability.TENANT_HEADER, TENANT)
+                                .timeout(TRACE_LOOKUP_TIMEOUT)
+                                .GET()
+                                .build(),
+                        )
                     response.statusCode() == HTTP_OK && response.body().contains("\"$SPAN_NAME\"")
                 }.getOrDefault(false)
             }.forEach { found.add(it) }

@@ -57,6 +57,11 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         val OUTAGE: Duration = Duration.ofSeconds(150)
         val WAIT: Duration = Duration.ofMinutes(3)
         val POLL: Duration = Duration.ofSeconds(5)
+
+        /** The agent jar is a few MB; a stalled download fails the test instead of hanging it. */
+        val DOWNLOAD_CONNECT_TIMEOUT: Duration = Duration.ofSeconds(10)
+        val DOWNLOAD_TIMEOUT: Duration = Duration.ofMinutes(5)
+
         val PYROSCOPE_HOST = "${Constants.K8s.PYROSCOPE_APP_LABEL}.default.svc.cluster.local"
 
         /** A JVM that keeps one CPU busy, so every snapshot holds CPU samples. */
@@ -82,7 +87,12 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     private val volume = "pyroscope-replay-${UUID.randomUUID().toString().take(8)}"
     private val network: Network = Network.newNetwork()
     private val containers = mutableListOf<GenericContainer<*>>()
-    private val http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()
+    private val http =
+        HttpClient
+            .newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(DOWNLOAD_CONNECT_TIMEOUT)
+            .build()
     private val state =
         ClusterState(
             name = "pyroscope-agent-replay",
@@ -126,7 +136,11 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         try {
             val response =
                 http.send(
-                    HttpRequest.newBuilder(URI(Constants.PyroscopeJavaAgent.DOWNLOAD_URL)).GET().build(),
+                    HttpRequest
+                        .newBuilder(URI(Constants.PyroscopeJavaAgent.DOWNLOAD_URL))
+                        .timeout(DOWNLOAD_TIMEOUT)
+                        .GET()
+                        .build(),
                     HttpResponse.BodyHandlers.ofFile(partial.toPath()),
                 )
             check(response.statusCode() == HTTP_OK) { "agent download answered ${response.statusCode()}" }

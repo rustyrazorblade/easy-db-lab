@@ -27,8 +27,8 @@ same setting, **the namespaced option wins**, regardless of order.
 |--------|-------------|---------|
 | `--db.count` (alias `--db`, `--cassandra`, `-c`) | Number of database instances | 3 |
 | `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
-| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
-| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
+| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i7i.xlarge |
+| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c8id.2xlarge |
 | `--azs`, `-z` | Availability zones (e.g., `a,b,c`), at most 8 | `a,b,c` |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
@@ -65,7 +65,7 @@ easy-db-lab init my-cluster --db.instance-type r7g.2xlarge
 
 **Mixed-architecture cluster (arm64 database, x86_64 application):**
 ```bash
-easy-db-lab init my-cluster --db.instance-type r7g.2xlarge --app.instance-type c6id.2xlarge
+easy-db-lab init my-cluster --db.instance-type r7g.2xlarge --app.instance-type c8id.2xlarge
 ```
 
 **Initialize and provision in one step:**
@@ -80,10 +80,10 @@ Every node needs a data disk separate from the 20 GB root volume. Each node moun
 
 A db node's data disk can come from either:
 
-- **Instance store (local NVMe)** — Instance types with a `d` suffix (e.g., `i3.xlarge`, `m5d.xlarge`, `c5d.2xlarge`) include local NVMe storage and require no extra configuration.
+- **Instance store (local NVMe)** — Instance types with a `d` suffix (e.g., `i3.xlarge`, `m8id.xlarge`, `c5d.2xlarge`) include local NVMe storage and require no extra configuration.
 - **EBS volumes** — Attach an EBS volume using `--ebs.type` for any other instance type.
 
-`--ebs.type` adds a volume to db nodes only, so the control and app instance types must have instance store. The defaults (`m5d.xlarge` control, `c6id.2xlarge` app) do.
+`--ebs.type` adds a volume to db nodes only, so the control and app instance types must have instance store. The defaults (`m8id.xlarge` control, `c8id.2xlarge` app) do.
 
 `init` fails, naming the node type and the instance type, when a db instance type has no instance store and `--ebs.type` is not specified, or when the control or app instance type has no instance store. `up` also fails, naming the host, if a node's setup finds no data disk or cannot mount it at `/mnt/db1`. For example, a db instance type with no instance store needs an EBS volume:
 
@@ -103,7 +103,7 @@ This command creates:
 
 - **S3 Storage**: Cluster data stored under a dedicated prefix in the account S3 bucket
 - **VPC**: With subnets and security groups
-- **EC2 Instances**: Cassandra nodes, stress nodes, and a control node (an `m5d.xlarge`; K3s data, including the etcd datastore, is stored on its NVMe drive to avoid filling the root volume)
+- **EC2 Instances**: Cassandra nodes, stress nodes, and a control node (an `m8id.xlarge`; K3s data, including the etcd datastore, is stored on its NVMe drive to avoid filling the root volume)
 - **K3s Cluster**: Lightweight Kubernetes across all nodes
 
 ### What Happens During `up`

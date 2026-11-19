@@ -76,7 +76,7 @@ class Init : PicoBaseCommand() {
         private const val DEFAULT_EBS_SIZE_GB = 256
 
         /** Control node instance type. Kept in sync with [InitConfig] control defaults. */
-        const val DEFAULT_CONTROL_INSTANCE_TYPE = "m5d.xlarge"
+        const val DEFAULT_CONTROL_INSTANCE_TYPE = Constants.InstanceTypes.CONTROL
 
         /** Classpath directory holding the OTel agent's Cassandra JMX rule files. */
         private const val CASSANDRA_RESOURCE_DIR = "/com/rustyrazorblade/easydblab/configuration/cassandra"
@@ -127,7 +127,7 @@ class Init : PicoBaseCommand() {
                 "Set EASY_DB_LAB_INSTANCE_TYPE to set a default.",
         ],
     )
-    var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: "i4i.xlarge"
+    var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: Constants.InstanceTypes.DB
 
     @Option(
         names = ["--db.instance-type"],
@@ -144,7 +144,7 @@ class Init : PicoBaseCommand() {
                 "Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default.",
         ],
     )
-    var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: "c6id.2xlarge"
+    var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: Constants.InstanceTypes.APP
 
     @Option(
         names = ["--app.instance-type"],

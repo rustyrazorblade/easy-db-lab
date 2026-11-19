@@ -61,7 +61,7 @@ locals {
   timestamp = regex_replace(timestamp(), "[- TZ:]", "")
   base_version = var.release_version != "" ? var.release_version : "*"
   version = var.release_version != "" ? var.release_version : local.timestamp
-  instance_type = var.arch == "amd64" ? "c6i.2xlarge" : "c8g.2xlarge"
+  instance_type = var.arch == "amd64" ? "c8i.2xlarge" : "c8g.2xlarge"
 
 
 }

@@ -307,7 +307,7 @@ class UpTest : UpTestFixture() {
                 )
             }
         whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(mapOf(ServerType.Cassandra to existing))
-        accountCapacity.offeredZones = mapOf("i4i.xlarge" to setOf("us-west-2b", "us-west-2c"))
+        accountCapacity.offeredZones = mapOf("i7i.xlarge" to setOf("us-west-2b", "us-west-2c"))
         val events = captureEvents()
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
@@ -1271,6 +1271,6 @@ class UpTest : UpTestFixture() {
         const val OVERLAP_WAIT_SECONDS = 5L
 
         /** The db node's setup, with the default database instance type from the fixture's state. */
-        const val SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i4i.xlarge bash setup_instance.sh"
+        const val SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i7i.xlarge bash setup_instance.sh"
     }
 }

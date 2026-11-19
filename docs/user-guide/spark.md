@@ -20,8 +20,8 @@ easy-db-lab up
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--spark.enable` | Enable Spark EMR cluster | false |
-| `--spark.master.instance.type` | Master node instance type | m5.xlarge |
-| `--spark.worker.instance.type` | Worker node instance type | m5.xlarge |
+| `--spark.master.instance.type` | Master node instance type | m7i.xlarge |
+| `--spark.worker.instance.type` | Worker node instance type | m7i.xlarge |
 | `--spark.worker.instance.count` | Number of worker nodes | 3 |
 
 #### Example with Custom Configuration
@@ -29,8 +29,8 @@ easy-db-lab up
 ```bash
 easy-db-lab init \
   --spark.enable \
-  --spark.master.instance.type m5.2xlarge \
-  --spark.worker.instance.type m5.4xlarge \
+  --spark.master.instance.type m7i.2xlarge \
+  --spark.worker.instance.type m7i.4xlarge \
   --spark.worker.instance.count 5
 ```
 
@@ -48,16 +48,16 @@ Prerequisites: `easy-db-lab init` and `easy-db-lab up` must have been run first.
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--master.instance.type` | Master node instance type | m5.xlarge |
-| `--worker.instance.type` | Worker node instance type | m5.xlarge |
+| `--master.instance.type` | Master node instance type | m7i.xlarge |
+| `--worker.instance.type` | Worker node instance type | m7i.xlarge |
 | `--worker.instance.count` | Number of worker nodes | 3 |
 
 #### Example with Custom Configuration
 
 ```bash
 easy-db-lab spark init \
-  --master.instance.type m5.2xlarge \
-  --worker.instance.type m5.4xlarge \
+  --master.instance.type m7i.2xlarge \
+  --worker.instance.type m7i.4xlarge \
   --worker.instance.count 5
 ```
 

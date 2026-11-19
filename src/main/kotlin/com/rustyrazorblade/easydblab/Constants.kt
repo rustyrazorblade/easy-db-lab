@@ -12,6 +12,22 @@ object Constants {
     }
 
     // Server types
+
+    /** Default EC2 and EMR instance types. All x86, because the account's AMIs are amd64 only. */
+    object InstanceTypes {
+        /** Database node: 4 vCPU, 32 GiB, local NVMe. */
+        const val DB = "i7i.xlarge"
+
+        /** Application (stress) node: 8 vCPU, 16 GiB, local NVMe. */
+        const val APP = "c8id.2xlarge"
+
+        /** Control node: 4 vCPU, 16 GiB, local NVMe. */
+        const val CONTROL = "m8id.xlarge"
+
+        /** Spark (EMR) master and worker nodes. */
+        const val SPARK = "m7i.xlarge"
+    }
+
     object Servers {
         const val DATABASE = "cassandra"
         const val STRESS = "stress"
@@ -1006,7 +1022,7 @@ object Constants {
     // OpenSearch configuration
     object OpenSearch {
         const val DEFAULT_VERSION = "2.11"
-        const val DEFAULT_INSTANCE_TYPE = "t3.small.search"
+        const val DEFAULT_INSTANCE_TYPE = "r8g.xlarge.search"
         const val DEFAULT_INSTANCE_COUNT = 1
         const val DEFAULT_EBS_SIZE_GB = 100
         const val POLL_INTERVAL_MS = 30_000L // 30 seconds - domains take 10-30 min to create

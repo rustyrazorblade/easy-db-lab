@@ -39,6 +39,9 @@ class VpcOwnershipTest {
                 Arguments.of("marker and some other name", mapOf("easy_cass_lab" to "1", "Name" to "shared"), false),
                 Arguments.of("packer name without marker", mapOf("Name" to "easy-db-lab-packer"), false),
                 Arguments.of("marker and ClusterId", mapOf("easy_cass_lab" to "1", "ClusterId" to "c-1", "Name" to "x"), true),
+                // Phase 1 of the tag rename reads only the legacy marker; the new one alone does not count yet.
+                Arguments.of("only the new marker and ClusterId", mapOf("easy_db_lab" to "1", "ClusterId" to "c-1"), false),
+                Arguments.of("both markers and ClusterId", mapOf("easy_cass_lab" to "1", "easy_db_lab" to "1", "ClusterId" to "c-1"), true),
             )
     }
 }

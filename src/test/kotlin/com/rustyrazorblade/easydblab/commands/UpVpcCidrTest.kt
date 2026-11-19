@@ -153,9 +153,9 @@ class UpVpcCidrTest : UpTestFixture() {
             newUp(seed = 7).execute()
 
             if (expectBackfill) {
-                verify(mockVpcService).addTagsToVpc("vpc-existing", mapOf(Constants.Vpc.BUCKET_TAG_KEY to state.s3Bucket.orEmpty()))
+                verify(mockVpcService).addTags(listOf("vpc-existing"), mapOf(Constants.Vpc.BUCKET_TAG_KEY to state.s3Bucket.orEmpty()))
             } else {
-                verify(mockVpcService, never()).addTagsToVpc(any(), any())
+                verify(mockVpcService, never()).addTags(any(), any())
             }
         }
     }

@@ -129,7 +129,7 @@ class DefaultBackupRestoreService(
             val clusterId =
                 vpcTags[Constants.Vpc.CLUSTER_ID_TAG_KEY]
                     ?: error("VPC $vpcId is missing the ClusterId tag. This VPC was not created by easy-db-lab.")
-            val clusterName = vpcTags["Name"] ?: "recovered-cluster"
+            val clusterName = vpcTags[Constants.Vpc.NAME_TAG_KEY] ?: "recovered-cluster"
             val s3Bucket =
                 vpcTags[Constants.Vpc.BUCKET_TAG_KEY]
                     ?: error("VPC $vpcId has no '${Constants.Vpc.BUCKET_TAG_KEY}' tag — cannot restore without S3 bucket.")

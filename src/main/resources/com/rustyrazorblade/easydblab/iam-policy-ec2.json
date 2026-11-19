@@ -55,7 +55,7 @@
       "Action": [
         "iam:PassRole"
       ],
-      "Resource": "arn:aws:iam::ACCOUNT_ID:role/EasyDBLabEC2Role"
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:role/EasyDBLabEC2Role"
     },
     {
       "Sid": "EC2AllActionsOnTaggedResources",
@@ -64,7 +64,7 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/easy_cass_lab": "1"
+          "aws:ResourceTag/__LEGACY_TAG_KEY__": "__TAG_VALUE__"
         }
       }
     },
@@ -84,7 +84,7 @@
         "ecr:GetDownloadUrlForLayer",
         "ecr:BatchGetImage"
       ],
-      "Resource": "arn:aws:ecr:*:ACCOUNT_ID:repository/*"
+      "Resource": "arn:aws:ecr:*:__ACCOUNT_ID__:repository/*"
     },
     {
       "Sid": "SSMStartSessionOnLabInstances",
@@ -92,10 +92,10 @@
       "Action": [
         "ssm:StartSession"
       ],
-      "Resource": "arn:aws:ec2:*:ACCOUNT_ID:instance/*",
+      "Resource": "arn:aws:ec2:*:__ACCOUNT_ID__:instance/*",
       "Condition": {
         "StringEquals": {
-          "ssm:resourceTag/easy_cass_lab": "1"
+          "ssm:resourceTag/__LEGACY_TAG_KEY__": "__TAG_VALUE__"
         }
       }
     },
@@ -117,7 +117,7 @@
         "ssm:TerminateSession",
         "ssm:ResumeSession"
       ],
-      "Resource": "arn:aws:ssm:*:ACCOUNT_ID:session/*",
+      "Resource": "arn:aws:ssm:*:__ACCOUNT_ID__:session/*",
       "Condition": {
         "StringEquals": {
           "ssm:resourceTag/aws:ssmmessages:session-id": "${aws:userid}"

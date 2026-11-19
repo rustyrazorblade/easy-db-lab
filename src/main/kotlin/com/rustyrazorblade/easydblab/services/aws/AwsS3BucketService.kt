@@ -61,11 +61,26 @@ class AwsS3BucketService(
      * This lets profiles that predate (or never completed) bucket setup migrate automatically —
      * `up` and the AMI build path call this so the bucket (and the S3 build cache it backs) come
      * online without re-running `profile setup`.
+     *
+     * It reads nothing from S3 for a bucket already set, because path resolution calls it often.
+     * The setup paths add a missing marker tag with [ensureMarkerTags].
      */
     fun ensureAccountBucket(user: User): String {
-        if (user.s3Bucket.isNotBlank()) {
-            return user.s3Bucket
-        }
+        if (user.s3Bucket.isNotBlank()) return user.s3Bucket
+        return createAccountBucket(user)
+    }
+
+    /**
+     * [ensureAccountBucket], then [ensureMarkerTags] on a bucket the profile already named. A
+     * bucket made by this call already carries every marker, so it is not read back.
+     */
+    fun ensureMarkedAccountBucket(user: User): String {
+        if (user.s3Bucket.isBlank()) return createAccountBucket(user)
+        ensureMarkerTags(user.s3Bucket)
+        return user.s3Bucket
+    }
+
+    private fun createAccountBucket(user: User): String {
         eventBus.emit(Event.Setup.S3BucketCreating)
         val bucketName = "easy-db-lab-${UUID.randomUUID()}"
         createBucket(bucketName)
@@ -73,10 +88,9 @@ class AwsS3BucketService(
         tagBucket(
             bucketName,
             mapOf(
-                "Profile" to context.profile,
-                "Owner" to user.email,
-                "easy_cass_lab" to "1",
-            ),
+                Constants.S3.PROFILE_TAG_KEY to context.profile,
+                Constants.S3.OWNER_TAG_KEY to user.email,
+            ) + Constants.Vpc.MARKER_TAGS,
         )
         user.s3Bucket = bucketName
         userConfigProvider.saveUserConfig(user)
@@ -162,6 +176,34 @@ class AwsS3BucketService(
         log.info { "\u2713 Applied tags to S3 bucket: $bucketName (${tags.keys.joinToString(", ")})" }
     }
 
+    /**
+     * Adds every marker tag ([Constants.Vpc.MARKER_TAGS]) that [bucketName] lacks, keeping its
+     * other tags. PutBucketTagging replaces the whole set, so the current set is read first and
+     * written back merged; a bucket with no tags at all (`NoSuchTagSet`) starts from an empty set.
+     * Nothing is written when every marker is already there.
+     */
+    fun ensureMarkerTags(bucketName: String) {
+        val current = bucketTags(bucketName)
+        val merged = current + Constants.Vpc.MARKER_TAGS
+        if (merged == current) {
+            return
+        }
+        tagBucket(bucketName, merged)
+        log.info { "Added the missing marker tags to S3 bucket: $bucketName" }
+    }
+
+    /** The tags on [bucketName]; empty when it has none (S3 answers `NoSuchTagSet`). */
+    private fun bucketTags(bucketName: String): Map<String, String> =
+        try {
+            s3Client
+                .getBucketTagging(GetBucketTaggingRequest.builder().bucket(bucketName).build())
+                .tagSet()
+                .associate { it.key() to it.value() }
+        } catch (e: S3Exception) {
+            if (e.awsErrorDetails()?.errorCode() != NO_SUCH_TAG_SET) throw e
+            emptyMap()
+        }
+
     override fun enableBucketRequestMetrics(
         bucketName: String,
         prefix: String?,
@@ -225,7 +267,7 @@ class AwsS3BucketService(
                     val taggingRequest = GetBucketTaggingRequest.builder().bucket(bucket.name()).build()
                     val hasTag =
                         s3Client.getBucketTagging(taggingRequest).tagSet().any {
-                            it.key() == Constants.Vpc.TAG_KEY && it.value() == Constants.Vpc.TAG_VALUE
+                            it.key() == Constants.Vpc.LEGACY_TAG_KEY && it.value() == Constants.Vpc.TAG_VALUE
                         }
                     if (hasTag) bucket.name() else null
                 } catch (e: S3Exception) {
@@ -261,11 +303,11 @@ class AwsS3BucketService(
         putBucketPolicy(bucketName)
         tagBucket(
             bucketName,
-            mapOf(
-                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
-                "cluster_id" to clusterId,
-                "cluster_name" to clusterName,
-            ),
+            Constants.Vpc.MARKER_TAGS +
+                mapOf(
+                    Constants.S3.CLUSTER_ID_TAG_KEY to clusterId,
+                    Constants.S3.CLUSTER_NAME_TAG_KEY to clusterName,
+                ),
         )
         eventBus.emit(Event.S3.DataBucketCreated(bucketName))
 
@@ -288,6 +330,7 @@ class AwsS3BucketService(
 
     private companion object {
         private val log = KotlinLogging.logger {}
+        private const val NO_SUCH_TAG_SET = "NoSuchTagSet"
         private val BUCKET_NAME = Regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$")
 
         fun requireValidBucketName(bucketName: String) {

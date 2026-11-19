@@ -77,12 +77,17 @@ A database or application node that fails at a step before its node cleanup MUST
 
 ### Requirement: The bring-up returns only after every pipeline has stopped
 
-When the bring-up ends, by a control node failure or otherwise, it MUST NOT return while any node or control pipeline thread is still running, so nothing a stopped pipeline does (a state save among it) lands after `up` has gone on.
+When the bring-up ends, by a control node failure or otherwise, it MUST NOT return while any node or control pipeline thread is still running, so nothing a stopped pipeline does (a state save among it) lands after `up` has gone on. The wait is bounded: a pipeline still running `Constants.Scale.PIPELINE_STOP_GRACE_SECONDS` after the bring-up ends MUST be reported as `Provision.PipelinesAbandoned` and left behind, so `up` never hangs on work that ignores its interrupt.
 
 #### Scenario: The control node fails while a node is mid-step
 - **GIVEN** db1 is in its setup step, which takes a moment to stop when interrupted
 - **WHEN** the control node fails and the bring-up stops every pipeline
 - **THEN** the bring-up returns only after db1's setup step has finished stopping
+
+#### Scenario: A pipeline does not stop within the grace
+- **GIVEN** db1's pipeline ignores its interrupt
+- **WHEN** the bring-up ends and db1's pipeline is still running `Constants.Scale.PIPELINE_STOP_GRACE_SECONDS` later
+- **THEN** `Provision.PipelinesAbandoned` names db1 and the grace, and the bring-up returns without it
 
 ### Requirement: The health monitor's stop is not an unhealthy sample
 

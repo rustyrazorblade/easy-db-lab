@@ -58,7 +58,9 @@ class NodeBringUp(
      */
     fun run(launch: (LaunchSink) -> Unit): BringUpResult =
         BringUpRun(ports, settings, reporting, clock).use { run ->
-            PipelineThreads().use { threads ->
+            PipelineThreads(run.timing.pipelineStopGrace) { running ->
+                run.eventBus.emit(Event.Provision.PipelinesAbandoned(running, run.timing.pipelineStopGrace.toMillis()))
+            }.use { threads ->
                 Executors.newThreadPerTaskExecutor(threads).use { executor ->
                     Coordinator(run, executor).bringUp(launch)
                 }
@@ -112,7 +114,9 @@ class NodeBringUp(
                 ServerType.Control -> hosts.firstOrNull()?.let(::startControl)
                 ServerType.Cassandra, ServerType.Stress ->
                     hosts.filter { run.settings.includes(it.alias) }.forEach { host ->
-                        nodes.computeIfAbsent(host.alias) { submit { NodePipeline(run, serverType, host, origin).run() } }
+                        nodes.computeIfAbsent(host.alias) {
+                            submit(host.alias) { NodePipeline(run, serverType, host, origin).run() }
+                        }
                     }
             }
             // A node handed over after the control node failed has nothing to join: stop it too.
@@ -122,7 +126,7 @@ class NodeBringUp(
         private fun startControl(host: ClusterHost) {
             if (!controlStarted.complete(Unit)) return
             controlTask =
-                submit {
+                submit(host.alias) {
                     try {
                         ControlPipeline(run, host) { reason -> controlFailed(ControlNodeFailedException(host.alias, HEALTH, reason)) }
                             .run()
@@ -155,8 +159,13 @@ class NodeBringUp(
                 throw controlFailure.getNow(null) ?: (e.cause ?: e)
             }
 
-        private fun <T> submit(task: () -> T): Future<T> =
+        /** Runs [task] on a pipeline thread named [alias], so one left running is reported by its node. */
+        private fun <T> submit(
+            alias: String,
+            task: () -> T,
+        ): Future<T> =
             executor.submit<T> {
+                Thread.currentThread().name = alias
                 commandName?.let(EventContext::push)
                 task()
             }

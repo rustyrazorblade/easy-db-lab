@@ -195,6 +195,13 @@ object Constants {
          */
         const val ATTEMPT_STOP_GRACE_SECONDS = 30L
 
+        /**
+         * How long a bring-up that is ending waits, in all, for its pipeline threads to stop. Longer
+         * than [ATTEMPT_STOP_GRACE_SECONDS], since a step waits that long for its attempt first; a
+         * pipeline still running after it is reported and left behind, so `up` never hangs on one.
+         */
+        const val PIPELINE_STOP_GRACE_SECONDS = 60L
+
         /** How long removing a stale Node and its node password waits for each to be gone. */
         const val NODE_CLEANUP_DELETE_WAIT_SECONDS = 60L
 

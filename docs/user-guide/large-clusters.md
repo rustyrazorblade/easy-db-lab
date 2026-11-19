@@ -147,6 +147,11 @@ The control node is never replaced. Each of its steps is tried twice; if one sti
 fails at once, stops every node pipeline and keeps every instance. It prints the control node, its
 step and the reason once.
 
+When the bring-up ends, `up` waits up to 60 seconds for every node pipeline it stopped to finish,
+so no node's state write lands after `up` has gone on. A pipeline still running after that is
+named in an error, `The pipelines of <nodes> did not stop within 60000ms of the bring-up's end and
+are still running`, and `up` goes on without it rather than hang.
+
 ### Control-plane health
 
 While nodes join, `up` samples the API server every 5 seconds. A sample is unhealthy when a

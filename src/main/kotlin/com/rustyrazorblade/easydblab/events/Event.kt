@@ -4211,6 +4211,24 @@ sealed interface Event {
         }
 
         /**
+         * The bring-up ended, and the pipelines of [aliases] were still running [graceMs]
+         * milliseconds later. `up` went on without them: whatever they still do (a fleet call, a
+         * state write) runs with nothing waiting.
+         */
+        @Serializable
+        @SerialName("Provision.PipelinesAbandoned")
+        data class PipelinesAbandoned(
+            val aliases: List<String>,
+            val graceMs: Long,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The pipelines of ${aliases.joinToString(", ")} did not stop within ${graceMs}ms of the bring-up's end " +
+                    "and are still running"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * `up` is replacing [alias]: [oldInstanceId] failed [step] for [reason]. This is the node's
          * [replacement]th replacement of at most [limit].
          */

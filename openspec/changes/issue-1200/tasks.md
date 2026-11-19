@@ -73,6 +73,7 @@
 - [x] 8.11 roborev 6460: SCP upload and download fetch the SCP client before the platform-thread hop (a virtual-thread SCP integration test hung before); the interrupt hand-off is ordered by one lock; `redact` covers names ending in a secret key (`AWS_SECRET_ACCESS_KEY=`, `K3S_TOKEN=`); `AttemptAbandoned` is an error
 - [x] 8.12 Real-cluster findings on c6bad499: a node that fails before it joins, after a replacement or when launched in this `up`, deletes the alias's old Node and node password (a stale NotReady Node failed the observability rollout); a health sample cut short by the monitor's own stop is not recorded (a spurious `Control plane unhealthy` line at the end of every `up`).  `NodeBringUpTest`, `ControlPlaneHealthMonitorTest`
 - [x] 8.13 roborev 6488 on 47001d1e: a failed node is reported before its cleanup waits for the gate, and a failed cleanup is added to its summary reason; the health monitor is marked stopped before its ticker closes; the bring-up joins every pipeline thread (`PipelineThreads`) before it returns, so a stopped pipeline's state save never lands after it (a flaky TempDir cleanup).  `NodeCleanupBringUpTest`, `ControlNodeFailureBringUpTest`, `ControlPlaneHealthMonitorTest`
+- [x] 8.14 roborev 6495 on 0b177c67: the join of every pipeline thread is bounded by `BringUpTiming.pipelineStopGrace` (60 s); a pipeline still running after it is reported as `Provision.PipelinesAbandoned`, by node, and left behind.  `PipelineThreadsTest`, `BringUpEventsTest`
 
 ## 9. Verify
 

@@ -148,6 +148,15 @@ class BringUpEventsTest {
     }
 
     @Test
+    fun `pipelines left running after the bring-up ends are an error naming each node and the grace`() {
+        val event = Event.Provision.PipelinesAbandoned(listOf("db3", "app0"), 60000)
+
+        assertThat(event.isError()).isTrue()
+        assertThat(event.toDisplayString())
+            .isEqualTo("The pipelines of db3, app0 did not stop within 60000ms of the bring-up's end and are still running")
+    }
+
+    @Test
     fun `a failed control node says every instance is kept`() {
         val event = Event.Provision.ControlNodeFailed("control0", "gate", "the API server was not ready after 600s")
 

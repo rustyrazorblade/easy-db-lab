@@ -206,7 +206,9 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
   adds its own adapter package; it never changes the ports.
 - **Coordination**: one virtual thread per node, made by `PipelineThreads`; `NodeBringUp.run`
   closes it after the executor, joining every pipeline thread, because a cancelled pipeline's
-  future is done before its thread stops and that thread may still save the state. Shared limits are in `Limiters.kt` (join slots,
+  future is done before its thread stops and that thread may still save the state. The join is
+  bounded by `BringUpTiming.pipelineStopGrace`; a thread still alive after it (each is named by its
+  node's alias) is emitted as `Provision.PipelinesAbandoned` and left behind. Shared limits are in `Limiters.kt` (join slots,
   SSH sessions); the workspace files, the registry certificate and the open control plane
   (released by the gate) are latches in `BringUpRun`. Use `ReentrantLock`, not `synchronized`, so a virtual thread never pins.
 - **Failure**: `StepRunner` retries only an `AttemptFailed`; a node step that still fails goes to

@@ -32,6 +32,9 @@ class TempoManifestBuilder(
         private const val CONFIGMAP_NAME = "tempo-config"
         const val IMAGE = "grafana/tempo:3.0.3"
 
+        /** The ConfigMap key and resource name of Tempo's config file. */
+        const val CONFIG_FILE = "tempo.yaml"
+
         /** Tempo's data directory on the control node: both write-ahead logs live under it. */
         const val DATA_HOST_PATH = "/mnt/db1/tempo"
 
@@ -75,11 +78,11 @@ class TempoManifestBuilder(
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .addToData(
-                "tempo.yaml",
+                CONFIG_FILE,
                 templateService
                     .fromResource(
                         TempoManifestBuilder::class.java,
-                        "tempo.yaml",
+                        CONFIG_FILE,
                     ).substitute(),
             ).build()
 
@@ -132,7 +135,7 @@ class TempoManifestBuilder(
                 .withName(APP_LABEL)
                 .withImage(IMAGE)
                 .withArgs(
-                    "-config.file=/etc/tempo/tempo.yaml",
+                    "-config.file=/etc/tempo/$CONFIG_FILE",
                     "-config.expand-env=true",
                 ).addNewEnv()
                 .withName("AWS_REGION")

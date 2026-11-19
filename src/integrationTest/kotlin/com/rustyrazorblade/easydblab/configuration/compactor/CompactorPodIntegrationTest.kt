@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.compactor
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.PrometheusRemoteWrite
 import com.rustyrazorblade.easydblab.SharedLocalStack
@@ -430,7 +431,7 @@ class CompactorPodIntegrationTest {
         cluster: String,
     ): GenericContainer<*> =
         ObservabilityBackends
-            .startLoki(config, volume(), bucket, Constants.Observability.LOGS_ROOT, TENANT, cluster)
+            .startLoki(config, volume(), bucket, Constants.Observability.LOGS_ROOT, LokiIngester(TENANT, cluster))
             .also { containers += it }
 
     private fun startTempo(

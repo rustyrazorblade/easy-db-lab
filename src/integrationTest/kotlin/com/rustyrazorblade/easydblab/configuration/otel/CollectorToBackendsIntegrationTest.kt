@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -11,9 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.services.LogQl
 import com.rustyrazorblade.easydblab.services.TemplateService
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
@@ -42,21 +41,16 @@ import java.util.UUID
  * configuration, reaches Loki through the cluster's collector and is found by the queries `spark
  * logs` and `logs query --source emr` send.
  *
- * The collector maps Mimir's and Loki's in-cluster service names to the containers' addresses on
- * Docker's default bridge in `/etc/hosts`, so its local-mode endpoints resolve as they do on a
- * cluster. The collector gets a placeholder service
- * account token so its Kubernetes components start; they find no API server, which only means no
- * pod metadata, and nothing here depends on it.
+ * The collector ([ClusterCollector]) maps Mimir's and Loki's in-cluster service names to the
+ * containers' addresses on Docker's default bridge in `/etc/hosts`, so its local-mode endpoints
+ * resolve as they do on a cluster.
  */
 class CollectorToBackendsIntegrationTest : BaseKoinTest() {
     private companion object {
         const val TENANT = "acme"
         const val CLUSTER = "e2e-lab-0123"
-        const val SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
         val ARRIVAL: Duration = Duration.ofMinutes(2)
         val POLL: Duration = Duration.ofSeconds(2)
-        const val LOG_LINES = 20
-        const val COMPONENT_ID_LENGTH = 30
         const val CONTROL_HOST = "control0"
         const val EMR_HOST = "ip-10-0-0-5"
         const val STEP_STDERR_LINE = "Exception in thread \"main\" java.lang.NoSuchMethodError: e2e"
@@ -107,8 +101,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
                 volumes[1],
                 bucket,
                 "loki",
-                TENANT,
-                CLUSTER,
+                LokiIngester(TENANT, CLUSTER),
             )
         containers.add(loki)
         return mimir to loki
@@ -129,22 +122,10 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         loki: GenericContainer<*>,
     ): GenericContainer<*> {
         val config = OtelManifestBuilder(getKoin().get()).buildConfigMap(emptyList()).data.getValue("otel-collector-config.yaml")
-        return GenericContainer("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
+        return ClusterCollector
+            .container(config, CONTROL_HOST, CLUSTER, TENANT)
             .withExtraHost("mimir.default.svc.cluster.local", bridgeAddress(mimir))
             .withExtraHost("loki.default.svc.cluster.local", bridgeAddress(loki))
-            .withCopyToContainer(Transferable.of(config), "/etc/otel-collector-config.yaml")
-            .withCopyToContainer(Transferable.of(""), "${OtelManifestBuilder.HOST_ROOT_MOUNT_PATH}/.keep")
-            .withCopyToContainer(Transferable.of("placeholder"), "$SA_DIR/token")
-            .withCopyToContainer(Transferable.of("default"), "$SA_DIR/namespace")
-            .withCreateContainerCmdModifier { it.withHostName(CONTROL_HOST) }
-            .withEnv("HOSTNAME", "node0")
-            .withEnv("CLUSTER_NAME", CLUSTER)
-            .withEnv("TENANT", TENANT)
-            .withEnv("KUBERNETES_SERVICE_HOST", "127.0.0.1")
-            .withEnv("KUBERNETES_SERVICE_PORT", "1")
-            .withCommand("--config=/etc/otel-collector-config.yaml")
-            .withExposedPorts(Constants.K8s.OTEL_HTTP_PORT, Constants.K8s.OTEL_HEALTH_PORT)
-            .waitingFor(Wait.forHttp("/").forPort(Constants.K8s.OTEL_HEALTH_PORT).withStartupTimeout(Duration.ofMinutes(2)))
             .also {
                 it.start()
                 containers.add(it)
@@ -207,27 +188,11 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
             value = probe()
         }
         return checkNotNull(value) {
-            "nothing arrived within $ARRIVAL; collector export failures:\n" +
-                collector.logs
-                    .lines()
-                    .filter { it.contains("Exporting failed") }
-                    .map {
-                        it.substringAfter("\"otelcol.component.id\": ").take(COMPONENT_ID_LENGTH) + " " +
-                            it.substringAfter("\"error\": ")
-                    }.takeLast(LOG_LINES)
-                    .joinToString("\n")
+            "nothing arrived within $ARRIVAL; collector export failures:\n" + ClusterCollector.exportFailures(collector)
         }
     }
 
-    private fun results(json: String): List<JsonObject> =
-        Json
-            .parseToJsonElement(json)
-            .jsonObject
-            .getValue("data")
-            .jsonObject
-            .getValue("result")
-            .jsonArray
-            .map { it.jsonObject }
+    private fun results(json: String): List<JsonObject> = ClusterCollector.results(json)
 
     private fun labelsOf(
         result: JsonObject,

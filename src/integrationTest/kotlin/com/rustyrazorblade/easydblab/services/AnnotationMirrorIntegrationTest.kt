@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.ContainerObservabilityHttp
+import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -83,7 +84,7 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
         val rendered = LokiManifestBuilder(getKoin().get()).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
         loki =
             ObservabilityBackends
-                .startLoki(ObservabilityBackends.lokiConfig(rendered), volume, bucket, "loki", TENANT, CLUSTER)
+                .startLoki(ObservabilityBackends.lokiConfig(rendered), volume, bucket, "loki", LokiIngester(TENANT, CLUSTER))
                 .also { containers.add(it) }
         grafana =
             GenericContainer(GrafanaManifestBuilder.GRAFANA_IMAGE)

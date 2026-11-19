@@ -8,6 +8,16 @@ The OpenTelemetry Collector runs on every node. It gathers host metrics, scrapes
 
 Every series carries a `cluster` label (`<name>-<clusterId>`), so clusters that share a tenant stay distinguishable.
 
+### When Mimir restarts or is down
+
+A Mimir restart or outage shorter than an hour, less the time the queue takes to drain, loses no sample. While Mimir cannot take a write, each collector keeps the batches in an in-memory queue (`remote_write_queue`, 20000 batches) and retries about every 5 seconds without a time limit. When Mimir is back, the collector sends the queue in order; new samples wait behind it until it drains. Mimir accepts samples up to an hour older than the tenant's newest sample (`out_of_order_time_window: 1h`), so the replayed samples are stored, not refused as too old. Other senders keep that newest sample near the present, so the hour includes the time the queue takes to drain: an outage plus its drain must stay under an hour. The queue holds 20000 batches of up to 1024 data points each, so it lasts an hour only while the collector sends under about 5,600 data points a second (about 5.5 full batches a second). A collector that sends more fills its queue sooner, and once it is full new batches are dropped. `otelcol_exporter_queue_size` on the collector shows how full it is.
+
+The queue is in memory. A collector that restarts while Mimir is down loses what it held. A batch that Mimir rejects with a 4xx status is dropped, not retried: the collector's `prometheus_remote_write` exporter treats every 4xx as permanent. That includes 429, so a rate-limited batch is lost too; Mimir's `ingestion_rate` and `ingestion_burst_size` are set high so a replay after an outage is not rate-limited. 5xx responses, timeouts and connection errors are retried.
+
+The `prometheus_remote_write` queue has a single consumer, and it retries a 5xx without a time limit. If Mimir keeps answering one batch with a 5xx, that batch blocks every batch behind it: no metrics reach Mimir, the queue fills, and once it is full new batches are dropped. The sign is a metrics gap while Mimir is up and ready, with the same 5xx on each retry in the collector's log and the reason for the refusal in Mimir's log.
+
+The collector's own metrics show the backlog: `otelcol_exporter_queue_size{exporter="prometheus_remote_write"}` is the number of batches waiting, and `otelcol_exporter_send_failed_metric_points_total` counts the points that were dropped. They reach Mimir through the same queue, so you cannot query them in Mimir while the queue is blocked. To watch the backlog live, read them from the collector itself (port 8888 on the node) and read its log (`kubectl logs` of the `otel-collector` pod), where each failed push is a retry line. Once the queue drains, Mimir's copy of the series fills in: it shows the queue growing during the outage and draining after it, with the failed count flat.
+
 ## Configuration
 
 Mimir 3.2.1 runs as one process on the control node:
@@ -73,7 +83,7 @@ with-proxy curl -H 'X-Scope-OrgID: <tenant>' \
    kubectl logs -l app.kubernetes.io/name=mimir
    ```
 
-2. Check that the collector is sending. It scrapes its own telemetry into Mimir (job `otel-collector`); a failing exporter shows up in `otelcol_exporter_send_failed_metric_points_total`, and in the collector's log:
+2. Check that the collector is sending. It scrapes its own telemetry into Mimir (job `otel-collector`), so these series are only current while Mimir accepts writes. A growing `otelcol_exporter_queue_size` means the collector is holding batches it cannot deliver yet; a rising `otelcol_exporter_send_failed_metric_points_total` means points were dropped. Both show in the collector's log:
    ```bash
    kubectl logs -l app.kubernetes.io/name=otel-collector
    ```

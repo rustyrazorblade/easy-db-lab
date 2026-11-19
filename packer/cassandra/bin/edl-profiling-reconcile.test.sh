@@ -276,6 +276,11 @@ echo "curl $*" >>"$CURL_LOG"
 # STUB_CURL_SLEEP models a Pyroscope that answers slowly, which is what puts a pass over
 # TimeoutStartSec and gets it killed mid-upload.
 [[ "${STUB_CURL_SLEEP:-0}" != "0" ]] && sleep "$STUB_CURL_SLEEP"
+# STUB_HTTP_BODY is the response body, written where `--output` points, as curl does.
+args=("$@")
+for ((i = 0; i < ${#args[@]} - 1; i++)); do
+  [[ "${args[i]}" == "--output" && "${args[i + 1]}" != "/dev/null" ]] && printf '%s' "${STUB_HTTP_BODY:-}" >"${args[i + 1]}"
+done
 echo "${STUB_HTTP_STATUS:-200}"
 if [[ "${STUB_CURL_EXIT:-0}" != "0" ]]; then
   echo "${STUB_CURL_STDERR:-curl: (7) Failed to connect to 10.0.1.5 port 4040}" >&2
@@ -1080,6 +1085,52 @@ test_client_error_is_rejected_and_never_retried() {
   run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=200 >/dev/null
   assert_not_contains "a rejected chunk is never retried" "$(curl_log)" "cassandra-1-100.jfr"
   assert_file "later chunks keep shipping" "$PROFILE_DIR/cassandra-1-200-shipped.jfr"
+  teardown
+}
+
+# Pyroscope answers 422 to every push while it shuts down ("service is unavailable") and in the
+# instant a restarted server opens its port before it reads its ring tokens ("empty ring"), and 429
+# when it rate-limits. The chunk is fine, so renaming it .rejected would lose that interval's
+# profile to a restart; it must wait for the next pass and ship once the server answers.
+test_unavailable_or_rate_limited_is_retried_not_rejected() {
+  local case status body
+  for case in "422|service is unavailable" "422|pushing to segment writer: Empty ring" "429|too many requests"; do
+    status="${case%%|*}"
+    body="${case#*|}"
+    setup
+    write_config true '["-e", "cpu"]'
+    make_chunk "cassandra-1-100.jfr" 600
+    make_chunk "cassandra-1-200.jfr" 500
+    run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS="$status" STUB_HTTP_BODY="$body" >/dev/null
+
+    assert_file "a $status leaves the chunk pending" "$PROFILE_DIR/cassandra-1-100.jfr"
+    assert_no_file "a $status does not reject the chunk" "$PROFILE_DIR/cassandra-1-100.jfr.rejected"
+    assert_contains "a $status counts as a transient failure" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_ship_failures_total 1"
+    assert_contains "a $status is not counted as a rejection" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_ship_rejected_total 0"
+
+    : >"$CURL_LOG"
+    make_chunk "cassandra-1-300.jfr" 400
+    run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=200 >/dev/null
+    assert_contains "the chunk refused with $status is sent again" "$(curl_log)" "cassandra-1-100.jfr"
+    assert_file "and ships once Pyroscope answers" "$PROFILE_DIR/cassandra-1-100-shipped.jfr"
+    teardown
+  done
+}
+
+# Pyroscope answers 422 to a body it cannot parse as well. A 422 that names neither transient cause
+# is a rejection: kept pending, a truncated chunk would never ship and would take an upload slot in
+# every pass, so six of them would stop every newer chunk from shipping.
+test_a_422_for_an_unparseable_chunk_is_rejected() {
+  setup
+  write_config true '["-e", "cpu"]'
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 500
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=422 \
+    STUB_HTTP_BODY="failed to parse JFR: unexpected EOF" >/dev/null
+
+  assert_file "a 422 for a parse error rejects the chunk" "$PROFILE_DIR/cassandra-1-100.jfr.rejected"
+  assert_contains "it counts as a rejection" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_ship_rejected_total 1"
+  assert_contains "the log carries Pyroscope's answer" "$(cat "$OUTPUT")" "failed to parse jfr: unexpected eof"
   teardown
 }
 
@@ -2152,6 +2203,8 @@ test_chunks_the_shipper_failed_to_send_are_counted_as_pending
 test_server_error_leaves_the_chunk_for_retry
 test_network_failure_reports_what_curl_said
 test_client_error_is_rejected_and_never_retried
+test_unavailable_or_rate_limited_is_retried_not_rejected
+test_a_422_for_an_unparseable_chunk_is_rejected
 test_a_non_ascii_cluster_name_encodes_as_utf8_bytes
 test_a_chunk_exactly_on_the_grace_boundary_ships
 test_a_chunk_one_second_inside_the_grace_boundary_does_not_ship

@@ -361,9 +361,12 @@ edl_cluster_label() {
 }
 
 # Prints the JAVA_TOOL_OPTIONS that load the Pyroscope agent for application $1. Needs
-# PYROSCOPE_URL and TENANT, which the kit runner sets.
+# PYROSCOPE_URL and TENANT, which the kit runner sets. The format and profiler options are
+# Constants.PyroscopeJavaAgent.PROFILER_FLAGS. The last two options make the agent retry without
+# limit and hold an hour of snapshots through a Pyroscope outage; they are the values of
+# Constants.PyroscopeJavaAgent.OUTAGE_FLAGS.
 edl_pyroscope_opts() {
-  printf '%s' "-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=$1 -Dpyroscope.server.address=${PYROSCOPE_URL} -Dpyroscope.tenant.id=${TENANT} -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms"
+  printf '%s' "-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=$1 -Dpyroscope.server.address=${PYROSCOPE_URL} -Dpyroscope.tenant.id=${TENANT} -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms -Dpyroscope.ingest.max.tries=-1 -Dpyroscope.push.queue.capacity=360"
 }
 
 # Patches the container $2 of deployment $1 to load the Pyroscope agent for application $3, with

@@ -1163,6 +1163,44 @@ object Constants {
         const val DOWNLOAD_URL =
             "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
         const val EMR_INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+
+        /**
+         * `pyroscope.ingest.max.tries`: a negative value retries an upload without limit, so a
+         * Pyroscope outage or restart does not drop profiles (issue 991). The default, 8 tries
+         * with 1s-30s backoff, gave up within about two minutes.
+         */
+        const val INGEST_MAX_TRIES = -1
+
+        /**
+         * `pyroscope.push.queue.capacity`: snapshots the agent holds while it cannot upload. One
+         * snapshot is taken every 10s, so 360 is an hour, Mimir's and the collectors' window. When
+         * full the agent drops the oldest. The default is 8, about 80 seconds. The queue is in the
+         * profiled JVM's heap: measured on a Cassandra stress JVM, a queued snapshot holds about
+         * 0.17 MB, so a full queue there is about 62 MB, inside the owner's 256 MB budget. The size
+         * depends on the workload; a synthetic load with many stacks measured 5 to 15 MB a snapshot,
+         * so other JVMs (kits, Spark, the sidecar) can hold far more during a long outage.
+         */
+        const val PUSH_QUEUE_CAPACITY = 360
+
+        /**
+         * What the agent profiles and how it sends it, the same for every JVM the tool attaches it
+         * to: JFR format, CPU samples, an allocation sample every 512 KB and locks held 10ms or more.
+         * `edl_pyroscope_opts` in `edl-kit-lib.sh` repeats them, and `TemplateVariablesTest` checks it.
+         */
+        val PROFILER_FLAGS: List<String> =
+            listOf(
+                "-Dpyroscope.format=jfr",
+                "-Dpyroscope.profiler.event=cpu",
+                "-Dpyroscope.profiler.alloc=512k",
+                "-Dpyroscope.profiler.lock=10ms",
+            )
+
+        /** [INGEST_MAX_TRIES] and [PUSH_QUEUE_CAPACITY] as JVM flags, for every JVM the tool attaches the agent to. */
+        val OUTAGE_FLAGS: List<String> =
+            listOf(
+                "-Dpyroscope.ingest.max.tries=$INGEST_MAX_TRIES",
+                "-Dpyroscope.push.queue.capacity=$PUSH_QUEUE_CAPACITY",
+            )
     }
 
     // Probe timings for the in-cluster Pyroscope 2.x server.
@@ -1175,6 +1213,9 @@ object Constants {
     // 30 s count only on its first passing check (dskit ring/lifecycler.go:271-277). Measured from
     // container start: 48 s on a fresh data directory, 47 s on a restart over existing data. The
     // Pyroscope 1.x liveness probe (30 s delay, then 3 x 15 s) killed it during that window.
+    // config.yaml now sets both waits to 0s, because each one is also a wait at shutdown, during
+    // which Pyroscope refuses every push with an answer the Java agent does not retry (issue 991).
+    // With them off, /ready passed 18 s after container start; the budget below is kept as is.
     object PyroscopeProbes {
         /** How often the startup probe polls /ready while the server comes up. */
         const val STARTUP_PERIOD_SECONDS = 5

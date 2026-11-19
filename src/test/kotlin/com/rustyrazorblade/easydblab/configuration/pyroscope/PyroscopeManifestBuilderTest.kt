@@ -157,6 +157,15 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `no fixed wait holds the server open after SIGTERM, where it refuses every push`() {
+        val config = serverConfig()
+
+        assertThat(scalarAt(config, "metastore", "min_ready_duration")).isEqualTo("0s")
+        assertThat(scalarAt(config, "segment_writer", "lifecycler", "min_ready_duration")).isEqualTo("0s")
+        assertThat(scalarAt(config, "analytics", "reporting_enabled")).isEqualTo("false")
+    }
+
+    @Test
     fun `profiles are stored under the observability profiles prefix of the account bucket, not the data bucket`() {
         val config = serverConfig()
 
@@ -180,6 +189,8 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config, "metastore", "data_dir")).startsWith(mount.mountPath + "/")
         assertThat(scalarAt(config, "metastore", "raft", "dir")).startsWith(mount.mountPath + "/")
         assertThat(scalarAt(config, "metastore", "raft", "snapshots_dir")).startsWith(mount.mountPath + "/")
+        // Without its tokens a restarted segment writer refuses every push for about 5.5s (issue 991).
+        assertThat(scalarAt(config, "segment_writer", "lifecycler", "tokens_file_path")).startsWith(mount.mountPath + "/")
     }
 
     /** The limit at [key] under `limits` in the server config, as a number. */

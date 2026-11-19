@@ -22,7 +22,7 @@ import java.nio.file.Path
  * This service handles the creation of:
  * - SSH config file for connecting to cluster nodes
  * - Environment shell script with cluster aliases and metadata
- * - The tool wrappers in `bin/` and the Tailscale flag in the proxy env file, which `env.sh` and kit
+ * - The tool wrappers in `bin/` and the network mode in the proxy env file, which `env.sh` and kit
  *   shell steps use to reach the cluster
  * - Stress environment variables for cassandra-easy-stress
  * - AxonOps Workbench configuration for GUI access
@@ -43,7 +43,7 @@ interface ClusterConfigurationService {
     ): Result<Unit>
 
     /**
-     * Writes SSH config and environment files, the tool wrappers, and the cluster's Tailscale flag
+     * Writes SSH config and environment files, the tool wrappers, and the cluster's network mode
      * in the proxy env file.
      *
      * @param workingDirectory Directory to write configuration files to
@@ -95,7 +95,7 @@ interface ClusterConfigurationService {
  *
  * @property userConfigProvider Provider for user configuration including SSH key path
  * @property sshRoute supplies each host's `ProxyCommand` when the profile's SSH transport needs one
- * @property workspaceShellTools writes the tool wrappers and the Tailscale flag
+ * @property workspaceShellTools writes the tool wrappers and the network mode
  */
 class DefaultClusterConfigurationService(
     private val userConfigProvider: UserConfigProvider,
@@ -152,9 +152,9 @@ class DefaultClusterConfigurationService(
             )
         }
 
-        // env.sh puts bin/ on PATH, and a Tailscale cluster never starts a tunnel that would
-        // record anything, so both are written here, where every cluster passes.
-        workspaceShellTools.prepare(workingDirectory.toFile(), clusterState.isTailscaleEnabled())
+        // env.sh puts bin/ on PATH, and a cluster that needs no tunnel never starts one that would
+        // record anything, so the wrappers and the network mode are written here, where every cluster passes.
+        workspaceShellTools.prepare(workingDirectory.toFile(), clusterState.networkMode)
     }
 
     /** The `ProxyCommand` for each host alias whose route needs one; empty under the direct transport. */

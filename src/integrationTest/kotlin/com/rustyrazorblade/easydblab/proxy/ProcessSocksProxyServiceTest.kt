@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.proxy
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.events.EventBus
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -191,7 +192,7 @@ class ProcessSocksProxyServiceTest {
 
     @Test
     fun `reusing a verified proxy records its port in the env file and keeps the Tailscale flag`() {
-        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        val envFile = ProxyEnvFile(tempDir).apply { recordNetworkMode(NetworkMode.Socks) }
         FakeSocksTunnel().use { tunnel ->
             val port = tunnel.port
             val livePid = recordedTunnelPid(port)
@@ -199,7 +200,7 @@ class ProcessSocksProxyServiceTest {
 
             service().ensureRunning(testHost)
 
-            val expected = ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(port, livePid.toLong()), direct = false)
+            val expected = ProxyEnv(networkMode = NetworkMode.Socks, tunnel = RecordedTunnel(port, livePid.toLong()))
             assertThat(envFile.read()).isEqualTo(expected)
         }
     }
@@ -341,7 +342,7 @@ class ProcessSocksProxyServiceTest {
     fun `a tunnel whose port accepts while its far end is dead is replaced, and only the new port is recorded`() {
         // The live-cluster failure: the SSH connection of an idle tunnel died while ssh and its local
         // port stayed up. The real probe gets "Malformed reply from SOCKS server" through it.
-        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        val envFile = ProxyEnvFile(tempDir).apply { recordNetworkMode(NetworkMode.Socks) }
         FakeSocksTunnel(FakeSocksTunnel.Behaviour.DROPS_CONNECT).use { dead ->
             FakeSocksTunnel().use { replacement ->
                 writeStateFile(pid = recordedTunnelPid(dead.port), port = dead.port)
@@ -356,7 +357,7 @@ class ProcessSocksProxyServiceTest {
 
                 assertThat(state.reused).isFalse()
                 assertThat(state.localPort).isEqualTo(replacement.port)
-                val expected = ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(replacement.port, FAKE_PID), direct = false)
+                val expected = ProxyEnv(networkMode = NetworkMode.Socks, tunnel = RecordedTunnel(replacement.port, FAKE_PID))
                 assertThat(envFile.read()).isEqualTo(expected)
                 assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("${replacement.port}")
             }

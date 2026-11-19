@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -79,7 +80,7 @@ class ObservabilityHttpTest {
             name = "lab",
             initConfig = InitConfig(tenant = "acme"),
             hosts = mapOf(ServerType.Control to listOf(control)),
-        ).also { it.tailscaleActive = tailscale }
+        ).also { it.networkMode = if (tailscale) NetworkMode.Tailscale else NetworkMode.Socks }
 
     @Test
     fun `a GET reaches the service on the control node with the cluster's tenant`() {

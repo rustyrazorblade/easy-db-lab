@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
@@ -504,7 +505,7 @@ class Init : PicoBaseCommand() {
                         appArch = nodeArch(ServerType.Stress, resolvedAppInstanceType),
                         controlArch = nodeArch(ServerType.Control, DEFAULT_CONTROL_INSTANCE_TYPE),
                     ),
-                tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
+                networkMode = if (userConfig.isTailscaleEnabled() && !noTailscale) NetworkMode.Tailscale else NetworkMode.Socks,
             )
         clusterStateManager.save(state)
         return state

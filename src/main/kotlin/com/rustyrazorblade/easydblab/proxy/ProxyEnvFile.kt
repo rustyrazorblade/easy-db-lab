@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.writeTextAtomically
 import java.io.File
 import java.nio.channels.FileChannel
@@ -20,14 +21,13 @@ data class RecordedTunnel(
 /**
  * The proxy state recorded in a workspace's [ProxyEnvFile].
  *
- * @property tailscaleActive whether the cluster is reached over Tailscale; null before `up` recorded it
+ * @property networkMode how this machine reaches the cluster; null before the CLI recorded it, or
+ *   when the file holds a value that is not a known mode
  * @property tunnel the verified tunnel; null while no tunnel is recorded
- * @property direct whether the cluster API is reachable from this machine with no tunnel
  */
 data class ProxyEnv(
-    val tailscaleActive: Boolean?,
+    val networkMode: NetworkMode?,
     val tunnel: RecordedTunnel?,
-    val direct: Boolean,
 )
 
 /**
@@ -35,11 +35,16 @@ data class ProxyEnv(
  *
  * The tool wrappers in `<workspace>/bin/`, the tunnel script and `env.sh` source this file, so shell
  * code never reads `.socks5-proxy-state` or parses JSON. Any value a shell-side tool needs belongs
- * here. This class is the file's only writer. It holds only [Constants.Proxy.ENV_TAILSCALE_ACTIVE],
- * [Constants.Proxy.ENV_SOCKS_PORT], [Constants.Proxy.ENV_SOCKS_PID] and [Constants.Proxy.ENV_NETWORK_MODE];
- * the port and the PID are written and removed together. Each update keeps the other keys and
- * replaces the file in one rename, so a wrapper that sources it while another CLI process writes
- * always reads a whole file.
+ * here. This class is the file's only writer. It writes only [Constants.Proxy.ENV_NETWORK_MODE],
+ * [Constants.Proxy.ENV_SOCKS_PORT] and [Constants.Proxy.ENV_SOCKS_PID]; the port and the PID are
+ * written and removed together. Each update keeps the other keys and replaces the file in one
+ * rename, so a wrapper that sources it while another CLI process writes always reads a whole file.
+ *
+ * A file written by an earlier release holds [Constants.Proxy.ENV_TAILSCALE_ACTIVE] in place of the
+ * mode. [read] takes it as [NetworkMode.Tailscale] or [NetworkMode.Socks]. Only [recordNetworkMode]
+ * converts the file, replacing the old key with the new one; a tunnel write keeps the old key as it
+ * found it, because only a mode write is preceded by the wrapper install ([WorkspaceShellTools]),
+ * and an old wrapper knows only the old key.
  *
  * Each update reads the file, changes one key and writes it back while it holds an exclusive lock on
  * [Constants.Proxy.ENV_LOCK_FILE], so two CLI processes that update different keys at once keep both.
@@ -54,43 +59,31 @@ class ProxyEnvFile(
     /** The env file itself. */
     val file: File = File(workspace, Constants.Proxy.ENV_FILE)
 
-    /** The recorded state; with no file, both nullable fields are null and [ProxyEnv.direct] is false. */
-    fun read(): ProxyEnv {
-        val values = readValues()
-        val port = values[Constants.Proxy.ENV_SOCKS_PORT]?.toIntOrNull()
-        val pid = values[Constants.Proxy.ENV_SOCKS_PID]?.toLongOrNull()
-        return ProxyEnv(
-            tailscaleActive = values[Constants.Proxy.ENV_TAILSCALE_ACTIVE]?.toBooleanStrictOrNull(),
-            tunnel = if (port != null && pid != null) RecordedTunnel(port, pid) else null,
-            direct = values[Constants.Proxy.ENV_NETWORK_MODE] == Constants.Proxy.ENV_NETWORK_MODE_DIRECT,
-        )
-    }
+    /** The recorded state; with no file, both fields are null. */
+    fun read(): ProxyEnv = parse(readValues()).env
 
     private val lockFile = File(workspace, Constants.Proxy.ENV_LOCK_FILE)
 
-    /** Records whether the cluster is reached over Tailscale, keeping any recorded tunnel. */
-    fun recordTailscale(active: Boolean) = update { it.copy(tailscaleActive = active) }
-
     /**
-     * Records whether the cluster API is reachable from this machine with no tunnel, keeping the other
-     * keys. `true` writes `EDL_NETWORK_MODE=direct`; `false` removes the key.
+     * Records [mode], keeping any recorded tunnel, and drops the legacy Tailscale key. Call it through
+     * [WorkspaceShellTools.prepare], which installs the wrappers that read the new key first.
      */
-    fun recordDirect(active: Boolean) = update { it.copy(direct = active) }
+    fun recordNetworkMode(mode: NetworkMode) = update { it.copy(env = it.env.copy(networkMode = mode), legacyTailscale = null) }
 
-    /** Records the verified tunnel on [port] whose script is [pid], keeping the Tailscale flag. */
+    /** Records the verified tunnel on [port] whose script is [pid], keeping the recorded mode in its format. */
     fun recordTunnel(
         port: Int,
         pid: Long,
-    ) = update { it.copy(tunnel = RecordedTunnel(port, pid)) }
+    ) = update { it.copy(env = it.env.copy(tunnel = RecordedTunnel(port, pid))) }
 
-    /** Removes the recorded tunnel's port and PID, keeping the Tailscale flag. Writes nothing when no file exists. */
+    /** Removes the recorded tunnel's port and PID, keeping the recorded mode. Writes nothing when no file exists. */
     fun removeTunnel() {
         if (!file.exists()) return
-        locked { if (file.exists()) write(read().copy(tunnel = null)) }
+        locked { if (file.exists()) write(parse(readValues()).let { it.copy(env = it.env.copy(tunnel = null)) }) }
     }
 
     /** Replaces the recorded state with [change] applied to it, under the lock. */
-    private fun update(change: (ProxyEnv) -> ProxyEnv) = locked { write(change(read())) }
+    private fun update(change: (StoredEnv) -> StoredEnv) = locked { write(change(parse(readValues()))) }
 
     /** Runs [block] while this thread holds [localLock] and this process holds the lock file. */
     private fun <T> locked(block: () -> T): T =
@@ -105,13 +98,14 @@ class ProxyEnvFile(
         file.delete()
     }
 
-    private fun write(env: ProxyEnv) {
+    private fun write(stored: StoredEnv) {
+        val env = stored.env
         val lines =
             listOfNotNull(
-                env.tailscaleActive?.let { "${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=$it" },
+                stored.modeLine?.let { "${Constants.Proxy.ENV_NETWORK_MODE}=$it" },
+                stored.legacyTailscale?.let { "${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=$it" },
                 env.tunnel?.let { "${Constants.Proxy.ENV_SOCKS_PORT}=${it.port}" },
                 env.tunnel?.let { "${Constants.Proxy.ENV_SOCKS_PID}=${it.pid}" },
-                "${Constants.Proxy.ENV_NETWORK_MODE}=${Constants.Proxy.ENV_NETWORK_MODE_DIRECT}".takeIf { env.direct },
             )
         file.writeTextAtomically(lines.joinToString(separator = "") { "$it\n" })
     }
@@ -125,6 +119,41 @@ class ProxyEnvFile(
         } else {
             emptyMap()
         }
+
+    /**
+     * The file as found, with what a rewrite must keep: the raw mode value (an unknown one is written
+     * back unchanged by a tunnel write) and the legacy Tailscale key of an unconverted file.
+     */
+    private data class StoredEnv(
+        val env: ProxyEnv,
+        val rawMode: String?,
+        val legacyTailscale: String?,
+    ) {
+        /**
+         * The mode value to write: none while the file is unconverted (the legacy key stays instead),
+         * else the recorded mode, else whatever unknown value the file held.
+         */
+        val modeLine: String? get() = if (legacyTailscale != null) null else env.networkMode?.id ?: rawMode
+    }
+
+    private fun parse(values: Map<String, String>): StoredEnv {
+        val port = values[Constants.Proxy.ENV_SOCKS_PORT]?.toIntOrNull()
+        val pid = values[Constants.Proxy.ENV_SOCKS_PID]?.toLongOrNull()
+        val rawMode = values[Constants.Proxy.ENV_NETWORK_MODE]
+        val legacy = values[Constants.Proxy.ENV_TAILSCALE_ACTIVE]
+        val mode =
+            when {
+                rawMode != null -> NetworkMode.fromId(rawMode)
+                legacy == null -> null
+                legacy.toBooleanStrictOrNull() == true -> NetworkMode.Tailscale
+                else -> NetworkMode.Socks
+            }
+        return StoredEnv(
+            env = ProxyEnv(networkMode = mode, tunnel = if (port != null && pid != null) RecordedTunnel(port, pid) else null),
+            rawMode = rawMode,
+            legacyTailscale = legacy.takeIf { rawMode == null },
+        )
+    }
 
     private companion object {
         /** Taken before the file lock, by every thread of this JVM, for every workspace. */

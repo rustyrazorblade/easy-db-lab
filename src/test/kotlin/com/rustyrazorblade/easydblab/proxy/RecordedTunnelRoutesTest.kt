@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -28,7 +29,7 @@ class RecordedTunnelRoutesTest : BaseKoinTest() {
 
     @Test
     fun `Tailscale gives a direct route and reads no tunnel`() {
-        state.tailscaleActive = true
+        state.networkMode = NetworkMode.Tailscale
 
         assertThat(routes().current(state)).isEqualTo(RouteLookup.Usable(ObservabilityRoute.Direct))
     }

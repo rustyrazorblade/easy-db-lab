@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -33,10 +34,10 @@ class CqlSessionServiceTest : BaseKoinTest() {
             availabilityZone = "us-west-2a",
         )
 
-    private fun stateWith(tailscaleActive: Boolean) =
+    private fun stateWith(networkMode: NetworkMode) =
         ClusterState(
             name = "test",
-            tailscaleActive = tailscaleActive,
+            networkMode = networkMode,
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Cassandra to listOf(testHost)),
         )
@@ -66,8 +67,8 @@ class CqlSessionServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `does not start SOCKS proxy when tailscaleActive is true`() {
-        whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = true))
+    fun `does not start SOCKS proxy on a Tailscale cluster`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWith(networkMode = NetworkMode.Tailscale))
 
         val service =
             DefaultCqlSessionService(
@@ -85,8 +86,28 @@ class CqlSessionServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `uses proxied session with port from SocksProxyService when tailscaleActive is false`() {
-        whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = false))
+    fun `connects directly with no SOCKS proxy in direct network mode`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWith(networkMode = NetworkMode.Direct))
+
+        val service =
+            DefaultCqlSessionService(
+                socksProxyService = mockSocksProxy,
+                clusterStateManager = mockClusterStateManager,
+                sessionFactory = mockSessionFactory,
+                resourceManager = mockResourceManager,
+            )
+
+        service.execute("SELECT now() FROM system.local")
+
+        verify(mockSocksProxy, never()).ensureRunning(any())
+        verify(mockSocksProxy, never()).getLocalPort()
+        verify(mockSessionFactory).createDirectSession(any(), any())
+        verify(mockSessionFactory, never()).createSession(any(), any(), any())
+    }
+
+    @Test
+    fun `uses proxied session with port from SocksProxyService on a SOCKS cluster`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWith(networkMode = NetworkMode.Socks))
 
         val service =
             DefaultCqlSessionService(

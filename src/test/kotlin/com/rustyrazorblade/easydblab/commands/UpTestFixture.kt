@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
@@ -22,10 +23,11 @@ import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
@@ -276,7 +278,7 @@ abstract class UpTestFixture : BaseKoinTest() {
                 }
             }
             // The real preflight the executor runs before `up`; a test calls ensureTunnel() to play the executor.
-            single { ProxyPreflight(get(), get(), ProxyEnvFile(get<Context>().workingDirectory)) }
+            single { ProxyPreflight(get(), get(), WorkspaceShellTools(ToolWrapperInstaller()), get<Context>().workingDirectory) }
             single<SocksProxyService> {
                 mock<SocksProxyService> {
                     on { ensureRunning(any()) } doAnswer { invocation ->
@@ -545,7 +547,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
-            tailscaleActive = true,
+            networkMode = NetworkMode.Tailscale,
             initConfig =
                 InitConfig(
                     cassandraInstances = cassandraInstances,

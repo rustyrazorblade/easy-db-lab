@@ -1,15 +1,21 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import java.io.File
 
 /**
  * Prepares a workspace for the shell-side tools: the wrappers in `<workspace>/bin/` and the
- * cluster's Tailscale flag in the proxy env file.
+ * cluster's network mode in the proxy env file.
  *
- * `up` and a VPC restore both build a workspace that `env.sh` users and kit processes use right
- * away, before any other command has run, so both write the two together. A Tailscale cluster
- * never starts a tunnel, and without the flag the wrappers could not tell it from a SOCKS cluster
- * whose tunnel is down.
+ * It is the only caller of [ProxyEnvFile.recordNetworkMode], and it always installs the wrappers
+ * first. A workspace made by an earlier release has wrappers that know only the old
+ * `EDL_TAILSCALE_ACTIVE` key; recording the mode converts the env file to `EDL_NETWORK_MODE`, and an
+ * old wrapper on a converted Tailscale file would fail with the `socks start` message. So the order
+ * is always new wrappers, then new env file.
+ *
+ * `up`, a VPC restore, `socks start` and the preflight of every `@RequiresProxy` command call it.
+ * A cluster that needs no tunnel never starts one, and without the mode the wrappers could not tell
+ * it from a SOCKS cluster whose tunnel is down.
  *
  * @param installer writes the wrappers
  */
@@ -17,15 +23,16 @@ class WorkspaceShellTools(
     private val installer: ToolWrapperInstaller,
 ) {
     /**
-     * Writes the wrappers and records [tailscaleActive] in [workspace]'s proxy env file.
+     * Writes the wrappers and then records [mode] in [workspace]'s proxy env file.
      *
-     * @throws IllegalStateException if `bin/` holds a tool file that easy-db-lab did not write
+     * @throws IllegalStateException if `bin/` holds a tool file that easy-db-lab did not write; the
+     *   env file is then left as it was
      */
     fun prepare(
         workspace: File,
-        tailscaleActive: Boolean,
+        mode: NetworkMode,
     ) {
         installer.install(workspace)
-        ProxyEnvFile(workspace).recordTailscale(tailscaleActive)
+        ProxyEnvFile(workspace).recordNetworkMode(mode)
     }
 }

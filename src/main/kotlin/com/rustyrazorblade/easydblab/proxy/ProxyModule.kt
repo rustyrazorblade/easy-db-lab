@@ -19,7 +19,7 @@ private fun isSshOpenToAll(clusterStateManager: ClusterStateManager): Boolean =
  * - [SocksProxyService] as a singleton — manages the detached SSH proxy process
  * - [ProxyEnvFile] as a singleton — the workspace's proxy state for shell-side tools
  * - [ToolWrapperInstaller] as a singleton — writes the shell-side tool wrappers
- * - [WorkspaceShellTools] as a singleton — the wrappers plus the Tailscale flag, at `up` and restore
+ * - [WorkspaceShellTools] as a singleton — the wrappers plus the network mode, at `up`, restore, `socks start` and the preflight
  * - [ProxyPreflight] as a singleton — starts the tunnel for `@RequiresProxy` commands
  * - [HttpClientFactory] for creating OkHttp clients (proxy routing via JVM system properties)
  * - [ProxyAvailability] as a singleton — lets a `@RequiresProxy(tolerateFailure = true)`
@@ -56,11 +56,11 @@ val proxyModule =
         // curl, skopeo, k9s) and the four SSH wrappers (ssh, scp, sftp, rsync) that use the sshConfig.
         single { ToolWrapperInstaller() }
 
-        // Prepares a workspace for shell-side tools: the wrappers and the Tailscale flag.
+        // Prepares a workspace for shell-side tools: the wrappers, then the network mode.
         single { WorkspaceShellTools(get()) }
 
         // The executor's tunnel start for @RequiresProxy commands.
-        single { ProxyPreflight(get(), get(), get()) }
+        single { ProxyPreflight(get(), get(), get(), get<Context>().workingDirectory) }
 
         // Proxy availability holder - singleton so DefaultCommandExecutor and the command it
         // executes share the same instance within a process.

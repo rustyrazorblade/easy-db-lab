@@ -2,15 +2,18 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.File
 
 /**
  * What the command executor does for a `@RequiresProxy` command before it runs: start or reuse the
- * SOCKS tunnel when the cluster is provisioned, its infrastructure is UP, and it is not a Tailscale
- * cluster.
+ * SOCKS tunnel when the cluster is provisioned, its infrastructure is UP, and its network mode is
+ * `socks`.
  *
- * Whenever the cluster state can be read, it also records the cluster's Tailscale flag in the proxy
- * env file. A Tailscale cluster never starts a tunnel, so without this the tool wrappers and `env.sh`
- * would have no record of how to reach the cluster.
+ * Whenever the cluster state can be read, it also writes the wrappers and records the cluster's
+ * network mode in the proxy env file, through [WorkspaceShellTools]. A cluster in `tailscale` or
+ * `direct` mode never starts a tunnel, so without this the tool wrappers and `env.sh` would have no
+ * record of how to reach the cluster. A tunnel recorded earlier is left recorded and running when
+ * the mode says no tunnel is needed: the wrappers ignore it, and `socks stop` and `down` stop it.
  *
  * A failure to establish the tunnel propagates: the annotation says the command cannot work without it.
  *
@@ -22,7 +25,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 class ProxyPreflight(
     private val clusterStateManager: ClusterStateManager,
     private val socksProxyService: SocksProxyService,
-    private val envFile: ProxyEnvFile,
+    private val workspaceShellTools: WorkspaceShellTools,
+    private val workspace: File,
 ) {
     private val obtained = ThreadLocal<SocksProxyState?>()
 
@@ -46,8 +50,8 @@ class ProxyPreflight(
                 log.debug(e) { "Could not load cluster state for proxy startup check" }
                 return
             }
-        envFile.recordTailscale(state.isTailscaleEnabled())
-        if (!state.isInfrastructureUp() || state.isTailscaleEnabled()) return
+        workspaceShellTools.prepare(workspace, state.networkMode)
+        if (!state.isInfrastructureUp() || !state.networkMode.needsTunnel) return
         val controlHost = state.getControlHost() ?: return
         obtained.set(socksProxyService.ensureRunning(controlHost))
     }

@@ -46,6 +46,7 @@ Central state data class persisted as `state.json`. Key fields:
 - `dataBucket: String` — per-cluster data bucket (`easy-db-lab-data-{clusterId}`) for ClickHouse data and CloudWatch metrics
 - `backupHashes: Map<String, String>` — SHA-256 hashes of backed-up files
 - `infrastructureStatus: InfrastructureStatus` — UP, DOWN, or UNKNOWN
+- `networkMode: NetworkMode` — how this machine reaches the cluster: `socks` (the default), `tailscale` or `direct`, serialized as that id. Tunnel decisions use `networkMode.needsTunnel` (true only for `socks`); Tailscale-only steps compare with `NetworkMode.Tailscale`. `init` records it from the profile's Tailscale credentials and `--no-tailscale`. It replaced the `tailscaleActive` boolean; `ClusterStateManager.load()` reads an old state's `tailscaleActive` as the mode and fails on an unknown mode
 - `tailFlush: TailFlushRecord?` — the signals a `down` already saved, as `TailSignal` → `SavedSignal(completedAt)`. Only `LOGS` and `METRICS` are ever recorded, each the moment its flush succeeds (their flushes stop Loki and Mimir and cannot run twice); a re-run skips them. `saveCompletedAt` is set once a save of every signal succeeded, right before the infrastructure teardown; a re-run (after a teardown that failed part-way) then skips the whole save and its SOCKS tunnel. `markInfrastructureUp()` clears it. `ClusterStateManager.save` writes a temp file with the state file's permissions and renames it over `state.json`, so a concurrent `load()` never reads a torn file
 
 Key methods:
@@ -82,7 +83,7 @@ enum class ServerType(val serverType: String) {
 ### ClusterStateManager (`ClusterStateManager.kt`)
 
 Handles persistence to `state.json`:
-- `load(): ClusterState` — read from file
+- `load(): ClusterState` — read from file; it rewrites the JSON tree first for older states (an `initConfig` with no `cni` reads as Flannel, and `tailscaleActive` becomes `networkMode`), and writes nothing
 - `save(state)` — write to file (pretty-printed JSON)
 - `exists(): Boolean` — check if state file exists
 - `updateHosts()`, `updateEmrCluster()`, `updateInfrastructure()` — load-update-save atomically

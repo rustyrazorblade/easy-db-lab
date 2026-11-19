@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeGroup
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
@@ -253,16 +254,18 @@ class Up(
         )
 
     /**
-     * The operator's route into the cluster: the SOCKS tunnel unless the cluster uses Tailscale,
-     * then Tailscale and its route check. Under `--no-setup` a Tailscale cluster gets neither, as
-     * the VPN is started with node setup.
+     * The operator's route into the cluster, by the cluster's network mode: the SOCKS tunnel in
+     * `socks` mode; Tailscale and its route check in `tailscale` mode; nothing in `direct` mode,
+     * where this machine reaches the cluster as it is. Under `--no-setup` a Tailscale cluster gets
+     * no route either, as the VPN is started with node setup.
      */
     private fun operatorRoute(launched: CompletableFuture<Unit>): UpOperatorRoute {
         val connect: (ClusterHost) -> Unit =
-            when {
-                !workingState.isTailscaleEnabled() -> SocksRoute(socksProxyService, eventBus, preflightTunnel)::connect
-                noSetup -> { _ -> }
-                else ->
+            when (workingState.networkMode) {
+                NetworkMode.Socks -> SocksRoute(socksProxyService, eventBus, preflightTunnel)::connect
+                NetworkMode.Direct -> { _ -> }
+                NetworkMode.Tailscale if noSetup -> { _ -> }
+                NetworkMode.Tailscale ->
                     TailnetRoute(
                         userConfig,
                         eventBus,

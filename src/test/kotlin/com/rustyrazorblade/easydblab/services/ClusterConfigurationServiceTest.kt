@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
@@ -119,11 +120,11 @@ class ClusterConfigurationServiceTest {
     inner class WriteSshAndEnvironmentFiles {
         @Test
         fun `on a Tailscale cluster it writes the wrappers and an env file that says Tailscale and has no port`() {
-            val clusterState = createClusterState().copy(tailscaleActive = true)
+            val clusterState = createClusterState().copy(networkMode = NetworkMode.Tailscale)
 
             service.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
 
-            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null, direct = false))
+            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Tailscale, tunnel = null))
             val bin = File(tempDir.toFile(), Constants.ToolWrappers.DIRECTORY)
             assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(
                 Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.KIT_LIBRARY +
@@ -135,11 +136,11 @@ class ClusterConfigurationServiceTest {
         fun `on a SOCKS cluster it records that the cluster is not Tailscale and keeps a recorded port`() {
             ProxyEnvFile(tempDir.toFile()).recordTunnel(41234, ProcessHandle.current().pid())
 
-            service.writeSshAndEnvironmentFiles(tempDir, createClusterState().copy(tailscaleActive = false), createUserConfig())
+            service.writeSshAndEnvironmentFiles(tempDir, createClusterState().copy(networkMode = NetworkMode.Socks), createUserConfig())
 
             assertThat(
                 ProxyEnvFile(tempDir.toFile()).read(),
-            ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, ProcessHandle.current().pid()), direct = false))
+            ).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = RecordedTunnel(41234, ProcessHandle.current().pid())))
             assertThat(File(tempDir.toFile(), "${Constants.ToolWrappers.DIRECTORY}/kubectl").canExecute()).isTrue()
         }
 

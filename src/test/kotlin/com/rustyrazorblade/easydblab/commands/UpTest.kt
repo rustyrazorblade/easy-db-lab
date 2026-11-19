@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -398,7 +399,7 @@ class UpTest : UpTestFixture() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                tailscaleActive = true,
+                networkMode = NetworkMode.Tailscale,
                 initConfig =
                     InitConfig(
                         cassandraInstances = 1,
@@ -883,7 +884,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up skips both Tailscale checks entirely when the cluster does not use Tailscale`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = NetworkMode.Socks))
         // Both checks would fail outright if they ran; a non-Tailscale cluster must not consult
         // them at all, and must not pay for a local process invocation or a socket connect.
         localTailscaleState = LocalTailscaleState.NotInstalled
@@ -897,7 +898,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up reports the SOCKS tunnel it started on a cluster that does not use Tailscale`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = NetworkMode.Socks))
         val events = captureEvents()
 
         newUp().execute()
@@ -908,7 +909,7 @@ class UpTest : UpTestFixture() {
     @Test
     fun `up --no-setup reports the SOCKS tunnel it starts or reuses, once`() {
         // Under --no-setup the tunnel may already come from the @RequiresProxy preflight, which reports nothing.
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = NetworkMode.Socks))
         val events = captureEvents()
 
         newUp().apply { noSetup = true }.execute()
@@ -1009,11 +1010,11 @@ class UpTest : UpTestFixture() {
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(
             happyState()
-                .copy(tailscaleActive = false, hosts = happyHosts() + (ServerType.Control to listOf(preflightControl)))
+                .copy(networkMode = NetworkMode.Socks, hosts = happyHosts() + (ServerType.Control to listOf(preflightControl)))
                 .apply { markInfrastructureUp() },
         )
         getKoin().get<ProxyPreflight>().ensureTunnel()
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = NetworkMode.Socks))
     }
 
     @Test

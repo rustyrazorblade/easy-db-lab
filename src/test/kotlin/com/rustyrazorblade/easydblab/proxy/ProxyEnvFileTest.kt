@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -19,81 +20,98 @@ internal class ProxyEnvFileTest {
     private val file: File get() = File(workspace, Constants.Proxy.ENV_FILE)
 
     @Test
-    fun `records the Tailscale flag, the port and the tunnel PID as fixed keys only`() {
-        envFile.recordTailscale(active = false)
+    fun `records the network mode, the port and the tunnel PID as fixed keys only`() {
+        envFile.recordNetworkMode(NetworkMode.Socks)
         envFile.recordTunnel(41234, PID)
 
-        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false", "EDL_SOCKS_PORT=41234", "EDL_SOCKS_PID=$PID")
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=socks", "EDL_SOCKS_PORT=41234", "EDL_SOCKS_PID=$PID")
     }
 
     @Test
-    fun `recording the tunnel keeps the Tailscale flag`() {
-        envFile.recordTailscale(active = true)
+    fun `each mode is written as its id and read back`() {
+        NetworkMode.entries.forEach { mode ->
+            envFile.recordNetworkMode(mode)
 
-        envFile.recordTunnel(41234, PID)
-
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(41234, PID), direct = false))
+            assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=${mode.id}")
+            assertThat(envFile.read().networkMode).isEqualTo(mode)
+        }
     }
 
     @Test
-    fun `recording the Tailscale flag keeps the tunnel`() {
+    fun `recording the tunnel keeps the network mode`() {
+        envFile.recordNetworkMode(NetworkMode.Direct)
+
         envFile.recordTunnel(41234, PID)
 
-        envFile.recordTailscale(active = false)
-
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, PID), direct = false))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Direct, tunnel = RecordedTunnel(41234, PID)))
     }
 
     @Test
-    fun `direct mode is one fixed key that recording a tunnel, removing it and recording Tailscale all keep`() {
-        envFile.recordDirect(active = true)
-        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=direct")
+    fun `recording the network mode keeps the tunnel`() {
+        envFile.recordTunnel(41234, PID)
+
+        envFile.recordNetworkMode(NetworkMode.Tailscale)
+
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Tailscale, tunnel = RecordedTunnel(41234, PID)))
+    }
+
+    @Test
+    fun `an earlier release's EDL_TAILSCALE_ACTIVE reads as tailscale when true and socks when false`() {
+        file.writeText("EDL_TAILSCALE_ACTIVE=true\n")
+        assertThat(envFile.read().networkMode).isEqualTo(NetworkMode.Tailscale)
+
+        file.writeText("EDL_TAILSCALE_ACTIVE=false\n")
+        assertThat(envFile.read().networkMode).isEqualTo(NetworkMode.Socks)
+    }
+
+    @Test
+    fun `EDL_NETWORK_MODE wins over an EDL_TAILSCALE_ACTIVE in the same file`() {
+        file.writeText("EDL_NETWORK_MODE=direct\nEDL_TAILSCALE_ACTIVE=true\n")
+
+        assertThat(envFile.read().networkMode).isEqualTo(NetworkMode.Direct)
+    }
+
+    @Test
+    fun `a file with neither key, or an unknown mode, reads as no mode`() {
+        file.writeText("EDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=$PID\n")
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = null, tunnel = RecordedTunnel(41234, PID)))
+
+        file.writeText("EDL_NETWORK_MODE=vpn\n")
+        assertThat(envFile.read().networkMode).isNull()
+    }
+
+    @Test
+    fun `recording the mode converts an earlier release's file and keeps its tunnel`() {
+        file.writeText("EDL_TAILSCALE_ACTIVE=true\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=$PID\n")
+
+        envFile.recordNetworkMode(NetworkMode.Tailscale)
+
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=tailscale", "EDL_SOCKS_PORT=41234", "EDL_SOCKS_PID=$PID")
+    }
+
+    @Test
+    fun `recording or removing the tunnel keeps an earlier release's file in its old format`() {
+        file.writeText("EDL_TAILSCALE_ACTIVE=true\n")
 
         envFile.recordTunnel(41234, PID)
-        assertThat(file.readLines()).contains("EDL_NETWORK_MODE=direct")
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = null, tunnel = RecordedTunnel(41234, PID), direct = true))
+        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=true", "EDL_SOCKS_PORT=41234", "EDL_SOCKS_PID=$PID")
 
         envFile.removeTunnel()
-        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=direct")
-
-        envFile.recordTailscale(active = false)
-        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false", "EDL_NETWORK_MODE=direct")
-        assertThat(envFile.read().direct).isTrue()
+        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=true")
     }
 
     @Test
-    fun `recording direct mode keeps the Tailscale flag and the tunnel`() {
-        envFile.recordTailscale(active = false)
+    fun `recording the tunnel keeps an unknown mode as it found it`() {
+        file.writeText("EDL_NETWORK_MODE=vpn\n")
+
         envFile.recordTunnel(41234, PID)
 
-        envFile.recordDirect(active = true)
-
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, PID), direct = true))
-    }
-
-    @Test
-    fun `recording direct mode off removes the key and keeps the rest`() {
-        envFile.recordTailscale(active = false)
-        envFile.recordDirect(active = true)
-
-        envFile.recordDirect(active = false)
-
-        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false")
-        assertThat(envFile.read().direct).isFalse()
-    }
-
-    @Test
-    fun `only the value direct turns direct mode on`() {
-        file.writeText("EDL_NETWORK_MODE=tailscale\n")
-        assertThat(envFile.read().direct).isFalse()
-
-        file.writeText("EDL_NETWORK_MODE=\n")
-        assertThat(envFile.read().direct).isFalse()
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=vpn", "EDL_SOCKS_PORT=41234", "EDL_SOCKS_PID=$PID")
     }
 
     @Test
     fun `direct mode sources cleanly in sh`() {
-        envFile.recordDirect(active = true)
+        envFile.recordNetworkMode(NetworkMode.Direct)
 
         val output = sh(". '${file.absolutePath}'; echo \"${'$'}EDL_NETWORK_MODE\"")
 
@@ -101,13 +119,13 @@ internal class ProxyEnvFileTest {
     }
 
     @Test
-    fun `removing the tunnel removes its port and PID together and keeps the Tailscale flag`() {
-        envFile.recordTailscale(active = false)
+    fun `removing the tunnel removes its port and PID together and keeps the network mode`() {
+        envFile.recordNetworkMode(NetworkMode.Socks)
         envFile.recordTunnel(41234, PID)
 
         envFile.removeTunnel()
 
-        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false")
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=socks")
     }
 
     @Test
@@ -137,13 +155,13 @@ internal class ProxyEnvFileTest {
 
     @Test
     fun `replaces the file by rename, so a reader of the old file still sees all of it`() {
-        envFile.recordTailscale(active = false)
+        envFile.recordNetworkMode(NetworkMode.Socks)
         envFile.recordTunnel(41234, PID)
 
         file.inputStream().use { oldReader ->
             envFile.recordTunnel(45678, PID)
 
-            assertThat(String(oldReader.readAllBytes())).isEqualTo("EDL_TAILSCALE_ACTIVE=false\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=$PID\n")
+            assertThat(String(oldReader.readAllBytes())).isEqualTo("EDL_NETWORK_MODE=socks\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=$PID\n")
         }
         assertThat(envFile.read().tunnel).isEqualTo(RecordedTunnel(45678, PID))
         assertThat(workspace.list()).containsExactlyInAnyOrder(Constants.Proxy.ENV_FILE, Constants.Proxy.ENV_LOCK_FILE)
@@ -151,17 +169,17 @@ internal class ProxyEnvFileTest {
 
     @Test
     fun `sources cleanly in sh`() {
-        envFile.recordTailscale(active = false)
+        envFile.recordNetworkMode(NetworkMode.Socks)
         envFile.recordTunnel(41234, PID)
 
-        val output = sh(". '${file.absolutePath}'; echo \"${'$'}EDL_TAILSCALE_ACTIVE:${'$'}EDL_SOCKS_PORT:${'$'}EDL_SOCKS_PID\"")
+        val output = sh(". '${file.absolutePath}'; echo \"${'$'}EDL_NETWORK_MODE:${'$'}EDL_SOCKS_PORT:${'$'}EDL_SOCKS_PID\"")
 
-        assertThat(output).isEqualTo("false:41234:$PID")
+        assertThat(output).isEqualTo("socks:41234:$PID")
     }
 
     @Test
     fun `concurrent writers never leave a partial file`() {
-        envFile.recordTailscale(active = false)
+        envFile.recordNetworkMode(NetworkMode.Socks)
         envFile.recordTunnel(PORT_BASE, PID)
         val pool = Executors.newFixedThreadPool(WRITERS + 1)
         val start = CountDownLatch(1)
@@ -187,7 +205,7 @@ internal class ProxyEnvFileTest {
 
         assertThat(reads).allSatisfy { lines ->
             assertThat(lines).hasSize(3)
-            assertThat(lines[0]).isEqualTo("EDL_TAILSCALE_ACTIVE=false")
+            assertThat(lines[0]).isEqualTo("EDL_NETWORK_MODE=socks")
             assertThat(lines[1]).matches("EDL_SOCKS_PORT=\\d+")
             assertThat(lines[2]).isEqualTo("EDL_SOCKS_PID=$PID")
         }
@@ -213,17 +231,17 @@ internal class ProxyEnvFileTest {
                 pool.submit {
                     start.await()
                     val writer = ProxyEnvFile(workspace)
-                    repeat(ROUNDS * WRITERS) { round -> writer.recordTailscale(active = round % 2 == 0) }
+                    repeat(ROUNDS * WRITERS) { round -> writer.recordNetworkMode(alternatingMode(round)) }
                 }
             start.countDown()
             listOf(tunnelWriter, flagWriter).forEach { it.get(LIMIT_SECONDS, TimeUnit.SECONDS) }
         } finally {
             pool.shutdownNow()
         }
-        envFile.recordTailscale(active = true)
+        envFile.recordNetworkMode(NetworkMode.Tailscale)
 
-        assertThat(lost.get()).withFailMessage("a tunnel update was overwritten by a Tailscale update").isZero()
-        val expected = ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(ROUNDS * WRITERS, PID), direct = false)
+        assertThat(lost.get()).withFailMessage("a tunnel update was overwritten by a network mode update").isZero()
+        val expected = ProxyEnv(networkMode = NetworkMode.Tailscale, tunnel = RecordedTunnel(ROUNDS * WRITERS, PID))
         assertThat(envFile.read()).isEqualTo(expected)
     }
 
@@ -240,32 +258,34 @@ internal class ProxyEnvFileTest {
                 workspace.absolutePath,
                 "$rounds",
             ).redirectErrorStream(true).start()
-        // This process writes the Tailscale flag for as long as the child writes the tunnel.
+        // This process writes the network mode for as long as the child writes the tunnel.
         var round = 0
         while (child.isAlive) {
-            envFile.recordTailscale(active = round++ % 2 == 0)
+            envFile.recordNetworkMode(alternatingMode(round++))
         }
-        envFile.recordTailscale(active = true)
+        envFile.recordNetworkMode(NetworkMode.Tailscale)
         val output = child.inputStream.bufferedReader().readText()
 
         assertThat(child.exitValue()).withFailMessage("the child's tunnel update was lost: $output").isZero()
-        val expected = ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(rounds, ProxyEnvFileWriterMain.PID), direct = false)
+        val expected = ProxyEnv(networkMode = NetworkMode.Tailscale, tunnel = RecordedTunnel(rounds, ProxyEnvFileWriterMain.PID))
         assertThat(envFile.read()).isEqualTo(expected)
     }
 
     @Test
     fun `reads nothing from a workspace with no file`() {
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = null, tunnel = null, direct = false))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = null, tunnel = null))
     }
 
     @Test
     fun `delete removes the file`() {
-        envFile.recordTailscale(active = true)
+        envFile.recordNetworkMode(NetworkMode.Tailscale)
 
         envFile.delete()
 
         assertThat(file).doesNotExist()
     }
+
+    private fun alternatingMode(round: Int): NetworkMode = if (round % 2 == 0) NetworkMode.Tailscale else NetworkMode.Socks
 
     private fun sh(script: String): String {
         val process = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true).start()

@@ -93,7 +93,7 @@ class DefaultObservabilityHttp(
         val clusterState = clusterStateManager.load()
         val controlHost: ClusterHost =
             clusterState.getControlHost() ?: error("No control node found. Please ensure the environment is running.")
-        if (!clusterState.isTailscaleEnabled()) {
+        if (clusterState.networkMode.needsTunnel) {
             socksProxyService.ensureRunning(controlHost)
         }
         return httpClientFactory

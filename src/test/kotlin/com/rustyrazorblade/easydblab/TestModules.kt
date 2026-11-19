@@ -31,6 +31,7 @@ import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
@@ -122,6 +123,9 @@ object TestModules {
 
             // Real: it only writes and removes the packaged tool wrappers in a workspace's bin/.
             single { ToolWrapperInstaller() }
+
+            // Real: the wrappers, then the network mode, in the test workspace.
+            single { WorkspaceShellTools(get()) }
 
             // Real, over the test workspace, so stopping a tunnel (`down`, `socks stop`) runs the
             // real state file and env file code. Its ssh launcher refuses to start anything: a test

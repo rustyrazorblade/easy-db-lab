@@ -195,6 +195,13 @@ object Constants {
          */
         const val ATTEMPT_STOP_GRACE_SECONDS = 30L
 
+        /**
+         * How long a bring-up that is ending waits, in all, for its pipeline threads to stop. Longer
+         * than [ATTEMPT_STOP_GRACE_SECONDS], since a step waits that long for its attempt first; a
+         * pipeline still running after it is reported and left behind, so `up` never hangs on one.
+         */
+        const val PIPELINE_STOP_GRACE_SECONDS = 60L
+
         /** How long removing a stale Node and its node password waits for each to be gone. */
         const val NODE_CLEANUP_DELETE_WAIT_SECONDS = 60L
 
@@ -395,6 +402,10 @@ object Constants {
     object AWS {
         const val DEFAULT_CREDENTIALS_NAME = "awscredentials"
 
+        // The account ID token in the IAM policy templates. AWSPolicy replaces it with the real
+        // account; setup paths that have no working credentials show the policies with it kept.
+        const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
+
         // The shared-credentials file the tool writes holds one profile under this name; the AWS CLI
         // (Packer, SSM sessions) is pointed at the file with SHARED_CREDENTIALS_FILE_ENV.
         const val CREDENTIALS_FILE_PROFILE = "default"
@@ -416,6 +427,67 @@ object Constants {
         // EC2 error code for a launch AWS has no capacity for. AWS answers it with HTTP 500, so
         // the retry policy must name it: it is a shortage, not a transient server error.
         const val EC2_INSUFFICIENT_CAPACITY = "InsufficientInstanceCapacity"
+
+        /**
+         * AWS error codes, grouped by what the user must do. `AwsErrorHandler` checks the code
+         * before the HTTP status, because STS, IAM and S3 answer 403 for bad credentials.
+         */
+        object ErrorCodes {
+            val CREDENTIALS =
+                setOf(
+                    "ExpiredToken",
+                    "ExpiredTokenException",
+                    "RequestExpired",
+                    "AuthFailure",
+                    "InvalidClientTokenId",
+                    "UnrecognizedClientException",
+                    "InvalidAccessKeyId",
+                    "SignatureDoesNotMatch",
+                    "InvalidSignatureException",
+                    "InvalidToken",
+                    "TokenRefreshRequired",
+                    "MissingAuthenticationToken",
+                    "IncompleteSignature",
+                )
+
+            val PERMISSION_DENIED =
+                setOf(
+                    "AccessDenied",
+                    "AccessDeniedException",
+                    "UnauthorizedOperation",
+                )
+
+            /** A 403 from clock skew is neither a credentials nor a permission problem. */
+            const val CLOCK_SKEW = "RequestTimeTooSkewed"
+
+            /**
+             * Prefixes of the `SdkClientException` messages a credentials or SSO token provider raises when it finds
+             * no usable credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGES]. The legacy SSO
+             * profile's expired session has its own type, `ExpiredTokenException`, so it needs no message here; an
+             * `sso_session` profile's `SsoOidcTokenProvider` raises the last two.
+             */
+            val CREDENTIALS_MESSAGES =
+                listOf(
+                    "Unable to load credentials",
+                    "Profile file contained no credentials for profile",
+                    "Token is expired",
+                    "Unable to load SSO token",
+                )
+
+            /**
+             * The SDK packages whose providers raise a missing-credentials `SdkClientException`: the credentials
+             * providers, the SSO OIDC token provider and the SSO credentials provider.
+             */
+            val CREDENTIALS_PROVIDER_PACKAGES =
+                listOf(
+                    "software.amazon.awssdk.auth.credentials.",
+                    "software.amazon.awssdk.services.ssooidc.",
+                    "software.amazon.awssdk.services.sso.",
+                )
+
+            /** The SDK package of the exception builders, skipped to find the code that raised an exception. */
+            const val SDK_EXCEPTION_PACKAGE = "software.amazon.awssdk.core.exception."
+        }
 
         // IAM Role Names
         object Roles {
@@ -733,6 +805,9 @@ object Constants {
 
         // Per-profile user settings, written under the active profile directory
         const val PROFILE_SETTINGS_FILE = "settings.yaml"
+
+        // The profile key pair's private key, written owner-only under the active profile directory
+        const val PROFILE_SSH_KEY_FILE = "secret.pem"
     }
 
     // K3s configuration
@@ -1706,8 +1781,47 @@ object Constants {
         const val BACKEND_STATE_TIMED_OUT = "timed out"
     }
 
+    // Raw output of commands run on cluster nodes, printed through NodeOutput
+    object NodeOutput {
+        /** Lines of a node's recent output kept for its failure report. */
+        const val TAIL_LINES = 30
+
+        /** Bytes after which a line with no newline is emitted anyway, so it never grows without bound. */
+        const val MAX_LINE_BYTES = 8192
+
+        /**
+         * How far back from a hard cut a URL's `://` is looked for, so the URL moves whole to the
+         * next piece and its credential can still be redacted.
+         */
+        const val URL_CARRY_BYTES = 512
+
+        /**
+         * How long an interrupted command still waits for its queued output to print. A console
+         * that is stalled (a paused terminal) must not hold an abandoned worker forever.
+         */
+        val INTERRUPTED_DRAIN_WAIT: java.time.Duration = java.time.Duration.ofSeconds(INTERRUPTED_DRAIN_WAIT_SECONDS)
+
+        /** [INTERRUPTED_DRAIN_WAIT] in seconds. */
+        const val INTERRUPTED_DRAIN_WAIT_SECONDS = 5L
+
+        /** Name of the thread that prints one remote command's output lines. */
+        const val DRAIN_THREAD_NAME = "ssh-output"
+
+        /** Characters of a line kept in a node's tail; the console still prints the whole line. */
+        const val TAIL_ENTRY_CHARS = 512
+
+        /** Ends a tail entry that was cut to [TAIL_ENTRY_CHARS]. */
+        const val TAIL_ENTRY_ELLIPSIS = "…"
+
+        /** Marks a tail entry that came from stderr. */
+        const val TAIL_STDERR_PREFIX = "stderr: "
+    }
+
     // OpenSSH options the generated sshConfig sets for every SSH transport
     object Ssh {
+        /** Name prefix of the platform threads a virtual thread's SSH calls run on (`ssh/PlatformThreadCall`). */
+        const val CALL_THREAD_NAME = "ssh-call"
+
         /** Name prefix of a file staged in the login directory by `installFile` before it is moved into place. */
         const val INSTALL_STAGING_PREFIX = "edl-staged-"
 

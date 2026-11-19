@@ -13,7 +13,6 @@ import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
 import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.services.BackendState
-import com.rustyrazorblade.easydblab.services.DataBucketTeardown
 import com.rustyrazorblade.easydblab.services.DeviceRemoval
 import com.rustyrazorblade.easydblab.services.PlanReview
 import com.rustyrazorblade.easydblab.services.TailFlushFailed
@@ -23,6 +22,7 @@ import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.TeardownOptions
 import com.rustyrazorblade.easydblab.services.TeardownPlanner
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.DataBucketTeardown
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine

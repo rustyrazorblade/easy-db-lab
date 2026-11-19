@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
@@ -159,7 +160,7 @@ class StatusCache(
     private fun refresh() {
         lock.withLock {
             log.debug { "Refreshing status cache" }
-            try {
+            runCatchingException {
                 if (!clusterStateManager.exists()) {
                     log.debug { "No cluster state found, skipping refresh" }
                     cachedResponse = null
@@ -171,7 +172,7 @@ class StatusCache(
                 cachedResponse = collector.collect(clusterState).response
                 initializedLatch.countDown()
                 log.debug { "Status cache refreshed" }
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 log.warn(e) { "Failed to refresh status cache" }
             }
             checkVpcExists()
@@ -184,14 +185,14 @@ class StatusCache(
             log.warn { "Auto-shutdown enabled but no VPC name available; skipping infrastructure check" }
             return
         }
-        try {
+        runCatchingException {
             val found = vpcService.findVpcByName(vpcName)
             if (found == null) {
                 log.warn { "VPC '$vpcName' not found — infrastructure is gone" }
                 eventBus.emit(Event.Server.InfrastructureGone(vpcName))
                 onShutdown()
             }
-        } catch (e: Exception) {
+        }.onFailure { e ->
             log.warn(e) { "Failed to check VPC existence for '$vpcName'; skipping shutdown" }
         }
     }

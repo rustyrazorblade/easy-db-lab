@@ -30,7 +30,7 @@ class UserConfigProvider(
      * This is where generateAwsKeyPair() writes the private key.
      */
     val sshKeyPath: String
-        get() = File(profileDir, "secret.pem").absolutePath
+        get() = File(profileDir, Constants.ConfigPaths.PROFILE_SSH_KEY_FILE).absolutePath
 
     /**
      * Cached user configuration instance

@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.ssh
 
+import com.rustyrazorblade.easydblab.output.LineSplittingOutputStream
+import com.rustyrazorblade.easydblab.output.NodeStream
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.scp.client.CloseableScpClient
@@ -32,15 +34,34 @@ class MockSSHClient : ISSHClient {
      */
     var commandStderr = ""
 
+    /**
+     * Answers each command; by default with [commandOutput] and [commandStderr]. A test that needs
+     * a different answer per command, or a failure, replaces it. The answer is streamed into the
+     * sink line by line before it is returned, as the real client does while the command runs.
+     */
+    var onCommand: (String) -> Response = { Response(commandOutput, commandStderr) }
+
     override fun executeRemoteCommand(
         command: String,
-        output: Boolean,
+        sink: RemoteOutputSink?,
         secret: Boolean,
     ): Response {
         log.debug { "MOCK: Executing command: $command" }
         executedCommands.add(command)
-        return Response(commandOutput, commandStderr)
+        val response = onCommand(command)
+        if (sink != null && !secret) {
+            // Through the real splitter, so a test sees the lines the real client would stream.
+            stream(response.text, NodeStream.Stdout, sink)
+            stream(response.stderr, NodeStream.Stderr, sink)
+        }
+        return response
     }
+
+    private fun stream(
+        text: String,
+        stream: NodeStream,
+        sink: RemoteOutputSink,
+    ) = LineSplittingOutputStream { sink.line(stream, it) }.use { it.write(text.toByteArray()) }
 
     override fun uploadFile(
         local: Path,

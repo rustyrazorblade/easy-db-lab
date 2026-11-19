@@ -18,7 +18,9 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
@@ -36,6 +38,8 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import picocli.CommandLine.Command
+import java.io.File
+import java.rmi.RemoteException
 
 /**
  * Test suite for CommandExecutor.
@@ -71,6 +75,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 single<ResourceManager> { mockResourceManager }
                 single<SocksProxyService> { mockSocksProxyService }
                 single<User> { mockUserConfig }
+                single { CommandFailureReporter(eventBus, listOf(DockerErrorHandler())) }
             },
         )
 
@@ -158,6 +163,39 @@ class CommandExecutorTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a failure in top-level dispatch outside the lifecycle is reported once and not thrown`() {
+        whenever(mockResourceManager.closeAll()).thenThrow(IllegalStateException("close failed"))
+
+        val exitCode = commandExecutor.executeTopLevel(TestCommand())
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("close failed")
+    }
+
+    @Test
+    fun `a failed command whose cleanup also fails is reported once, for the command`() {
+        whenever(mockResourceManager.closeAll()).thenThrow(IllegalStateException("close failed"))
+
+        val exitCode = commandExecutor.executeTopLevel(FailingCommand())
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("Command failed intentionally")
+            .doesNotContain("close failed")
+    }
+
+    @Test
+    fun `a command that already reported its failure gets no report for a failed cleanup`() {
+        whenever(mockResourceManager.closeAll()).thenThrow(IllegalStateException("close failed"))
+
+        val exitCode = commandExecutor.executeTopLevel(ReportedFailureCommand())
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
     fun `an unexpected failure is reported as an execution error`() {
         commandExecutor.execute { FailingCommand() }
 
@@ -169,6 +207,108 @@ class CommandExecutorTest : BaseKoinTest() {
         assertThatThrownBy { commandExecutor.execute { OutOfMemoryCommand() } }
             .isInstanceOf(OutOfMemoryError::class.java)
 
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `a docker failure from a command is reported as unavailable with the check-docker remedy`() {
+        val exitCode =
+            commandExecutor.execute {
+                ThrowingCommand(
+                    com.rustyrazorblade.easydblab.DockerException(
+                        "Error pulling image x:1",
+                        java.net.ConnectException("Connection refused"),
+                    ),
+                )
+            }
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        val event = emitted.filterIsInstance<Event.Command.ProviderError>().single()
+        assertThat(event.kind).isEqualTo(ProviderErrorKind.UNAVAILABLE)
+        assertThat(event.toDisplayString()).contains("Docker is running")
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `a docker 404 keeps its own message and gets no check-docker remedy`() {
+        commandExecutor.execute {
+            ThrowingCommand(
+                com.rustyrazorblade.easydblab.DockerException(
+                    "Failed to start container abc",
+                    com.github.dockerjava.api.exception
+                        .NotFoundException("No such container: abc"),
+                ),
+            )
+        }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ProviderError>()).isEmpty()
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("No such container: abc")
+            .doesNotContain("Docker is running")
+    }
+
+    @Test
+    fun `an illegal argument shows its message in the execution error`() {
+        commandExecutor.execute { ThrowingCommand(IllegalArgumentException("bad node count 0")) }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("IllegalArgumentException")
+            .contains("bad node count 0")
+    }
+
+    @Test
+    fun `an illegal state shows its message in the execution error`() {
+        commandExecutor.execute { ThrowingCommand(IllegalStateException("cluster is down")) }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("IllegalStateException")
+            .contains("cluster is down")
+    }
+
+    @Test
+    fun `a remote failure shows its message in the execution error`() {
+        commandExecutor.execute { ThrowingCommand(RemoteException("Remote command failed (1): ls")) }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("RemoteException")
+            .contains("Remote command failed (1): ls")
+    }
+
+    @Test
+    fun `an Error in top-level dispatch is rethrown, not reported as an execution error`() {
+        whenever(mockResourceManager.closeAll()).thenThrow(OutOfMemoryError("heap"))
+
+        assertThatThrownBy { commandExecutor.executeTopLevel(TestCommand()) }
+            .isInstanceOf(OutOfMemoryError::class.java)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `an interrupt in top-level dispatch keeps the interrupt flag and is not reported`() {
+        // Kotlin does not declare checked exceptions, so Mockito needs an answer to throw one.
+        whenever(mockResourceManager.closeAll()).thenAnswer { throw InterruptedException("stopped") }
+
+        try {
+            assertThatThrownBy { commandExecutor.executeTopLevel(TestCommand()) }
+                .isInstanceOf(InterruptedException::class.java)
+
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `an interrupt inside a command keeps the interrupt flag and is not reported`() {
+        try {
+            assertThatThrownBy { commandExecutor.execute { ThrowingCommand(InterruptedException("stopped")) } }
+                .isInstanceOf(InterruptedException::class.java)
+
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
         assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
     }
 
@@ -653,6 +793,24 @@ class CommandExecutorTest : BaseKoinTest() {
     @Command(name = "out-of-memory-command")
     inner class OutOfMemoryCommand : PicoBaseCommand() {
         override fun execute(): Unit = throw OutOfMemoryError("heap exhausted")
+    }
+
+    /** Test command that fails with the given throwable */
+    @Command(name = "throwing-command")
+    inner class ThrowingCommand(
+        private val failure: Throwable,
+    ) : PicoBaseCommand() {
+        override fun execute(): Unit = throw failure
+    }
+
+    /** Test command that loads cluster state from a workspace that has none */
+    @Command(name = "missing-state-command")
+    inner class MissingStateCommand(
+        private val stateFile: File,
+    ) : PicoBaseCommand() {
+        override fun execute() {
+            ClusterStateManager(stateFile).load()
+        }
     }
 
     /** Test command that reports its own failure, then signals it through the exit code only */

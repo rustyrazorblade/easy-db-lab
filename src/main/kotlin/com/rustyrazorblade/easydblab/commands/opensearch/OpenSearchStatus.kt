@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.aws.DomainLookup
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -11,8 +12,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
-import software.amazon.awssdk.core.exception.SdkException
-import software.amazon.awssdk.services.opensearch.model.ResourceNotFoundException
 
 /**
  * Check the status of the OpenSearch domain.
@@ -43,22 +42,20 @@ class OpenSearchStatus : PicoBaseCommand() {
 
         log.info { "Checking OpenSearch domain status: ${domainState.domainName}" }
 
-        try {
-            val result = openSearchService.describeDomain(domainState.domainName)
-
-            if (endpointOnly) {
-                if (result.endpoint != null) {
-                    eventBus.emit(Event.OpenSearch.EndpointOnly(result.endpoint))
+        when (val lookup = openSearchService.lookupDomain(domainState.domainName)) {
+            is DomainLookup.NotFound -> handleDomainNotFound(domainState)
+            is DomainLookup.Unavailable -> handleStatusError(domainState, lookup.reason)
+            is DomainLookup.Found -> {
+                val result = lookup.result
+                if (endpointOnly) {
+                    if (result.endpoint != null) {
+                        eventBus.emit(Event.OpenSearch.EndpointOnly(result.endpoint))
+                    }
+                    return
                 }
-                return
+                displayDomainStatus(result)
+                updateLocalStateIfChanged(domainState, result)
             }
-
-            displayDomainStatus(result)
-            updateLocalStateIfChanged(domainState, result)
-        } catch (e: ResourceNotFoundException) {
-            handleDomainNotFound(domainState)
-        } catch (e: SdkException) {
-            handleStatusError(domainState, e)
         }
     }
 
@@ -110,11 +107,11 @@ class OpenSearchStatus : PicoBaseCommand() {
 
     private fun handleStatusError(
         domainState: OpenSearchClusterState,
-        e: SdkException,
+        reason: String,
     ) {
-        log.warn { "Failed to get domain status: ${e.message}" }
+        log.warn { "Failed to get domain status: $reason" }
         if (!endpointOnly) {
-            eventBus.emit(Event.OpenSearch.FetchWarning(e.message ?: "unknown error"))
+            eventBus.emit(Event.OpenSearch.FetchWarning(reason))
             eventBus.emit(
                 Event.OpenSearch.CachedState(
                     domainName = domainState.domainName,

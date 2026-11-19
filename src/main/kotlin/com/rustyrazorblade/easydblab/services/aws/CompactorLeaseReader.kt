@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.compactorlease.LeaseRecord
-import com.rustyrazorblade.easydblab.compactorlease.S3ConditionalObjects
+import com.rustyrazorblade.easydblab.compactorlease.aws.S3ConditionalObjects
 import software.amazon.awssdk.services.s3.S3Client
 import kotlin.time.Clock
 import kotlin.time.Duration

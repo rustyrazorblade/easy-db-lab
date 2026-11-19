@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.logs
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.captureStdout
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -206,12 +207,11 @@ class LogsQueryTest : BaseKoinTest() {
             whenever(mockLokiQueryService.query(any(), any(), any()))
                 .thenReturn(Result.success(logs))
 
-            val command = LogsQuery()
-            command.execute()
+            // The lines are raw output, printed as text, not an event.
+            val printed = captureStdout { LogsQuery().execute() }
 
-            val output = outputHandler.messages.joinToString("\n")
-            assertThat(output).contains("2024-01-01 INFO Starting")
-            assertThat(output).contains("Found 2 log entries")
+            assertThat(printed).contains("2024-01-01 INFO Starting\n2024-01-01 INFO Started\n", "Found 2 log entries")
+            assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("INFO Starting")
         }
 
         @Test

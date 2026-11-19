@@ -6,9 +6,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import com.rustyrazorblade.easydblab.providers.ssh.sshModule
-import com.rustyrazorblade.easydblab.providers.ssm.ssmModule
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -29,7 +29,7 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
 
     override fun additionalTestModules(): List<Module> =
         listOf(
-            ssmModule,
+            awsClientsModule,
             sshModule,
             proxyModule,
             module {

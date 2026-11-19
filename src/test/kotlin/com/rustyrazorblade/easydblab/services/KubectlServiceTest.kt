@@ -220,7 +220,7 @@ class KubectlServiceTest : BaseKoinTest() {
         makeService().applyContent(host = testHost, yamlContent = yaml)
 
         val remotePathCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps).upload(eq(testHost), any(), remotePathCaptor.capture())
+        verify(mockRemoteOps).upload(eq(testHost), any(), remotePathCaptor.capture(), any())
         val remotePath = remotePathCaptor.firstValue
         assertThat(remotePath).startsWith("/tmp/easydblab-manifest-").endsWith(".yaml")
 

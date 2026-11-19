@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
-import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentInstaller
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata

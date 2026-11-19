@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kernel.ProviderResponse
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -403,16 +405,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Cassandra.PatchStderr")
-        data class PatchStderr(
-            val stderr: String,
-        ) : Cassandra {
-            override fun toDisplayString(): String = "patch-config stderr: $stderr"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
         @SerialName("Cassandra.PatchFailed")
         data class PatchFailed(
             val host: String,
@@ -421,14 +413,6 @@ sealed interface Event {
             override fun toDisplayString(): String = "ERROR: patch-config failed on $host: $reason"
 
             override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Cassandra.PatchOutput")
-        data class PatchOutput(
-            val output: String,
-        ) : Cassandra {
-            override fun toDisplayString(): String = output
         }
 
         @Serializable
@@ -494,15 +478,6 @@ sealed interface Event {
             override fun toDisplayString(): String =
                 "Usage: easy-db-lab cassandra nt [--hosts host1,host2] <nodetool-command>\n" +
                     "Example: easy-db-lab cassandra nt status"
-        }
-
-        @Serializable
-        @SerialName("Cassandra.NodetoolOutput")
-        data class NodetoolOutput(
-            val host: String,
-            val output: String,
-        ) : Cassandra {
-            override fun toDisplayString(): String = "=== $host ===\n$output"
         }
 
         @Serializable
@@ -699,14 +674,6 @@ sealed interface Event {
                 |  easy-db-lab cassandra cql "SELECT * FROM system.local"
                 |  easy-db-lab cassandra cql --file schema.cql
                 """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("Cassandra.CqlQueryOutput")
-        data class CqlQueryOutput(
-            val output: String,
-        ) : Cassandra {
-            override fun toDisplayString(): String = output
         }
 
         @Serializable
@@ -3391,52 +3358,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("AwsSetup.CredentialValidationFailed")
-        data object CredentialValidationFailed : AwsSetup {
-            override fun toDisplayString(): String = "AWS credential validation failed. Please check your AWS credentials and permissions."
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("AwsSetup.AuthenticationError")
-        data class AuthenticationError(
-            val exceptionMessage: String,
-        ) : AwsSetup {
-            override fun toDisplayString(): String =
-                """
-                |
-                |========================================
-                |AWS CREDENTIAL ERROR
-                |========================================
-                |
-                |Unable to validate AWS credentials: $exceptionMessage
-                |
-                |This usually means:
-                |  - AWS credentials are not configured
-                |  - AWS credentials have expired
-                |  - AWS access key or secret key is invalid
-                |
-                |To fix this issue, reconfigure your easy-db-lab profile:
-                |
-                |  1. Remove incorrect profile: rm -rf ~/.easy_cass_lab/profiles/<PROFILE>
-                |     (Replace <PROFILE> with your profile name, usually 'default')
-                |
-                |  2. Run: easy-db-lab profile setup
-                |
-                |  3. When prompted, enter your AWS access key and secret key
-                |
-                |To verify your credentials are working, run:
-                |  aws sts get-caller-identity
-                |
-                |For full AWS permissions required by easy-db-lab, add THREE inline policies:
-                |
-                """.trimMargin()
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
         @SerialName("AwsSetup.Ec2RoleReady")
         data class Ec2RoleReady(
             val roleName: String,
@@ -3521,6 +3442,26 @@ sealed interface Event {
             override fun toDisplayString(): String = "✓ AWS resources setup complete and validated"
         }
 
+        /**
+         * A credentials failure in AWS setup is followed by the lab's IAM policies, which a new user
+         * attaches once the credentials work; this heads that listing.
+         *
+         * @property policyNames every lab user policy, in the order they are listed
+         */
+        @Serializable
+        @SerialName("AwsSetup.RequiredPolicies")
+        data class RequiredPolicies(
+            val policyNames: List<String>,
+        ) : AwsSetup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |easy-db-lab needs ${policyNames.size} IAM policies on your AWS user: ${policyNames.joinToString(", ")}.
+                |They are listed below with ACCOUNT_ID in place of your AWS account ID.
+                |
+                """.trimMargin()
+        }
+
         @Serializable
         @SerialName("AwsSetup.PolicyDisplay")
         data class PolicyDisplay(
@@ -3547,44 +3488,6 @@ sealed interface Event {
                 |========================================
                 |
                 """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("AwsSetup.AccountIdNote")
-        data object AccountIdNote : AwsSetup {
-            override fun toDisplayString(): String =
-                """
-                |NOTE: Replace ACCOUNT_ID in the policies below with your AWS account ID.
-                |You can find your account ID in the error message above (the 12-digit number in the ARN).
-                |
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("AwsSetup.PolicyRecommendation")
-        data object PolicyRecommendation : AwsSetup {
-            @Suppress("MaxLineLength")
-            override fun toDisplayString(): String =
-                "========================================\n" +
-                    "\n" +
-                    "RECOMMENDED: Create managed policies and attach to a group\n" +
-                    "  \u2022 No size limits (inline policies limited to 5,120 bytes total)\n" +
-                    "  \u2022 Required for EMR/Spark cluster functionality\n" +
-                    "  \u2022 Reusable across multiple users\n" +
-                    "\n" +
-                    "To apply these policies:\n" +
-                    "  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)\n" +
-                    "  2. Create IAM group (e.g., \"EasyDBLabUsers\")\n" +
-                    "  3. Create three managed policies:\n" +
-                    "     - Policies \u2192 Create Policy \u2192 JSON tab\n" +
-                    "     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR\n" +
-                    "  4. Attach policies to your group\n" +
-                    "  5. Add your IAM user to the group\n" +
-                    "\n" +
-                    "ALTERNATIVE (single user): Attach as inline policies to your user\n" +
-                    "  WARNING: May hit 5,120 byte limit with all three policies\n" +
-                    "\n" +
-                    "========================================\n"
         }
     }
 
@@ -3747,15 +3650,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Stress.PodLogHeader")
-        data class PodLogHeader(
-            val podName: String,
-            val podStatus: String,
-        ) : Stress {
-            override fun toDisplayString(): String = "=== Pod: $podName ($podStatus) ==="
-        }
-
-        @Serializable
         @SerialName("Stress.PodLogFailed")
         data class PodLogFailed(
             val podName: String,
@@ -3767,39 +3661,11 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Stress.PodLogsEmpty")
-        data object PodLogsEmpty : Stress {
-            override fun toDisplayString(): String = "(no logs available yet)"
-        }
-
-        @Serializable
-        @SerialName("Stress.PodLogOutput")
-        data class PodLogOutput(
-            val logs: String,
-        ) : Stress {
-            override fun toDisplayString(): String = logs
-        }
-
-        @Serializable
         @SerialName("Stress.CommandRunning")
         data class CommandRunning(
             val commandName: String,
         ) : Stress {
             override fun toDisplayString(): String = "Running cassandra-easy-stress $commandName..."
-        }
-
-        @Serializable
-        @SerialName("Stress.CommandOutput")
-        data class CommandOutput(
-            val output: String,
-        ) : Stress {
-            override fun toDisplayString(): String = output
-        }
-
-        @Serializable
-        @SerialName("Stress.PodLogSeparator")
-        data object PodLogSeparator : Stress {
-            override fun toDisplayString(): String = ""
         }
     }
 
@@ -3852,8 +3718,9 @@ sealed interface Event {
         data class InstanceSetupFailed(
             val host: String,
             val reason: String,
+            val outputTail: List<String> = emptyList(),
         ) : Provision {
-            override fun toDisplayString(): String = "Instance setup failed on $host: $reason"
+            override fun toDisplayString(): String = "Instance setup failed on $host: $reason" + outputTailBlock(host, outputTail)
 
             override fun isError(): Boolean = true
         }
@@ -4263,6 +4130,43 @@ sealed interface Event {
         }
 
         /**
+         * Attempt [attempt] of [alias]'s [step] was interrupted, because its pipeline is stopping, and
+         * was still running [graceMs] milliseconds later. The step ended without it: whatever the
+         * attempt still does on its instance (a command, a state write) runs with nothing waiting.
+         */
+        @Serializable
+        @SerialName("Provision.AttemptAbandoned")
+        data class AttemptAbandoned(
+            val alias: String,
+            val step: String,
+            val attempt: Int,
+            val graceMs: Long,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "$alias: $step attempt $attempt did not stop within ${graceMs}ms of its interrupt and is still running"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The bring-up ended, and the pipelines of [aliases] were still running [graceMs]
+         * milliseconds later. `up` went on without them: whatever they still do (a fleet call, a
+         * state write) runs with nothing waiting.
+         */
+        @Serializable
+        @SerialName("Provision.PipelinesAbandoned")
+        data class PipelinesAbandoned(
+            val aliases: List<String>,
+            val graceMs: Long,
+        ) : Provision {
+            override fun toDisplayString(): String =
+                "The pipelines of ${aliases.joinToString(", ")} did not stop within ${graceMs}ms of the bring-up's end " +
+                    "and are still running"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * `up` is replacing [alias]: [oldInstanceId] failed [step] for [reason]. This is the node's
          * [replacement]th replacement of at most [limit].
          */
@@ -4340,9 +4244,11 @@ sealed interface Event {
             val reason: String,
             val instanceId: String,
             val instanceKept: Boolean,
+            val outputTail: List<String> = emptyList(),
         ) : Provision {
             override fun toDisplayString(): String =
-                "$alias failed at $step: $reason" + if (instanceKept) "" else " ($instanceId terminated)"
+                "$alias failed at $step: $reason" + (if (instanceKept) "" else " ($instanceId terminated)") +
+                    outputTailBlock(alias, outputTail)
 
             override fun isError(): Boolean = true
         }
@@ -4358,9 +4264,11 @@ sealed interface Event {
             val alias: String,
             val step: String,
             val reason: String,
+            val outputTail: List<String> = emptyList(),
         ) : Provision {
             override fun toDisplayString(): String =
-                "Control node $alias failed at $step: $reason. Every instance is kept; run up again after fixing the cause."
+                "Control node $alias failed at $step: $reason. Every instance is kept; run up again after fixing the cause." +
+                    outputTailBlock(alias, outputTail)
 
             override fun isError(): Boolean = true
         }
@@ -4378,9 +4286,13 @@ sealed interface Event {
             val instanceId: String,
             val instanceKept: Boolean,
         ) {
-            /** The node as one line of the failure list. */
+            /**
+             * The node as one line of the failure list: the first line of [reason] only, since the
+             * node's own [NodeFailed] already printed all of it, with its output.
+             */
             fun toDisplayLine(): String =
-                "  $alias ($instanceId, ${if (instanceKept) "kept for debugging" else "terminated, no instance left"}): $step: $reason"
+                "  $alias ($instanceId, ${if (instanceKept) "kept for debugging" else "terminated, no instance left"}): $step: " +
+                    reason.lineSequence().first()
         }
 
         /** The nodes that could not be brought up. `up` exits non-zero after the others finished. */
@@ -4555,6 +4467,40 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * A command failed with an error a provider's [com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler]
+         * recognised: bad credentials, missing permissions, or an unreachable provider. Carries the provider's
+         * detail, the remedy and, for a service answer, the [response] facts (service, error code, HTTP status,
+         * request id).
+         */
+        @Serializable
+        @SerialName("Command.ProviderError")
+        data class ProviderError(
+            val provider: String,
+            val kind: ProviderErrorKind,
+            val detail: String,
+            val remedy: String,
+            val response: ProviderResponse? = null,
+        ) : Command {
+            override fun toDisplayString(): String {
+                val headline =
+                    when (kind) {
+                        ProviderErrorKind.CREDENTIALS -> "$provider credentials are missing, expired or invalid."
+                        ProviderErrorKind.PERMISSION_DENIED -> "$provider denied permission for this operation."
+                        ProviderErrorKind.UNAVAILABLE -> "$provider is not available."
+                    }
+                val facts =
+                    response
+                        ?.summary()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { "\n($it)" }
+                        .orEmpty()
+                return "$headline\n$detail$facts\n$remedy\nFor detailed error information, check the logs (logs/info.log by default)"
+            }
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Command.RetryInstruction")
         data object RetryInstruction : Command {
@@ -4611,7 +4557,7 @@ sealed interface Event {
             val host: String,
             val error: String,
         ) : Command {
-            override fun toDisplayString(): String = "=== $host ===\nError executing command: $error"
+            override fun toDisplayString(): String = "$host: command failed: $error"
         }
 
         @Serializable
@@ -4687,14 +4633,6 @@ sealed interface Event {
             val policyName: String,
         ) : Command {
             override fun toDisplayString(): String = "No policies found matching: $policyName"
-        }
-
-        @Serializable
-        @SerialName("Command.IamPoliciesCredentialError")
-        data object IamPoliciesCredentialError : Command {
-            override fun toDisplayString(): String = "Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials."
-
-            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -5263,9 +5201,20 @@ sealed interface Event {
         @Serializable
         @SerialName("Ami.DeleteFailed")
         data class DeleteFailed(
+            val amiId: String,
+            val failedStep: String,
+            val remainingSnapshotIds: List<String>,
             val error: String,
         ) : Ami {
-            override fun toDisplayString(): String = "  ✗ Error deleting: $error"
+            override fun toDisplayString(): String {
+                val kept =
+                    if (remainingSnapshotIds.isEmpty()) {
+                        ""
+                    } else {
+                        "\n    Snapshots left: ${remainingSnapshotIds.joinToString(", ")}"
+                    }
+                return "  ✗ Error deleting $amiId (failed to $failedStep): $error$kept"
+            }
         }
 
         @Serializable
@@ -5491,14 +5440,6 @@ sealed interface Event {
         data object NoLogsFound : Logs {
             override fun toDisplayString(): String = "No logs found matching the query."
         }
-
-        @Serializable
-        @SerialName("Logs.QueryResults")
-        data class QueryResults(
-            val logs: List<String>,
-        ) : Logs {
-            override fun toDisplayString(): String = logs.joinToString("\n") + "\n\nFound ${logs.size} log entries."
-        }
     }
 
     // =========================================================================
@@ -5647,6 +5588,17 @@ sealed interface Event {
         ) : Setup {
             override fun toDisplayString(): String =
                 "\nCredential validation failed. Please try again. (Attempt $attempt of $maxAttempts)\n"
+        }
+
+        /** Profile setup was given a region the AWS SDK does not know; the next attempt asks again. */
+        @Serializable
+        @SerialName("Setup.UnknownRegion")
+        data class UnknownRegion(
+            val region: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "'$region' is not an AWS region. Enter a region such as us-west-2."
+
+            override fun isError(): Boolean = true
         }
 
         @Serializable
@@ -6152,30 +6104,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Setup.AwsPermissionError")
-        data class AwsPermissionError(
-            val operation: String,
-            val error: String,
-        ) : Setup {
-            override fun toDisplayString(): String =
-                """
-                |
-                |========================================
-                |AWS PERMISSION ERROR
-                |========================================
-                |
-                |Operation: $operation
-                |Error: $error
-                |
-                |To fix this issue, add the following IAM policies to your AWS user.
-                |You need to create THREE separate inline policies:
-                |
-                """.trimMargin()
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
         @SerialName("Setup.AwsPermissionPolicyDisplay")
         data class AwsPermissionPolicyDisplay(
             val index: Int,
@@ -6195,7 +6123,9 @@ sealed interface Event {
 
         @Serializable
         @SerialName("Setup.AwsPermissionPolicyFooter")
-        data object AwsPermissionPolicyFooter : Setup {
+        data class AwsPermissionPolicyFooter(
+            val policyNames: List<String>,
+        ) : Setup {
             override fun toDisplayString(): String =
                 """
                 |========================================
@@ -6208,9 +6138,9 @@ sealed interface Event {
                 |To apply these policies:
                 |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
                 |  2. Create IAM group (e.g., "EasyDBLabUsers")
-                |  3. Create three managed policies:
+                |  3. Create ${policyNames.size} managed policies:
                 |     - Policies → Create Policy → JSON tab
-                |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
+                |     - Paste policy content and name: ${policyNames.joinToString(", ")}
                 |  4. Attach policies to your group
                 |  5. Add your IAM user to the group
                 |
@@ -6226,47 +6156,6 @@ sealed interface Event {
 
     @Serializable
     sealed interface Ssh : Event {
-        @Serializable
-        @SerialName("Ssh.ExecutingCommand")
-        data class ExecutingCommand(
-            val command: String,
-        ) : Ssh {
-            override fun toDisplayString(): String = "Executing remote command: $command"
-        }
-
-        @Serializable
-        @SerialName("Ssh.ExecutingHiddenCommand")
-        data object ExecutingHiddenCommand : Ssh {
-            override fun toDisplayString(): String = "Executing remote command: [hidden]"
-        }
-
-        @Serializable
-        @SerialName("Ssh.CommandOutput")
-        data class CommandOutput(
-            val output: String,
-        ) : Ssh {
-            override fun toDisplayString(): String = output
-        }
-
-        @Serializable
-        @SerialName("Ssh.UploadingFile")
-        data class UploadingFile(
-            val localPath: String,
-            val remoteAddress: String,
-            val remotePath: String,
-        ) : Ssh {
-            override fun toDisplayString(): String = "Uploading file $localPath to $remoteAddress:$remotePath"
-        }
-
-        @Serializable
-        @SerialName("Ssh.UploadingDirectory")
-        data class UploadingDirectory(
-            val localDir: String,
-            val remoteDir: String,
-        ) : Ssh {
-            override fun toDisplayString(): String = "Uploading directory $localDir to $remoteDir"
-        }
-
         /**
          * The profile's SSH transport is `ssm`, but programs it needs cannot run on this machine.
          *
@@ -7083,6 +6972,20 @@ private fun resolvedFrom(
     url: String,
     java: String,
 ): String = "  source: $source, url: $url, JDK $java"
+
+/**
+ * A node's recent output under its failure line: a `last output of <node>:` header and the lines
+ * indented, or nothing when no output was kept.
+ */
+private fun outputTailBlock(
+    node: String,
+    tail: List<String>,
+): String =
+    if (tail.isEmpty()) {
+        ""
+    } else {
+        tail.joinToString(separator = "\n", prefix = "\nlast output of $node:\n") { "    $it" }
+    }
 
 /** A CIDR as the ingress events show it, naming it as this machine's public IP when it was detected. */
 private fun cidrLabel(

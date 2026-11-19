@@ -7,6 +7,7 @@ import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 
 /**
  * Builds Docker Registry K8s resources as typed Fabric8 objects.
@@ -43,7 +44,7 @@ class RegistryManifestBuilder {
      * a hostPath volume and HTTPS health probes.
      */
     @Suppress("LongMethod")
-    fun buildDeployment() =
+    fun buildDeployment(): Deployment =
         controlPlaneDeployment(APP_LABEL, NAMESPACE) {
             hostNetworked()
                 .addNewContainer()

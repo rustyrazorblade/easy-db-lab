@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
@@ -66,7 +67,7 @@ class SocksTunnelReachabilityProbe(
                 // A soTimeout of 0 means no timeout, so a spent budget ends the attempt here.
                 remainingMs > 0 && readsSshBanner(socket, remainingMs.toInt())
             }
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             log.debug(e) { "SOCKS tunnel probe to $targetHost:$targetPort via 127.0.0.1:$localSocksPort failed" }
             false
         }

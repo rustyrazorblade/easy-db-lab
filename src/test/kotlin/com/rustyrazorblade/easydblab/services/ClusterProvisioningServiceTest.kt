@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpec
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -31,6 +32,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Tests for ClusterProvisioningService.
@@ -167,7 +169,7 @@ class ClusterProvisioningServiceTest {
                 )
             val config = createInstanceConfig(specs = listOf(spec))
 
-            val emittedEvents = mutableListOf<Event>()
+            val emittedEvents = CopyOnWriteArrayList<Event>()
             eventBus.addListener(
                 object : EventListener {
                     override fun onEvent(envelope: EventEnvelope) {

@@ -76,6 +76,30 @@ class BringUpEventsTest {
         )
     }
 
+    /** The node's own NodeFailed already printed the whole reason; at 80 nodes the list must stay one line each. */
+    @Test
+    fun `the failure list shows only the first line of a reason that has several`() {
+        val event =
+            Event.Provision.NodesFailed(
+                listOf(
+                    Event.Provision.FailedNode(
+                        "db3",
+                        "join",
+                        "no node db3 registered\nlast lines of the agent log:\nline 1\nline 2",
+                        "i-0abc",
+                        instanceKept = true,
+                    ),
+                ),
+            )
+
+        assertThat(event.toDisplayString()).isEqualTo(
+            """
+            1 node(s) could not be brought up:
+              db3 (i-0abc, kept for debugging): join: no node db3 registered
+            """.trimIndent(),
+        )
+    }
+
     @Test
     fun `the progress line names the control node's step first while its pipeline runs`() {
         val event =
@@ -113,6 +137,25 @@ class BringUpEventsTest {
         assertThat(event.toDisplayString()).isEqualTo(expected)
     }
 
+    /** An attempt left running is an error: it goes to stderr, where `up --quiet` users look. */
+    @Test
+    fun `an abandoned attempt is an error naming the node, step, attempt and grace`() {
+        val event = Event.Provision.AttemptAbandoned("db3", "setup", 2, 5000)
+
+        assertThat(event.isError()).isTrue()
+        assertThat(event.toDisplayString())
+            .isEqualTo("db3: setup attempt 2 did not stop within 5000ms of its interrupt and is still running")
+    }
+
+    @Test
+    fun `pipelines left running after the bring-up ends are an error naming each node and the grace`() {
+        val event = Event.Provision.PipelinesAbandoned(listOf("db3", "app0"), 60000)
+
+        assertThat(event.isError()).isTrue()
+        assertThat(event.toDisplayString())
+            .isEqualTo("The pipelines of db3, app0 did not stop within 60000ms of the bring-up's end and are still running")
+    }
+
     @Test
     fun `a failed control node says every instance is kept`() {
         val event = Event.Provision.ControlNodeFailed("control0", "gate", "the API server was not ready after 600s")
@@ -122,5 +165,48 @@ class BringUpEventsTest {
             "Control node control0 failed at gate: the API server was not ready after 600s. " +
                 "Every instance is kept; run up again after fixing the cause.",
         )
+    }
+
+    @Test
+    fun `a failed node shows its last output indented under the failure line`() {
+        val event =
+            Event.Provision.NodeFailed(
+                "db7",
+                "setup",
+                "exit 1",
+                "i-0abc",
+                instanceKept = false,
+                outputTail = listOf("Installing packages", "E: Unable to locate package foo"),
+            )
+
+        assertThat(event.toDisplayString()).isEqualTo(
+            """
+            db7 failed at setup: exit 1 (i-0abc terminated)
+            last output of db7:
+                Installing packages
+                E: Unable to locate package foo
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `a failed control node and a failed instance setup show their last output`() {
+        val control = Event.Provision.ControlNodeFailed("control0", "k3s", "exit 1", outputTail = listOf("k3s: bad flag"))
+        val setup = Event.Provision.InstanceSetupFailed("db0", "exit 2", outputTail = listOf("disk not found"))
+
+        assertThat(control.toDisplayString()).endsWith("fixing the cause.\nlast output of control0:\n    k3s: bad flag")
+        assertThat(setup.toDisplayString()).isEqualTo("Instance setup failed on db0: exit 2\nlast output of db0:\n    disk not found")
+    }
+
+    @Test
+    fun `the output tail survives a round trip through JSON`() {
+        val envelope =
+            EventEnvelope(
+                event = Event.Provision.NodeFailed("db1", "setup", "exit 1", "i-1", true, listOf("a", "b")),
+                timestamp = "2026-01-01T00:00:00.000Z",
+                commandName = "up",
+            )
+
+        assertThat(EventEnvelope.fromJson(EventEnvelope.toJson(envelope))).isEqualTo(envelope)
     }
 }

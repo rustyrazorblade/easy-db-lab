@@ -9,6 +9,7 @@
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
 - **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt`, one sealed sub-interface per domain (listed in `events/CLAUDE.md`). See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If a Redis subscriber would have no reason to care, it is not an event.
 - **For pure informational output** with no associated event type (e.g. help text, plain status lines), use Kotlin's `println()`. **Never use `System.out` directly** — `println()` is the idiomatic Kotlin equivalent and writes to stdout.
+- **Node output** — what a node's script, a remote command or a pod prints — goes through `output/NodeOutput` (`line`, `notice`, `passthrough`), which prints each line tagged `[alias] ` and keeps a short per-node tail for failure events. It is never an event and never reaches Redis. `DefaultRemoteOperationsService` writes to it for `executeRemotely(output = true)`; `up`, `init` and `setup-instances` hide it with `--quiet`.
 - **Read-only display commands** (`info`, `list`, `show`, `describe`, and equivalents) produce pure output — no state changes, no domain facts occurred. Use `println()` directly in `execute()`; do **not** model the output as an event. A useful heuristic: if the command's name is a noun or `show`/`info`/`list`/`describe`, it almost certainly belongs in this category. Examples: `kit info`, `kit list`.
 - **Do NOT use `Event.Message` or `Event.Error`** — these generic types exist only for test convenience. When emitting events, always use domain-specific typed events with structured data fields.
 - Do not add logging frameworks to command classes unless there is a specific internal debugging need separate from user output.
@@ -55,7 +56,9 @@ See [`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/command
 
 See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) for AWS/SSH/Docker patterns and retry logic.
 
-**Kernel (`kernel/`)**: The few types both of the layers above share. It holds `PicoCommand`, the interface `services/CommandExecutor` dispatches on and every command implements. Keeping it here is what stops `commands/` and `services/` from depending on each other. Add a type to `kernel/` only when both layers need it, and keep it free of dependencies on either.
+**Kernel (`kernel/`)**: The few types shared by commands, services and providers. It holds `PicoCommand` (the interface `services/CommandExecutor` dispatches on and every command implements), `CommandFailedException`, the provider error contract (`ProviderErrorHandler`, `ErrorDescription`, `ProviderErrorKind`) and `Throwable.causeChain()`, the cycle-safe cause walk the reporter and the handlers share. Keeping them here is what stops `commands/`, `services/` and `providers/` from depending on each other. Add a type to `kernel/` only when more than one of those layers needs it, and keep it free of dependencies on any of them.
+
+**Cloud SDK boundary**: AWS SDK types (`software.amazon.awssdk..`) appear only in `providers/aws` and `services/aws` (and the lease agent's `compactorlease/aws`): not in an import, a signature, an inferred type, a class literal, or a `catch` clause. A second cloud (GCP, Azure) would otherwise have to untangle them. `architecture/PackageBoundaryTest` enforces this with no allowlist, and also that `providers..` does not depend on `services..` and `configuration..` does not depend on `providers..`. To use an SDK concept elsewhere, put a project-owned type in front of it (`SparkJobState`, `OpenSearchService.lookupDomain`, `AMIService.deleteWithSnapshots`) or classify the failure in the provider's `ProviderErrorHandler`.
 
 ### Server & REPL
 
@@ -66,7 +69,7 @@ Three commands run as long-lived processes instead of the typical run-and-exit p
 ### Dependency Injection
 
 Use **Koin** for dependency injection throughout the codebase:
-- Services are registered in Koin modules (`AWSModule.kt`, `ServicesModule.kt`, `KubernetesModule.kt`, etc.)
+- Services are registered in Koin modules (`AwsClientsModule.kt` for the SDK clients, credentials and error handler, `AwsServicesModule.kt` for the `services/aws` classes, `ServicesModule.kt`, `KubernetesModule.kt`, etc.)
 - Commands receive dependencies via Koin injection
 - Tests use `BaseKoinTest` which provides mocked dependencies
 

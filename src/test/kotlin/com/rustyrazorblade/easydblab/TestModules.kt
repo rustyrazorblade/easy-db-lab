@@ -10,9 +10,13 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.NodeOutput
+import com.rustyrazorblade.easydblab.output.NodeOutputTail
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.AwsIamRoles
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
@@ -29,13 +33,14 @@ import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.DataBucketTeardown
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.TailnetCleanup
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownPlanner
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
+import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.DataBucketTeardown
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -136,6 +141,9 @@ object TestModules {
             // This matches the production pattern but uses a test-friendly handler
             // Use single to ensure all components get the same instance within a test
             single<OutputHandler> { BufferedOutputHandler() }
+            single { RecordingNodeOutput() }
+            single<NodeOutput> { get<RecordingNodeOutput>() }
+            single<NodeOutputTail> { get<RecordingNodeOutput>() }
         }
 
     /**
@@ -187,23 +195,23 @@ object TestModules {
                     override fun createAccountIdentity(
                         accessKey: String,
                         secret: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): AccountIdentity = identity
 
                     override fun createAccountIdentityWithProfile(
                         profileName: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): AccountIdentity = identity
 
                     override fun createEc2Client(
                         accessKey: String,
                         secret: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): software.amazon.awssdk.services.ec2.Ec2Client = mock()
 
                     override fun createEc2ClientWithProfile(
                         profileName: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): software.amazon.awssdk.services.ec2.Ec2Client = mock()
                 }
             }
@@ -226,6 +234,8 @@ object TestModules {
             // create the account bucket. Its defaults (no builds, no match) are what a profile
             // that has never run `cassandra build` actually looks like.
             single { mock<CassandraBuildCatalog>() }
+
+            factory { AwsKeyPairService(get(), get(), AwsErrorHandler()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {
@@ -320,6 +330,7 @@ object TestModules {
                         host: Host,
                         local: Path,
                         remote: String,
+                        notice: String,
                     ) {
                         // No-op for mock implementation
                     }

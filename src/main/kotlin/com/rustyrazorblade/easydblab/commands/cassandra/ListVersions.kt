@@ -5,13 +5,13 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.reason
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.cassandraversions.Cached
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
 import com.rustyrazorblade.easydblab.services.cassandraversions.ClusterListing
 import com.rustyrazorblade.easydblab.services.cassandraversions.VersionSources
 import com.rustyrazorblade.easydblab.services.cassandraversions.VersionTable
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option

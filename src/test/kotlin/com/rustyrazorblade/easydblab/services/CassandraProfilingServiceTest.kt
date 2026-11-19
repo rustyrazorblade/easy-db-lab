@@ -113,7 +113,7 @@ class CassandraProfilingServiceTest : BaseKoinTest() {
     fun `writeDesiredState uploads the config as JSON preserving argument tokenization`() {
         // Read the payload at upload time: the service deletes its scratch file once it is sent.
         var uploadedBody = ""
-        whenever(mockRemoteOps.upload(any(), any(), any())).doAnswer { invocation ->
+        whenever(mockRemoteOps.upload(any(), any(), any(), any())).doAnswer { invocation ->
             uploadedBody = Files.readString(invocation.getArgument<Path>(1))
         }
 
@@ -132,7 +132,7 @@ class CassandraProfilingServiceTest : BaseKoinTest() {
         // chunk at a URL that cannot work. The mirror is asserted in
         // packer/cassandra/bin/edl-profiling-reconcile.test.sh.
         var uploadedBody = ""
-        whenever(mockRemoteOps.upload(any(), any(), any())).doAnswer { invocation ->
+        whenever(mockRemoteOps.upload(any(), any(), any(), any())).doAnswer { invocation ->
             uploadedBody = Files.readString(invocation.getArgument<Path>(1))
         }
 

@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.services.bringup
 
-import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Clock
 

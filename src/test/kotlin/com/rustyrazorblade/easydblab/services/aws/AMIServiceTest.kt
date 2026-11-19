@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
@@ -425,6 +426,31 @@ internal class AMIServiceTest {
         whenever(mockEc2Client.deregisterImage(any<DeregisterImageRequest>())).thenThrow(IllegalStateException("bug"))
 
         assertThatThrownBy { amiService.deleteWithSnapshots(ami) }.isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun `validateAMI reports an AWS failure while querying AMIs as an AWSServiceError`() {
+        val denied =
+            Ec2Exception
+                .builder()
+                .statusCode(403)
+                .message("denied")
+                .build()
+        whenever(mockAccountIdentity.getAccountId()).thenThrow(denied)
+
+        assertThatThrownBy { amiService.validateAMI("", Arch.AMD64, null) }
+            .isInstanceOf(AMIValidationException.AWSServiceError::class.java)
+            .hasMessageContaining("Failed to query AMIs")
+            .hasCause(denied)
+    }
+
+    @Test
+    fun `validateAMI lets a failure that is not an AWS failure propagate`() {
+        whenever(mockAccountIdentity.getAccountId()).thenThrow(IllegalStateException("bug"))
+
+        assertThatThrownBy { amiService.validateAMI("", Arch.AMD64, null) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("bug")
     }
 
     // ===== Test Data Builders =====

@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services.bringup.aws
 
-import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceStateReader
 import com.rustyrazorblade.easydblab.services.bringup.InstanceAddresses

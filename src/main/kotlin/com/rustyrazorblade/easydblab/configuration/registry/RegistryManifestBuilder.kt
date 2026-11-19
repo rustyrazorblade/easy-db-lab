@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.configuration.registry
 
-import io.fabric8.kubernetes.api.model.apps.Deployment
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
@@ -8,6 +7,7 @@ import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 
 /**
  * Builds Docker Registry K8s resources as typed Fabric8 objects.

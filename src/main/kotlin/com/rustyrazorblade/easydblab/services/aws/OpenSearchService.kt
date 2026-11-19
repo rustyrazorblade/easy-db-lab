@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.providers.aws.IamPolicyStatement
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
@@ -524,7 +525,7 @@ class OpenSearchService(
         // Check each domain to see if it's in one of our subnets
         val domainsInVpc = mutableListOf<String>()
         for (domainName in domainNames) {
-            try {
+            runCatchingException {
                 val describeRequest =
                     DescribeDomainRequest
                         .builder()
@@ -542,7 +543,7 @@ class OpenSearchService(
                     log.info { "Found OpenSearch domain $domainName in VPC" }
                     domainsInVpc.add(domainName)
                 }
-            } catch (e: SdkException) {
+            }.onFailure { e ->
                 log.warn(e) { "Failed to describe domain $domainName, skipping" }
             }
         }

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.bringup.k3s
 
-import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.CniMode
@@ -8,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.isSshNotReady
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.services.AgentStartMode
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.K3sClusterService

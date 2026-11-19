@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -14,6 +13,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService

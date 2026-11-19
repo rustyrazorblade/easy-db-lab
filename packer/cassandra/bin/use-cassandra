@@ -1,59 +1,84 @@
 #!/bin/bash
+#
+# Points the node at one of its installed Cassandra versions, and switches the node's JDK and
+# Python to the ones given. Run by `easy-db-lab cassandra use` over SSH: the CLI chooses the JDK and
+# Python, records them in the cluster state, and passes them here, so this script reads no file.
+#
+# Usage: use-cassandra <version> --java N --python X.Y.Z
+#
+# Every argument is checked before anything changes, so a refused call leaves the node as it was.
+# A failed switch leaves `current` and the conf link on the previous version (see the switches).
 
 # Node paths. Each defaults to where it lives on a real node; they are overridable only so
 # use-cassandra.test.sh can exercise this script in a sandbox instead of against /usr/local.
-CASSANDRA_VERSIONS="${CASSANDRA_VERSIONS:-/etc/cassandra_versions.yaml}"
 CASSANDRA_INSTALL_DIR="${CASSANDRA_INSTALL_DIR:-/usr/local/cassandra}"
 CASSANDRA_CONF_LINK="${CASSANDRA_CONF_LINK:-/etc/cassandra}"
 PYTHON_BIN_DIR="${PYTHON_BIN_DIR:-/usr/bin}"
+JVM_DIR="${JVM_DIR:-/usr/lib/jvm}"
+
+usage() {
+  echo "Usage: use-cassandra <version> --java N --python X.Y.Z"
+}
+
+VERSION=""
+JAVA_VERSION=""
+PY_VERSION=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --java|--python)
+      if [[ $# -lt 2 ]]; then echo "ERROR: $1 needs a value"; usage; exit 1; fi
+      if [[ "$1" == "--java" ]]; then JAVA_VERSION="$2"; else PY_VERSION="$2"; fi
+      shift 2
+      ;;
+    -h|--help) usage; exit 0 ;;
+    --*) echo "ERROR: unknown option $1"; usage; exit 1 ;;
+    *)
+      if [[ -n "$VERSION" ]]; then
+        echo "ERROR: unexpected argument $1"; usage; exit 1
+      fi
+      VERSION="$1"; shift
+      ;;
+  esac
+done
+
+if [[ -z "$VERSION" ]]; then
+  usage
+  exit 1
+fi
+# The version names the directory `current` points at: one safe path segment, as the CLI checks.
+if [[ ! "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+  echo "ERROR: invalid version name [$VERSION]: use letters, digits, ., _, + and -, starting with a letter or a digit"
+  exit 1
+fi
+if [[ -z "$JAVA_VERSION" ]]; then
+  echo "ERROR: --java is required for $VERSION"
+  exit 1
+fi
+if [[ -z "$PY_VERSION" ]]; then
+  echo "ERROR: --python is required for $VERSION"
+  exit 1
+fi
 
 # Fail before the symlink swap rather than leaving the `current` symlink dangling, which
 # surfaces later as a confusing startup failure instead of a missing version.
-if [ ! -d "$CASSANDRA_INSTALL_DIR/$1" ]; then
-  echo "Cassandra version $1 is not installed on this node ($CASSANDRA_INSTALL_DIR/$1 does not exist)."
+if [[ ! -d "$CASSANDRA_INSTALL_DIR/$VERSION" ]]; then
+  echo "Cassandra version $VERSION is not installed on this node ($CASSANDRA_INSTALL_DIR/$VERSION does not exist)."
   echo "Installed versions:"
   ls "$CASSANDRA_INSTALL_DIR"
-  echo "Run 'easy-db-lab cassandra install $1' to install it first."
+  echo "Run 'easy-db-lab cassandra install $VERSION' to install it first."
   exit 1
 fi
 
-# set cassandra version to $1
-sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$1" "$CASSANDRA_INSTALL_DIR/current"
-sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$1/conf" "$CASSANDRA_CONF_LINK"
-
-# hacky, not really what I want long term but whatever.
-sudo chown -R cassandra:cassandra "$CASSANDRA_INSTALL_DIR"
-
-# set the java version
-export VERSION=$1
-
-export JAVA_VERSION=$(yq e '.[] | select(.version == env(VERSION)).java' "$CASSANDRA_VERSIONS")
-echo "Using java version from cassandra_versions.yaml: $JAVA_VERSION"
-
-export PY_VERSION=$(yq e '.[] | select(.version == env(VERSION)).python' "$CASSANDRA_VERSIONS")
-
-if [ -z "$JAVA_VERSION" ]; then
-  echo "No java version found for $VERSION"
-  exit 1
-fi
-
-if [ -z "$PY_VERSION" ]; then
-  echo "No python version found for $VERSION"
-  exit 1
-fi
-
-# Get the architecture using uname
 cpu_arch=$(uname -m)
-
-# Set ARCH based on the CPU architecture
-if [[ "$cpu_arch" == "x86_64" ]]; then
-    ARCH="amd64"
-elif [[ "$cpu_arch" == "aarch64" ]]; then
-    ARCH="arm64"
-else
+case "$cpu_arch" in
+  x86_64) ARCH="amd64" ;;
+  aarch64) ARCH="arm64" ;;
+  *)
     echo "Unsupported architecture: $cpu_arch"
     exit 1
-fi
+    ;;
+esac
 
 case "$JAVA_VERSION" in
   8|11|17|21|25) JAVA_ALTERNATIVE="java-1.${JAVA_VERSION}.0-openjdk-$ARCH" ;;
@@ -63,23 +88,41 @@ case "$JAVA_VERSION" in
     ;;
 esac
 
-# A failed switch leaves the node on its previous JDK, so it must fail the script.
-if ! sudo update-java-alternatives -s "$JAVA_ALTERNATIVE"; then
-  echo "Error: could not switch to JDK $JAVA_VERSION ($JAVA_ALTERNATIVE); the node is still on its previous JDK"
+if [[ ! -d "$JVM_DIR/$JAVA_ALTERNATIVE" ]]; then
+  echo "Error: JDK $JAVA_VERSION ($JVM_DIR/$JAVA_ALTERNATIVE) is not installed on this node"
   exit 1
 fi
 
-# set python version using update-alternatives
 # Extract major.minor version from full version (e.g., "3.10.6" -> "3.10", "2.7.18" -> "2.7")
 PY_MAJOR_MINOR=$(echo "$PY_VERSION" | cut -d. -f1,2)
 PY_ALTERNATIVE="${PYTHON_BIN_DIR}/python${PY_MAJOR_MINOR}"
-
-# Validate that the requested Python version is installed
-if [ ! -f "$PY_ALTERNATIVE" ]; then
+if [[ ! -f "$PY_ALTERNATIVE" ]]; then
   echo "Error: Python version $PY_VERSION (${PY_ALTERNATIVE}) is not installed"
   exit 1
 fi
 
-# Switch Python version using update-alternatives
-sudo update-alternatives --set python "$PY_ALTERNATIVE"
+# The Python and JDK switches run before the version links move. When either fails, the script
+# exits with `current` and the conf link still on the previous version, which is the version the
+# CLI keeps in the cluster state. The next start then runs that version, not the new bits on the
+# old JDK. Python goes first: cqlsh is the only reader of it, so a JDK failure after it changes no
+# Cassandra start.
+if ! sudo update-alternatives --set python "$PY_ALTERNATIVE"; then
+  echo "Error: could not switch to Python $PY_VERSION ($PY_ALTERNATIVE)"
+  exit 1
+fi
 echo "Switched to Python $PY_VERSION (${PY_ALTERNATIVE})"
+
+if ! sudo update-java-alternatives -s "$JAVA_ALTERNATIVE"; then
+  echo "Error: could not switch to JDK $JAVA_VERSION ($JAVA_ALTERNATIVE); the node is still on its previous JDK"
+  exit 1
+fi
+echo "Switched to JDK $JAVA_VERSION ($JAVA_ALTERNATIVE)"
+
+if ! sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$VERSION" "$CASSANDRA_INSTALL_DIR/current" \
+  || ! sudo ln -vfns "$CASSANDRA_INSTALL_DIR/$VERSION/conf" "$CASSANDRA_CONF_LINK"; then
+  echo "Error: could not point $CASSANDRA_INSTALL_DIR/current and $CASSANDRA_CONF_LINK at $VERSION"
+  exit 1
+fi
+
+# hacky, not really what I want long term but whatever.
+sudo chown -R cassandra:cassandra "$CASSANDRA_INSTALL_DIR"

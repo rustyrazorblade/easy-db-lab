@@ -158,6 +158,17 @@ class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
     }
 
     @Test
+    fun `the workspace is the context working directory, not the kit directory's parent`() {
+        val seen = File(workingDir, "seen.txt")
+        writeScript("sources/mydb", "start", """echo "${'$'}KUBECONFIG" > "${seen.absolutePath}"""")
+
+        val exitCode = KitRunnerCommand("mydb", File(workingDir, "sources/mydb"), "start").call()
+
+        assertThat(exitCode).isZero()
+        assertThat(seen.readText().trim()).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+    }
+
+    @Test
     fun `a published SOCKS port does not make a temporary kubeconfig`() {
         val workspaceKubeconfig = File(workingDir, Constants.K3s.LOCAL_KUBECONFIG)
         val seen = File(workingDir, "seen.txt")

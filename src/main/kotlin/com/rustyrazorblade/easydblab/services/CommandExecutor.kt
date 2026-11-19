@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -175,25 +176,12 @@ class DefaultCommandExecutor(
      * reported and converted to a non-zero exit code exactly like a failure inside the command
      * itself, rather than escaping uncaught.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun executeWithLifecycle(command: PicoCommand): Int {
         val exitCode =
-            try {
+            runCatchingException {
                 checkRequirements(command)
                 command.call()
-            } catch (e: CommandFailedException) {
-                // The command already reported this failure through its own event.
-                log.debug(e) { "Command reported failure" }
-                Constants.ExitCodes.ERROR
-            } catch (e: Exception) {
-                log.error(e) { "Command execution failed" }
-                val causeChain =
-                    generateSequence(e as Throwable) { it.cause }
-                        .map { "${it::class.simpleName}: ${it.message}" }
-                        .joinToString("\n  caused by: ")
-                eventBus.emit(Event.Command.ExecutionError(causeChain))
-                Constants.ExitCodes.ERROR
-            }
+            }.getOrElse { failure -> reportFailure(failure) }
 
         // 3. Post-success actions
         if (exitCode == 0) {
@@ -202,6 +190,24 @@ class DefaultCommandExecutor(
 
         return exitCode
     }
+
+    /** Reports [failure] of a command, or of its requirement checks, and returns the exit code that stands for it. */
+    private fun reportFailure(failure: Throwable): Int =
+        when (failure) {
+            // The command already reported this failure through its own event.
+            is CommandFailedException -> {
+                log.debug(failure) { "Command reported failure" }
+                Constants.ExitCodes.ERROR
+            }
+            else -> {
+                log.error(failure) { "Command execution failed" }
+                val causeChain =
+                    generateSequence(failure) { it.cause }
+                        .joinToString("\n  caused by: ") { "${it::class.simpleName}: ${it.message}" }
+                eventBus.emit(Event.Command.ExecutionError(causeChain))
+                Constants.ExitCodes.ERROR
+            }
+        }
 
     /**
      * Checks and enforces command requirements based on annotations.
@@ -323,17 +329,12 @@ class DefaultCommandExecutor(
             }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun checkDockerAvailability(): Boolean =
-        try {
+        runCatchingException {
             val dockerClient = requirementCheckDeps.dockerClientProvider.getDockerClient()
             // Try to list images as a simple health check
             dockerClient.listImages("", "")
-            true
-        } catch (e: Exception) {
-            log.error(e) { "Docker availability check failed" }
-            false
-        }
+        }.onFailure { e -> log.error(e) { "Docker availability check failed" } }.isSuccess
 
     private fun checkSSHKeyAvailability(): Boolean = File(requirementCheckDeps.userConfigProvider.sshKeyPath).exists()
 

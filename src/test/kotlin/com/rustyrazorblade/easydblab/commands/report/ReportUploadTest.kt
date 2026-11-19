@@ -11,9 +11,9 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.ObjectStore
-import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DefaultDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import com.rustyrazorblade.easydblab.services.documents.DocumentsRejectedException
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -43,7 +43,6 @@ class ReportUploadTest : BaseKoinTest() {
     private val downCluster =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             clusterId = "abc",
             s3Bucket = "acct",
             initConfig = InitConfig(tenant = "acme"),
@@ -54,7 +53,7 @@ class ReportUploadTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { stateManager }
-                single<TestDocumentService> { DefaultTestDocumentService(objectStore) }
+                single<DocumentService> { DefaultDocumentService(objectStore) }
             },
         )
 

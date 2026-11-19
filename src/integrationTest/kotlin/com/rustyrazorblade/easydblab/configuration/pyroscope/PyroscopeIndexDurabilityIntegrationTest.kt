@@ -76,7 +76,6 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "pyroscope-it",
-            versions = mutableMapOf(),
             s3Bucket = bucket,
             dataBucket = "easy-db-lab-data-should-not-be-used",
             initConfig = InitConfig(region = SharedLocalStack.region(), tenant = TENANT),

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.services.aws.AMIService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
+import software.amazon.awssdk.core.exception.SdkException
 
 /**
  * Prune older private AMIs while keeping the newest N per architecture and type.
@@ -93,7 +94,6 @@ class PruneAMIs : PicoBaseCommand() {
         )
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun deleteWithConfirmation(preview: AMIService.PruneResult) {
         eventBus.emit(Event.Ami.DeletionStarting(preview.deleted.size))
 
@@ -111,7 +111,6 @@ class PruneAMIs : PicoBaseCommand() {
         eventBus.emit(Event.Ami.PruningSummary(actuallyDeleted.size, skipped.size, preview.kept.size))
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun confirmAndDeleteAmi(ami: AMI): Boolean {
         displayAMIDetails(ami)
         print("Delete this AMI? [y/N]: ")
@@ -128,7 +127,7 @@ class PruneAMIs : PicoBaseCommand() {
             }
             println("  ✓ Deleted")
             return true
-        } catch (e: Exception) {
+        } catch (e: SdkException) {
             eventBus.emit(Event.Ami.DeleteFailed(e.message ?: "unknown error"))
             return false
         }

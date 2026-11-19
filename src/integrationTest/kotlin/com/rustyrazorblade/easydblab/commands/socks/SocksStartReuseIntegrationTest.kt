@@ -64,7 +64,6 @@ class SocksStartReuseIntegrationTest : BaseKoinTest() {
         get<ClusterStateManager>().save(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts = mapOf(ServerType.Control to listOf(ClusterHost("54.1.2.3", "10.0.1.5", "control0", "us-west-2a", "i-ctrl"))),
             ).apply { markInfrastructureUp() },
         )

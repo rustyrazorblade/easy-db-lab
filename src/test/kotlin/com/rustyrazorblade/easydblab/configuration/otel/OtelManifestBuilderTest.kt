@@ -4,6 +4,7 @@ import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlScalar
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.YamlTestSupport.keysAt
 import com.rustyrazorblade.easydblab.YamlTestSupport.listAt
 import com.rustyrazorblade.easydblab.YamlTestSupport.nodeAt
@@ -18,6 +19,8 @@ import io.fabric8.kubernetes.api.model.ConfigMap
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
@@ -60,7 +63,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun setup() {
         mockClusterStateManager = getKoin().get()
         whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf()),
+            ClusterState(name = "test"),
         )
         val templateService = getKoin().get<TemplateService>()
         builder = OtelManifestBuilder(templateService)
@@ -571,6 +574,68 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         assertThat(yamlFrom(builder.buildConfigMap(emptyList(), cni = CniMode.Cilium)))
             .contains("job_name: \"cilium-operator\"")
             .doesNotContain("localhost:9963")
+    }
+
+    /**
+     * etcd runs on the control node only, while the collector is a DaemonSet. A static `localhost`
+     * target would leave every other node's collector reporting the job down for the life of the
+     * cluster, so the job discovers nodes and keeps only the collector's own node when K3s labelled
+     * it an etcd node. The relabel rules are run here the way Prometheus runs them (a `keep` regex
+     * is anchored, `${env:HOSTNAME}` is the collector's node name) against the nodes of a cluster.
+     */
+    @ParameterizedTest
+    @EnumSource(CniMode::class)
+    fun `only the collector on the etcd node scrapes etcd, localhost, on every CNI`(cni: CniMode) {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), cni = cni))
+        val job = builder.buildInfraScrapeJobs(cni).single { it.jobName == Constants.K3s.ETCD_JOB_NAME }
+        // Prometheus maps a label name's non-alphanumerics to `_` in the discovery meta label.
+        val etcdLabel = "__meta_kubernetes_node_label_" + "node-role.kubernetes.io/etcd".replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val nodes =
+            listOf(
+                mapOf("__meta_kubernetes_node_name" to "control0", etcdLabel to "true"),
+                mapOf("__meta_kubernetes_node_name" to "db0"),
+                mapOf("__meta_kubernetes_node_name" to "db1"),
+            )
+
+        fun targetsOfCollectorOn(hostname: String): List<Map<String, String>> =
+            nodes.mapNotNull { labels ->
+                relabel(job.relabelConfigs, labels, hostname, "test-cluster")
+            }
+
+        assertThat(yaml).contains("job_name: \"${Constants.K3s.ETCD_JOB_NAME}\"")
+        assertThat(job.kubernetesSdConfigs?.single()?.role).isEqualTo("node")
+        assertThat(job.staticConfigs).isNull()
+        assertThat(targetsOfCollectorOn("db0")).isEmpty()
+        assertThat(targetsOfCollectorOn("db1")).isEmpty()
+        val scraped = targetsOfCollectorOn("control0").single()
+        assertThat(scraped["__address__"]).isEqualTo("localhost:${Constants.K3s.ETCD_METRICS_PORT}")
+        assertThat(scraped["instance"]).isEqualTo("control0:${Constants.K3s.ETCD_METRICS_PORT}")
+        assertThat(scraped["cluster"]).isEqualTo("test-cluster")
+    }
+
+    /**
+     * Applies [rules] to one discovered target as Prometheus does for the `keep` and
+     * `target_label`/`replacement` forms used here; null when a `keep` drops the target.
+     */
+    private fun relabel(
+        rules: List<PrometheusRelabelConfig>,
+        discovered: Map<String, String>,
+        hostname: String,
+        clusterName: String,
+    ): Map<String, String>? {
+        val labels = discovered.toMutableMap()
+
+        fun expand(text: String) = text.replace("\${env:HOSTNAME}", hostname).replace("\${env:CLUSTER_NAME}", clusterName)
+        for (rule in rules) {
+            when (rule.action) {
+                "keep" -> {
+                    val value = rule.sourceLabels.orEmpty().joinToString(";") { labels[it].orEmpty() }
+                    if (!Regex("^(?:${expand(checkNotNull(rule.regex))})$").matches(value)) return null
+                }
+                else -> labels[checkNotNull(rule.targetLabel)] = expand(checkNotNull(rule.replacement))
+            }
+        }
+        return labels
     }
 
     @Test

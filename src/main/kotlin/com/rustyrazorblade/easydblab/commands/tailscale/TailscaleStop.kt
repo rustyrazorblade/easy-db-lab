@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -72,22 +73,29 @@ class TailscaleStop : PicoBaseCommand() {
             }
     }
 
-    @Suppress("TooGenericExceptionCaught")
+    /**
+     * Deletes the auth key `tailscale start` recorded. Missing OAuth credentials, or a failed delete,
+     * emit [Event.Tailscale.AuthKeyNotDeleted] and the exit code stays zero: the stop itself worked, and
+     * the key stays valid in the tailnet until it expires or is revoked in the Tailscale admin console.
+     * A failed delete still clears the recorded key ID, so a later `stop` does not retry it; missing
+     * credentials return before that, so the ID stays recorded.
+     */
     private fun deleteTailscaleAuthKey() {
         val keyId = clusterState.tailscaleAuthKeyId ?: return
 
         val clientId = user.tailscaleClientId
         val clientSecret = user.tailscaleClientSecret
         if (clientId.isBlank() || clientSecret.isBlank()) {
-            log.warn { "Tailscale OAuth credentials not configured, cannot delete auth key $keyId" }
+            eventBus.emit(Event.Tailscale.AuthKeyNotDeleted(keyId, "no Tailscale OAuth credentials are configured"))
             return
         }
 
         try {
             tailscaleService.deleteAuthKey(clientId, clientSecret, keyId)
             eventBus.emit(Event.Tailscale.AuthKeyDeleted(keyId))
-        } catch (e: Exception) {
+        } catch (e: TailscaleApiException) {
             log.warn(e) { "Failed to delete Tailscale auth key: $keyId" }
+            eventBus.emit(Event.Tailscale.AuthKeyNotDeleted(keyId, e.messageOrString()))
         }
 
         clusterState.updateTailscaleAuthKeyId(null)

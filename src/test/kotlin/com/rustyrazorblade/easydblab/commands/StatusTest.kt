@@ -27,6 +27,7 @@ import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.server.ClusterStatusCollector
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
@@ -144,6 +145,7 @@ class StatusTest : BaseKoinTest() {
                 // Real instance: the scanner only reads the filesystem, so faking it would
                 // hide the very rule these tests exercise.
                 single { WorkspaceKitScanner(get()) }
+                factory { ClusterStatusCollector() }
             },
         )
 
@@ -209,7 +211,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = null,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -228,7 +229,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = emptyMap(),
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -246,7 +246,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -557,7 +556,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 default = NodeState(version = "5.0"),
@@ -587,7 +585,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -610,7 +607,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,
@@ -626,7 +622,6 @@ class StatusTest : BaseKoinTest() {
             ClusterState(
                 name = "test-cluster",
                 clusterId = "test-123",
-                versions = mutableMapOf(),
                 hosts = testHosts,
                 infrastructure = testInfrastructure,
                 infrastructureStatus = InfrastructureStatus.UP,

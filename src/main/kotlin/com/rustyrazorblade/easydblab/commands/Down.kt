@@ -5,11 +5,13 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
+import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.services.BackendState
 import com.rustyrazorblade.easydblab.services.DataBucketTeardown
 import com.rustyrazorblade.easydblab.services.DeviceRemoval
@@ -100,6 +102,21 @@ class Down : PicoBaseCommand() {
 
         /** The step a failure of the save itself names, as opposed to one of its signals. */
         const val SAVE_STEP = "pre-teardown save"
+    }
+
+    /**
+     * How much of a VPC a teardown may remove: all of it ([Whole], the cluster state says easy-db-lab
+     * created it), only what its tags mark as easy-db-lab's ([ByTags], no state to ask), or one
+     * cluster's own resources in a VPC the user supplied ([SuppliedCluster]).
+     */
+    private sealed interface VpcScope {
+        data object Whole : VpcScope
+
+        data object ByTags : VpcScope
+
+        data class SuppliedCluster(
+            val clusterId: String,
+        ) : VpcScope
     }
 
     /**
@@ -287,7 +304,7 @@ class Down : PicoBaseCommand() {
                             Event.Teardown.BackupFailedAbort.SignalFailure(
                                 signal = it.signal.description,
                                 step = it.step.description,
-                                reason = it.cause?.message ?: it.message.orEmpty(),
+                                reason = it.cause?.reason() ?: it.message.orEmpty(),
                                 unreached = it.unreached,
                             )
                         },
@@ -315,7 +332,7 @@ class Down : PicoBaseCommand() {
                 Event.Teardown.BackupFailedAbort.SignalFailure(
                     signal = it.description,
                     step = step,
-                    reason = failure.message ?: failure.toString(),
+                    reason = failure.reason(),
                 )
             },
     )
@@ -327,10 +344,16 @@ class Down : PicoBaseCommand() {
         when (mode) {
             is TeardownMode.CurrentCluster -> teardownCurrentCluster()
             is TeardownMode.SpecificVpc ->
-                teardownSpecificVpc(mode.vpcId, saveTail = false, suppliedVpcCluster = suppliedVpcClusterFor(mode.vpcId))
+                teardownSpecificVpc(mode.vpcId, saveTail = false, scope = scopeForNamedVpc(mode.vpcId))
             is TeardownMode.AllTagged -> teardownAllTagged()
             is TeardownMode.PackerInfrastructure -> teardownPackerInfrastructure()
         }
+
+    /**
+     * The scope of `down <vpc-id>`: the supplied-VPC cluster when the workspace state says so,
+     * otherwise the VPC's own tags decide, because no state can say who created it.
+     */
+    private fun scopeForNamedVpc(vpcId: String): VpcScope = suppliedVpcClusterFor(vpcId)?.let(VpcScope::SuppliedCluster) ?: VpcScope.ByTags
 
     /**
      * The workspace cluster's ID when [vpcId] is the VPC that cluster was given with `init --vpc`,
@@ -384,8 +407,8 @@ class Down : PicoBaseCommand() {
         }
 
         // A VPC from `init --vpc` is the user's: remove only this cluster's own tagged resources, never the VPC.
-        val suppliedVpcCluster = clusterState.clusterId.takeIf { clusterState.vpcSupplied }
-        return teardownSpecificVpc(currentVpcId, saveTail = true, suppliedVpcCluster = suppliedVpcCluster)
+        val scope = if (clusterState.vpcSupplied) VpcScope.SuppliedCluster(clusterState.clusterId) else VpcScope.Whole
+        return teardownSpecificVpc(currentVpcId, saveTail = true, scope = scope)
     }
 
     /**
@@ -406,13 +429,13 @@ class Down : PicoBaseCommand() {
     private fun teardownSpecificVpc(
         targetVpcId: String,
         saveTail: Boolean,
-        suppliedVpcCluster: String? = null,
+        scope: VpcScope,
     ): TeardownOutcome {
         eventBus.emit(Event.Teardown.PreparingVpc(targetVpcId))
 
         val stop =
             previewAndConfirm(
-                preview = teardown(targetVpcId, suppliedVpcCluster, dryRun = true),
+                preview = teardown(targetVpcId, scope, dryRun = true),
                 noneFound = Event.Teardown.NoResourcesFound,
                 summarize = { it.first().summary() },
                 beforeDryRunCheck = { if (saveTail && force) reportForceSkipsTail() },
@@ -422,21 +445,22 @@ class Down : PicoBaseCommand() {
         if (saveTail && !force && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
 
         beforeRemovingInfrastructure()
-        return TeardownOutcome.Finished(teardown(targetVpcId, suppliedVpcCluster, dryRun = false))
+        return TeardownOutcome.Finished(teardown(targetVpcId, scope, dryRun = false))
     }
 
     /**
-     * Tears down the whole VPC, or, when [suppliedVpcCluster] names a cluster, only that cluster's
-     * own resources inside the user-supplied VPC.
+     * Tears down [vpcId] as [scope] says: the whole VPC, only what its tags mark as easy-db-lab's,
+     * or only one cluster's own resources inside a user-supplied VPC.
      */
     private fun teardown(
         vpcId: String,
-        suppliedVpcCluster: String?,
+        scope: VpcScope,
         dryRun: Boolean,
     ): TeardownResult =
-        when (suppliedVpcCluster) {
-            null -> teardownService.teardownVpc(vpcId, dryRun)
-            else -> teardownService.teardownClusterInSuppliedVpc(vpcId, suppliedVpcCluster, dryRun)
+        when (scope) {
+            VpcScope.Whole -> teardownService.teardownVpc(vpcId, dryRun)
+            VpcScope.ByTags -> teardownService.teardownVpcByTags(vpcId, dryRun)
+            is VpcScope.SuppliedCluster -> teardownService.teardownClusterInSuppliedVpc(vpcId, scope.clusterId, dryRun)
         }
 
     /**
@@ -572,7 +596,7 @@ class Down : PicoBaseCommand() {
 
     private fun reportClusterStateFailure(e: Exception) {
         log.warn(e) { "Failed to update cluster state, continuing anyway" }
-        eventBus.emit(Event.Teardown.ClusterStateUpdateFailed(e.message ?: e.toString()))
+        eventBus.emit(Event.Teardown.ClusterStateUpdateFailed(e.messageOrString()))
     }
 
     /**

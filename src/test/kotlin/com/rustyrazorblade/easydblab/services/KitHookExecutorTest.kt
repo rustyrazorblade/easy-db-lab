@@ -35,7 +35,6 @@ class KitHookExecutorTest : BaseKoinTest() {
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
             hosts =

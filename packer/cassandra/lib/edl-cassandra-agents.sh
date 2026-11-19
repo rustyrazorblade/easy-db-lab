@@ -138,3 +138,48 @@ edl_axonops_agent_for() {
 
     return 0
 }
+
+# edl_axonops_javaagent <agent> [<axonops-base>]
+#
+# Prints the -javaagent option for the AxonOps agent the CLI chose (EDL_AXONOPS_AGENT, from the
+# systemd drop-in that `cassandra start` writes). An empty agent prints nothing and succeeds: that
+# start runs without AxonOps on purpose. Returns 1 without printing when the agent's jar is missing.
+#
+# The install dir is named after the agent (e.g. 5.0-agent-jdk11), but the jar inside is
+# axon-cassandra<X.Y>-agent.jar with no jdk suffix, so it is found by glob.
+edl_axonops_javaagent() {
+    [ -n "$1" ] || return 0
+    _edl_axon_lib="${2:-$EDL_AXONOPS_BASE}/$1/lib"
+    for _edl_axon_jar in "$_edl_axon_lib"/axon-cassandra*.jar; do
+        if [ -f "$_edl_axon_jar" ]; then
+            printf '%s\n' "-javaagent:${_edl_axon_jar}=/etc/axonops/axon-agent.yml"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# The releases and JDKs (as edl_java_major_version prints them) that edl_axonops_agents walks.
+EDL_AXONOPS_RELEASES="3.0 3.11 4.0 4.1 5.0"
+EDL_AXONOPS_JDKS="1 11 17"
+
+# edl_axonops_agents
+#
+# Prints the AxonOps agents that AxonOps ships, one per line, each once. It walks
+# edl_axonops_agent_for over the releases and JDKs above, so the list a refusal names can never
+# drift from the agents the selection picks.
+edl_axonops_agents() {
+    _edl_seen=" "
+    for _edl_release in $EDL_AXONOPS_RELEASES; do
+        for _edl_jdk in $EDL_AXONOPS_JDKS; do
+            _edl_agent=$(edl_axonops_agent_for "$_edl_release" "$_edl_jdk") || continue
+            case "$_edl_seen" in
+                *" $_edl_agent "*) ;;
+                *)
+                    _edl_seen="$_edl_seen$_edl_agent "
+                    printf '%s\n' "$_edl_agent"
+                    ;;
+            esac
+        done
+    done
+}

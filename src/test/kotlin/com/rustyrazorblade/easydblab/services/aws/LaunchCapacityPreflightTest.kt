@@ -13,6 +13,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 
 /**
  * The decisions `up` makes before it launches anything: each check passes when the account has
@@ -330,6 +332,60 @@ class LaunchCapacityPreflightTest {
             preflight.verifyLaunchPermitted(emptyList())
 
             assertThat(capacity.calls).isEmpty()
+        }
+    }
+
+    /**
+     * A replacement (design D6 step 4) checks one instance: only the zone its ordinal lands in
+     * counts, and the dry run asks for that one ordinal, not the whole group.
+     */
+    @Nested
+    inner class Replacement {
+        private val launch =
+            InstanceCreationConfig(
+                serverType = ServerType.Cassandra,
+                indexes = (0 until 9).toList(),
+                instanceType = "i4i.xlarge",
+                amiId = "ami-real",
+                keyName = "key",
+                securityGroupId = "sg-1",
+                subnetIds = listOf("subnet-a", "subnet-b", "subnet-c"),
+                iamInstanceProfile = "profile",
+                ebsConfig = null,
+                tags = emptyMap(),
+                clusterName = "lab",
+            )
+
+        @ParameterizedTest
+        @CsvSource("0, true", "1, false", "2, true", "3, true", "4, false", "7, false", "8, true")
+        fun `only the zone the ordinal lands in is checked, for exactly one instance`(
+            ordinal: Int,
+            fits: Boolean,
+        ) {
+            // One Cilium node needs 17 addresses: zone b has 16, zones a and c have exactly 17.
+            capacity.freeAddresses = mapOf("us-west-2a" to 17, "us-west-2b" to 16, "us-west-2c" to 17)
+
+            val outcome = runCatching { preflight.verifyReplacement(plan(), launch, ordinal) }
+
+            assertThat(outcome.isSuccess).isEqualTo(fits)
+            if (fits) {
+                assertThat(eventsOf<Event.Provision.LaunchCapacityVerified>().single().newNodes).isEqualTo(1)
+                assertThat(capacity.dryRuns.single().indexes).containsExactly(ordinal)
+            } else {
+                val short = eventsOf<Event.Provision.SubnetAddressesInsufficient>().single()
+                assertThat(short.zone).isEqualTo("us-west-2b")
+                assertThat(short.needed).isEqualTo(17)
+                assertThat(capacity.dryRuns).isEmpty()
+            }
+        }
+
+        @Test
+        fun `a replacement AWS would refuse fails before anything is launched`() {
+            capacity.dryRun = { LaunchDryRun.Refused("InsufficientInstanceCapacity", "No capacity in us-west-2a.") }
+
+            assertThatThrownBy { preflight.verifyReplacement(plan(), launch, ordinal = 3) }
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("InsufficientInstanceCapacity")
         }
     }
 }

@@ -59,7 +59,6 @@ class CleanupTest : BaseKoinTest() {
     private fun stateWith(vararg pairs: Pair<ServerType, List<ClusterHost>>): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             initConfig = InitConfig(region = "us-west-2", name = "test-cluster"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)) + pairs.toMap(),

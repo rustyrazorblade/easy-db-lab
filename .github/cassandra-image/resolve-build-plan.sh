@@ -45,7 +45,7 @@ compute_build_plan() {
 
   # Auto-map build JDK, ant flags, and runtime base image from the major version.
   #   4.x  -> JDK 11; Cassandra 4.0/4.1 default to JDK 8 and require
-  #           -Duse.jdk11=true to compile under 11 (matches cassandra_versions.yaml).
+  #           -Duse.jdk11=true to compile under 11 (matches the CLI release-line table).
   #   5.0  -> JDK 17; no extra ant flags.
   #   5.1+/trunk (no tag yet) -> JDK 21; no extra ant flags.
   #

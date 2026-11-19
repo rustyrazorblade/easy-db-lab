@@ -4,12 +4,14 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
+import com.rustyrazorblade.easydblab.providers.aws.isTransientAwsFailure
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import com.rustyrazorblade.easydblab.providers.aws.withEc2InstanceRetry
@@ -24,6 +26,8 @@ import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest
 import software.amazon.awssdk.services.ec2.model.Filter
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
+import software.amazon.awssdk.services.ec2.model.SummaryStatus
+import software.amazon.awssdk.services.ec2.model.TerminateInstancesRequest
 import software.amazon.awssdk.services.ec2.waiters.Ec2Waiter
 import java.time.Duration
 import java.time.Instant
@@ -56,7 +60,7 @@ class EC2InstanceService(
     private val region: String,
     private val pollInterval: Duration = Duration.ofMillis(POLL_INTERVAL_MS),
     private val throttleBackoff: Duration = Duration.ofMillis(Constants.Scale.THROTTLE_BACKOFF_BASE_MS),
-) {
+) : InstanceStateReader {
     companion object {
         private val log = KotlinLogging.logger {}
 
@@ -76,7 +80,7 @@ class EC2InstanceService(
         const val INSTANCE_TYPES_PAGE_SIZE = 100
 
         /** States an instance never leaves for running: EC2 is ending it, or has ended it. */
-        private val ENDED_STATES =
+        val ENDED_STATES =
             setOf(
                 InstanceStateName.SHUTTING_DOWN,
                 InstanceStateName.TERMINATED,
@@ -125,6 +129,45 @@ class EC2InstanceService(
         eventBus.emit(Event.Ec2.InstancesCreated(instances.size, config.serverType.serverType))
 
         return instances.sortedBy { config.serverType.ordinalOf(it.alias) ?: 0 }
+    }
+
+    /**
+     * Launches the one instance that replaces ordinal [ordinal] of [config]'s server type (design
+     * D6): in subnet `ordinal % subnets`, the alias's zone, with the ordinal tags `first = ordinal`
+     * and `stride = 1`, through the same request builder as the batched launch, then names it.
+     * [config]'s `indexes` are not used.
+     */
+    fun launchOne(
+        config: InstanceCreationConfig,
+        ordinal: Int,
+    ): CreatedInstance {
+        val batch = LaunchBatch(config.subnetIds[ordinal % config.subnetIds.size], OrdinalRun(ordinal, 1, 1), config.serverType)
+        return launchBatch(config, batch).single().also { nameInstances(listOf(it)) }
+    }
+
+    /**
+     * Terminates [instanceId] and waits, within [timeout], until EC2 no longer reports it pending or
+     * running. Discovery counts only those two states, so once this returns no later `up` or
+     * `down` sees two instances under one alias. An instance EC2 no longer returns is gone.
+     */
+    fun terminateAndWait(
+        instanceId: InstanceId,
+        timeout: Duration,
+    ) {
+        val request = TerminateInstancesRequest.builder().instanceIds(instanceId).build()
+        withEc2ThrottleRetry("terminate-$instanceId", throttleBackoff) { ec2Client.terminateInstances(request) }
+        val live = setOf(InstanceStateName.PENDING.toString(), InstanceStateName.RUNNING.toString())
+        val last =
+            pollUntil(
+                operationName = "terminate-$instanceId",
+                maxAttempts = Int.MAX_VALUE,
+                interval = pollInterval,
+                deadline = Instant.now().plus(timeout),
+                done = { it == null || it !in live },
+            ) { describeStates(listOf(instanceId)).firstOrNull()?.state }
+        if (last != null && last in live) {
+            throw AwsTimeoutException("Instance $instanceId was still $last ${timeout.toSeconds()}s after it was terminated")
+        }
     }
 
     /**
@@ -241,13 +284,14 @@ class EC2InstanceService(
         val ready = mutableMapOf<InstanceId, InstanceDetails>()
         // Keyed by ID: a look retried after an exception sees the same ended instance again.
         val ended = mutableMapOf<InstanceId, InstanceDetails>()
-        // An ended instance stops the poll through `done`, not by throwing: the poll retries any exception.
+        // An ended instance stops the poll through `done`, not by throwing: the poll retries a transient exception.
         val pending =
             pollUntil(
                 operationName = "instances-running",
                 maxAttempts = Int.MAX_VALUE,
                 interval = pollInterval,
                 deadline = Instant.now().plusMillis(timeoutMs),
+                isTransient = ::isTransientAwsFailure,
                 done = { it.isEmpty() || ended.isNotEmpty() },
             ) {
                 val waiting = instanceIds.filterNot { it in ready }
@@ -288,18 +332,22 @@ class EC2InstanceService(
     }
 
     /**
-     * Describes [ids], treating IDs EC2 does not know yet as not running rather than as an error:
-     * when the request fails with `InvalidInstanceID.NotFound`, nothing in it is reported this
-     * poll, and the next poll asks again.
+     * Describes [ids], leaving out the ones EC2 does not know yet. A request that names IDs
+     * directly fails as a whole when one of them is not visible yet, which hides every other
+     * instance in it; an `instance-id` filter returns the ones EC2 knows and no error.
      */
     private fun describeTolerantly(ids: List<InstanceId>): List<InstanceDetails> =
-        try {
-            describeBatch(ids)
-        } catch (e: AwsServiceException) {
-            if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_INSTANCE_NOT_FOUND) throw e
-            log.debug { "Some of ${ids.size} instances are not visible yet; will ask again" }
-            emptyList()
-        }
+        describe(
+            DescribeInstancesRequest
+                .builder()
+                .filters(
+                    Filter
+                        .builder()
+                        .name("instance-id")
+                        .values(ids)
+                        .build(),
+                ).build(),
+        )
 
     /**
      * Waits for instance status checks to pass (both system and instance reachability).
@@ -360,14 +408,47 @@ class EC2InstanceService(
             withEc2InstanceRetry("describe-instances") { describeBatch(batch) }
         }
 
-    private fun describeBatch(instanceIds: List<InstanceId>): List<InstanceDetails> {
+    override val batchSize: Int = minOf(Constants.Scale.DESCRIBE_INSTANCES_BATCH, Constants.Scale.DESCRIBE_INSTANCE_STATUS_BATCH)
+
+    override fun describeStates(ids: List<InstanceId>): List<InstanceDetails> {
+        require(ids.size <= batchSize) { "at most $batchSize instance IDs a request, got ${ids.size}" }
+        return withEc2ThrottleRetry("describe-instance-states", throttleBackoff) { describeTolerantly(ids) }
+    }
+
+    override fun passedStatusChecks(ids: List<InstanceId>): Set<InstanceId> {
+        require(ids.size <= batchSize) { "at most $batchSize instance IDs a request, got ${ids.size}" }
         val request =
+            DescribeInstanceStatusRequest
+                .builder()
+                .instanceIds(ids)
+                .build()
+        // A not-yet-visible ID fails the whole request; nothing in it has passed yet, so the next poll asks again.
+        val statuses =
+            withEc2ThrottleRetry("describe-instance-status", throttleBackoff) {
+                try {
+                    ec2Client.describeInstanceStatus(request).instanceStatuses()
+                } catch (e: AwsServiceException) {
+                    if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_INSTANCE_NOT_FOUND) throw e
+                    emptyList()
+                }
+            }
+        return statuses
+            .filter {
+                it.systemStatus()?.status() == SummaryStatus.OK && it.instanceStatus()?.status() == SummaryStatus.OK
+            }.map { it.instanceId() }
+            .toSet()
+    }
+
+    private fun describeBatch(instanceIds: List<InstanceId>): List<InstanceDetails> =
+        describe(
             DescribeInstancesRequest
                 .builder()
                 .instanceIds(instanceIds)
-                .build()
+                .build(),
+        )
 
-        return ec2Client.describeInstances(request).reservations().flatMap { reservation ->
+    private fun describe(request: DescribeInstancesRequest): List<InstanceDetails> =
+        ec2Client.describeInstances(request).reservations().flatMap { reservation ->
             reservation.instances().map { instance ->
                 InstanceDetails(
                     instanceId = instance.instanceId(),
@@ -380,7 +461,6 @@ class EC2InstanceService(
                 )
             }
         }
-    }
 
     /**
      * The alias of an instance with [tags] and launch index [launchIndex]: its `Name` tag, or, when
@@ -477,7 +557,7 @@ class EC2InstanceService(
                 .filters(
                     Filter
                         .builder()
-                        .name("tag:ClusterId")
+                        .name("tag:${Constants.Vpc.CLUSTER_ID_TAG_KEY}")
                         .values(clusterId)
                         .build(),
                     Filter

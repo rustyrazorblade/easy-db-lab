@@ -92,7 +92,6 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         val state =
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mapOf(
                         ServerType.Control to listOf(controlHost),

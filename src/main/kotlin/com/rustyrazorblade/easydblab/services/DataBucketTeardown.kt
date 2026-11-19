@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.core.exception.SdkException
@@ -58,7 +59,7 @@ class DataBucketTeardown(
             MetricsStop.Stopped(dataBucket)
         } catch (e: SdkException) {
             log.warn(e) { "Failed to tear down data bucket: $dataBucket" }
-            val reason = e.message ?: e.toString()
+            val reason = e.messageOrString()
             eventBus.emit(Event.Teardown.DataBucketMetricsDisableFailed(dataBucket, reason))
             MetricsStop.Failed(dataBucket, reason)
         }
@@ -74,7 +75,7 @@ class DataBucketTeardown(
                 s3BucketService.findDataBuckets()
             } catch (e: SdkException) {
                 log.warn(e) { "Failed to discover data buckets" }
-                eventBus.emit(Event.Teardown.DataBucketDiscoveryFailed(e.message ?: e.toString()))
+                eventBus.emit(Event.Teardown.DataBucketDiscoveryFailed(e.messageOrString()))
                 return DataBucketSweep(emptyList(), emptyList())
             }
         if (dataBuckets.isEmpty()) {
@@ -92,11 +93,11 @@ class DataBucketTeardown(
                 .deleteEmptyBucket(bucket)
                 .onSuccess { eventBus.emit(Event.S3.DataBucketDeleted(bucket)) }
                 .onFailure { exception ->
-                    eventBus.emit(Event.S3.DataBucketKept(bucket, exception.message ?: exception.toString()))
+                    eventBus.emit(Event.S3.DataBucketKept(bucket, exception.messageOrString()))
                 }.isSuccess
         } catch (e: SdkException) {
             log.warn(e) { "Failed to handle data bucket: $bucket" }
-            eventBus.emit(Event.S3.DataBucketKept(bucket, e.message ?: e.toString()))
+            eventBus.emit(Event.S3.DataBucketKept(bucket, e.messageOrString()))
             false
         }
 }

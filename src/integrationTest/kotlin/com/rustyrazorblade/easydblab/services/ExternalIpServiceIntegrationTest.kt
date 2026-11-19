@@ -57,7 +57,6 @@ class ExternalIpServiceIntegrationTest {
         stateManager.save(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 infrastructure = InfrastructureState(vpcId = "vpc-1", region = "us-west-2", securityGroupId = "sg-1"),
             ),
         )

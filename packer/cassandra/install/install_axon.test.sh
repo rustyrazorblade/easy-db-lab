@@ -87,6 +87,14 @@ else
   pass "a refused rule leaves nothing behind"
 fi
 
+# --- the bake downloads no per-release agent ---------------------------------
+# install-axonops-agent installs the agent for the release line and JDK at `cassandra start`.
+if grep -qE 'axon-cassandra[0-9]|agent_versions' "${SCRIPT_DIR}/install_axon.sh"; then
+  fail "install_axon.sh still installs a per-release agent"
+else
+  pass "install_axon.sh installs no per-release agent"
+fi
+
 echo
 echo "${tests_run} assertions, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

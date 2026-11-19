@@ -55,7 +55,6 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
     private val clusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts = mapOf(ServerType.Cassandra to listOf(dbHost), ServerType.Stress to listOf(dbHost.copy(alias = "app0"))),
         )
 

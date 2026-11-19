@@ -19,7 +19,7 @@ import java.time.Duration
  */
 class TempoTailFlushTest {
     private val control = ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a")
-    private val state = ClusterState(name = "lab", versions = mutableMapOf())
+    private val state = ClusterState(name = "lab")
     private val remoteOps = mock<RemoteOperationsService>()
 
     private fun metrics(

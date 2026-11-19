@@ -2,6 +2,10 @@
 
 This page documents the ports used by easy-db-lab and the services it provisions.
 
+Every node uses the ephemeral port range 1024-65535 and reserves the NodePort range and every
+fixed host listener port below it, so no outbound connection takes one. A new fixed host port must
+be added to the reserved list. See [Node OS Tuning](../user-guide/node-tuning.md#network-settings).
+
 ## Cassandra Ports
 
 | Port | Purpose |
@@ -29,6 +33,7 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 3200 | Tempo (trace storage) |
 | 5001 | YACE CloudWatch exporter (Prometheus) |
 | 8080 | kube-state-metrics (Prometheus; ClusterIP Service, pod network) |
+| 2381 | K3s embedded etcd metrics (Prometheus, plain HTTP, control node; localhost and the private IP) |
 
 ## Observability Ports (All Nodes — DaemonSets)
 
@@ -47,6 +52,24 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9963 | Cilium operator metrics (Prometheus, the node that runs the operator) |
 | 9965 | Hubble metrics (Prometheus, every node) |
 | 31234 | Hubble UI (NodePort, any node's private IP) |
+
+## Stress Ports (App Nodes)
+
+| Port | Service |
+|------|---------|
+| 9500-9599 | Stress metrics (Prometheus). Each `cassandra stress start` takes the next port, wrapping after 100 runs, so a run cannot bind its port while the run 100 before it is still running on that node. Reserved by node tuning. |
+
+## Flannel
+
+| Port | Service |
+|------|---------|
+| 8472/udp | flannel VXLAN, on every node when the CNI is flannel (`init --cni=flannel`). Reserved by node tuning. |
+
+## Tailscale
+
+| Port | Service |
+|------|---------|
+| 41641/udp | tailscaled WireGuard (every node that joins the tailnet). Reserved by node tuning. |
 
 ## Kit Ports
 

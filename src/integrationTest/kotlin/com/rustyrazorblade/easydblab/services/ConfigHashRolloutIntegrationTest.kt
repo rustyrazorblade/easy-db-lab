@@ -82,7 +82,7 @@ class ConfigHashRolloutIntegrationTest {
 
         stateManager = mock()
         whenever(stateManager.load()).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = "acct-bucket"),
+            ClusterState(name = "test", s3Bucket = "acct-bucket"),
         )
         user =
             User(

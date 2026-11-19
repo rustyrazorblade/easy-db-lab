@@ -27,7 +27,7 @@ class TeardownBackupServiceTest {
     private val control = ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a")
     private val now = Instant.parse("2026-09-26T12:00:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
-    private val state = ClusterState(name = "lab", versions = mutableMapOf())
+    private val state = ClusterState(name = "lab")
 
     private fun manager() = ClusterStateManager(File(dir, "state.json"))
 

@@ -50,11 +50,12 @@ echo "Netid State  Recv-Q Send-Q Local Address:Port Peer Address:Port"
 if [[ $n -ge ${JMX_OPEN_AT:-999999} ]]; then echo "tcp   LISTEN 0      50     *:7199             *:*"; fi
 SHIM
 
-# OperationMode is NORMAL from call NORMAL_AT on.
+# OperationMode is NORMAL from call NORMAL_AT on.  Before that, as sjk does while StorageService is
+# not registered yet, each call prints a connection error on stderr.
 cat >"${BIN}/sjk-mx" <<'SHIM'
 #!/bin/bash
 n=$(count-call sjk-mx)
-if [[ $n -ge ${NORMAL_AT:-999999} ]]; then echo "NORMAL"; else echo "JOINING"; fi
+if [[ $n -ge ${NORMAL_AT:-999999} ]]; then echo "NORMAL"; else echo "sjk-poll-error" >&2; echo "JOINING"; fi
 SHIM
 
 cat >"${BIN}/systemctl" <<'SHIM'
@@ -208,6 +209,48 @@ if [[ "$OUTPUT" == *"Waiting for JMX"* && "$(tail -n 1 <<<"$OUTPUT")" == "OK" ]]
 else
   fail "expected 'Waiting for JMX' and a final OK, got: ${OUTPUT}"
 fi
+
+# The wait polls once a second and reads only the exit status, so the errors sjk prints before
+# NORMAL are not shown: each start would otherwise print one per poll.
+run_script JMX_OPEN_AT=1 NORMAL_AT=4
+if [[ "$STATUS" == "0" && "$OUTPUT" != *"sjk-poll-error"* ]]; then
+  pass "the polls before NORMAL print no sjk error"
+else
+  fail "expected no sjk error in the wait output, got ${STATUS}: ${OUTPUT}"
+fi
+
+# --- sjk-mx: the connection the JDK supports, once --------------------------------
+# The pid attach fails on JDK 8 (root cannot attach to a JVM another user owns); the JMX port fails
+# on JDK 9+ (sjk cannot reach java.rmi internals).  sjk-mx picks one from `java -version` and runs
+# sjk once, so a real query error is neither run twice nor hidden.  The java stub prints
+# JAVA_VERSION_LINE for -version, records each sjk call's connection flag, and exits SJK_STATUS
+# with "sjk-error" on stderr when it is non-zero.
+SJK_DIR="${SANDBOX}/sjk"
+mkdir -p "$SJK_DIR"
+printf '#!/bin/bash\nexec "$@"\n' >"${SJK_DIR}/sudo"
+printf '#!/bin/bash\necho 1234\n' >"${SJK_DIR}/cassandra-pid"
+printf '#!/bin/bash\nif [[ "$1" == -version ]]; then echo "$JAVA_VERSION_LINE" >&2; exit 0; fi\necho "$4 $5 $6" >>"%s/java.calls"\nif [[ "${SJK_STATUS:-0}" != 0 ]]; then echo sjk-error >&2; exit "$SJK_STATUS"; fi\necho "OperationMode NORMAL"\n' "$STATE" >"${SJK_DIR}/java"
+chmod +x "${SJK_DIR}"/*
+
+# java -version line | sjk status | expected exit | expected calls | stderr shown
+while IFS='|' read -r version_line sjk_status want_status want_calls want_err; do
+  rm -f "${STATE}/java.calls"
+  got_err="$(JAVA_VERSION_LINE="$version_line" SJK_STATUS="$sjk_status" PATH="${SJK_DIR}:${PATH}" \
+    bash "${SCRIPT_DIR}/sjk-mx" -b x 2>&1 >/dev/null)"
+  got_status=$?
+  got_calls="$(paste -sd ';' "${STATE}/java.calls")"
+  if [[ "$got_status" == "$want_status" && "$got_calls" == "$want_calls" && "$got_err" == "$want_err" ]]; then
+    pass "sjk-mx on [${version_line}] with sjk status ${sjk_status} exits ${want_status} after: ${want_calls}"
+  else
+    fail "sjk-mx on [${version_line}] status ${sjk_status}: want ${want_status} '${want_calls}' [${want_err}], got ${got_status} '${got_calls}' [${got_err}]"
+  fi
+done <<'TABLE'
+openjdk version "1.8.0_432"|0|0|-s localhost:7199 -b|
+openjdk version "11.0.25" 2024-10-15|0|0|-p 1234 -b|
+openjdk version "21.0.5" 2024-10-15|0|0|-p 1234 -b|
+openjdk version "17.0.13" 2024-10-15|1|1|-p 1234 -b|sjk-error
+openjdk version "1.8.0_432"|1|1|-s localhost:7199 -b|sjk-error
+TABLE
 
 # --- Cassandra is not running at all ---------------------------------------------
 run_script PID_GONE_AT=1

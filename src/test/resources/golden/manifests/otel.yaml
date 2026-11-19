@@ -305,6 +305,26 @@ data:
                 namespaces:
                   names:
                   - "default"
+            - job_name: "k3s-etcd"
+              scrape_interval: "15s"
+              metrics_path: "/metrics"
+              relabel_configs:
+              - source_labels:
+                - "__meta_kubernetes_node_label_node_role_kubernetes_io_etcd"
+                regex: "true"
+                action: "keep"
+              - source_labels:
+                - "__meta_kubernetes_node_name"
+                regex: "${env:HOSTNAME}"
+                action: "keep"
+              - target_label: "__address__"
+                replacement: "localhost:2381"
+              - target_label: "instance"
+                replacement: "${env:HOSTNAME}:2381"
+              - target_label: "cluster"
+                replacement: "${env:CLUSTER_NAME}"
+              kubernetes_sd_configs:
+              - role: "node"
 
       file_log/system:
         include:

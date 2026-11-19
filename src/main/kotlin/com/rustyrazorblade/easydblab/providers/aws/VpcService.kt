@@ -375,6 +375,13 @@ interface ClusterVpcDiscovery {
         vpcId: VpcId,
         clusterId: String,
     ): ClusterVpcResources
+
+    /**
+     * Finds the resources in a VPC that carry any easy-db-lab `ClusterId` tag (and the easy-db-lab
+     * marker tag), whichever cluster they belong to. Used when no cluster state says which cluster
+     * to remove. The same exclusions as [findClusterResourcesInVpc] apply.
+     */
+    fun findEasyDbLabResourcesInVpc(vpcId: VpcId): ClusterVpcResources
 }
 
 /**

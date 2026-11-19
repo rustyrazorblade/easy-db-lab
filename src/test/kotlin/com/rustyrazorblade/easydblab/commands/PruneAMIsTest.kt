@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -15,8 +17,10 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import java.time.Instant
 
 class PruneAMIsTest : BaseKoinTest() {
@@ -88,6 +92,52 @@ class PruneAMIsTest : BaseKoinTest() {
 
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("No AMIs to delete")
+        }
+    }
+
+    @Nested
+    inner class Deletion {
+        private lateinit var originalIn: java.io.InputStream
+
+        @BeforeEach
+        fun answerYes() {
+            originalIn = System.`in`
+            System.setIn("y\n".byteInputStream())
+            whenever(mockAMIService.pruneAMIs(any(), any(), eq(true), anyOrNull()))
+                .thenReturn(AMIService.PruneResult(kept = listOf(newAmi), deleted = listOf(oldAmi)))
+        }
+
+        @AfterEach
+        fun restoreStdin() {
+            System.setIn(originalIn)
+        }
+
+        @Test
+        fun `a confirmed AMI is deregistered and its snapshots are deleted`() {
+            PruneAMIs().execute()
+
+            verify(mockAMIService).deregisterAMI("ami-old1")
+            verify(mockAMIService).deleteSnapshot("snap-old1")
+            assertThat(outputHandler.messages.joinToString("\n")).contains("Deleted: 1")
+        }
+
+        @Test
+        fun `an AWS failure deleting one AMI is reported and the run completes`() {
+            whenever(mockAMIService.deregisterAMI("ami-old1"))
+                .thenThrow(Ec2Exception.builder().message("UnauthorizedOperation").build())
+
+            PruneAMIs().execute()
+
+            val output = outputHandler.messages.joinToString("\n")
+            assertThat(output).contains("Error deleting: UnauthorizedOperation")
+            verify(mockAMIService, never()).deleteSnapshot(any())
+        }
+
+        @Test
+        fun `a failure that is not an AWS failure propagates`() {
+            whenever(mockAMIService.deregisterAMI("ami-old1")).thenThrow(IllegalStateException("bug"))
+
+            assertThatThrownBy { PruneAMIs().execute() }.isInstanceOf(IllegalStateException::class.java)
         }
     }
 

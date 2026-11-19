@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
+import com.rustyrazorblade.easydblab.services.bringup.BringUpHarness
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -45,7 +46,7 @@ class UpVpcCidrTest : UpTestFixture() {
         )
     }
 
-    private fun newUp(seed: Int): Up = Up(sshStartupDelay = Duration.ZERO, tailnetRetryInterval = Duration.ZERO, random = Random(seed))
+    private fun newUp(seed: Int): Up = Up(tailnetRetryInterval = Duration.ZERO, random = Random(seed), timing = BringUpHarness.FAST)
 
     private fun vpcCreateFailure(): Ec2Exception = Ec2Exception.builder().message("VPC create failed").build() as Ec2Exception
 

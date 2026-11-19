@@ -127,7 +127,7 @@ class DefaultBackupRestoreService(
 
             val vpcTags = vpcService.getVpcTags(vpcId)
             val clusterId =
-                vpcTags[CLUSTER_ID_TAG_KEY]
+                vpcTags[Constants.Vpc.CLUSTER_ID_TAG_KEY]
                     ?: error("VPC $vpcId is missing the ClusterId tag. This VPC was not created by easy-db-lab.")
             val clusterName = vpcTags["Name"] ?: "recovered-cluster"
             val s3Bucket =
@@ -144,7 +144,6 @@ class DefaultBackupRestoreService(
                     vpcId = vpcId,
                     s3Bucket = s3Bucket,
                     infrastructureStatus = InfrastructureStatus.UP,
-                    versions = null,
                 )
 
             // Step 3: Download all files from S3 (including state.json)
@@ -203,6 +202,5 @@ class DefaultBackupRestoreService(
 
     companion object {
         private val log = KotlinLogging.logger {}
-        private const val CLUSTER_ID_TAG_KEY = "ClusterId"
     }
 }

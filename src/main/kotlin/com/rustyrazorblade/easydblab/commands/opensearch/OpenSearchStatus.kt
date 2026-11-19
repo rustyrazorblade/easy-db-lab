@@ -11,6 +11,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.opensearch.model.ResourceNotFoundException
 
 /**
@@ -30,7 +31,6 @@ class OpenSearchStatus : PicoBaseCommand() {
     @Option(names = ["--endpoint"], description = ["Output only the endpoint URL (for scripting)"])
     var endpointOnly: Boolean = false
 
-    @Suppress("TooGenericExceptionCaught")
     override fun execute() {
         val domainState = clusterState.openSearchDomain
         if (domainState == null) {
@@ -57,7 +57,7 @@ class OpenSearchStatus : PicoBaseCommand() {
             updateLocalStateIfChanged(domainState, result)
         } catch (e: ResourceNotFoundException) {
             handleDomainNotFound(domainState)
-        } catch (e: Exception) {
+        } catch (e: SdkException) {
             handleStatusError(domainState, e)
         }
     }
@@ -110,7 +110,7 @@ class OpenSearchStatus : PicoBaseCommand() {
 
     private fun handleStatusError(
         domainState: OpenSearchClusterState,
-        e: Exception,
+        e: SdkException,
     ) {
         log.warn { "Failed to get domain status: ${e.message}" }
         if (!endpointOnly) {

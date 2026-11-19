@@ -93,7 +93,6 @@ class SocksTcpBridgeIntegrationTest {
         whenever(clusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
-                versions = mutableMapOf(),
                 hosts = mapOf(ServerType.Cassandra to listOf(dbHost)),
             ),
         )

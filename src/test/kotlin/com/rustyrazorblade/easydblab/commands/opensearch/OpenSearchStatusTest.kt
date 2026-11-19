@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -20,6 +21,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.opensearch.model.ResourceNotFoundException
 
 /**
@@ -71,7 +73,6 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithoutOpenSearch =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                     hosts =
                         mutableMapOf(
                             ServerType.Control to listOf(testControlHost),
@@ -92,7 +93,6 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithoutOpenSearch =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                     hosts =
                         mutableMapOf(
                             ServerType.Control to listOf(testControlHost),
@@ -310,7 +310,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
             whenever(mockOpenSearchService.describeDomain("test-cluster-os"))
-                .thenThrow(RuntimeException("Network error"))
+                .thenThrow(SdkClientException.create("Network error"))
 
             val command = OpenSearchStatus()
             command.execute()
@@ -342,12 +342,24 @@ class OpenSearchStatusTest : BaseKoinTest() {
         }
 
         @Test
+        fun `a failure that is not an AWS failure propagates and leaves the state alone`() {
+            val stateWithOpenSearch = createStateWithOpenSearch()
+
+            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            whenever(mockOpenSearchService.describeDomain("test-cluster-os"))
+                .thenThrow(IllegalStateException("bug"))
+
+            assertThatThrownBy { OpenSearchStatus().execute() }.isInstanceOf(IllegalStateException::class.java)
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
         fun `execute with --endpoint should not output on transient errors`() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
             whenever(mockOpenSearchService.describeDomain("test-cluster-os"))
-                .thenThrow(RuntimeException("Network error"))
+                .thenThrow(SdkClientException.create("Network error"))
 
             val command = OpenSearchStatus()
             command.endpointOnly = true
@@ -361,7 +373,6 @@ class OpenSearchStatusTest : BaseKoinTest() {
     private fun createStateWithOpenSearch(): ClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             hosts =
                 mutableMapOf(
                     ServerType.Control to listOf(testControlHost),

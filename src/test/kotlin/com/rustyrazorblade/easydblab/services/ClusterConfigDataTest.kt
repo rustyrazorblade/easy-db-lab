@@ -12,7 +12,6 @@ class ClusterConfigDataTest {
     private val state =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             clusterId = "abc123",
             s3Bucket = "acct-bucket",
             initConfig = InitConfig(tenant = "acme", region = "us-east-1"),

@@ -10,7 +10,6 @@ import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeGroup
@@ -18,37 +17,32 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.nodeGroups
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.kernel.PicoCommand
-import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
-import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
-import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
-import com.rustyrazorblade.easydblab.services.K3sClusterConfig
-import com.rustyrazorblade.easydblab.services.K3sClusterService
-import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.K8sStorageOperations
+import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
-import com.rustyrazorblade.easydblab.services.RegistryService
-import com.rustyrazorblade.easydblab.services.SshReadinessWait
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
@@ -59,40 +53,44 @@ import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.LaunchGroup
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.missingOrdinals
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.bringup.BringUpResult
+import com.rustyrazorblade.easydblab.services.bringup.BringUpSettings
+import com.rustyrazorblade.easydblab.services.bringup.BringUpTiming
+import com.rustyrazorblade.easydblab.services.bringup.ClusterStateWriter
+import com.rustyrazorblade.easydblab.services.bringup.LaunchSink
+import com.rustyrazorblade.easydblab.services.bringup.NodeBringUp
+import com.rustyrazorblade.easydblab.services.bringup.NodeEnd
+import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
+import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpRequest
+import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import com.rustyrazorblade.easydblab.services.launches
-import com.rustyrazorblade.easydblab.services.mergeByAlias
+import com.rustyrazorblade.easydblab.services.replacementLaunches
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import org.koin.core.component.inject
 import picocli.CommandLine
-import software.amazon.awssdk.services.ec2.model.InstanceStateName
-import java.io.File
 import java.time.Duration
+import java.util.concurrent.CompletableFuture
 import kotlin.random.Random
 
 /**
- * Provisions and configures the complete cluster infrastructure.
+ * Provisions and configures the complete cluster.
  *
- * This command orchestrates parallel creation of:
- * - EC2 instances (Cassandra, Stress, Control nodes)
- * - EMR Spark cluster (if enabled)
- * - OpenSearch domain (if enabled)
- *
- * After provisioning, it configures K3s on all nodes and applies Kubernetes manifests.
- * State is persisted incrementally as each resource type completes.
+ * After the preflights, the account bucket and the VPC, the instances launch in batches, with
+ * EMR and OpenSearch when enabled, and every node is brought up in its own pipeline as soon as its
+ * instance exists ([NodeBringUp], design D1): running, status checks, SSH, setup, registry TLS
+ * and the K3s join, with its own retries and replacement. The control node's pipeline writes the
+ * workspace files, opens the operator's route ([UpOperatorRoute]), and starts the control plane.
+ * Once every pipeline has ended, [UpPostSteps] runs the cluster-wide steps. A node that could not
+ * be brought up keeps its instance and fails `up` once the rest has finished.
  *
  * @see Init for cluster initialization (must be run first)
  * @see Down for tearing down infrastructure
  *
- * @param sshStartupDelay How long to pause before the first SSH readiness probe, giving freshly
- *   booted instances a moment before we start dialing them. Defaults to [SSH_STARTUP_DELAY] so
- *   production timing is unchanged; tests inject [java.time.Duration.ZERO] to run instantly.
  * @param tailnetRetryInterval How long to wait between probes of the control node over the
- *   tailnet while the subnet route comes up. Defaults to [TAILNET_RETRY_INTERVAL]; tests inject
- *   [java.time.Duration.ZERO] to run every attempt instantly.
- * @param sshRetryInterval How long to wait between SSH readiness attempts. Defaults to
- *   [Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS]; tests inject a short interval.
+ *   tailnet while the subnet route comes up. Tests inject [Duration.ZERO].
+ * @param random The source of the auto-selected VPC CIDR.
+ * @param timing Every wait and policy of the bring-up; tests inject short ones.
  */
 @RequireProfileSetup
 @RequiresProxy
@@ -102,10 +100,9 @@ import kotlin.random.Random
     description = ["Starts instances"],
 )
 class Up(
-    private val sshStartupDelay: Duration = SSH_STARTUP_DELAY,
     private val tailnetRetryInterval: Duration = TAILNET_RETRY_INTERVAL,
     private val random: Random = Random.Default,
-    private val sshRetryInterval: Duration = Duration.ofMillis(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS),
+    private val timing: BringUpTiming = BringUpTiming(),
 ) : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val accountBucketSetup: AccountBucketSetup by inject()
@@ -113,38 +110,35 @@ class Up(
     private val vpcService: VpcService by inject()
     private val awsInfrastructureService: AwsInfrastructureService by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
-    private val hostOperationsService: HostOperationsService by inject()
     private val amiResolver: AMIResolver by inject()
     private val instanceSpecFactory: InstanceSpecFactory by inject()
     private val clusterProvisioningService: ClusterProvisioningService by inject()
     private val clusterConfigurationService: ClusterConfigurationService by inject()
-    private val k3sClusterService: K3sClusterService by inject()
-    private val ciliumService: CiliumService by inject()
     private val ciliumInstallAnnotator: CiliumInstallAnnotator by inject()
-    private val ciliumNodeImageCheck: CiliumNodeImageCheck by inject()
-    private val k8sService: K8sService by inject()
+    private val k8sStorage: K8sStorageOperations by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
-    private val registryService: RegistryService by inject()
+    private val nodeSetupService: NodeSetupService by inject()
+    private val hostOperationsService: HostOperationsService by inject()
     private val socksProxyService: SocksProxyService by inject()
     private val proxyPreflight: ProxyPreflight by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val externalIpService: ExternalIpService by inject()
     private val provisioningPreflight: ProvisioningPreflight by inject()
     private val launchCapacityPreflight: LaunchCapacityPreflight by inject()
-    private val testDocumentService: TestDocumentService by inject()
+    private val documentService: DocumentService by inject()
     private val tcpReachabilityProbe: TcpReachabilityProbe by inject()
+    private val ec2BringUpPorts: Ec2BringUpPorts by inject()
 
-    // Working copy loaded during execute() - modified and saved
+    // Working copy loaded during execute(). Once the launch starts, every change goes through [writer].
     private lateinit var workingState: ClusterState
+    private lateinit var writer: ClusterStateWriter
+    private lateinit var workspace: UpWorkspace
 
     companion object {
         private val log = KotlinLogging.logger {}
-        private val SSH_STARTUP_DELAY = Duration.ofSeconds(5)
         private val TAILNET_RETRY_INTERVAL = Duration.ofMillis(Constants.Tailscale.REACHABILITY_RETRY_INTERVAL_MS)
+        private const val FIRST_DATABASE_NODE = "db0"
     }
-
-    // Lock for synchronizing access to workingState from parallel threads
-    private val stateLock = Any()
 
     @CommandLine.Option(
         names = ["--no-setup", "-n"],
@@ -155,7 +149,7 @@ class Up(
     @CommandLine.Mixin
     var hosts = HostsMixin()
 
-    /** The tunnel the `@RequiresProxy` preflight obtained for this `up`, if it ran; see [startProxyIfNeeded]. */
+    /** The tunnel the `@RequiresProxy` preflight obtained for this `up`, if it ran; see [SocksRoute]. */
     private var preflightTunnel: SocksProxyState? = null
 
     override fun execute() {
@@ -169,31 +163,142 @@ class Up(
         provisioningPreflight.verify(workingState, initConfig)
 
         accountBucketSetup.prepare(workingState)
-        testDocumentService.rebuildIndex(workingState)
-        provisionInfrastructure(initConfig)
-        writeConfigurationFiles()
-        runNestedCommand { WriteConfig() }
-        waitForSshReady()
-        downloadCassandraVersions()
-        setupInstancesIfNeeded()
+        documentService.rebuildIndex(workingState)
+        finish(bringUp(initConfig))
     }
 
     /**
-     * Runs a nested command through [commandExecutor] and aborts `up` if it fails.
-     *
-     * [CommandExecutor.execute] never lets a nested command's exception escape to its caller —
-     * [com.rustyrazorblade.easydblab.services.DefaultCommandExecutor.executeWithLifecycle]
-     * catches it, logs the cause chain, and converts it to a non-zero exit code. Callers must
-     * therefore inspect the returned exit code themselves; this helper does that once so every
-     * nested-command call site aborts provisioning identically instead of discarding the result.
+     * The shared pre-steps (capacity, VPC, launch checks), then the launch and every node's
+     * pipeline at once: each instance is handed to its pipeline as its batch returns.
      */
-    private fun <T : PicoCommand> runNestedCommand(commandFactory: () -> T) {
-        val command = commandFactory()
-        val commandName = command::class.simpleName ?: "nested command"
-        val exitCode = commandExecutor.execute { command }
-        if (exitCode != 0) {
-            error("$commandName failed during provisioning (exit code $exitCode).")
+    private fun bringUp(initConfig: InitConfig): BringUpResult {
+        eventBus.emit(Event.Provision.InfrastructureStarting)
+
+        // One look at EC2: the hosts kept, the capacity checked and the count launched must agree.
+        val existingInstances = discoverExistingInstances()
+        launchCapacityPreflight.verifyCapacity(capacityPlan(initConfig, existingInstances))
+
+        val (vpcId, resolvedCidr) = resolveVpc(initConfig)
+        val vpcInfra = setupVpcNetworking(initConfig, vpcId, resolvedCidr)
+        val baseTags = mapOf("easy_cass_lab" to "1", Constants.Vpc.CLUSTER_ID_TAG_KEY to workingState.clusterId) + initConfig.tags
+
+        val existingHosts = existingInstances.mapValues { (_, instances) -> instances.map { it.toClusterHost() } }
+        val instanceConfig = buildInstanceConfig(initConfig, vpcInfra.securityGroupId, vpcInfra.subnetIds, baseTags, existingInstances)
+        val servicesConfig = buildServicesConfig(initConfig, vpcInfra.subnetIds, vpcInfra.securityGroupId, baseTags)
+        // The subnets and the security group exist now: ask AWS whether it would run each launch.
+        launchCapacityPreflight.verifyLaunchPermitted(instanceConfig.launches())
+        if (initConfig.opensearchEnabled) openSearchService.ensureServiceLinkedRole()
+
+        // The discovered instances are the cluster's hosts; the launch adds the missing ones.
+        writer = ClusterStateWriter(workingState, clusterStateManager)
+        writer.update { it.updateHosts(existingHosts) }
+        // The tunnel and every cluster command read the infrastructure as up; the pipelines need both.
+        finalizeInfrastructureState(vpcId, vpcInfra)
+        val launched = CompletableFuture<Unit>()
+        workspace =
+            UpWorkspace(
+                clusterConfigurationService,
+                userConfig,
+                writer,
+                context.workingDirectory,
+            ) { runNested(commandExecutor, WriteConfig()) }
+        // A replacement is checked against the VPC this `up` resolved, not the one it started with.
+        val replacementPlan = capacityPlan(workingState.initConfig ?: initConfig, existingInstances)
+        val request =
+            Ec2BringUpRequest(
+                writer,
+                operatorRoute(launched),
+                context.workingDirectory,
+                instanceConfig.replacementLaunches(),
+                replacementPlan,
+            )
+        val result =
+            NodeBringUp(ec2BringUpPorts.ports(request), bringUpSettings(initConfig), eventBus).run { sink ->
+                existingHosts.forEach { (serverType, hosts) -> sink.launched(serverType, hosts, LaunchSink.Origin.FOUND_RUNNING) }
+                try {
+                    reportProvisioningFailures(executeProvisioning(instanceConfig, servicesConfig, existingHosts, sink, launched))
+                } finally {
+                    launched.complete(Unit)
+                }
+            }
+        printProvisioningSuccessMessage()
+        eventBus.emit(Event.Provision.ClusterStateUpdated(writer.read { state -> state.hosts.values.sumOf { it.size } }))
+        return result
+    }
+
+    private fun bringUpSettings(initConfig: InitConfig) =
+        BringUpSettings(
+            nodeCount = initConfig.cassandraInstances + initConfig.stressInstances,
+            noSetup = noSetup,
+            hostFilter = hosts.hostList,
+            timing = timing,
+        )
+
+    /**
+     * The operator's route into the cluster: the SOCKS tunnel unless the cluster uses Tailscale,
+     * then Tailscale and its route check. Under `--no-setup` a Tailscale cluster gets neither, as
+     * the VPN is started with node setup.
+     */
+    private fun operatorRoute(launched: CompletableFuture<Unit>): UpOperatorRoute {
+        val connect: (ClusterHost) -> Unit =
+            when {
+                !workingState.isTailscaleEnabled() -> SocksRoute(socksProxyService, eventBus, preflightTunnel)::connect
+                noSetup -> { _ -> }
+                else ->
+                    TailnetRoute(
+                        userConfig,
+                        eventBus,
+                        tcpReachabilityProbe,
+                        tailnetRetryInterval,
+                        { commandExecutor.execute { TailscaleStart() } },
+                        writer,
+                        clusterStateManager,
+                    )::connect
+            }
+        return UpOperatorRoute(workspace, launched, connect)
+    }
+
+    /**
+     * The shared post-steps once every pipeline has ended (design D2): the workspace files with
+     * the final hosts, then, unless `--no-setup`, the environment files again when db0 was
+     * replaced, the cluster-wide steps and AxonOps. When a node failed, `up` names every failed
+     * node, even when a post-step failed too, and exits non-zero.
+     */
+    private fun finish(result: BringUpResult) {
+        val failure = result.failureEvent()
+        try {
+            workspace.write()
+            if (noSetup) eventBus.emit(Event.Provision.SkippingNodeSetup) else configureCluster(result)
+        } finally {
+            failure?.let(eventBus::emit)
         }
+        if (failure != null) throw CommandFailedException("up failed: ${failure.nodes.size} node(s) could not be brought up")
+    }
+
+    private fun configureCluster(result: BringUpResult) {
+        eventBus.emit(Event.Registry.TlsConfigured)
+        val (control, reachable) =
+            writer.read { state ->
+                val failed = result.failed.map { it.host.alias }.toSet()
+                checkNotNull(state.getControlHost()) { "The cluster has no control node" } to
+                    state.hosts.mapValues { (_, hosts) -> hosts.filterNot { it.alias in failed } }
+            }
+        if (result.wasReplaced(FIRST_DATABASE_NODE)) EnvironmentRepush(nodeSetupService, hostOperationsService).push(reachable)
+        UpPostSteps(k8sStorage, observabilityStackService, ciliumInstallAnnotator, eventBus)
+            .run(control, localTelemetry = workingState.initConfig?.telemetryRedirect == null)
+        if (userConfig.isAxonOpsEnabled()) configureAxonOps(result)
+    }
+
+    /** AxonOps on the database nodes; when some failed, only on the ones that are Ready. */
+    private fun configureAxonOps(result: BringUpResult) {
+        val command = ConfigureAxonOps()
+        if (result.failed.isNotEmpty()) {
+            val ready = result.nodes.filter { (alias, end) -> end is NodeEnd.Ready && ServerType.Cassandra.ordinalOf(alias) != null }.keys
+            if (ready.isEmpty()) return
+            command.hosts.hostList = ready.sorted().joinToString(",")
+        }
+        eventBus.emit(Event.Provision.AxonOpsSetup(userConfig.axonOpsOrg))
+        runNested(commandExecutor, command)
     }
 
     /**
@@ -298,7 +403,7 @@ class Up(
         val vpcTags =
             buildMap {
                 put(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
-                put("ClusterId", workingState.clusterId)
+                put(Constants.Vpc.CLUSTER_ID_TAG_KEY, workingState.clusterId)
                 put(
                     Constants.Vpc.BUCKET_TAG_KEY,
                     requireNotNull(workingState.s3Bucket) { "S3 bucket must be configured before VPC creation" },
@@ -314,63 +419,6 @@ class Up(
         clusterStateManager.save(workingState)
 
         return vpcId
-    }
-
-    /**
-     * Provisions all infrastructure resources in parallel.
-     *
-     * Creates EC2 instances, EMR clusters, and OpenSearch domains concurrently.
-     * Each resource type updates cluster state atomically when complete.
-     */
-    private fun provisionInfrastructure(initConfig: InitConfig) {
-        eventBus.emit(Event.Provision.InfrastructureStarting)
-
-        // One look at EC2: the hosts kept, the capacity checked and the count launched must agree.
-        val existingInstances = discoverExistingInstances()
-        launchCapacityPreflight.verifyCapacity(capacityPlan(initConfig, existingInstances))
-
-        val (vpcId, resolvedCidr) = resolveVpc(initConfig)
-        val vpcInfra = setupVpcNetworking(initConfig, vpcId, resolvedCidr)
-        val subnetIds = vpcInfra.subnetIds
-        val securityGroupId = vpcInfra.securityGroupId
-        val igwId = vpcInfra.internetGatewayId
-
-        val baseTags =
-            mapOf(
-                "easy_cass_lab" to "1",
-                "ClusterId" to workingState.clusterId,
-            ) + initConfig.tags
-
-        val existingHosts = awaitNotReady(existingInstances).mapValues { (_, instances) -> instances.map { it.toClusterHost() } }
-        val instanceConfig = buildInstanceConfig(initConfig, securityGroupId, subnetIds, baseTags, existingInstances)
-        val servicesConfig = buildServicesConfig(initConfig, subnetIds, securityGroupId, baseTags)
-        // The subnets and the security group exist now: ask AWS whether it would run each launch.
-        launchCapacityPreflight.verifyLaunchPermitted(instanceConfig.launches())
-
-        if (initConfig.opensearchEnabled) {
-            openSearchService.ensureServiceLinkedRole()
-        }
-
-        val result = executeProvisioning(instanceConfig, servicesConfig, existingHosts)
-        reportProvisioningFailures(result)
-
-        // Persist all discovered+provisioned hosts (existing hosts are in result.hosts but
-        // onHostsCreated is only fired for newly created ones, so we sync the full set here).
-        synchronized(stateLock) {
-            workingState.updateHosts(result.hosts)
-            clusterStateManager.save(workingState)
-        }
-
-        finalizeInfrastructureState(vpcId, subnetIds, securityGroupId, igwId)
-
-        printProvisioningSuccessMessage()
-        eventBus.emit(
-            Event.Provision.ClusterStateUpdated(
-                result.hosts.values
-                    .flatten()
-                    .size,
-            ),
-        )
     }
 
     /**
@@ -420,30 +468,6 @@ class Up(
 
     private fun discoverExistingInstances(): Map<ServerType, List<DiscoveredInstance>> =
         ec2InstanceService.findInstancesByClusterId(workingState.clusterId).also(::logExistingInstances)
-
-    /**
-     * [discovered] with every instance that is still pending, or has no public IP yet, waited on
-     * as a new instance is: until it runs with a public IP and passes its status checks. Each
-     * such instance takes the IPs the running wait read, so a kept host never has a blank
-     * address. A re-run inside an earlier `up`'s pending window finds such instances.
-     */
-    private fun awaitNotReady(discovered: Map<ServerType, List<DiscoveredInstance>>): Map<ServerType, List<DiscoveredInstance>> {
-        val notReady =
-            discovered.values
-                .flatten()
-                .filter { it.state != InstanceStateName.RUNNING.toString() || it.publicIp.isNullOrEmpty() }
-                .map { it.instanceId }
-        if (notReady.isEmpty()) return discovered
-        val details = ec2InstanceService.waitForInstancesRunning(notReady).associateBy { it.instanceId }
-        ec2InstanceService.waitForInstanceStatusOk(notReady)
-        return discovered.mapValues { (_, instances) ->
-            instances.map { instance ->
-                details[instance.instanceId]?.let {
-                    instance.copy(publicIp = it.publicIp, privateIp = it.privateIp ?: instance.privateIp, state = it.state)
-                } ?: instance
-            }
-        }
-    }
 
     private fun buildInstanceConfig(
         initConfig: InitConfig,
@@ -537,39 +561,33 @@ class Up(
         instanceConfig: InstanceProvisioningConfig,
         servicesConfig: OptionalServicesConfig,
         existingHosts: Map<ServerType, List<ClusterHost>>,
+        sink: LaunchSink,
+        launched: CompletableFuture<Unit>,
     ) = clusterProvisioningService.provisionAll(
         instanceConfig = instanceConfig,
         servicesConfig = servicesConfig,
         existingHosts = existingHosts,
         callbacks =
             ProvisioningCallbacks(
-                // Called once per RunInstances batch as it launches and again with the final IPs, so
-                // state holds every launched instance even when a later step of `up` fails.
+                // Called once per RunInstances batch as it launches: the hosts are saved first, so state
+                // holds every launched instance whatever happens next, then each starts its pipeline.
                 onHostsCreated = { serverType, hosts ->
-                    synchronized(stateLock) {
-                        val allHosts = workingState.hosts.toMutableMap()
-                        allHosts[serverType] = mergeByAlias(serverType, allHosts[serverType], hosts)
-                        workingState.updateHosts(allHosts)
-                        clusterStateManager.save(workingState)
-                    }
+                    writer.mergeHosts(serverType, hosts)
+                    sink.launched(serverType, hosts, LaunchSink.Origin.LAUNCHED)
                 },
                 onEmrCreated = { emrState ->
-                    synchronized(stateLock) {
-                        workingState.updateEmrCluster(emrState)
-                        clusterStateManager.save(workingState)
-                    }
+                    writer.update { it.updateEmrCluster(emrState) }
                     eventBus.emit(Event.Provision.EmrReady(emrState.masterPublicDns ?: "unknown"))
                 },
                 onOpenSearchCreated = { osState ->
-                    synchronized(stateLock) {
-                        workingState.updateOpenSearchDomain(osState)
-                        clusterStateManager.save(workingState)
-                    }
+                    writer.update { it.updateOpenSearchDomain(osState) }
                     eventBus.emit(Event.Provision.OpenSearchReady(osState.endpoint ?: "unknown"))
                     osState.dashboardsEndpoint?.let {
                         eventBus.emit(Event.Provision.OpenSearchDashboards("Dashboards: $it"))
                     }
                 },
+                // Every host is known: the control pipeline may write the workspace files.
+                onInstancesLaunched = { launched.complete(Unit) },
             ),
     )
 
@@ -597,25 +615,21 @@ class Up(
             else -> Event.Provision.InfrastructureFailure(resource, error.message ?: "Unknown error")
         }
 
+    /** Records the network `up` resolved and marks the infrastructure up. */
     private fun finalizeInfrastructureState(
         vpcId: String,
-        subnetIds: List<String>,
-        securityGroupId: String,
-        igwId: String?,
-    ) {
-        synchronized(stateLock) {
-            workingState.updateInfrastructure(
-                InfrastructureState(
-                    vpcId = vpcId,
-                    region = userConfig.region,
-                    subnetIds = subnetIds,
-                    securityGroupId = securityGroupId,
-                    internetGatewayId = igwId,
-                ),
-            )
-            workingState.markInfrastructureUp()
-            clusterStateManager.save(workingState)
-        }
+        vpcInfra: VpcInfrastructure,
+    ) = writer.update {
+        it.updateInfrastructure(
+            InfrastructureState(
+                vpcId = vpcId,
+                region = userConfig.region,
+                subnetIds = vpcInfra.subnetIds,
+                securityGroupId = vpcInfra.securityGroupId,
+                internetGatewayId = vpcInfra.internetGatewayId,
+            ),
+        )
+        it.markInfrastructureUp()
     }
 
     private fun logExistingInstances(existingInstances: Map<ServerType, List<DiscoveredInstance>>) {
@@ -633,323 +647,4 @@ class Up(
         eventBus.emit(Event.Provision.SourceEnvInstruction)
         eventBus.emit(Event.Provision.CassandraPatchInstruction)
     }
-
-    /** Writes SSH config, environment files, and AxonOps configuration to the working directory. */
-    private fun writeConfigurationFiles() {
-        clusterConfigurationService
-            .writeAllConfigurationFiles(
-                context.workingDirectory.toPath(),
-                workingState,
-                userConfig,
-            ).getOrThrow()
-    }
-
-    /** Waits for SSH on the control node and the database hosts; see [SshReadinessWait]. */
-    private fun waitForSshReady() {
-        SshReadinessWait(hostOperationsService, remoteOps, eventBus, sshStartupDelay, sshRetryInterval)
-            .await(workingState.hosts, databaseHostFilter = hosts.hostList)
-    }
-
-    /** Downloads Cassandra version metadata from db hosts. Meaningless for the control node. */
-    private fun downloadCassandraVersions() {
-        hostOperationsService.withHosts(
-            workingState.hosts,
-            ServerType.Cassandra,
-            hosts.hostList,
-        ) { clusterHost ->
-            val host = clusterHost.toHost()
-            val versionsFile = File(context.workingDirectory, "cassandra_versions.yaml")
-            if (!versionsFile.exists()) {
-                remoteOps.download(
-                    host,
-                    "/etc/cassandra_versions.yaml",
-                    versionsFile.toPath(),
-                )
-            }
-        }
-    }
-
-    /**
-     * Runs instance setup, K3s configuration, and optional AxonOps setup unless --no-setup. Either way
-     * `up` starts or reuses the SOCKS tunnel and reports it once: under --no-setup the tunnel may come
-     * from the `@RequiresProxy` preflight, which reports nothing.
-     */
-    private fun setupInstancesIfNeeded() {
-        if (noSetup) {
-            eventBus.emit(Event.Provision.SkippingNodeSetup)
-            startProxyIfNeeded()
-        } else {
-            runNestedCommand { SetupInstance() }
-            startTailscaleIfConfigured()
-            verifyControlNodeReachableOverTailscale()
-            startProxyIfNeeded()
-            startK3sOnAllNodes()
-
-            if (userConfig.isAxonOpsEnabled()) {
-                eventBus.emit(Event.Provision.AxonOpsSetup(userConfig.axonOpsOrg))
-                runNestedCommand { ConfigureAxonOps() }
-            }
-        }
-    }
-
-    /**
-     * Starts the SOCKS5 proxy to the control node when Tailscale is not active.
-     *
-     * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
-     * Both are started at the same point so that subsequent K3s setup, kubectl, and
-     * fabric8 operations can reach the cluster API without Tailscale. The service is always asked, so
-     * a tunnel that died since the preflight is restarted before K3s setup dials it. The tunnel is
-     * reported once, as `socks start` reports it, with its port for a browser, and as what happened in
-     * this invocation: when the service reports the tunnel the preflight already started or reused still running (the same control
-     * node and port), its `reused` flag is the preflight's, because the service would now call a
-     * tunnel it just started "already running".
-     */
-    private fun startProxyIfNeeded() {
-        if (workingState.isTailscaleEnabled()) return
-        val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
-        log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
-        val proxy = socksProxyService.ensureRunning(controlHost)
-        // Only the same live tunnel keeps the preflight's flag: one the recheck had to start again is
-        // new, even on the same port.
-        val fromPreflight =
-            preflightTunnel?.takeIf {
-                proxy.reused && it.gatewayHost.privateIp == controlHost.privateIp && it.localPort == proxy.localPort
-            }
-        eventBus.emit(Event.Proxy.TunnelReady(port = proxy.localPort, reused = fromPreflight?.reused ?: proxy.reused))
-    }
-
-    /**
-     * Starts Tailscale VPN on the control node if credentials are configured.
-     *
-     * This enables secure remote access to the cluster through Tailscale's VPN. A requested
-     * networking path that fails to come up is a failed provision: this aborts `up` rather than
-     * warning and continuing, but preserves the manual-setup instruction in the thrown message
-     * so the user still knows how to recover.
-     */
-    private fun startTailscaleIfConfigured() {
-        if (!workingState.isTailscaleEnabled()) return
-        if (userConfig.tailscaleClientId.isNotBlank() && userConfig.tailscaleClientSecret.isNotBlank()) {
-            eventBus.emit(Event.Provision.TailscaleStarting)
-            val exitCode = commandExecutor.execute { TailscaleStart() }
-            if (exitCode != 0) {
-                error(
-                    "Failed to start Tailscale VPN (exit code $exitCode). " +
-                        "You can manually start it later with: easy-db-lab tailscale start",
-                )
-            }
-        }
-    }
-
-    /**
-     * Waits until this machine can reach the control node's private IP over the tailnet, before
-     * any step depends on that route.
-     *
-     * [startTailscaleIfConfigured] checks only that the *control node* joined the tailnet, which
-     * says nothing about whether this machine has a route to it: the subnet route the control
-     * node advertises has to be approved, and it takes a while to propagate to the operator's own
-     * client even once it is. Without this wait, that gap surfaces as a 30-second Fabric8 timeout
-     * to a private IP once K3s is running.
-     *
-     * The probe dials the control node's `sshd`, not the Kubernetes API, because K3s has not
-     * started yet at this point in `up`; `sshd` is definitionally listening, having just run
-     * setup. Each connect uses a short timeout, and the probe repeats at [tailnetRetryInterval]
-     * up to [Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS] times; only after the last one fails
-     * is the route treated as missing.
-     */
-    private fun verifyControlNodeReachableOverTailscale() {
-        if (!workingState.isTailscaleEnabled()) return
-        val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
-        val port = Constants.Network.SSH_PORT
-        val maxAttempts = Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS
-
-        val retry =
-            Retry.of(
-                "tailnet-reachability",
-                RetryUtil.createBooleanPollRetryConfig(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS, tailnetRetryInterval),
-            )
-        retry.eventPublisher.onRetry { event ->
-            val attempt = event.numberOfRetryAttempts
-            eventBus.emit(Event.Tailscale.RouteWaiting(controlHost.alias, controlHost.privateIp, port, attempt, maxAttempts))
-        }
-        if (retry.executeSupplier { tcpReachabilityProbe.isReachable(controlHost.privateIp, port) }) return
-
-        eventBus.emit(Event.Tailscale.ControlNodeUnreachable(controlHost.alias, controlHost.privateIp, port))
-        val cidr = workingState.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR
-        val waited = tailnetRetryInterval.multipliedBy((maxAttempts - 1).toLong()).toSeconds()
-        error(
-            "Tailscale started on ${controlHost.alias}, but this machine cannot reach it at " +
-                "${controlHost.privateIp}:$port over the tailnet " +
-                "after $maxAttempts attempts over $waited seconds. " +
-                "The control node joined the tailnet, so the missing piece is the route from this machine. " +
-                "Confirm 'tailscale status' on this machine lists ${controlHost.alias}, and approve the subnet " +
-                "route $cidr for ${controlHost.alias} at https://login.tailscale.com/admin/machines. " +
-                "Then run 'easy-db-lab up' again.",
-        )
-    }
-
-    /** Installs Cilium as the K3s CNI on the control node in ENI native-routing mode. */
-    private fun installCilium() {
-        val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
-        val vpcCidr =
-            requireNotNull(workingState.initConfig?.cidr) {
-                "VPC CIDR must be resolved before installing Cilium"
-            }
-        val controlHost = controlHosts.first().toHost()
-        ciliumService.install(controlHost, vpcCidr).getOrThrow()
-        // The control node is the tailnet subnet router. Cilium's NAT chain ACCEPTs tailnet
-        // packets to the db nodes before Tailscale can masquerade them, so the db nodes are
-        // unreachable over the tailnet until this chain is in place. Owned by the Cilium install
-        // path because the need is Cilium's; Tailscale itself is already up by this point.
-        if (workingState.isTailscaleEnabled()) {
-            ciliumService.installTailscaleMasquerade(controlHost).getOrThrow()
-        }
-    }
-
-    /**
-     * Fails `up` before K3s starts when any node was launched from an AMI that predates the Cilium
-     * node fixes. Such a node joins the cluster normally and only drops off the network once Cilium
-     * attaches its second ENI, far into `up`; checking here names the node and the remedy instead.
-     */
-    private fun verifyNodesCarryCiliumFixes() {
-        val lacking = ciliumNodeImageCheck.nodesMissingFixes(workingState.hosts.values.flatten())
-        if (lacking.isEmpty()) return
-        val event =
-            Event.Cilium.NodeImageMissingFixes(
-                nodes = lacking.map { it.node },
-                missingFiles = lacking.flatMap { it.missingFiles }.distinct(),
-            )
-        eventBus.emit(event)
-        error(event.toDisplayString())
-    }
-
-    /** Starts K3s server on control node and joins Cassandra/Stress nodes as agents. */
-    private fun startK3sOnAllNodes() {
-        val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
-        val ciliumEnabled = workingState.initConfig?.cni == CniMode.Cilium
-        if (ciliumEnabled) verifyNodesCarryCiliumFixes()
-
-        // Configure registry TLS before K3s starts so registries.yaml is in place
-        configureRegistryTls()
-
-        val config =
-            K3sClusterConfig(
-                controlHost = controlHosts.first(),
-                workerHosts =
-                    mapOf(
-                        ServerType.Cassandra to (workingState.hosts[ServerType.Cassandra] ?: emptyList()),
-                        ServerType.Stress to (workingState.hosts[ServerType.Stress] ?: emptyList()),
-                    ),
-                kubeconfigPath = WorkspaceKubeconfig.file(context.workingDirectory).toPath(),
-                hostFilter = hosts.hostList,
-                clusterState = workingState,
-                useCustomCni = ciliumEnabled,
-                onServerReady = if (ciliumEnabled) ({ installCilium() }) else null,
-            )
-
-        val result = k3sClusterService.setupCluster(config)
-
-        if (!result.isSuccessful) {
-            result.errors.forEach { (operation, error) ->
-                log.error(error) { "K3s setup failed: $operation" }
-            }
-            error("K3s cluster setup failed: " + result.errors.keys.joinToString(", "))
-        }
-
-        // db and app nodes label themselves through their agent config; wait for all to register.
-        labelControlAndAwaitNodes(controlHosts.first())
-
-        // Ensure StorageClasses exist for Local PVs
-        k8sService.ensureLocalStorageClass().getOrThrow()
-        k8sService.ensureLocalStorageWfcClass().getOrThrow()
-
-        // Bring-up drives the observability stack service directly rather than the
-        // `grafana update-config` command: on a redirect cluster that command refuses, but bring-up
-        // must still deploy the collectors pointed at the external stack. The service is the shared
-        // deploy path; the command is the operator-facing local-stack reconfigure wrapper.
-        observabilityStackService
-            .deploy(controlHosts.first())
-            .getOrElse { exception ->
-                error("Observability stack deployment failed during provisioning: ${exception.message}")
-            }
-
-        // Grafana exists only now, and only in local mode: post the Cilium install markers that
-        // were recorded on the server-ready hook. A redirect cluster has no local Grafana to mark.
-        if (workingState.initConfig?.telemetryRedirect == null) {
-            postCiliumInstallAnnotations(controlHosts.first())
-        }
-    }
-
-    /**
-     * Posts the Cilium install window annotations recorded during K3s bring-up. A failure here is
-     * reported, not fatal: the cluster is up and only the dashboard marker is missing.
-     */
-    private fun postCiliumInstallAnnotations(controlHost: ClusterHost) {
-        ciliumInstallAnnotator
-            .post(controlHost)
-            .onSuccess { posted ->
-                posted.forEach { (request, response) ->
-                    eventBus.emit(
-                        Event.Grafana.AnnotationCreated(
-                            id = response.id,
-                            text = request.text,
-                            tags = request.tags,
-                            time = request.time,
-                        ),
-                    )
-                }
-            }.onFailure { exception ->
-                eventBus.emit(Event.Grafana.AnnotationFailed(exception.message ?: exception.toString()))
-            }
-    }
-
-    /**
-     * Labels the control node with type=control for the OTel k8s_attributes processor, then waits
-     * until every node in state is registered with K3s.
-     *
-     * db and app nodes carry their `type` and ordinal labels from the moment they register: each
-     * K3s agent passes them as `node-label` in its config ([K3sClusterService.getNodeLabels]). So
-     * there is no per-node label call, and the wait is what guarantees that every node, and with it
-     * every label StatefulSet pod-to-node pinning needs, exists before anything is scheduled.
-     */
-    private fun labelControlAndAwaitNodes(controlHost: ClusterHost) {
-        k8sService.labelNode(controlHost.alias, mapOf("type" to "control")).getOrThrow()
-
-        val expected = allNodes().map { it.alias }
-        val timeout =
-            Duration.ofSeconds(
-                Constants.Scale.NODE_REGISTRATION_BASE_SECONDS +
-                    Constants.Scale.NODE_REGISTRATION_PER_NODE_SECONDS * expected.size,
-            )
-        k8sService.waitForNodesRegistered(expected, timeout).getOrThrow()
-    }
-
-    /**
-     * Configures TLS for the container registry.
-     *
-     * Generates a self-signed certificate on the control node and configures both containerd
-     * and K3s registries.yaml on all nodes to trust the registry. This must happen before K3s
-     * starts so that K3s picks up the HTTPS registry configuration.
-     */
-    private fun configureRegistryTls() {
-        val controlHosts = workingState.hosts[ServerType.Control] ?: emptyList()
-        val s3Bucket = checkNotNull(workingState.s3Bucket) { "S3 bucket must be configured before registry TLS setup" }
-
-        val controlHost = controlHosts.first().toHost()
-        val registryHost = controlHost.private
-
-        // Generate cert on control node and upload to S3
-        registryService.generateAndUploadCert(controlHost, s3Bucket)
-
-        // Configure containerd on ALL nodes to trust the registry, in parallel on the bounded pool.
-        // Every node runs; every failure is reported together, and the first aborts `up`.
-        hostOperationsService.withHosts(allNodes(), parallel = true) { clusterHost ->
-            registryService.configureTlsOnNode(clusterHost.toHost(), registryHost, s3Bucket)
-        }
-
-        eventBus.emit(Event.Registry.TlsConfigured)
-    }
-
-    /** Every node in the working state, control first, then db, then app. */
-    private fun allNodes(): List<ClusterHost> =
-        listOf(ServerType.Control, ServerType.Cassandra, ServerType.Stress).flatMap { workingState.hosts[it].orEmpty() }
 }

@@ -46,7 +46,6 @@ class DownCommandTest : BaseKoinTest() {
     private val testClusterState =
         ClusterState(
             name = "test-cluster",
-            versions = mutableMapOf(),
             s3Bucket = "test-bucket",
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
@@ -110,7 +109,6 @@ class DownCommandTest : BaseKoinTest() {
             val stateNoVpc =
                 ClusterState(
                     name = "test-cluster",
-                    versions = mutableMapOf(),
                 )
             whenever(mockClusterStateManager.load()).thenReturn(stateNoVpc)
 
@@ -184,14 +182,14 @@ class DownCommandTest : BaseKoinTest() {
     @Nested
     inner class SpecificVpcMode {
         @Test
-        fun `execute tears down specific VPC`() {
-            whenever(mockTeardownService.teardownVpc(eq("vpc-specific"), eq(true)))
+        fun `execute tears down a named VPC by its tags when no state names it`() {
+            whenever(mockTeardownService.teardownVpcByTags(eq("vpc-specific"), eq(true)))
                 .thenReturn(
                     TeardownResult.success(
                         DiscoveredResources(vpcId = "vpc-specific", instanceIds = listOf("i-1")),
                     ),
                 )
-            whenever(mockTeardownService.teardownVpc(eq("vpc-specific"), eq(false)))
+            whenever(mockTeardownService.teardownVpcByTags(eq("vpc-specific"), eq(false)))
                 .thenReturn(TeardownResult.success(DiscoveredResources(vpcId = "vpc-specific")))
 
             val command = Down()
@@ -199,7 +197,25 @@ class DownCommandTest : BaseKoinTest() {
             command.autoApprove = true
             command.execute()
 
-            verify(mockTeardownService).teardownVpc("vpc-specific", false)
+            verify(mockTeardownService).teardownVpcByTags("vpc-specific", false)
+        }
+
+        @Test
+        fun `a dry run on a named VPC only previews it by its tags`() {
+            whenever(mockTeardownService.teardownVpcByTags(eq("vpc-specific"), eq(true)))
+                .thenReturn(
+                    TeardownResult.success(
+                        DiscoveredResources(vpcId = "vpc-specific", instanceIds = listOf("i-1"), ownsVpc = false),
+                    ),
+                )
+
+            val command = Down()
+            command.vpcId = "vpc-specific"
+            command.dryRun = true
+            command.execute()
+
+            verify(mockTeardownService, never()).teardownVpcByTags(any(), eq(false))
+            assertThat(outputHandler.messages.joinToString("\n")).contains("kept")
         }
     }
 

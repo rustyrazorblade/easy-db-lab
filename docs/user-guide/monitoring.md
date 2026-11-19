@@ -261,6 +261,10 @@ kube-state-metrics runs on the control node of every cluster and exposes the sta
 
 The OTel collector scrapes it once, through pod discovery on the control node, so each series appears one time. The metrics carry the `cluster` label like every other scrape.
 
+## etcd metrics
+
+The K3s server keeps its state in embedded etcd, and its metrics listener (port 2381 on the control node, plain HTTP, enabled by `etcd-expose-metrics` in the K3s datastore drop-in; that setting also binds it on the node's private IP, reachable only inside the VPC) is scraped into Mimir as job `k3s-etcd` with the usual `cluster` label. The collector on the control node scrapes it, found by node discovery on the `node-role.kubernetes.io/etcd=true` label, so each series appears once and no other node reports the job down. The **K3s Control Plane** dashboard (Infrastructure folder) shows backend commit latency, WAL fsync latency, the database size against the 8 GiB quota, leader changes and failed proposals: the first signals of a control-plane stall on a large cluster.
+
 ## Cilium metrics
 
 On a Cilium cluster (the default CNI), the OTel collector also scrapes the Cilium agent (`localhost:9962` on every node), Hubble (`localhost:9965` on every node), and the Cilium operator (port 9963 on the node that runs it). A Flannel cluster has none of these jobs. See [Pod Networking (CNI)](networking.md) for the job definitions, the Hubble UI NodePort, and `platform cni`.

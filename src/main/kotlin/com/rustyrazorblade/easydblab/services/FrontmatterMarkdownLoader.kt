@@ -1,9 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
 import io.github.classgraph.ClassGraph
+import io.github.classgraph.ClassGraphException
 import io.github.classgraph.Resource
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.error.YAMLException
+import java.io.IOException
 import java.io.InputStream
 
 /**
@@ -87,14 +90,14 @@ class FrontmatterMarkdownLoader {
      * Loads all documents from markdown files in the given classpath package.
      *
      * A single missing, malformed, or unreadable file is skipped and logged; the remaining
-     * well-formed files still load. The per-resource `try/catch` catches every exception (not just
-     * the expected parse error) so one bad file can never zero out the whole result set. Only a
-     * catastrophic failure of the scan itself yields an empty list.
+     * well-formed files still load. The per-resource handler covers the two ways a file can be bad
+     * (an [IllegalArgumentException] from the parse, an [IOException] from reading it), so one bad
+     * file can never zero out the whole result set. Only a failure of the scan itself yields an
+     * empty list.
      *
      * @param packagePath Package path in dot notation (e.g., "com.rustyrazorblade.easydblab.help").
      * @return One [MarkdownDocument] per successfully loaded file.
      */
-    @Suppress("TooGenericExceptionCaught")
     fun loadAll(packagePath: String): List<MarkdownDocument> {
         log.info { "Scanning for markdown resources in package: $packagePath" }
 
@@ -106,20 +109,24 @@ class FrontmatterMarkdownLoader {
                     val resources = scanResult.getResourcesWithExtension("md")
                     log.info { "Found ${resources.size} markdown resources in $packagePath" }
 
-                    resources.mapNotNull { resource ->
-                        try {
-                            loadFromResource(resource)
-                        } catch (e: Exception) {
-                            log.warn { "Skipping markdown resource ${resource.path}: ${e.message}" }
-                            null
-                        }
-                    }
+                    resources.mapNotNull { resource -> loadOrSkip(resource) }
                 }
-        } catch (e: Exception) {
+        } catch (e: ClassGraphException) {
             log.error(e) { "Error scanning for markdown resources in package $packagePath" }
             emptyList()
         }
     }
+
+    private fun loadOrSkip(resource: Resource): MarkdownDocument? =
+        try {
+            loadFromResource(resource)
+        } catch (e: IllegalArgumentException) {
+            log.warn { "Skipping markdown resource ${resource.path}: ${e.message}" }
+            null
+        } catch (e: IOException) {
+            log.warn { "Skipping markdown resource ${resource.path}: ${e.message}" }
+            null
+        }
 
     /**
      * Validates content format and splits it into frontmatter and body.
@@ -145,24 +152,22 @@ class FrontmatterMarkdownLoader {
 
     /**
      * Parses YAML frontmatter text into a map.
+     *
+     * @throws IllegalArgumentException if the text is not YAML or is not a YAML map.
      */
-    @Suppress("TooGenericExceptionCaught", "ThrowsCount")
     private fun parseFrontmatter(
         resourceName: String,
         frontmatterText: String,
     ): Map<String, Any> {
-        try {
-            @Suppress("UNCHECKED_CAST")
-            return yaml.load(frontmatterText) as? Map<String, Any>
-                ?: throw IllegalArgumentException("Frontmatter is not a valid YAML map")
-        } catch (e: IllegalArgumentException) {
-            throw e
-        } catch (e: Exception) {
-            throw IllegalArgumentException(
-                "Failed to parse YAML frontmatter in $resourceName: ${e.message}",
-                e,
-            )
-        }
+        val loaded =
+            try {
+                yaml.load<Any?>(frontmatterText)
+            } catch (e: YAMLException) {
+                throw IllegalArgumentException("Failed to parse YAML frontmatter in $resourceName: ${e.message}", e)
+            }
+        val map = loaded as? Map<*, *> ?: throw IllegalArgumentException("Frontmatter is not a valid YAML map")
+        // A key with no value is dropped, so the required-field check reports it as missing.
+        return map.mapNotNull { (key, value) -> value?.let { key.toString() to it } }.toMap()
     }
 
     /**

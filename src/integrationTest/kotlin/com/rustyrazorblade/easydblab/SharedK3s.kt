@@ -6,6 +6,7 @@ import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
 import java.util.concurrent.TimeUnit
@@ -39,6 +40,7 @@ object SharedK3s {
     const val WEB_SERVER_IMAGE = Constants.Grafana.Documents.WEB_SERVER_IMAGE
 
     private const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
+    private const val LOG_TAIL_CHARS = 6000
 
     private val container: K3sContainer by lazy {
         K3sContainer(DockerImageName.parse(K3S_IMAGE))
@@ -58,6 +60,9 @@ object SharedK3s {
     /** A new client for the shared cluster. The caller owns it and closes it. */
     fun client(): KubernetesClient = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(kubeConfigYaml())).build()
 
+    /** The last part of the K3s container's log, for a failure report. */
+    fun logTail(chars: Int = LOG_TAIL_CHARS): String = container.logs.takeLast(chars)
+
     /**
      * Creates [name] and waits for its `default` ServiceAccount, which the API server requires
      * before it admits a pod into the namespace.
@@ -72,11 +77,27 @@ object SharedK3s {
                         .endMetadata()
                         .build(),
                 ).create()
-            client
-                .serviceAccounts()
-                .inNamespace(name)
-                .withName("default")
-                .waitUntilCondition({ it != null }, NAMESPACE_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            try {
+                client
+                    .serviceAccounts()
+                    .inNamespace(name)
+                    .withName("default")
+                    .waitUntilCondition({ it != null }, NAMESPACE_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            } catch (e: KubernetesClientTimeoutException) {
+                // A K3s that is up but whose controllers are starved says so in its own log; keep it.
+                throw AssertionError(
+                    "no default ServiceAccount in $name after ${NAMESPACE_READY_TIMEOUT_SECONDS}s\n" +
+                        "${runCatching {
+                            K3sDiagnostics.clusterDiagnostics(
+                                client,
+                                name,
+                            )
+                        }.getOrElse {
+                            "cluster diagnostics unavailable: ${it.messageOrString()}"
+                        }}\nK3s log tail:\n${logTail()}",
+                    e,
+                )
+            }
         }
     }
 }

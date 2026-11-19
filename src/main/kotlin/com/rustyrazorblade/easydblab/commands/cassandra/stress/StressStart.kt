@@ -77,7 +77,7 @@ class StressStart : PicoBaseCommand() {
 
         // Increment counter for port and auto-naming
         val counter = clusterStateManager.incrementStressJobCounter()
-        val promPort = Constants.Stress.PROMETHEUS_PORT + counter
+        val promPort = promPortFor(counter)
 
         // Generate job name
         val fullJobName =
@@ -237,5 +237,21 @@ class StressStart : PicoBaseCommand() {
         }
 
         return args
+    }
+
+    /** How a stress run picks its metrics port, shared with the node tuning reserved-port test. */
+    companion object {
+        /**
+         * The stress metrics port for the [counter]th run: the next port in the reserved window
+         * that starts at [Constants.Stress.PROMETHEUS_PORT], wrapping after
+         * [Constants.Stress.PROMETHEUS_PORT_COUNT] runs. A port outside the window could be handed to
+         * an outbound connection as its source port, and the run could not bind it. Run N and run
+         * N+100 share a port, so the later one cannot bind it while the earlier one still runs on
+         * the same node.
+         */
+        internal fun promPortFor(counter: Int): Int {
+            val offset = counter % Constants.Stress.PROMETHEUS_PORT_COUNT
+            return Constants.Stress.PROMETHEUS_PORT + offset
+        }
     }
 }

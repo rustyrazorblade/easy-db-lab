@@ -235,7 +235,7 @@ Commands should delegate to these services:
 | `SshIngressService` | SSH ingress rules on the workspace cluster's security group (`services.aws`), for `ingress allow` / `ingress revoke`: validates every `--cidr` with `network/Ipv4Cidr` before any AWS call (or uses the detected public IP), changes one exact tcp/22 rule per CIDR, and returns a sealed `IngressResult`; it emits no events |
 | `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
 | `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
-| `TestDocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
+| `DocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
 | `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS unless Tailscale) |
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
@@ -264,27 +264,44 @@ to report, not by convenience:
   all of them in one run. Use this when a partial result is not a meaningful outcome.
 - **`collectFromHosts`** — returns a `HostResult` per host (`host` + `Result`) and throws nothing.
   Use this when the command reports per-host outcomes, or when hosts can legitimately end in
-  *different* states — installed here, already present there. `CassandraInstall` is the reference
-  implementation: it emits one event per host, then throws once at the end if anything went wrong.
+  *different* states — installed here, already present there. `services/cassandraversions/CassandraInstaller`
+  is the reference implementation: it emits one event per host, and `cassandra install` / `cassandra use`
+  throw once at the end if anything went wrong.
 
 Results are keyed by position, never by alias — two hosts sharing an alias would otherwise
 misattribute each other's failure.
 
 Both take either a hosts map with a server type and alias filter, or a plain `List<ClusterHost>`
-for hosts of mixed types (`up` passes every node, control first, for registry TLS; the SSH
-readiness wait passes the hosts still pending). Never pack a mixed list under one server type.
+for hosts of mixed types (`up` passes every node when it pushes the environment files again
+after db0 was replaced). Never pack a mixed list under one server type.
 
 With `parallel = true` both run on at most `Constants.Scale.HOST_CONCURRENCY` (50) hosts at once,
 through `services/BoundedParallel`; at 1,000 nodes one thread per host would open 1,000 SSH
-sessions from the operator's machine. K3s agent setup and the Cilium node image check use the
-same pool. Per-node work that `up` runs (db setup, AxonOps, registry TLS) is parallel.
+sessions from the operator's machine. `up` does not fan out this way for node bring-up: each
+node runs its own pipeline (`services/bringup/`), whose SSH steps share one session limit,
+`Constants.Scale.HOST_CONCURRENCY`. AxonOps on the ready db nodes still uses `withHosts`.
 
 ## Invoking AMI-Baked Scripts At Runtime
 
-Some scripts under `packer/` are not bake-time-only. The AMI build installs `packer/cassandra/bin/install-cassandra-version`
-and `use-cassandra` onto the node's `PATH`. At runtime, `CassandraInstall` (`cassandra install`) runs
-`install-cassandra-version` over SSH, and `UseCassandra` (`cassandra use`) runs `use-cassandra`. This is deliberate: one install code path
-serves both the bake and a running cluster, instead of two that have to be kept in sync by hand.
+Some scripts under `packer/` are not bake-time-only. The AMI build installs everything in
+`packer/cassandra/bin/` onto the node's `PATH`, and the CLI runs three of them over SSH. The bake
+installs no Cassandra version and no per-release AxonOps agent; every one arrives at runtime.
+
+The CLI resolves everything (`services/cassandraversions/`: `CassandraVersionResolver` picks the
+source, URL, JDK and Python; the cluster state holds the record) and passes it as arguments, so no
+script reads a version file:
+
+- `install-cassandra-version <name> --url URL [--fallback-url URL] [--cache-uri URI] [--verify-checksum] [--reinstall]`,
+  or `--url GIT --branch B --java N [--ant-flags F]` for a git build. `--verify-checksum` (an ASF
+  release only) checks the tarball against the strongest checksum ASF publishes beside it. Run by `CassandraInstaller` for
+  `cassandra install`, `cassandra use` and `CassandraNodeRestorer` (a replaced db node; nothing calls
+  the restorer yet, issue 1158 wires it into `up`).
+- `use-cassandra <version> --java N --python X.Y.Z`. Both flags are required; the script checks every
+  argument before it changes anything.
+- `install-axonops-agent <X.Y|name> <java> --cache-prefix URI` (a name with no X.Y, such as
+  `cep-45`, takes its release from the install's `apache-cassandra` jar), run by `cassandra start` through
+  `AxonOpsAgents` before Cassandra starts anywhere. Exit 0 prints the agent name last; exit 3 means
+  AxonOps ships no agent for the release and JDK and prints the ones it ships.
 
 Consequences when editing those scripts:
 

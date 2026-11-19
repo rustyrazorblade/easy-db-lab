@@ -480,6 +480,8 @@ tasks.register("testScripts") {
         "testBasePrimaryEniNetwork",
         "testCompactorGate",
         "testSetupInstanceDataDisk",
+        "testSetupInstanceTuning",
+        "testEdlNodeTuning",
     )
 }
 
@@ -529,6 +531,26 @@ tasks.register<Exec>("testSetupInstanceDataDisk") {
     description = "Unit-test the data disk handling of setup_instance.sh"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/setup-instance-data-disk.test.sh")
+}
+
+// Unit-test the OS tuning step of setup_instance.sh: every packaged node-tuning file installed
+// where the system reads it, the old files removed, swap kept off, and a failure when the files
+// are missing or a setting did not take. The system tools are stubbed.
+tasks.register<Exec>("testSetupInstanceTuning") {
+    group = "Verification"
+    description = "Unit-test the OS tuning step of setup_instance.sh"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/setup-instance-tuning.test.sh")
+}
+
+// Unit-test edl-node-tuning, under dash as on the nodes: the RPS mask and flow counts, the CPU
+// governor and idle states or a logged skip, and verify naming each setting that does not match.
+// Runs against a fake /sys and /proc.
+tasks.register<Exec>("testEdlNodeTuning") {
+    group = "Verification"
+    description = "Unit-test the edl-node-tuning node script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/edl-node-tuning.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug
@@ -755,11 +777,11 @@ tasks.register<Exec>("testCassandraInstallScript") {
     commandLine = listOf("bash", "packer/cassandra/bin/install-cassandra-version.test.sh")
 }
 
-// Unit-test the bake-time loop's version resolution (yq-driven flags, lazy skip). Sources
-// install_cassandra.sh without INSTALL_CASSANDRA, so none of its effects run.
+// Unit-test the bake-time db-node setup in install_cassandra.sh, with sudo and the tools stubbed:
+// it runs the one-time setup and installs no Cassandra version.
 tasks.register<Exec>("testCassandraInstallLoop") {
     group = "Verification"
-    description = "Unit-test the bake-time Cassandra version install loop"
+    description = "Unit-test the bake-time db-node setup (no version is installed)"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/cassandra/install/install_cassandra.test.sh")
 }
@@ -781,10 +803,29 @@ tasks.register<Exec>("testCassandraWaitScript") {
     commandLine = listOf("bash", "packer/cassandra/bin/wait-for-up-normal.test.sh")
 }
 
-// Unit-test the agent selection cassandra.in.sh runs on every Cassandra start: deriving X.Y from
-// the release jar name (every shape, including the unparseable one) and mapping it to the AxonOps
-// agent. Also parses cassandra.in.sh under dash, which is the shell Cassandra actually sources it
-// with. Pure functions; no Docker, no network, no node.
+// Unit-test sjk-gc: it picks the JMX connection from the JDK and runs sjk once, so a stream ended
+// with Ctrl-C does not start a second session.
+tasks.register<Exec>("testCassandraSjkGc") {
+    group = "Verification"
+    description = "Unit-test the sjk-gc script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/sjk-gc.test.sh")
+}
+
+// Unit-test install-axonops-agent, which `cassandra start` runs on each node to install the AxonOps
+// agent for its release and JDK: the exit-3 refusal with the shipped list, the no-op when
+// installed, and the download cache keyed by the package version. apt, aws and dpkg-deb are stubbed.
+tasks.register<Exec>("testCassandraAxonOpsAgentScript") {
+    group = "Verification"
+    description = "Unit-test the install-axonops-agent script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/install-axonops-agent.test.sh")
+}
+
+// Unit-test the agent library cassandra.in.sh sources on every Cassandra start: deriving X.Y from
+// the release jar name, mapping a release and JDK to the AxonOps agent, the shipped agent list,
+// and the -javaagent option for the agent the CLI chose. Also parses cassandra.in.sh under dash,
+// which is the shell Cassandra actually sources it with. Pure functions; no Docker, no network.
 tasks.register<Exec>("testCassandraAgentSelection") {
     group = "Verification"
     description = "Unit-test Cassandra version derivation and agent selection"
@@ -811,7 +852,9 @@ tasks.register("testCassandraScripts") {
         "testCassandraInstallLoop",
         "testCassandraUseScript",
         "testCassandraWaitScript",
+        "testCassandraSjkGc",
         "testCassandraAgentSelection",
+        "testCassandraAxonOpsAgentScript",
         "testCacheLib",
     )
 }

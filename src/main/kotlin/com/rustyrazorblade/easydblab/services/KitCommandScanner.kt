@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.annotations.KitCommand
 import io.github.classgraph.ClassGraph
+import io.github.classgraph.ClassGraphException
+import io.github.classgraph.ClassInfo
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
@@ -50,7 +52,6 @@ class DefaultKitCommandScanner : KitCommandScanner {
 
     override fun findAll(): Map<String, List<ScannedKitCommand>> = cache
 
-    @Suppress("TooGenericExceptionCaught")
     private fun scan(): Map<String, List<ScannedKitCommand>> {
         log.debug { "Scanning classpath for @KitCommand-annotated classes" }
         return try {
@@ -62,33 +63,40 @@ class DefaultKitCommandScanner : KitCommandScanner {
                 .use { result ->
                     result
                         .getClassesWithAnnotation(KitCommand::class.java)
-                        .mapNotNull { classInfo ->
-                            try {
-                                val kitAnn = classInfo.getAnnotationInfo(KitCommand::class.java)
-                                val kit = kitAnn.parameterValues.getValue("kit") as String
-                                val name = kitAnn.parameterValues.getValue("name") as String
-
-                                val cmdAnn = classInfo.getAnnotationInfo("picocli.CommandLine\$Command")
-
-                                @Suppress("UNCHECKED_CAST")
-                                val descArr = cmdAnn?.parameterValues?.getValue("description") as? Array<String>
-                                val description = descArr?.firstOrNull() ?: ""
-
-                                ScannedKitCommand(
-                                    kit = kit,
-                                    name = name,
-                                    description = description,
-                                    cls = classInfo.loadClass(),
-                                )
-                            } catch (e: Exception) {
-                                log.warn { "Failed to scan @KitCommand class ${classInfo.name}: ${e.message}" }
-                                null
-                            }
-                        }.groupBy { it.kit }
+                        .mapNotNull { classInfo -> scanOrSkip(classInfo) }
+                        .groupBy { it.kit }
                 }
-        } catch (e: Exception) {
+        } catch (e: ClassGraphException) {
             log.error(e) { "Classpath scan for @KitCommand failed" }
             emptyMap()
         }
     }
+
+    /**
+     * Reads the [KitCommand] annotation of [classInfo], or returns null, and logs, when the class
+     * cannot be described or loaded. One bad class must not hide the other kit commands.
+     */
+    private fun scanOrSkip(classInfo: ClassInfo): ScannedKitCommand? =
+        try {
+            val kitAnn = classInfo.getAnnotationInfo(KitCommand::class.java)
+            val kit = kitAnn.parameterValues.getValue("kit") as? String ?: error("@KitCommand has no kit")
+            val name = kitAnn.parameterValues.getValue("name") as? String ?: error("@KitCommand has no name")
+
+            val cmdAnn = classInfo.getAnnotationInfo("picocli.CommandLine\$Command")
+            val descriptions = cmdAnn?.parameterValues?.getValue("description")
+            val description = (descriptions as? Array<*>)?.firstOrNull() as? String ?: ""
+
+            ScannedKitCommand(
+                kit = kit,
+                name = name,
+                description = description,
+                cls = classInfo.loadClass(),
+            )
+        } catch (e: IllegalStateException) {
+            log.warn { "Failed to scan @KitCommand class ${classInfo.name}: ${e.message}" }
+            null
+        } catch (e: IllegalArgumentException) {
+            log.warn { "Failed to scan @KitCommand class ${classInfo.name}: ${e.message}" }
+            null
+        }
 }

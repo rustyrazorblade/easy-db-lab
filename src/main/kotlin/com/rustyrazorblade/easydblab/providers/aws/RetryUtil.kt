@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
+import com.rustyrazorblade.easydblab.providers.ssh.isSshNotReady
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
 import software.amazon.awssdk.awscore.exception.AwsServiceException
@@ -488,10 +489,7 @@ object RetryUtil {
      *   SOCKS hiccup during a wait that lasts minutes) and retried within the same budget; the poll
      *   fails only when the last look throws. That includes checked ones such as OkHttp's
      *   IOException, so run it with resilience4j's checked decorators, as [pollUntil] does
-     * - With [retryExceptions] false no exception is retried: the look itself decides which
-     *   failures mean "not done yet" (the SSH readiness wait returns the hosts still pending and
-     *   throws only a failure that waiting cannot fix)
-     * - An InterruptedException ends the poll at once in either mode: the thread was asked to stop
+     * - An InterruptedException ends the poll at once: the thread was asked to stop
      *
      * - When [deadline] is set, nothing is retried once it has passed, so the wait is bounded by the
      *   wall clock rather than by how long each look takes
@@ -500,8 +498,7 @@ object RetryUtil {
      * @param interval how long to wait between looks
      * @param done whether a look's result ends the poll
      * @param deadline when set, the instant after which no further look is made
-     * @param retryExceptions whether an exception other than an interrupt is retried
-     * @param isTransient which exceptions are retried when [retryExceptions] is true; any other
+     * @param isTransient which exceptions are retried; any other
      *   exception fails the poll at once (default: every exception is transient)
      * @return RetryConfig configured for a fixed-interval poll
      */
@@ -510,7 +507,6 @@ object RetryUtil {
         interval: Duration,
         done: (T) -> Boolean,
         deadline: Instant? = null,
-        retryExceptions: Boolean = true,
         isTransient: (Throwable) -> Boolean = { true },
     ): RetryConfig {
         fun beforeDeadline() = deadline == null || Instant.now().isBefore(deadline)
@@ -519,7 +515,7 @@ object RetryUtil {
             .maxAttempts(maxAttempts)
             .intervalFunction { _ -> interval.toMillis() }
             .retryOnResult { result -> !done(result) && beforeDeadline() }
-            .retryOnException { retryExceptions && it !is InterruptedException && isTransient(it) && beforeDeadline() }
+            .retryOnException { it !is InterruptedException && isTransient(it) && beforeDeadline() }
             .build()
     }
 }

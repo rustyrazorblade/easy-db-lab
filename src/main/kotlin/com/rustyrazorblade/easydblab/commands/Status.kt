@@ -78,7 +78,7 @@ class Status :
     private val eventBus: EventBus by inject()
     private val clusterStateManager: ClusterStateManager by inject()
     private val workspaceKitScanner: WorkspaceKitScanner by inject()
-    private val collector = ClusterStatusCollector()
+    private val collector: ClusterStatusCollector by inject()
 
     private val clusterState by lazy { clusterStateManager.load() }
 

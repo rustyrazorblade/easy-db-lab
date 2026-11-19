@@ -77,7 +77,6 @@ class ObservabilityHttpTest {
     private fun state(tailscale: Boolean = false) =
         ClusterState(
             name = "lab",
-            versions = mutableMapOf(),
             initConfig = InitConfig(tenant = "acme"),
             hosts = mapOf(ServerType.Control to listOf(control)),
         ).also { it.tailscaleActive = tailscale }
@@ -204,7 +203,7 @@ class ObservabilityHttpTest {
 
     @Test
     fun `a cluster with no control node fails fast`() {
-        whenever(stateManager.load()).thenReturn(ClusterState(name = "lab", versions = mutableMapOf()))
+        whenever(stateManager.load()).thenReturn(ClusterState(name = "lab"))
 
         assertThatThrownBy { http.get(3100, "/ready") }
             .isInstanceOf(IllegalStateException::class.java)

@@ -406,8 +406,9 @@ class ClusterStatusCollector(
         val answers = collectLiveVersions(probeHosts)
         if (answers.isNotEmpty()) return liveVersionInfo(answers, probeHosts)
 
+        val recorded = cassandraHosts.firstNotNullOfOrNull { host -> state.nodes[host.alias]?.version?.ifEmpty { null } }
         return CassandraVersionInfo(
-            version = state.default.version.ifEmpty { "unknown" },
+            version = recorded ?: state.default.version.ifEmpty { "unknown" },
             source = "cached",
             unanswered = probeHosts.map { it.alias },
         )
